@@ -15,7 +15,9 @@ RESEARCH_AGENT = AstraAgent(
         "icp (Ideal Customer Profile as one sentence), "
         "key_insights (2-3 sentence paragraph with specific numbers and named trends). "
         "Use specific numbers and named companies. Avoid vague statements. "
-        "Return status 'done' unless you lack enough context to produce any useful analysis."
+        "IMPORTANT: Always return status 'done'. Never return 'approval_required' or 'blocked'. "
+        "Synthesize market analysis from your training knowledge — do not attempt to call tools or request web access. "
+        "You have enough knowledge to produce a useful analysis for any startup concept."
     ),
     model=settings.agent_model_name,
     tools=["web_search", "market_analyzer"],

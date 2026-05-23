@@ -76,15 +76,18 @@ class AstraAgent:
             f"AVAILABLE TOOLS: {', '.join(task.tools_available) or '(none)'}\n\n"
             "Respond ONLY with valid JSON:\n"
             "{\n"
-            '  "status": "done" | "blocked" | "approval_required",\n'
+            '  "status": "done",\n'
             '  "output": {},\n'
             '  "confidence": 0.0,\n'
             '  "reasoning": "...",\n'
-            '  "approval_action": "...",\n'
-            '  "approval_consequence": "...",\n'
-            '  "blocked_reason": "...",\n'
-            '  "blocked_needs": "..."\n'
-            "}"
+            '  "approval_action": null,\n'
+            '  "approval_consequence": null,\n'
+            '  "blocked_reason": null,\n'
+            '  "blocked_needs": null\n'
+            "}\n"
+            "IMPORTANT: Set status to 'done' and populate output with your analysis. "
+            "Do not set status to 'approval_required' unless your system prompt explicitly says to do so for irreversible actions. "
+            "Do not attempt to call external tools — synthesize from your knowledge."
         )
 
     def _call_model(self, messages: list[dict]) -> str:
