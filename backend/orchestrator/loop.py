@@ -6,6 +6,11 @@ from typing import Any
 
 from backend.agents.base import AgentTask, AgentResult
 from backend.agents.legal import LEGAL_AGENT
+from backend.agents.research import RESEARCH_AGENT
+from backend.agents.web import WEB_AGENT
+from backend.agents.marketing import MARKETING_AGENT
+from backend.agents.technical import TECHNICAL_AGENT
+from backend.agents.ops import OPS_AGENT
 from backend.db.client import (
     get_ready_tasks,
     has_in_progress_tasks,
@@ -24,7 +29,11 @@ logger = logging.getLogger(__name__)
 
 AGENTS = {
     "legal": LEGAL_AGENT,
-    # stages 2+ add: research, web, marketing, technical, ops
+    "research": RESEARCH_AGENT,
+    "web": WEB_AGENT,
+    "marketing": MARKETING_AGENT,
+    "technical": TECHNICAL_AGENT,
+    "ops": OPS_AGENT,
 }
 
 
