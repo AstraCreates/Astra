@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from backend.db.client import (
     get_ready_tasks,
     persist_task_graph,

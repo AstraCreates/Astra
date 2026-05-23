@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from supabase import create_client, Client
@@ -62,6 +62,7 @@ async def persist_task_graph(goal_id: str, founder_id: str, tasks: list[dict]):
                 "depends_on": t.get("depends_on", []),
                 "tools_available": t.get("tools_available", []),
                 "constraints": t.get("constraints", {}),
+                "context_bundle": t.get("context_bundle", {}),
                 "status": "pending",
             }
             for t in tasks
@@ -77,7 +78,7 @@ async def update_task_status(task_id: str, status: str, result: Optional[dict] =
         if result is not None:
             payload["result"] = result
         if status in ("done", "failed", "awaiting_approval"):
-            payload["completed_at"] = datetime.utcnow().isoformat()
+            payload["completed_at"] = datetime.now(timezone.utc).isoformat()
         get_supabase().table("tasks").update(payload).eq("id", task_id).execute()
 
     await asyncio.to_thread(_update)
@@ -96,7 +97,7 @@ async def update_goal_status(goal_id: str, status: str, elapsed_seconds: Optiona
         if elapsed_seconds is not None:
             payload["elapsed_seconds"] = elapsed_seconds
         if status == "done":
-            payload["completed_at"] = datetime.utcnow().isoformat()
+            payload["completed_at"] = datetime.now(timezone.utc).isoformat()
         get_supabase().table("goals").update(payload).eq("id", goal_id).execute()
 
     await asyncio.to_thread(_update)
