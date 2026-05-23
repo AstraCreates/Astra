@@ -99,7 +99,7 @@ class AstraAgent:
         content = msg.content or ""
         if not content.strip():
             content = getattr(msg, "reasoning_content", "") or ""
-        return "{" + content
+        return content
 
     async def run(self, task: AgentTask) -> AgentResult:
         memory_docs = await vector_store.retrieve(
@@ -112,7 +112,6 @@ class AstraAgent:
         messages = [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": self._build_prompt(task, memory_docs)},
-            {"role": "assistant", "content": "{"},
         ]
 
         raw = await asyncio.to_thread(self._call_model, messages)
