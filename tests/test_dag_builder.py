@@ -41,10 +41,12 @@ async def test_dag_builder_falls_back_on_invalid_json(mocker):
 async def test_dag_builder_assigns_unique_task_ids(mocker):
     mock_model = MagicMock()
     mock_response = MagicMock()
-    mock_response.text = '{"tasks": [{"task_id": "t_001", "agent": "legal", "depends_on": []}, {"task_id": "t_002", "agent": "research", "depends_on": []}]}'
+    # Both tasks have same task_id "t_001" — should be deduplicated
+    mock_response.text = '{"tasks": [{"task_id": "t_001", "agent": "legal", "depends_on": []}, {"task_id": "t_001", "agent": "research", "depends_on": []}]}'
     mock_model.generate_content.return_value = mock_response
     mocker.patch("backend.orchestrator.dag_builder._get_model", return_value=mock_model)
 
     dag = await build_task_dag(goal_id="g1", parsed_goal={"instruction": "launch", "entities": {}, "priority_agents": []})
     ids = [t["task_id"] for t in dag]
-    assert len(ids) == len(set(ids))
+    assert len(ids) == len(set(ids)), f"Duplicate task IDs: {ids}"
+    assert len(dag) == 2

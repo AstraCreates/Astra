@@ -84,10 +84,15 @@ async def build_task_dag(goal_id: str, parsed_goal: dict) -> list[dict]:
         tasks = data.get("tasks", [])
         if not tasks:
             raise ValueError("empty task list")
-        # prefix task_ids with goal_id to ensure uniqueness
+        # prefix task_ids with goal_id and deduplicate
+        seen_ids = set()
         for i, task in enumerate(tasks):
-            if not task.get("task_id"):
+            tid = task.get("task_id")
+            if not tid or tid in seen_ids:
                 task["task_id"] = f"{goal_id}_t_{i+1:03d}"
+            seen_ids.add(task["task_id"])
+            task.setdefault("agent", "legal")
+            task.setdefault("instruction", "")
             task.setdefault("depends_on", [])
             task.setdefault("tools_available", [])
             task.setdefault("constraints", {})
