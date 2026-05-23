@@ -44,18 +44,57 @@ def test_research_agent_has_web_search_tool():
     assert "web_search" in RESEARCH_AGENT.tools
 
 
+def test_research_agent_has_market_analyzer_tool():
+    from backend.agents.research import RESEARCH_AGENT
+    assert "market_analyzer" in RESEARCH_AGENT.tools
+
+
 @pytest.mark.asyncio
 async def test_research_agent_run_returns_done(mock_research_model):
-    from backend.agents.research import RESEARCH_AGENT
-    RESEARCH_AGENT._client = None  # force fresh client from mock
+    from backend.agents.base import AstraAgent
+    from backend.config import settings
+    agent = AstraAgent(
+        agent_id="research",
+        system_prompt="You are the Research Agent.",
+        model=settings.agent_model_name,
+        tools=["web_search", "market_analyzer"],
+        memory_namespaces=["research", "shared"],
+    )
     task = AgentTask(
         task_id="t_001", goal_id="g_001", founder_id="f_001",
         agent="research", instruction="Research the AI productivity tools market for AcmeCo",
         context_bundle={"company_name": "AcmeCo", "problem": "founders waste time on admin"},
         constraints={}, tools_available=["web_search", "market_analyzer"],
     )
-    result = await RESEARCH_AGENT.run(task)
+    result = await agent.run(task)
     assert result.status == "done"
     assert "report_title" in result.output
     assert "tam_usd" in result.output
     assert "competitors" in result.output
+
+
+@pytest.mark.asyncio
+async def test_research_agent_run_blocked_on_invalid_json(mocker):
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content="not valid json at all"))]
+    )
+    mocker.patch("backend.agents.base.openai.OpenAI", return_value=mock_client)
+    mocker.patch("backend.agents.base.vector_store.retrieve", new=AsyncMock(return_value=[]))
+    from backend.agents.base import AstraAgent
+    from backend.config import settings
+    agent = AstraAgent(
+        agent_id="research",
+        system_prompt="You are the Research Agent.",
+        model=settings.agent_model_name,
+        tools=["web_search", "market_analyzer"],
+        memory_namespaces=["research", "shared"],
+    )
+    task = AgentTask(
+        task_id="t_001", goal_id="g_001", founder_id="f_001",
+        agent="research", instruction="Research market",
+        context_bundle={}, constraints={}, tools_available=[],
+    )
+    result = await agent.run(task)
+    assert result.status == "blocked"
+    assert result.blocked_reason == "invalid_json"
