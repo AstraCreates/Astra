@@ -86,7 +86,11 @@ async def build_task_dag(goal_id: str, parsed_goal: dict) -> list[dict]:
             temperature=0.1,
             max_tokens=512,
         )
-        return response.choices[0].message.content
+        msg = response.choices[0].message
+        content = msg.content or ""
+        if not content.strip():
+            content = getattr(msg, "reasoning_content", "") or ""
+        return content
 
     raw = await asyncio.to_thread(_call)
 

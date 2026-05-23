@@ -94,9 +94,12 @@ class AstraAgent:
             messages=messages,
             temperature=0.2,
             max_tokens=4096,
-            response_format={"type": "json_object"},
         )
-        return response.choices[0].message.content
+        msg = response.choices[0].message
+        content = msg.content or ""
+        if not content.strip():
+            content = getattr(msg, "reasoning_content", "") or ""
+        return content
 
     async def run(self, task: AgentTask) -> AgentResult:
         memory_docs = await vector_store.retrieve(

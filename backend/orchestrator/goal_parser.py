@@ -53,7 +53,11 @@ async def parse_goal(goal_id: str, founder_id: str, raw_instruction: str) -> dic
             temperature=0.1,
             max_tokens=512,
         )
-        return response.choices[0].message.content
+        msg = response.choices[0].message
+        content = msg.content or ""
+        if not content.strip():
+            content = getattr(msg, "reasoning_content", "") or ""
+        return content
 
     raw = await asyncio.to_thread(_call)
 
