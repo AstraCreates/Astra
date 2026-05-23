@@ -95,11 +95,10 @@ async def build_task_dag(goal_id: str, parsed_goal: dict) -> list[dict]:
     raw = await asyncio.to_thread(_call)
 
     raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        raw = raw[start:end + 1]
 
     try:
         data = json.loads(raw)

@@ -116,6 +116,13 @@ class AstraAgent:
 
         raw = await asyncio.to_thread(self._call_model, messages)
 
+        # extract JSON from mixed reasoning+JSON content
+        raw = raw.strip()
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            raw = raw[start:end + 1]
+
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError:

@@ -61,13 +61,12 @@ async def parse_goal(goal_id: str, founder_id: str, raw_instruction: str) -> dic
 
     raw = await asyncio.to_thread(_call)
 
-    # strip markdown code fences if model wraps output
+    # extract JSON object from response (handles reasoning text, code fences, etc.)
     raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        raw = raw[start:end + 1]
 
     try:
         parsed = json.loads(raw)
