@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, AsyncMock, patch
 from backend.memory.vector_store import VectorStore
 
 
@@ -20,19 +20,23 @@ async def test_embed_returns_list_of_floats(store, mocker):
 
 @pytest.mark.asyncio
 async def test_write_calls_store_memory_document(store, mocker):
-    mock_store = mocker.patch("backend.memory.vector_store.store_memory_document")
-    mock_store.return_value = None
+    mock_store = mocker.patch(
+        "backend.memory.vector_store.store_memory_document",
+        new_callable=AsyncMock,
+    )
     store._model = MagicMock()
     store._model.get_embeddings.return_value = [MagicMock(values=[0.1] * 768)]
 
-    await store.write(
-        doc_id="d1",
-        founder_id="f1",
-        namespace="legal",
-        agent="legal",
-        task_id="t1",
-        doc_type="document",
-        content="full agreement text",
-        summary="founder agreement summary",
-    )
+    with patch("backend.memory.vector_store.settings") as mock_settings:
+        mock_settings.vertex_project = "test-project"
+        await store.write(
+            doc_id="d1",
+            founder_id="f1",
+            namespace="legal",
+            agent="legal",
+            task_id="t1",
+            doc_type="document",
+            content="full agreement text",
+            summary="founder agreement summary",
+        )
     mock_store.assert_called_once()

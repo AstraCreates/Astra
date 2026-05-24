@@ -1,30 +1,49 @@
 """
 Gate test for Stage 1 spine.
 /goal 'draft a founder agreement' → Legal Agent → document returned.
-All external calls (Gemini, llama.cpp, Supabase, Vertex AI) are mocked.
+All external calls (OpenAI-compat, Supabase, Vertex AI) are mocked.
 """
 import json
 import pytest
+import backend.orchestrator.goal_parser as _gp_module
+import backend.orchestrator.dag_builder as _dag_module
 from unittest.mock import AsyncMock, MagicMock
 
 
+def _make_openai_mock(content: str) -> MagicMock:
+    mock_client = MagicMock()
+    mock_msg = MagicMock()
+    mock_msg.content = content
+    mock_choice = MagicMock()
+    mock_choice.message = mock_msg
+    mock_client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
+    return mock_client
+
+
+@pytest.fixture(autouse=True)
+def reset_singletons():
+    _gp_module._client = None
+    _dag_module._client = None
+    yield
+    _gp_module._client = None
+    _dag_module._client = None
+
+
 @pytest.fixture
-def mock_gemini_parse(mocker):
-    mock_model = MagicMock()
-    mock_model.generate_content.return_value = MagicMock(text=json.dumps({
+def mock_openai_parse(mocker):
+    mock_client = _make_openai_mock(json.dumps({
         "instruction": "draft a founder agreement for AcmeCo",
         "entities": {"company_name": "AcmeCo", "icp": "solo founders"},
         "constraints": {},
         "priority_agents": ["legal"],
     }))
-    mocker.patch("backend.orchestrator.goal_parser._get_model", return_value=mock_model)
-    return mock_model
+    mocker.patch("backend.orchestrator.goal_parser.openai.OpenAI", return_value=mock_client)
+    return mock_client
 
 
 @pytest.fixture
-def mock_gemini_dag(mocker):
-    mock_model = MagicMock()
-    mock_model.generate_content.return_value = MagicMock(text=json.dumps({
+def mock_openai_dag(mocker):
+    mock_client = _make_openai_mock(json.dumps({
         "tasks": [{
             "task_id": "t_001",
             "agent": "legal",
@@ -34,13 +53,12 @@ def mock_gemini_dag(mocker):
             "constraints": {},
         }]
     }))
-    mocker.patch("backend.orchestrator.dag_builder._get_model", return_value=mock_model)
-    return mock_model
+    mocker.patch("backend.orchestrator.dag_builder.openai.OpenAI", return_value=mock_client)
+    return mock_client
 
 
 @pytest.fixture
 def mock_legal_agent_model(mocker):
-    mock_client = MagicMock()
     founder_agreement_text = (
         "FOUNDER AGREEMENT\n\n"
         "1. EQUITY: Each founder receives 50% equity subject to 4-year vesting with 1-year cliff.\n"
@@ -50,14 +68,12 @@ def mock_legal_agent_model(mocker):
         "AI-generated document preparation — not legal advice. "
         "Review with a licensed attorney before signing."
     )
-    mock_client.chat.completions.create.return_value = MagicMock(
-        choices=[MagicMock(message=MagicMock(content=json.dumps({
-            "status": "done",
-            "output": {"document": founder_agreement_text, "doc_type": "founder_agreement"},
-            "confidence": 0.92,
-            "reasoning": "Generated founder agreement with standard clauses",
-        })))]
-    )
+    mock_client = _make_openai_mock(json.dumps({
+        "status": "done",
+        "output": {"document": founder_agreement_text, "doc_type": "founder_agreement"},
+        "confidence": 0.92,
+        "reasoning": "Generated founder agreement with standard clauses",
+    }))
     mocker.patch("backend.agents.base.openai.OpenAI", return_value=mock_client)
     return mock_client
 
@@ -112,7 +128,7 @@ def mock_db(mocker):
 
 @pytest.mark.asyncio
 async def test_spine_gate_draft_founder_agreement(
-    mock_gemini_parse, mock_gemini_dag, mock_legal_agent_model, mock_db
+    mock_openai_parse, mock_openai_dag, mock_legal_agent_model, mock_db
 ):
     """
     GATE TEST — Stage 1 spine.
@@ -128,22 +144,13 @@ async def test_spine_gate_draft_founder_agreement(
         constraints={},
     )
 
-    # Goal completed
     assert result["status"] == "done", f"Expected 'done', got: {result}"
-
-    # At least one task result from Legal Agent
     assert len(result["results"]) >= 1
     legal_result = next(r for r in result["results"] if r["agent"] == "legal")
 
-    # Output contains a document
     assert "document" in legal_result["output"], "Legal Agent must return a document in output"
 
     doc_text = legal_result["output"]["document"]
     assert len(doc_text) > 100, "Document must be non-trivial"
-
-    # Disclaimer present
-    assert "not legal advice" in doc_text.lower() or "not legal advice" in doc_text, \
-        "Document must contain legal disclaimer"
-
-    # No pending approvals for a draft (no payment taken)
+    assert "not legal advice" in doc_text.lower(), "Document must contain legal disclaimer"
     assert result["pending_approvals"] == [], "Draft document should not require approval"
