@@ -294,6 +294,146 @@ def provision_sendgrid(email: str, password: str) -> dict:
             return {"api_key": None, "created": False, "error": str(e)}
 
 
+def provision_composio(email: str, password: str) -> dict:
+    """
+    Sign up for / log into Composio via GitHub OAuth and extract the API key.
+    Returns {"api_key": "...", "created": bool}
+    """
+    from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        ctx = browser.new_context(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+        )
+        page = ctx.new_page()
+
+        try:
+            page.goto("https://app.composio.dev/login", timeout=30000)
+            page.wait_for_timeout(2000)
+
+            # Click "Continue with GitHub"
+            github_btn = page.locator(
+                "button:has-text('GitHub'), a:has-text('GitHub'), "
+                "button:has-text('Continue with GitHub'), a:has-text('Continue with GitHub')"
+            ).first
+            if github_btn.count() > 0:
+                github_btn.click()
+                page.wait_for_timeout(4000)
+            else:
+                # Try direct GitHub OAuth URL pattern used by many SaaS
+                page.goto("https://app.composio.dev/auth/github", timeout=30000)
+                page.wait_for_timeout(3000)
+
+            # GitHub OAuth consent screen
+            if "github.com" in page.url:
+                login_field = page.locator("input#login_field, input[name='login']").first
+                if login_field.count() > 0:
+                    login_field.fill(email)
+                pwd_field = page.locator("input#password, input[name='password']").first
+                if pwd_field.count() > 0:
+                    pwd_field.fill(password)
+                page.locator("input[type=submit], button[type=submit]").first.click()
+                page.wait_for_timeout(3000)
+
+                # Authorize Composio app if consent screen appears
+                authorize_btn = page.locator("button:has-text('Authorize'), input[value='Authorize']").first
+                if authorize_btn.count() > 0:
+                    authorize_btn.click()
+                    page.wait_for_timeout(4000)
+
+            # Wait for redirect back to Composio dashboard
+            try:
+                page.wait_for_url("**/app.composio.dev/**", timeout=15000)
+            except PWTimeout:
+                pass  # might already be there
+
+            if "app.composio.dev" not in page.url:
+                browser.close()
+                return {
+                    "api_key": None,
+                    "created": False,
+                    "error": "Could not authenticate with Composio — check GitHub credentials",
+                }
+
+            # Navigate to API key settings
+            for settings_url in [
+                "https://app.composio.dev/settings",
+                "https://app.composio.dev/api-keys",
+                "https://app.composio.dev/settings/api-keys",
+            ]:
+                page.goto(settings_url, timeout=15000)
+                page.wait_for_timeout(2000)
+
+                # Look for existing key or generate new one
+                api_key = _extract_composio_key(page)
+                if api_key:
+                    break
+
+                # Try clicking a generate/create button
+                for label in ["Generate API Key", "Create API Key", "New API Key", "Generate", "Create"]:
+                    btn = page.locator(f"button:has-text('{label}')").first
+                    if btn.count() > 0:
+                        btn.click()
+                        page.wait_for_timeout(2000)
+                        api_key = _extract_composio_key(page)
+                        if api_key:
+                            break
+
+                if api_key:
+                    break
+
+            browser.close()
+            return {
+                "api_key": api_key.strip() if api_key else None,
+                "created": bool(api_key),
+                "note": "Composio API key extracted." if api_key else (
+                    "Logged in but key extraction failed — visit app.composio.dev/settings to copy your API key"
+                ),
+            }
+
+        except PWTimeout as e:
+            try:
+                browser.close()
+            except Exception:
+                pass
+            return {"api_key": None, "created": False, "error": f"Timeout: {e}"}
+        except Exception as e:
+            try:
+                browser.close()
+            except Exception:
+                pass
+            return {"api_key": None, "created": False, "error": str(e)}
+
+
+def _extract_composio_key(page) -> str | None:
+    """Try various selectors to extract an API key value from the current page."""
+    selectors = [
+        "input[readonly]",
+        "input[type='text'][value^='sk-']",
+        "input[type='text'][value^='api-']",
+        "[data-testid='api-key']",
+        "[data-testid='apiKey']",
+        ".api-key",
+        "code",
+        "span[class*='api']",
+        "p[class*='key']",
+    ]
+    for sel in selectors:
+        el = page.locator(sel).first
+        if el.count() > 0:
+            val = None
+            try:
+                val = el.input_value()
+            except Exception:
+                pass
+            if not val:
+                val = el.text_content()
+            if val and len(val) > 20 and " " not in val.strip():
+                return val.strip()
+    return None
+
+
 def _slug(email: str) -> str:
     base = email.split("@")[0].lower().replace(".", "-").replace("_", "-")
     suffix = secrets.token_hex(3)

@@ -8,6 +8,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from backend.provisioning.browser_provisioner import (
+    provision_composio,
     provision_github,
     provision_sendgrid,
     provision_vercel,
@@ -49,12 +50,12 @@ async def provision_all(
     """
     loop = asyncio.get_event_loop()
 
-    # Run browser automations + Composio URL generation concurrently
-    from backend.tools.composio_tools import connect_founder_tools
+    # Run all browser automations concurrently
+    from backend.tools.composio_tools import connect_founder_tools, _reset_toolset
 
     github_fut = loop.run_in_executor(_EXECUTOR, provision_github, email, password)
     sendgrid_fut = loop.run_in_executor(_EXECUTOR, provision_sendgrid, email, password)
-    composio_fut = loop.run_in_executor(_EXECUTOR, connect_founder_tools, founder_id, None)
+    composio_provision_fut = loop.run_in_executor(_EXECUTOR, provision_composio, email, password)
 
     results = {}
     for service, fut in [("github", github_fut), ("sendgrid", sendgrid_fut)]:
@@ -73,9 +74,22 @@ async def provision_all(
     except Exception as e:
         results["vercel"] = {"created": False, "error": str(e)}
 
-    # Composio OAuth URLs (non-blocking — already running)
+    # Composio account — inject API key into settings + .env if obtained
     try:
-        composio_urls = await composio_fut
+        composio_result = await composio_provision_fut
+    except Exception as e:
+        composio_result = {"api_key": None, "created": False, "error": str(e)}
+
+    results["composio"] = composio_result
+    if composio_result.get("api_key"):
+        _inject_composio_key(composio_result["api_key"])
+        _reset_toolset()
+
+    # Now generate per-founder OAuth URLs (uses freshly injected key if available)
+    try:
+        composio_urls = await loop.run_in_executor(
+            _EXECUTOR, connect_founder_tools, founder_id, None
+        )
     except Exception as e:
         composio_urls = {"error": str(e)}
 
@@ -98,6 +112,35 @@ async def provision_all(
     }
 
 
+def _inject_composio_key(api_key: str) -> None:
+    """Write Composio API key to .env and update settings in-memory."""
+    from backend.config import settings
+    settings.composio_api_key = api_key
+
+    env_path = ".env"
+    try:
+        try:
+            with open(env_path) as f:
+                lines = f.readlines()
+        except FileNotFoundError:
+            lines = []
+
+        updated = False
+        for i, line in enumerate(lines):
+            if line.startswith("COMPOSIO_API_KEY="):
+                lines[i] = f"COMPOSIO_API_KEY={api_key}\n"
+                updated = True
+                break
+        if not updated:
+            lines.append(f"COMPOSIO_API_KEY={api_key}\n")
+
+        with open(env_path, "w") as f:
+            f.writelines(lines)
+        logger.info("Composio API key written to .env")
+    except Exception as e:
+        logger.warning("Could not write Composio key to .env: %s", e)
+
+
 def _store_service_creds(founder_id: str, results: dict) -> None:
     mappings = {
         "github": lambda r: {"token": r.get("token"), "username": r.get("username")},
@@ -115,16 +158,24 @@ def _store_service_creds(founder_id: str, results: dict) -> None:
 
 def _summarize(results: dict) -> list[str]:
     lines = []
-    service_labels = {"github": "GitHub", "vercel": "Vercel", "sendgrid": "SendGrid (email)"}
+    service_labels = {
+        "github": "GitHub",
+        "vercel": "Vercel",
+        "sendgrid": "SendGrid (email)",
+        "composio": "Composio (tool execution)",
+    }
     for key, label in service_labels.items():
         r = results.get(key, {})
         if r.get("created"):
             lines.append(f"✓ {label} — connected")
         elif r.get("needs_verification") or r.get("needs_email_link"):
             lines.append(f"⚠ {label} — check your email to verify")
+        elif key == "composio" and not r:
+            pass  # composio not attempted yet — skip
         else:
             lines.append(f"✗ {label} — {r.get('error', r.get('note', 'failed'))}")
-    lines.append("→ Connect Instagram / TikTok / Meta Ads via OAuth links above")
+    lines.append("→ Connect Gmail / LinkedIn / Twitter / Calendar via OAuth buttons below")
+    lines.append("→ Instagram / TikTok / Meta Ads require phone verification — connect manually")
     return lines
 
 

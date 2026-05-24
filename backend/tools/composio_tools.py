@@ -13,6 +13,12 @@ logger = logging.getLogger(__name__)
 _toolset = None
 
 
+def _reset_toolset() -> None:
+    """Force re-initialization on next call — use after auto-provisioning injects a new API key."""
+    global _toolset
+    _toolset = None
+
+
 def _get_toolset():
     global _toolset
     if _toolset is None:
