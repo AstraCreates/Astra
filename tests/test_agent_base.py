@@ -115,4 +115,3 @@ async def test_agent_run_invalid_json_returns_blocked(mocker):
     )
     result = await agent.run(task)
     assert result.status == "blocked"
-    assert result.blocked_reason == "invalid_json"

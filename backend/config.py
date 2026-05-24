@@ -12,6 +12,17 @@ class Settings(BaseSettings):
     vertex_project: str = ""
     vertex_location: str = "us-central1"
 
+    # Deployment tools
+    vercel_token: str = ""
+    github_token: str = ""
+
+    # Marketing / social
+    sendgrid_api_key: str = ""
+    meta_access_token: str = ""
+    meta_ad_account_id: str = ""
+    instagram_access_token: str = ""
+    instagram_business_account_id: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

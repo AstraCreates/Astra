@@ -39,6 +39,8 @@ class VectorStore:
         task_id: Optional[str] = None,
         metadata: Optional[dict] = None,
     ):
+        if not settings.vertex_project:
+            return
         embedding = await self.embed(summary)
         doc = {
             "id": doc_id or str(uuid.uuid4()),

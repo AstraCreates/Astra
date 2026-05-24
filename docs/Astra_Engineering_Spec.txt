@@ -1,0 +1,773 @@
+﻿ASTRA
+Full Engineering Specification
+Path B  ·  Agentic Architecture  ·  Gemini XPRIZE Hackathon 2026  ·  v1.0  ·  Confidential
+
+
+1. Core Mental Model
+The system works like a military command structure. The founder issues a /goal to the Orchestrator. The Orchestrator decomposes it into a dependency graph of tasks and dispatches them to specialist agents. Agents report back with results, blocks, or approval requests. The Orchestrator decides what runs next. The founder only ever talks to the Orchestrator — not to individual agents directly, unless they open an agent's chat window in the dashboard.
+
+
+This is not a chatbot with tool calls. The Orchestrator runs a persistent async loop. Once a /goal is issued it runs autonomously until it hits an approval gate or completes. The founder can close the browser. They come back and the company has moved forward. That is the demo moment.
+
+
+Founder
+   │
+   ▼  /goal 'launch my company'
+Orchestrator  (Gemini Flash — hub)
+   ├──▶ Legal Agent      (Qwen3-30B via Fireworks)
+   ├──▶ Research Agent   (Qwen3-30B via Fireworks + Gemini Search)
+   ├──▶ Web Agent        (Qwen3-30B via Fireworks)
+   ├──▶ Marketing Agent  (Qwen3-30B via Fireworks)
+   ├──▶ Technical Agent  (Qwen2.5-Coder-32B via Fireworks)
+   └──▶ Ops Agent        (Qwen3-30B via Fireworks + vector memory)
+
+
+2. Command Protocol — Full Spec
+Every message in the system — whether from founder or agent — is a JSON payload over the internal message bus (Redis pub/sub). The CLI is a thin wrapper that formats these payloads and prints responses. The dashboard reads the same events over WebSocket.
+
+
+Founder → Orchestrator
+# /goal
+{  "type": "goal",
+   "goal_id": "g_001",
+   "founder_id": "f_001",
+   "instruction": "Launch my SaaS for restaurant inventory management",
+   "constraints": {
+     "budget_usd": 500,
+     "deadline": "2026-06-15",
+     "priority": ["legal", "research"]
+   }
+}
+
+
+# /approve
+{  "type": "approve",
+   "task_id": "t_002",
+   "approval_token": "appr_abc123",
+   "note": "Go ahead"
+}
+
+
+# /reject
+{  "type": "reject",
+   "task_id": "t_002",
+   "reason": "Use a different registered agent",
+   "redirect_instruction": "Use InCorp instead of Stripe Atlas"
+}
+
+
+# /ask  (opens direct line to a specific agent)
+{  "type": "ask",
+   "target_agent": "research",
+   "question": "Who are our top 3 competitors and what do they charge?",
+   "context": "We are building restaurant inventory software"
+}
+
+
+# /status
+{  "type": "status",
+   "goal_id": "g_001"   // omit for all active goals
+}
+
+
+Orchestrator → Agent (internal /task)
+{  "type": "task",
+   "task_id": "t_003",
+   "goal_id": "g_001",
+   "founder_id": "f_001",
+   "agent": "web",
+   "instruction": "Build a landing page for RestaurantIQ",
+   "context_bundle": {
+     "company_name": "RestaurantIQ",
+     "icp": "Independent restaurant owners, 1-5 locations",
+     "pricing": "$49/mo",
+     "research_summary": "...",
+     "brand_inputs": "..."
+   },
+   "constraints": {
+     "approval_required_before": ["deploy_live"],
+     "max_tokens": 4096,
+     "deadline_minutes": 120
+   },
+   "tools_available": ["framer_api", "vercel_api"]
+}
+
+
+Agent → Orchestrator (internal responses)
+# /result  (task completed)
+{  "type": "result",
+   "task_id": "t_003",
+   "agent": "web",
+   "status": "done",
+   "output": { "landing_page_url": "https://restaurantiq.framer.website" },
+   "confidence": 0.92,
+   "cost_usd": 0.018
+}
+
+
+# /blocked  (agent cannot proceed)
+{  "type": "blocked",
+   "task_id": "t_003",
+   "agent": "web",
+   "reason": "Framer API returned 429 — rate limited",
+   "what_i_need": "Wait 60 minutes or switch to Vercel",
+   "suggested_action": "switch_to_vercel"
+}
+
+
+# /approval_required  (agent pauses, surfaces to dashboard)
+{  "type": "approval_required",
+   "task_id": "t_002",
+   "agent": "legal",
+   "action": "Submit Delaware LLC and charge $500 to payment method",
+   "consequence": "Irreversible. $500 charge. Company legally formed.",
+   "documents_ready": ["operating_agreement.pdf", "founder_agreement.pdf"],
+   "approval_token": "appr_abc123",
+   "expires_at": "2026-05-24T10:00:00Z"
+}
+
+
+Orchestrator → Founder (dashboard events via WebSocket)
+# /update  (streamed continuously while agents are running)
+{  "type": "update",
+   "message": "Research complete. Web Agent starting landing page build.",
+   "active_agents": ["web", "marketing"],
+   "completed_tasks": ["t_001", "t_002"],
+   "pending_approvals": 0
+}
+
+
+# /complete  (goal finished)
+{  "type": "complete",
+   "goal_id": "g_001",
+   "summary": "RestaurantIQ is live. LLC filed. Landing page deployed.",
+   "outputs": {
+     "llc_confirmation": "DE-2026-884421",
+     "landing_page": "https://restaurantiq.com",
+     "pending_approvals": ["t_004 — send 200 cold emails"]
+   },
+   "elapsed_hours": 18.3,
+   "total_cost_usd": 0.84
+}
+
+
+3. Orchestrator Loop Logic
+The Orchestrator is a persistent async loop running on FastAPI with a background task runner. When a /goal arrives it never blocks the API thread — it spawns a coroutine and returns immediately. The loop polls Redis for agent results and updates the task graph in Supabase.
+
+
+Execution Loop (pseudocode)
+receive /goal
+  → parse_goal()           # Gemini Flash: extract intent, entities, constraints
+  → build_task_graph()     # Gemini Flash: output JSON DAG of tasks + dependencies
+  → persist_graph()        # write all tasks to Supabase tasks table, status=pending
+  → begin_execution()      # spawn async loop
+
+
+execution loop:
+  while tasks_remaining():
+    ready = get_ready_tasks()
+    # SQL: WHERE status=pending AND all depends_on tasks are status=done
+
+
+    for task in ready:
+      context = build_context(task)   # pull memory from vector DB
+      dispatch(task, context)           # push to Redis queue for agent
+      task.status = in_progress
+
+
+    results = poll_results()            # check Redis result queue
+    for result in results:
+      if result.type == approval_required:
+        surface_to_dashboard(result)
+        pause_task(result.task_id)
+      elif result.type == blocked:
+        attempt_replan(result)
+        # Gemini Flash: reroute / split / escalate to founder
+      elif result.type == done:
+        store_result(result)             # write to vector DB
+        task.status = done
+        inject_result_into_dependents(result)
+
+
+  synthesize_complete()
+  # Gemini Flash: summary of all results → /complete to founder
+
+
+Task Graph Structure (stored in Supabase)
+{  "goal_id": "g_001",
+   "tasks": [
+     { "task_id": "t_001", "agent": "research",  "depends_on": [] },
+     { "task_id": "t_002", "agent": "legal",     "depends_on": [] },
+     { "task_id": "t_003", "agent": "web",       "depends_on": ["t_001"] },
+     { "task_id": "t_004", "agent": "marketing", "depends_on": ["t_001"] },
+     { "task_id": "t_005", "agent": "technical", "depends_on": ["t_003"] },
+     { "task_id": "t_006", "agent": "ops",       "depends_on": ["t_001","t_002","t_003","t_004","t_005"] }
+   ]
+}
+
+
+# Phases for /goal 'launch my company':
+# Phase 1 (parallel):  research, legal
+# Phase 2 (parallel):  web (needs research), marketing (needs research)
+# Phase 3:             technical (needs web)
+# Phase 4 (always-on): ops (reads everything, runs last and continuously)
+
+
+Replanning on /blocked
+When an agent returns /blocked, the Orchestrator sends the blocked task + reason to Gemini Flash with one prompt: 'This task is blocked. Can you reroute, split it, or does this need human input?' Flash returns one of three responses:
+* reroute — new task graph with a different approach (e.g. switch Framer to Vercel)
+* split — break the task into smaller subtasks the agent can handle
+* escalate — surface to the founder via /update with a clear description of what is stuck
+
+
+4. Fireworks API Integration
+Fireworks has an OpenAI-compatible API. Every agent call is identical in code — the model string is the only difference. This means one call_agent_model() function handles all six agents.
+
+
+Base Call Pattern
+import openai
+
+
+client = openai.OpenAI(
+  base_url="https://api.fireworks.ai/inference/v1",
+  api_key=FIREWORKS_API_KEY
+)
+
+
+def call_agent_model(model: str, messages: list, tools: list = None) -> str:
+  response = client.chat.completions.create(
+    model=model,
+    messages=messages,
+    tools=tools or [],
+    temperature=0.2,           # low temp — structured agent outputs
+    max_tokens=4096,
+    response_format={"type": "json_object"}   # force JSON output
+  )
+  return response.choices[0].message.content
+
+
+Model Assignments
+
+
+Agent
+	Model
+	Via
+	Rationale
+	Orchestrator
+	Gemini Flash
+	GCP (required)
+	Fast routing, native GCP, required XPRIZE touchpoint
+	Legal Agent
+	Qwen3-30B-A3B
+	Fireworks.ai
+	Strong instruction following, legal document drafting
+	Research Agent
+	Qwen3-30B-A3B + Gemini Search
+	Fireworks + GCP
+	Qwen for synthesis, Gemini grounding for real-time data
+	Web Agent
+	Qwen3-30B-A3B
+	Fireworks.ai
+	Structured copy output, HTML/CSS generation
+	Marketing Agent
+	Qwen3-30B-A3B
+	Fireworks.ai
+	Copy, cold email sequences, campaign planning
+	Technical Agent
+	Qwen2.5-Coder-32B
+	Fireworks.ai
+	Best open-source coding model at this size
+	Ops Agent
+	Qwen3-30B-A3B
+	Fireworks.ai
+	128k context, reads full company history across sessions
+	
+
+Token Limits
+* Qwen3-30B context window: 128k tokens
+* Cap each agent call at 32k input + 4k output to control cost
+* Context bundle builder must respect this — truncate oldest memory first, always keep: current instruction, recent task results, approval constraints
+
+
+Fallback Chain
+FALLBACK_CHAIN = {
+  "accounts/fireworks/models/qwen3-30b-a3b": [
+    "accounts/fireworks/models/llama-v3p1-70b-instruct",  # Fireworks Llama
+    "gemini-1.5-flash"                                     # GCP fallback
+  ],
+  "accounts/fireworks/models/qwen2p5-coder-32b-instruct": [
+    "accounts/fireworks/models/deepseek-coder-v2-lite-instruct",
+    "gemini-1.5-pro"
+  ]
+}
+
+
+def call_with_fallback(agent_type: str, messages: list) -> str:
+  models = [MODELS[agent_type]] + FALLBACK_CHAIN[MODELS[agent_type]]
+  for model in models:
+    try:
+      return call_agent_model(model, messages)
+    except (RateLimitError, ServiceUnavailableError) as e:
+      log_fallback(model, e)
+      continue
+  raise AllModelsFailedError(agent_type)
+
+
+Cost Monitoring
+Every Fireworks call logs {agent, model, input_tokens, output_tokens, cost_usd} to Supabase. The Orchestrator checks per-founder daily spend before dispatching each task. Hard limit during beta: $2/day per founder account. Above that, tasks are queued for the next day.
+
+
+5. Vector Memory Architecture
+Three layers of memory. Each serves a different time horizon. Agents only read their own namespace plus shared. The Ops Agent reads everything.
+
+
+The Three Layers
+* Layer 1 — Short-term (in-context): The context bundle passed with each /task. Built fresh by the Orchestrator from recent task results and vector DB queries. Lives only in the API call.
+* Layer 2 — Mid-term (task store): Postgres table in Supabase. Every task, result, approval, and agent message with full metadata. The Orchestrator queries this to build context bundles via SQL.
+* Layer 3 — Long-term (vector memory): GCP Vector DB (Vertex AI). Every document, report, legal filing, campaign result, and decision is embedded and stored. The Ops Agent reads this to answer questions about the company's full history.
+
+
+Memory Namespaces
+
+
+Namespace
+	Who Reads
+	What Lives Here
+	shared
+	All agents
+	Company name, founder, ICP, pricing, brand — seeded at onboarding
+	legal
+	Legal, Ops
+	All legal docs, filing status, EIN, compliance deadlines
+	research
+	Research, Web, Marketing, Ops
+	Market reports, competitor data, customer personas, pricing benchmarks
+	web
+	Web, Ops
+	Landing page copy, design decisions, iteration history, live URLs
+	marketing
+	Marketing, Ops
+	Campaigns, email sequences, ad performance, GTM plan
+	technical
+	Technical, Ops
+	Features built, PRs, architecture decisions, codebase summary
+	ops
+	Ops only
+	Superset of all namespaces + task history + weekly digests. Full company brain.
+	
+
+Document Schema
+@dataclass
+class MemoryDocument:
+  doc_id: str           # uuid
+  founder_id: str       # which company this belongs to
+  namespace: str        # which agent namespace
+  agent: str            # which agent wrote this
+  task_id: str          # which task produced this
+  doc_type: str         # "report"|"decision"|"document"|"result"|"approval"
+  content: str          # full text — this gets embedded
+  summary: str          # 2-3 sentence summary — used in context bundles
+  created_at: datetime
+  metadata: dict        # e.g. {"filing_state": "DE", "confidence": 0.9}
+  embedding: list[float] # 768-dim via text-embedding-004 (Vertex AI, free)
+
+
+How Agents Query Memory
+def retrieve_context(founder_id, namespace, query, k=5):
+  query_embedding = embed(query)  # text-embedding-004 via Vertex AI
+  return vector_db.query(
+    filter={"founder_id": founder_id,
+            "namespace": {"$in": [namespace, "shared"]}},
+    vector=query_embedding,
+    top_k=k
+  )
+
+
+# Inside an agent call:
+context_docs = retrieve_context(
+  founder_id="f_001",
+  namespace="research",
+  query="target customer profile and pricing",
+  k=5
+)
+context_text = '\n\n'.join([doc.summary for doc in context_docs])
+
+
+Write rule: Every /result from an agent triggers a write to vector memory. The Orchestrator is responsible for this — agents never write directly. This keeps the schema consistent and ensures every document is tagged with the correct task_id and metadata.
+
+
+6. Computer Use — Legal Agent through Stripe Atlas
+Antigravity gives you a persistent browser session you control programmatically. The Legal Agent does not navigate a browser directly — it issues structured instructions to the Antigravity session, which executes them like a human would. This is the highest-risk technical piece. Do it in Week 5–6 after the agent logic is solid.
+
+
+Full LLC Filing Flow
+STEP 1 — Approval gate (nothing moves without this)
+  Legal Agent → /approval_required:
+    action: "File Delaware LLC via Stripe Atlas"
+    cost: "$500 to founder card"
+    irreversible: true
+    documents_ready: ["operating_agreement.pdf", "founder_agreement.pdf"]
+  → Founder /approve t_002
+  → Orchestrator resumes Legal Agent with approval_token
+
+
+STEP 2 — Session init
+  session = antigravity.create_session(
+    start_url="https://atlas.stripe.com",
+    timeout=3600,
+    screenshot_interval=5
+  )
+
+
+STEP 3 — Navigation (each is a discrete, verified step)
+  session.navigate("https://atlas.stripe.com/register")
+  session.find_and_fill("Company name field", company_name)
+  session.find_and_fill("Company type", "Delaware LLC")
+  session.find_and_fill("Member 1 name", founder_name)
+  session.find_and_fill("Member 1 email", founder_email)
+  session.find_and_fill("Member 1 ownership", "100%")
+
+
+  # Qwen3-30B reviews screenshot at each step
+  screenshot = session.screenshot()
+  verified = legal_agent.verify_screenshot(screenshot, expected='form filled')
+  if not verified: legal_agent.report_blocked('verification failed', screenshot)
+
+
+STEP 4 — Second approval gate before payment
+  session.find_element("Review and pay")
+  session.screenshot_and_surface_to_approval_queue(
+    message="Ready to submit. $500 charge. Confirm?"
+  )
+  # hard stop — waits for /approve before clicking
+
+
+STEP 5 — Submit and capture confirmation
+  session.click("Submit and pay")
+  confirmation = session.wait_and_extract("Confirmation number", timeout=60)
+  session.screenshot()  # save confirmation page to vector memory
+
+
+STEP 6 — EIN retrieval (separate Antigravity session, same pattern)
+  # IRS online EIN application: ~15 form fields, 10-15 minutes
+
+
+STEP 7 — Package and return /result
+  legal_agent.result = {
+    "llc_confirmation": confirmation_number,
+    "ein": ein_number,
+    "documents": ["operating_agreement.pdf", "founder_agreement.pdf"],
+    "filing_state": "Delaware"
+  }
+
+
+Fallback if Computer Use Fails
+if computer_use_session.failed:
+  # Harvard Business Services REST API — $189 vs $500 Stripe Atlas
+  response = requests.post(
+    "https://api.hbsvcs.com/llc/file",
+    json={
+      "company_name": company_name,
+      "state": "DE",
+      "registered_agent": "HBS",
+      "members": [{"name": founder_name, "ownership": 100}]
+    },
+    headers={"Authorization": f"Bearer {HBS_API_KEY}"}
+  )
+  # InCorp is the secondary fallback if HBS is down
+
+
+7. Agent Class Design
+One base class. Every agent is an instantiation with a different system prompt, model, and tool list. You build the AstraAgent class once in Week 1–2 and never touch it again — all variation lives in the instantiation parameters.
+
+
+AstraAgent Base Class
+class AstraAgent:
+  def __init__(self, agent_id, system_prompt, model, tools, memory_namespaces):
+    self.agent_id = agent_id
+    self.system_prompt = system_prompt
+    self.model = model
+    self.tools = tools
+    self.memory_namespaces = memory_namespaces
+    self.fireworks = openai.OpenAI(
+      base_url="https://api.fireworks.ai/inference/v1",
+      api_key=FIREWORKS_API_KEY
+    )
+    self.redis = redis.Redis.from_url(REDIS_URL)
+    self.vector_db = VectorMemory()
+
+
+  def run(self, task: Task) -> AgentResult:
+    memory  = self.vector_db.retrieve(task.founder_id, self.memory_namespaces, task.instruction, k=5)
+    messages = [
+      {"role": "system", "content": self.system_prompt},
+      {"role": "user",   "content": self._build_prompt(task, memory)}
+    ]
+    raw    = self._call_with_fallback(messages)
+    parsed = json.loads(raw)
+
+
+    if parsed["status"] == "approval_required":
+      return self._request_approval(task, parsed)
+    elif parsed["status"] == "blocked":
+      return self._report_blocked(task, parsed)
+    else:
+      return self._execute_and_return(task, parsed)
+
+
+  def _build_prompt(self, task, memory):
+    memory_text = "\n\n".join([f"[{m.doc_type}] {m.summary}" for m in memory])
+    return f"""
+GOAL: {task.instruction}
+COMPANY CONTEXT: {json.dumps(task.context_bundle, indent=2)}
+RELEVANT MEMORY: {memory_text}
+CONSTRAINTS: {json.dumps(task.constraints, indent=2)}
+AVAILABLE TOOLS: {', '.join(task.tools_available)}
+
+
+Respond ONLY with valid JSON:
+{{
+  "status": "done" | "blocked" | "approval_required",
+  "output": {{}},
+  "confidence": 0.0-1.0,
+  "reasoning": "...",
+  "approval_action": "...",       // if approval_required
+  "approval_consequence": "...",  // if approval_required
+  "blocked_reason": "...",        // if blocked
+  "blocked_needs": "..."          // if blocked
+}}
+"""
+
+
+Agent Instantiations
+LEGAL_AGENT = AstraAgent(
+  agent_id="legal",
+  system_prompt="""You are the Legal Agent. You form companies and draft legal documents.
+  You use Computer Use via Antigravity to file LLCs on Stripe Atlas and retrieve EINs.
+  You always request approval before irreversible actions.
+  Always append: AI-generated document preparation — not legal advice.""",
+  model="accounts/fireworks/models/qwen3-30b-a3b",
+  tools=["antigravity_computer_use", "document_generator", "compliance_monitor"],
+  memory_namespaces=["legal", "shared"]
+)
+
+
+RESEARCH_AGENT = AstraAgent(
+  agent_id="research",
+  system_prompt="""You are the Research Agent. You validate markets, size TAMs,
+  map competitor landscapes, and build customer personas. You use Google Search
+  grounding for real-time data. You produce structured reports other agents use.""",
+  model="accounts/fireworks/models/qwen3-30b-a3b",
+  tools=["gemini_search_grounding", "report_generator"],
+  memory_namespaces=["research", "shared"]
+)
+
+
+TECHNICAL_AGENT = AstraAgent(
+  agent_id="technical",
+  system_prompt="""You are the Technical Agent. You take plain-English feature
+  descriptions and build them. You write specs, generate code, review output,
+  and open PRs. You explain everything in plain English — never show code to founders.""",
+  model="accounts/fireworks/models/qwen2p5-coder-32b-instruct",
+  tools=["github_api", "vercel_api", "code_executor"],
+  memory_namespaces=["technical", "shared"]
+)
+
+
+# Web, Marketing, Ops: same pattern — new system_prompt, same model as Legal/Research
+
+
+Tool Registry
+TOOL_REGISTRY = {
+  "antigravity_computer_use": AntigravityTool(),   # GCP — Computer Use
+  "gemini_search_grounding":  GeminiSearchTool(),  # GCP — real-time web data
+  "framer_api":               FramerTool(),         # landing page deploy
+  "vercel_api":               VercelTool(),         # app deploy fallback
+  "github_api":               GitHubTool(),         # PR creation
+  "document_generator":       DocGenTool(),         # legal doc templates
+  "report_generator":         ReportTool(),         # research report formatting
+  "email_sender":             ResendTool(),         # cold email via Resend
+  "compliance_monitor":       ComplianceTool(),     # deadline tracking
+  "code_executor":            CodeExecTool(),       # sandboxed code run
+}
+
+
+8. Approval Queue Rules
+Not a separate system — a filtered view of the task store where approval_required = true AND approved_at = null. When an agent issues /approval_required it writes to the task store and pauses. The Orchestrator surfaces it to the dashboard. The founder approves or rejects and the agent resumes.
+
+
+Action
+	Mode
+	Logic
+	File LLC (with $500 charge)
+	Manual
+	Irreversible financial action — always human sign-off
+	Send cold email to 100+ contacts
+	Manual
+	High-volume outbound — founder reviews list and copy first
+	Deploy landing page live
+	Manual
+	Public-facing — founder reviews before it goes live
+	Update website headline or pricing
+	Manual
+	Brand change — founder approves
+	Generate draft legal document
+	Auto + notify
+	Internal draft only — no approval needed to generate, only to send
+	Post social media update
+	Auto + notify
+	Low-stakes, high-frequency — auto-approved with dashboard notification
+	Run market research report
+	Auto
+	Read-only. No consequences. Just run it.
+	
+
+9. Full Tech Stack
+
+
+Layer
+	Technology
+	Notes
+	Backend
+	FastAPI (Python)
+	Orchestrator loop, agent runner, API layer. Async throughout.
+	Task Store
+	Supabase (Postgres)
+	Tasks, results, approvals, agent messages. Free tier covers beta comfortably.
+	Message Bus
+	Redis (Upstash free tier)
+	Task queue between Orchestrator and agents. Prevents blocking. Upstash is free to 10k commands/day.
+	Vector Memory
+	Vertex AI (GCP)
+	Long-term agent memory. text-embedding-004 for embeddings. Covered by GCP credits.
+	Orchestrator AI
+	Gemini Flash (GCP)
+	Required GCP touchpoint. Goal parsing, DAG building, replan logic, synthesis.
+	Agent Models
+	Fireworks.ai (Qwen)
+	Qwen3-30B for all text agents. Qwen2.5-Coder-32B for Technical Agent. OpenAI-compatible API.
+	Computer Use
+	Antigravity (GCP)
+	Legal Agent LLC filing and EIN retrieval. Marketing Agent ad platforms. Free as XPRIZE participant.
+	Search Grounding
+	Gemini Search (GCP)
+	Research Agent real-time market data. Covered by GCP credits.
+	Frontend
+	Next.js + Vercel
+	Founder dashboard. Vercel free tier handles beta traffic easily.
+	Auth + DB
+	Supabase Auth
+	Founder accounts, sessions, founder_id scoping across all tables.
+	Email Sending
+	Resend (free tier)
+	Marketing Agent cold email sequences. 3,000 emails/month free.
+	Web Deploy
+	Framer API / Vercel API
+	Web Agent deploys landing pages. Framer primary, Vercel fallback.
+	Code + PRs
+	GitHub API
+	Technical Agent PR creation and codebase access.
+	LLC Fallback
+	Harvard Business Services API
+	If Antigravity/Stripe Atlas fails. $189 via API vs $500 via Stripe Atlas — actually cheaper.
+	Payments
+	Stripe
+	Launch $249, Build $79/mo, Scale $149/mo, credits $10. Set up Day 1.
+	
+
+10. Free Credits — Stacking Order
+Activate in this exact sequence. The XPRIZE AI Ultra bonus expires May 25 — that is the first thing to do today before anything else.
+
+
+Step
+	Source
+	Amount
+	Activate When
+	Use For
+	1
+	XPRIZE GCP new account credit
+	$300
+	Today
+	Gemini Flash, Vertex AI, Antigravity
+	2
+	XPRIZE Google AI Ultra bonus
+	$100
+	Today — expires May 25
+	Gemini API quota top-up
+	3
+	GitHub Student Pack → Azure
+	$100
+	This week (.edu email)
+	Buffer / fallback compute
+	4
+	GitHub Student Pack → DigitalOcean
+	$200
+	This week
+	Buffer / Redis / Supabase overflow
+	5
+	Google for Startups Bootstrap Tier
+	$2,000
+	Once astra.ai is live
+	Scale GCP usage post-launch
+	
+
+	TOTAL before spending a dollar
+	~$2,700
+	
+
+	
+
+	
+
+11. Build Order — 90 Days
+Build the spine first. One working /goal → /task → /result loop is worth more than six half-built agents. Every subsequent agent is just a new system prompt dropped into the working framework.
+
+
+Weeks
+	Engineering Milestone
+	Gate / Output
+	1–2
+	The spine — one working /goal loop
+• FastAPI app scaffolded, Supabase connected, Redis running
+• Orchestrator: parse /goal → build DAG → dispatch /task → receive /result
+• One agent only: Legal Agent, Qwen3-30B via Fireworks
+• Full /command protocol wired: /goal /approve /reject /status /ask
+• Vector DB initialized, memory write/read working
+	Gate: /goal 'draft a founder agreement' returns a real document via Legal Agent
+	3–4
+	Full agent stack
+• Add Research, Web, Marketing, Technical, Ops agents
+• Dependency graph execution: Research → Web/Marketing → Technical → Ops
+• Gemini Search grounding wired into Research Agent
+• Qwen2.5-Coder-32B wired into Technical Agent
+• Fallback chain live for all models
+	Gate: /goal 'launch my company' runs all 6 agents end to end without crashing
+	5–6
+	Computer Use + approval queue
+• Antigravity wired into Legal Agent
+• Stripe Atlas navigation: fill one field → whole form → approval gate → submit
+• IRS EIN flow automated
+• Full approval queue live: /approval_required surfaces to dashboard
+• Auto-approve rules configured by founder at onboarding
+	Gate: Legal Agent files a real test LLC from start to confirmation number
+	7–8
+	Dashboard + beta hardening
+• Next.js dashboard: agent status rings, approval queue, company timeline, agent chat
+• WebSocket: real-time /update events from Orchestrator to dashboard
+• 10 free beta founders onboarded, full stack running on real companies
+• Cost monitoring live: per-founder daily spend capped at $2
+	Gate: 10 beta founders each have a live company, landing page, and research report
+	9–13
+	Harden + XPRIZE submission
+• Feature freeze — fix everything that broke in beta
+• Astra's own company run by Astra — all agents active, all outputs documented
+• XPRIZE demo: one founder, text input, 72 hours, live company
+• All KPIs documented: LLCs filed, tasks completed, agent decisions logged
+	Gate: $1,000+ MRR confirmed. XPRIZE submitted. Astra ran its own XPRIZE submission.
+	
+
+  The thing that makes this actually agentic: once a /goal is issued the Orchestrator runs autonomously until it hits an approval gate or completes. The founder can close the browser and come back to a company that has moved forward. That is the demo moment.  
+
+
+ASTRA  ·  Your AI Founding Team  ·  Gemini XPRIZE Hackathon 2026
+"You bring the idea. Astra handles everything else."  ·  Engineering Spec v1.0  ·  Confidential

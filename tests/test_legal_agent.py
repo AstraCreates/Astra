@@ -14,5 +14,5 @@ def test_legal_agent_system_prompt_has_disclaimer():
     assert "not legal advice" in LEGAL_AGENT.system_prompt
 
 
-def test_legal_agent_has_doc_generator_tool():
-    assert "doc_generator" in LEGAL_AGENT.tools
+def test_legal_agent_has_pdf_tool():
+    assert "generate_pdf" in LEGAL_AGENT.tools

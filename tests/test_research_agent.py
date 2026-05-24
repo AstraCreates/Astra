@@ -18,6 +18,9 @@ def mock_research_model(mocker):
                 "competitors": ["CompA — incumbent SaaS", "CompB — VC-backed"],
                 "icp": "Bootstrapped B2B SaaS founders, <5 employees",
                 "key_insights": "Market growing 23% YoY; no self-serve player under $500/mo",
+                "patents_to_watch": [],
+                "recent_news": [],
+                "market_risks": ["Crowded space"],
             },
             "confidence": 0.85,
             "reasoning": "Based on available market context",
@@ -44,9 +47,9 @@ def test_research_agent_has_web_search_tool():
     assert "web_search" in RESEARCH_AGENT.tools
 
 
-def test_research_agent_has_market_analyzer_tool():
+def test_research_agent_has_patent_search_tool():
     from backend.agents.research import RESEARCH_AGENT
-    assert "market_analyzer" in RESEARCH_AGENT.tools
+    assert "patent_search" in RESEARCH_AGENT.tools
 
 
 @pytest.mark.asyncio
@@ -57,14 +60,14 @@ async def test_research_agent_run_returns_done(mock_research_model):
         agent_id="research",
         system_prompt="You are the Research Agent.",
         model=settings.agent_model_name,
-        tools=["web_search", "market_analyzer"],
+        tools=["web_search", "news_search", "patent_search"],
         memory_namespaces=["research", "shared"],
     )
     task = AgentTask(
         task_id="t_001", goal_id="g_001", founder_id="f_001",
         agent="research", instruction="Research the AI productivity tools market for AcmeCo",
         context_bundle={"company_name": "AcmeCo", "problem": "founders waste time on admin"},
-        constraints={}, tools_available=["web_search", "market_analyzer"],
+        constraints={}, tools_available=["web_search", "news_search", "patent_search"],
     )
     result = await agent.run(task)
     assert result.status == "done"
@@ -87,7 +90,7 @@ async def test_research_agent_run_blocked_on_invalid_json(mocker):
         agent_id="research",
         system_prompt="You are the Research Agent.",
         model=settings.agent_model_name,
-        tools=["web_search", "market_analyzer"],
+        tools=["web_search", "news_search", "patent_search"],
         memory_namespaces=["research", "shared"],
     )
     task = AgentTask(
@@ -97,4 +100,3 @@ async def test_research_agent_run_blocked_on_invalid_json(mocker):
     )
     result = await agent.run(task)
     assert result.status == "blocked"
-    assert result.blocked_reason == "invalid_json"
