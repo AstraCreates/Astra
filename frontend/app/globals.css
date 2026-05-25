@@ -220,7 +220,7 @@ button { cursor: pointer; }
   position: fixed;
   inset: 0 0 auto 0;
   z-index: 100;
-  padding: 14px clamp(20px, 4vw, 56px);
+  padding: 14px clamp(16px, 3vw, 48px);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -290,15 +290,15 @@ button { cursor: pointer; }
 .site-shell {
   position: relative;
   z-index: 2;
-  max-width: 1200px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 120px clamp(20px, 4vw, 56px) 80px;
+  padding: 110px clamp(16px, 3vw, 48px) 80px;
 }
 
 .site-footer {
   position: relative;
   z-index: 2;
-  padding: 36px clamp(20px, 4vw, 56px) 48px;
+  padding: 36px clamp(16px, 3vw, 48px) 48px;
   border-top: 1px solid var(--line);
   margin-top: 72px;
 }
@@ -500,14 +500,14 @@ h3 { font-size: clamp(20px, 2.2vw, 32px); }
 @media (max-width: 960px) {
   .site-nav { gap: 16px; flex-wrap: wrap; }
   .site-nav-links { gap: 18px; flex-wrap: wrap; justify-content: flex-end; }
-  .site-shell { padding-top: 110px; }
+  .site-shell { padding-top: 106px; }
 }
 
 @media (max-width: 640px) {
-  .site-nav { padding-top: 14px; padding-bottom: 14px; }
+  .site-nav { padding-top: 12px; padding-bottom: 12px; }
   .site-nav-links { width: 100%; justify-content: flex-start; }
-  .site-shell { padding-inline: 18px; padding-top: 118px; }
-  .site-footer { padding-inline: 18px; }
-  h1 { font-size: clamp(42px, 14vw, 68px); }
-  h2 { font-size: clamp(32px, 11vw, 52px); }
+  .site-shell { padding-inline: 14px; padding-top: 112px; }
+  .site-footer { padding-inline: 14px; }
+  h1 { font-size: clamp(40px, 13vw, 66px); }
+  h2 { font-size: clamp(30px, 10vw, 50px); }
 }
