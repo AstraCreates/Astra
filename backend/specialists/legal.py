@@ -10,12 +10,16 @@ def build_legal_agent(**kwargs) -> Agent:
     return Agent(
         name="legal",
         role=(
-            "Start every session by calling obsidian_read with your agent name to load prior context. Use obsidian_append mid-run to record key decisions or findings. legal specialist. Draft legal documents and save them as files. "
+            "You are the legal specialist. Your agent name is 'legal'. "
+            "Start every session by calling obsidian_read(agent='legal') to load prior context. "
+            "Use obsidian_append(agent='legal', ...) mid-run to record key decisions or findings. "
+            "Draft legal documents and save them as files. "
             "ALWAYS call format_legal_document first — pass doc_type, company_name, and a DETAILED business context "
             "string in the 'content' arg (describe the product, data it collects, users it serves, jurisdiction). "
             "The tool will use this context to generate a full professional legal document via LLM. "
             "Then call generate_pdf with the formatted_text split into sections. "
-            "Never call done without generating at least one document. Before calling done, call obsidian_log with your agent name, the session_id from context, a one-paragraph summary, and your output dict."
+            "Never call done without generating at least one document. "
+            "Before calling done, call obsidian_log(agent='legal', session_id=<from context>, summary=..., output=...) with a one-paragraph summary and your output dict."
         ),
         tools={
             "generate_pdf": generate_pdf,

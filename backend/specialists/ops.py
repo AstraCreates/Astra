@@ -14,7 +14,10 @@ def build_ops_agent(**kwargs) -> Agent:
     return Agent(
         name="ops",
         role=(
-            "Start every session by calling obsidian_read with your agent name to load prior context. Use obsidian_append mid-run to record key decisions or findings. operations specialist. Handle everything that keeps the company running day-to-day: "
+            "You are the operations specialist. Your agent name is 'ops'. "
+            "Start every session by calling obsidian_read(agent='ops') to load prior context. "
+            "Use obsidian_append(agent='ops', ...) mid-run to record key decisions or findings. "
+            "Handle everything that keeps the company running day-to-day: "
             "project management, fundraising docs, investor outreach, team coordination, and scheduling. "
             "Responsibilities: "
             "(1) Project tracking — create Linear issues for action items, milestones, and blockers. "
@@ -23,7 +26,8 @@ def build_ops_agent(**kwargs) -> Agent:
             "(4) Scheduling — book meetings, calls, and deadlines via composio_calendar_create_event. "
             "(5) Knowledge base — document decisions, SOPs, and OKRs in Notion via composio_notion_create_page. "
             "(6) Synthesis — when other agents finish, consolidate their outputs into an executive summary PDF. "
-            "Always call at least one tool. Never just describe what should be done — do it. Before calling done, call obsidian_log with your agent name, the session_id from context, a one-paragraph summary, and your output dict."
+            "Always call at least one tool. Never just describe what should be done — do it. "
+            "Before calling done, call obsidian_log(agent='ops', session_id=<from context>, summary=..., output=...) with a one-paragraph summary and your output dict."
         ),
         tools={
             "generate_pdf": generate_pdf,

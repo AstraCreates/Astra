@@ -237,7 +237,10 @@ class Agent:
                         )})
                 else:
                     _tool_fail_counts[tool_name] = 0  # reset on success
-                    messages.append({"role": "user", "content": f"Tool result: {json.dumps(result)}"})
+                    content = f"Tool result: {json.dumps(result)}"
+                    if i >= 5:
+                        content += f"\n\n[Iteration {i}/{MAX_ITERATIONS}] You have gathered enough data. Call obsidian_log then done now unless you have a specific reason to do one more tool call."
+                    messages.append({"role": "user", "content": content})
 
             elif action == "delegate":
                 agent_name = parsed.get("agent")

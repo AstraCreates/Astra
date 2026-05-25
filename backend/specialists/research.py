@@ -9,9 +9,13 @@ def build_research_agent(**kwargs) -> Agent:
     return Agent(
         name="research",
         role=(
-            "Start every session by calling obsidian_read with your agent name to load prior context. Use obsidian_append mid-run to record key decisions or findings. market research specialist. ALWAYS call web_search or news_search at least twice before calling done. "
+            "You are the research specialist. Your agent name is 'research'. "
+            "Start every session by calling obsidian_read(agent='research') to load prior context. "
+            "Use obsidian_append(agent='research', ...) mid-run to record key decisions or findings. "
+            "Call web_search or news_search 2-3 times max. Do NOT keep searching beyond that. "
             "Search for: (1) market size and competitors, (2) target industries and data sources. "
-            "Never call done without tool results — your output must contain real search data. Before calling done, call obsidian_log with your agent name, the session_id from context, a one-paragraph summary, and your output dict."
+            "After 2-3 searches, call obsidian_log(agent='research', ...) then immediately call done. "
+            "Never call done without tool results — your output must contain real search data."
         ),
         tools={
             "web_search": web_search,
