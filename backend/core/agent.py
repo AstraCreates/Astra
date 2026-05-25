@@ -191,6 +191,9 @@ class Agent:
         MAX_ITERATIONS = 20
         # Track consecutive failures per tool to break infinite retry loops
         _tool_fail_counts: dict[str, int] = {}
+        # One-shot tools: hard-blocked after first success
+        _ONE_SHOT_TOOLS = {"format_legal_document", "generate_landing_page_html", "generate_pdf", "vercel_deploy"}
+        _one_shot_done: set[str] = set()
 
         while i < MAX_ITERATIONS:
             i += 1
@@ -216,6 +219,13 @@ class Agent:
             elif action == "tool":
                 tool_name = parsed.get("tool")
                 args = parsed.get("args", {})
+                # Hard-block repeated calls to one-shot tools
+                if tool_name in _ONE_SHOT_TOOLS and tool_name in _one_shot_done:
+                    messages.append({"role": "user", "content": (
+                        f"BLOCKED: {tool_name} already ran successfully this session. "
+                        f"You MUST NOT call it again. Call done with the results you already have."
+                    )})
+                    continue
                 await self._emit(ctx, "agent_action", action="tool", tool=tool_name, args=args, reasoning=reasoning)
                 result = await self._execute_tool(tool_name, args, ctx)
                 await self._emit(ctx, "agent_action_result", tool=tool_name, result=result)
@@ -237,13 +247,13 @@ class Agent:
                         )})
                 else:
                     _tool_fail_counts[tool_name] = 0  # reset on success
+                    if tool_name in _ONE_SHOT_TOOLS:
+                        _one_shot_done.add(tool_name)
                     content = f"Tool result: {json.dumps(result)}"
                     if i >= 5:
                         content += f"\n\n[Iteration {i}/{MAX_ITERATIONS}] You have gathered enough data. Call obsidian_log then done now unless you have a specific reason to do one more tool call."
-                    # Tool-specific post-success guidance to prevent repeated expensive calls
-                    _one_shot_tools = {"format_legal_document", "generate_landing_page_html", "generate_pdf"}
-                    if tool_name in _one_shot_tools:
-                        content += f"\n\nIMPORTANT: {tool_name} has completed successfully. Do NOT call {tool_name} again. Proceed to the next step."
+                    if tool_name in _ONE_SHOT_TOOLS:
+                        content += f"\n\nIMPORTANT: {tool_name} completed. Proceed to the next step — do NOT call {tool_name} again."
                     messages.append({"role": "user", "content": content})
 
             elif action == "delegate":
