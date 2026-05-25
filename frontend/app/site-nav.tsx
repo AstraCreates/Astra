@@ -27,6 +27,8 @@ export default function SiteNav() {
       </Link>
 
       <nav className="site-nav-links" aria-label="Primary">
+        <a href="https://astracreates.com">About</a>
+
         <Show when="signed-in">
           <NavLink href="/dashboard">Dashboard</NavLink>
           <NavLink href="/" className="site-btn site-btn-primary">
@@ -40,7 +42,6 @@ export default function SiteNav() {
         </Show>
 
         <Show when="signed-out">
-          <a href="https://astracreates.com">About</a>
           <SignInButton mode="modal">
             <button className="site-btn site-btn-ghost px-4">Sign in</button>
           </SignInButton>
