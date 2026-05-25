@@ -1,7 +1,7 @@
 """Web specialist — landing page, Vercel deploy, Cloudflare DNS, PostHog, Clarity."""
 from backend.core.agent import Agent
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
-from backend.tools.vercel_deploy import vercel_deploy, generate_landing_page_html
+from backend.tools.vercel_deploy import vercel_deploy, vercel_deploy_from_github, generate_landing_page_html
 from backend.tools.github_scaffold import github_create_repo
 from backend.tools.web_search import web_search
 from backend.tools.cloudflare_tools import cloudflare_setup_vercel_domain, cloudflare_generate_instructions
@@ -29,6 +29,7 @@ def build_web_agent(**kwargs) -> Agent:
         tools={
             "generate_landing_page_html": generate_landing_page_html,
             "vercel_deploy": vercel_deploy,
+            "vercel_deploy_from_github": vercel_deploy_from_github,
             "github_create_repo": github_create_repo,
             "web_search": web_search,
             "cloudflare_setup_vercel_domain": cloudflare_setup_vercel_domain,

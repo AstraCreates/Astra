@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import time
 import requests
 
 from backend.config import settings
@@ -7,6 +8,143 @@ from backend.config import settings
 logger = logging.getLogger(__name__)
 
 _VERCEL_API = "https://api.vercel.com"
+
+
+def vercel_deploy_from_github(
+    repo_url: str,
+    project_name: str,
+    env_vars: dict = None,
+    framework: str = "nextjs",
+    root_directory: str = "",
+    install_command: str = "",
+    build_command: str = "",
+) -> dict:
+    """
+    Create a Vercel project linked to a GitHub repo and trigger a production deployment.
+    Vercel will auto-deploy on every push thereafter.
+
+    Args:
+        repo_url: GitHub repo URL (https://github.com/owner/repo)
+        project_name: Vercel project name (url-safe, unique per team)
+        env_vars: dict of env var key→value to inject (e.g. SUPABASE_URL, CLERK_SECRET_KEY)
+        framework: nextjs | vite | create-react-app | other (default: nextjs)
+        root_directory: monorepo sub-path (e.g. "frontend") — leave empty for root
+        install_command: override npm install command
+        build_command: override build command
+
+    Returns: {deployed, project_url, deployment_url, project_id, error?}
+    """
+    token = getattr(settings, "vercel_token", None)
+    if not token:
+        return {
+            "deployed": False,
+            "error": "VERCEL_TOKEN not set",
+            "manual": (
+                f"1. Go to vercel.com/new → Import Git Repository → {repo_url}\n"
+                f"2. Set framework to {framework}\n"
+                "3. Add env vars from env_vars dict\n"
+                "4. Click Deploy"
+            ),
+        }
+
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    # Resolve team
+    team_id = None
+    try:
+        user_resp = requests.get(f"{_VERCEL_API}/v2/user", headers=headers, timeout=10)
+        if user_resp.ok:
+            team_id = user_resp.json().get("user", {}).get("defaultTeamId")
+    except Exception:
+        pass
+
+    # Parse owner/repo from URL
+    parts = repo_url.rstrip("/").split("/")
+    if len(parts) < 2:
+        return {"deployed": False, "error": f"Invalid repo_url: {repo_url}"}
+    gh_owner, gh_repo = parts[-2], parts[-1]
+
+    try:
+        # Create project linked to GitHub
+        create_url = f"{_VERCEL_API}/v9/projects"
+        if team_id:
+            create_url += f"?teamId={team_id}"
+
+        project_payload = {
+            "name": project_name,
+            "gitRepository": {"type": "github", "repo": f"{gh_owner}/{gh_repo}"},
+            "framework": framework if framework != "other" else None,
+        }
+        if root_directory:
+            project_payload["rootDirectory"] = root_directory
+        if install_command:
+            project_payload["installCommand"] = install_command
+        if build_command:
+            project_payload["buildCommand"] = build_command
+
+        proj_resp = requests.post(create_url, json=project_payload, headers=headers, timeout=20)
+
+        # 409 = project already exists — fetch it instead
+        if proj_resp.status_code == 409:
+            get_url = f"{_VERCEL_API}/v9/projects/{project_name}"
+            if team_id:
+                get_url += f"?teamId={team_id}"
+            proj_resp = requests.get(get_url, headers=headers, timeout=10)
+
+        if not proj_resp.ok:
+            return {"deployed": False, "error": f"Project creation failed: {proj_resp.text[:300]}"}
+
+        proj = proj_resp.json()
+        project_id = proj.get("id", "")
+
+        # Set env vars
+        if env_vars:
+            env_url = f"{_VERCEL_API}/v10/projects/{project_id}/env"
+            if team_id:
+                env_url += f"?teamId={team_id}"
+            env_payload = [
+                {"key": k, "value": str(v), "type": "encrypted", "target": ["production", "preview", "development"]}
+                for k, v in (env_vars or {}).items()
+                if v
+            ]
+            if env_payload:
+                requests.post(env_url, json=env_payload, headers=headers, timeout=15)
+
+        # Trigger deployment from latest commit on default branch
+        deploy_url = f"{_VERCEL_API}/v13/deployments"
+        if team_id:
+            deploy_url += f"?teamId={team_id}"
+
+        deploy_payload = {
+            "name": project_name,
+            "gitSource": {
+                "type": "github",
+                "org": gh_owner,
+                "repo": gh_repo,
+                "ref": "main",
+            },
+            "target": "production",
+            "projectSettings": {"framework": framework if framework != "other" else None},
+        }
+        deploy_resp = requests.post(deploy_url, json=deploy_payload, headers=headers, timeout=30)
+
+        deployment_url = ""
+        if deploy_resp.ok:
+            deployment_url = f"https://{deploy_resp.json().get('url', '')}"
+
+        project_url = f"https://{project_name}.vercel.app"
+        return {
+            "deployed": True,
+            "project_url": project_url,
+            "deployment_url": deployment_url or project_url,
+            "project_id": project_id,
+            "github_repo": repo_url,
+            "note": "Vercel will auto-deploy on every push to main.",
+        }
+
+    except Exception as e:
+        logger.error("vercel_deploy_from_github failed: %s", e)
+        return {"deployed": False, "error": str(e)}
 
 
 def vercel_deploy(project_slug: str, html: str, css: str = "", js: str = "") -> dict:

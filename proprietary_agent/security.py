@@ -37,7 +37,7 @@ AGENT_TOOL_ALLOWLIST: dict[str, set[str]] = {
         "jurisdiction_analyzer", "ip_clearance_check", "term_sheet_analyzer",
     },
     "web": {
-        "generate_landing_page_html", "vercel_deploy", "github_create_repo",
+        "generate_landing_page_html", "vercel_deploy", "vercel_deploy_from_github", "github_create_repo",
         "web_search", "obsidian_log", "obsidian_read", "obsidian_append", "done",
         "cloudflare_setup_vercel_domain", "cloudflare_generate_instructions",
         "posthog_generate_integration", "clarity_generate_integration",
@@ -53,12 +53,12 @@ AGENT_TOOL_ALLOWLIST: dict[str, set[str]] = {
         "influencer_finder", "email_sequence_builder", "growth_channel_ranker",
     },
     "technical": {
-        "github_create_repo", "claude_code_scaffold",
+        "github_create_repo", "claude_code_scaffold", "vercel_deploy_from_github",
         "composio_linear_create_issue", "composio_notion_create_page",
         "obsidian_log", "obsidian_read", "obsidian_append", "done",
         # Supabase
-        "supabase_create_table", "supabase_enable_rls", "supabase_setup_auth",
-        "supabase_create_storage_bucket", "supabase_generate_schema",
+        "supabase_create_project", "supabase_create_table", "supabase_enable_rls",
+        "supabase_setup_auth", "supabase_create_storage_bucket", "supabase_generate_schema",
         # Clerk
         "clerk_generate_integration", "clerk_generate_webhook_handler",
         # Cloudflare
@@ -104,9 +104,9 @@ AGENT_TOOL_ALLOWLIST: dict[str, set[str]] = {
 
 # Tools that write external state — always logged for audit
 DESTRUCTIVE_TOOLS = {
-    "vercel_deploy", "github_create_repo", "send_email_campaign",
+    "vercel_deploy", "vercel_deploy_from_github", "github_create_repo", "send_email_campaign",
     "claude_code_scaffold", "composio_linear_create_issue",
-    "composio_notion_create_page",
+    "composio_notion_create_page", "supabase_create_project",
     "track_outreach",  # writes CRM state
 }
 

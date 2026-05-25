@@ -3,7 +3,9 @@ from backend.core.agent import Agent
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
 from backend.tools.github_scaffold import github_create_repo
 from backend.tools.claude_scaffold import claude_code_scaffold
+from backend.tools.vercel_deploy import vercel_deploy_from_github
 from backend.tools.supabase_tools import (
+    supabase_create_project,
     supabase_create_table, supabase_enable_rls,
     supabase_setup_auth, supabase_create_storage_bucket, supabase_generate_schema,
 )
@@ -23,21 +25,32 @@ def build_technical_agent(**kwargs) -> Agent:
         role=(
             "You are the technical specialist. Your agent name is 'technical'. "
             "Your prior session notes are pre-loaded in prior_vault_notes in SHARED CONTEXT — read them before acting. "
-            "You scaffold complete production-ready apps. WORKFLOW:\n"
-            "(1) github_create_repo — create repo.\n"
-            "(2) supabase_generate_schema — design DB schema for the app's entities.\n"
-            "(3) clerk_generate_integration — add auth (nextjs framework by default).\n"
-            "(4) posthog_generate_integration — add analytics.\n"
-            "(5) clarity_setup_for_app — add session recording.\n"
-            "(6) cloudflare_setup_vercel_domain — wire DNS if domain provided.\n"
-            "(7) claude_code_scaffold(repo_url=<step1>, task=<full spec including schema/auth/analytics from steps 2-6>, context=<shared context>) — builds real code.\n"
-            "(8) composio_linear_create_issue for 2-3 MVP tickets.\n"
-            "(9) obsidian_log then done.\n"
-            "Skip steps that aren't relevant. claude_code_scaffold is the main deliverable — pass ALL prior tool results as context."
+            "You build and DEPLOY complete production-ready apps automatically. FULL AUTO-DEPLOY WORKFLOW:\n"
+            "(1) github_create_repo — create the GitHub repo. Save repo_url.\n"
+            "(2) supabase_create_project(project_name=<app-name>) — provision real Supabase DB. "
+            "Save project_ref, anon_key, service_role_key, db_connection_string.\n"
+            "(3) supabase_generate_schema(app_name, entities) — design DB schema.\n"
+            "(4) clerk_generate_integration — auth code (nextjs framework by default).\n"
+            "(5) posthog_generate_integration — analytics.\n"
+            "(6) clarity_setup_for_app — session recording.\n"
+            "(7) claude_code_scaffold(repo_url=<step1 repo_url>, task=<full spec>, context=<JSON of all prior results including Supabase keys, schema, Clerk code, PostHog>) "
+            "— builds real working code WITH env vars pre-configured and pushes to GitHub.\n"
+            "(8) vercel_deploy_from_github(repo_url=<step1 repo_url>, project_name=<slug>, "
+            "env_vars={NEXT_PUBLIC_SUPABASE_URL: <url>, NEXT_PUBLIC_SUPABASE_ANON_KEY: <key>, "
+            "SUPABASE_SERVICE_ROLE_KEY: <key>, DATABASE_URL: <connection_string>, ...all other keys}) "
+            "— links GitHub repo to Vercel and DEPLOYS. The app is live. Save deployment_url.\n"
+            "(9) cloudflare_setup_vercel_domain — wire custom DNS if domain was provided.\n"
+            "(10) composio_linear_create_issue for 3 MVP next-step tickets.\n"
+            "(11) obsidian_log then done.\n"
+            "CRITICAL: Steps 1-8 are MANDATORY for any app-building task. "
+            "Always pass ALL Supabase keys and other service credentials into vercel_deploy_from_github env_vars "
+            "so the deployed app is fully configured. The founder should get a live URL, not setup instructions."
         ),
         tools={
             "github_create_repo": github_create_repo,
             "claude_code_scaffold": claude_code_scaffold,
+            "vercel_deploy_from_github": vercel_deploy_from_github,
+            "supabase_create_project": supabase_create_project,
             "supabase_generate_schema": supabase_generate_schema,
             "supabase_create_table": supabase_create_table,
             "supabase_enable_rls": supabase_enable_rls,

@@ -2,6 +2,7 @@
 import logging
 import requests
 from backend.config import settings
+from backend.provisioning.supabase_provisioner import provision_supabase_project
 
 logger = logging.getLogger(__name__)
 _API = "https://api.supabase.com/v1"
@@ -10,6 +11,29 @@ _API = "https://api.supabase.com/v1"
 def _headers():
     tok = getattr(settings, "supabase_management_token", "")
     return {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"} if tok else {}
+
+
+def supabase_create_project(
+    project_name: str,
+    region: str = "us-east-1",
+    org_id: str = "",
+) -> dict:
+    """
+    Create a new Supabase project via Management API. Returns project_ref, anon_key,
+    service_role_key, db_connection_string, and dashboard_url.
+    Falls back to manual setup instructions if SUPABASE_MANAGEMENT_TOKEN is not set.
+
+    Args:
+        project_name: short name for the project (kebab-case recommended)
+        region: AWS region (us-east-1, eu-west-1, ap-southeast-1, etc.)
+        org_id: Supabase org ID — auto-detected from account if omitted
+    """
+    return provision_supabase_project(
+        founder_id="agent",
+        project_name=project_name,
+        org_id=org_id,
+        region=region,
+    )
 
 
 def supabase_create_table(project_ref: str, table_name: str, columns: list[dict]) -> dict:
