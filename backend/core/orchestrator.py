@@ -50,6 +50,8 @@ class Orchestrator:
         user = f"Goal: {goal}\n\nOutput the task plan JSON now."
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
+        logger.info("Planner using model=%s base_url=%s", self.planner.model, self.planner._model_base_url)
+
         for attempt in range(5):
             raw = await asyncio.to_thread(self.planner._call_llm, messages)
             # try to extract tasks array directly or from wrapper
@@ -109,6 +111,7 @@ class Orchestrator:
         await publish(session_id, {
             "type": "plan_done",
             "tasks": [{"id": t["id"], "agent": t["agent"], "instruction": t["instruction"]} for t in tasks],
+            "planner_model": self.planner.model,
         })
 
         # Step 2: execute tasks in dependency order
