@@ -81,6 +81,17 @@ class Orchestrator:
         from backend.core.events import publish
         await publish(session_id, {"type": "goal_start", "goal": goal, "founder_id": founder_id})
 
+        # Proprietary engine: pre-run context (graph + fingerprints + observer alerts)
+        proprietary_engine = None
+        try:
+            from proprietary_agent.engine import ProprietaryEngine
+            proprietary_engine = ProprietaryEngine(founder_id=founder_id)
+            pre_ctx = await proprietary_engine.pre_run(goal=goal)
+            if pre_ctx.get("proprietary_context"):
+                shared["proprietary_context"] = pre_ctx["proprietary_context"]
+        except Exception as _pe:
+            logger.warning("Proprietary engine pre_run skipped: %s", _pe)
+
         # Step 1: direct planning call (no agent loop — avoids infinite retry)
         tasks = await self._plan(goal, session_id)
 
@@ -127,8 +138,30 @@ class Orchestrator:
                 session_id=session_id,
                 shared={**shared, "prior_results": dep_results, "vault_context": vault_context},
             )
+            if proprietary_engine:
+                proprietary_engine.on_agent_start(agent_name)
+
             await publish(session_id, {"type": "agent_start", "agent": agent_name, "task_id": tid, "instruction": task["instruction"]})
             result = await agent.run(ctx)
+
+            # Mirror review
+            if proprietary_engine:
+                try:
+                    output_str = str(result)
+                    mirror_result = proprietary_engine.on_agent_done(agent_name, output_str, session_id)
+                    result["mirror_verdict"] = mirror_result.verdict
+                    result["mirror_critique"] = mirror_result.critique
+                    await publish(session_id, {
+                        "type": "mirror_verdict",
+                        "agent": agent_name,
+                        "verdict": mirror_result.verdict,
+                        "critique": mirror_result.critique,
+                    })
+                    if mirror_result.verdict == "block":
+                        logger.warning("Mirror BLOCKED %s — flagging for founder", agent_name)
+                except Exception as _me:
+                    logger.warning("Mirror review failed for %s: %s", agent_name, _me)
+
             completed[tid] = result
             shared[f"result_{tid}"] = result
             logger.info("Task %s (%s) done", tid, agent_name)
@@ -159,4 +192,16 @@ class Orchestrator:
                 in_flight.discard(t["id"])
 
         await publish(session_id, {"type": "goal_done", "results": completed})
+
+        # Proprietary engine: post-run fingerprint
+        if proprietary_engine:
+            try:
+                await proprietary_engine.post_run(
+                    session_id=session_id,
+                    goal=goal,
+                    results={t["agent"]: completed.get(t["id"], {}) for t in tasks},
+                )
+            except Exception as _pe:
+                logger.warning("Proprietary engine post_run failed: %s", _pe)
+
         return {"session_id": session_id, "results": completed, "shared": shared}
