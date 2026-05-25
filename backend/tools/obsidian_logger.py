@@ -104,7 +104,14 @@ def obsidian_append(agent: str, session_id: str, heading: str, content: str) -> 
     filename = folder / f"{date}-{session_id[:8]}.md"
 
     if not filename.exists():
-        return {"error": "Note not found — call obsidian_log first."}
+        # Auto-create a minimal note so append doesn't silently fail
+        folder.mkdir(parents=True, exist_ok=True)
+        date = datetime.now().strftime("%Y-%m-%d")
+        time_str = datetime.now().strftime("%H:%M")
+        filename.write_text(
+            f"---\ndate: {date}\nsession: {session_id}\nagent: {agent}\n---\n\n"
+            f"# {agent.capitalize()} · {date} {time_str}\n\n## Summary\n(auto-created)\n"
+        )
 
     existing = filename.read_text()
     addition = f"\n## {heading}\n{content}\n"

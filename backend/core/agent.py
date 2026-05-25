@@ -192,7 +192,7 @@ class Agent:
         # Track consecutive failures per tool to break infinite retry loops
         _tool_fail_counts: dict[str, int] = {}
         # One-shot tools: hard-blocked after first success
-        _ONE_SHOT_TOOLS = {"format_legal_document", "generate_landing_page_html", "generate_pdf", "vercel_deploy"}
+        _ONE_SHOT_TOOLS = {"format_legal_document", "generate_landing_page_html", "generate_pdf", "vercel_deploy", "claude_code_scaffold"}
         _one_shot_done: set[str] = set()
 
         while i < MAX_ITERATIONS:
