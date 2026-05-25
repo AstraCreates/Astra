@@ -14,7 +14,7 @@ def build_legal_agent(**kwargs) -> Agent:
             "Your prior session notes are pre-loaded in prior_vault_notes in SHARED CONTEXT — read them before acting. "
             "Use obsidian_append(agent='legal', ...) mid-run to record key decisions or findings. "
             "Draft legal documents and save them as files. "
-            "Generate exactly ONE legal document per session — pick the most relevant doc type for the goal. "
+            "Generate all legal documents relevant to the goal — at minimum the primary doc type, plus additional docs if the task requires them. "
             "Call format_legal_document with doc_type, company_name, and a DETAILED business context "
             "string in the 'content' arg (describe the product, data it collects, users it serves, jurisdiction). "
             "Then call generate_pdf with the formatted_text split into sections. "

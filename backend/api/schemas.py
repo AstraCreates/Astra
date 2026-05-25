@@ -38,3 +38,8 @@ class SaveCredentialRequest(BaseModel):
     founder_id: str
     service: str  # "github" | "sendgrid" | "vercel" | "composio"
     credentials: dict  # e.g. {"token": "ghp_..."} or {"api_key": "SG...."}
+
+
+class SteerRequest(BaseModel):
+    session_id: str
+    message: str  # founder directive to the orchestrator mid-run

@@ -16,6 +16,9 @@ function NavLink({ href, children, className = "" }: { href: string; children: R
 }
 
 export default function SiteNav() {
+  const pathname = usePathname();
+  if (pathname.startsWith("/dashboard") || pathname.startsWith("/setup")) return null;
+
   return (
     <header className="site-nav">
       <Link href="/" className="site-brand" aria-label="Astra home">

@@ -8,28 +8,40 @@ from backend.tools.web_search import web_search
 logger = logging.getLogger(__name__)
 
 
+_SOCIAL_DOMAINS = {"linkedin.com", "twitter.com", "x.com", "facebook.com", "instagram.com", "tiktok.com"}
+
+
 def find_leads(
     industry: str,
-    job_title: str,
+    job_title: str = "owner",
     location: str = "",
     company_size: str = "",
     max_results: int = 10,
+    no_website: bool = False,
 ) -> dict:
     """
     Search for potential leads matching criteria. Returns enriched contact list.
+    Set no_website=True to target businesses that likely lack their own website (searches Yelp/GMaps listings).
     """
-    query_parts = [f"{job_title} {industry}"]
-    if location:
-        query_parts.append(location)
-    if company_size:
-        query_parts.append(f"{company_size} company")
-    query_parts.append("contact email LinkedIn")
-
-    query = " ".join(query_parts)
+    if no_website:
+        # Search local directory listings — these surface businesses without dedicated sites
+        query_parts = [f'site:yelp.com OR site:maps.google.com "{industry}"']
+        if location:
+            query_parts.append(location)
+        query = " ".join(query_parts)
+    else:
+        query_parts = [f"{job_title} {industry}"]
+        if location:
+            query_parts.append(location)
+        if company_size:
+            query_parts.append(f"{company_size} company")
+        query_parts.append("contact email")
+        query = " ".join(query_parts)
 
     try:
-        raw = web_search(query=query, max_results=max_results)
-        results = raw.get("results", [])
+        raw = web_search(query=query, max_results=max_results + 4)
+        results = [r for r in raw.get("results", [])
+                   if not any(d in r.get("url", "") for d in _SOCIAL_DOMAINS)]
 
         leads = []
         for r in results:

@@ -20,6 +20,7 @@ def claude_code_scaffold(
     commit_message: str = "feat: scaffold via claude code",
     context: str = "",
     api_key: str = "",
+    **_kwargs,
 ) -> dict:
     """
     Clone a GitHub repo, run Claude Code to implement the task, commit and push.

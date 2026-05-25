@@ -280,6 +280,14 @@ class Agent:
 
         while i < MAX_ITERATIONS:
             i += 1
+            # Inject any founder steer messages before calling LLM
+            try:
+                from backend.core.events import steer_pull
+                for directive in steer_pull(ctx.session_id):
+                    messages.append({"role": "user", "content": f"[FOUNDER DIRECTIVE] {directive}\nAdjust your current plan accordingly and continue."})
+                    logger.info("%s received founder directive: %s", self.name, directive[:80])
+            except Exception:
+                pass
             raw = await asyncio.to_thread(self._call_llm, messages)
             parsed = self._parse_json(raw)
 
@@ -333,8 +341,8 @@ class Agent:
                     if tool_name in _ONE_SHOT_TOOLS:
                         _one_shot_done.add(tool_name)
                     content = f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result)}"
-                    if i >= 5:
-                        content += f"\n\n[Iteration {i}/{MAX_ITERATIONS}] You have gathered enough data. Call obsidian_log then done now unless you have a specific reason to do one more tool call."
+                    if i >= 15:
+                        content += f"\n\n[Iteration {i}/{MAX_ITERATIONS}] You are near the iteration limit. Wrap up: call obsidian_log then done unless one more tool call is critical."
                     if tool_name in _ONE_SHOT_TOOLS:
                         content += f"\n\nIMPORTANT: {tool_name} completed. Proceed to the next step — do NOT call {tool_name} again."
                     messages.append({"role": "user", "content": content})

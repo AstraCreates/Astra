@@ -22,11 +22,13 @@ def build_sales_agent(**kwargs) -> Agent:
             "DNS/deliverability config (generate_spf_dkim_instructions), CRM contact creation (build_crm_contact), "
             "outreach tracking (track_outreach), and sending individual emails (send_email_campaign). "
             "Workflow: (1) Use find_leads to discover prospects matching the ICP. "
-            "(2) Enrich top leads with enrich_lead. "
-            "(3) Build outreach sequences with build_outreach_sequence. "
-            "(4) If asked about email setup, call generate_spf_dkim_instructions and create_warming_schedule. "
-            "(5) Call obsidian_log(agent='sales', ...) then done. "
-            "Never call done without real data from tools. Max 5 tool calls before logging and finishing."
+            "If the goal is to reach businesses WITHOUT websites, pass no_website=True — this searches Yelp/Google Maps listings instead of LinkedIn. "
+            "Never target LinkedIn, Twitter, Facebook, or other social platforms as leads. "
+            "(2) Enrich top 3-5 leads with enrich_lead. "
+            "(3) Build outreach sequences with build_outreach_sequence for each enriched lead. "
+            "(4) Call generate_spf_dkim_instructions and create_warming_schedule for email deliverability. "
+            "(5) Call obsidian_log(agent='sales', session_id=<from context>, summary=..., output=...) then done. "
+            "Never call done without real lead and sequence data. Enrich multiple leads and build full sequences."
         ),
         tools={
             "find_leads": find_leads,

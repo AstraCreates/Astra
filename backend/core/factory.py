@@ -20,11 +20,16 @@ _orchestrator: Orchestrator | None = None
 def get_orchestrator() -> Orchestrator:
     global _orchestrator
     if _orchestrator is None:
+        _coder_kwargs = dict(
+            model="Qwen/Qwen3-Coder-480B-A35B-Instruct-Turbo",
+            model_base_url=settings.planner_model_base_url,
+            model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
+        )
         specialists = {
             "research": build_research_agent(use_computer=True),
-            "web": build_web_agent(use_computer=True),
+            "web": build_web_agent(use_computer=True, **_coder_kwargs),
             "marketing": build_marketing_agent(use_computer=True),
-            "technical": build_technical_agent(use_computer=True),
+            "technical": build_technical_agent(use_computer=True, **_coder_kwargs),
             "legal": build_legal_agent(use_computer=True),
             "ops": build_ops_agent(use_computer=True),
             "sales": build_sales_agent(use_computer=False),

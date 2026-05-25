@@ -21,9 +21,9 @@ def build_design_agent(**kwargs) -> Agent:
             "and design inspiration research (web_search). "
             "Workflow: "
             "(1) If asked for a full design system: call generate_design_spec first, then generate_color_palette. "
-            "(2) If asked for wireframes: call generate_wireframe for each key page (max 3). "
+            "(2) If asked for wireframes: call generate_wireframe for each key page — cover all pages needed. "
             "(3) If asked for a logo: call generate_logo_brief. "
-            "(4) Use web_search only if you need to research competitor designs or design trends (max 1 search). "
+            "(4) Use web_search to research competitor designs or design trends as needed. "
             "(5) Call obsidian_log(agent='design', ...) with a summary of all design decisions, then call done. "
             "Never call done without tool results. Produce concrete, actionable design artifacts."
         ),

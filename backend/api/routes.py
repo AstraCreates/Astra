@@ -2,7 +2,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException
 
-from backend.api.schemas import AskRequest, ApproveRequest, GoalRequest, RejectRequest, SetupRequest, SaveCredentialRequest
+from backend.api.schemas import AskRequest, ApproveRequest, GoalRequest, RejectRequest, SetupRequest, SaveCredentialRequest, SteerRequest
 from backend.provisioning.credentials_store import store_credentials
 
 
@@ -101,6 +101,18 @@ async def ask_agent(body: AskRequest):
     return {"agent": body.target_agent, "response": result}
 
 
+@router.post("/steer")
+async def steer_session(body: SteerRequest):
+    """Inject a founder directive into a running session."""
+    from backend.core.events import publish, steer_push
+    steer_push(body.session_id, body.message)
+    await publish(body.session_id, {
+        "type": "founder_steer",
+        "message": body.message,
+    })
+    return {"ok": True, "session_id": body.session_id}
+
+
 @router.post("/setup")
 async def setup_accounts(body: SetupRequest):
     """
@@ -153,6 +165,72 @@ async def composio_connect(founder_id: str, apps: str = "github,gmail,linkedin,g
     app_list = [a.strip() for a in apps.split(",") if a.strip()]
     result = await asyncio.to_thread(connect_founder_tools, founder_id, app_list)
     return {"founder_id": founder_id, "oauth_urls": result}
+
+
+@router.get("/vault/{founder_id}")
+async def get_vault_sessions(founder_id: str):
+    """List all sessions for a founder with per-agent note summaries."""
+    import asyncio
+    from backend.tools.obsidian_logger import _sessions_root
+    from pathlib import Path
+    import re
+
+    root = _sessions_root(founder_id)
+    if not root.exists():
+        return {"sessions": []}
+
+    sessions = []
+    for session_dir in sorted(root.iterdir(), reverse=True):
+        if not session_dir.is_dir():
+            continue
+        notes = []
+        for note_file in sorted(session_dir.glob("*.md")):
+            agent = note_file.stem
+            if agent == "index":
+                continue
+            text = note_file.read_text(errors="replace")
+            # Extract summary section
+            summary_match = re.search(r"## Summary\n(.+?)(?=\n##|\Z)", text, re.DOTALL)
+            summary = summary_match.group(1).strip()[:300] if summary_match else ""
+            # Extract output keys
+            output_match = re.search(r"## Output\n```json\n(.+?)```", text, re.DOTALL)
+            output_keys = []
+            if output_match:
+                try:
+                    import json
+                    d = json.loads(output_match.group(1))
+                    output_keys = [k for k in d.keys() if d[k]]
+                except Exception:
+                    pass
+            notes.append({"agent": agent, "summary": summary, "output_keys": output_keys, "file": str(note_file)})
+
+        # Read index.md for goal
+        goal = ""
+        idx = session_dir / "index.md"
+        if idx.exists():
+            idx_text = idx.read_text(errors="replace")
+            goal_match = re.search(r"goal:\s*(.+)", idx_text)
+            if goal_match:
+                goal = goal_match.group(1).strip()
+
+        sessions.append({
+            "session_id": session_dir.name,
+            "goal": goal,
+            "agents": notes,
+            "note_count": len(notes),
+        })
+
+    return {"founder_id": founder_id, "sessions": sessions}
+
+
+@router.get("/vault/{founder_id}/note")
+async def get_vault_note(founder_id: str, session_id: str, agent: str):
+    """Return full markdown content of one agent note."""
+    from backend.tools.obsidian_logger import _note_path
+    path = _note_path(agent, session_id, founder_id)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Note not found")
+    return {"content": path.read_text(errors="replace"), "agent": agent, "session_id": session_id}
 
 
 @router.get("/status/{goal_id}")

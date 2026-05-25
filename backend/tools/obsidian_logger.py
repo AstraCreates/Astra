@@ -87,7 +87,7 @@ def format_vault_context(agent: str, max_notes: int = 3, founder_id: str | None 
 def obsidian_log(
     agent: str,
     session_id: str,
-    summary: str,
+    summary: str = "",
     output: Any = None,
     tags: list[str] = None,
     links: list[str] = None,
@@ -224,7 +224,7 @@ def obsidian_session_index(
         ("web", "technical", "Landing page repo linked to scaffold"),
     ]
     cross_links = [
-        f"- [[{a}]] → [[{b}}]]: {note}"
+        f"- [[{a}]] → [[{b}]]: {note}"
         for a, b, note in cross_pairs
         if a in agents_completed and b in agents_completed
     ]

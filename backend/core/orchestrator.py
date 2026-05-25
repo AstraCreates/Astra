@@ -94,7 +94,7 @@ class Orchestrator:
             if pre_ctx.get("proprietary_context"):
                 shared["proprietary_context"] = pre_ctx["proprietary_context"]
         except Exception as _pe:
-            logger.warning("Proprietary engine pre_run skipped: %s", _pe)
+            logger.warning("Proprietary engine pre_run skipped: %s", _pe, exc_info=True)
 
         # Step 1: direct planning call (no agent loop — avoids infinite retry)
         tasks = await self._plan(goal, session_id)

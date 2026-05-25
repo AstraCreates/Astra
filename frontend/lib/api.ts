@@ -30,6 +30,7 @@ export interface SetupStatus {
   github: boolean;
   vercel: boolean;
   sendgrid: boolean;
+  supabase: boolean;
   instagram: boolean;
   tiktok: boolean;
   meta_ads: boolean;
@@ -152,8 +153,10 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   vercel_deploy: "Deploying to Vercel",
   cloudflare_setup_vercel_domain: "Configuring Cloudflare DNS",
   generate_landing_page_html: "Generating landing page",
+  deep_research: "Deep research via Gemini + Google Search",
   web_search: "Searching the web",
-  news_search: "Searching news",
+  search_and_read: "Searching and reading pages",
+  news_search: "Searching recent news",
   obsidian_log: "Saving session notes",
   generate_pdf: "Generating PDF document",
   send_email_campaign: "Sending email campaign",

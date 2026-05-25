@@ -114,63 +114,92 @@ def search_and_read(query: str, max_results: int = 3, max_chars_per_page: int = 
 
 def _extract(html: str, base_url: str = "") -> tuple[str, str, list]:
     """Extract clean text, title, and links from raw HTML."""
+    _re_strip = lambda h: (re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", h)).strip(), "", [])
+
     try:
         from bs4 import BeautifulSoup
     except ImportError:
-        # Fallback: strip HTML tags with regex
-        text = re.sub(r"<[^>]+>", " ", html)
-        text = re.sub(r"\s+", " ", text).strip()
-        return text[:6000], "", []
+        text, title, links = _re_strip(html)
+        return text[:6000], title, links
 
-    soup = BeautifulSoup(html, "html.parser")
+    try:
+        soup = BeautifulSoup(html, "html.parser")
+    except Exception:
+        text, title, links = _re_strip(html)
+        return text[:6000], title, links
 
-    # Title
-    title_tag = soup.find("title")
-    title = title_tag.get_text(strip=True) if title_tag else ""
+    try:
+        # Title
+        title_tag = soup.find("title")
+        title = title_tag.get_text(strip=True) if title_tag else ""
+    except Exception:
+        title = ""
 
-    # Remove junk elements
-    for tag in _JUNK_TAGS:
-        for el in soup.find_all(tag):
-            el.decompose()
+    try:
+        # Remove junk elements
+        for tag in _JUNK_TAGS:
+            for el in list(soup.find_all(tag)):
+                el.decompose()
 
-    # Remove elements by class/id hints
-    junk_patterns = re.compile(
-        r"(nav|menu|sidebar|footer|header|cookie|banner|popup|modal|ad-|ads-|advertisement)",
-        re.I,
-    )
-    for el in soup.find_all(attrs={"class": True}):
-        classes = " ".join(el.get("class", []))
-        if junk_patterns.search(classes):
-            el.decompose()
-    for el in soup.find_all(attrs={"id": True}):
-        if junk_patterns.search(el.get("id", "")):
-            el.decompose()
+        # Remove elements by class/id hints
+        junk_patterns = re.compile(
+            r"(nav|menu|sidebar|footer|header|cookie|banner|popup|modal|ad-|ads-|advertisement)",
+            re.I,
+        )
+        for el in list(soup.find_all(attrs={"class": True})):
+            try:
+                classes = " ".join(el.get("class") or [])
+                if junk_patterns.search(classes):
+                    el.decompose()
+            except Exception:
+                pass
+        for el in list(soup.find_all(attrs={"id": True})):
+            try:
+                if junk_patterns.search(el.get("id") or ""):
+                    el.decompose()
+            except Exception:
+                pass
+    except Exception:
+        pass
 
-    # Extract main content — prefer <main>, <article>, <section> over body
-    main = (
-        soup.find("main")
-        or soup.find("article")
-        or soup.find("div", attrs={"role": "main"})
-        or soup.find("div", class_=re.compile(r"content|main|article|post|body", re.I))
-        or soup.body
-    )
-    if main is None:
-        main = soup
+    try:
+        # Extract main content — prefer <main>, <article>, <section> over body
+        main = (
+            soup.find("main")
+            or soup.find("article")
+            or soup.find("div", attrs={"role": "main"})
+            or soup.find("div", class_=re.compile(r"content|main|article|post|body", re.I))
+            or soup.body
+            or soup
+        )
 
-    # Get text with newlines preserved
-    lines = []
-    for el in main.find_all(["h1", "h2", "h3", "h4", "p", "li", "td", "th", "pre", "blockquote"]):
-        text = el.get_text(separator=" ", strip=True)
-        if len(text) > 3:
-            lines.append(text)
+        # Get text with newlines preserved
+        lines = []
+        for el in main.find_all(["h1", "h2", "h3", "h4", "p", "li", "td", "th", "pre", "blockquote"]):
+            try:
+                text = el.get_text(separator=" ", strip=True)
+                if len(text) > 3:
+                    lines.append(text)
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning("_extract content parse failed: %s", e)
+        raw, _, _ = _re_strip(html)
+        return raw[:6000], title, []
 
-    # Extract links
-    links = []
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        link_text = a.get_text(strip=True)
-        if href.startswith("http") and link_text:
-            links.append({"text": link_text[:80], "url": href})
+    try:
+        # Extract links
+        links = []
+        for a in soup.find_all("a", href=True):
+            try:
+                href = a.get("href", "")
+                link_text = a.get_text(strip=True)
+                if href and href.startswith("http") and link_text:
+                    links.append({"text": link_text[:80], "url": href})
+            except Exception:
+                pass
+    except Exception:
+        links = []
 
     text = "\n\n".join(lines)
     # Collapse excessive whitespace

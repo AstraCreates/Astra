@@ -17,30 +17,23 @@ function timeAgo(ts: number): string {
   return `${days}d`;
 }
 
-function groupSessions(sessions: SessionRecord[]): Record<string, SessionRecord[]> {
-  const now = Date.now();
-  const today = new Date(); today.setHours(0,0,0,0);
-  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
-  const weekAgo = new Date(today); weekAgo.setDate(weekAgo.getDate() - 7);
-
-  const groups: Record<string, SessionRecord[]> = {
-    Today: [], Yesterday: [], "This week": [], Older: [],
-  };
-  for (const s of sessions) {
-    const d = new Date(s.startedAt); d.setHours(0,0,0,0);
-    if (d >= today) groups.Today.push(s);
-    else if (d >= yesterday) groups.Yesterday.push(s);
-    else if (d >= weekAgo) groups["This week"].push(s);
-    else groups.Older.push(s);
-  }
-  return groups;
+function statusColor(status: SessionRecord["status"]) {
+  if (status === "done") return "#6DC98A";
+  if (status === "error") return "#C97070";
+  return "#1E6AFF";
 }
 
-function statusDot(status: SessionRecord["status"]) {
-  if (status === "done") return "bg-green-400";
-  if (status === "error") return "bg-red-400";
-  return "bg-[var(--star)] animate-pulse";
-}
+const NAV = [
+  { href: "/dashboard", label: "Overview", icon: "⊞" },
+  { href: "/dashboard/goals", label: "Goals", icon: "◎" },
+  { href: "/dashboard/artifacts", label: "Artifacts", icon: "⬡" },
+  { href: "/dashboard/knowledge", label: "Knowledge", icon: "◈" },
+];
+
+const BOTTOM_NAV = [
+  { href: "/dashboard/integrations", label: "Integrations", icon: "⚡" },
+  { href: "/dashboard/settings", label: "Settings", icon: "⊙" },
+];
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -51,7 +44,6 @@ export default function Sidebar() {
   useEffect(() => {
     setSessions(getSessions());
     setMounted(true);
-    // Poll for updates while sessions are running
     const id = setInterval(() => setSessions(getSessions()), 3000);
     return () => clearInterval(id);
   }, []);
@@ -64,103 +56,144 @@ export default function Sidebar() {
     if (pathname.includes(id)) router.push("/dashboard");
   }
 
-  const groups = mounted ? groupSessions(sessions) : {};
+  const recentSessions = sessions.slice(0, 8);
 
   return (
     <aside style={{
-      width: 260, flexShrink: 0, display: "flex", flexDirection: "column",
-      borderRight: "1px solid var(--line)", background: "var(--ink-2)",
-      height: "100%", overflow: "hidden",
+      width: 240,
+      flexShrink: 0,
+      display: "flex",
+      flexDirection: "column",
+      height: "100%",
+      overflow: "hidden",
+      borderRight: "1px solid rgba(255,255,255,0.07)",
+      background: "rgba(255,255,255,0.04)",
+      backdropFilter: "blur(28px) saturate(180%)",
+      WebkitBackdropFilter: "blur(28px) saturate(180%)",
     }}>
+
       {/* Brand */}
-      <div style={{ padding: "18px 16px 12px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid var(--line)" }}>
-        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
+      <div style={{ padding: "20px 18px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
           <span style={{
-            width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
-            background: "radial-gradient(circle, var(--fg) 0%, var(--star) 55%, transparent 75%)",
-            boxShadow: "0 0 12px var(--star)",
+            width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
+            background: "radial-gradient(circle, #fff 0%, #1E6AFF 55%, transparent 75%)",
+            boxShadow: "0 0 14px rgba(30,106,255,0.6)",
           }} />
-          <span style={{ fontSize: 13, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--fg)", fontFamily: "var(--font-geist-sans)" }}>
+          <span style={{ fontSize: 12, letterSpacing: "0.22em", textTransform: "uppercase", color: "var(--fg)", fontFamily: "var(--font-geist-sans)", fontWeight: 500 }}>
             Astra
           </span>
         </Link>
       </div>
 
-      {/* New goal button */}
+      {/* New goal */}
       <div style={{ padding: "12px 12px 8px" }}>
-        <Link href="/dashboard" className="site-btn site-btn-primary" style={{ width: "100%", borderRadius: 8, justifyContent: "center", fontSize: 13, minHeight: 36 }}>
-          + New goal
+        <Link href="/dashboard" style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+          padding: "8px 0", borderRadius: 10, fontSize: 13, fontWeight: 500,
+          background: "var(--fg)", color: "var(--ink)", textDecoration: "none",
+          transition: "opacity 0.15s",
+        }}
+          onMouseEnter={e => (e.currentTarget.style.opacity = "0.88")}
+          onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
+        >
+          <span style={{ fontSize: 16, lineHeight: 1 }}>+</span> New goal
         </Link>
       </div>
 
-      {/* Session list */}
-      <nav style={{ flex: 1, overflowY: "auto", padding: "4px 8px" }}>
-        {!mounted || sessions.length === 0 ? (
-          <div style={{ padding: "24px 8px", textAlign: "center" }}>
-            <p style={{ fontSize: 12, color: "var(--fg-mute)", lineHeight: 1.6 }}>No sessions yet.<br />Run your first goal.</p>
-          </div>
-        ) : (
-          Object.entries(groups).map(([group, items]) =>
-            items.length === 0 ? null : (
-              <div key={group} style={{ marginBottom: 16 }}>
-                <p style={{
-                  fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase",
-                  color: "var(--fg-mute)", padding: "4px 8px 6px",
-                  fontFamily: "var(--font-mono)",
-                }}>
-                  {group}
-                </p>
-                {items.map(s => {
-                  const isActive = pathname.includes(s.sessionId);
-                  const label = s.companyName || s.instruction.slice(0, 36);
-                  return (
-                    <Link
-                      key={s.sessionId}
-                      href={`/goal/${s.sessionId}?instruction=${encodeURIComponent(s.instruction)}&founder=${encodeURIComponent(s.founderId)}`}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 8, borderRadius: 6,
-                        padding: "7px 8px", textDecoration: "none", position: "relative",
-                        background: isActive ? "rgba(32,96,255,0.1)" : "transparent",
-                        border: isActive ? "1px solid rgba(32,96,255,0.2)" : "1px solid transparent",
-                        transition: "background 0.15s, border-color 0.15s",
-                      }}
-                      onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "rgba(245,255,255,0.04)"; }}
-                      onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                    >
-                      <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0 }} className={statusDot(s.status)} />
-                      <span style={{ flex: 1, fontSize: 13, color: isActive ? "var(--fg)" : "var(--fg-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.4 }}>
-                        {label}
-                      </span>
-                      <span style={{ fontSize: 10, color: "var(--fg-mute)", flexShrink: 0, fontFamily: "var(--font-mono)" }}>
-                        {timeAgo(s.startedAt)}
-                      </span>
-                      <button
-                        onClick={e => remove(e, s.sessionId)}
-                        style={{ display: "none", background: "none", border: "none", padding: "0 2px", color: "var(--fg-mute)", cursor: "pointer", fontSize: 12, lineHeight: 1 }}
-                        className="sidebar-delete-btn"
-                        aria-label="Delete session"
-                      >✕</button>
-                    </Link>
-                  );
-                })}
-              </div>
-            )
-          )
-        )}
+      {/* Primary nav */}
+      <nav style={{ padding: "4px 8px 0" }}>
+        {NAV.map(({ href, label, icon }) => {
+          const active = href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(href);
+          return (
+            <Link key={href} href={href} style={{
+              display: "flex", alignItems: "center", gap: 9, padding: "7px 10px",
+              borderRadius: 8, marginBottom: 1, textDecoration: "none",
+              fontSize: 13, color: active ? "var(--fg)" : "var(--fg-dim)",
+              background: active ? "rgba(255,255,255,0.08)" : "transparent",
+              fontWeight: active ? 500 : 400,
+              transition: "background 0.12s, color 0.12s",
+            }}
+              onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; }}
+              onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            >
+              <span style={{ fontSize: 14, opacity: active ? 1 : 0.5, width: 18, textAlign: "center" }}>{icon}</span>
+              {label}
+            </Link>
+          );
+        })}
       </nav>
 
-      {/* Bottom bar */}
-      <div style={{ padding: "12px 16px", borderTop: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <UserButton
-          appearance={{ elements: { avatarBox: "w-8 h-8 rounded-full ring-1 ring-[rgba(255,255,255,0.15)]" } }}
-        />
-        <div style={{ display: "flex", gap: 6 }}>
-          <Link href="/setup" style={{ fontSize: 12, color: "var(--fg-mute)", padding: "4px 8px", borderRadius: 6, border: "1px solid transparent", transition: "all 0.15s" }}>
-            Setup
-          </Link>
-          <Link href="/" style={{ fontSize: 12, color: "var(--fg-mute)", padding: "4px 8px", borderRadius: 6, border: "1px solid transparent", transition: "all 0.15s" }}>
-            Home
-          </Link>
+      {/* Divider */}
+      <div style={{ margin: "10px 12px", height: 1, background: "rgba(255,255,255,0.06)" }} />
+
+      {/* Recent runs */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "0 8px" }}>
+        <p style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.25)", padding: "0 10px", marginBottom: 4, fontFamily: "var(--font-mono)" }}>
+          Recent
+        </p>
+        {!mounted || recentSessions.length === 0 ? (
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.2)", padding: "8px 10px", lineHeight: 1.5 }}>No runs yet.</p>
+        ) : recentSessions.map(s => {
+          const isActive = pathname.includes(s.sessionId);
+          const label = s.companyName || s.instruction.slice(0, 28);
+          return (
+            <Link
+              key={s.sessionId}
+              href={`/dashboard/goal/${s.sessionId}?instruction=${encodeURIComponent(s.instruction)}&founder=${encodeURIComponent(s.founderId)}&company=${encodeURIComponent(s.companyName)}`}
+              style={{
+                display: "flex", alignItems: "center", gap: 8, borderRadius: 8,
+                padding: "6px 10px", textDecoration: "none", marginBottom: 1,
+                background: isActive ? "rgba(255,255,255,0.08)" : "transparent",
+                transition: "background 0.12s",
+              }}
+              onMouseEnter={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; }}
+              onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            >
+              <span style={{ width: 5, height: 5, borderRadius: "50%", flexShrink: 0, background: statusColor(s.status) }} />
+              <span style={{ flex: 1, fontSize: 12, color: isActive ? "var(--fg)" : "var(--fg-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.3 }}>
+                {label}
+              </span>
+              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", flexShrink: 0, fontFamily: "var(--font-mono)" }}>
+                {timeAgo(s.startedAt)}
+              </span>
+              <button
+                onClick={e => remove(e, s.sessionId)}
+                style={{ display: "none", background: "none", border: "none", padding: "0 2px", color: "rgba(255,255,255,0.3)", cursor: "pointer", fontSize: 11, lineHeight: 1 }}
+                className="sidebar-delete-btn"
+                aria-label="Delete"
+              >✕</button>
+            </Link>
+          );
+        })}
+      </div>
+
+      {/* Bottom nav + user */}
+      <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "8px 8px 12px" }}>
+        {BOTTOM_NAV.map(({ href, label, icon }) => {
+          const active = pathname === href;
+          return (
+            <Link key={href} href={href} style={{
+              display: "flex", alignItems: "center", gap: 9, padding: "7px 10px",
+              borderRadius: 8, marginBottom: 1, textDecoration: "none",
+              fontSize: 13, color: active ? "var(--fg)" : "var(--fg-dim)",
+              background: active ? "rgba(255,255,255,0.08)" : "transparent",
+              transition: "background 0.12s, color 0.12s",
+            }}
+              onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"; }}
+              onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            >
+              <span style={{ fontSize: 13, opacity: active ? 1 : 0.45, width: 18, textAlign: "center" }}>{icon}</span>
+              {label}
+            </Link>
+          );
+        })}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px 0", marginTop: 4 }}>
+          <UserButton appearance={{ elements: { avatarBox: "w-7 h-7 rounded-full" } }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ fontSize: 11, color: "var(--fg-dim)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>My workspace</p>
+          </div>
         </div>
       </div>
     </aside>
