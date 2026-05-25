@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useUser, SignInButton } from "@clerk/nextjs";
 import { submitGoal } from "@/lib/api";
 import { saveSession } from "@/lib/history";
 
@@ -15,10 +16,10 @@ const STACK_OPTIONS = {
 
 export default function Home() {
   const router = useRouter();
+  const { user, isSignedIn } = useUser();
   const [companyName, setCompanyName] = useState("");
   const [domain, setDomain] = useState("");
   const [instruction, setInstruction] = useState("");
-  const [founderId, setFounderId] = useState("founder_001");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showStack, setShowStack] = useState(false);
@@ -42,6 +43,7 @@ export default function Home() {
     ].filter(Boolean);
 
     const full = parts.length ? `${parts.join(" ")}\n\n${instruction}` : instruction;
+    const founderId = user?.id ?? "anon";
 
     try {
       const result = await submitGoal(founderId, full);
@@ -198,23 +200,21 @@ export default function Home() {
               )}
             </div>
 
-            {/* Founder ID + Submit */}
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-              <div className="flex flex-col gap-1.5">
-                <label className="site-label">Founder ID</label>
-                <input
-                  value={founderId}
-                  onChange={(e) => setFounderId(e.target.value)}
-                  className="site-input px-4 py-3 text-sm text-white"
-                  placeholder="founder_001"
-                  disabled={loading}
-                />
-              </div>
-              <button type="submit" disabled={loading || !instruction.trim()}
-                className="site-btn site-btn-primary px-6 self-end">
-                {loading ? "Launching…" : "Launch Astra"}
-                <span aria-hidden="true">→</span>
-              </button>
+            {/* Submit */}
+            <div className="flex justify-end">
+              {isSignedIn ? (
+                <button type="submit" disabled={loading || !instruction.trim()}
+                  className="site-btn site-btn-primary px-6">
+                  {loading ? "Launching…" : "Launch Astra"}
+                  <span aria-hidden="true">→</span>
+                </button>
+              ) : (
+                <SignInButton mode="modal">
+                  <button type="button" className="site-btn site-btn-primary px-6">
+                    Sign in to launch →
+                  </button>
+                </SignInButton>
+              )}
             </div>
 
             {error && (
