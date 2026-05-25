@@ -1,6 +1,5 @@
 import hashlib
 import logging
-import re
 import requests
 
 from backend.config import settings
@@ -92,46 +91,6 @@ def generate_landing_page_html(
     """Generate a complete, production-quality landing page HTML. Args: page_title, headline, subheadline, value_props (list of strings), cta_text, cta_url, company_name (optional), business_context (optional)."""
     name = company_name or page_title
 
-    # Try LLM first with a full token budget
-    props_text = "\n".join(f"- {p}" for p in value_props)
-    prompt = f"""You are an expert web designer. Generate a complete, production-quality single-page HTML landing page.
-
-Company: {name}
-Page title: {page_title}
-Headline: {headline}
-Subheadline: {subheadline}
-Key value propositions:
-{props_text}
-CTA button text: {cta_text}
-CTA URL: {cta_url}
-{f"Business context: {business_context}" if business_context else ""}
-
-Design requirements:
-- Dark theme: near-black background (#06080f), white text, blue (#3b82f6) as primary accent color
-- Full <!DOCTYPE html> document with all CSS embedded in <style> tag — no external dependencies
-- Sticky nav with logo left, CTA button right
-- Hero: large bold headline, subheadline, primary CTA button, secondary ghost button
-- Stats bar: 3 impressive numbers relevant to this product
-- Features grid: each value prop as a card with an icon (use unicode symbols), dark card background
-- "How it works" section: 3 numbered steps
-- Footer: copyright left, 3 links right
-- Fully responsive with mobile breakpoints
-- Smooth hover transitions on buttons and cards
-- The design must look premium and startup-quality — NOT generic Bootstrap or template-looking
-
-Return ONLY the complete HTML starting with <!DOCTYPE html> — no explanation, no markdown."""
-
-    try:
-        from backend.tools._llm import generate
-        html = generate(prompt, max_tokens=32000)
-        html = re.sub(r"^```html?\s*", "", html, flags=re.IGNORECASE).rstrip("`").strip()
-        if html.startswith("<!"):
-            return html
-        logger.warning("LLM landing page didn't return valid HTML — using template")
-    except Exception as e:
-        logger.warning("LLM landing page generation failed (%s) — using template", e)
-
-    # Template fallback
     icons = ["◆", "◈", "◉", "◎", "◇", "◊"]
     steps = ["Define your goal", "Astra builds it", "You launch"]
 
