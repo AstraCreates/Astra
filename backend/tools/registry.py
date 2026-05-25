@@ -9,10 +9,10 @@ from backend.tools.github_scaffold import github_create_repo
 from backend.tools.social_content import generate_reel_package, generate_tiktok_package, generate_meta_ad
 from backend.tools.email_campaign import send_email_campaign, build_email_html
 from backend.tools.pdf_generator import generate_pdf
+from backend.tools.doc_generator import format_legal_document
 from backend.tools.composio_tools import (
     composio_gmail_send,
     composio_linkedin_post,
-    composio_twitter_tweet,
     composio_github_create_pr,
     composio_github_create_issue,
     composio_linear_create_issue,
@@ -40,13 +40,13 @@ TOOL_REGISTRY: dict[str, callable] = {
     "send_email_campaign": send_email_campaign,
     "build_email_html": build_email_html,
 
-    # Legal
+    # Legal / docs
     "generate_pdf": generate_pdf,
+    "format_legal_document": format_legal_document,
 
-    # Composio — OAuth-backed (Gmail, LinkedIn, Twitter, GitHub PR, Linear, Calendar, Notion)
+    # Composio — OAuth-backed (Gmail, LinkedIn, GitHub PR, Linear, Calendar, Notion)
     "composio_gmail_send": composio_gmail_send,
     "composio_linkedin_post": composio_linkedin_post,
-    "composio_twitter_tweet": composio_twitter_tweet,
     "composio_github_create_pr": composio_github_create_pr,
     "composio_github_create_issue": composio_github_create_issue,
     "composio_linear_create_issue": composio_linear_create_issue,

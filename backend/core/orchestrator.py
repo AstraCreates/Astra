@@ -1,0 +1,162 @@
+"""
+Hierarchical orchestrator. Receives a goal, plans task graph, dispatches specialists.
+Specialists run in dependency order; results flow back into shared context.
+"""
+import asyncio
+import logging
+import uuid
+from typing import Any
+
+from backend.core.agent import Agent, AgentContext
+from backend.core.bus import AgentBus
+
+logger = logging.getLogger(__name__)
+
+
+class Orchestrator:
+    def __init__(self, planner: Agent, specialists: dict[str, Agent]):
+        self.planner = planner
+        self.specialists = specialists
+        self.bus = AgentBus()
+        for agent in specialists.values():
+            self.bus.register(agent)
+        self.bus.register(planner)
+
+    async def _plan(self, goal: str, session_id: str) -> list[dict]:
+        """Direct LLM planning call — no agent loop, retries up to 5 times."""
+        import json, re
+        system = (
+            "You are a planning coordinator for an AI startup assistant. Output ONLY a JSON object, no prose.\n\n"
+            "SPECIALIST CAPABILITIES — assign tasks ONLY within each agent's scope:\n"
+            "  research   — web search, market analysis, competitor research, patent search. Use for: market sizing, industry data, company background.\n"
+            "  legal      — draft legal documents (NDAs, privacy policy, terms, founder agreements), generate PDFs. Use for: any legal doc creation.\n"
+            "  web        — build and deploy landing pages to Vercel, create GitHub repos, web search. Use for: websites, pages, repos.\n"
+            "  marketing  — create social content (reels, TikTok, Meta ads), email campaigns, post to LinkedIn/Gmail. Use for: content, campaigns, posts.\n"
+            "  technical  — scaffold GitHub repos, open issues/PRs, create Linear tickets, Notion pages, calendar events. Use for: dev infra, project setup, ticketing.\n"
+            "  ops        — project tracking (Linear), fundraising docs, investor email outreach, scheduling (Calendar), Notion SOPs, exec summary PDFs. Use for: coordination, fundraising, comms.\n\n"
+            "Rules:\n"
+            "- Only assign agents whose capabilities match the task. Do NOT give web agent research-only tasks — use research for that.\n"
+            "- Only include agents whose work is actually needed for this specific goal. Skip agents with nothing relevant to do.\n"
+            "- Set depends_on so research always runs first. web/marketing/legal can run after research. technical/ops run last or in parallel.\n"
+            "- Give each agent a clear, specific instruction scoped to what that agent can actually DO.\n\n"
+            "Format:\n"
+            '{\"tasks\": [\n'
+            '  {\"id\": \"t1\", \"agent\": \"<specialist>\", \"instruction\": \"...\", \"depends_on\": []},\n'
+            '  {\"id\": \"t2\", \"agent\": \"<specialist>\", \"instruction\": \"...\", \"depends_on\": [\"t1\"]}\n'
+            ']}'
+        )
+        user = f"Goal: {goal}\n\nOutput the task plan JSON now."
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+        for attempt in range(5):
+            raw = await asyncio.to_thread(self.planner._call_llm, messages)
+            # try to extract tasks array directly or from wrapper
+            for pattern in [raw, raw[raw.find("{"):raw.rfind("}")+1]]:
+                try:
+                    parsed = json.loads(pattern)
+                    tasks = parsed.get("tasks", [])
+                    if tasks and all("agent" in t for t in tasks):
+                        return tasks
+                except Exception:
+                    pass
+            # also try finding tasks: [...] directly
+            m = re.search(r'"tasks"\s*:\s*(\[.*?\])', raw, re.DOTALL)
+            if m:
+                try:
+                    tasks = json.loads(m.group(1))
+                    if tasks:
+                        return tasks
+                except Exception:
+                    pass
+            messages.append({"role": "assistant", "content": raw})
+            messages.append({"role": "user", "content": "Invalid format. Output ONLY the JSON object with a tasks array."})
+            logger.warning("Planner attempt %d unparseable", attempt + 1)
+
+        return []
+
+    async def run(self, goal: str, founder_id: str, constraints: dict = None, session_id: str = None) -> dict[str, Any]:
+        session_id = session_id or uuid.uuid4().hex[:8]
+        shared: dict[str, Any] = {"constraints": constraints or {}}
+
+        from backend.core.events import publish
+        await publish(session_id, {"type": "goal_start", "goal": goal, "founder_id": founder_id})
+
+        # Step 1: direct planning call (no agent loop — avoids infinite retry)
+        tasks = await self._plan(goal, session_id)
+
+        if not tasks:
+            logger.warning("Planner failed — running goal directly on all specialists in parallel")
+            tasks = [
+                {"id": f"t{i}", "agent": name, "instruction": goal, "depends_on": []}
+                for i, name in enumerate(self.specialists)
+            ]
+
+        from backend.core.events import publish
+
+        await publish(session_id, {
+            "type": "plan_done",
+            "tasks": [{"id": t["id"], "agent": t["agent"], "instruction": t["instruction"]} for t in tasks],
+        })
+
+        # Step 2: execute tasks in dependency order
+        completed: dict[str, dict] = {}
+
+        async def _run_task(task: dict) -> None:
+            tid = task["id"]
+            agent_name = task["agent"]
+            agent = self.specialists.get(agent_name)
+            if agent is None:
+                logger.error("No specialist named %s", agent_name)
+                completed[tid] = {"error": f"unknown agent {agent_name}"}
+                await publish(session_id, {"type": "agent_error", "agent": agent_name, "task_id": tid, "error": f"unknown agent {agent_name}"})
+                return
+
+            dep_results = {dep: completed.get(dep, {}) for dep in task.get("depends_on", [])}
+
+            # Load agent's prior Obsidian context
+            vault_context = {}
+            try:
+                from backend.tools.obsidian_logger import obsidian_read
+                vault_context = await asyncio.to_thread(obsidian_read, agent_name)
+            except Exception:
+                pass
+
+            ctx = AgentContext(
+                goal=task["instruction"],
+                founder_id=founder_id,
+                session_id=session_id,
+                shared={**shared, "prior_results": dep_results, "vault_context": vault_context},
+            )
+            await publish(session_id, {"type": "agent_start", "agent": agent_name, "task_id": tid, "instruction": task["instruction"]})
+            result = await agent.run(ctx)
+            completed[tid] = result
+            shared[f"result_{tid}"] = result
+            logger.info("Task %s (%s) done", tid, agent_name)
+
+        # Topological execution — simple wave scheduler
+        remaining = list(tasks)
+        in_flight: set[str] = set()
+
+        while remaining or in_flight:
+            ready = [
+                t for t in remaining
+                if all(dep in completed for dep in t.get("depends_on", []))
+            ]
+            for t in ready:
+                remaining.remove(t)
+                in_flight.add(t["id"])
+
+            if not ready and not in_flight:
+                logger.error("Dependency cycle or missing dep — aborting")
+                break
+
+            if not ready:
+                await asyncio.sleep(0)
+                continue
+
+            await asyncio.gather(*[_run_task(t) for t in ready])
+            for t in ready:
+                in_flight.discard(t["id"])
+
+        await publish(session_id, {"type": "goal_done", "results": completed})
+        return {"session_id": session_id, "results": completed, "shared": shared}

@@ -2,23 +2,72 @@ import uuid
 
 from fastapi import APIRouter, HTTPException
 
-from backend.api.schemas import AskRequest, ApproveRequest, GoalRequest, RejectRequest, SetupRequest
+from backend.api.schemas import AskRequest, ApproveRequest, GoalRequest, RejectRequest, SetupRequest, SaveCredentialRequest
+from backend.provisioning.credentials_store import store_credentials
+
+
+def _write_env_key(key: str, value: str) -> None:
+    env_path = ".env"
+    try:
+        try:
+            lines = open(env_path).readlines()
+        except FileNotFoundError:
+            lines = []
+        updated = False
+        for i, line in enumerate(lines):
+            if line.startswith(f"{key}="):
+                lines[i] = f"{key}={value}\n"
+                updated = True
+                break
+        if not updated:
+            lines.append(f"{key}={value}\n")
+        open(env_path, "w").writelines(lines)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Could not write %s to .env: %s", key, e)
+import asyncio
+from fastapi.responses import StreamingResponse
+
 from backend.db.client import get_supabase, update_task_status
-from backend.orchestrator.loop import orchestrator
+from backend.core.factory import get_orchestrator
+from backend.core.events import stream_events, publish
 
 router = APIRouter()
 
 
 @router.post("/goal")
 async def submit_goal(body: GoalRequest):
-    goal_id = f"g_{uuid.uuid4().hex[:8]}"
-    result = await orchestrator.run_goal(
-        goal_id=goal_id,
-        founder_id=body.founder_id,
-        raw_instruction=body.instruction,
-        constraints=body.constraints,
-    )
-    return result
+    import uuid as _uuid
+    session_id = _uuid.uuid4().hex[:12]
+    orch = get_orchestrator()
+
+    async def _run():
+        try:
+            await orch.run(
+                goal=body.instruction,
+                founder_id=body.founder_id,
+                constraints=body.constraints,
+                session_id=session_id,
+            )
+        except Exception as e:
+            await publish(session_id, {"type": "goal_error", "error": str(e)})
+
+    asyncio.create_task(_run())
+    return {"session_id": session_id, "status": "running"}
+
+
+@router.get("/stream/{session_id}")
+async def stream_goal(session_id: str):
+    async def _gen():
+        async for chunk in stream_events(session_id):
+            yield chunk
+    return StreamingResponse(_gen(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "*",
+    })
 
 
 @router.post("/approve")
@@ -35,25 +84,21 @@ async def reject_task(body: RejectRequest):
 
 @router.post("/ask")
 async def ask_agent(body: AskRequest):
-    from backend.orchestrator.loop import AGENTS
-    from backend.agents.base import AgentTask
+    from backend.core.agent import AgentContext
 
-    agent = AGENTS.get(body.target_agent)
+    orch = get_orchestrator()
+    agent = orch.specialists.get(body.target_agent)
     if agent is None:
-        raise HTTPException(status_code=404, detail=f"Agent '{body.target_agent}' not found")
+        raise HTTPException(status_code=404, detail=f"Agent '{body.target_agent}' not found. Available: {list(orch.specialists.keys())}")
 
-    task = AgentTask(
-        task_id=f"ask_{uuid.uuid4().hex[:8]}",
-        goal_id="direct_ask",
+    ctx = AgentContext(
+        goal=body.question,
         founder_id=body.founder_id,
-        agent=body.target_agent,
-        instruction=body.question,
-        context_bundle={"context": body.context or ""},
-        constraints={},
-        tools_available=[],
+        session_id=f"ask_{uuid.uuid4().hex[:8]}",
+        shared={"context": body.context or ""},
     )
-    result = await agent.run(task)
-    return {"agent": body.target_agent, "response": result.output, "reasoning": result.reasoning}
+    result = await agent.run(ctx)
+    return {"agent": body.target_agent, "response": result}
 
 
 @router.post("/setup")
@@ -72,6 +117,23 @@ async def setup_accounts(body: SetupRequest):
     return result
 
 
+@router.post("/setup/service")
+async def save_service_credential(body: SaveCredentialRequest):
+    """Save a manually entered credential (GitHub PAT, SendGrid key, Vercel token)."""
+    from backend.tools.composio_tools import _reset_toolset
+    store_credentials(body.founder_id, body.service, body.credentials)
+    if body.service == "composio" and body.credentials.get("api_key"):
+        store_credentials("__platform__", "composio", body.credentials)
+        api_key = body.credentials["api_key"]
+        # Persist to .env so it survives server restarts
+        _write_env_key("COMPOSIO_API_KEY", api_key)
+        from backend.config import settings
+        from backend.tools.composio_tools import _reset_toolset
+        settings.composio_api_key = api_key
+        _reset_toolset()
+    return {"saved": True, "service": body.service, "founder_id": body.founder_id}
+
+
 @router.get("/setup/{founder_id}")
 async def get_setup_status(founder_id: str):
     """Returns which services are connected for this founder."""
@@ -80,7 +142,7 @@ async def get_setup_status(founder_id: str):
 
 
 @router.get("/setup/composio/connect/{founder_id}")
-async def composio_connect(founder_id: str, apps: str = "github,gmail,linkedin,twitter,googlecalendar,notion,linear"):
+async def composio_connect(founder_id: str, apps: str = "github,gmail,linkedin,googlecalendar,notion,linear"):
     """
     Returns Composio OAuth URLs for the requested apps.
     Founder clicks each URL to authenticate — Composio stores tokens mapped to founder_id.

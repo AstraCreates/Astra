@@ -32,3 +32,9 @@ class SetupRequest(BaseModel):
     email: str
     password: str
     base_url: Optional[str] = "http://localhost:8000"
+
+
+class SaveCredentialRequest(BaseModel):
+    founder_id: str
+    service: str  # "github" | "sendgrid" | "vercel" | "composio"
+    credentials: dict  # e.g. {"token": "ghp_..."} or {"api_key": "SG...."}

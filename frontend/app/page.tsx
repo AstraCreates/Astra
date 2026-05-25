@@ -18,8 +18,7 @@ export default function Home() {
     setError(null);
     try {
       const result = await submitGoal(founderId, instruction);
-      const goalId = result.goal_id ?? (result as Record<string, string>).id;
-      router.push(`/goal/${goalId}`);
+      router.push(`/goal/${result.session_id}?instruction=${encodeURIComponent(instruction)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit goal");
       setLoading(false);

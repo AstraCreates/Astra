@@ -1,58 +1,64 @@
-"""Encrypted credential storage per founder in Supabase."""
+"""Encrypted credential storage per founder, stored in local .credentials/ directory."""
 import json
 import os
+from pathlib import Path
 from cryptography.fernet import Fernet
 
-from backend.db.client import get_supabase
-
 _KEY_ENV = "ASTRA_CREDS_KEY"
+_STORE_DIR = Path(".credentials")
 
 
 def _get_fernet() -> Fernet:
     key = os.environ.get(_KEY_ENV)
     if not key:
-        # Generate and persist for this process; in prod set ASTRA_CREDS_KEY in env
         key = Fernet.generate_key().decode()
         os.environ[_KEY_ENV] = key
     return Fernet(key.encode() if isinstance(key, str) else key)
 
 
+def _founder_path(founder_id: str) -> Path:
+    _STORE_DIR.mkdir(exist_ok=True)
+    safe = founder_id.replace("/", "_").replace("..", "_").replace(" ", "_")
+    return _STORE_DIR / f"{safe}.json"
+
+
 def store_credentials(founder_id: str, service: str, creds: dict) -> None:
     fernet = _get_fernet()
-    encrypted = fernet.encrypt(json.dumps(creds).encode()).decode()
-    get_supabase().table("founder_credentials").upsert({
-        "founder_id": founder_id,
-        "service": service,
-        "encrypted_creds": encrypted,
-    }, on_conflict="founder_id,service").execute()
+    path = _founder_path(founder_id)
+    data: dict = {}
+    if path.exists():
+        try:
+            data = json.loads(path.read_text())
+        except Exception:
+            pass
+    data[service] = fernet.encrypt(json.dumps(creds).encode()).decode()
+    path.write_text(json.dumps(data))
 
 
 def load_credentials(founder_id: str, service: str) -> dict | None:
-    rows = (
-        get_supabase().table("founder_credentials")
-        .select("encrypted_creds")
-        .eq("founder_id", founder_id)
-        .eq("service", service)
-        .execute()
-        .data
-    )
-    if not rows:
+    path = _founder_path(founder_id)
+    if not path.exists():
         return None
     fernet = _get_fernet()
-    return json.loads(fernet.decrypt(rows[0]["encrypted_creds"].encode()))
+    try:
+        data = json.loads(path.read_text())
+        if service not in data:
+            return None
+        return json.loads(fernet.decrypt(data[service].encode()))
+    except Exception:
+        return None
 
 
 def load_all_credentials(founder_id: str) -> dict:
-    """Returns {service: creds_dict} for all services this founder has connected."""
-    rows = (
-        get_supabase().table("founder_credentials")
-        .select("service,encrypted_creds")
-        .eq("founder_id", founder_id)
-        .execute()
-        .data
-    )
+    path = _founder_path(founder_id)
+    if not path.exists():
+        return {}
     fernet = _get_fernet()
-    return {
-        r["service"]: json.loads(fernet.decrypt(r["encrypted_creds"].encode()))
-        for r in rows
-    }
+    data = json.loads(path.read_text())
+    result = {}
+    for service, encrypted in data.items():
+        try:
+            result[service] = json.loads(fernet.decrypt(encrypted.encode()))
+        except Exception:
+            pass
+    return result

@@ -47,7 +47,7 @@ export async function submitGoal(
   founderId: string,
   instruction: string,
   constraints: Record<string, unknown> = {}
-): Promise<{ goal_id: string; status: string }> {
+): Promise<{ session_id: string; status: string }> {
   const res = await fetch(`${BASE}/goal`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -55,6 +55,10 @@ export async function submitGoal(
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
+}
+
+export function streamGoal(sessionId: string): EventSource {
+  return new EventSource(`${BASE}/stream/${sessionId}`);
 }
 
 export async function getGoalStatus(goalId: string): Promise<GoalStatus> {
@@ -99,6 +103,28 @@ export async function getSetupStatus(founderId: string): Promise<SetupStatus> {
   const res = await fetch(`${BASE}/setup/${founderId}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
+}
+
+export async function saveServiceCredential(
+  founderId: string,
+  service: string,
+  credentials: Record<string, string>
+): Promise<void> {
+  const res = await fetch(`${BASE}/setup/service`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: founderId, service, credentials }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+export async function getComposioOAuthUrls(
+  founderId: string
+): Promise<Record<string, string>> {
+  const res = await fetch(`${BASE}/setup/composio/connect/${founderId}`);
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.oauth_urls ?? {};
 }
 
 export const AGENT_LABELS: Record<string, string> = {

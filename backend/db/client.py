@@ -1,10 +1,22 @@
 import asyncio
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 from supabase import create_client, Client
 
 from backend.config import settings
+
+_FOUNDER_NS = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+
+
+def coerce_uuid(value: str) -> str:
+    """Return value unchanged if it's a valid UUID, else generate a deterministic UUID5."""
+    try:
+        uuid.UUID(value)
+        return value
+    except ValueError:
+        return str(uuid.uuid5(_FOUNDER_NS, value))
 
 _client: Optional[Client] = None
 
@@ -37,11 +49,23 @@ async def has_in_progress_tasks(goal_id: str) -> bool:
     return len(result) > 0
 
 
+async def ensure_founder(founder_id: str) -> str:
+    """Upsert a founder row. Returns the UUID used."""
+    uid = coerce_uuid(founder_id)
+    def _upsert():
+        get_supabase().table("founders").upsert(
+            {"id": uid, "email": f"{founder_id}@astra.local"},
+            on_conflict="id",
+        ).execute()
+    await asyncio.to_thread(_upsert)
+    return uid
+
+
 async def persist_goal(goal_id: str, founder_id: str, instruction: str, constraints: dict):
     def _insert():
         get_supabase().table("goals").insert({
             "id": goal_id,
-            "founder_id": founder_id,
+            "founder_id": coerce_uuid(founder_id),
             "instruction": instruction,
             "constraints": constraints,
             "status": "pending",
@@ -56,7 +80,7 @@ async def persist_task_graph(goal_id: str, founder_id: str, tasks: list[dict]):
             {
                 "id": t["task_id"],
                 "goal_id": goal_id,
-                "founder_id": founder_id,
+                "founder_id": coerce_uuid(founder_id),
                 "agent": t["agent"],
                 "instruction": t.get("instruction", ""),
                 "depends_on": t.get("depends_on", []),

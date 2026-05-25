@@ -57,7 +57,7 @@ async def provision_all(
     imap_pw = settings.test_email_imap_password or None
 
     github_fut = loop.run_in_executor(_EXECUTOR, provision_github, email, password, None, imap_pw)
-    sendgrid_fut = loop.run_in_executor(_EXECUTOR, provision_sendgrid, email, password)
+    sendgrid_fut = loop.run_in_executor(_EXECUTOR, provision_sendgrid, email, password, imap_pw)
     composio_provision_fut = loop.run_in_executor(_EXECUTOR, provision_composio, email, password)
 
     results = {}
@@ -72,7 +72,7 @@ async def provision_all(
     github_token = results.get("github", {}).get("token")
     try:
         results["vercel"] = await loop.run_in_executor(
-            _EXECUTOR, provision_vercel, email, password, github_token
+            _EXECUTOR, provision_vercel, email, password, github_token, imap_pw
         )
     except Exception as e:
         results["vercel"] = {"created": False, "error": str(e)}

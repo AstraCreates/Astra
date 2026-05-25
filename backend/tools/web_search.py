@@ -5,8 +5,9 @@ logger = logging.getLogger(__name__)
 
 
 def web_search(query: str, max_results: int = 8) -> dict:
+    """Search the web. Args: query (str), max_results (int, default 8). Returns: {query, results: [{title, url, snippet}]}."""
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=max_results))
         return {
@@ -22,8 +23,9 @@ def web_search(query: str, max_results: int = 8) -> dict:
 
 
 def news_search(query: str, max_results: int = 5) -> dict:
+    """Search recent news. Args: query (str), max_results (int, default 5). Returns: {query, results: [{title, url, snippet, date}]}."""
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         with DDGS() as ddgs:
             results = list(ddgs.news(query, max_results=max_results))
         return {

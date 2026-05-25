@@ -1,310 +1,394 @@
 "use client";
 
-import { use, useEffect, useState, useCallback } from "react";
-import {
-  getGoalStatus,
-  approveTask,
-  rejectTask,
-  GoalStatus,
-  Task,
-  AGENT_LABELS,
-  AGENT_ORDER,
-} from "@/lib/api";
+import { use, useEffect, useState, useRef } from "react";
+import { useSearchParams } from "next/navigation";
+import { streamGoal, AGENT_LABELS, AGENT_ORDER } from "@/lib/api";
 
-const STATUS_COLOR: Record<string, string> = {
-  pending: "text-zinc-500",
-  running: "text-yellow-400",
-  done: "text-green-400",
-  blocked: "text-red-400",
-  awaiting_approval: "text-violet-400",
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+interface AgentTask {
+  id: string;
+  agent: string;
+  instruction: string;
+}
+
+interface AgentState {
+  task_id: string;
+  agent: string;
+  instruction: string;
+  status: "waiting" | "running" | "done" | "error";
+  currentAction: string | null;
+  currentTool: string | null;
+  reasoning: string | null;
+  result: Record<string, unknown> | null;
+  log: LogEntry[];
+}
+
+interface LogEntry {
+  ts: number;
+  type: string;
+  text: string;
+}
+
+const AGENT_ICONS: Record<string, string> = {
+  research: "🔬",
+  web: "🌐",
+  marketing: "📢",
+  technical: "⚙️",
+  legal: "⚖️",
+  ops: "🚀",
 };
 
-const STATUS_DOT: Record<string, string> = {
-  pending: "bg-zinc-600",
-  running: "bg-yellow-400 animate-pulse",
-  done: "bg-green-400",
-  blocked: "bg-red-400",
-  awaiting_approval: "bg-violet-400 animate-pulse",
-};
+function AgentCard({ state }: { state: AgentState }) {
+  const label = AGENT_LABELS[state.agent] ?? state.agent;
+  const icon = AGENT_ICONS[state.agent] ?? "🤖";
+  const logRef = useRef<HTMLDivElement>(null);
 
-function AgentCard({ task, onApprove, onReject }: {
-  task: Task;
-  onApprove: (id: string) => void;
-  onReject: (id: string, reason: string) => void;
-}) {
-  const label = AGENT_LABELS[task.agent] ?? task.agent;
-  const [rejecting, setRejecting] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [state.log.length]);
+
+  const borderColor =
+    state.status === "done" ? "border-green-800" :
+    state.status === "running" ? "border-violet-600" :
+    state.status === "error" ? "border-red-800" :
+    "border-zinc-800";
+
+  const dotColor =
+    state.status === "done" ? "bg-green-400" :
+    state.status === "running" ? "bg-violet-400 animate-pulse" :
+    state.status === "error" ? "bg-red-400" :
+    "bg-zinc-600";
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 flex flex-col gap-3">
+    <div className={`rounded-xl border ${borderColor} bg-zinc-900 p-5 flex flex-col gap-3 transition-all duration-300`}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${STATUS_DOT[task.status] ?? "bg-zinc-500"}`} />
+          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+          <span className="text-lg">{icon}</span>
           <h3 className="font-semibold text-zinc-200">{label}</h3>
         </div>
-        <span className={`text-xs font-mono uppercase ${STATUS_COLOR[task.status] ?? "text-zinc-400"}`}>
-          {task.status.replace("_", " ")}
+        <span className={`text-xs font-mono uppercase px-2 py-0.5 rounded ${
+          state.status === "done" ? "text-green-400 bg-green-950/40" :
+          state.status === "running" ? "text-violet-300 bg-violet-950/40" :
+          state.status === "error" ? "text-red-400 bg-red-950/40" :
+          "text-zinc-500 bg-zinc-800"
+        }`}>
+          {state.status}
         </span>
       </div>
 
-      {task.status === "running" && (
-        <p className="text-zinc-500 text-sm animate-pulse">Working…</p>
+      {state.instruction && (
+        <p className="text-zinc-500 text-xs leading-relaxed line-clamp-2">{state.instruction}</p>
       )}
 
-      {task.status === "done" && task.output && (
-        <OutputView agent={task.agent} output={task.output} />
+      {state.status === "running" && state.currentAction && (
+        <div className="flex items-center gap-2 text-sm text-violet-300 bg-violet-950/20 rounded-lg px-3 py-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse flex-shrink-0" />
+          <span className="truncate">
+            {state.currentTool ? `Using ${state.currentTool}` : state.currentAction}
+            {state.reasoning ? ` — ${state.reasoning}` : ""}
+          </span>
+        </div>
       )}
 
-      {task.status === "blocked" && (
-        <p className="text-red-400 text-sm">
-          {task.blocked_reason ?? "Blocked — manual intervention required"}
-        </p>
-      )}
-
-      {task.status === "awaiting_approval" && (
-        <div className="flex flex-col gap-2">
-          <p className="text-violet-300 text-sm">
-            {(task.output?.approval_prompt as string | undefined) ?? "Approval required before proceeding"}
-          </p>
-          {!rejecting ? (
-            <div className="flex gap-2">
-              <button
-                onClick={() => onApprove(task.id)}
-                className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500"
-              >
-                Approve
-              </button>
-              <button
-                onClick={() => setRejecting(true)}
-                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500"
-              >
-                Reject
-              </button>
+      {state.log.length > 0 && (
+        <div ref={logRef} className="bg-zinc-950 rounded-lg p-3 max-h-36 overflow-y-auto flex flex-col gap-1">
+          {state.log.map((entry, i) => (
+            <div key={i} className="flex items-start gap-2 text-xs">
+              <span className="text-zinc-600 font-mono flex-shrink-0">
+                {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              </span>
+              <span className={
+                entry.type === "error" ? "text-red-400" :
+                entry.type === "result" ? "text-green-400" :
+                entry.type === "browser" ? "text-blue-400" :
+                "text-zinc-400"
+              }>
+                {entry.text}
+              </span>
             </div>
-          ) : (
-            <div className="flex gap-2">
-              <input
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                placeholder="Reason for rejection…"
-                className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none"
-              />
-              <button
-                onClick={() => { onReject(task.id, rejectReason); setRejecting(false); }}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500"
-              >
-                Send
-              </button>
-            </div>
-          )}
+          ))}
+        </div>
+      )}
+
+      {state.status === "done" && state.result && (
+        <div className="border-t border-zinc-800 pt-3">
+          <ResultView agent={state.agent} result={state.result} />
         </div>
       )}
     </div>
   );
 }
 
-function OutputView({ agent, output }: { agent: string; output: Record<string, unknown> }) {
+function formatValue(v: unknown, maxLen = 160): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "string") return v.slice(0, maxLen);
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (Array.isArray(v)) {
+    const items = v.map((item) =>
+      typeof item === "object" && item !== null
+        ? (item as Record<string, unknown>).name ?? (item as Record<string, unknown>).title ?? (item as Record<string, unknown>).text ?? JSON.stringify(item).slice(0, 60)
+        : String(item)
+    );
+    return items.slice(0, 3).join(", ") + (v.length > 3 ? ` +${v.length - 3} more` : "");
+  }
+  return JSON.stringify(v).slice(0, maxLen);
+}
+
+function ResultView({ agent, result }: { agent: string; result: Record<string, unknown> }) {
+  const entries = Object.entries(result).filter(([, v]) => v !== null && v !== undefined && v !== "");
+
   if (agent === "research") {
     return (
       <div className="flex flex-col gap-2 text-sm">
-        {!!output.report_title && (
-          <p className="font-semibold text-zinc-200">{String(output.report_title)}</p>
-        )}
-        <div className="grid grid-cols-3 gap-2">
-          {["tam_usd", "sam_usd", "som_usd"].map((k) =>
-            output[k] ? (
-              <div key={k} className="rounded-lg bg-zinc-800 p-2 text-center">
-                <p className="text-xs text-zinc-500 uppercase">{k.replace("_usd", "")}</p>
-                <p className="text-green-400 font-mono text-sm">${Number(output[k]).toLocaleString()}</p>
-              </div>
-            ) : null
-          )}
-        </div>
-        {!!output.key_insights && (
-          <ul className="list-disc list-inside text-zinc-400 space-y-1">
-            {(output.key_insights as string[]).slice(0, 4).map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ul>
-        )}
+        {entries.slice(0, 5).map(([k, v]) => (
+          <div key={k}>
+            <span className="text-zinc-500 text-xs uppercase">{k.replace(/_/g, " ")}: </span>
+            <span className="text-zinc-300">{formatValue(v)}</span>
+          </div>
+        ))}
       </div>
     );
   }
 
-  if (agent === "web") {
+  if (agent === "web" && result.site_url) {
+    return (
+      <a href={String(result.site_url)} target="_blank" rel="noopener noreferrer"
+        className="text-violet-400 hover:underline text-sm font-mono">
+        {String(result.site_url)} ↗
+      </a>
+    );
+  }
+
+  if (agent === "legal") {
     return (
       <div className="flex flex-col gap-2 text-sm">
-        {!!(output.deployed && output.site_url) && (
-          <a
-            href={String(output.site_url)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-violet-400 hover:underline font-mono"
-          >
-            {String(output.site_url)} ↗
-          </a>
-        )}
-        {!output.deployed && (
-          <p className="text-zinc-400">Landing page generated (deploy Vercel token required for live URL)</p>
-        )}
+        {entries.filter(([k]) => ["generated", "path", "filename", "doc_type", "error"].includes(k)).map(([k, v]) => (
+          <div key={k}>
+            <span className="text-zinc-500 text-xs uppercase">{k.replace(/_/g, " ")}: </span>
+            <span className={k === "error" ? "text-red-400" : "text-zinc-300"}>{formatValue(v)}</span>
+          </div>
+        ))}
       </div>
     );
   }
 
   if (agent === "marketing") {
     return (
-      <div className="flex flex-col gap-2 text-sm text-zinc-400">
-        {!!output.instagram_reel && <p>✓ Instagram Reel package ready</p>}
-        {!!output.tiktok && <p>✓ TikTok script ready</p>}
-        {!!output.meta_ad && <p>✓ Meta Ad spec ready</p>}
-        {!!output.campaigns_launched && <p className="text-green-400">✓ Campaigns launched</p>}
-      </div>
-    );
-  }
-
-  if (agent === "technical") {
-    return (
       <div className="flex flex-col gap-2 text-sm">
-        {!!output.github_repo && (
-          <a
-            href={String(output.github_repo)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-violet-400 hover:underline font-mono"
-          >
-            {String(output.github_repo)} ↗
-          </a>
-        )}
-        {!!output.tech_decisions && (
-          <p className="text-zinc-400">{String(output.tech_decisions)}</p>
-        )}
-      </div>
-    );
-  }
-
-  if (agent === "legal") {
-    return (
-      <div className="flex flex-col gap-2 text-sm text-zinc-400">
-        {!!output.documents_drafted && (
-          <p>✓ {String(output.documents_drafted)} document(s) drafted</p>
-        )}
-        {!!output.jurisdiction && <p>Jurisdiction: {String(output.jurisdiction)}</p>}
-      </div>
-    );
-  }
-
-  if (agent === "ops") {
-    return (
-      <div className="flex flex-col gap-2 text-sm text-zinc-400">
-        {!!output.investor_opportunities && (
-          <p>✓ {(output.investor_opportunities as unknown[]).length} investor opportunities found</p>
-        )}
-        {!!output.accelerators && (
-          <p>✓ {(output.accelerators as unknown[]).length} accelerators identified</p>
-        )}
+        {entries.filter(([k]) => !["script", "caption", "visual_notes"].includes(k)).slice(0, 4).map(([k, v]) => (
+          <div key={k}>
+            <span className="text-zinc-500 text-xs uppercase">{k.replace(/_/g, " ")}: </span>
+            <span className="text-zinc-300">{formatValue(v)}</span>
+          </div>
+        ))}
       </div>
     );
   }
 
   return (
-    <pre className="text-xs text-zinc-400 overflow-auto max-h-40 bg-zinc-950 rounded p-2">
-      {JSON.stringify(output, null, 2)}
+    <pre className="text-xs text-zinc-400 overflow-auto max-h-32 whitespace-pre-wrap">
+      {JSON.stringify(result, null, 2)}
     </pre>
   );
 }
 
 export default function GoalPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  const [data, setData] = useState<GoalStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { id: sessionId } = use(params);
+  const searchParams = useSearchParams();
+  const instruction = searchParams.get("instruction") ?? "";
 
-  const poll = useCallback(async () => {
-    try {
-      const result = await getGoalStatus(id);
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load status");
-    }
-  }, [id]);
+  const [agents, setAgents] = useState<Record<string, AgentState>>({});
+  const [planTasks, setPlanTasks] = useState<AgentTask[]>([]);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [connected, setConnected] = useState(false);
+  const everConnected = useRef(false);
 
   useEffect(() => {
-    poll();
-    const iv = setInterval(() => {
-      if (data?.goal.status === "running" || !data) {
-        poll();
+    if (!sessionId || sessionId === "undefined") return;
+    const es = streamGoal(sessionId);
+    es.onopen = () => { setConnected(true); everConnected.current = true; };
+    es.onerror = () => {
+      setConnected(false);
+      if (everConnected.current) {
+        setError("Connection lost. The goal may still be running — refresh to reconnect.");
+      } else {
+        setError("Could not connect to backend. Is the server running?");
       }
-    }, 3000);
-    return () => clearInterval(iv);
-  }, [poll, data?.goal.status]);
+    };
 
-  async function handleApprove(taskId: string) {
-    await approveTask(taskId);
-    poll();
+    es.onmessage = (e) => {
+      const event = JSON.parse(e.data);
+      if (event.type === "ping") return;
+
+      setAgents((prev) => {
+        const next = { ...prev };
+
+        if (event.type === "goal_start") {
+        return next; // just confirms connection is alive
+      }
+
+      if (event.type === "plan_done") {
+          setPlanTasks(event.tasks);
+          for (const t of event.tasks) {
+            next[t.agent] = {
+              task_id: t.id,
+              agent: t.agent,
+              instruction: t.instruction,
+              status: "waiting",
+              currentAction: null,
+              currentTool: null,
+              reasoning: null,
+              result: null,
+              log: [],
+            };
+          }
+          return next;
+        }
+
+        const agent = event.agent;
+        if (!agent) return next;
+
+        const cur = next[agent] ?? {
+          task_id: "",
+          agent,
+          instruction: "",
+          status: "waiting" as const,
+          currentAction: null,
+          currentTool: null,
+          reasoning: null,
+          result: null,
+          log: [],
+        };
+
+        const addLog = (type: string, text: string): LogEntry[] =>
+          [...cur.log, { ts: Date.now(), type, text }];
+
+        if (event.type === "agent_start") {
+          next[agent] = { ...cur, status: "running", instruction: event.instruction ?? cur.instruction, task_id: event.task_id ?? cur.task_id, log: addLog("info", `Started: ${event.instruction ?? ""}`) };
+        } else if (event.type === "agent_action") {
+          const text = event.action === "tool"
+            ? `Tool: ${event.tool}(${JSON.stringify(event.args ?? {}).slice(0, 80)})`
+            : event.action === "computer_use"
+            ? `Browser: ${event.detail?.action ?? ""} ${event.detail?.url ?? event.detail?.selector ?? ""}`
+            : event.action === "delegate"
+            ? `Delegate → ${event.target}: ${(event.task ?? "").slice(0, 60)}`
+            : event.action;
+          next[agent] = { ...cur, currentAction: event.action, currentTool: event.tool ?? null, reasoning: event.reasoning ?? null, log: addLog("action", text) };
+        } else if (event.type === "agent_action_result") {
+          const ok = !event.result?.error;
+          const text = event.action === "computer_use"
+            ? `Browser → ${event.url ?? "?"}`
+            : ok
+            ? `✓ ${event.tool ?? "result"} OK`
+            : `✗ ${event.tool ?? "error"}: ${event.result?.error ?? "failed"}`;
+          next[agent] = { ...cur, log: addLog(ok ? "result" : "error", text) };
+        } else if (event.type === "agent_thinking") {
+          next[agent] = { ...cur, log: addLog("info", `Thinking… (attempt ${event.iteration})`) };
+        } else if (event.type === "agent_done") {
+          next[agent] = { ...cur, status: "done", currentAction: null, currentTool: null, result: event.result ?? {}, log: addLog("result", "Done") };
+        } else if (event.type === "agent_error") {
+          next[agent] = { ...cur, status: "error", log: addLog("error", event.error ?? "Error") };
+        } else if (event.type === "goal_done") {
+          setDone(true);
+        } else if (event.type === "goal_error") {
+          setError(event.error ?? "Unknown error");
+        }
+
+        return next;
+      });
+    };
+
+    return () => es.close();
+  }, [sessionId]);
+
+  const agentList = planTasks.length > 0
+    ? planTasks.map((t) => t.agent)
+    : AGENT_ORDER;
+
+  const doneCount = Object.values(agents).filter((a) => a.status === "done").length;
+  const total = agentList.length;
+
+  // Fill in placeholder states for agents not yet seen from SSE
+  const visibleAgents: Record<string, AgentState> = { ...agents };
+  for (const a of agentList) {
+    if (!visibleAgents[a]) {
+      visibleAgents[a] = {
+        task_id: "",
+        agent: a,
+        instruction: "",
+        status: "waiting",
+        currentAction: null,
+        currentTool: null,
+        reasoning: null,
+        result: null,
+        log: [],
+      };
+    }
   }
-
-  async function handleReject(taskId: string, reason: string) {
-    await rejectTask(taskId, reason);
-    poll();
-  }
-
-  if (error) {
-    return <p className="text-red-400">{error}</p>;
-  }
-
-  if (!data) {
-    return (
-      <div className="flex items-center gap-3 text-zinc-400">
-        <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
-        Loading goal…
-      </div>
-    );
-  }
-
-  const tasksByAgent = Object.fromEntries(data.tasks.map((t) => [t.agent, t]));
-  const doneCount = data.tasks.filter((t) => t.status === "done").length;
-  const total = data.tasks.length;
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold text-white truncate max-w-2xl">
-            {data.goal.raw_instruction}
+            {instruction || "Running goal…"}
           </h1>
-          <span className={`text-sm font-mono px-2 py-0.5 rounded border ${
-            data.goal.status === "done"
-              ? "text-green-400 border-green-800 bg-green-950/30"
-              : "text-yellow-400 border-yellow-800 bg-yellow-950/30"
+          <span className={`text-xs font-mono px-2 py-0.5 rounded border flex-shrink-0 ${
+            done ? "text-green-400 border-green-800 bg-green-950/30" :
+            error ? "text-red-400 border-red-800 bg-red-950/30" :
+            "text-yellow-400 border-yellow-800 bg-yellow-950/30"
           }`}>
-            {data.goal.status}
+            {done ? "done" : error ? "error" : connected ? "running" : "connecting…"}
           </span>
         </div>
-        <p className="text-zinc-500 text-sm font-mono">{id}</p>
-        <div className="flex items-center gap-2 mt-1">
-          <div className="flex-1 h-1.5 rounded-full bg-zinc-800">
-            <div
-              className="h-1.5 rounded-full bg-violet-500 transition-all duration-500"
-              style={{ width: total > 0 ? `${(doneCount / total) * 100}%` : "0%" }}
-            />
+
+        <p className="text-zinc-600 text-xs font-mono">{sessionId}</p>
+
+        {total > 0 && (
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-1.5 rounded-full bg-zinc-800">
+              <div
+                className="h-1.5 rounded-full bg-violet-500 transition-all duration-700"
+                style={{ width: `${(doneCount / total) * 100}%` }}
+              />
+            </div>
+            <span className="text-zinc-400 text-sm flex-shrink-0">{doneCount}/{total} agents</span>
           </div>
-          <span className="text-zinc-400 text-sm">{doneCount}/{total}</span>
-        </div>
+        )}
+
+        {!connected && !error && (
+          <div className="flex items-center gap-2 text-zinc-500 text-sm">
+            <span className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-pulse" />
+            Connecting to agent stream…
+          </div>
+        )}
+
+        {error && (
+          <p className="text-red-400 text-sm bg-red-950/20 border border-red-800 rounded-lg px-4 py-2">{error}</p>
+        )}
       </div>
 
+      {total === 0 && connected && !error && (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-3 text-zinc-400 text-sm">
+            <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+            Planner is breaking your goal into tasks… (takes ~30-60s for local model)
+          </div>
+          <div className="h-1 w-full rounded-full bg-zinc-800 overflow-hidden">
+            <div className="h-1 bg-violet-500/50 rounded-full animate-pulse w-full" />
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
-        {AGENT_ORDER.map((agent) => {
-          const task = tasksByAgent[agent];
-          if (!task) return null;
-          return (
-            <AgentCard
-              key={agent}
-              task={task}
-              onApprove={handleApprove}
-              onReject={handleReject}
-            />
-          );
-        })}
+        {agentList.map((agent) => (
+          <AgentCard key={agent} state={visibleAgents[agent]} />
+        ))}
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import re
 import requests
 
 from backend.config import settings
@@ -10,10 +11,7 @@ _VERCEL_API = "https://api.vercel.com"
 
 
 def vercel_deploy(project_slug: str, html: str, css: str = "", js: str = "") -> dict:
-    """
-    Deploy a landing page to Vercel.
-    Requires VERCEL_TOKEN in environment. Falls back to saving files locally.
-    """
+    """Deploy HTML to Vercel. Args: project_slug (url-safe name), html (full HTML string), css (optional), js (optional). Returns: {deployed, url} or {deployed: false, local_path}."""
     token = getattr(settings, "vercel_token", None)
 
     if not token:
@@ -79,10 +77,52 @@ def generate_landing_page_html(
     cta_text: str,
     cta_url: str,
     company_name: str = "",
+    business_context: str = "",
 ) -> str:
-    props_html = "\n".join(
-        f"<li>{prop}</li>" for prop in value_props
-    )
+    """Generate a complete, unique landing page HTML using LLM. Args: page_title, headline, subheadline, value_props (list of strings), cta_text, cta_url, company_name (optional), business_context (optional, describe the business/product in detail for richer output)."""
+    name = company_name or page_title
+    props_text = "\n".join(f"- {p}" for p in value_props)
+    prompt = f"""You are an expert web designer. Generate a complete, production-quality single-page HTML landing page.
+
+Company: {name}
+Page title: {page_title}
+Headline: {headline}
+Subheadline: {subheadline}
+Key value propositions:
+{props_text}
+CTA button text: {cta_text}
+CTA URL: {cta_url}
+{f"Business context: {business_context}" if business_context else ""}
+
+Requirements:
+- Full <!DOCTYPE html> document with embedded CSS (no external dependencies)
+- Modern, professional design with a unique color scheme that fits the brand
+- Hero section with the headline and CTA button
+- Features/value props section with icons (use unicode symbols or simple CSS shapes)
+- A "How it works" section with 3 numbered steps
+- Social proof / testimonial section (invent 2-3 realistic testimonials)
+- A pricing teaser section or FAQ section
+- Footer with nav links
+- Fully responsive (mobile-first CSS)
+- Smooth scroll, hover effects, subtle animations
+- The design should feel distinct and tailored to this specific business, not generic
+
+Return ONLY the complete HTML — no explanation, no markdown fences, no comments outside the HTML."""
+
+    try:
+        from backend.tools._llm import generate
+        html = generate(prompt, max_tokens=4000)
+        # Strip any accidental markdown fences
+        html = re.sub(r"^```html?\s*", "", html, flags=re.IGNORECASE).rstrip("`").strip()
+        if html.startswith("<!"):
+            return html
+        # Fallback if LLM didn't return valid HTML
+        logger.warning("LLM landing page output didn't start with <!DOCTYPE — falling back to template")
+    except Exception as e:
+        logger.warning("LLM landing page generation failed (%s) — using template", e)
+
+    # Template fallback
+    props_html = "\n".join(f"<li>{prop}</li>" for prop in value_props)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -106,7 +146,7 @@ def generate_landing_page_html(
 </head>
 <body>
   <header>
-    <span class="logo">{company_name or page_title}</span>
+    <span class="logo">{name}</span>
     <a href="{cta_url}" class="cta">{cta_text}</a>
   </header>
   <section class="hero">
@@ -117,6 +157,6 @@ def generate_landing_page_html(
   <ul class="props">
     {props_html}
   </ul>
-  <footer>&copy; 2025 {company_name or page_title}. Built with Astra.</footer>
+  <footer>&copy; 2025 {name}. Built with Astra.</footer>
 </body>
 </html>"""

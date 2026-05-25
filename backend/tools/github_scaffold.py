@@ -16,8 +16,7 @@ def github_create_repo(
     mvp_features: list[dict],
     private: bool = False,
 ) -> dict:
-    """
-    Create a GitHub repo with scaffolded README, basic file structure.
+    """Create GitHub repo. Args: repo_name (str, kebab-case), description (str), stack (dict e.g. {"language":"Python","framework":"FastAPI"}), mvp_features (list of dicts e.g. [{"name":"Auth","description":"..."}]), private (bool). Returns: {repo_url, scaffolded}.
     Requires GITHUB_TOKEN. Falls back to returning scaffold content only.
     """
     token = getattr(settings, "github_token", None)

@@ -1,117 +1,63 @@
 import json
 import pytest
-from unittest.mock import MagicMock, AsyncMock
-from backend.agents.base import AstraAgent, AgentTask, AgentResult
+from unittest.mock import MagicMock, AsyncMock, patch
+from backend.core.agent import Agent, AgentContext
 
 
-@pytest.fixture
-def agent(mocker):
-    mocker.patch("backend.agents.base.vector_store")
-    mocker.patch("backend.agents.base.openai")
-    return AstraAgent(
-        agent_id="legal",
-        system_prompt="You are the Legal Agent.",
-        model="gemma4",
-        tools=["doc_generator"],
-        memory_namespaces=["legal", "shared"],
-    )
+def _make_agent(mocker, llm_response: str = None) -> Agent:
+    agent = Agent(name="legal", role="legal specialist. Draft legal documents.", tools={})
+    if llm_response is not None:
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=MagicMock(content=llm_response))]
+        )
+        agent._client = mock_client
+    return agent
 
 
-def test_agent_builds_prompt_includes_instruction(agent):
-    task = AgentTask(
-        task_id="t1", goal_id="g1", founder_id="f1",
-        agent="legal", instruction="Draft an NDA",
-        context_bundle={"company_name": "AcmeCo"},
-        constraints={}, tools_available=["doc_generator"],
-    )
-    prompt = agent._build_prompt(task, memory_docs=[])
-    assert "Draft an NDA" in prompt
-    assert "AcmeCo" in prompt
+def _ctx(**kwargs) -> AgentContext:
+    defaults = dict(goal="Draft NDA", founder_id="f1", session_id="s1", shared={})
+    defaults.update(kwargs)
+    return AgentContext(**defaults)
+
+
+def test_agent_has_correct_name():
+    agent = Agent(name="legal", role="legal", tools={})
+    assert agent.name == "legal"
+
+
+def test_agent_stores_tools():
+    tools = {"generate_pdf": lambda: None}
+    agent = Agent(name="legal", role="legal", tools=tools)
+    assert "generate_pdf" in agent.tools
 
 
 @pytest.mark.asyncio
-async def test_agent_run_done_returns_agent_result(mocker):
-    mocker.patch("backend.agents.base.vector_store.retrieve", new=AsyncMock(return_value=[]))
-
-    mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.choices[0].message.content = json.dumps({
-        "status": "done",
-        "output": {"document": "Agreement text here"},
-        "confidence": 0.95,
-        "reasoning": "Generated founder agreement",
+async def test_agent_run_calls_llm_and_returns_result(mocker):
+    done_json = json.dumps({
+        "tool": "done",
+        "args": {"summary": "NDA drafted", "output": {"document": "Agreement text"}},
     })
-    mock_client.chat.completions.create.return_value = mock_response
-    mocker.patch("backend.agents.base.openai.OpenAI", return_value=mock_client)
-
-    agent = AstraAgent(
-        agent_id="legal",
-        system_prompt="You are the Legal Agent.",
-        model="gemma4",
-        tools=["doc_generator"],
-        memory_namespaces=["legal", "shared"],
-    )
-
-    task = AgentTask(
-        task_id="t1", goal_id="g1", founder_id="f1",
-        agent="legal", instruction="Draft NDA",
-        context_bundle={}, constraints={}, tools_available=[],
-    )
-    result = await agent.run(task)
-    assert isinstance(result, AgentResult)
-    assert result.status == "done"
-    assert "document" in result.output
+    agent = _make_agent(mocker, llm_response=done_json)
+    mocker.patch("backend.core.events.publish", new=AsyncMock())
+    result = await agent.run(_ctx())
+    assert isinstance(result, dict)
 
 
 @pytest.mark.asyncio
-async def test_agent_run_approval_required_returns_approval_result(mocker):
-    mocker.patch("backend.agents.base.vector_store.retrieve", new=AsyncMock(return_value=[]))
+async def test_agent_run_with_tool_call(mocker):
+    tool_call = json.dumps({"tool": "generate_pdf", "args": {"title": "NDA", "sections": []}})
+    done_call = json.dumps({"tool": "done", "args": {"summary": "done", "output": {}}})
 
-    mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.choices[0].message.content = json.dumps({
-        "status": "approval_required",
-        "output": {},
-        "confidence": 0.99,
-        "reasoning": "About to charge $500",
-        "approval_action": "File Delaware LLC — $500 charge",
-        "approval_consequence": "Irreversible. Company legally formed.",
-    })
-    mock_client.chat.completions.create.return_value = mock_response
-    mocker.patch("backend.agents.base.openai.OpenAI", return_value=mock_client)
+    call_count = 0
 
-    agent = AstraAgent(
-        agent_id="legal", system_prompt="Legal.", model="gemma4",
-        tools=[], memory_namespaces=["legal"],
-    )
-    task = AgentTask(
-        task_id="t2", goal_id="g1", founder_id="f1",
-        agent="legal", instruction="File LLC",
-        context_bundle={}, constraints={}, tools_available=[],
-    )
-    result = await agent.run(task)
-    assert result.status == "approval_required"
-    assert result.approval_action is not None
+    def fake_llm(messages):
+        nonlocal call_count
+        call_count += 1
+        return tool_call if call_count == 1 else done_call
 
-
-@pytest.mark.asyncio
-async def test_agent_run_invalid_json_returns_blocked(mocker):
-    mocker.patch("backend.agents.base.vector_store.retrieve", new=AsyncMock(return_value=[]))
-
-    mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.choices[0].message.content = "not valid json at all"
-    mock_client.chat.completions.create.return_value = mock_response
-    mocker.patch("backend.agents.base.openai.OpenAI", return_value=mock_client)
-
-    agent = AstraAgent(
-        agent_id="legal", system_prompt="Legal.", model="gemma4",
-        tools=[], memory_namespaces=["legal"],
-    )
-    task = AgentTask(
-        task_id="t3", goal_id="g1", founder_id="f1",
-        agent="legal", instruction="Do something",
-        context_bundle={}, constraints={}, tools_available=[],
-    )
-    result = await agent.run(task)
-    assert result.status == "blocked"
+    agent = Agent(name="legal", role="legal", tools={"generate_pdf": lambda title, sections: "pdf_path"})
+    agent._call_llm = fake_llm
+    mocker.patch("backend.core.events.publish", new=AsyncMock())
+    result = await agent.run(_ctx())
+    assert call_count >= 1

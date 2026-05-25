@@ -76,18 +76,39 @@ def provision_github(email: str, password: str, username: str = None, imap_passw
                 )
                 if needs_verify:
                     if imap_password:
-                        from backend.testing.email_reader import wait_for_verification_url
-                        verify_url = wait_for_verification_url(email, imap_password, "github", timeout=120)
-                        if verify_url:
-                            page.goto(verify_url, timeout=30000)
-                            page.wait_for_timeout(3000)
+                        from backend.testing.email_reader import (
+                            wait_for_verification_url,
+                            wait_for_verification_code,
+                        )
+                        # GitHub may show an OTP input field (code) or a link in email
+                        otp_input = page.locator("input[autocomplete='one-time-code'], input[name='otp'], input[maxlength='6']").first
+                        if otp_input.count() > 0:
+                            # OTP code flow
+                            code = wait_for_verification_code(email, imap_password, "github", timeout=300)
+                            if code:
+                                otp_input.fill(code)
+                                page.keyboard.press("Enter")
+                                page.wait_for_timeout(3000)
+                            else:
+                                browser.close()
+                                return {
+                                    "token": None, "username": username, "created": False,
+                                    "needs_verification": True,
+                                    "note": "GitHub OTP code not received within 5 minutes.",
+                                }
                         else:
-                            browser.close()
-                            return {
-                                "token": None, "username": username, "created": False,
-                                "needs_verification": True,
-                                "note": "Verification email not received within 2 minutes.",
-                            }
+                            # Link-in-email flow
+                            verify_url = wait_for_verification_url(email, imap_password, "github", timeout=300)
+                            if verify_url:
+                                page.goto(verify_url, timeout=30000)
+                                page.wait_for_timeout(3000)
+                            else:
+                                browser.close()
+                                return {
+                                    "token": None, "username": username, "created": False,
+                                    "needs_verification": True,
+                                    "note": "Verification email not received within 5 minutes.",
+                                }
                     else:
                         browser.close()
                         return {
@@ -164,7 +185,7 @@ def provision_github(email: str, password: str, username: str = None, imap_passw
             return {"token": None, "created": False, "error": str(e)}
 
 
-def provision_vercel(email: str, password: str, github_token: str = None) -> dict:
+def provision_vercel(email: str, password: str, github_token: str = None, imap_password: str = None) -> dict:
     """
     Sign into Vercel (via GitHub OAuth or email) and extract API token.
     """
@@ -198,14 +219,26 @@ def provision_vercel(email: str, password: str, github_token: str = None) -> dic
                 page.fill("input[type=email]", email)
                 page.click("button[type=submit]")
                 page.wait_for_timeout(2000)
-                # Vercel sends magic link — can't auto-complete without email access
-                browser.close()
-                return {
-                    "token": None,
-                    "created": False,
-                    "needs_email_link": True,
-                    "note": "Vercel sent a magic link to %s. Click it then reconnect." % email,
-                }
+                if imap_password:
+                    from backend.testing.email_reader import wait_for_verification_url
+                    magic_url = wait_for_verification_url(email, imap_password, "vercel", timeout=300)
+                    if magic_url:
+                        page.goto(magic_url, timeout=30000)
+                        page.wait_for_timeout(4000)
+                    else:
+                        browser.close()
+                        return {
+                            "token": None, "created": False, "needs_email_link": True,
+                            "note": "Vercel magic link not received within 5 minutes.",
+                        }
+                else:
+                    browser.close()
+                    return {
+                        "token": None,
+                        "created": False,
+                        "needs_email_link": True,
+                        "note": "Vercel sent a magic link to %s. Click it then reconnect." % email,
+                    }
 
             # Extract token from account settings
             page.goto("https://vercel.com/account/tokens", timeout=30000)
@@ -245,7 +278,7 @@ def provision_vercel(email: str, password: str, github_token: str = None) -> dic
             return {"token": None, "created": False, "error": str(e)}
 
 
-def provision_sendgrid(email: str, password: str) -> dict:
+def provision_sendgrid(email: str, password: str, imap_password: str = None) -> dict:
     """
     Create SendGrid account and extract API key.
     """
@@ -270,14 +303,33 @@ def provision_sendgrid(email: str, password: str) -> dict:
             page.wait_for_timeout(3000)
 
             if "app.sendgrid.com" not in page.url:
-                # May need email verification
-                browser.close()
-                return {
-                    "api_key": None,
-                    "created": False,
-                    "needs_verification": True,
-                    "note": "SendGrid sent a verification email to %s. Verify then reconnect." % email,
-                }
+                if imap_password:
+                    from backend.testing.email_reader import wait_for_verification_url
+                    verify_url = wait_for_verification_url(email, imap_password, "sendgrid", timeout=300)
+                    if verify_url:
+                        page.goto(verify_url, timeout=30000)
+                        page.wait_for_timeout(4000)
+                        # If still not on dashboard, bail
+                        if "app.sendgrid.com" not in page.url:
+                            browser.close()
+                            return {
+                                "api_key": None, "created": False, "needs_verification": True,
+                                "note": "SendGrid verification link did not redirect to dashboard.",
+                            }
+                    else:
+                        browser.close()
+                        return {
+                            "api_key": None, "created": False, "needs_verification": True,
+                            "note": "SendGrid verification email not received within 5 minutes.",
+                        }
+                else:
+                    browser.close()
+                    return {
+                        "api_key": None,
+                        "created": False,
+                        "needs_verification": True,
+                        "note": "SendGrid sent a verification email to %s. Verify then reconnect." % email,
+                    }
 
             # Create API key
             page.goto("https://app.sendgrid.com/settings/api_keys", timeout=30000)

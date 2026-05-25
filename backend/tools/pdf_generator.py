@@ -4,16 +4,74 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
+_UNICODE_MAP = {
+    "—": "--",   # em dash
+    "–": "-",    # en dash
+    "‘": "'",    # left single quote
+    "’": "'",    # right single quote
+    "“": '"',    # left double quote
+    "”": '"',    # right double quote
+    "…": "...",  # ellipsis
+    "·": "*",    # middle dot
+    "•": "*",    # bullet
+    "®": "(R)",
+    "©": "(C)",
+    "é": "e",
+    "è": "e",
+    "ê": "e",
+    "à": "a",
+    "â": "a",
+    "ô": "o",
+    "û": "u",
+    "ü": "u",
+    "ç": "c",
+}
 
-def generate_pdf(title: str, sections: list[dict], output_dir: str = "/tmp/astra_docs") -> dict:
-    """
-    Generate a PDF document from sections.
-    sections: [{"heading": str, "body": str}]
-    Returns local path. In production, upload to Supabase Storage.
-    """
+
+def _safe(text: str) -> str:
+    """Replace non-Latin-1 chars so fpdf Helvetica doesn't crash."""
+    for char, replacement in _UNICODE_MAP.items():
+        text = text.replace(char, replacement)
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
+
+def _expand_section(heading: str, body: str, doc_title: str) -> str:
+    """If body is thin (< 300 chars), call LLM to write a proper section."""
+    if len(body.strip()) >= 300:
+        return body
+    prompt = (
+        f"You are writing a section of a professional business document titled '{doc_title}'.\n"
+        f"Section heading: {heading}\n"
+        f"Brief notes: {body}\n\n"
+        "Expand this into 3-5 detailed paragraphs of professional, substantive content. "
+        "Include specific data, examples, or analysis relevant to a startup context. "
+        "Do not use bullet points — write flowing paragraphs. Return only the section text."
+    )
+    try:
+        from backend.tools._llm import generate
+        expanded = generate(prompt, max_tokens=800)
+        if expanded and len(expanded) > len(body):
+            return expanded
+    except Exception as e:
+        logger.warning("PDF section expansion failed: %s", e)
+    return body
+
+
+def generate_pdf(title: str, sections: list[dict], output_dir: str = "/tmp/astra_docs", expand_content: bool = True) -> dict:
+    """Generate PDF. Args: title (str), sections (list of dicts, each with 'heading' and 'body' keys, e.g. [{"heading": "Section 1", "body": "text..."}]), expand_content (bool, default True — uses LLM to expand thin sections). Returns {generated, path, filename}."""
     os.makedirs(output_dir, exist_ok=True)
-    filename = f"{title.lower().replace(' ', '_')}_{uuid.uuid4().hex[:8]}.pdf"
+    safe_title = title.lower().replace(" ", "_").encode("ascii", "ignore").decode()
+    filename = f"{safe_title}_{uuid.uuid4().hex[:8]}.pdf"
     filepath = os.path.join(output_dir, filename)
+
+    # Expand thin sections via LLM before rendering
+    expanded_sections = []
+    for section in sections:
+        heading = section.get("heading", "")
+        body = section.get("body", "")
+        if expand_content and heading and body:
+            body = _expand_section(heading, body, title)
+        expanded_sections.append({"heading": heading, "body": body})
 
     try:
         from fpdf import FPDF
@@ -23,42 +81,38 @@ def generate_pdf(title: str, sections: list[dict], output_dir: str = "/tmp/astra
         pdf.add_page()
         pdf.set_margins(20, 20, 20)
 
-        # Title
         pdf.set_font("Helvetica", "B", 18)
-        pdf.cell(0, 12, title, new_x="LMARGIN", new_y="NEXT", align="C")
+        pdf.cell(0, 12, _safe(title), new_x="LMARGIN", new_y="NEXT", align="C")
         pdf.ln(6)
 
-        # Disclaimer
         pdf.set_font("Helvetica", "I", 9)
         pdf.set_text_color(120, 120, 120)
-        pdf.multi_cell(0, 5, "AI-generated document — not legal advice. Review with a licensed professional before signing.")
+        pdf.multi_cell(0, 5, "AI-generated document - not legal advice. Review with a licensed professional before signing.")
         pdf.set_text_color(0, 0, 0)
         pdf.ln(8)
 
-        for section in sections:
+        for section in expanded_sections:
             heading = section.get("heading", "")
             body = section.get("body", "")
 
             if heading:
                 pdf.set_font("Helvetica", "B", 12)
-                pdf.cell(0, 8, heading, new_x="LMARGIN", new_y="NEXT")
+                pdf.cell(0, 8, _safe(heading), new_x="LMARGIN", new_y="NEXT")
                 pdf.ln(2)
 
             if body:
                 pdf.set_font("Helvetica", "", 10)
-                pdf.multi_cell(0, 6, body)
+                pdf.multi_cell(0, 6, _safe(body))
                 pdf.ln(4)
 
         pdf.output(filepath)
         return {"generated": True, "path": filepath, "filename": filename}
 
     except ImportError:
-        # Fallback: write plain text file
         txt_path = filepath.replace(".pdf", ".txt")
         with open(txt_path, "w") as f:
             f.write(f"{title}\n{'=' * len(title)}\n\n")
-            f.write("AI-generated document — not legal advice.\n\n")
-            for section in sections:
+            for section in expanded_sections:
                 if section.get("heading"):
                     f.write(f"\n{section['heading']}\n{'-' * len(section['heading'])}\n")
                 if section.get("body"):
