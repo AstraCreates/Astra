@@ -89,8 +89,52 @@ def generate_landing_page_html(
     business_context: str = "",
 ) -> str:
     """Generate a complete, production-quality landing page HTML. Args: page_title, headline, subheadline, value_props (list of strings), cta_text, cta_url, company_name (optional), business_context (optional)."""
+    import re
     name = company_name or page_title
+    props_text = "\n".join(f"- {p}" for p in value_props)
 
+    prompt = f"""You are a senior frontend engineer and designer. Write a complete single-file HTML landing page. Output ONLY raw HTML — no markdown, no backticks, no explanation.
+
+PRODUCT
+Name: {name}
+Title: {page_title}
+Headline: {headline}
+Subheadline: {subheadline}
+Value props:
+{props_text}
+CTA: "{cta_text}" → {cta_url}
+Context: {business_context or "N/A"}
+
+DESIGN SPEC — follow exactly:
+- Color palette: background #06080f, surface cards #0d1117, borders rgba(255,255,255,0.08), text #f0f4ff, muted text rgba(240,244,255,0.55), accent #3b82f6, accent hover #2563eb
+- Typography: system-ui stack, hero h1 at clamp(2.8rem,6vw,5rem) weight 800 tracking -0.03em, body 1rem line-height 1.65
+- All CSS inline in one <style> block — zero external dependencies, zero CDN links
+- Layout sections IN ORDER:
+  1. Sticky nav: logo left (font-weight:800), CTA pill button right (background accent, white text, border-radius:8px)
+  2. Hero: centered, eyebrow label in accent color uppercase tracking-widest, h1, subheadline in muted color, two buttons (primary filled + ghost outlined), subtle bottom gradient fade into section 3
+  3. Horizontal stats bar: 3 bold numbers with labels, dark surface background, top/bottom 1px borders
+  4. Features grid: 2-col on desktop, 1-col mobile. Each card: dark surface, 1px border, 24px padding, unicode icon top-left in accent color, feature title bold, description in muted color. Hover: border brightens
+  5. How it works: 3 numbered steps in a row, dividers between, step number large and accent colored
+  6. Final CTA banner: centered h2, one sentence, primary button
+  7. Footer: copyright left, 3 text links right, top border
+- Responsive: single breakpoint at 768px, stack columns, full-width buttons on mobile
+- Hover transitions: 0.15s ease on all interactive elements
+- No animations, no JS, no gradients on text (just flat colors)
+- The page must look like a real YC-startup landing page — clean, minimal, confident
+
+Start the output with <!DOCTYPE html> immediately."""
+
+    try:
+        from backend.tools._llm import generate
+        html = generate(prompt)
+        html = re.sub(r"^```html?\s*", "", html, flags=re.IGNORECASE | re.MULTILINE).strip().rstrip("`").strip()
+        if html.startswith("<!"):
+            return html
+        logger.warning("LLM HTML didn't start with <!DOCTYPE — falling back to template")
+    except Exception as e:
+        logger.warning("LLM HTML generation failed (%s) — using template", e)
+
+    # Fallback template
     icons = ["◆", "◈", "◉", "◎", "◇", "◊"]
     steps = ["Define your goal", "Astra builds it", "You launch"]
 

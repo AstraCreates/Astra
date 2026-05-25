@@ -6,8 +6,8 @@ import re
 from backend.config import settings
 
 
-def generate(prompt: str, max_tokens: int = 3000, json_mode: bool = False) -> str:
-    """Call the local LLM and return raw text content."""
+def generate(prompt: str, max_tokens: int | None = None, json_mode: bool = False) -> str:
+    """Call the local LLM and return raw text content. max_tokens=None means no limit (API default)."""
     import openai
     client = openai.OpenAI(
         base_url=settings.agent_model_base_url,
@@ -17,8 +17,9 @@ def generate(prompt: str, max_tokens: int = 3000, json_mode: bool = False) -> st
         model=settings.agent_model_name,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.7,
-        max_tokens=max_tokens,
     )
+    if max_tokens is not None:
+        kwargs["max_tokens"] = max_tokens
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
 
