@@ -141,6 +141,26 @@ export const AGENT_LABELS: Record<string, string> = {
 
 export const AGENT_ORDER = ["research", "web", "marketing", "technical", "legal", "ops", "sales", "design"];
 
+const AGENT_ORDER_INDEX = new Map(AGENT_ORDER.map((agent, index) => [agent, index]));
+
+export function sortAgentsByOrder<T extends { agent: string }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const aIndex = AGENT_ORDER_INDEX.get(a.agent) ?? Number.MAX_SAFE_INTEGER;
+    const bIndex = AGENT_ORDER_INDEX.get(b.agent) ?? Number.MAX_SAFE_INTEGER;
+    if (aIndex !== bIndex) return aIndex - bIndex;
+    return a.agent.localeCompare(b.agent);
+  });
+}
+
+export function sortAgentNamesByOrder(agentNames: string[]): string[] {
+  return [...new Set(agentNames)].sort((a, b) => {
+    const aIndex = AGENT_ORDER_INDEX.get(a) ?? Number.MAX_SAFE_INTEGER;
+    const bIndex = AGENT_ORDER_INDEX.get(b) ?? Number.MAX_SAFE_INTEGER;
+    if (aIndex !== bIndex) return aIndex - bIndex;
+    return a.localeCompare(b);
+  });
+}
+
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
   github_create_repo: "Creating GitHub repository",
   supabase_create_project: "Provisioning Supabase database",

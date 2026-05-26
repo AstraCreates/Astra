@@ -3,7 +3,7 @@
 import { use, useEffect, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { streamGoal, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS } from "@/lib/api";
+import { streamGoal, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, sortAgentsByOrder } from "@/lib/api";
 import { updateSession } from "@/lib/history";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -191,6 +191,7 @@ function AgentCard({ state }: { state: AgentState }) {
 
 // ── Plan preview ──────────────────────────────────────────────────────────
 function PlanPreview({ tasks }: { tasks: AgentTask[] }) {
+  const orderedTasks = sortAgentsByOrder(tasks);
   return (
     <div className="site-card p-5 sm:p-6 flex flex-col gap-4">
       <div className="flex items-center gap-3">
@@ -201,7 +202,7 @@ function PlanPreview({ tasks }: { tasks: AgentTask[] }) {
         </div>
       </div>
       <div className="flex flex-col gap-2">
-        {tasks.map((t, i) => (
+        {orderedTasks.map((t, i) => (
           <div key={t.id} className="flex items-start gap-3 rounded-lg border border-[var(--line)] bg-[rgba(255,255,255,0.02)] px-3 py-2.5">
             <span className="site-label w-5 flex-shrink-0 mt-0.5">{String(i + 1).padStart(2, "0")}</span>
             <div className="flex flex-col gap-0.5 min-w-0">
@@ -261,7 +262,7 @@ function CompletionSummary({ agents, instruction }: { agents: Record<string, Age
         </div>
       )}
       <div className="flex flex-wrap gap-3 pt-2 border-t border-[var(--line)]">
-        <Link href="/" className="site-btn site-btn-primary px-5">New goal →</Link>
+        <Link href="/" className="site-btn site-btn-accent px-5">New goal →</Link>
         <Link href="/dashboard" className="site-btn site-btn-ghost px-5">View dashboard</Link>
         <Link href="/setup" className="site-btn site-btn-ghost px-5">Manage accounts</Link>
       </div>
@@ -429,7 +430,7 @@ export default function GoalPage({ params }: { params: Promise<{ id: string }> }
     }
   }, [done, agents, sessionId]);
 
-  const agentList = planTasks.length > 0 ? [...new Set(planTasks.map(t => t.agent))] : AGENT_ORDER;
+  const agentList = planTasks.length > 0 ? sortAgentNamesByOrder(planTasks.map(t => t.agent)) : AGENT_ORDER;
   const doneCount = Object.values(agents).filter(a => a.status === "done").length;
   const total = agentList.length;
 

@@ -388,6 +388,19 @@ h4 { font-size: clamp(16px, 1.4vw, 22px); }
   box-shadow: 0 0 0 1px var(--star), 0 8px 30px rgba(32,96,255,0.35);
 }
 
+.site-btn-accent {
+  background: var(--star);
+  color: var(--fg);
+  border-color: var(--star);
+}
+
+.site-btn-accent:hover {
+  background: var(--star-dim);
+  border-color: var(--star-dim);
+  color: var(--fg);
+  box-shadow: 0 0 0 1px var(--star-dim), 0 8px 30px rgba(32,96,255,0.28);
+}
+
 .site-btn-ghost {
   background: transparent;
   border-color: var(--line);

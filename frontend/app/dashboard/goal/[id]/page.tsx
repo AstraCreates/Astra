@@ -3,7 +3,7 @@
 import { use, useEffect, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { streamGoal, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS } from "@/lib/api";
+import { streamGoal, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, sortAgentsByOrder } from "@/lib/api";
 import { updateSession } from "@/lib/history";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -231,6 +231,7 @@ function AgentCard({ state }: { state: AgentState }) {
 }
 
 function PlanPreview({ tasks }: { tasks: AgentTask[] }) {
+  const orderedTasks = sortAgentsByOrder(tasks);
   return (
     <div style={{ background: "rgba(12,20,42,0.55)", backdropFilter: "blur(20px) saturate(160%)", WebkitBackdropFilter: "blur(20px) saturate(160%)", border: "1px solid rgba(255,255,255,0.07)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.07)", borderRadius: 12, padding: "14px 16px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
@@ -239,7 +240,7 @@ function PlanPreview({ tasks }: { tasks: AgentTask[] }) {
         <span style={{ fontSize: 11, color: "var(--fg-mute)", marginLeft: 4 }}>{tasks.length} agents in parallel</span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {tasks.map((t, i) => (
+        {orderedTasks.map((t, i) => (
           <div key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, borderRadius: 6, border: "1px solid var(--line)", background: "rgba(255,255,255,0.02)", padding: "8px 12px" }}>
             <span className="site-label" style={{ width: 20, flexShrink: 0, marginTop: 1 }}>{String(i + 1).padStart(2, "0")}</span>
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -296,7 +297,7 @@ function CompletionSummary({ agents, instruction }: { agents: Record<string, Age
         </div>
       )}
       <div style={{ display: "flex", gap: 8, paddingTop: 4, borderTop: "1px solid var(--line)" }}>
-        <Link href="/dashboard" className="site-btn site-btn-primary" style={{ fontSize: 13, padding: "0 18px" }}>New goal →</Link>
+        <Link href="/dashboard" className="site-btn site-btn-accent" style={{ fontSize: 13, padding: "0 18px" }}>New goal →</Link>
         <Link href="/dashboard/integrations" className="site-btn site-btn-ghost" style={{ fontSize: 13, padding: "0 18px" }}>Manage accounts</Link>
       </div>
     </div>
@@ -522,7 +523,7 @@ export default function GoalPage({ params }: { params: Promise<{ id: string }> }
     }
   }, [done, agents, sessionId]);
 
-  const agentList = planTasks.length > 0 ? [...new Set(planTasks.map(t => t.agent))] : AGENT_ORDER;
+  const agentList = planTasks.length > 0 ? sortAgentNamesByOrder(planTasks.map(t => t.agent)) : AGENT_ORDER;
   const doneCount = Object.values(agents).filter(a => a.status === "done").length;
   const total = agentList.length;
 
