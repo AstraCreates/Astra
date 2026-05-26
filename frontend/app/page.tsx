@@ -102,7 +102,7 @@ export default function Home() {
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
                   className="site-input"
-                  style={{ padding: "10px 14px", fontSize: 14, color: "var(--fg)" }}
+                  style={{ padding: "10px 14px", fontSize: 14 }}
                   placeholder="Astra"
                   disabled={loading}
                 />
@@ -113,7 +113,7 @@ export default function Home() {
                   value={domain}
                   onChange={(e) => setDomain(e.target.value)}
                   className="site-input"
-                  style={{ padding: "10px 14px", fontSize: 14, color: "var(--fg)" }}
+                  style={{ padding: "10px 14px", fontSize: 14 }}
                   placeholder="astra.ai"
                   disabled={loading}
                 />
@@ -157,7 +157,7 @@ export default function Home() {
             </div>
 
             {/* Stack preferences */}
-            <div style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "12px 16px", background: "rgba(255,255,255,0.02)" }}>
+            <div style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "12px 16px", background: "rgba(0,0,0,0.02)" }}>
               <button
                 type="button"
                 onClick={() => setShowStack((v) => !v)}
@@ -176,10 +176,10 @@ export default function Home() {
                         onChange={(e) => setStack((p) => ({ ...p, [key]: e.target.value }))}
                         disabled={loading}
                         className="site-input"
-                        style={{ padding: "8px 12px", fontSize: 13, color: "var(--fg)", background: "rgba(255,255,255,0.04)" }}
+                        style={{ padding: "8px 12px", fontSize: 13, color: "var(--fg)", background: "#FFFFFF" }}
                       >
                         {opts.map((o) => (
-                          <option key={o} value={o} style={{ background: "#0d1117" }}>{o}</option>
+                          <option key={o} value={o}>{o}</option>
                         ))}
                       </select>
                     </div>

@@ -23,7 +23,6 @@ interface AgentState {
   log: LogEntry[];
   mirrorVerdict?: "pass" | "flag" | "block";
   mirrorCritique?: string;
-  // live preview data
   currentUrl?: string;
   visitedUrls?: string[];
   previewUrl?: string;
@@ -41,10 +40,10 @@ const AGENT_ICONS: Record<string, string> = {
 };
 
 const STATUS_COLOR = {
-  waiting: "rgba(255,255,255,0.18)",
-  running: "#1E6AFF",
-  done: "#6DC98A",
-  error: "#C97070",
+  waiting: "rgba(0,0,0,0.2)",
+  running: "#2563EB",
+  done: "#3D9E5F",
+  error: "#C0392B",
 };
 
 function pct(state: AgentState): number {
@@ -89,34 +88,34 @@ function ResearchPreview({ state }: { state: AgentState }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%" }}>
       {current && (
-        <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.3)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.2)" }}>
-            <img src={faviconUrl(current)} width={12} height={12} style={{ opacity: 0.7 }} onError={e => (e.currentTarget.style.display = "none")} />
-            <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "rgba(255,255,255,0.5)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{current}</span>
-            <a href={current} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#5E9AE0", textDecoration: "none" }}>↗</a>
+        <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid rgba(0,0,0,0.09)", background: "#FFFFFF" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid rgba(0,0,0,0.07)", background: "#F5F5F3" }}>
+            <img src={faviconUrl(current)} width={12} height={12} style={{ opacity: 0.6 }} onError={e => (e.currentTarget.style.display = "none")} />
+            <span style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{current}</span>
+            <a href={current} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2563EB", textDecoration: "none" }}>↗</a>
           </div>
           <div style={{ height: 280, position: "relative" }}>
             <iframe
               src={current}
               sandbox="allow-scripts allow-same-origin"
-              style={{ width: "100%", height: "100%", border: "none", opacity: 0.9 }}
+              style={{ width: "100%", height: "100%", border: "none", opacity: 0.95 }}
               title="Research preview"
             />
-            <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "linear-gradient(to bottom, transparent 80%, rgba(6,8,15,0.6))" }} />
+            <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "linear-gradient(to bottom, transparent 80%, rgba(232,232,230,0.7))" }} />
           </div>
         </div>
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 160, overflowY: "auto" }}>
-        <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 4 }}>Sites visited ({urls.length})</span>
+        <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)", marginBottom: 4 }}>Sites visited ({urls.length})</span>
         {urls.map((u, i) => (
-          <a key={i} href={u} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 6, padding: "5px 8px", background: u === current ? "rgba(30,106,255,0.1)" : "rgba(255,255,255,0.03)", border: `1px solid ${u === current ? "rgba(30,106,255,0.25)" : "rgba(255,255,255,0.05)"}`, textDecoration: "none" }}>
+          <a key={i} href={u} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 6, padding: "5px 8px", background: u === current ? "rgba(37,99,235,0.06)" : "rgba(0,0,0,0.03)", border: `1px solid ${u === current ? "rgba(37,99,235,0.2)" : "rgba(0,0,0,0.07)"}`, textDecoration: "none" }}>
             <img src={faviconUrl(u)} width={12} height={12} onError={e => (e.currentTarget.style.display = "none")} />
-            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.replace(/^https?:\/\//, "").slice(0, 60)}</span>
+            <span style={{ fontSize: 11, color: "var(--fg-dim)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.replace(/^https?:\/\//, "").slice(0, 60)}</span>
           </a>
         ))}
         {urls.length === 0 && state.status === "running" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "rgba(255,255,255,0.3)" }}>
-            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#1E6AFF" }} className="animate-pulse" /> Searching…
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--fg-mute)" }}>
+            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#2563EB" }} className="animate-pulse" /> Searching…
           </div>
         )}
       </div>
@@ -130,15 +129,15 @@ function WebPreview({ state }: { state: AgentState }) {
   if (url) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 10, height: "100%" }}>
-        <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid rgba(255,255,255,0.08)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", background: "rgba(0,0,0,0.3)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid rgba(0,0,0,0.09)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", background: "#F5F5F3", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
             <div style={{ display: "flex", gap: 5 }}>
               {["#ff5f57","#febc2e","#28c840"].map(c => <div key={c} style={{ width: 10, height: 10, borderRadius: "50%", background: c }} />)}
             </div>
-            <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "rgba(255,255,255,0.4)", flex: 1, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{url}</span>
-            <a href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#5E9AE0", textDecoration: "none" }}>↗</a>
+            <span style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{url}</span>
+            <a href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2563EB", textDecoration: "none" }}>↗</a>
           </div>
-          <div style={{ height: 340, background: "rgba(0,0,0,0.2)" }}>
+          <div style={{ height: 340, background: "#FFFFFF" }}>
             <iframe src={url} style={{ width: "100%", height: "100%", border: "none" }} title="Site preview" />
           </div>
         </div>
@@ -149,11 +148,11 @@ function WebPreview({ state }: { state: AgentState }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {commits.length > 0 ? (
         <>
-          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)" }}>Recent commits</span>
+          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)" }}>Recent commits</span>
           {commits.map((c, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#5E9AE0" }}>●</span>
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>{c}</span>
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
+              <span style={{ fontFamily: "var(--font-jetbrains-mono)", fontSize: 10, color: "#2563EB" }}>●</span>
+              <span style={{ fontSize: 11, color: "var(--fg-dim)" }}>{c}</span>
             </div>
           ))}
         </>
@@ -173,13 +172,13 @@ function TechnicalPreview({ state }: { state: AgentState }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {deploy && (
-        <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid rgba(30,106,255,0.2)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", background: "rgba(0,0,0,0.3)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid rgba(37,99,235,0.18)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", background: "#F5F5F3", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
             <div style={{ display: "flex", gap: 5 }}>
               {["#ff5f57","#febc2e","#28c840"].map(c => <div key={c} style={{ width: 10, height: 10, borderRadius: "50%", background: c }} />)}
             </div>
-            <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "rgba(255,255,255,0.4)", flex: 1, textAlign: "center" }}>{deploy}</span>
-            <a href={deploy} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#5E9AE0", textDecoration: "none" }}>↗</a>
+            <span style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1, textAlign: "center" }}>{deploy}</span>
+            <a href={deploy} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2563EB", textDecoration: "none" }}>↗</a>
           </div>
           <div style={{ height: 260 }}>
             <iframe src={deploy} style={{ width: "100%", height: "100%", border: "none" }} title="App preview" />
@@ -187,26 +186,26 @@ function TechnicalPreview({ state }: { state: AgentState }) {
         </div>
       )}
       {repo && (
-        <a href={repo} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)", padding: "8px 12px", color: "#8BA8C8", textDecoration: "none", fontSize: 12 }}>
+        <a href={repo} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 8, border: "1px solid rgba(0,0,0,0.1)", background: "rgba(0,0,0,0.03)", padding: "8px 12px", color: "#2563EB", textDecoration: "none", fontSize: 12 }}>
           🐙 <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{repo}</span> <span style={{ opacity: 0.5 }}>↗</span>
         </a>
       )}
       {commits.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)" }}>Commits ({commits.length})</span>
+          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)" }}>Commits ({commits.length})</span>
           {commits.map((c, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 6, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "#5E9AE0" }}>{c.slice(0, 7)}</span>
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>round committed</span>
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 6, background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
+              <span style={{ fontFamily: "var(--font-jetbrains-mono)", fontSize: 10, color: "#2563EB" }}>{c.slice(0, 7)}</span>
+              <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>round committed</span>
             </div>
           ))}
         </div>
       )}
       {Array.isArray(files) && files.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 140, overflowY: "auto" }}>
-          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 4 }}>Files</span>
+          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)", marginBottom: 4 }}>Files</span>
           {(files as string[]).map((f, i) => (
-            <div key={i} style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "rgba(255,255,255,0.4)", padding: "2px 6px" }}>
+            <div key={i} style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", padding: "2px 6px" }}>
               {f.startsWith("frontend/") ? "🔷" : f.startsWith("backend/") ? "🔶" : "📄"} {f}
             </div>
           ))}
@@ -228,12 +227,12 @@ function DesignPreview({ state }: { state: AgentState }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       {allColors.length > 0 && (
         <div>
-          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", display: "block", marginBottom: 8 }}>Color Palette</span>
+          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)", display: "block", marginBottom: 8 }}>Color Palette</span>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {allColors.map((c, i) => (
               <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 10, background: c, border: "1px solid rgba(255,255,255,0.12)", boxShadow: `0 4px 12px ${c}44` }} />
-                <span style={{ fontSize: 9, fontFamily: "var(--font-mono)", color: "rgba(255,255,255,0.4)" }}>{c}</span>
+                <div style={{ width: 44, height: 44, borderRadius: 10, background: c, border: "1px solid rgba(0,0,0,0.1)", boxShadow: `0 2px 8px ${c}44` }} />
+                <span style={{ fontSize: 9, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)" }}>{c}</span>
               </div>
             ))}
           </div>
@@ -242,18 +241,18 @@ function DesignPreview({ state }: { state: AgentState }) {
       {palette && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {Object.entries(palette).map(([k, v]) => (
-            <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 6, background: "rgba(255,255,255,0.03)" }}>
+            <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 6, background: "rgba(0,0,0,0.03)" }}>
               {typeof v === "string" && v.startsWith("#") && <div style={{ width: 14, height: 14, borderRadius: 3, background: v, flexShrink: 0 }} />}
-              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", textTransform: "capitalize" }}>{k.replace(/_/g, " ")}</span>
-              <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", color: "rgba(255,255,255,0.6)", marginLeft: "auto" }}>{String(v).slice(0, 40)}</span>
+              <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "capitalize" }}>{k.replace(/_/g, " ")}</span>
+              <span style={{ fontSize: 10, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-dim)", marginLeft: "auto" }}>{String(v).slice(0, 40)}</span>
             </div>
           ))}
         </div>
       )}
       {spec && (
         <div>
-          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", display: "block", marginBottom: 6 }}>Design Spec</span>
-          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.55)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 200, overflowY: "auto", padding: "8px 10px", background: "rgba(0,0,0,0.2)", borderRadius: 8 }}>
+          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)", display: "block", marginBottom: 6 }}>Design Spec</span>
+          <div style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 200, overflowY: "auto", padding: "10px 12px", background: "#F5F5F3", borderRadius: 8, border: "1px solid rgba(0,0,0,0.08)" }}>
             {typeof spec === "string" ? spec.slice(0, 600) : JSON.stringify(spec, null, 2).slice(0, 600)}
           </div>
         </div>
@@ -276,9 +275,9 @@ function MarketingPreview({ state }: { state: AgentState }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {[["📸 Instagram Reel", reel], ["🎵 TikTok", tiktok], ["📣 Meta Ad", ad], ["📧 Email", email]].map(([label, content]) =>
         content ? (
-          <div key={String(label)} style={{ borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", padding: "10px 12px" }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.7)", marginBottom: 6 }}>{label}</div>
-            <div style={{ fontSize: 11, color: "rgba(255,255,255,0.45)", lineHeight: 1.6, maxHeight: 80, overflowY: "auto", whiteSpace: "pre-wrap" }}>{String(content).slice(0, 300)}</div>
+          <div key={String(label)} style={{ borderRadius: 8, border: "1px solid rgba(0,0,0,0.09)", background: "rgba(0,0,0,0.02)", padding: "10px 12px" }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-dim)", marginBottom: 6 }}>{label}</div>
+            <div style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.6, maxHeight: 80, overflowY: "auto", whiteSpace: "pre-wrap" }}>{String(content).slice(0, 300)}</div>
           </div>
         ) : null
       )}
@@ -293,8 +292,8 @@ function LegalPreview({ state }: { state: AgentState }) {
   if (!r || !text) return <BuildingIndicator label="Drafting documents…" />;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {path && <div style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "#5E9AE0", padding: "4px 8px", background: "rgba(30,106,255,0.08)", borderRadius: 6, border: "1px solid rgba(30,106,255,0.15)" }}>📄 {String(path)}</div>}
-      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 280, overflowY: "auto", padding: "10px 12px", background: "rgba(0,0,0,0.2)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
+      {path && <div style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "#2563EB", padding: "4px 8px", background: "rgba(37,99,235,0.06)", borderRadius: 6, border: "1px solid rgba(37,99,235,0.15)" }}>📄 {String(path)}</div>}
+      <div style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 280, overflowY: "auto", padding: "10px 12px", background: "#F5F5F3", borderRadius: 8, border: "1px solid rgba(0,0,0,0.08)" }}>
         {String(text).slice(0, 1200)}
       </div>
     </div>
@@ -309,18 +308,18 @@ function SalesPreview({ state }: { state: AgentState }) {
   const steps: unknown[] = Array.isArray(seq) ? seq : typeof seq === "string" ? JSON.parse(seq.startsWith("[") ? seq : "[]") : [];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(30,106,255,0.08)", border: "1px solid rgba(30,106,255,0.15)" }}>
-        <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(255,255,255,0.3)", marginBottom: 3 }}>Target Lead</div>
+      <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(37,99,235,0.06)", border: "1px solid rgba(37,99,235,0.15)" }}>
+        <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)", marginBottom: 3 }}>Target Lead</div>
         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>{lead}</div>
       </div>
       {steps.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(255,255,255,0.3)" }}>Email Sequence ({steps.length} steps)</span>
+          <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)" }}>Email Sequence ({steps.length} steps)</span>
           {(steps as Record<string, unknown>[]).slice(0, 4).map((s, i) => (
-            <div key={i} style={{ padding: "8px 10px", borderRadius: 6, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-              <div style={{ fontSize: 10, color: "#5E9AE0", marginBottom: 3 }}>Day {String(s.send_day ?? i + 1)}</div>
+            <div key={i} style={{ padding: "8px 10px", borderRadius: 6, background: "#FFFFFF", border: "1px solid rgba(0,0,0,0.09)" }}>
+              <div style={{ fontSize: 10, color: "#2563EB", marginBottom: 3 }}>Day {String(s.send_day ?? i + 1)}</div>
               <div style={{ fontSize: 11, fontWeight: 500, color: "var(--fg)" }}>{String(s.subject ?? "").slice(0, 60)}</div>
-              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>{String(s.body ?? "").slice(0, 80)}…</div>
+              <div style={{ fontSize: 10, color: "var(--fg-mute)", marginTop: 2 }}>{String(s.body ?? "").slice(0, 80)}…</div>
             </div>
           ))}
         </div>
@@ -337,7 +336,7 @@ function OpsPreview({ state }: { state: AgentState }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {title && <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>{title}</div>}
-      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 280, overflowY: "auto", padding: "10px 12px", background: "rgba(0,0,0,0.2)", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 280, overflowY: "auto", padding: "10px 12px", background: "#F5F5F3", borderRadius: 8, border: "1px solid rgba(0,0,0,0.08)" }}>
         {String(sop).slice(0, 1200)}
       </div>
     </div>
@@ -346,8 +345,8 @@ function OpsPreview({ state }: { state: AgentState }) {
 
 function BuildingIndicator({ label }: { label: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "20px 0", color: "rgba(255,255,255,0.3)", fontSize: 12 }}>
-      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#1E6AFF", flexShrink: 0 }} className="animate-pulse" />
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "20px 0", color: "var(--fg-mute)", fontSize: 12 }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2563EB", flexShrink: 0 }} className="animate-pulse" />
       {label}
     </div>
   );
@@ -381,9 +380,10 @@ function AgentDetail({ state, planTask }: { state: AgentState; planTask: AgentTa
   const isDone = state.status === "done";
 
   const TAB_STYLE = (active: boolean): React.CSSProperties => ({
-    fontSize: 11, fontWeight: 500, letterSpacing: "0.06em", padding: "5px 14px", borderRadius: 6,
-    cursor: "pointer", border: "none", background: active ? "rgba(30,106,255,0.18)" : "transparent",
-    color: active ? "#8BA8C8" : "rgba(255,255,255,0.35)", transition: "all 0.15s",
+    fontSize: 11, fontWeight: 500, letterSpacing: "0.04em", padding: "5px 14px", borderRadius: 6,
+    cursor: "pointer", border: "none",
+    background: active ? "rgba(37,99,235,0.09)" : "transparent",
+    color: active ? "#2563EB" : "var(--fg-mute)", transition: "all 0.15s",
   });
 
   return (
@@ -394,7 +394,7 @@ function AgentDetail({ state, planTask }: { state: AgentState; planTask: AgentTa
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)" }}>{AGENT_LABELS[state.agent] ?? state.agent}</span>
-            <span style={{ fontSize: 10, fontFamily: "var(--font-mono)", letterSpacing: "0.08em", textTransform: "uppercase", color: STATUS_COLOR[state.status] }}>{state.status}</span>
+            <span style={{ fontSize: 10, fontFamily: "var(--font-jetbrains-mono)", letterSpacing: "0.08em", textTransform: "uppercase", color: STATUS_COLOR[state.status] }}>{state.status}</span>
           </div>
           {state.instruction && (
             <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.4 }}>{state.instruction.slice(0, 100)}</p>
@@ -403,25 +403,25 @@ function AgentDetail({ state, planTask }: { state: AgentState; planTask: AgentTa
         {/* % badge */}
         <div style={{ position: "relative", width: 40, height: 40, flexShrink: 0 }}>
           <svg viewBox="0 0 40 40" style={{ transform: "rotate(-90deg)" }}>
-            <circle cx="20" cy="20" r="17" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="3" />
-            <circle cx="20" cy="20" r="17" fill="none" stroke={isDone ? "#6DC98A" : "#1E6AFF"} strokeWidth="3"
+            <circle cx="20" cy="20" r="17" fill="none" stroke="rgba(0,0,0,0.08)" strokeWidth="3" />
+            <circle cx="20" cy="20" r="17" fill="none" stroke={isDone ? "#3D9E5F" : "#2563EB"} strokeWidth="3"
               strokeDasharray={`${2 * Math.PI * 17}`}
               strokeDashoffset={`${2 * Math.PI * 17 * (1 - p / 100)}`}
               style={{ transition: "stroke-dashoffset 0.6s" }} />
           </svg>
-          <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 600, fontFamily: "var(--font-mono)", color: isDone ? "#6DC98A" : "rgba(255,255,255,0.6)" }}>{p}%</span>
+          <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 600, fontFamily: "var(--font-jetbrains-mono)", color: isDone ? "#3D9E5F" : "var(--fg-mute)" }}>{p}%</span>
         </div>
       </div>
 
       {/* Progress bar */}
-      <div style={{ height: 3, borderRadius: 999, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
-        <div style={{ height: "100%", borderRadius: 999, width: `${p}%`, background: isDone ? "linear-gradient(90deg,#3EA870,#6DC98A)" : "linear-gradient(90deg,#1E6AFF,#5E9AE0)", transition: "width 0.6s" }} />
+      <div style={{ height: 3, borderRadius: 999, background: "rgba(0,0,0,0.08)", overflow: "hidden" }}>
+        <div style={{ height: "100%", borderRadius: 999, width: `${p}%`, background: isDone ? "linear-gradient(90deg,#3D9E5F,#5AC87A)" : "linear-gradient(90deg,#2563EB,#60A5FA)", transition: "width 0.6s" }} />
       </div>
 
       {/* Current action pill */}
       {isRunning && state.currentAction && (
-        <div style={{ display: "flex", alignItems: "center", gap: 7, borderRadius: 8, background: "rgba(30,106,255,0.07)", padding: "6px 11px", fontSize: 11, color: "rgba(200,220,240,0.8)", border: "1px solid rgba(30,106,255,0.15)" }}>
-          <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#5E9AE0", flexShrink: 0 }} className="animate-pulse" />
+        <div style={{ display: "flex", alignItems: "center", gap: 7, borderRadius: 8, background: "rgba(37,99,235,0.06)", padding: "6px 11px", fontSize: 11, color: "var(--fg-dim)", border: "1px solid rgba(37,99,235,0.14)" }}>
+          <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#2563EB", flexShrink: 0 }} className="animate-pulse" />
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {state.currentTool ? `${state.currentTool.replace(/_/g, " ")}` : state.currentAction}
             {state.currentUrl ? ` — ${state.currentUrl.replace(/^https?:\/\//, "").slice(0, 50)}` : ""}
@@ -430,7 +430,7 @@ function AgentDetail({ state, planTask }: { state: AgentState; planTask: AgentTa
       )}
 
       {/* Sub-tabs */}
-      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: 8 }}>
+      <div style={{ display: "flex", gap: 4, borderBottom: "1px solid rgba(0,0,0,0.08)", paddingBottom: 8 }}>
         {(["preview", "plan", "log"] as DetailTab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={TAB_STYLE(tab === t)}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>
         ))}
@@ -443,19 +443,19 @@ function AgentDetail({ state, planTask }: { state: AgentState; planTask: AgentTa
         {tab === "plan" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {planTask && (
-              <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(255,255,255,0.3)", marginBottom: 5 }}>Task instruction</div>
-                <p style={{ margin: 0, fontSize: 12, color: "rgba(255,255,255,0.65)", lineHeight: 1.6 }}>{planTask.instruction}</p>
+              <div style={{ padding: "10px 14px", borderRadius: 8, background: "#F5F5F3", border: "1px solid rgba(0,0,0,0.08)" }}>
+                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)", marginBottom: 5 }}>Task instruction</div>
+                <p style={{ margin: 0, fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.6 }}>{planTask.instruction}</p>
               </div>
             )}
             {state.result && (
-              <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "rgba(255,255,255,0.3)", marginBottom: 5 }}>Output</div>
+              <div style={{ padding: "10px 14px", borderRadius: 8, background: "#F5F5F3", border: "1px solid rgba(0,0,0,0.08)" }}>
+                <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)", marginBottom: 5 }}>Output</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {Object.entries(state.result).filter(([, v]) => v !== null && v !== undefined).slice(0, 8).map(([k, v]) => (
                     <div key={k} style={{ display: "flex", gap: 8, fontSize: 11 }}>
-                      <span style={{ color: "rgba(255,255,255,0.3)", minWidth: 100, flexShrink: 0 }}>{k.replace(/_/g, " ")}</span>
-                      <span style={{ color: "rgba(255,255,255,0.65)", wordBreak: "break-all" }}>{typeof v === "string" ? v.slice(0, 120) : JSON.stringify(v).slice(0, 80)}</span>
+                      <span style={{ color: "var(--fg-mute)", minWidth: 100, flexShrink: 0 }}>{k.replace(/_/g, " ")}</span>
+                      <span style={{ color: "var(--fg-dim)", wordBreak: "break-all" }}>{typeof v === "string" ? v.slice(0, 120) : JSON.stringify(v).slice(0, 80)}</span>
                     </div>
                   ))}
                 </div>
@@ -466,13 +466,13 @@ function AgentDetail({ state, planTask }: { state: AgentState; planTask: AgentTa
 
         {tab === "log" && (
           <div ref={logRef} style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 380, overflowY: "auto" }}>
-            {state.log.length === 0 && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>Waiting to start…</span>}
+            {state.log.length === 0 && <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>Waiting to start…</span>}
             {state.log.map((entry, i) => (
               <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 10, lineHeight: 1.5, padding: "2px 0" }}>
-                <span style={{ fontFamily: "var(--font-mono)", flexShrink: 0, color: "rgba(255,255,255,0.2)", minWidth: 56 }}>
+                <span style={{ fontFamily: "var(--font-jetbrains-mono)", flexShrink: 0, color: "rgba(0,0,0,0.3)", minWidth: 56 }}>
                   {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                 </span>
-                <span style={{ color: entry.type === "error" ? "#C97070" : entry.type === "result" ? "#6DC98A" : "rgba(255,255,255,0.45)" }}>{entry.text}</span>
+                <span style={{ color: entry.type === "error" ? "#C0392B" : entry.type === "result" ? "#3D9E5F" : "var(--fg-dim)" }}>{entry.text}</span>
               </div>
             ))}
           </div>
@@ -499,15 +499,15 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect }: {
         const p = state ? pct(state) : 0;
         return (
           <button key={name} onClick={() => onSelect(name)} style={{
-            display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10, border: "none",
-            background: isActive ? "rgba(30,106,255,0.14)" : "transparent",
+            display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8, border: "none",
+            background: isActive ? "rgba(37,99,235,0.08)" : "transparent",
             cursor: "pointer", textAlign: "left", transition: "background 0.15s",
-            outline: isActive ? "1px solid rgba(30,106,255,0.35)" : "none",
+            outline: isActive ? "1px solid rgba(37,99,235,0.22)" : "none",
           }}>
             <div style={{ position: "relative", width: 28, height: 28, flexShrink: 0 }}>
               <svg viewBox="0 0 28 28" style={{ transform: "rotate(-90deg)", width: 28, height: 28 }}>
-                <circle cx="14" cy="14" r="11" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="2.5" />
-                <circle cx="14" cy="14" r="11" fill="none" stroke={status === "done" ? "#6DC98A" : status === "running" ? "#1E6AFF" : status === "error" ? "#C97070" : "transparent"}
+                <circle cx="14" cy="14" r="11" fill="none" stroke="rgba(0,0,0,0.1)" strokeWidth="2.5" />
+                <circle cx="14" cy="14" r="11" fill="none" stroke={status === "done" ? "#3D9E5F" : status === "running" ? "#2563EB" : status === "error" ? "#C0392B" : "transparent"}
                   strokeWidth="2.5"
                   strokeDasharray={`${2 * Math.PI * 11}`}
                   strokeDashoffset={`${2 * Math.PI * 11 * (1 - p / 100)}`}
@@ -516,13 +516,13 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect }: {
               <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>{AGENT_ICONS[name] ?? "🤖"}</span>
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 500, color: isActive ? "var(--fg)" : "rgba(255,255,255,0.55)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <div style={{ fontSize: 12, fontWeight: 500, color: isActive ? "var(--fg)" : "var(--fg-mute)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {AGENT_LABELS[name] ?? name}
               </div>
-              <div style={{ fontSize: 10, color: STATUS_COLOR[status] ?? "rgba(255,255,255,0.2)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{status}</div>
+              <div style={{ fontSize: 10, color: STATUS_COLOR[status] ?? "rgba(0,0,0,0.25)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{status}</div>
             </div>
             {status === "running" && (
-              <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#1E6AFF", flexShrink: 0 }} className="animate-pulse" />
+              <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#2563EB", flexShrink: 0 }} className="animate-pulse" />
             )}
           </button>
         );
@@ -531,7 +531,7 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect }: {
   );
 }
 
-// ── Steer + Ask panels (unchanged) ─────────────────────────────────────────
+// ── Steer + Ask panels ─────────────────────────────────────────────────────
 
 function SteerPanel({ sessionId, isRunning }: { sessionId: string; isRunning: boolean }) {
   const [msg, setMsg] = useState("");
@@ -543,13 +543,13 @@ function SteerPanel({ sessionId, isRunning }: { sessionId: string; isRunning: bo
     setSent(true); setMsg(""); setTimeout(() => setSent(false), 2000);
   };
   return (
-    <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.07)", background: "rgba(0,0,0,0.25)", padding: "12px 14px" }}>
-      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginBottom: 8 }}>Steer agents mid-run</div>
+    <div style={{ borderRadius: 10, border: "1px solid rgba(0,0,0,0.09)", background: "#FFFFFF", padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, color: "var(--fg-mute)", marginBottom: 8 }}>Steer agents mid-run</div>
       <div style={{ display: "flex", gap: 8 }}>
         <input value={msg} onChange={e => setMsg(e.target.value)} onKeyDown={e => e.key === "Enter" && send()}
           placeholder="e.g. focus on B2B customers"
-          style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "7px 12px", fontSize: 12, color: "var(--fg)", outline: "none" }} />
-        <button onClick={send} style={{ padding: "7px 14px", borderRadius: 8, background: sent ? "#3EA870" : "rgba(30,106,255,0.7)", border: "none", color: "#fff", fontSize: 12, cursor: "pointer" }}>
+          style={{ flex: 1, background: "#F5F5F3", border: "1px solid rgba(0,0,0,0.12)", borderRadius: 8, padding: "7px 12px", fontSize: 12, color: "var(--fg)", outline: "none" }} />
+        <button onClick={send} style={{ padding: "7px 14px", borderRadius: 8, background: sent ? "#3D9E5F" : "#2563EB", border: "none", color: "#fff", fontSize: 12, cursor: "pointer" }}>
           {sent ? "Sent" : "Send"}
         </button>
       </div>
@@ -566,17 +566,17 @@ function AskPanel({ sessionId, founderId }: { sessionId: string; founderId: stri
     const d = await r.json(); setReply(d.answer ?? d.response ?? JSON.stringify(d)); setLoading(false);
   };
   return (
-    <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.07)", background: "rgba(0,0,0,0.25)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)" }}>Ask about your results</div>
+    <div style={{ borderRadius: 10, border: "1px solid rgba(0,0,0,0.09)", background: "#FFFFFF", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ fontSize: 11, color: "var(--fg-mute)" }}>Ask about your results</div>
       <div style={{ display: "flex", gap: 8 }}>
         <input value={msg} onChange={e => setMsg(e.target.value)} onKeyDown={e => e.key === "Enter" && ask()}
           placeholder="What are the top competitors?"
-          style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: "7px 12px", fontSize: 12, color: "var(--fg)", outline: "none" }} />
-        <button onClick={ask} style={{ padding: "7px 14px", borderRadius: 8, background: "rgba(30,106,255,0.7)", border: "none", color: "#fff", fontSize: 12, cursor: "pointer" }}>
+          style={{ flex: 1, background: "#F5F5F3", border: "1px solid rgba(0,0,0,0.12)", borderRadius: 8, padding: "7px 12px", fontSize: 12, color: "var(--fg)", outline: "none" }} />
+        <button onClick={ask} style={{ padding: "7px 14px", borderRadius: 8, background: "#2563EB", border: "none", color: "#fff", fontSize: 12, cursor: "pointer" }}>
           {loading ? "…" : "Ask"}
         </button>
       </div>
-      {reply && <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", lineHeight: 1.6, padding: "8px 10px", background: "rgba(0,0,0,0.2)", borderRadius: 8 }}>{reply}</div>}
+      {reply && <div style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.6, padding: "8px 10px", background: "#F5F5F3", borderRadius: 8 }}>{reply}</div>}
     </div>
   );
 }
@@ -625,7 +625,6 @@ export default function GoalPage({ params }: { params: Promise<{ id: string }> }
           for (const t of event.tasks) {
             next[t.agent] = { task_id: t.id, agent: t.agent, instruction: t.instruction, status: "waiting", currentAction: null, currentTool: null, reasoning: null, result: null, log: [], visitedUrls: [], commits: [] };
           }
-          // Auto-select first running agent
           if (!activeAgent && event.tasks.length > 0) setActiveAgent(event.tasks[0].agent);
           return next;
         }
@@ -667,7 +666,6 @@ export default function GoalPage({ params }: { params: Promise<{ id: string }> }
             text = `✓ ${TOOL_DESCRIPTIONS[event.tool] ?? event.tool ?? "Done"}`;
           }
           const newVisited = newUrl ? [...(cur.visitedUrls ?? []), newUrl] : cur.visitedUrls;
-          // Extract commit SHA from run_mvp_loop/run_claude_in_repo results
           const newCommit = event.result?.commit ?? event.result?.commits;
           const newCommits = newCommit
             ? [...(cur.commits ?? []), ...(Array.isArray(newCommit) ? newCommit : [String(newCommit)])]
@@ -721,46 +719,46 @@ export default function GoalPage({ params }: { params: Promise<{ id: string }> }
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <h1 style={{ fontSize: 18, fontWeight: 600, color: "var(--fg)", margin: 0 }}>{title}</h1>
           <span style={{
-            fontSize: 11, letterSpacing: "0.08em", padding: "3px 10px", borderRadius: 999,
-            color: done ? "#6DC98A" : error ? "#C97070" : reconnecting ? "#C9A870" : connected ? "#8BA8C8" : "var(--fg-mute)",
-            background: done ? "rgba(50,160,90,0.12)" : error ? "rgba(180,60,60,0.12)" : reconnecting ? "rgba(180,140,60,0.12)" : connected ? "rgba(30,106,255,0.12)" : "rgba(255,255,255,0.05)",
-            border: `1px solid ${done ? "rgba(70,180,110,0.28)" : error ? "rgba(180,60,60,0.28)" : reconnecting ? "rgba(180,140,60,0.28)" : connected ? "rgba(30,106,255,0.28)" : "rgba(255,255,255,0.1)"}`,
+            fontSize: 11, letterSpacing: "0.06em", padding: "3px 10px", borderRadius: 999,
+            color: done ? "#3D9E5F" : error ? "#C0392B" : reconnecting ? "#B45309" : connected ? "#2563EB" : "var(--fg-mute)",
+            background: done ? "rgba(61,158,95,0.08)" : error ? "rgba(192,57,43,0.08)" : reconnecting ? "rgba(180,83,9,0.08)" : connected ? "rgba(37,99,235,0.08)" : "rgba(0,0,0,0.04)",
+            border: `1px solid ${done ? "rgba(61,158,95,0.22)" : error ? "rgba(192,57,43,0.22)" : reconnecting ? "rgba(180,83,9,0.22)" : connected ? "rgba(37,99,235,0.22)" : "rgba(0,0,0,0.1)"}`,
           }}>
             {done ? "✦ complete" : error ? "error" : reconnecting ? "reconnecting…" : connected ? "running" : "connecting"}
           </span>
-          <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>{sessionId}</span>
+          <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{sessionId}</span>
         </div>
         {total > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ flex: 1, height: 3, borderRadius: 999, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
-              <div style={{ height: "100%", borderRadius: 999, transition: "width 0.7s", width: `${(doneCount / total) * 100}%`, background: done ? "linear-gradient(90deg,#3EA870,#6DC98A)" : "linear-gradient(90deg,#1E6AFF,#5E9AE0)" }} />
+            <div style={{ flex: 1, height: 3, borderRadius: 999, background: "rgba(0,0,0,0.08)", overflow: "hidden" }}>
+              <div style={{ height: "100%", borderRadius: 999, transition: "width 0.7s", width: `${(doneCount / total) * 100}%`, background: done ? "linear-gradient(90deg,#3D9E5F,#5AC87A)" : "linear-gradient(90deg,#2563EB,#60A5FA)" }} />
             </div>
-            <span style={{ fontSize: 11, color: "var(--fg-dim)", flexShrink: 0, fontFamily: "var(--font-mono)" }}>{doneCount}/{total}</span>
+            <span style={{ fontSize: 11, color: "var(--fg-dim)", flexShrink: 0, fontFamily: "var(--font-jetbrains-mono)" }}>{doneCount}/{total}</span>
           </div>
         )}
         {total === 0 && connected && !error && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--fg-mute)" }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#1E6AFF" }} className="animate-pulse" />
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2563EB" }} className="animate-pulse" />
             Planner building task graph…
           </div>
         )}
-        {error && <p style={{ borderRadius: 8, border: "1px solid rgba(180,60,60,0.35)", background: "rgba(80,20,20,0.3)", padding: "8px 14px", fontSize: 12, color: "#fca5a5", margin: 0 }}>{error}</p>}
+        {error && <p style={{ borderRadius: 8, border: "1px solid rgba(192,57,43,0.25)", background: "rgba(192,57,43,0.06)", padding: "8px 14px", fontSize: 12, color: "#C0392B", margin: 0 }}>{error}</p>}
       </div>
 
       {/* Main layout: sidebar + detail */}
       {agentList.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 12, alignItems: "start" }}>
-          {/* Sidebar */}
-          <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.04)", padding: "8px", display: "flex", flexDirection: "column", gap: 2 }}>
+          {/* Agent sidebar */}
+          <div style={{ borderRadius: 10, border: "1px solid rgba(0,0,0,0.09)", background: "#FFFFFF", padding: "8px", display: "flex", flexDirection: "column", gap: 2 }}>
             <AgentSidebar agentList={agentList} agents={visibleAgents} activeAgent={selected} onSelect={setActiveAgent} />
           </div>
 
           {/* Detail panel */}
-          <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.07)", background: "rgba(255,255,255,0.04)", padding: "18px 20px", minHeight: 480 }}>
+          <div style={{ borderRadius: 10, border: "1px solid rgba(0,0,0,0.09)", background: "#FFFFFF", padding: "18px 20px", minHeight: 480 }}>
             {selectedState ? (
               <AgentDetail state={selectedState} planTask={selectedPlanTask} />
             ) : (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, color: "rgba(255,255,255,0.25)", fontSize: 13 }}>Select an agent</div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, color: "var(--fg-mute)", fontSize: 13 }}>Select an agent</div>
             )}
           </div>
         </div>

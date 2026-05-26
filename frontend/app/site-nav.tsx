@@ -36,7 +36,7 @@ export default function SiteNav() {
           </NavLink>
           <UserButton
             appearance={{
-              elements: { avatarBox: "w-8 h-8 rounded-full ring-1 ring-[rgba(255,255,255,0.15)]" },
+              elements: { avatarBox: "w-8 h-8 rounded-full ring-1 ring-[rgba(0,0,0,0.12)]" },
             }}
           />
         </Show>
