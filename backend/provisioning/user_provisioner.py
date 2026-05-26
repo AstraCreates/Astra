@@ -70,9 +70,7 @@ def _provision_composio_entity(founder_id: str) -> dict:
     """Initialize a Composio entity and return OAuth connection URLs."""
     try:
         from backend.tools.composio_tools import connect_founder_tools
-        loop = asyncio.new_event_loop()
-        urls = loop.run_until_complete(connect_founder_tools(founder_id, None))
-        loop.close()
+        urls = connect_founder_tools(founder_id, None)
         return urls or {}
     except Exception as e:
         logger.warning("Composio entity init failed for %s: %s", founder_id, e)
