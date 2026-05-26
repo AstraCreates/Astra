@@ -21,7 +21,7 @@ def build_technical_agent(**kwargs) -> Agent:
             "1. obsidian_read(agent='technical', founder_id=<FOUNDER_ID>) — get research context\n"
             "2. github_create_repo(repo_name=<product-slug>, description=<desc>) — create repo, save repo_url\n"
             "3. run_mvp_loop(repo_url=<url>, goal=<full product description>, session_id=<SESSION>, context=<research notes>) — THIS IS MANDATORY. Builds full MVP in 4-6 rounds of Claude Code with commits each round. Do NOT skip this step.\n"
-            "4. vercel_deploy_from_github(repo_url=<url>) — deploy. If deployed=False, continue with repo_url only.\n"
+            "4. vercel_deploy_from_github(repo_url=<url>, root_directory='frontend') — deploy. If deployed=False, continue with repo_url only.\n"
             "5. obsidian_log — log repo_url and deploy_url\n"
             "6. done — return {repo_url, deploy_url, files_in_repo, rounds_run}\n\n"
             "run_mvp_loop writes ALL code — 6 rounds: frontend → backend → auth → polish → verify → final. "

@@ -53,6 +53,155 @@ def _vercel_cli_deploy(local_path: str, project_name: str = "", token: str = "")
         return {"deployed": False, "error": str(e)}
 
 
+def _poll_deployment(dep_id: str, team_id: str | None, headers: dict, timeout: int = 300) -> str | None:
+    """Poll Vercel until deployment is READY or ERROR. Returns error string or None on success."""
+    if not dep_id:
+        return None  # Can't poll — assume ok
+    deadline = time.time() + timeout
+    status_url = f"{_VERCEL_API}/v13/deployments/{dep_id}"
+    if team_id:
+        status_url += f"?teamId={team_id}"
+    while time.time() < deadline:
+        try:
+            r = requests.get(status_url, headers=headers, timeout=15)
+            if not r.ok:
+                time.sleep(10)
+                continue
+            data = r.json()
+            state = data.get("readyState") or data.get("state", "")
+            if state == "READY":
+                return None
+            if state in ("ERROR", "CANCELED"):
+                # Extract build error from deployment
+                err = data.get("errorMessage") or ""
+                # Try to get build output for npm errors
+                build_url = f"{_VERCEL_API}/v2/deployments/{dep_id}/events"
+                if team_id:
+                    build_url += f"?teamId={team_id}"
+                try:
+                    ev = requests.get(build_url, headers=headers, timeout=10)
+                    if ev.ok:
+                        lines = [e.get("text", "") for e in ev.json() if e.get("text")]
+                        err = "\n".join(lines[-40:]) or err
+                except Exception:
+                    pass
+                return err or f"Deployment {state}"
+        except Exception:
+            pass
+        time.sleep(10)
+    return "Deployment timed out after 5 minutes"
+
+
+# Known fake packages the LLM hallucinates
+_FAKE_PACKAGES = {
+    "@radix-ui/react-badge", "@radix-ui/react-layout", "@radix-ui/react-grid",
+    "@radix-ui/react-flex", "@radix-ui/react-container",
+}
+
+
+def _fix_repo_and_push(repo_url: str, build_error: str, gh_owner: str, gh_repo: str, headers: dict) -> bool:
+    """Attempt to fix the repo based on the build error and push a new commit. Returns True if pushed."""
+    import json as _json
+    from pathlib import Path
+
+    # Find local clone
+    try:
+        from backend.tools.git_tools import _clones
+        local = next((v for k, v in _clones.items() if repo_url in k and os.path.isdir(v)), None)
+    except Exception:
+        local = None
+
+    if not local:
+        return False
+
+    try:
+        import subprocess as _sp
+
+        fixed = False
+
+        # Fix 1: npm E404 — remove fake packages from package.json
+        if "E404" in build_error or "Not found" in build_error:
+            pkg_path = Path(local) / "frontend" / "package.json"
+            if pkg_path.exists():
+                data = _json.loads(pkg_path.read_text())
+                for section in ("dependencies", "devDependencies", "peerDependencies"):
+                    if section in data:
+                        bad = {k for k in data[section] if k in _FAKE_PACKAGES}
+                        # Also strip any package that looks invented (not in known-good list)
+                        if bad:
+                            for k in bad:
+                                del data[section][k]
+                            logger.warning("Auto-fix: removed fake packages %s", bad)
+                            fixed = True
+                if fixed:
+                    pkg_path.write_text(_json.dumps(data, indent=2))
+
+        # Fix 2: TypeScript errors — add skipLibCheck to tsconfig
+        if "TypeScript" in build_error or "TS" in build_error:
+            ts_path = Path(local) / "frontend" / "tsconfig.json"
+            if ts_path.exists():
+                ts = _json.loads(ts_path.read_text())
+                if not ts.get("compilerOptions", {}).get("skipLibCheck"):
+                    ts.setdefault("compilerOptions", {})["skipLibCheck"] = True
+                    ts_path.write_text(_json.dumps(ts, indent=2))
+                    fixed = True
+
+        # Fix 3: next.config.ts not supported — rename to next.config.mjs
+        if "next.config.ts" in build_error and "not supported" in build_error:
+            ts_cfg = Path(local) / "frontend" / "next.config.ts"
+            mjs_cfg = Path(local) / "frontend" / "next.config.mjs"
+            if ts_cfg.exists() and not mjs_cfg.exists():
+                content = ts_cfg.read_text()
+                # Strip TypeScript-only syntax: type imports, export type, `: NextConfig`
+                import re as _re
+                content = _re.sub(r"^import type.*\n", "", content, flags=_re.MULTILINE)
+                content = _re.sub(r":\s*NextConfig\b", "", content)
+                content = content.replace("export default config satisfies NextConfig", "export default config")
+                mjs_cfg.write_text(content)
+                ts_cfg.unlink()
+                logger.warning("Auto-fix: renamed next.config.ts → next.config.mjs")
+                fixed = True
+            elif ts_cfg.exists():
+                ts_cfg.unlink()
+                logger.warning("Auto-fix: removed next.config.ts (next.config.mjs already exists)")
+                fixed = True
+
+        # Fix 4: generic — if LLM can identify the error, ask openclaude to fix it
+        if not fixed and ("Error:" in build_error or "error" in build_error.lower()):
+            try:
+                from backend.tools.git_tools import _run_claude, OPENCLAUDE_BIN
+                import os as _os
+                sid_file = Path(local) / ".oc_session_id"
+                oc_sid = sid_file.read_text().strip() if sid_file.exists() else None
+                if _os.path.exists(OPENCLAUDE_BIN):
+                    fix_prompt = (
+                        f"The Vercel deployment failed with this error:\n\n{build_error[:1000]}\n\n"
+                        f"Fix the issue in the frontend/ directory. "
+                        f"After fixing, run: bash -c \"git add -A && git commit -m 'fix: vercel build error'\""
+                    )
+                    _run_claude(local, fix_prompt, session_id=oc_sid, timeout=300)
+                    fixed = True
+            except Exception as fix_err:
+                logger.warning("openclaude fix attempt failed: %s", fix_err)
+
+        if not fixed:
+            return False
+
+        # Commit and push the fix
+        def _run(cmd, **kw):
+            _sp.run(cmd, check=True, capture_output=True, cwd=local, **kw)
+
+        _run(["git", "add", "-A"])
+        _run(["git", "commit", "-m", "fix: auto-fix deployment errors"])
+        _run(["git", "push", "origin", "main"])
+        logger.info("Pushed auto-fix commit to %s", repo_url)
+        return True
+
+    except Exception as e:
+        logger.warning("Auto-fix push failed: %s", e)
+        return False
+
+
 def vercel_deploy_from_github(
     repo_url: str,
     project_name: str = "",
@@ -73,7 +222,7 @@ def vercel_deploy_from_github(
         project_name: Vercel project name (url-safe, unique per team)
         env_vars: dict of env var key→value to inject (e.g. SUPABASE_URL, CLERK_SECRET_KEY)
         framework: nextjs | vite | create-react-app | other (default: nextjs)
-        root_directory: monorepo sub-path (e.g. "frontend") — leave empty for root
+        root_directory: monorepo sub-path (e.g. "frontend") — REQUIRED for monorepos, pass "frontend" for Next.js projects in frontend/ subdirectory
         install_command: override npm install command
         build_command: override build command
 
@@ -81,6 +230,23 @@ def vercel_deploy_from_github(
     """
     if not project_name:
         project_name = repo_url.rstrip("/").split("/")[-1]
+
+    # Auto-detect root_directory from local clone if not specified
+    if not root_directory:
+        try:
+            from backend.tools.git_tools import _clones
+            from pathlib import Path as _Path
+            local = next((v for k, v in _clones.items() if repo_url in k and os.path.isdir(v)), None)
+            if local:
+                for candidate in ("frontend", "web", "app", "client"):
+                    candidate_path = _Path(local) / candidate
+                    if (candidate_path / "package.json").exists() or (candidate_path / "next.config.ts").exists() or (candidate_path / "next.config.js").exists() or (candidate_path / "next.config.mjs").exists():
+                        root_directory = candidate
+                        logger.info("Auto-detected root_directory=%s from local clone", root_directory)
+                        break
+        except Exception:
+            pass
+
     token = getattr(settings, "vercel_token", None)
     if not token:
         return {
@@ -193,21 +359,51 @@ def vercel_deploy_from_github(
             "target": "production",
             "projectSettings": {"framework": framework if framework != "other" else None},
         }
-        deploy_resp = requests.post(deploy_url, json=deploy_payload, headers=headers, timeout=30)
+        MAX_DEPLOY_ATTEMPTS = 3
+        last_result: dict = {}
 
-        deployment_url = ""
-        if deploy_resp.ok:
-            deployment_url = f"https://{deploy_resp.json().get('url', '')}"
+        for attempt in range(1, MAX_DEPLOY_ATTEMPTS + 1):
+            deploy_resp = requests.post(deploy_url, json=deploy_payload, headers=headers, timeout=30)
+
+            if not deploy_resp.ok:
+                last_result = {"deployed": False, "error": f"Deploy trigger failed: {deploy_resp.text[:200]}"}
+                break
+
+            dep_data = deploy_resp.json()
+            dep_id = dep_data.get("id", "")
+            deployment_url = f"https://{dep_data.get('url', '')}" if dep_data.get("url") else ""
+
+            # Poll until READY or ERROR (up to 5 min)
+            build_error = _poll_deployment(dep_id, team_id, headers)
+
+            if build_error is None:
+                # Success
+                project_url = f"https://{project_name}.vercel.app"
+                last_result = {
+                    "deployed": True,
+                    "project_url": project_url,
+                    "deployment_url": deployment_url or project_url,
+                    "project_id": project_id,
+                    "github_repo": repo_url,
+                    "attempts": attempt,
+                }
+                break
+
+            logger.warning("Deployment attempt %d failed: %s", attempt, build_error[:200])
+
+            if attempt < MAX_DEPLOY_ATTEMPTS:
+                # Try to fix the repo and push a new commit before retrying
+                fixed = _fix_repo_and_push(repo_url, build_error, gh_owner, gh_repo, headers)
+                if not fixed:
+                    last_result = {"deployed": False, "error": build_error, "attempts": attempt}
+                    break
+                # Small delay so GitHub propagates the new commit
+                time.sleep(5)
+            else:
+                last_result = {"deployed": False, "error": build_error, "attempts": attempt}
 
         project_url = f"https://{project_name}.vercel.app"
-        return {
-            "deployed": True,
-            "project_url": project_url,
-            "deployment_url": deployment_url or project_url,
-            "project_id": project_id,
-            "github_repo": repo_url,
-            "note": "Vercel will auto-deploy on every push to main.",
-        }
+        return last_result or {"deployed": False, "error": "No deploy attempt made"}
 
     except Exception as e:
         logger.error("vercel_deploy_from_github failed: %s", e)
