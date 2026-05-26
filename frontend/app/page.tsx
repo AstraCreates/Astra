@@ -94,9 +94,9 @@ export default function Home() {
   }
 
   return (
-    <div className="site-shell" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 32, alignItems: "start", minHeight: "100vh", paddingTop: 48, paddingBottom: 72 }}>
+    <div className="site-shell" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 40, alignItems: "start", minHeight: "100vh", paddingTop: 60, paddingBottom: 88 }}>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 520, paddingTop: 14 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 520, paddingTop: 18 }}>
         <div className="eyebrow">Astra · AI founding team</div>
         <h1 style={{ fontSize: "clamp(36px, 4vw, 58px)", lineHeight: 1.02, margin: 0 }}>
           What are you
@@ -109,11 +109,11 @@ export default function Home() {
       </div>
 
       {isSignedIn ? (
-        <LiquidGlass style={{ width: "100%", maxWidth: 760, justifySelf: "end" }} contentStyle={{ padding: "28px 32px" }}>
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <LiquidGlass style={{ width: "100%", maxWidth: 760, justifySelf: "end" }} contentStyle={{ padding: "34px 36px" }}>
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {/* Company + domain */}
-            <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr 1fr" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <label className="site-label">Company name</label>
                 <input
                   value={companyName}
@@ -124,7 +124,7 @@ export default function Home() {
                   disabled={loading}
                 />
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <label className="site-label">Domain (optional)</label>
                 <input
                   value={domain}
@@ -138,7 +138,7 @@ export default function Home() {
             </div>
 
             {/* Goal */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <label className="site-label">Goal</label>
               <textarea
                 value={instruction}
@@ -152,7 +152,7 @@ export default function Home() {
             </div>
 
           {/* Stack preferences */}
-          <div style={{ border: "1px solid var(--line)", borderRadius: 24, padding: "12px 16px", background: "rgba(0,0,0,0.02)" }}>
+          <div style={{ border: "1px solid var(--line)", borderRadius: 24, padding: "16px 18px", background: "rgba(0,0,0,0.02)" }}>
               <button
                 type="button"
                 onClick={() => setShowStack((v) => !v)}
@@ -162,9 +162,9 @@ export default function Home() {
                 <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>{showStack ? "▲ hide" : "▼ show"}</span>
               </button>
               {showStack && (
-                <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr", marginTop: 12 }}>
+                <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr", marginTop: 14 }}>
                   {(Object.entries(STACK_OPTIONS) as [string, string[]][]).map(([key, opts]) => (
-                    <div key={key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div key={key} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                       <label className="site-label">{key}</label>
                       <select
                         value={stack[key]}
@@ -224,15 +224,15 @@ export default function Home() {
       )}
 
       <div style={{ width: "100%", maxWidth: 760, justifySelf: "end" }}>
-        <LiquidGlass contentStyle={{ padding: "22px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <LiquidGlass contentStyle={{ padding: "28px 30px", display: "flex", flexDirection: "column", gap: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <span className="site-label">Starter templates</span>
               <h3 style={{ fontSize: 18 }}>Useful starting points</h3>
             </div>
             <span style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)" }}>click to fill the prompt</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
             {STARTER_TEMPLATES.map((item) => (
               <button
                 key={item.title}
@@ -241,13 +241,13 @@ export default function Home() {
                 disabled={loading}
                 style={{
                   textAlign: "left",
-                  padding: "14px 15px",
+                  padding: "16px 16px",
                   borderRadius: 24,
                   border: "1px solid rgba(176,180,186,0.10)",
                   background: "rgba(255,255,255,0.03)",
                   display: "flex",
                   flexDirection: "column",
-                  gap: 8,
+                  gap: 10,
                   cursor: "pointer",
                 }}
               >

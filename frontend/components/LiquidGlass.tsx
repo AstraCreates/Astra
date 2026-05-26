@@ -192,7 +192,7 @@ const LiquidGlass = forwardRef<HTMLDivElement, LiquidGlassProps>(
             position: "absolute",
             inset: 0,
             background:
-              `linear-gradient(135deg, var(--glass-edge-1, rgba(255,255,255,0.06)) 0%, ${tint ?? "var(--glass)"} 44%, var(--glass-edge-2, rgba(84,88,94,0.08)) 100%)`,
+              `var(--glass-surface, linear-gradient(135deg, rgba(255,255,255,0.06) 0%, ${tint ?? "var(--glass)"} 44%, rgba(84,88,94,0.08) 100%))`,
             border: "1px solid rgba(176,180,186,0.18)",
             boxShadow:
               "inset 0 1.5px 0 var(--glass-inset-top, rgba(255,255,255,0.16)), inset 0 -1px 0 var(--glass-inset-bottom, rgba(84,88,94,0.14)), 0 1px 3px rgba(0,0,0,0.32), 0 20px 54px rgba(0,0,0,0.46)",

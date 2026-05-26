@@ -26,7 +26,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <main style={{
         flex: 1,
         overflowY: "auto",
-        padding: "clamp(28px, 4vw, 60px)",
+        padding: "clamp(36px, 5vw, 84px)",
         position: "relative",
         zIndex: 1,
       }}>

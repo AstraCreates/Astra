@@ -73,16 +73,16 @@ export default function DashboardHome() {
   }
 
   return (
-    <div style={{ width: "100%", maxWidth: 1320, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
-      <LiquidGlass contentStyle={{ padding: "14px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+    <div style={{ width: "100%", maxWidth: 1360, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24 }}>
+      <LiquidGlass contentStyle={{ padding: "18px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
           <div style={{ width: 28, height: 28, borderRadius: 9, display: "grid", placeItems: "center", background: "rgba(168,172,178,0.92)", color: "rgba(10,14,22,0.92)", fontWeight: 600, fontSize: 14, flexShrink: 0 }}>A</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
             <span style={{ fontSize: 12, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--fg)" }}>Astra dashboard</span>
             <span style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.4 }}>Account, integrations, and active goals in one place</span>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <Link href="/dashboard" className="site-btn site-btn-ghost" style={{ padding: "0 14px", fontSize: 12 }}>Overview</Link>
           <Link href="/dashboard/settings" className="site-btn site-btn-ghost" style={{ padding: "0 14px", fontSize: 12 }}>Settings</Link>
           <Link href="/dashboard/integrations" className="site-btn site-btn-ghost" style={{ padding: "0 14px", fontSize: 12 }}>Integrations</Link>
@@ -105,29 +105,29 @@ export default function DashboardHome() {
         </div>
       </LiquidGlass>
 
-      <div>
-        <h1 style={{ fontSize: "clamp(22px,2.5vw,32px)", lineHeight: 1.15, margin: "0 0 8px" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <h1 style={{ fontSize: "clamp(22px,2.5vw,32px)", lineHeight: 1.15, margin: 0 }}>
           {isSignedIn && user?.firstName ? `What are you building, ${user.firstName}?` : "What are you building?"}
         </h1>
-        <p style={{ fontSize: 14, color: "var(--fg-dim)", margin: 0, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 14, color: "var(--fg-dim)", margin: 0, lineHeight: 1.7 }}>
           Describe your idea — eight agents build the rest in parallel.
         </p>
       </div>
 
-      <LiquidGlass contentStyle={{ padding: "28px 30px" }}>
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 12 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <LiquidGlass contentStyle={{ padding: "34px 36px" }}>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: 16 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <label className="site-label">Company</label>
               <input value={companyName} onChange={e => setCompanyName(e.target.value)} className="site-input" style={{ padding: "9px 12px", fontSize: 14 }} placeholder="Astra" disabled={loading} />
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <label className="site-label">Domain</label>
               <input value={domain} onChange={e => setDomain(e.target.value)} className="site-input" style={{ padding: "9px 12px", fontSize: 14 }} placeholder="astra.ai" disabled={loading} />
             </div>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <label className="site-label">Goal</label>
             <textarea value={instruction} onChange={e => setInstruction(e.target.value)}
               placeholder="Build a SaaS for indie hackers to track MRR — landing page, GitHub repo, Supabase backend, Clerk auth, Vercel deploy."
@@ -135,7 +135,7 @@ export default function DashboardHome() {
               style={{ padding: "12px 14px", fontSize: 14, lineHeight: 1.65, resize: "none" }} />
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <p className="site-label">Starter prompts</p>
             {STARTER_PROMPTS.map((item) => (
               <button
@@ -150,15 +150,15 @@ export default function DashboardHome() {
             ))}
           </div>
 
-          <div style={{ border: "1px solid var(--line)", borderRadius: 24, padding: "10px 12px" }}>
+          <div style={{ border: "1px solid var(--line)", borderRadius: 24, padding: "14px 16px" }}>
             <button type="button" onClick={() => setShowStack(v => !v)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
               <span className="site-label">Tech stack</span>
               <span style={{ fontSize: 10, color: "var(--fg-mute)" }}>{showStack ? "▲" : "▼"}</span>
             </button>
             {showStack && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
                 {(Object.entries(STACK_OPTIONS) as [string, string[]][]).map(([key, opts]) => (
-                  <div key={key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div key={key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     <label className="site-label">{key}</label>
                     <select value={stack[key as keyof typeof stack]} onChange={e => setStack(p => ({ ...p, [key]: e.target.value }))} disabled={loading} className="site-input" style={{ padding: "7px 10px", fontSize: 12, background: "linear-gradient(135deg, rgba(255,255,255,0.08), rgba(180,205,228,0.04)), var(--glass-hi)" }}>
                       {opts.map(o => <option key={o} value={o} style={{ background: "#0b0e14" }}>{o}</option>)}
@@ -185,14 +185,14 @@ export default function DashboardHome() {
         </form>
       </LiquidGlass>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, alignItems: "stretch" }}>
-        <LiquidGlass contentStyle={{ padding: "22px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20, alignItems: "stretch" }}>
+        <LiquidGlass contentStyle={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span className="site-label">Account</span>
             <h3 style={{ fontSize: 18 }}>Settings and profile</h3>
           </div>
-          <div style={{ display: "grid", gap: 10 }}>
-            <div style={{ padding: "12px 13px", borderRadius: 22, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(176,180,186,0.10)", display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ padding: "14px 15px", borderRadius: 22, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(176,180,186,0.10)", display: "flex", flexDirection: "column", gap: 5 }}>
               <span style={{ fontSize: 13, color: "var(--fg)" }}>{user?.primaryEmailAddress?.emailAddress ?? "Signed in account"}</span>
               <span style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.6 }}>Manage name, password, and session history</span>
             </div>
@@ -202,13 +202,13 @@ export default function DashboardHome() {
           </div>
         </LiquidGlass>
 
-        <LiquidGlass contentStyle={{ padding: "22px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <LiquidGlass contentStyle={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span className="site-label">Integrations</span>
             <h3 style={{ fontSize: 18 }}>Connect services</h3>
           </div>
-          <div style={{ display: "grid", gap: 10 }}>
-            <div style={{ padding: "12px 13px", borderRadius: 22, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(176,180,186,0.10)", display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={{ padding: "14px 15px", borderRadius: 22, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(176,180,186,0.10)", display: "flex", flexDirection: "column", gap: 5 }}>
               <span style={{ fontSize: 13, color: "var(--fg)" }}>GitHub, Vercel, Supabase, SendGrid</span>
               <span style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.6 }}>Control repo access, deploys, data, and email</span>
             </div>
@@ -218,23 +218,23 @@ export default function DashboardHome() {
           </div>
         </LiquidGlass>
 
-        <LiquidGlass contentStyle={{ padding: "22px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <LiquidGlass contentStyle={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <span className="site-label">Recent</span>
               <h3 style={{ fontSize: 18 }}>Open any saved run</h3>
             </div>
             <span style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)" }}>{recentSessions.length} saved</span>
           </div>
-          <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ display: "grid", gap: 12 }}>
             {recentSessions.slice(0, 4).length ? recentSessions.slice(0, 4).map((session) => (
               <button
                 key={session.sessionId}
                 type="button"
                 onClick={() => router.push(`/dashboard/goal/${session.sessionId}`)}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 12px", borderRadius: 22, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(176,180,186,0.10)", textAlign: "left" }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "12px 14px", borderRadius: 22, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(176,180,186,0.10)", textAlign: "left" }}
               >
-                <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
                   <span style={{ fontSize: 13, color: "var(--fg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{session.companyName}</span>
                   <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>{session.status} · {session.artifacts.length} artifacts</span>
                 </div>
