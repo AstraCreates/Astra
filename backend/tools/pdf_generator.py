@@ -57,12 +57,27 @@ def _expand_section(heading: str, body: str, doc_title: str) -> str:
     return body
 
 
-def generate_pdf(title: str, sections: list[dict], output_dir: str = "/tmp/astra_docs", expand_content: bool = True) -> dict:
-    """Generate PDF. Args: title (str), sections (list of dicts, each with 'heading' and 'body' keys, e.g. [{"heading": "Section 1", "body": "text..."}]), expand_content (bool, default True — uses LLM to expand thin sections). Returns {generated, path, filename}."""
+def generate_pdf(title: str, sections: list, output_dir: str = "/tmp/astra_docs", expand_content: bool = True) -> dict:
+    """Generate PDF. Args: title (str), sections (list — MUST be a JSON array of objects, e.g. [{"heading": "Executive Summary", "body": "text..."}, {"heading": "Market Size", "body": "text..."}]), expand_content (bool, default True). Returns {generated, path, filename}. IMPORTANT: sections must be a real list/array, NOT a string."""
     os.makedirs(output_dir, exist_ok=True)
     safe_title = title.lower().replace(" ", "_").encode("ascii", "ignore").decode()
     filename = f"{safe_title}_{uuid.uuid4().hex[:8]}.pdf"
     filepath = os.path.join(output_dir, filename)
+
+    # Coerce sections to list — model sometimes passes a string repr or a single dict
+    if isinstance(sections, str):
+        import json, ast
+        try:
+            sections = json.loads(sections)
+        except Exception:
+            try:
+                sections = ast.literal_eval(sections)
+            except Exception:
+                sections = [{"heading": "", "body": sections}]
+    if isinstance(sections, dict):
+        sections = [sections]
+    if not isinstance(sections, list):
+        sections = [{"heading": "", "body": str(sections)}]
 
     # Expand thin sections via LLM before rendering
     expanded_sections = []
