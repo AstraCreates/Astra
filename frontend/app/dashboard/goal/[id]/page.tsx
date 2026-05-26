@@ -1,9 +1,12 @@
 "use client";
 
 import { use, useEffect, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { streamGoal, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder } from "@/lib/api";
 import LiquidGlass from "@/components/LiquidGlass";
+import CompanyChat from "@/components/CompanyChat";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -35,7 +38,8 @@ interface AgentState {
 }
 
 const AGENT_ICONS: Record<string, string> = {
-  research: "🔬", web: "🌐", marketing: "📢", technical: "⚙️",
+  research: "🔬", research_competitors: "🏆", research_execution: "📋",
+  web: "🌐", marketing: "📢", technical: "⚙️",
   legal: "⚖️", ops: "🚀", sales: "🤝", design: "🎨",
 };
 
@@ -63,6 +67,15 @@ function extractColors(log: LogEntry[]): string[] {
   return out;
 }
 
+function extractHexFromObj(obj: unknown, depth = 0): string[] {
+  if (depth > 4 || !obj || typeof obj !== "object") return [];
+  return Object.values(obj as Record<string, unknown>).flatMap(v =>
+    typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v)
+      ? [v as string]
+      : extractHexFromObj(v, depth + 1)
+  );
+}
+
 function extractUrls(log: LogEntry[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -78,6 +91,20 @@ function extractUrls(log: LogEntry[]): string[] {
 
 function faviconUrl(url: string): string {
   try { return `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=16`; } catch { return ""; }
+}
+
+function summarizeResult(state: AgentState | undefined): string {
+  if (!state) return "No active agent selected.";
+  if (state.status === "waiting") return "This agent has not started yet.";
+  if (state.status === "error") return "This lane hit an error and needs a rerun or steer.";
+
+  const result = state.result ?? {};
+  const previewUrl = (result.url ?? result.deployment_url ?? result.project_url ?? result.github_url) as string | undefined;
+  if (previewUrl) return `Primary output available at ${previewUrl.replace(/^https?:\/\//, "")}.`;
+  if (state.visitedUrls?.length) return `${state.visitedUrls.length} sites visited so far for this lane.`;
+  if (state.commits?.length) return `${state.commits.length} code rounds committed so far.`;
+  if (Object.keys(result).length) return `${Object.keys(result).length} output fields captured in this lane.`;
+  return state.currentAction ? `Currently ${state.currentAction}.` : "This lane is in progress.";
 }
 
 // ── Agent-specific preview panels ──────────────────────────────────────────
@@ -217,11 +244,32 @@ function TechnicalPreview({ state }: { state: AgentState }) {
 }
 
 function DesignPreview({ state }: { state: AgentState }) {
-  const colors = extractColors(state.log);
-  const spec = state.designSpec ?? (state.result?.design_spec as string | undefined);
-  const palette = state.result?.color_palette as Record<string, string> | undefined;
+  const result = state.result ?? {};
 
-  const allColors = palette ? Object.values(palette).filter(v => typeof v === "string" && v.startsWith("#")) : colors;
+  // The tool returns `colors` not `color_palette` — check both plus fallbacks
+  const rawPalette = (
+    result.color_palette ?? result.colors ?? result.palette ?? result.brand_colors
+  ) as Record<string, unknown> | undefined;
+
+  // Collect all hex codes: from palette, from log, from entire result
+  const paletteHexes = rawPalette ? (Object.values(rawPalette).filter(v => typeof v === "string" && (v as string).startsWith("#")) as string[]) : [];
+  const logHexes = extractColors(state.log);
+  const resultHexes = extractHexFromObj(result);
+  const allColors = [...new Set([...paletteHexes, ...logHexes, ...resultHexes])];
+
+  const paletteEntries = rawPalette
+    ? Object.entries(rawPalette).filter(([, v]) => typeof v === "string" && (v as string).startsWith("#"))
+    : [];
+
+  const spec = (
+    state.designSpec ??
+    result.design_spec ??
+    result.spec ??
+    result.design_system ??
+    result.css_variables
+  ) as string | undefined;
+
+  const isDone = state.status === "done";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -229,7 +277,7 @@ function DesignPreview({ state }: { state: AgentState }) {
         <div>
           <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)", display: "block", marginBottom: 8 }}>Color Palette</span>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {allColors.map((c, i) => (
+            {allColors.slice(0, 12).map((c, i) => (
               <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                 <div style={{ width: 44, height: 44, borderRadius: 24, background: c, border: "1px solid rgba(0,0,0,0.1)", boxShadow: `0 2px 8px ${c}44` }} />
                 <span style={{ fontSize: 9, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)" }}>{c}</span>
@@ -238,13 +286,13 @@ function DesignPreview({ state }: { state: AgentState }) {
           </div>
         </div>
       )}
-      {palette && (
+      {paletteEntries.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {Object.entries(palette).map(([k, v]) => (
+          {paletteEntries.map(([k, v]) => (
             <div key={k} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 6, background: "rgba(0,0,0,0.03)" }}>
-              {typeof v === "string" && v.startsWith("#") && <div style={{ width: 14, height: 14, borderRadius: 3, background: v, flexShrink: 0 }} />}
+              <div style={{ width: 14, height: 14, borderRadius: 3, background: v as string, flexShrink: 0 }} />
               <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "capitalize" }}>{k.replace(/_/g, " ")}</span>
-              <span style={{ fontSize: 10, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-dim)", marginLeft: "auto" }}>{String(v).slice(0, 40)}</span>
+              <span style={{ fontSize: 10, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-dim)", marginLeft: "auto" }}>{(v as string).slice(0, 40)}</span>
             </div>
           ))}
         </div>
@@ -257,61 +305,209 @@ function DesignPreview({ state }: { state: AgentState }) {
           </div>
         </div>
       )}
-      {allColors.length === 0 && !spec && <BuildingIndicator label="Designing…" />}
+      {allColors.length === 0 && !spec && isDone && <ResultDump result={state.result} />}
+      {allColors.length === 0 && !spec && !isDone && <BuildingIndicator label="Designing…" />}
     </div>
   );
 }
 
 function MarketingPreview({ state }: { state: AgentState }) {
-  const r = state.result;
-  const reel = r?.instagram_reel as string | undefined;
-  const tiktok = r?.tiktok as string | undefined;
-  const ad = r?.meta_ad as string | undefined;
-  const email = r?.email as string | undefined;
+  const r = state.result ?? {};
 
-  if (!r || (!reel && !tiktok && !ad && !email)) return <BuildingIndicator label="Creating content…" />;
+  // LLM may nest content under reel_package/tiktok_package/meta_ad or at top level
+  const reelPkg = (r.reel_package ?? r.reel ?? r.instagram_reel ?? {}) as Record<string, unknown>;
+  const tiktokPkg = (r.tiktok_package ?? r.tiktok ?? {}) as Record<string, unknown>;
+  const metaAdPkg = (r.meta_ad ?? r.ad ?? {}) as Record<string, unknown>;
+  const emailPkg = (r.email_campaign ?? r.email ?? {}) as Record<string, unknown>;
+
+  // Reel: check nested pkg first, then top-level
+  const reelScript = (reelPkg.script ?? r.script ?? r.reel_script ?? "") as string;
+  const reelCaption = (reelPkg.caption ?? r.caption ?? r.reel_caption ?? "") as string;
+  const rawHashtags = reelPkg.hashtags ?? r.hashtags;
+  const reelHashtags = Array.isArray(rawHashtags) ? (rawHashtags as string[]).join(" ") : (rawHashtags as string ?? "");
+
+  // TikTok
+  const tiktokScript = (tiktokPkg.script ?? r.tiktok_script ?? "") as string;
+
+  // Meta ad
+  const adHeadline = (metaAdPkg.headline ?? r.headline ?? r.ad_headline ?? "") as string;
+  const adBody = (metaAdPkg.primary_text ?? r.primary_text ?? r.ad_body ?? r.ad_copy ?? "") as string;
+  const adCta = (metaAdPkg.cta ?? r.cta ?? "") as string;
+
+  // Email
+  const emailSubject = (emailPkg.subject ?? r.subject ?? r.email_subject ?? "") as string;
+  const rawEmailBody = emailPkg.text ?? emailPkg.html ?? r.text ?? r.email_text ?? r.email_body ?? r.html ?? "";
+  const emailBody = (rawEmailBody) as string;
+
+  // LinkedIn post
+  const linkedin = (r.linkedin_post ?? r.post_text ?? r.linkedin ?? "") as string;
+
+  const hasContent = reelScript || reelCaption || tiktokScript || adHeadline || adBody || emailSubject || emailBody || linkedin;
+  const isDone = state.status === "done";
+
+  if (!hasContent) {
+    return isDone ? <ResultDump result={state.result} /> : <BuildingIndicator label="Creating content…" />;
+  }
+
+  const CARD = (label: string, lines: [string, string][]) => (
+    <div style={{ borderRadius: 20, border: "1px solid rgba(0,0,0,0.09)", background: "rgba(255,255,255,0.02)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color: "var(--fg)", letterSpacing: "0.03em" }}>{label}</span>
+      {lines.filter(([, v]) => v).map(([k, v]) => (
+        <div key={k}>
+          <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)" }}>{k}</span>
+          <p style={{ margin: "3px 0 0", fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.6, whiteSpace: "pre-wrap", maxHeight: 100, overflowY: "auto" }}>{v.slice(0, 400)}</p>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {[["📸 Instagram Reel", reel], ["🎵 TikTok", tiktok], ["📣 Meta Ad", ad], ["📧 Email", email]].map(([label, content]) =>
-        content ? (
-          <div key={String(label)} style={{ borderRadius: 24, border: "1px solid rgba(0,0,0,0.09)", background: "rgba(0,0,0,0.02)", padding: "10px 12px" }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-dim)", marginBottom: 6 }}>{label}</div>
-            <div style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.6, maxHeight: 80, overflowY: "auto", whiteSpace: "pre-wrap" }}>{String(content).slice(0, 300)}</div>
-          </div>
-        ) : null
-      )}
+      {(reelScript || reelCaption) && CARD("📸 Instagram Reel", [["Script", reelScript], ["Caption", reelCaption], ["Hashtags", reelHashtags]])}
+      {tiktokScript && CARD("🎵 TikTok", [["Script", tiktokScript]])}
+      {(adHeadline || adBody) && CARD("📣 Meta Ad", [["Headline", adHeadline], ["Body", adBody], ["CTA", adCta]])}
+      {(emailSubject || emailBody) && CARD("📧 Email", [["Subject", emailSubject], ["Body", typeof emailBody === "string" ? emailBody.replace(/<[^>]+>/g, "") : emailBody]])}
+      {linkedin && CARD("💼 LinkedIn", [["Post", linkedin]])}
     </div>
   );
 }
 
 function LegalPreview({ state }: { state: AgentState }) {
-  const r = state.result;
-  const text = (r?.formatted_text ?? r?.content ?? r?.document_text) as string | undefined;
-  const path = (r?.path ?? r?.privacy_policy_path ?? r?.filename) as string | undefined;
-  if (!r || !text) return <BuildingIndicator label="Drafting documents…" />;
+  const r = state.result ?? {};
+  const [legalTab, setLegalTab] = useState(0);
+
+  // Collect all documents from result keys and log tool results
+  type LegalDoc = { label: string; path?: string; filename?: string; text?: string };
+  const docs: LegalDoc[] = [];
+
+  const DOC_KEYS: [string, string][] = [
+    ["privacy_policy", "Privacy Policy"],
+    ["terms_of_service", "Terms of Service"],
+    ["founder_agreement", "Founder Agreement"],
+    ["nda", "NDA"],
+    ["ip_assignment", "IP Assignment"],
+    ["safe_note", "SAFE Note"],
+  ];
+
+  for (const [key, label] of DOC_KEYS) {
+    const entry = r[key] as Record<string, unknown> | string | undefined;
+    if (!entry) continue;
+    if (typeof entry === "object") {
+      const entryText = (entry.content ?? entry.text ?? entry.formatted_text) as string | undefined;
+      docs.push({ label, path: entry.path as string | undefined, filename: entry.filename as string | undefined, text: entryText });
+    } else {
+      docs.push({ label, text: String(entry) });
+    }
+  }
+
+  // Fallback: single doc from top-level path/filename/formatted_text
+  if (docs.length === 0) {
+    const path = (r.path ?? r.privacy_policy_path ?? r.filename) as string | undefined;
+    const text = (r.formatted_text ?? r.content ?? r.document_text ?? r.text) as string | undefined;
+    const filename = (r.filename ?? (typeof path === "string" ? path.split("/").pop() : undefined)) as string | undefined;
+    const title = (r.title ?? r.doc_type ?? "Document") as string;
+    if (path || text) docs.push({ label: title, path, filename, text });
+  }
+
+  // Fallback: check if result has `documents` array
+  if (docs.length === 0) {
+    const docList = r.documents as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(docList)) {
+      for (const d of docList) {
+        const label = (d.title ?? d.doc_type ?? d.type ?? "Document") as string;
+        docs.push({ label: String(label), path: d.path as string | undefined, filename: d.filename as string | undefined, text: (d.content ?? d.text) as string | undefined });
+      }
+    }
+  }
+
+  // Extract docs from log (generate_pdf tool results)
+  for (const entry of state.log) {
+    if (!entry.text.includes("generate_pdf") && !entry.text.includes(".pdf") && !entry.text.includes(".txt")) continue;
+    const pathMatch = entry.text.match(/\/[^\s"']+\.(pdf|txt)/);
+    if (pathMatch) {
+      const p = pathMatch[0];
+      const name = p.split("/").pop() ?? p;
+      const label = name.replace(/[_-]/g, " ").replace(/\.(pdf|txt)$/, "").replace(/\w\S*/g, w => w.charAt(0).toUpperCase() + w.slice(1));
+      if (!docs.find(d => d.path === p)) docs.push({ label, path: p, filename: name });
+    }
+  }
+
+  if (docs.length === 0) {
+    return state.status === "done" ? <ResultDump result={state.result} /> : <BuildingIndicator label="Drafting documents…" />;
+  }
+
+  const active = docs[legalTab] ?? docs[0];
+  const pdfUrl = active.filename ? `${BASE}/files/${encodeURIComponent(active.filename)}` : null;
+
+  const TAB = (label: string, i: number) => (
+    <button key={i} onClick={() => setLegalTab(i)} style={{
+      fontSize: 11, padding: "4px 12px", borderRadius: 6, cursor: "pointer",
+      border: legalTab === i ? "1px solid rgba(180,205,228,0.22)" : "1px solid transparent",
+      background: legalTab === i ? "rgba(180,205,228,0.10)" : "transparent",
+      color: legalTab === i ? "var(--fg)" : "var(--fg-mute)", whiteSpace: "nowrap",
+    }}>{label}</button>
+  );
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {path && <div style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-dim)", padding: "4px 8px", background: "rgba(180,205,228,0.10)", borderRadius: 6, border: "1px solid rgba(180,205,228,0.22)" }}>📄 {String(path)}</div>}
-      <div style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 280, overflowY: "auto", padding: "10px 12px", background: "rgba(180,205,228,0.10)", borderRadius: 24, border: "1px solid rgba(0,0,0,0.08)" }}>
-        {String(text).slice(0, 1200)}
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Sub-tabs */}
+      {docs.length > 1 && (
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", borderBottom: "1px solid rgba(0,0,0,0.08)", paddingBottom: 8 }}>
+          {docs.map((d, i) => TAB(d.label, i))}
+        </div>
+      )}
+
+      {/* PDF embed or text */}
+      {active.filename?.endsWith(".pdf") && pdfUrl ? (
+        <div style={{ borderRadius: 20, overflow: "hidden", border: "1px solid rgba(0,0,0,0.1)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", background: "rgba(180,205,228,0.10)", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+            <span style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1 }}>📄 {active.filename}</span>
+            <a href={pdfUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2563EB", textDecoration: "none" }}>Download ↗</a>
+          </div>
+          <iframe src={pdfUrl} style={{ width: "100%", height: 320, border: "none" }} title={active.label} />
+        </div>
+      ) : (
+        <>
+          {active.filename && (
+            <div style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-dim)", padding: "4px 8px", background: "rgba(180,205,228,0.10)", borderRadius: 6, border: "1px solid rgba(180,205,228,0.22)" }}>
+              📄 {active.filename}
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 320, overflowY: "auto", padding: "12px 14px", background: "rgba(180,205,228,0.10)", borderRadius: 20, border: "1px solid rgba(0,0,0,0.08)" }}>
+            {active.text ? String(active.text).slice(0, 2000) : "No text content available."}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 function SalesPreview({ state }: { state: AgentState }) {
   const r = state.result;
-  const lead = (r?.lead ?? r?.company) as string | undefined;
-  const seq = r?.sequence;
-  if (!r || !lead) return <BuildingIndicator label="Building outreach…" />;
-  const steps: unknown[] = Array.isArray(seq) ? seq : typeof seq === "string" ? JSON.parse(seq.startsWith("[") ? seq : "[]") : [];
+  const leadsArr = r?.leads as Array<Record<string, unknown>> | undefined;
+  const firstLead = Array.isArray(leadsArr) ? leadsArr[0] : undefined;
+  const lead = (r?.lead ?? r?.company ?? firstLead?.company ?? firstLead?.name ?? firstLead?.title) as string | undefined;
+  const seq = r?.sequence ?? r?.outreach_sequence ?? r?.email_sequence;
+  if (!r || !lead) {
+    return state.status === "done" ? <ResultDump result={state.result} /> : <BuildingIndicator label="Building outreach…" />;
+  }
+  const steps: unknown[] = Array.isArray(seq) ? seq : typeof seq === "string" ? (() => { try { return JSON.parse(seq); } catch { return []; } })() : [];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ padding: "8px 12px", borderRadius: 24, background: "rgba(180,205,228,0.10)", border: "1px solid rgba(180,205,228,0.22)" }}>
         <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)", marginBottom: 3 }}>Target Lead</div>
         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>{lead}</div>
       </div>
+      {Array.isArray(leadsArr) && leadsArr.length > 1 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)" }}>All leads ({leadsArr.length})</span>
+          {leadsArr.slice(0, 5).map((l, i) => (
+            <div key={i} style={{ padding: "5px 10px", borderRadius: 6, background: "rgba(0,0,0,0.03)", fontSize: 11, color: "var(--fg-dim)" }}>
+              {String(l.company ?? l.name ?? l.title ?? l.url ?? JSON.stringify(l)).slice(0, 80)}
+            </div>
+          ))}
+        </div>
+      )}
       {steps.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)" }}>Email Sequence ({steps.length} steps)</span>
@@ -330,14 +526,43 @@ function SalesPreview({ state }: { state: AgentState }) {
 
 function OpsPreview({ state }: { state: AgentState }) {
   const r = state.result;
-  const sop = (r?.SOP ?? r?.content ?? r?.sop) as string | undefined;
-  const title = (r?.title) as string | undefined;
-  if (!r || !sop) return <BuildingIndicator label="Handling operations…" />;
+  const sop = (r?.SOP ?? r?.content ?? r?.sop ?? r?.summary ?? r?.deliverable ?? r?.pitch_deck ?? r?.investor_summary) as string | undefined;
+  const title = (r?.title ?? r?.doc_type) as string | undefined;
+  const pdfPath = (r?.path ?? r?.filename) as string | undefined;
+  if (!r || (!sop && !pdfPath)) {
+    return state.status === "done" ? <ResultDump result={state.result} /> : <BuildingIndicator label="Handling operations…" />;
+  }
+  const pdfFilename = pdfPath ? pdfPath.split("/").pop() : undefined;
+  const pdfUrl = pdfFilename ? `${BASE}/files/${encodeURIComponent(pdfFilename)}` : null;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {title && <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>{title}</div>}
-      <div style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 280, overflowY: "auto", padding: "10px 12px", background: "rgba(180,205,228,0.10)", borderRadius: 24, border: "1px solid rgba(0,0,0,0.08)" }}>
-        {String(sop).slice(0, 1200)}
+      {pdfUrl && (
+        <div style={{ borderRadius: 20, overflow: "hidden", border: "1px solid rgba(0,0,0,0.1)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", background: "rgba(180,205,228,0.10)", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
+            <span style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1 }}>📄 {pdfFilename}</span>
+            <a href={pdfUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2563EB", textDecoration: "none" }}>Download ↗</a>
+          </div>
+          {pdfFilename?.endsWith(".pdf") && <iframe src={pdfUrl} style={{ width: "100%", height: 260, border: "none" }} title={title ?? "Document"} />}
+        </div>
+      )}
+      {sop && (
+        <div style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 280, overflowY: "auto", padding: "10px 12px", background: "rgba(180,205,228,0.10)", borderRadius: 24, border: "1px solid rgba(0,0,0,0.08)" }}>
+          {String(sop).slice(0, 1200)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResultDump({ result }: { result: Record<string, unknown> | null }) {
+  if (!result || Object.keys(result).length === 0) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)" }}>Agent output ({Object.keys(result).length} fields)</span>
+      <div style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-dim)", lineHeight: 1.65, whiteSpace: "pre-wrap", maxHeight: 320, overflowY: "auto", padding: "10px 14px", background: "rgba(180,205,228,0.10)", borderRadius: 20, border: "1px solid rgba(0,0,0,0.08)" }}>
+        {JSON.stringify(result, null, 2).slice(0, 2400)}
       </div>
     </div>
   );
@@ -354,7 +579,10 @@ function BuildingIndicator({ label }: { label: string }) {
 
 function AgentPreview({ state }: { state: AgentState }) {
   switch (state.agent) {
-    case "research": return <ResearchPreview state={state} />;
+    case "research":
+    case "research_competitors":
+    case "research_execution":
+      return <ResearchPreview state={state} />;
     case "web": return <WebPreview state={state} />;
     case "technical": return <TechnicalPreview state={state} />;
     case "design": return <DesignPreview state={state} />;
@@ -368,12 +596,62 @@ function AgentPreview({ state }: { state: AgentState }) {
 
 // ── Agent detail panel ──────────────────────────────────────────────────────
 
-type DetailTab = "preview" | "plan" | "log";
+type DetailTab = "preview" | "plan" | "log" | "obsidian";
 
-function AgentDetail({ state, planTask }: { state: AgentState; planTask: AgentTask | undefined }) {
+function AgentDetail({
+  state,
+  planTask,
+  sessionId,
+  founderId,
+}: {
+  state: AgentState;
+  planTask: AgentTask | undefined;
+  sessionId: string;
+  founderId: string;
+}) {
   const [tab, setTab] = useState<DetailTab>("preview");
+  const [obsidianNote, setObsidianNote] = useState<string | null>(null);
+  const [obsidianLoading, setObsidianLoading] = useState(false);
+  const [obsidianError, setObsidianError] = useState<string | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [state.log.length]);
+
+  useEffect(() => {
+    if (tab !== "obsidian" || !founderId || !sessionId || !state.agent) return;
+    const ctrl = new AbortController();
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      ctrl.abort();
+    }, 8000);
+    queueMicrotask(() => {
+      if (ctrl.signal.aborted) return;
+      setObsidianLoading(true);
+      setObsidianError(null);
+      setObsidianNote(null);
+    });
+    fetch(`${BASE}/vault/${encodeURIComponent(founderId)}/note?session_id=${encodeURIComponent(sessionId)}&agent=${encodeURIComponent(state.agent)}`, {
+      signal: ctrl.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(res.status === 404 ? "No Obsidian note exists for this agent yet." : await res.text());
+        return res.json();
+      })
+      .then((data: { content?: string }) => setObsidianNote(data.content ?? ""))
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError" && !timedOut) return;
+        setObsidianNote(null);
+        setObsidianError(timedOut ? "Obsidian note request timed out. Check that the backend is running." : err instanceof Error ? err.message : "Failed to load Obsidian note.");
+      })
+      .finally(() => {
+        window.clearTimeout(timeout);
+        if (!ctrl.signal.aborted || timedOut) setObsidianLoading(false);
+      });
+    return () => {
+      window.clearTimeout(timeout);
+      ctrl.abort();
+    };
+  }, [tab, founderId, sessionId, state.agent]);
 
   const p = pct(state);
   const isRunning = state.status === "running";
@@ -432,8 +710,10 @@ function AgentDetail({ state, planTask }: { state: AgentState; planTask: AgentTa
 
       {/* Sub-tabs */}
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid rgba(0,0,0,0.08)", paddingBottom: 8 }}>
-        {(["preview", "plan", "log"] as DetailTab[]).map(t => (
-          <button key={t} onClick={() => setTab(t)} style={TAB_STYLE(tab === t)}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>
+        {(["preview", "plan", "log", "obsidian"] as DetailTab[]).map(t => (
+          <button key={t} onClick={() => setTab(t)} style={TAB_STYLE(tab === t)}>
+            {t === "obsidian" ? "Obsidian" : t.charAt(0).toUpperCase() + t.slice(1)}
+          </button>
         ))}
       </div>
 
@@ -476,6 +756,34 @@ function AgentDetail({ state, planTask }: { state: AgentState; planTask: AgentTa
                 <span style={{ color: entry.type === "error" ? "#C0392B" : entry.type === "result" ? "#3D9E5F" : "var(--fg-dim)" }}>{entry.text}</span>
               </div>
             ))}
+          </div>
+        )}
+
+        {tab === "obsidian" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {obsidianLoading && <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>Loading Obsidian note…</span>}
+            {!obsidianLoading && obsidianError && (
+              <div style={{ borderRadius: 18, border: "1px solid rgba(192,57,43,0.22)", background: "rgba(192,57,43,0.06)", padding: "12px 14px", fontSize: 12, color: "#C97070", lineHeight: 1.6 }}>
+                {obsidianError}
+              </div>
+            )}
+            {!obsidianLoading && !obsidianError && obsidianNote !== null && (
+              <pre style={{
+                margin: 0,
+                padding: "14px 16px",
+                borderRadius: 24,
+                border: "1px solid rgba(0,0,0,0.08)",
+                background: "rgba(180,205,228,0.10)",
+                color: "var(--fg-dim)",
+                fontSize: 11,
+                lineHeight: 1.75,
+                fontFamily: "var(--font-jetbrains-mono)",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+              }}>
+                {obsidianNote || "This note is empty."}
+              </pre>
+            )}
           </div>
         )}
       </div>
@@ -585,6 +893,73 @@ function AskPanel({ sessionId, founderId }: { sessionId: string; founderId: stri
   );
 }
 
+// ── Continue panel ──────────────────────────────────────────────────────────
+
+function ContinuePanel({ sessionId, founderId, company }: { sessionId: string; founderId: string; company: string }) {
+  const router = useRouter();
+  const [instruction, setInstruction] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const SUGGESTIONS = [
+    "Update the landing page copy and add a pricing section",
+    "Write 5 LinkedIn posts for launch week",
+    "Add a blog to the site and write the first post",
+    "Build an admin dashboard with user analytics",
+    "Create investor outreach emails for 10 seed funds",
+    "Add Stripe payments and a subscription tier page",
+  ];
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!instruction.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const { continueSession } = await import("@/lib/api");
+      const result = await continueSession(founderId, sessionId, instruction);
+      router.push(`/dashboard/goal/${result.session_id}?instruction=${encodeURIComponent(instruction)}&founder=${encodeURIComponent(founderId)}&company=${encodeURIComponent(company)}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to continue");
+      setLoading(false);
+    }
+  }
+
+  return (
+    <LiquidGlass contentStyle={{ padding: "28px 32px", display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <span className="site-label">Continue building</span>
+        <h3 style={{ fontSize: 16, margin: 0 }}>What do you want to do next?</h3>
+      </div>
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <textarea
+          value={instruction}
+          onChange={e => setInstruction(e.target.value)}
+          placeholder="Update the landing page, write LinkedIn posts, add Stripe payments, build a dashboard…"
+          rows={3}
+          className="site-textarea"
+          style={{ padding: "12px 14px", fontSize: 14, lineHeight: 1.6, resize: "none" }}
+          disabled={loading}
+        />
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button type="submit" disabled={loading || !instruction.trim()} className="site-btn site-btn-primary" style={{ padding: "0 22px" }}>
+            {loading ? "Launching…" : "Run agents"} <span aria-hidden>→</span>
+          </button>
+        </div>
+        {error && <p style={{ fontSize: 12, color: "#f87171", margin: 0 }}>{error}</p>}
+      </form>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {SUGGESTIONS.map(s => (
+          <button key={s} type="button" onClick={() => setInstruction(s)} disabled={loading}
+            style={{ fontSize: 12, padding: "5px 12px", borderRadius: 999, border: "1px solid var(--line)", background: "transparent", cursor: "pointer", color: "var(--text-2)" }}>
+            {s}
+          </button>
+        ))}
+      </div>
+    </LiquidGlass>
+  );
+}
+
 // ── Main page ───────────────────────────────────────────────────────────────
 
 export default function GoalPage({ params }: { params: Promise<{ id: string }> }) {
@@ -594,16 +969,39 @@ export default function GoalPage({ params }: { params: Promise<{ id: string }> }
   const founderId = searchParams.get("founder") ?? "founder_001";
   const company = searchParams.get("company") ?? "";
 
-  const [agents, setAgents] = useState<Record<string, AgentState>>({});
-  const [planTasks, setPlanTasks] = useState<AgentTask[]>([]);
-  const [activeAgent, setActiveAgent] = useState<string>("");
-  const [done, setDone] = useState(false);
+  // ── Persistent session cache ──────────────────────────────────────────────
+  const CACHE_KEY = `astra_session_${sessionId}`;
+
+  function loadCache(): { agents: Record<string, AgentState>; planTasks: AgentTask[]; done: boolean } | null {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+
+  function saveCache(a: Record<string, AgentState>, p: AgentTask[], d: boolean) {
+    if (typeof window === "undefined") return;
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ agents: a, planTasks: p, done: d })); } catch {}
+  }
+
+  const cached = loadCache();
+
+  const [agents, setAgents] = useState<Record<string, AgentState>>(cached?.agents ?? {});
+  const [planTasks, setPlanTasks] = useState<AgentTask[]>(cached?.planTasks ?? []);
+  const [activeAgent, setActiveAgent] = useState<string>(
+    cached?.planTasks?.[0]?.agent ?? Object.keys(cached?.agents ?? {})[0] ?? ""
+  );
+  const [done, setDone] = useState(cached?.done ?? false);
   const [error, setError] = useState<string | null>(null);
   const [reconnecting, setReconnecting] = useState(false);
   const [connected, setConnected] = useState(false);
   const everConnected = useRef(false);
   const notified = useRef(false);
   const errorCount = useRef(0);
+
+  // Persist to localStorage whenever state changes
+  useEffect(() => { saveCache(agents, planTasks, done); }, [agents, planTasks, done]);
 
   useEffect(() => {
     if (!sessionId || sessionId === "undefined") return;
@@ -715,12 +1113,39 @@ export default function GoalPage({ params }: { params: Promise<{ id: string }> }
   const selectedState = visibleAgents[selected];
   const selectedPlanTask = planTasks.find(t => t.agent === selected);
   const title = company || instruction.slice(0, 48) || "Goal";
+  const runningCount = Object.values(visibleAgents).filter(a => a.status === "running").length;
+  const failedCount = Object.values(visibleAgents).filter(a => a.status === "error").length;
+  const totalVisitedUrls = Object.values(visibleAgents).reduce((sum, a) => sum + (a.visitedUrls?.length ?? 0), 0);
+  const totalCommits = Object.values(visibleAgents).reduce((sum, a) => sum + (a.commits?.length ?? 0), 0);
+  const completedAgents = agentList.filter(a => visibleAgents[a]?.status === "done");
+  const activeAgents = agentList.filter(a => visibleAgents[a]?.status === "running");
+  const completedArtifacts = agentList
+    .map((agent) => ({ agent, state: visibleAgents[agent] }))
+    .filter(({ state }) => state?.status === "done")
+    .map(({ agent, state }) => ({
+      agent,
+      label: AGENT_LABELS[agent] ?? agent,
+      summary: summarizeResult(state),
+    }))
+    .slice(0, 4);
 
   return (
-    <div style={{ maxWidth: 1100, margin: 0, display: "flex", flexDirection: "column", gap: 16 }}>
+    <div className="goal-workspace" style={{
+      width: "100%",
+      maxWidth: 1480,
+      minHeight: "calc(100vh - clamp(72px, 10vw, 168px))",
+      margin: "0 auto",
+      display: "flex",
+      flexDirection: "column",
+      gap: 24,
+      justifyContent: "center",
+    }}>
       {/* Header */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <Link href="/dashboard" className="site-btn site-btn-ghost" style={{ minHeight: 32, padding: "0 13px", fontSize: 12 }}>
+            ← Back
+          </Link>
           <h1 style={{ fontSize: 18, fontWeight: 600, color: "var(--fg)", margin: 0 }}>{title}</h1>
           <span style={{
             fontSize: 11, letterSpacing: "0.06em", padding: "3px 10px", borderRadius: 999,
@@ -751,16 +1176,16 @@ export default function GoalPage({ params }: { params: Promise<{ id: string }> }
 
       {/* Main layout: sidebar + detail */}
       {agentList.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "stretch" }}>
+        <div className="goal-workspace-grid" style={{ display: "grid", gridTemplateColumns: "minmax(260px, 320px) minmax(0, 1fr)", gap: 18, alignItems: "stretch" }}>
           {/* Agent sidebar */}
-          <LiquidGlass style={{ flex: "0 0 240px", minWidth: 220 }} contentStyle={{ padding: "8px", display: "flex", flexDirection: "column", gap: 2 }}>
+          <LiquidGlass style={{ minWidth: 0 }} contentStyle={{ padding: "12px", display: "flex", flexDirection: "column", gap: 4, minHeight: 620 }}>
             <AgentSidebar agentList={agentList} agents={visibleAgents} activeAgent={selected} onSelect={setActiveAgent} />
           </LiquidGlass>
 
           {/* Detail panel */}
-          <LiquidGlass style={{ flex: "1 1 520px", minWidth: 0 }} contentStyle={{ padding: "24px", minHeight: 480 }}>
+          <LiquidGlass style={{ minWidth: 0 }} contentStyle={{ padding: "32px", minHeight: 620 }}>
             {selectedState ? (
-              <AgentDetail state={selectedState} planTask={selectedPlanTask} />
+              <AgentDetail state={selectedState} planTask={selectedPlanTask} sessionId={sessionId} founderId={founderId} />
             ) : (
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, color: "var(--fg-mute)", fontSize: 13 }}>Select an agent</div>
             )}
@@ -768,9 +1193,116 @@ export default function GoalPage({ params }: { params: Promise<{ id: string }> }
         </div>
       )}
 
+      {agentList.length > 0 && (
+        <div className="blob-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14, alignItems: "stretch" }}>
+          <LiquidGlass contentStyle={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 18, height: 420, minHeight: 420 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span className="site-label">Progress</span>
+              <h3 style={{ fontSize: 18, margin: 0 }}>Session health</h3>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 18, flex: 1, minHeight: 0, overflowY: "auto", paddingRight: 4 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+                {[
+                  ["Done", doneCount],
+                  ["Running", runningCount],
+                  ["Errors", failedCount],
+                  ["Total", total],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ padding: "11px 10px", borderRadius: 18, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(176,180,186,0.10)", display: "grid", gap: 4 }}>
+                    <span style={{ fontSize: 17, color: "var(--fg)" }}>{value}</span>
+                    <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <span style={{ fontSize: 12, color: "var(--fg-dim)" }}>Overall completion</span>
+                  <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{total ? Math.round((doneCount / total) * 100) : 0}%</span>
+                </div>
+                <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(176,180,186,0.10)", overflow: "hidden" }}>
+                  <div style={{ width: `${total ? (doneCount / total) * 100 : 0}%`, height: "100%", borderRadius: 999, background: done ? "#3D9E5F" : "#2563EB", transition: "width 0.4s ease" }} />
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div style={{ padding: "12px 13px", borderRadius: 18, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)", display: "grid", gap: 3 }}>
+                  <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Active lanes</span>
+                  <span style={{ fontSize: 13, color: "var(--fg)", lineHeight: 1.45 }}>{activeAgents.length ? activeAgents.map(a => AGENT_LABELS[a] ?? a).join(" · ") : "No agents running"}</span>
+                </div>
+                <div style={{ padding: "12px 13px", borderRadius: 18, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)", display: "grid", gap: 3 }}>
+                  <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Captured activity</span>
+                  <span style={{ fontSize: 13, color: "var(--fg)", lineHeight: 1.45 }}>{totalVisitedUrls} sites visited · {totalCommits} commits</span>
+                </div>
+              </div>
+            </div>
+          </LiquidGlass>
+
+          <LiquidGlass contentStyle={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 18, height: 420, minHeight: 420 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span className="site-label">Plan</span>
+              <h3 style={{ fontSize: 18, margin: 0 }}>Task graph</h3>
+            </div>
+            <div style={{ display: "grid", gap: 10, flex: 1, minHeight: 0, overflowY: "auto", paddingRight: 4 }}>
+              {planTasks.length ? sortAgentNamesByOrder(planTasks.map(t => t.agent)).map((agentName, index) => {
+                const task = planTasks.find(t => t.agent === agentName);
+                const state = visibleAgents[agentName];
+                if (!task) return null;
+                return (
+                  <div key={agentName} style={{ display: "grid", gridTemplateColumns: "22px 1fr", alignItems: "flex-start", gap: 10 }}>
+                    <span style={{ width: 22, height: 22, borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(176,180,186,0.10)", color: "var(--fg-mute)", fontSize: 10, fontFamily: "var(--font-jetbrains-mono)" }}>{index + 1}</span>
+                    <div style={{ display: "grid", gap: 3 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 12, color: "var(--fg)" }}>{AGENT_LABELS[agentName] ?? agentName}</span>
+                        <span style={{ fontSize: 10, color: STATUS_COLOR[state?.status ?? "waiting"], textTransform: "uppercase", letterSpacing: "0.08em" }}>{state?.status ?? "waiting"}</span>
+                      </div>
+                      <span style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.45 }}>{task.instruction}</span>
+                    </div>
+                  </div>
+                );
+              }) : (
+                <div style={{ padding: "12px 13px", borderRadius: 18, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)", color: "var(--fg-mute)", fontSize: 13, lineHeight: 1.6 }}>
+                  Waiting for the planner to publish the task graph.
+                </div>
+              )}
+            </div>
+          </LiquidGlass>
+
+          <LiquidGlass contentStyle={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 18, height: 420, minHeight: 420 }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span className="site-label">Outputs</span>
+                <h3 style={{ fontSize: 18, margin: 0 }}>Session artifacts</h3>
+              </div>
+              <span style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", whiteSpace: "nowrap", paddingTop: 3 }}>{completedAgents.length} ready</span>
+            </div>
+            <div style={{ padding: "13px 14px", borderRadius: 20, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(176,180,186,0.10)", display: "grid", gap: 5 }}>
+              <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Selected lane</span>
+              <span style={{ fontSize: 13, color: "var(--fg)", lineHeight: 1.45 }}>{AGENT_LABELS[selected] ?? selected}</span>
+              <span style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.5 }}>{summarizeResult(selectedState)}</span>
+            </div>
+            <div style={{ display: "grid", gap: 10, flex: 1, minHeight: 0, overflowY: "auto", paddingRight: 4 }}>
+              {completedArtifacts.length ? completedArtifacts.map((item) => (
+                <button
+                  key={item.agent}
+                  type="button"
+                  onClick={() => setActiveAgent(item.agent)}
+                  style={{ display: "grid", gap: 4, padding: "11px 13px", borderRadius: 18, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)", textAlign: "left" }}
+                >
+                  <span style={{ fontSize: 12, color: "var(--fg)" }}>{item.label}</span>
+                  <span style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.45 }}>{item.summary}</span>
+                </button>
+              )) : (
+                <div style={{ padding: "12px 13px", borderRadius: 18, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)", color: "var(--fg-mute)", fontSize: 13, lineHeight: 1.6 }}>
+                  Completed outputs will appear here as agents finish.
+                </div>
+              )}
+            </div>
+          </LiquidGlass>
+        </div>
+      )}
+
       {/* Bottom panels */}
-      {connected && !error && <SteerPanel sessionId={sessionId} isRunning={!done} />}
-      {planTasks.length > 0 && <AskPanel sessionId={sessionId} founderId={founderId} />}
+      {connected && !error && !done && <SteerPanel sessionId={sessionId} isRunning={!done} />}
+      {done && <CompanyChat priorSessionId={sessionId} founderId={founderId} company={company} />}
     </div>
   );
 }

@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 logger = logging.getLogger(__name__)
 
-from backend.api.schemas import AskRequest, ApproveRequest, GoalRequest, RejectRequest, SetupRequest, SaveCredentialRequest, SteerRequest
+from backend.api.schemas import AskRequest, ApproveRequest, ContinueRequest, GoalRequest, RejectRequest, SetupRequest, SaveCredentialRequest, SteerRequest
 from backend.provisioning.credentials_store import store_credentials
 
 
@@ -95,6 +95,29 @@ async def approve_task(body: ApproveRequest):
 async def reject_task(body: RejectRequest):
     await update_task_status(body.task_id, "rejected")
     return {"task_id": body.task_id, "status": "rejected", "reason": body.reason}
+
+
+@router.post("/goal/continue")
+async def continue_goal(body: ContinueRequest):
+    """Run follow-up tasks on an existing company session with full vault context."""
+    import uuid as _uuid
+    session_id = _uuid.uuid4().hex[:12]
+    orch = get_orchestrator()
+
+    async def _run():
+        try:
+            await orch.continue_run(
+                instruction=body.instruction,
+                founder_id=body.founder_id,
+                prior_session_id=body.prior_session_id,
+                agents=body.agents,
+                session_id=session_id,
+            )
+        except Exception as e:
+            await publish(session_id, {"type": "goal_error", "error": str(e)})
+
+    asyncio.create_task(_run())
+    return {"session_id": session_id, "status": "running", "prior_session_id": body.prior_session_id}
 
 
 @router.post("/ask")
@@ -244,6 +267,8 @@ async def get_vault_note(founder_id: str, session_id: str, agent: str):
     from backend.tools.obsidian_logger import _note_path
     path = _note_path(agent, session_id, founder_id)
     if not path.exists():
+        path = _note_path(agent, session_id, None)
+    if not path.exists():
         raise HTTPException(status_code=404, detail="Note not found")
     return {"content": path.read_text(errors="replace"), "agent": agent, "session_id": session_id}
 
@@ -318,6 +343,22 @@ async def clerk_webhook(request: Request):
     asyncio.create_task(_provision())
 
     return {"ok": True, "user_id": user_id, "provisioning": "started"}
+
+
+@router.get("/files/{filename}")
+async def serve_file(filename: str):
+    """Serve generated files (PDFs, TXTs) from /tmp/astra_docs."""
+    import mimetypes
+    from pathlib import Path
+    from fastapi.responses import FileResponse
+
+    safe_name = Path(filename).name
+    docs_dir = Path("/tmp/astra_docs")
+    path = docs_dir / safe_name
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    media_type, _ = mimetypes.guess_type(safe_name)
+    return FileResponse(path, media_type=media_type or "application/octet-stream", filename=safe_name)
 
 
 @router.get("/status/{goal_id}")
