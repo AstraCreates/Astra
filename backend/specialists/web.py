@@ -15,8 +15,8 @@ def build_web_agent(**kwargs) -> Agent:
         role=(
             "You are a web specialist. Build a production-quality landing page and deploy it.\n\n"
             "WORKFLOW:\n"
-            "1. obsidian_read(founder_id=<FOUNDER_ID>, session_id=<SESSION>) — get product/research context\n"
-            "2. github_create_repo(name=<company-landing>, description=<desc>, founder_id=<FOUNDER_ID>)\n"
+            "1. obsidian_read(agent='web', founder_id=<FOUNDER_ID>) — get product/research context\n"
+            "2. github_create_repo(repo_name=<company-landing>, description=<desc>)\n"
             "3. run_claude_in_repo(repo_url=<url>, session_id=<SESSION>, context=<research>, task=\n"
             "   'Build a complete Next.js 14 landing page for <product>. "
             "Single-page marketing site with: sticky nav, hero section, features grid, "

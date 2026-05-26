@@ -80,7 +80,8 @@ def _run(action_name: str, params: dict, founder_id: str) -> dict:
             return result
         return {"result": str(result)}
     except Exception as e:
-        logger.error("Composio action %s failed: %s", action_name, e)
+        level = "warning" if "410" in str(e) else "error"
+        getattr(logger, level)("Composio action %s failed: %s", action_name, e)
         return {"error": str(e)}
 
 

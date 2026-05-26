@@ -11,12 +11,20 @@ _GH_API = "https://api.github.com"
 
 
 def github_create_repo(
-    repo_name: str,
-    description: str,
-    stack: dict,
-    mvp_features: list[dict],
+    repo_name: str = "",
+    description: str = "",
+    stack: dict = None,
+    mvp_features: list[dict] = None,
     private: bool = False,
+    name: str = "",
+    founder_id: str = "",
+    **kwargs,
 ) -> dict:
+    repo_name = repo_name or name
+    if stack is None:
+        stack = {}
+    if mvp_features is None:
+        mvp_features = []
     """Create GitHub repo. Args: repo_name (str, kebab-case), description (str), stack (dict e.g. {"language":"Python","framework":"FastAPI"}), mvp_features (list of dicts e.g. [{"name":"Auth","description":"..."}]), private (bool). Returns: {repo_url, scaffolded}.
     Requires GITHUB_TOKEN. Falls back to returning scaffold content only.
     """

@@ -42,7 +42,7 @@ def _coerce_output(output: Any) -> dict | None:
     return {"value": str(output)[:2000]}
 
 
-def obsidian_read(agent: str, max_notes: int = 5, founder_id: str | None = None) -> dict:
+def obsidian_read(agent: str = "", max_notes: int = 5, founder_id: str | None = None, session_id: str | None = None, **kwargs) -> dict:
     """
     Read recent session notes for this agent across all sessions.
     Returns accumulated knowledge the agent can use as context.

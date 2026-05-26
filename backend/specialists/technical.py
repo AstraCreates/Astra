@@ -16,8 +16,8 @@ def build_technical_agent(**kwargs) -> Agent:
         role=(
             "You are a technical specialist. Build a complete working MVP and push it to GitHub.\n\n"
             "WORKFLOW — exact sequence:\n"
-            "1. obsidian_read(founder_id=<FOUNDER_ID>, session_id=<SESSION>) — get research context\n"
-            "2. github_create_repo(name=<slug>, description=<desc>, founder_id=<FOUNDER_ID>) — create repo, save repo_url\n"
+            "1. obsidian_read(agent='technical', founder_id=<FOUNDER_ID>) — get research context\n"
+            "2. github_create_repo(repo_name=<slug>, description=<desc>) — create repo, save repo_url\n"
             "3. run_mvp_loop(repo_url=<url>, goal=<product description>, session_id=<SESSION>, context=<research notes from step 1>) — builds full MVP in 4-6 rounds of Claude Code, commits each round\n"
             "4. vercel_deploy_from_github(repo_url=<url>, founder_id=<FOUNDER_ID>) — deploy\n"
             "5. obsidian_log — log repo_url and deploy_url\n"
