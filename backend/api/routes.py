@@ -292,25 +292,24 @@ async def clerk_webhook(request: Request):
 
     logger.info("clerk webhook: user.created user_id=%s email=%s", user_id, email)
 
-    # 1. Initialize empty credentials store so the user record exists
-    try:
-        from backend.provisioning.credentials_store import store_credentials
-        store_credentials(user_id, "profile", {"email": email, "name": name, "created_at": time.time()})
-    except Exception as e:
-        logger.warning("credentials_store init failed: %s", e)
-
-    # 2. Upsert user row in Supabase (non-fatal if DB not configured)
+    # Upsert user row in Supabase (non-fatal)
     try:
         db = get_supabase()
-        db.table("users").upsert({
-            "id": user_id,
-            "email": email,
-            "name": name,
-        }).execute()
+        db.table("users").upsert({"id": user_id, "email": email, "name": name}).execute()
     except Exception as e:
         logger.warning("supabase user upsert failed: %s", e)
 
-    return {"ok": True, "user_id": user_id, "provisioned": True}
+    # Full auto-provision in background — don't block webhook response
+    async def _provision():
+        try:
+            from backend.provisioning.user_provisioner import provision_new_user
+            await provision_new_user(founder_id=user_id, email=email, name=name)
+        except Exception as e:
+            logger.error("Auto-provisioning failed for %s: %s", user_id, e)
+
+    asyncio.create_task(_provision())
+
+    return {"ok": True, "user_id": user_id, "provisioning": "started"}
 
 
 @router.get("/status/{goal_id}")
