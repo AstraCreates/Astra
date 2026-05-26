@@ -26,14 +26,32 @@ def get_orchestrator() -> Orchestrator:
             model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
         )
         specialists = {
-            "research": build_research_agent(use_computer=True),
-            "web": build_web_agent(use_computer=True, **_coder_kwargs),
-            "marketing": build_marketing_agent(use_computer=True),
-            "technical": build_technical_agent(use_computer=True, **_coder_kwargs),
-            "legal": build_legal_agent(use_computer=True),
-            "ops": build_ops_agent(use_computer=True),
-            "sales": build_sales_agent(use_computer=False),
-            "design": build_design_agent(use_computer=False),
+            "research": build_research_agent(
+                hermes_toolsets=["web", "browser"],
+            ),
+            "web": build_web_agent(
+                hermes_toolsets=["web", "browser", "code_execution", "terminal", "file"],
+                **_coder_kwargs,
+            ),
+            "marketing": build_marketing_agent(
+                hermes_toolsets=["web", "browser", "image_gen"],
+            ),
+            "technical": build_technical_agent(
+                hermes_toolsets=["web", "browser", "code_execution", "terminal", "file"],
+                **_coder_kwargs,
+            ),
+            "legal": build_legal_agent(
+                hermes_toolsets=["web", "file"],
+            ),
+            "ops": build_ops_agent(
+                hermes_toolsets=["web", "file"],
+            ),
+            "sales": build_sales_agent(
+                hermes_toolsets=["web", "browser"],
+            ),
+            "design": build_design_agent(
+                hermes_toolsets=["web", "browser", "image_gen", "vision"],
+            ),
         }
         planner = Agent(
             name="planner",

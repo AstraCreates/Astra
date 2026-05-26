@@ -80,6 +80,7 @@ class HermesAgent:
         model: str = None,
         model_base_url: str = None,
         model_api_key: str = None,
+        hermes_toolsets: list[str] = None,
     ):
         self.name = name
         self.role = role
@@ -88,6 +89,7 @@ class HermesAgent:
             a.name: a for a in (sub_agents or [])
         }
         self.use_computer = use_computer
+        self.hermes_toolsets: list[str] = hermes_toolsets or []
         self.model = model or settings.agent_model_name
         self._model_base_url = model_base_url or settings.agent_model_base_url
         self._model_api_key = model_api_key or settings.agent_model_api_key
@@ -104,7 +106,6 @@ class HermesAgent:
     def _register_toolset(
         self,
         toolset_name: str,
-        done_tool_name: str,
         result_holder: list,
         event_loop,
     ) -> list[str]:
@@ -129,44 +130,20 @@ class HermesAgent:
             except Exception as exc:
                 logger.warning("Tool registration skipped for %s: %s", tool_name, exc)
 
-        # Unique done-tool so concurrent agents don't clobber each other's results
-        def _done(output: str = "{}") -> str:
+        # Capture tool results as they stream in
+        def _result_capture(output: str = "{}") -> str:
             try:
                 parsed = json.loads(output) if isinstance(output, str) else output
             except Exception:
                 parsed = {"response": str(output)}
             result_holder.append(parsed)
-            return "Task marked complete."
-
-        _done.__doc__ = "Call when task is fully done. Pass JSON string with results."
-
-        try:
-            registry.register(
-                name=done_tool_name,
-                toolset=toolset_name,
-                schema={
-                    "name": done_tool_name,
-                    "description": (
-                        "Signal task completion. Call this LAST with all your findings as a JSON string."
-                    ),
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "output": {
-                                "type": "string",
-                                "description": "JSON string of structured results",
-                            }
-                        },
-                        "required": ["output"],
-                    },
-                },
-                handler=_done,
-                is_async=False,
-                override=True,
+            asyncio.run_coroutine_threadsafe(
+                self._emit(ctx, "agent_step_result", result=parsed),
+                event_loop,
             )
-            registered.append(done_tool_name)
-        except Exception as exc:
-            logger.warning("Done-tool registration failed: %s", exc)
+            return "Noted."
+
+        _result_capture.__doc__ = "Record an intermediate or final result."
 
         return registered
 
@@ -187,13 +164,10 @@ class HermesAgent:
 
         run_id = uuid.uuid4().hex[:8]
         toolset_name = f"astra-{self.name}-{run_id}"
-        done_tool_name = f"astra_done_{run_id}"
         result_holder: list = []
         event_loop = asyncio.get_event_loop()
 
-        registered = self._register_toolset(
-            toolset_name, done_tool_name, result_holder, event_loop
-        )
+        registered = self._register_toolset(toolset_name, result_holder, event_loop)
 
         # Callbacks bridge sync Hermes → async SSE
         def on_tool_start(tool_name: str, args_preview: str) -> None:
@@ -207,16 +181,20 @@ class HermesAgent:
 
         def on_tool_complete(tool_name: str, result_preview: str) -> None:
             asyncio.run_coroutine_threadsafe(
-                self._emit(ctx, "agent_action_result", tool=tool_name),
+                self._emit(
+                    ctx, "agent_action_result",
+                    tool=tool_name, result=result_preview,
+                ),
                 event_loop,
             )
 
-        system_prompt = (
-            f"You are {self.name}, {self.role}\n\n"
-            f"IMPORTANT: When you have fully completed the task, you MUST call "
-            f"`{done_tool_name}` with a JSON string containing your structured output. "
-            f"Do not stop without calling it."
-        )
+        def on_step(text: str) -> None:
+            asyncio.run_coroutine_threadsafe(
+                self._emit(ctx, "agent_thinking", text=text[:500]),
+                event_loop,
+            )
+
+        system_prompt = f"You are {self.name}, {self.role}"
 
         user_message = (
             f"GOAL: {ctx.goal}\n"
@@ -226,18 +204,20 @@ class HermesAgent:
         )
 
         try:
+            all_toolsets = [toolset_name] + self.hermes_toolsets
+
             agent = AIAgent(
                 base_url=self._model_base_url,
                 api_key=self._model_api_key,
                 model=self.model,
-                enabled_toolsets=[toolset_name],
+                enabled_toolsets=all_toolsets,
                 tool_start_callback=on_tool_start,
                 tool_complete_callback=on_tool_complete,
+                step_callback=on_step,
                 ephemeral_system_prompt=system_prompt,
                 quiet_mode=True,
                 skip_memory=True,
                 skip_context_files=True,
-                max_iterations=20,
             )
 
             raw = await asyncio.to_thread(
