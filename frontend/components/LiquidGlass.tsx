@@ -88,7 +88,7 @@ export interface LiquidGlassProps {
   style?: CSSProperties;
   /** Styles for the content wrapper (display, flex, overflow, etc.) */
   contentStyle?: CSSProperties;
-  borderRadius?: number;
+  borderRadius?: number | string;
   /** Displacement strength — default 28 */
   displacementScale?: number;
   /** Glass fill tint */
@@ -102,9 +102,9 @@ const LiquidGlass = forwardRef<HTMLDivElement, LiquidGlassProps>(
       className,
       style,
       contentStyle,
-      borderRadius = 16,
+      borderRadius = 28,
       displacementScale = 28,
-      tint = "rgba(180,205,228,0.07)",
+      tint = "rgba(118,122,128,0.22)",
     },
     ref,
   ) => {
@@ -128,6 +128,12 @@ const LiquidGlass = forwardRef<HTMLDivElement, LiquidGlassProps>(
     }, [generate]);
 
     const filterId = `lgf-${uid}`;
+    const resolvedRadius =
+      borderRadius === 0
+        ? 0
+        : typeof borderRadius === "number"
+          ? `${borderRadius + 10}px ${borderRadius + 2}px ${borderRadius + 16}px ${borderRadius + 6}px / ${borderRadius + 4}px ${borderRadius - 2}px ${borderRadius + 12}px ${borderRadius + 2}px`
+          : borderRadius;
 
     return (
       <div
@@ -137,7 +143,7 @@ const LiquidGlass = forwardRef<HTMLDivElement, LiquidGlassProps>(
           else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = el;
         }}
         className={className}
-        style={{ position: "relative", borderRadius, overflow: "hidden", ...style }}
+        style={{ position: "relative", borderRadius: resolvedRadius, overflow: "hidden", isolation: "isolate", ...style }}
       >
         {/* Filter definition */}
         {dispMap && (
@@ -173,8 +179,8 @@ const LiquidGlass = forwardRef<HTMLDivElement, LiquidGlassProps>(
           style={{
             position: "absolute",
             inset: 0,
-            backdropFilter: "blur(18px) saturate(180%)",
-            WebkitBackdropFilter: "blur(18px) saturate(180%)",
+            backdropFilter: "blur(30px) saturate(200%) brightness(0.98)",
+            WebkitBackdropFilter: "blur(30px) saturate(200%) brightness(0.98)",
             ...(dispMap ? { filter: `url(#${filterId})` } : {}),
             zIndex: 0,
           }}
@@ -185,13 +191,42 @@ const LiquidGlass = forwardRef<HTMLDivElement, LiquidGlassProps>(
           style={{
             position: "absolute",
             inset: 0,
-            background: tint ?? "var(--glass)",
-            border: "1px solid var(--glass-bdr)",
+            background:
+              `linear-gradient(135deg, var(--glass-edge-1, rgba(255,255,255,0.06)) 0%, ${tint ?? "var(--glass)"} 44%, var(--glass-edge-2, rgba(84,88,94,0.08)) 100%)`,
+            border: "1px solid rgba(176,180,186,0.18)",
             boxShadow:
-              "inset 0 1.5px 0 rgba(200,220,240,0.25), inset 0 -1px 0 rgba(180,205,228,0.08), 0 1px 3px rgba(0,0,0,0.35), 0 8px 28px rgba(0,0,0,0.30)",
-            borderRadius,
+              "inset 0 1.5px 0 var(--glass-inset-top, rgba(255,255,255,0.16)), inset 0 -1px 0 var(--glass-inset-bottom, rgba(84,88,94,0.14)), 0 1px 3px rgba(0,0,0,0.32), 0 20px 54px rgba(0,0,0,0.46)",
+            borderRadius: resolvedRadius,
             zIndex: 1,
             pointerEvents: "none",
+          }}
+        />
+
+        {/* Organic glow pockets */}
+        <div
+          style={{
+            position: "absolute",
+            inset: "-12% -16% auto auto",
+            width: "58%",
+            height: "58%",
+            background: "radial-gradient(circle at 30% 30%, var(--glass-glow-1, rgba(255,255,255,0.12)), var(--glass-glow-2, rgba(118,122,128,0.08)) 35%, transparent 72%)",
+            filter: "blur(18px)",
+            mixBlendMode: "screen",
+            pointerEvents: "none",
+            zIndex: 1,
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            inset: "auto auto -20% -18%",
+            width: "64%",
+            height: "64%",
+            background: "radial-gradient(circle at 50% 50%, var(--glass-edge-2, rgba(84,88,94,0.14)), var(--glass-glow-2, rgba(118,122,128,0.06)) 40%, transparent 72%)",
+            filter: "blur(24px)",
+            mixBlendMode: "screen",
+            pointerEvents: "none",
+            zIndex: 1,
           }}
         />
 
@@ -202,10 +237,10 @@ const LiquidGlass = forwardRef<HTMLDivElement, LiquidGlassProps>(
             top: 0,
             left: 0,
             right: 0,
-            height: "46%",
+            height: "52%",
             background:
-              "linear-gradient(180deg, rgba(200,225,248,0.20) 0%, rgba(180,210,235,0.04) 60%, transparent 100%)",
-            borderRadius: `${borderRadius}px ${borderRadius}px 0 0`,
+              "linear-gradient(180deg, var(--glass-sheen-1, rgba(255,255,255,0.16)) 0%, var(--glass-sheen-2, rgba(224,226,230,0.06)) 34%, var(--glass-sheen-3, rgba(118,122,128,0.03)) 72%, transparent 100%)",
+            borderRadius: typeof resolvedRadius === "string" ? resolvedRadius : `${resolvedRadius}px`,
             pointerEvents: "none",
             zIndex: 2,
           }}

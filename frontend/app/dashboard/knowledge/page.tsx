@@ -516,7 +516,7 @@ export default function KnowledgePage() {
               }}>
                 <button onClick={() => setActiveListSession(isOpen ? null : session.session_id)}
                   style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: "11px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
-                  <span style={{ fontSize: 10, color: isOpen ? "#8BA8C8" : "rgba(255,255,255,0.2)", fontFamily: "var(--font-mono)" }}>{isOpen ? "▾" : "▸"}</span>
+                  <span style={{ fontSize: 10, color: isOpen ? "#ffffff" : "rgba(255,255,255,0.2)", fontFamily: "var(--font-mono)" }}>{isOpen ? "▾" : "▸"}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ margin: 0, fontSize: 12, fontWeight: 500, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {session.goal || session.session_id}

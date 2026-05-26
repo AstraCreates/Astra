@@ -20,6 +20,24 @@ const EXAMPLES = [
   "Build a real-time co-founder matching platform with live URL, auth, and a pitch deck PDF.",
 ];
 
+const STARTER_TEMPLATES = [
+  {
+    title: "Launch a waitlist",
+    desc: "Good for validating demand with a landing page, capture form, and repo scaffold.",
+    prompt: EXAMPLES[0],
+  },
+  {
+    title: "Ship an ops tool",
+    desc: "Best for internal SaaS, invoicing, support workflows, and basic auth.",
+    prompt: EXAMPLES[1],
+  },
+  {
+    title: "Build a network product",
+    desc: "Useful when you need matchmaking, messaging, and an investor-ready surface.",
+    prompt: EXAMPLES[2],
+  },
+];
+
 export default function Home() {
   const router = useRouter();
   const { user, isSignedIn } = useUser();
@@ -76,24 +94,22 @@ export default function Home() {
   }
 
   return (
-    <div className="site-shell" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", gap: 32 }}>
+    <div className="site-shell" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 32, alignItems: "start", minHeight: "100vh", paddingTop: 48, paddingBottom: 72 }}>
 
-      {/* Header text */}
-      <div style={{ textAlign: "center", maxWidth: 480 }}>
-        <div className="eyebrow" style={{ justifyContent: "center", marginBottom: 20 }}>Astra · AI founding team</div>
-        <h1 style={{ fontSize: "clamp(32px, 4vw, 52px)", lineHeight: 1.1, marginBottom: 16 }}>
-          What are you<br />
+      <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 520, paddingTop: 14 }}>
+        <div className="eyebrow">Astra · AI founding team</div>
+        <h1 style={{ fontSize: "clamp(36px, 4vw, 58px)", lineHeight: 1.02, margin: 0 }}>
+          What are you
+          <br />
           <em className="display-italic">building?</em>
         </h1>
-        <p className="lede" style={{ margin: "0 auto", textAlign: "center", fontSize: "clamp(14px, 1.2vw, 16px)" }}>
-          Describe the idea. Eight agents run in parallel — GitHub repo, landing page, legal docs,
-          market research, investor outreach.
+        <p className="lede" style={{ fontSize: "clamp(15px, 1.2vw, 17px)", maxWidth: 42 + "ch" }}>
+          Describe the idea. Eight agents run in parallel to produce the repo, landing page, legal docs, market research, and outreach.
         </p>
       </div>
 
-      {/* Form or sign-in prompt */}
       {isSignedIn ? (
-        <LiquidGlass style={{ width: "100%", maxWidth: 580 }} contentStyle={{ padding: "28px 32px" }}>
+        <LiquidGlass style={{ width: "100%", maxWidth: 760, justifySelf: "end" }} contentStyle={{ padding: "28px 32px" }}>
           <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {/* Company + domain */}
             <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
@@ -135,30 +151,8 @@ export default function Home() {
               />
             </div>
 
-            {/* Examples */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <p className="site-label">Examples</p>
-              {EXAMPLES.map((ex, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setInstruction(ex)}
-                  disabled={loading}
-                  style={{
-                    textAlign: "left", fontSize: 12, color: "var(--fg-mute)",
-                    cursor: "pointer", background: "none", border: "none",
-                    padding: "2px 0", lineHeight: 1.5, transition: "color 0.2s",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = "var(--fg-dim)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = "var(--fg-mute)")}
-                >
-                  · {ex}
-                </button>
-              ))}
-            </div>
-
-            {/* Stack preferences */}
-            <div style={{ border: "1px solid var(--line)", borderRadius: 10, padding: "12px 16px", background: "rgba(0,0,0,0.02)" }}>
+          {/* Stack preferences */}
+          <div style={{ border: "1px solid var(--line)", borderRadius: 24, padding: "12px 16px", background: "rgba(0,0,0,0.02)" }}>
               <button
                 type="button"
                 onClick={() => setShowStack((v) => !v)}
@@ -177,10 +171,10 @@ export default function Home() {
                         onChange={(e) => setStack((p) => ({ ...p, [key]: e.target.value }))}
                         disabled={loading}
                         className="site-input"
-                        style={{ padding: "8px 12px", fontSize: 13, color: "var(--fg)", background: "#FFFFFF" }}
+                        style={{ padding: "8px 12px", fontSize: 13, color: "var(--fg)", background: "linear-gradient(135deg, rgba(255,255,255,0.08), rgba(180,205,228,0.04)), var(--glass-hi)" }}
                       >
                         {opts.map((o) => (
-                          <option key={o} value={o}>{o}</option>
+                          <option key={o} value={o} style={{ background: "#0b0e14" }}>{o}</option>
                         ))}
                       </select>
                     </div>
@@ -202,14 +196,14 @@ export default function Home() {
             </div>
 
             {error && (
-              <p style={{ borderRadius: 10, border: "1px solid rgba(200,50,50,0.4)", background: "rgba(180,20,20,0.15)", padding: "10px 14px", fontSize: 13, color: "#f87171", margin: 0 }}>
+              <p style={{ borderRadius: 24, border: "1px solid rgba(200,50,50,0.4)", background: "rgba(180,20,20,0.15)", padding: "10px 14px", fontSize: 13, color: "#f87171", margin: 0 }}>
                 {error}
               </p>
             )}
           </form>
         </LiquidGlass>
       ) : (
-        <LiquidGlass style={{ width: "100%", maxWidth: 420 }} contentStyle={{ padding: "36px 40px", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 24 }}>
+        <LiquidGlass style={{ width: "100%", maxWidth: 540, justifySelf: "end" }} contentStyle={{ padding: "36px 40px", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 24 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <p style={{ margin: 0, fontSize: 16, color: "var(--fg)" }}>Sign in to launch your company</p>
             <p className="site-muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.6 }}>
@@ -226,16 +220,44 @@ export default function Home() {
               </button>
             </SignUpButton>
           </div>
-          <a
-            href="https://astracreates.com"
-            style={{ fontSize: 12, color: "var(--fg-mute)", transition: "color 0.2s" }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--fg-dim)")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "var(--fg-mute)")}
-          >
-            Learn more at astracreates.com →
-          </a>
         </LiquidGlass>
       )}
+
+      <div style={{ width: "100%", maxWidth: 760, justifySelf: "end" }}>
+        <LiquidGlass contentStyle={{ padding: "22px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <span className="site-label">Starter templates</span>
+              <h3 style={{ fontSize: 18 }}>Useful starting points</h3>
+            </div>
+            <span style={{ fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)" }}>click to fill the prompt</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
+            {STARTER_TEMPLATES.map((item) => (
+              <button
+                key={item.title}
+                type="button"
+                onClick={() => setInstruction(item.prompt)}
+                disabled={loading}
+                style={{
+                  textAlign: "left",
+                  padding: "14px 15px",
+                  borderRadius: 24,
+                  border: "1px solid rgba(176,180,186,0.10)",
+                  background: "rgba(255,255,255,0.03)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                  cursor: "pointer",
+                }}
+              >
+                <h4 style={{ fontSize: 15 }}>{item.title}</h4>
+                <p style={{ fontSize: 12, lineHeight: 1.6, color: "var(--fg-mute)" }}>{item.desc}</p>
+              </button>
+            ))}
+          </div>
+        </LiquidGlass>
+      </div>
     </div>
   );
 }

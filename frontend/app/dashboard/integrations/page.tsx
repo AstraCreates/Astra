@@ -51,12 +51,12 @@ const COMPOSIO_APPS = [
 
 function glass(extra?: React.CSSProperties): React.CSSProperties {
   return {
-    background: "rgba(255,255,255,0.06)",
-    backdropFilter: "blur(28px) saturate(180%)",
-    WebkitBackdropFilter: "blur(28px) saturate(180%)",
-    border: "1px solid rgba(255,255,255,0.09)",
-    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.12)",
-    borderRadius: 14,
+    background: "var(--glass)",
+    backdropFilter: "var(--blur)",
+    WebkitBackdropFilter: "var(--blur)",
+    border: "1px solid var(--line)",
+    boxShadow: "var(--shadow-sm)",
+    borderRadius: 28,
     ...extra,
   };
 }
@@ -127,7 +127,7 @@ function ServiceCard({
         <button
           onClick={() => setExpanded(e => !e)}
           style={{
-            padding: "5px 14px", borderRadius: 8, fontSize: 12,
+            padding: "5px 14px", borderRadius: 24, fontSize: 12,
             background: isConnected ? "rgba(60,170,100,0.10)" : "rgba(255,255,255,0.07)",
             border: `1px solid ${isConnected ? "rgba(60,170,100,0.2)" : "rgba(255,255,255,0.10)"}`,
             color: isConnected ? "#6DC98A" : "var(--fg-dim)",
@@ -139,11 +139,11 @@ function ServiceCard({
       </div>
 
       {expanded && (
-        <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ borderTop: "1px solid var(--line-2)", padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontSize: 11, color: "var(--fg-mute)" }}>
             Get token at{" "}
             <a href={svc.createUrl} target="_blank" rel="noopener noreferrer"
-              style={{ color: "#8BA8C8", textDecoration: "none" }}>
+              style={{ color: "var(--fg)", textDecoration: "none" }}>
               {svc.createLabel} ↗
             </a>
           </div>
@@ -254,17 +254,22 @@ export default function SetupPage() {
   const totalServices = status ? Object.keys(status).length : 6;
 
   return (
-    <div style={{ maxWidth: 740, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24, padding: "0 0 40px" }}>
+    <div style={{ width: "100%", maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24, padding: "0 0 40px" }}>
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, color: "var(--fg)", letterSpacing: "-0.02em" }}>
-            Integrations
-          </h1>
-          <p style={{ fontSize: 13, color: "var(--fg-mute)", margin: "4px 0 0" }}>
-            Connect services once — agents use them everywhere
-          </p>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <Link href="/dashboard" className="site-btn site-btn-ghost" style={{ padding: "0 14px", fontSize: 12 }}>
+            ← Back
+          </Link>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, color: "var(--fg)", letterSpacing: "-0.02em" }}>
+              Integrations
+            </h1>
+            <p style={{ fontSize: 13, color: "var(--fg-mute)", margin: "4px 0 0" }}>
+              Connect services once — agents use them everywhere
+            </p>
+          </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
           {status && (
@@ -272,11 +277,11 @@ export default function SetupPage() {
               {connectedCount}/{totalServices} connected
             </span>
           )}
-          <div style={{ height: 4, width: 120, borderRadius: 999, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+          <div style={{ height: 4, width: 120, borderRadius: 999, background: "var(--line-2)", overflow: "hidden" }}>
             <div style={{
               height: "100%", borderRadius: 999,
               width: status ? `${(connectedCount / totalServices) * 100}%` : "0%",
-              background: "linear-gradient(90deg,#1E6AFF,#5E9AE0)",
+              background: "linear-gradient(90deg,var(--text),var(--text-2))",
               transition: "width 0.6s",
             }} />
           </div>
@@ -285,7 +290,7 @@ export default function SetupPage() {
 
       {/* Founder ID chip */}
       {isLoaded && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderRadius: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", width: "fit-content" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderRadius: 24, background: "var(--glass-lo)", border: "1px solid var(--line)", width: "fit-content" }}>
           <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>Founder ID</span>
           <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--fg-dim)" }}>{founderId}</span>
         </div>
@@ -293,7 +298,7 @@ export default function SetupPage() {
 
       {/* Core services */}
       <div>
-        <p style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>
+        <p style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>
           Core services
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -311,7 +316,7 @@ export default function SetupPage() {
 
       {/* Composio OAuth */}
       <div>
-        <p style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>
+        <p style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>
           Composio — Gmail · LinkedIn · Calendar · Notion · Linear
         </p>
         <div style={{ ...glass(), padding: "16px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -321,7 +326,7 @@ export default function SetupPage() {
               <p style={{ fontSize: 12, fontWeight: 500, color: "var(--fg)", margin: "0 0 4px" }}>Composio API Key</p>
               <p style={{ fontSize: 11, color: "var(--fg-mute)", margin: 0 }}>
                 Free at{" "}
-                <a href="https://app.composio.dev/settings" target="_blank" rel="noopener noreferrer" style={{ color: "#8BA8C8", textDecoration: "none" }}>
+                <a href="https://app.composio.dev/settings" target="_blank" rel="noopener noreferrer" style={{ color: "var(--fg)", textDecoration: "none" }}>
                   app.composio.dev ↗
                 </a>
               </p>
@@ -361,22 +366,22 @@ export default function SetupPage() {
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
-                      display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 10,
-                      background: isError ? "rgba(255,255,255,0.02)" : "rgba(30,106,255,0.07)",
-                      border: `1px solid ${isError ? "rgba(255,255,255,0.06)" : "rgba(30,106,255,0.22)"}`,
-                      textDecoration: "none", opacity: isError ? 0.45 : 1,
-                      cursor: isError ? "not-allowed" : "pointer",
-                      transition: "all 0.12s",
-                    }}
-                    onMouseEnter={e => { if (!isError) (e.currentTarget as HTMLElement).style.background = "rgba(30,106,255,0.13)"; }}
-                    onMouseLeave={e => { if (!isError) (e.currentTarget as HTMLElement).style.background = "rgba(30,106,255,0.07)"; }}
+                      display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 24,
+                    background: isError ? "var(--glass-lo)" : "var(--glass-hi)",
+                    border: `1px solid ${isError ? "var(--line)" : "var(--line)"}`,
+                    textDecoration: "none", opacity: isError ? 0.45 : 1,
+                    cursor: isError ? "not-allowed" : "pointer",
+                    transition: "all 0.12s",
+                  }}
+                    onMouseEnter={e => { if (!isError) (e.currentTarget as HTMLElement).style.background = "var(--glass)"; }}
+                    onMouseLeave={e => { if (!isError) (e.currentTarget as HTMLElement).style.background = "var(--glass-hi)"; }}
                   >
                     <span style={{ fontSize: 16 }}>{app.icon}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ margin: 0, fontSize: 12, fontWeight: 500, color: "var(--fg)" }}>{app.label}</p>
                       <p style={{ margin: 0, fontSize: 10, color: "var(--fg-mute)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{app.desc}</p>
                     </div>
-                    {!isError && <span style={{ fontSize: 11, color: "#8BA8C8", flexShrink: 0 }}>↗</span>}
+                    {!isError && <span style={{ fontSize: 11, color: "var(--fg)", flexShrink: 0 }}>↗</span>}
                   </a>
                 );
               })}
@@ -387,7 +392,8 @@ export default function SetupPage() {
             <button
               onClick={loadComposioUrls}
               disabled={loadingUrls}
-              style={{ alignSelf: "flex-start", padding: "7px 16px", borderRadius: 8, fontSize: 12, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.10)", color: "var(--fg-dim)", cursor: "pointer" }}
+              className="site-btn site-btn-ghost"
+              style={{ alignSelf: "flex-start", padding: "0 16px", fontSize: 12 }}
             >
               {loadingUrls ? "Loading OAuth links…" : "Load OAuth links →"}
             </button>
@@ -397,7 +403,7 @@ export default function SetupPage() {
 
       {/* Social — manual */}
       <div>
-        <p style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>
+        <p style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>
           Social accounts — manual OAuth
         </p>
         <div style={{ ...glass(), padding: "14px 18px", display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -406,9 +412,9 @@ export default function SetupPage() {
             { key: "tiktok", label: "TikTok", icon: "🎵", connected: status?.tiktok },
             { key: "meta_ads", label: "Meta Ads", icon: "📢", connected: status?.meta_ads },
           ].map(svc => (
-            <div key={svc.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+            <div key={svc.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 24, background: "var(--glass-lo)", border: "1px solid var(--line)" }}>
               <span>{svc.icon}</span>
-              <span style={{ fontSize: 12, color: "var(--fg-dim)" }}>{svc.label}</span>
+              <span style={{ fontSize: 12, color: "var(--fg)" }}>{svc.label}</span>
               <StatusDot connected={!!svc.connected} />
               <span style={{ fontSize: 10, color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>
                 {svc.connected ? "connected" : "requires phone verify"}
@@ -424,7 +430,7 @@ export default function SetupPage() {
           onClick={() => setShowAutoProvision(v => !v)}
           style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}
         >
-          <span style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.3)", fontFamily: "var(--font-mono)" }}>
+          <span style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>
             Auto-provision (advanced) {showAutoProvision ? "▾" : "▸"}
           </span>
         </button>
@@ -433,7 +439,7 @@ export default function SetupPage() {
           <div style={{ ...glass(), padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
             <p style={{ fontSize: 12, color: "var(--fg-mute)", margin: 0, lineHeight: 1.6 }}>
               Astra can auto-create GitHub, Vercel, SendGrid, and Composio accounts using Playwright.
-              Provide the email/password for a <strong style={{ color: "var(--fg-dim)" }}>new dedicated</strong> account — not your personal one.
+              Provide the email/password for a <strong style={{ color: "var(--fg)" }}>new dedicated</strong> account — not your personal one.
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <input
@@ -462,9 +468,9 @@ export default function SetupPage() {
               {autoProvisioning ? "Provisioning… (2–5 min)" : "Auto-provision →"}
             </button>
             {autoResult && (
-              <div style={{ borderRadius: 8, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ borderRadius: 24, background: "var(--glass-lo)", border: "1px solid var(--line)", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
                 {autoResult.map((line, i) => (
-                  <p key={i} style={{ margin: 0, fontSize: 12, color: line.startsWith("✓") ? "#6DC98A" : line.startsWith("✗") ? "#C97070" : "var(--fg-mute)", lineHeight: 1.5 }}>
+                  <p key={i} style={{ margin: 0, fontSize: 12, color: line.startsWith("✓") ? "#6DC98A" : line.startsWith("✗") ? "#C97070" : "var(--fg)", lineHeight: 1.5 }}>
                     {line}
                   </p>
                 ))}

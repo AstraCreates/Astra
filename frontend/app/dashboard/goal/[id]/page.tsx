@@ -2,8 +2,7 @@
 
 import { use, useEffect, useState, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { streamGoal, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, sortAgentsByOrder } from "@/lib/api";
-import { updateSession } from "@/lib/history";
+import { streamGoal, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder } from "@/lib/api";
 import LiquidGlass from "@/components/LiquidGlass";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -89,7 +88,7 @@ function ResearchPreview({ state }: { state: AgentState }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%" }}>
       {current && (
-        <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid rgba(0,0,0,0.09)", background: "#FFFFFF" }}>
+        <div style={{ borderRadius: 28, overflow: "hidden", border: "1px solid rgba(0,0,0,0.09)", background: "#FFFFFF" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid rgba(0,0,0,0.07)", background: "rgba(180,205,228,0.10)" }}>
             <img src={faviconUrl(current)} width={12} height={12} style={{ opacity: 0.6 }} onError={e => (e.currentTarget.style.display = "none")} />
             <span style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{current}</span>
@@ -130,7 +129,7 @@ function WebPreview({ state }: { state: AgentState }) {
   if (url) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 10, height: "100%" }}>
-        <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid rgba(0,0,0,0.09)" }}>
+        <div style={{ borderRadius: 28, overflow: "hidden", border: "1px solid rgba(0,0,0,0.09)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", background: "rgba(180,205,228,0.10)", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
             <div style={{ display: "flex", gap: 5 }}>
               {["#ff5f57","#febc2e","#28c840"].map(c => <div key={c} style={{ width: 10, height: 10, borderRadius: "50%", background: c }} />)}
@@ -173,7 +172,7 @@ function TechnicalPreview({ state }: { state: AgentState }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {deploy && (
-        <div style={{ borderRadius: 10, overflow: "hidden", border: "1px solid rgba(37,99,235,0.18)" }}>
+        <div style={{ borderRadius: 28, overflow: "hidden", border: "1px solid rgba(37,99,235,0.18)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", background: "rgba(180,205,228,0.10)", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
             <div style={{ display: "flex", gap: 5 }}>
               {["#ff5f57","#febc2e","#28c840"].map(c => <div key={c} style={{ width: 10, height: 10, borderRadius: "50%", background: c }} />)}
@@ -187,7 +186,7 @@ function TechnicalPreview({ state }: { state: AgentState }) {
         </div>
       )}
       {repo && (
-        <a href={repo} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 8, border: "1px solid rgba(0,0,0,0.1)", background: "rgba(0,0,0,0.03)", padding: "8px 12px", color: "#2563EB", textDecoration: "none", fontSize: 12 }}>
+        <a href={repo} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 24, border: "1px solid rgba(0,0,0,0.1)", background: "rgba(0,0,0,0.03)", padding: "8px 12px", color: "#2563EB", textDecoration: "none", fontSize: 12 }}>
           🐙 <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{repo}</span> <span style={{ opacity: 0.5 }}>↗</span>
         </a>
       )}
@@ -232,7 +231,7 @@ function DesignPreview({ state }: { state: AgentState }) {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             {allColors.map((c, i) => (
               <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 10, background: c, border: "1px solid rgba(0,0,0,0.1)", boxShadow: `0 2px 8px ${c}44` }} />
+                <div style={{ width: 44, height: 44, borderRadius: 24, background: c, border: "1px solid rgba(0,0,0,0.1)", boxShadow: `0 2px 8px ${c}44` }} />
                 <span style={{ fontSize: 9, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)" }}>{c}</span>
               </div>
             ))}
@@ -253,7 +252,7 @@ function DesignPreview({ state }: { state: AgentState }) {
       {spec && (
         <div>
           <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)", display: "block", marginBottom: 6 }}>Design Spec</span>
-          <div style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 200, overflowY: "auto", padding: "10px 12px", background: "rgba(180,205,228,0.10)", borderRadius: 8, border: "1px solid rgba(0,0,0,0.08)" }}>
+          <div style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 200, overflowY: "auto", padding: "10px 12px", background: "rgba(180,205,228,0.10)", borderRadius: 24, border: "1px solid rgba(0,0,0,0.08)" }}>
             {typeof spec === "string" ? spec.slice(0, 600) : JSON.stringify(spec, null, 2).slice(0, 600)}
           </div>
         </div>
@@ -276,7 +275,7 @@ function MarketingPreview({ state }: { state: AgentState }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {[["📸 Instagram Reel", reel], ["🎵 TikTok", tiktok], ["📣 Meta Ad", ad], ["📧 Email", email]].map(([label, content]) =>
         content ? (
-          <div key={String(label)} style={{ borderRadius: 8, border: "1px solid rgba(0,0,0,0.09)", background: "rgba(0,0,0,0.02)", padding: "10px 12px" }}>
+          <div key={String(label)} style={{ borderRadius: 24, border: "1px solid rgba(0,0,0,0.09)", background: "rgba(0,0,0,0.02)", padding: "10px 12px" }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-dim)", marginBottom: 6 }}>{label}</div>
             <div style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.6, maxHeight: 80, overflowY: "auto", whiteSpace: "pre-wrap" }}>{String(content).slice(0, 300)}</div>
           </div>
@@ -294,7 +293,7 @@ function LegalPreview({ state }: { state: AgentState }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {path && <div style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-dim)", padding: "4px 8px", background: "rgba(180,205,228,0.10)", borderRadius: 6, border: "1px solid rgba(180,205,228,0.22)" }}>📄 {String(path)}</div>}
-      <div style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 280, overflowY: "auto", padding: "10px 12px", background: "rgba(180,205,228,0.10)", borderRadius: 8, border: "1px solid rgba(0,0,0,0.08)" }}>
+      <div style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 280, overflowY: "auto", padding: "10px 12px", background: "rgba(180,205,228,0.10)", borderRadius: 24, border: "1px solid rgba(0,0,0,0.08)" }}>
         {String(text).slice(0, 1200)}
       </div>
     </div>
@@ -309,7 +308,7 @@ function SalesPreview({ state }: { state: AgentState }) {
   const steps: unknown[] = Array.isArray(seq) ? seq : typeof seq === "string" ? JSON.parse(seq.startsWith("[") ? seq : "[]") : [];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(180,205,228,0.10)", border: "1px solid rgba(180,205,228,0.22)" }}>
+      <div style={{ padding: "8px 12px", borderRadius: 24, background: "rgba(180,205,228,0.10)", border: "1px solid rgba(180,205,228,0.22)" }}>
         <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)", marginBottom: 3 }}>Target Lead</div>
         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>{lead}</div>
       </div>
@@ -337,7 +336,7 @@ function OpsPreview({ state }: { state: AgentState }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {title && <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>{title}</div>}
-      <div style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 280, overflowY: "auto", padding: "10px 12px", background: "rgba(180,205,228,0.10)", borderRadius: 8, border: "1px solid rgba(0,0,0,0.08)" }}>
+      <div style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.7, whiteSpace: "pre-wrap", maxHeight: 280, overflowY: "auto", padding: "10px 12px", background: "rgba(180,205,228,0.10)", borderRadius: 24, border: "1px solid rgba(0,0,0,0.08)" }}>
         {String(sop).slice(0, 1200)}
       </div>
     </div>
@@ -422,7 +421,7 @@ function AgentDetail({ state, planTask }: { state: AgentState; planTask: AgentTa
 
       {/* Current action pill */}
       {isRunning && state.currentAction && (
-        <div style={{ display: "flex", alignItems: "center", gap: 7, borderRadius: 8, background: "rgba(180,205,228,0.10)", padding: "6px 11px", fontSize: 11, color: "var(--fg-dim)", border: "1px solid rgba(180,205,228,0.22)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 7, borderRadius: 24, background: "rgba(180,205,228,0.10)", padding: "6px 11px", fontSize: 11, color: "var(--fg-dim)", border: "1px solid rgba(180,205,228,0.22)" }}>
           <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#2563EB", flexShrink: 0 }} className="animate-pulse" />
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {state.currentTool ? `${state.currentTool.replace(/_/g, " ")}` : state.currentAction}
@@ -445,13 +444,13 @@ function AgentDetail({ state, planTask }: { state: AgentState; planTask: AgentTa
         {tab === "plan" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {planTask && (
-              <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(180,205,228,0.10)", border: "1px solid rgba(0,0,0,0.08)" }}>
+              <div style={{ padding: "10px 14px", borderRadius: 24, background: "rgba(180,205,228,0.10)", border: "1px solid rgba(0,0,0,0.08)" }}>
                 <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)", marginBottom: 5 }}>Task instruction</div>
                 <p style={{ margin: 0, fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.6 }}>{planTask.instruction}</p>
               </div>
             )}
             {state.result && (
-              <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(180,205,228,0.10)", border: "1px solid rgba(0,0,0,0.08)" }}>
+              <div style={{ padding: "10px 14px", borderRadius: 24, background: "rgba(180,205,228,0.10)", border: "1px solid rgba(0,0,0,0.08)" }}>
                 <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)", marginBottom: 5 }}>Output</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {Object.entries(state.result).filter(([, v]) => v !== null && v !== undefined).slice(0, 8).map(([k, v]) => (
@@ -501,7 +500,7 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect }: {
         const p = state ? pct(state) : 0;
         return (
           <button key={name} onClick={() => onSelect(name)} style={{
-            display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 8,
+            display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 24,
             border: isActive ? "1px solid rgba(180,205,228,0.22)" : "1px solid transparent",
             background: isActive ? "rgba(180,205,228,0.10)" : "transparent",
             cursor: "pointer", textAlign: "left", transition: "background 0.15s",
@@ -551,8 +550,9 @@ function SteerPanel({ sessionId, isRunning }: { sessionId: string; isRunning: bo
       <div style={{ display: "flex", gap: 8 }}>
         <input value={msg} onChange={e => setMsg(e.target.value)} onKeyDown={e => e.key === "Enter" && send()}
           placeholder="e.g. focus on B2B customers"
-          style={{ flex: 1, background: "rgba(180,205,228,0.13)", border: "1px solid rgba(255,255,255,0.68)", borderRadius: 8, padding: "7px 12px", fontSize: 12, color: "var(--fg)", outline: "none" }} />
-        <button onClick={send} style={{ padding: "7px 14px", borderRadius: 8, background: sent ? "#3D9E5F" : "rgba(30,28,28,0.90)", border: "1px solid rgba(0,0,0,0.08)", color: "rgba(10,14,22,0.92)", fontSize: 12, cursor: "pointer" }}>
+          className="site-input"
+          style={{ flex: 1, padding: "7px 12px", fontSize: 12 }} />
+        <button onClick={send} className="site-btn site-btn-primary" style={{ padding: "0 14px", fontSize: 12 }}>
           {sent ? "Sent" : "Send"}
         </button>
       </div>
@@ -574,12 +574,13 @@ function AskPanel({ sessionId, founderId }: { sessionId: string; founderId: stri
       <div style={{ display: "flex", gap: 8 }}>
         <input value={msg} onChange={e => setMsg(e.target.value)} onKeyDown={e => e.key === "Enter" && ask()}
           placeholder="What are the top competitors?"
-          style={{ flex: 1, background: "rgba(180,205,228,0.13)", border: "1px solid rgba(255,255,255,0.68)", borderRadius: 8, padding: "7px 12px", fontSize: 12, color: "var(--fg)", outline: "none" }} />
-        <button onClick={ask} style={{ padding: "7px 14px", borderRadius: 8, background: "rgba(30,28,28,0.90)", border: "1px solid rgba(0,0,0,0.08)", color: "rgba(10,14,22,0.92)", fontSize: 12, cursor: "pointer" }}>
+          className="site-input"
+          style={{ flex: 1, padding: "7px 12px", fontSize: 12 }} />
+        <button onClick={ask} className="site-btn site-btn-primary" style={{ padding: "0 14px", fontSize: 12 }}>
           {loading ? "…" : "Ask"}
         </button>
       </div>
-      {reply && <div style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.6, padding: "8px 10px", background: "rgba(180,205,228,0.10)", border: "1px solid rgba(180,205,228,0.22)", borderRadius: 8 }}>{reply}</div>}
+      {reply && <div style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.6, padding: "8px 10px", background: "rgba(180,205,228,0.10)", border: "1px solid rgba(180,205,228,0.22)", borderRadius: 12 }}>{reply}</div>}
     </LiquidGlass>
   );
 }
@@ -716,7 +717,7 @@ export default function GoalPage({ params }: { params: Promise<{ id: string }> }
   const title = company || instruction.slice(0, 48) || "Goal";
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ maxWidth: 1100, margin: 0, display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Header */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -750,14 +751,14 @@ export default function GoalPage({ params }: { params: Promise<{ id: string }> }
 
       {/* Main layout: sidebar + detail */}
       {agentList.length > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 12, alignItems: "start" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "stretch" }}>
           {/* Agent sidebar */}
-          <LiquidGlass contentStyle={{ padding: "8px", display: "flex", flexDirection: "column", gap: 2 }}>
+          <LiquidGlass style={{ flex: "0 0 240px", minWidth: 220 }} contentStyle={{ padding: "8px", display: "flex", flexDirection: "column", gap: 2 }}>
             <AgentSidebar agentList={agentList} agents={visibleAgents} activeAgent={selected} onSelect={setActiveAgent} />
           </LiquidGlass>
 
           {/* Detail panel */}
-          <LiquidGlass contentStyle={{ padding: "24px", minHeight: 480 }}>
+          <LiquidGlass style={{ flex: "1 1 520px", minWidth: 0 }} contentStyle={{ padding: "24px", minHeight: 480 }}>
             {selectedState ? (
               <AgentDetail state={selectedState} planTask={selectedPlanTask} />
             ) : (

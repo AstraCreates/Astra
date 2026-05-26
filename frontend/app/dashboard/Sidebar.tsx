@@ -22,7 +22,7 @@ function timeAgo(ts: number): string {
 function statusColor(status: SessionRecord["status"]) {
   if (status === "done") return "#5a9e72";
   if (status === "error") return "#b05555";
-  return "#8090a4";
+  return "#ffffff";
 }
 
 const NAV = [
@@ -101,7 +101,7 @@ export default function Sidebar() {
       <div style={{ padding: "12px 12px 8px" }}>
         <Link href="/dashboard" style={{
           display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-          padding: "9px 16px", borderRadius: 8, fontSize: 13, fontWeight: 500,
+          padding: "9px 16px", borderRadius: 24, fontSize: 13, fontWeight: 500,
           background: "rgba(178,196,216,0.92)", color: "rgba(10,14,22,0.92)",
           textDecoration: "none", letterSpacing: "0.01em",
           border: "1px solid rgba(0,0,0,0.08)",
@@ -123,16 +123,16 @@ export default function Sidebar() {
           return (
             <Link key={href} href={href} style={{
               display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
-              borderRadius: 8, marginBottom: 1, textDecoration: "none",
+              borderRadius: 24, marginBottom: 1, textDecoration: "none",
               fontSize: 13, fontWeight: active ? 500 : 400,
-              color: active ? "#dce6f0" : "#8090a4",
+              color: active ? "#ffffff" : "rgba(255,255,255,0.82)",
               background: active ? "rgba(180,205,228,0.12)" : "transparent",
               boxShadow: active ? "0 1px 3px rgba(0,0,0,0.05)" : "none",
               border: active ? "1px solid rgba(180,205,228,0.22)" : "1px solid transparent",
               transition: "background 0.15s ease, color 0.15s ease",
             }}
               onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "rgba(180,205,228,0.10)"; (e.currentTarget as HTMLElement).style.color = "#dce6f0"; } }}
-              onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "#8090a4"; } }}
+              onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.82)"; } }}
             >
               <span style={{ fontSize: 11, opacity: active ? 0.7 : 0.4, width: 16, textAlign: "center", fontFamily: "monospace" }}>{icon}</span>
               {label}
@@ -147,19 +147,19 @@ export default function Sidebar() {
       {/* Recent runs */}
       <div style={{ flex: 1, overflowY: "auto", padding: "0 8px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 10px", marginBottom: 6 }}>
-          <p style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#4e5f70", margin: 0, fontFamily: "var(--font-jetbrains-mono)" }}>Recent</p>
+          <p style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.82)", margin: 0, fontFamily: "var(--font-jetbrains-mono)" }}>Recent</p>
           {mounted && recentSessions.length > 0 && (
             <button
               onClick={() => { localStorage.removeItem("astra_sessions"); setSessions([]); }}
-              style={{ background: "none", border: "none", fontSize: 9, color: "#4e5f70", cursor: "pointer", padding: 0, letterSpacing: "0.06em", transition: "color 0.15s" }}
-              onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = "#8090a4")}
-              onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = "#4e5f70")}
+              style={{ background: "none", border: "none", fontSize: 9, color: "rgba(255,255,255,0.82)", cursor: "pointer", padding: 0, letterSpacing: "0.06em", transition: "color 0.15s" }}
+              onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = "#ffffff")}
+              onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.82)")}
             >clear</button>
           )}
         </div>
 
         {!mounted || recentSessions.length === 0 ? (
-          <p style={{ fontSize: 12, color: "#4e5f70", padding: "8px 10px", lineHeight: 1.5, margin: 0 }}>No runs yet.</p>
+          <p style={{ fontSize: 12, color: "rgba(255,255,255,0.82)", padding: "8px 10px", lineHeight: 1.5, margin: 0 }}>No runs yet.</p>
         ) : recentSessions.map(s => {
           const isActive = pathname.includes(s.sessionId);
           const label = s.companyName || s.instruction.slice(0, 28);
@@ -168,7 +168,7 @@ export default function Sidebar() {
               key={s.sessionId}
               href={`/dashboard/goal/${s.sessionId}?instruction=${encodeURIComponent(s.instruction)}&founder=${encodeURIComponent(s.founderId)}&company=${encodeURIComponent(s.companyName)}`}
               style={{
-                display: "flex", alignItems: "center", gap: 8, borderRadius: 8,
+                display: "flex", alignItems: "center", gap: 8, borderRadius: 24,
                 padding: "7px 10px", textDecoration: "none", marginBottom: 1,
                 background: isActive ? "rgba(180,205,228,0.12)" : "transparent",
                 border: isActive ? "1px solid rgba(180,205,228,0.22)" : "1px solid transparent",
@@ -179,15 +179,15 @@ export default function Sidebar() {
               onMouseLeave={e => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
             >
               <span style={{ width: 5, height: 5, borderRadius: "50%", flexShrink: 0, background: statusColor(s.status) }} />
-              <span style={{ flex: 1, fontSize: 12, color: isActive ? "#dce6f0" : "#8090a4", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.3 }}>
+              <span style={{ flex: 1, fontSize: 12, color: isActive ? "#ffffff" : "rgba(255,255,255,0.82)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.3 }}>
                 {label}
               </span>
-              <span style={{ fontSize: 10, color: "#4e5f70", flexShrink: 0, fontFamily: "var(--font-jetbrains-mono)" }}>
+              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.82)", flexShrink: 0, fontFamily: "var(--font-jetbrains-mono)" }}>
                 {timeAgo(s.startedAt)}
               </span>
               <button
                 onClick={e => remove(e, s.sessionId)}
-                style={{ display: "none", background: "none", border: "none", padding: "0 2px", color: "#4e5f70", cursor: "pointer", fontSize: 11, lineHeight: 1 }}
+                style={{ display: "none", background: "none", border: "none", padding: "0 2px", color: "rgba(255,255,255,0.82)", cursor: "pointer", fontSize: 11, lineHeight: 1 }}
                 className="sidebar-delete-btn"
                 aria-label="Delete"
               >✕</button>
@@ -203,15 +203,15 @@ export default function Sidebar() {
           return (
             <Link key={href} href={href} style={{
               display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
-              borderRadius: 8, marginBottom: 1, textDecoration: "none",
+              borderRadius: 24, marginBottom: 1, textDecoration: "none",
               fontSize: 13, fontWeight: active ? 500 : 400,
-              color: active ? "#dce6f0" : "#8090a4",
+              color: active ? "#ffffff" : "rgba(255,255,255,0.82)",
               background: active ? "rgba(180,205,228,0.12)" : "transparent",
               border: active ? "1px solid rgba(180,205,228,0.22)" : "1px solid transparent",
               transition: "background 0.15s ease, color 0.15s ease",
             }}
               onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "rgba(180,205,228,0.10)"; (e.currentTarget as HTMLElement).style.color = "#dce6f0"; } }}
-              onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "#8090a4"; } }}
+              onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = "transparent"; (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.82)"; } }}
             >
               <span style={{ fontSize: 11, opacity: active ? 0.7 : 0.4, width: 16, textAlign: "center", fontFamily: "monospace" }}>{icon}</span>
               {label}
@@ -221,7 +221,7 @@ export default function Sidebar() {
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 10px 0", marginTop: 4, borderTop: "1px solid rgba(180,205,228,0.12)" }}>
           <UserButton appearance={{ elements: { avatarBox: "w-7 h-7 rounded-full" } }} />
-          <p style={{ fontSize: 11, color: "var(--text-3)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>My workspace</p>
+          <p style={{ fontSize: 11, color: "rgba(255,255,255,0.82)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>My workspace</p>
           <ThemeToggle />
         </div>
       </div>

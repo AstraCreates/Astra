@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import type { ReactNode } from "react";
+import ThemeToggle from "@/components/ThemeToggle";
 
 function NavLink({ href, children, className = "" }: { href: string; children: ReactNode; className?: string }) {
   const pathname = usePathname();
@@ -51,6 +52,8 @@ export default function SiteNav() {
             </button>
           </SignUpButton>
         </Show>
+
+        <ThemeToggle />
       </nav>
     </header>
   );

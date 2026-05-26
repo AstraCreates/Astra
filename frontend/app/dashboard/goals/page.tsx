@@ -17,7 +17,7 @@ function timeAgo(ts: number): string {
 
 const STATUS_META = {
   done: { label: "Complete", color: "#6DC98A", bg: "rgba(60,170,100,0.10)", border: "rgba(60,170,100,0.22)" },
-  running: { label: "Running", color: "#8BA8C8", bg: "rgba(30,106,255,0.10)", border: "rgba(30,106,255,0.22)" },
+  running: { label: "Running", color: "#ffffff", bg: "rgba(255,255,255,0.10)", border: "rgba(255,255,255,0.22)" },
   error: { label: "Error", color: "#C97070", bg: "rgba(180,60,60,0.10)", border: "rgba(180,60,60,0.22)" },
 };
 
@@ -38,7 +38,7 @@ export default function GoalsPage() {
   const filtered = filter === "all" ? sessions : sessions.filter(s => s.status === filter);
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ maxWidth: 1100, margin: 0, display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, color: "var(--fg)", letterSpacing: "-0.02em" }}>All goals</h1>
@@ -46,12 +46,7 @@ export default function GoalsPage() {
         </div>
         <div style={{ display: "flex", gap: 4 }}>
           {(["all", "done", "running", "error"] as const).map(f => (
-            <button key={f} onClick={() => setFilter(f)} style={{
-              padding: "5px 14px", borderRadius: 8, fontSize: 12, border: "none", cursor: "pointer",
-              background: filter === f ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.05)",
-              color: filter === f ? "var(--fg)" : "rgba(255,255,255,0.4)",
-              transition: "all 0.12s",
-            }}>
+            <button key={f} onClick={() => setFilter(f)} className={`site-btn ${filter === f ? "site-btn-primary" : "site-btn-ghost"}`} style={{ padding: "0 14px", fontSize: 12, minHeight: 34 }}>
               {f === "all" ? "All" : STATUS_META[f].label}
             </button>
           ))}
@@ -68,7 +63,7 @@ export default function GoalsPage() {
             return (
               <div key={s.sessionId}
                 onClick={() => router.push(`/dashboard/goal/${s.sessionId}?instruction=${encodeURIComponent(s.instruction)}&founder=${encodeURIComponent(s.founderId)}&company=${encodeURIComponent(s.companyName)}`)}
-                style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 20px", borderRadius: 14, cursor: "pointer", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)", transition: "background 0.12s" }}
+                style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 20px", borderRadius: 28, cursor: "pointer", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08)", transition: "background 0.12s" }}
                 onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.07)"}
                 onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)"}
               >
