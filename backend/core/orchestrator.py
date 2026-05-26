@@ -40,7 +40,8 @@ class Orchestrator:
             "- Each agent may appear AT MOST ONCE in the task list. Never create two tasks for the same agent.\n"
             "- Only assign agents whose capabilities match the task. Do NOT give web agent research-only tasks — use research for that.\n"
             "- Only include agents whose work is actually needed for this specific goal. Skip agents with nothing relevant to do.\n"
-            "- Run ALL relevant agents in parallel by default. Set depends_on=[] for every agent unless there is a HARD data dependency.\n"
+            "- If research is included, it MUST run first. Every other agent that benefits from market context (web, marketing, design, technical, ops, sales, legal) must list the research task id in depends_on.\n"
+            "- If research is NOT included, run all agents in parallel with depends_on=[].\n"
             "- Each instruction MUST include the specific product/company from the goal (e.g. 'hormone cycle tracking app for women' not 'SaaS platform'). Never use generic placeholders.\n\n"
             "Format:\n"
             '{\"tasks\": [\n'
@@ -195,6 +196,7 @@ class Orchestrator:
 
             completed[tid] = result
             shared[f"result_{tid}"] = result
+            shared[f"result_{agent_name}"] = result  # also keyed by agent name for downstream context
             logger.info("Task %s (%s) done", tid, agent_name)
 
         # Topological execution — simple wave scheduler

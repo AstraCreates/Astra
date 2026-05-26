@@ -386,11 +386,24 @@ export default function GoalPage({ params }: { params: Promise<{ id: string }> }
         if (event.type === "agent_start") {
           next[agent] = { ...cur, status: "running", instruction: event.instruction ?? cur.instruction, task_id: event.task_id ?? cur.task_id, log: addLog("info", "Started") };
         } else if (event.type === "agent_action") {
-          const text = humanizeToolLog(event.action, event.tool);
+          const searchTools = new Set(["web_search", "search_and_read", "news_search", "fetch_page", "patent_search"]);
+          const baseText = humanizeToolLog(event.action, event.tool);
+          const args = event.args && typeof event.args === "string" ? event.args.slice(0, 80) : null;
+          const text = args && event.tool && searchTools.has(event.tool) ? `${baseText}: "${args}"` : baseText;
           next[agent] = { ...cur, currentAction: event.action, currentTool: event.tool ?? null, reasoning: event.reasoning ?? null, log: addLog("action", text) };
         } else if (event.type === "agent_action_result") {
           const ok = !event.result?.error;
-          const text = ok ? `✓ ${TOOL_DESCRIPTIONS[event.tool] ?? event.tool ?? "Done"}` : `✗ ${event.tool}: ${event.result?.error ?? "failed"}`;
+          const searchTools = new Set(["web_search", "search_and_read", "news_search", "fetch_page", "patent_search"]);
+          let text: string;
+          if (!ok) {
+            text = `✗ ${event.tool}: ${event.result?.error ?? "failed"}`;
+          } else if (searchTools.has(event.tool) && event.result && typeof event.result === "string") {
+            const urlMatch = event.result.match(/https?:\/\/[^\s"')]+/);
+            const snippet = event.result.slice(0, 120).replace(/\n/g, " ").trim();
+            text = urlMatch ? `✓ Read ${urlMatch[0].slice(0, 60)}…` : `✓ ${snippet || TOOL_DESCRIPTIONS[event.tool] ?? event.tool}`;
+          } else {
+            text = `✓ ${TOOL_DESCRIPTIONS[event.tool] ?? event.tool ?? "Done"}`;
+          }
           next[agent] = { ...cur, log: addLog(ok ? "result" : "error", text) };
         } else if (event.type === "agent_thinking") {
           next[agent] = { ...cur, log: addLog("info", `Thinking… (step ${event.iteration})`) };
