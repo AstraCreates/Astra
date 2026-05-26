@@ -22,71 +22,102 @@ class Orchestrator:
             self.bus.register(agent)
         self.bus.register(planner)
 
-    async def _plan(self, goal: str, session_id: str) -> list[dict]:
-        """Direct LLM planning call — no agent loop, retries up to 5 times."""
+    _AGENT_CAPS = (
+        "SPECIALIST CAPABILITIES:\n"
+        "  research   — web search, market analysis, competitor research, patent search.\n"
+        "  legal      — draft legal docs (privacy policy, terms, NDAs, founder agreements), generate PDFs.\n"
+        "  web        — build and deploy landing pages to Vercel via GitHub + Claude Code.\n"
+        "  marketing  — create social content (reels, TikTok, Meta ads), email campaigns.\n"
+        "  technical  — build COMPLETE working MVP: GitHub repo, 6 rounds of Claude Code (frontend+backend+auth+DB), deploy to Vercel.\n"
+        "  ops        — fundraising docs, investor outreach, calendar scheduling, Notion SOPs, exec summary PDFs.\n"
+        "  sales      — lead discovery, enrichment, outreach sequences, CRM tracking.\n"
+        "  design     — wireframes, color palettes, design specs, logo briefs, UI/UX mockups.\n"
+    )
+
+    async def _parse_tasks(self, raw: str) -> list[dict]:
         import json, re
-        system = (
-            "You are a planning coordinator for an AI startup assistant. Output ONLY a JSON object, no prose.\n\n"
-            "SPECIALIST CAPABILITIES — assign tasks ONLY within each agent's scope:\n"
-            "  research   — web search, market analysis, competitor research, patent search. Use for: market sizing, industry data, company background.\n"
-            "  legal      — draft legal documents (NDAs, privacy policy, terms, founder agreements), generate PDFs. Use for: any legal doc creation.\n"
-            "  web        — build and deploy landing pages to Vercel, create GitHub repos, web search. Use for: websites, pages, repos.\n"
-            "  marketing  — create social content (reels, TikTok, Meta ads), email campaigns, post to LinkedIn/Gmail. Use for: content, campaigns, posts.\n"
-            "  technical  — build a COMPLETE working MVP: creates GitHub repo, runs Claude Code iteratively (6 rounds) to write frontend+backend+auth+DB, commits every round, deploys to Vercel. Use for: ANY product that needs real working code. Always include goal, product name, and tech requirements in the instruction.\n"
-            "  ops        — project tracking (Linear), fundraising docs, investor email outreach, scheduling (Calendar), Notion SOPs, exec summary PDFs. Use for: coordination, fundraising, comms.\n"
-            "  sales      — lead discovery, lead enrichment, outreach sequence generation, inbox warming setup, CRM contact tracking, cold email sending. Use for: finding customers, building pipeline, outbound sales.\n"
-            "  design     — wireframes, color palettes, design specifications, logo briefs, UI/UX mockups. Use for: any visual design, brand identity, UX planning.\n\n"
-            "Rules:\n"
-            "- Each agent may appear AT MOST ONCE in the task list. Never create two tasks for the same agent.\n"
-            "- Only assign agents whose capabilities match the task. Do NOT give web agent research-only tasks — use research for that.\n"
-            "- Only include agents whose work is actually needed for this specific goal. Skip agents with nothing relevant to do.\n"
-            "- If research is included, it MUST run first. Every other agent that benefits from market context (web, marketing, design, technical, ops, sales, legal) must list the research task id in depends_on.\n"
-            "- If research is NOT included, run all agents in parallel with depends_on=[].\n"
-            "- Each instruction MUST include the specific product/company from the goal (e.g. 'hormone cycle tracking app for women' not 'SaaS platform'). Never use generic placeholders.\n\n"
-            "Format:\n"
-            '{\"tasks\": [\n'
-            '  {\"id\": \"t1\", \"agent\": \"<specialist>\", \"instruction\": \"...\", \"depends_on\": []},\n'
-            '  {\"id\": \"t2\", \"agent\": \"<specialist>\", \"instruction\": \"...\", \"depends_on\": [\"t1\"]}\n'
-            ']}'
-        )
-        user = f"Goal: {goal}\n\nOutput the task plan JSON now."
-        messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        for pattern in [raw, raw[raw.find("{"):raw.rfind("}")+1]]:
+            try:
+                parsed = json.loads(pattern)
+                tasks = parsed.get("tasks", [])
+                if tasks and all("agent" in t for t in tasks):
+                    seen: set[str] = set()
+                    return [t for t in tasks if t["agent"] not in seen and not seen.add(t["agent"])]  # type: ignore
+            except Exception:
+                pass
+        m = re.search(r'"tasks"\s*:\s*(\[.*?\])', raw, re.DOTALL)
+        if m:
+            try:
+                tasks = json.loads(m.group(1))
+                if tasks:
+                    seen: set[str] = set()
+                    return [t for t in tasks if t.get("agent") not in seen and not seen.add(t.get("agent", ""))]  # type: ignore
+            except Exception:
+                pass
+        return []
 
-        logger.info("Planner using model=%s base_url=%s", self.planner.model, self.planner._model_base_url)
-
+    async def _llm_plan(self, messages: list[dict]) -> list[dict]:
         for attempt in range(5):
             raw = await asyncio.to_thread(self.planner._call_llm, messages)
-            # try to extract tasks array directly or from wrapper
-            for pattern in [raw, raw[raw.find("{"):raw.rfind("}")+1]]:
-                try:
-                    parsed = json.loads(pattern)
-                    tasks = parsed.get("tasks", [])
-                    if tasks and all("agent" in t for t in tasks):
-                        # Deduplicate — keep first occurrence of each agent
-                        seen: set[str] = set()
-                        deduped = []
-                        for t in tasks:
-                            if t["agent"] not in seen:
-                                seen.add(t["agent"])
-                                deduped.append(t)
-                        return deduped
-                except Exception:
-                    pass
-            # also try finding tasks: [...] directly
-            m = re.search(r'"tasks"\s*:\s*(\[.*?\])', raw, re.DOTALL)
-            if m:
-                try:
-                    tasks = json.loads(m.group(1))
-                    if tasks:
-                        seen: set[str] = set()
-                        return [t for t in tasks if t.get("agent") not in seen and not seen.add(t.get("agent", ""))]  # type: ignore[func-returns-value]
-                except Exception:
-                    pass
+            tasks = await self._parse_tasks(raw)
+            if tasks:
+                return tasks
             messages.append({"role": "assistant", "content": raw})
-            messages.append({"role": "user", "content": "Invalid format. Output ONLY the JSON object with a tasks array."})
+            messages.append({"role": "user", "content": "Invalid format. Output ONLY valid JSON with a tasks array."})
             logger.warning("Planner attempt %d unparseable", attempt + 1)
-
         return []
+
+    async def _initial_plan(self, goal: str) -> list[dict]:
+        """Phase 1: decide which agents to use. Always puts research first if relevant."""
+        system = (
+            "You are a planning coordinator for an AI startup assistant. Output ONLY a JSON object, no prose.\n\n"
+            + self._AGENT_CAPS +
+            "\nRules:\n"
+            "- Each agent appears AT MOST ONCE.\n"
+            "- Only include agents whose work is actually needed for this goal.\n"
+            "- ALWAYS include research as the first task (id: t1, depends_on: []).\n"
+            "- All other agents MUST have depends_on: [\"t1\"] — they wait for research.\n"
+            "- Instructions at this stage are brief placeholders — they will be rewritten with research context later.\n\n"
+            "Format: {\"tasks\": [{\"id\": \"t1\", \"agent\": \"research\", \"instruction\": \"...\", \"depends_on\": []}, ...]}"
+        )
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": f"Goal: {goal}\n\nOutput the task plan JSON now."},
+        ]
+        return await self._llm_plan(messages)
+
+    async def _replan_with_research(self, goal: str, research_result: dict, agents_needed: list[str]) -> list[dict]:
+        """Phase 2: replan non-research agents with full research context. Returns detailed instructions."""
+        import json
+        research_summary = ""
+        for k, v in research_result.items():
+            if v and isinstance(v, str) and len(v) > 10:
+                research_summary += f"\n{k}: {v[:400]}"
+        if not research_summary:
+            research_summary = json.dumps(research_result, default=str)[:1200]
+
+        system = (
+            "You are a planning coordinator. Research on the goal is complete. "
+            "Use the research findings to write DETAILED, SPECIFIC task instructions for each specialist.\n\n"
+            + self._AGENT_CAPS +
+            "\nRules:\n"
+            "- Each agent appears AT MOST ONCE. All run in parallel (depends_on: []).\n"
+            "- Instructions MUST reference specific findings from the research: competitor names, market size, tech stack choices, target users, pricing strategy, etc.\n"
+            "- Instructions must be 2-4 sentences. No generic placeholders. No 'SaaS platform' — use the actual product name and specifics.\n"
+            "- technical agent instruction MUST include: product name, core features to build, auth approach, DB schema hint.\n"
+            "- web agent instruction MUST include: product name, hero copy, key value props from research, color/style direction.\n"
+            "- marketing agent instruction MUST include: target persona from research, specific pain points, competitor differentiation angle.\n\n"
+            "Format: {\"tasks\": [{\"id\": \"t1\", \"agent\": \"<name>\", \"instruction\": \"<detailed>\", \"depends_on\": []}]}"
+        )
+        agents_str = ", ".join(agents_needed)
+        user = (
+            f"Goal: {goal}\n\n"
+            f"Agents to assign: {agents_str}\n\n"
+            f"Research findings:\n{research_summary}\n\n"
+            "Write detailed task instructions for each agent using the research above."
+        )
+        messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        return await self._llm_plan(messages)
 
     async def run(self, goal: str, founder_id: str, constraints: dict = None, session_id: str = None) -> dict[str, Any]:
         session_id = session_id or uuid.uuid4().hex[:8]
@@ -106,26 +137,26 @@ class Orchestrator:
         except Exception as _pe:
             logger.warning("Proprietary engine pre_run skipped: %s", _pe, exc_info=True)
 
-        # Step 1: direct planning call (no agent loop — avoids infinite retry)
-        tasks = await self._plan(goal, session_id)
-
-        if not tasks:
-            logger.warning("Planner failed — running goal directly on all specialists in parallel")
-            tasks = [
-                {"id": f"t{i}", "agent": name, "instruction": goal, "depends_on": []}
-                for i, name in enumerate(self.specialists)
-            ]
-
         from backend.core.events import publish
 
+        # Phase 1: initial plan — research always runs first
+        initial_tasks = await self._initial_plan(goal)
+        if not initial_tasks:
+            initial_tasks = [{"id": "t1", "agent": "research", "instruction": f"Research the market and competitive landscape for: {goal}", "depends_on": []}]
+
+        research_task = next((t for t in initial_tasks if t["agent"] == "research"), None)
+        other_agents_initial = [t for t in initial_tasks if t["agent"] != "research"]
+
+        # Emit initial plan (shows research + placeholders for other agents)
         await publish(session_id, {
             "type": "plan_done",
-            "tasks": [{"id": t["id"], "agent": t["agent"], "instruction": t["instruction"]} for t in tasks],
+            "tasks": [{"id": t["id"], "agent": t["agent"], "instruction": t["instruction"]} for t in initial_tasks],
             "planner_model": self.planner.model,
         })
 
         # Step 2: execute tasks in dependency order
         completed: dict[str, dict] = {}
+        tasks = initial_tasks  # will be replaced after research
 
         async def _run_task(task: dict) -> None:
             tid = task["id"]
@@ -199,10 +230,33 @@ class Orchestrator:
             shared[f"result_{agent_name}"] = result  # also keyed by agent name for downstream context
             logger.info("Task %s (%s) done", tid, agent_name)
 
-        # Topological execution — simple wave scheduler
-        remaining = list(tasks)
-        in_flight: set[str] = set()
+        # Phase A: run research first
+        if research_task:
+            await _run_task(research_task)
 
+            # Phase B: replan remaining agents with research context
+            research_result = completed.get(research_task["id"], {})
+            agents_needed = [t["agent"] for t in other_agents_initial]
+            if agents_needed:
+                detailed_tasks = await self._replan_with_research(goal, research_result, agents_needed)
+                if detailed_tasks:
+                    # Re-emit updated plan with detailed instructions
+                    await publish(session_id, {
+                        "type": "plan_done",
+                        "tasks": [{"id": t["id"], "agent": t["agent"], "instruction": t["instruction"]} for t in detailed_tasks],
+                        "planner_model": self.planner.model,
+                        "phase": "detailed",
+                    })
+                    tasks = [research_task] + detailed_tasks
+                else:
+                    tasks = initial_tasks
+
+            remaining = [t for t in tasks if t["agent"] != "research"]
+        else:
+            remaining = list(tasks)
+
+        # Run remaining agents in parallel (all depends_on research which is done)
+        in_flight: set[str] = set()
         while remaining or in_flight:
             ready = [
                 t for t in remaining
