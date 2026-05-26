@@ -46,7 +46,7 @@ export default function DashboardHome() {
       const result = await submitGoal(founderId, full);
       saveSession({ sessionId: result.session_id, founderId, companyName: companyName.trim() || instruction.slice(0, 40), instruction, startedAt: Date.now(), status: "running", artifacts: [] });
       if (typeof Notification !== "undefined" && Notification.permission === "default") Notification.requestPermission();
-      router.push(`/goal/${result.session_id}?instruction=${encodeURIComponent(instruction)}&founder=${encodeURIComponent(founderId)}&company=${encodeURIComponent(companyName)}`);
+      router.push(`/dashboard/goal/${result.session_id}?instruction=${encodeURIComponent(instruction)}&founder=${encodeURIComponent(founderId)}&company=${encodeURIComponent(companyName)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit goal");
       setLoading(false);
