@@ -12,7 +12,7 @@ from typing import AsyncIterator
 logger = logging.getLogger(__name__)
 
 _sessions: dict[str, asyncio.Queue] = {}
-_completed: set[str] = {}  # sessions that finished — reconnect gets immediate replay + close
+_completed: set[str] = set()  # sessions that finished — reconnect gets immediate replay + close
 _steer: dict[str, list[str]] = {}  # inbound founder directives per session
 
 # Persistent event log per session: list of (event_id, event_dict)
