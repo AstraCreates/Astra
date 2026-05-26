@@ -92,11 +92,49 @@ def _poll_deployment(dep_id: str, team_id: str | None, headers: dict, timeout: i
     return "Deployment timed out after 5 minutes"
 
 
-# Known fake packages the LLM hallucinates
+# Known fake/deprecated packages the LLM hallucinates
 _FAKE_PACKAGES = {
     "@radix-ui/react-badge", "@radix-ui/react-layout", "@radix-ui/react-grid",
     "@radix-ui/react-flex", "@radix-ui/react-container",
+    "@next/font",  # merged into next/font in Next.js 13+
 }
+
+
+def _research_build_error(build_error: str) -> str:
+    """Search for docs/fixes for a Vercel build error. Returns research context string."""
+    try:
+        from backend.tools.web_search import web_search
+        # Extract the key error phrase to search
+        import re as _re
+        # Look for npm error codes, package names, or error messages
+        patterns = [
+            r"npm error ([A-Z0-9]+)",
+            r"No matching version found for ([^\s]+)",
+            r"Cannot find module '([^']+)'",
+            r"Module not found: Can't resolve '([^']+)'",
+            r"Error: (.{20,80}?)[\n\r]",
+        ]
+        query = None
+        for pat in patterns:
+            m = _re.search(pat, build_error)
+            if m:
+                query = f"Next.js Vercel build error fix: {m.group(0)[:120]}"
+                break
+        if not query:
+            query = f"Next.js Vercel build error: {build_error[:100]}"
+
+        result = web_search(query=query, max_results=3)
+        snippets = []
+        for r in (result.get("results") or [])[:3]:
+            title = r.get("title", "")
+            snippet = r.get("snippet") or r.get("description") or ""
+            url = r.get("url", "")
+            if snippet:
+                snippets.append(f"[{title}] {snippet} ({url})")
+        return "\n".join(snippets) if snippets else ""
+    except Exception as e:
+        logger.debug("Error research failed: %s", e)
+        return ""
 
 
 def _fix_repo_and_push(repo_url: str, build_error: str, gh_owner: str, gh_repo: str, headers: dict) -> bool:
@@ -136,6 +174,46 @@ def _fix_repo_and_push(repo_url: str, build_error: str, gh_owner: str, gh_repo: 
                 if fixed:
                     pkg_path.write_text(_json.dumps(data, indent=2))
 
+        # Fix 1b: ETARGET — package version doesn't exist (hallucinated versions)
+        if "ETARGET" in build_error or "notarget" in build_error or "No matching version found" in build_error:
+            import re as _re
+            pkg_path = Path(local) / "frontend" / "package.json"
+            if pkg_path.exists():
+                data = _json.loads(pkg_path.read_text())
+                changed = False
+                for section in ("dependencies", "devDependencies", "peerDependencies"):
+                    if section not in data:
+                        continue
+                    # @next/font was merged into next/font in Next.js 13 — remove entirely
+                    if "@next/font" in data[section]:
+                        del data[section]["@next/font"]
+                        logger.warning("Auto-fix: removed @next/font (use next/font instead)")
+                        changed = True
+                    # For other ETARGET errors, relax pinned version to "latest"
+                    pkg_match = _re.search(r"No matching version found for ([^\s.]+)", build_error)
+                    if pkg_match:
+                        bad_pkg = pkg_match.group(1)
+                        if bad_pkg in data[section]:
+                            data[section][bad_pkg] = "latest"
+                            logger.warning("Auto-fix: relaxed %s to 'latest'", bad_pkg)
+                            changed = True
+                if changed:
+                    pkg_path.write_text(_json.dumps(data, indent=2))
+                    # Also replace @next/font imports with next/font in source files
+                    src_dirs = [Path(local) / "frontend" / "app", Path(local) / "frontend" / "src", Path(local) / "frontend" / "pages"]
+                    for src_dir in src_dirs:
+                        if not src_dir.exists():
+                            continue
+                        for f in src_dir.rglob("*.tsx"):
+                            try:
+                                content = f.read_text()
+                                if "@next/font" in content:
+                                    f.write_text(content.replace("@next/font", "next/font"))
+                                    logger.warning("Auto-fix: replaced @next/font → next/font in %s", f)
+                            except Exception:
+                                pass
+                    fixed = True
+
         # Fix 2: TypeScript errors — add skipLibCheck to tsconfig
         if "TypeScript" in build_error or "TS" in build_error:
             ts_path = Path(local) / "frontend" / "tsconfig.json"
@@ -166,7 +244,7 @@ def _fix_repo_and_push(repo_url: str, build_error: str, gh_owner: str, gh_repo: 
                 logger.warning("Auto-fix: removed next.config.ts (next.config.mjs already exists)")
                 fixed = True
 
-        # Fix 4: generic — if LLM can identify the error, ask openclaude to fix it
+        # Fix 4: generic — research the error, then ask openclaude to fix it
         if not fixed and ("Error:" in build_error or "error" in build_error.lower()):
             try:
                 from backend.tools.git_tools import _run_claude, OPENCLAUDE_BIN
@@ -174,10 +252,13 @@ def _fix_repo_and_push(repo_url: str, build_error: str, gh_owner: str, gh_repo: 
                 sid_file = Path(local) / ".oc_session_id"
                 oc_sid = sid_file.read_text().strip() if sid_file.exists() else None
                 if _os.path.exists(OPENCLAUDE_BIN):
+                    # Research the error first to get docs/fix guidance
+                    research_context = _research_build_error(build_error)
                     fix_prompt = (
-                        f"The Vercel deployment failed with this error:\n\n{build_error[:1000]}\n\n"
-                        f"Fix the issue in the frontend/ directory. "
-                        f"After fixing, run: bash -c \"git add -A && git commit -m 'fix: vercel build error'\""
+                        f"The Vercel deployment failed with this error:\n\n{build_error[:800]}\n\n"
+                        + (f"Research context / fix guidance:\n{research_context}\n\n" if research_context else "")
+                        + "Fix the issue in the frontend/ directory. "
+                        "After fixing, run: bash -c \"git add -A && git commit -m 'fix: vercel build error'\""
                     )
                     _run_claude(local, fix_prompt, session_id=oc_sid, timeout=300)
                     fixed = True
