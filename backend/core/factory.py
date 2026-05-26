@@ -4,7 +4,7 @@ Called once at startup; cached as a module-level singleton.
 
 Model assignments (all via DeepInfra OpenAI-compatible API):
   planner    — Kimi-K2.5        (strong planning/decomposition)
-  research   — Qwen3-235B       (deep reasoning + web synthesis)
+  research   — Step-3.5-Flash   (fast, low latency research)
   web        — Qwen3-Coder-480B (code generation + deployment)
   marketing  — Llama-4-Maverick (creative content, social copy)
   technical  — Qwen3-Coder-480B (scaffolding, PRs, infra)
@@ -45,7 +45,7 @@ def get_orchestrator() -> Orchestrator:
         specialists = {
             "research": build_research_agent(
                 hermes_toolsets=["web", "browser"],
-                **_di("Qwen/Qwen3-235B-A22B"),
+                **_di("stepfun-ai/Step-3.5-Flash"),
             ),
             "web": build_web_agent(
                 hermes_toolsets=["web", "browser", "code_execution", "terminal", "file"],
