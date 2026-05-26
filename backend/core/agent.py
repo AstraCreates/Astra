@@ -155,6 +155,7 @@ class Agent:
             messages=messages,
             temperature=0.1,
             response_format={"type": "json_object"},
+            timeout=120.0,
         )
         msg = resp.choices[0].message
         content = msg.content or ""
@@ -271,7 +272,7 @@ class Agent:
 
     async def _run_loop(self, messages: list[dict], ctx: AgentContext, browser=None) -> dict[str, Any]:
         i = 0
-        MAX_ITERATIONS = 20
+        MAX_ITERATIONS = 40
         # Track consecutive failures per tool to break infinite retry loops
         _tool_fail_counts: dict[str, int] = {}
         # One-shot tools: hard-blocked after first success

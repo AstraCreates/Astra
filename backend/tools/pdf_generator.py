@@ -67,8 +67,10 @@ def generate_pdf(title: str, sections: list[dict], output_dir: str = "/tmp/astra
     # Expand thin sections via LLM before rendering
     expanded_sections = []
     for section in sections:
-        heading = section.get("heading", "")
-        body = section.get("body", "")
+        if isinstance(section, str):
+            section = {"heading": "", "body": section}
+        heading = section.get("heading", "") if isinstance(section, dict) else ""
+        body = section.get("body", "") or section.get("content", "") if isinstance(section, dict) else str(section)
         if expand_content and heading and body:
             body = _expand_section(heading, body, title)
         expanded_sections.append({"heading": heading, "body": body})

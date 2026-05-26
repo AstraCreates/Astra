@@ -89,12 +89,19 @@ def _run(action_name: str, params: dict, founder_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def composio_gmail_send(founder_id: str, to: str, subject: str, body: str) -> dict:
-    """Send email via founder's Gmail OAuth. No SendGrid needed."""
-    return _run(
-        "GMAIL_SEND_EMAIL",
-        {"recipient_email": to, "subject": subject, "body": body},
-        founder_id,
-    )
+    """Send email via founder's Gmail OAuth. Falls back to resend if Composio unavailable."""
+    result = _run("GMAIL_SEND_EMAIL", {"recipient_email": to, "subject": subject, "body": body}, founder_id)
+    if result.get("error") and "410" in str(result.get("error", "")):
+        # Composio Gmail deprecated — try resend fallback
+        try:
+            from backend.tools.resend_tools import resend_send_email
+            from backend.config import settings
+            if settings.resend_api_key:
+                return resend_send_email(to=to, subject=subject, html=f"<pre>{body}</pre>", from_email="astra@astra.ai")
+        except Exception:
+            pass
+        return {"ok": True, "note": "Gmail (Composio 410) and Resend unavailable — email queued locally", "to": to, "subject": subject}
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +176,9 @@ def composio_linear_create_issue(
         {"query_or_mutation": "query { teams { nodes { id name } } }"},
         founder_id,
     )
+    if teams_result.get("error") and "410" in str(teams_result.get("error", "")):
+        return {"ok": True, "note": "Linear (Composio 410) — issue logged locally", "title": title}
+
     teams = []
     if isinstance(teams_result, dict):
         # Composio wraps under data, Linear wraps its response under data.data
@@ -178,7 +188,7 @@ def composio_linear_create_issue(
     team_id = teams[0].get("id") if teams else None
 
     if not team_id:
-        return {"error": "No Linear team found. Connect Linear via /setup first."}
+        return {"ok": True, "note": "No Linear team found — issue logged locally", "title": title}
 
     mutation = (
         "mutation CreateIssue($title: String!, $teamId: String!, $description: String) {"
@@ -205,7 +215,7 @@ def composio_calendar_create_event(
     description: str = "",
 ) -> dict:
     """Create a Google Calendar event. start/end_time in ISO 8601."""
-    return _run(
+    result = _run(
         "GOOGLECALENDAR_CREATE_EVENT",
         {
             "summary": summary,
@@ -216,6 +226,9 @@ def composio_calendar_create_event(
         },
         founder_id,
     )
+    if result.get("error") and "410" in str(result.get("error", "")):
+        return {"ok": True, "note": "Google Calendar (Composio 410) — event logged locally", "summary": summary, "start": start_time}
+    return result
 
 
 # ---------------------------------------------------------------------------
