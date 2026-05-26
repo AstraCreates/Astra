@@ -370,6 +370,22 @@ class Agent:
             elif action == "computer_use" and browser is None:
                 messages.append({"role": "user", "content": "computer_use not available. Use tool or delegate."})
 
+            elif action in self.tools:
+                # Model used action name directly instead of {"action":"tool","tool":"<name>"}
+                tool_name = action
+                # Args may be nested under "args" key or spread at top level
+                if "args" in parsed and isinstance(parsed["args"], dict):
+                    args = parsed["args"]
+                else:
+                    args = {k: v for k, v in parsed.items() if k not in ("action", "reasoning", "tool")}
+                await self._emit(ctx, "agent_action", action="tool", tool=tool_name, args=args, reasoning=reasoning)
+                result = await self._execute_tool(tool_name, args, ctx)
+                await self._emit(ctx, "agent_action_result", tool=tool_name, result=result)
+                if "error" in result:
+                    messages.append({"role": "user", "content": f"TOOL FAILED: {json.dumps(result)}"})
+                else:
+                    messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result)}"})
+
             else:
                 messages.append({"role": "user", "content": "Unknown action. Use: tool, delegate, computer_use, or done."})
 
