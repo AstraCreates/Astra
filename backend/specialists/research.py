@@ -118,13 +118,15 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     # ctx_holder: mutable so wrappers can see the live AgentContext
     ctx_holder: list = [None]
 
-    auto_search = _make_auto_logging_tool(search_and_fetch, "search_and_fetch", ctx_holder, agent_name)
-    auto_fetch = _make_auto_logging_tool(fetch_and_read, "fetch_and_read", ctx_holder, agent_name)
-    auto_papers = _make_auto_logging_tool(research_papers, "research_papers", ctx_holder, agent_name)
-    auto_news = _make_auto_logging_tool(news_search, "news_search", ctx_holder, agent_name)
-    auto_patent = _make_auto_logging_tool(patent_search, "patent_search", ctx_holder, agent_name)
-    auto_youtube = _make_auto_logging_tool(youtube_research, "youtube_research", ctx_holder, agent_name)
-    auto_tiktok = _make_auto_logging_tool(tiktok_research, "tiktok_research", ctx_holder, agent_name)
+    # _2 variants log to the same Obsidian note as their base so notes merge
+    log_name = agent_name.removesuffix("_2")
+    auto_search = _make_auto_logging_tool(search_and_fetch, "search_and_fetch", ctx_holder, log_name)
+    auto_fetch = _make_auto_logging_tool(fetch_and_read, "fetch_and_read", ctx_holder, log_name)
+    auto_papers = _make_auto_logging_tool(research_papers, "research_papers", ctx_holder, log_name)
+    auto_news = _make_auto_logging_tool(news_search, "news_search", ctx_holder, log_name)
+    auto_patent = _make_auto_logging_tool(patent_search, "patent_search", ctx_holder, log_name)
+    auto_youtube = _make_auto_logging_tool(youtube_research, "youtube_research", ctx_holder, log_name)
+    auto_tiktok = _make_auto_logging_tool(tiktok_research, "tiktok_research", ctx_holder, log_name)
 
     from backend.config import settings
     focus_searches = _FOCUS_ROLES.get(agent_name, _FOCUS_ROLES["research"])
