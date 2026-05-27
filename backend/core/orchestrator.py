@@ -206,7 +206,7 @@ class Orchestrator:
         if not initial_tasks:
             initial_tasks = [{"id": "t1", "agent": "research", "instruction": f"Research the market and competitive landscape for: {goal}", "depends_on": []}]
 
-        _RESEARCH_AGENTS = {"research", "research_competitors", "research_execution"}
+        _RESEARCH_AGENTS = {"research", "research_2", "research_competitors", "research_competitors_2", "research_execution", "research_execution_2"}
         research_task = next((t for t in initial_tasks if t["agent"] == "research"), None)
         other_agents_initial = [t for t in initial_tasks if t["agent"] not in _RESEARCH_AGENTS]
 
@@ -220,12 +220,15 @@ class Orchestrator:
             if _ag not in _existing_agents and _ag in self.specialists:
                 other_agents_initial.append({"id": f"forced_{_ag}", "agent": _ag, "instruction": _instr, "depends_on": []})
 
-        # Always run all 3 research agents — add them to the plan if planner omitted any
+        # Run 2 agents per research track (6 total) in parallel for faster, deeper coverage
         research_instruction = research_task["instruction"] if research_task else f"Research market, competitors, and execution strategy for: {goal}"
         parallel_research_tasks = [
-            {"id": "r_market",      "agent": "research",             "instruction": research_instruction, "depends_on": []},
-            {"id": "r_competitors", "agent": "research_competitors",  "instruction": research_instruction, "depends_on": []},
-            {"id": "r_execution",   "agent": "research_execution",    "instruction": research_instruction, "depends_on": []},
+            {"id": "r_market",        "agent": "research",               "instruction": research_instruction, "depends_on": []},
+            {"id": "r_market_2",      "agent": "research_2",             "instruction": research_instruction, "depends_on": []},
+            {"id": "r_competitors",   "agent": "research_competitors",   "instruction": research_instruction, "depends_on": []},
+            {"id": "r_competitors_2", "agent": "research_competitors_2", "instruction": research_instruction, "depends_on": []},
+            {"id": "r_execution",     "agent": "research_execution",     "instruction": research_instruction, "depends_on": []},
+            {"id": "r_execution_2",   "agent": "research_execution_2",   "instruction": research_instruction, "depends_on": []},
         ]
 
         # Emit initial plan
@@ -319,12 +322,17 @@ class Orchestrator:
             from backend.tools.obsidian_logger import _note_path
             research_result = {}
             merged_notes: list[str] = []
+            _seen_note_paths: set[str] = set()
             for rt in parallel_research_tasks:
                 research_result.update(completed.get(rt["id"], {}))
                 try:
-                    note_file = _note_path(rt["agent"], session_id, founder_id)
-                    if note_file.exists():
-                        merged_notes.append(f"## {rt['agent'].upper()}\n\n{note_file.read_text()}")
+                    # _2 variants write to the same base agent name — deduplicate
+                    base_agent = rt["agent"].removesuffix("_2")
+                    note_file = _note_path(base_agent, session_id, founder_id)
+                    note_key = str(note_file)
+                    if note_file.exists() and note_key not in _seen_note_paths:
+                        _seen_note_paths.add(note_key)
+                        merged_notes.append(f"## {base_agent.upper()}\n\n{note_file.read_text()}")
                 except Exception as _re:
                     logger.debug("Could not read %s obsidian note: %s", rt["agent"], _re)
             if merged_notes:

@@ -11,10 +11,13 @@ def build_legal_agent(**kwargs) -> Agent:
         name="legal",
         role=(
             "You are a legal specialist. Draft legal documents and save them as PDFs. "
-            "format_legal_document formats a document given doc_type, company_name, and content (describe the product, "
-            "data collected, users served, jurisdiction). generate_pdf saves it to disk. "
+            "format_legal_document formats a document given doc_type, company_name, and content. "
+            "generate_pdf MUST be called immediately after format_legal_document — use the formatted_text from its return value. "
+            "NEVER defer PDF generation to a future session. NEVER output instructions for calling tools later. "
+            "Always call generate_pdf in this same run. "
             "patent_search surveys the IP landscape. "
-            "Always generate at least one document. Call obsidian_log then done."
+            "Mandatory sequence: format_legal_document → generate_pdf → obsidian_log → done. "
+            "Generate privacy_policy and terms_of_service at minimum."
         ),
         tools={
             "generate_pdf": generate_pdf,

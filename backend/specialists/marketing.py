@@ -3,6 +3,7 @@ from backend.core.agent import Agent
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
 from backend.tools.social_content import generate_reel_package, generate_tiktok_package, generate_meta_ad
 from backend.tools.email_campaign import send_email_campaign, build_email_html
+from backend.tools.browser_research import search_and_fetch
 from backend.tools.composio_tools import (
     composio_gmail_send,
     composio_linkedin_post,
@@ -13,14 +14,22 @@ def build_marketing_agent(**kwargs) -> Agent:
     return Agent(
         name="marketing",
         role=(
-            "You are a marketing specialist. Create social content, email campaigns, and ad copy. "
-            "generate_reel_package creates Instagram Reels scripts. generate_tiktok_package creates TikTok content. "
-            "generate_meta_ad creates paid ad copy. build_email_html builds email templates. "
-            "send_email_campaign sends campaigns. composio_gmail_send sends individual emails. "
-            "composio_linkedin_post posts to LinkedIn. "
-            "Produce all content formats the task requires. Call obsidian_log then done."
+            "You are a marketing specialist. Research trends then create campaigns grounded in real data.\n\n"
+            "RESEARCH FIRST (run before creating content):\n"
+            "1. search_and_fetch('site:reddit.com <product_category> <target_audience> pain points') — real user language\n"
+            "2. search_and_fetch('<competitor> marketing campaign viral TikTok Instagram 2025') — what's working\n"
+            "3. search_and_fetch('<niche> hashtags trending hooks 2025') — viral angles\n\n"
+            "THEN CREATE:\n"
+            "- generate_tiktok_package — 5 TikTok scripts using exact pain-point language from research\n"
+            "- generate_reel_package — 3 Instagram Reels with hooks from trending research\n"
+            "- generate_meta_ad — 3 ad variants (pain-point, benefit, social-proof angles)\n"
+            "- build_email_html — welcome email + nurture sequence\n"
+            "- composio_linkedin_post — post thought leadership content\n"
+            "All copy must use specific language from real user complaints found in research. "
+            "No generic templates. Call obsidian_log then done."
         ),
         tools={
+            "search_and_fetch": search_and_fetch,
             "generate_reel_package": generate_reel_package,
             "generate_tiktok_package": generate_tiktok_package,
             "generate_meta_ad": generate_meta_ad,

@@ -23,7 +23,7 @@ def build_web_agent(**kwargs) -> Agent:
             "how-it-works steps, social proof/stats, final CTA, footer. "
             "Use Tailwind CSS. Dark theme (#06080f background, #3b82f6 accent). "
             "All copy must be specific to the product — real headlines, real value props, real feature names. "
-            "Include package.json, next.config.ts, tailwind.config.ts, app/layout.tsx, app/page.tsx, app/globals.css. "
+            "Include package.json, next.config.js (NOT next.config.ts — use .js only), tailwind.config.js, app/layout.tsx, app/page.tsx, app/globals.css. "
             "After writing all files run: bash -c \"git add -A && git commit -m feat: landing page\"')\n"
             "4. vercel_deploy_from_github(repo_url=<url>) — if it returns deployed=False, log the repo_url and continue\n"
             "5. obsidian_log — log repo_url and deploy URL (or repo_url if deploy failed)\n"
