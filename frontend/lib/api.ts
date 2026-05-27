@@ -62,6 +62,21 @@ export function streamGoal(sessionId: string): EventSource {
   return new EventSource(`${BASE}/stream/${sessionId}`);
 }
 
+export async function continueSession(
+  founderId: string,
+  priorSessionId: string,
+  instruction: string,
+  agents?: string[]
+): Promise<{ session_id: string; status: string; prior_session_id: string }> {
+  const res = await fetch(`${BASE}/goal/continue`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: founderId, prior_session_id: priorSessionId, instruction, agents }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function getGoalStatus(goalId: string): Promise<GoalStatus> {
   const res = await fetch(`${BASE}/status/${goalId}`);
   if (!res.ok) throw new Error(await res.text());
@@ -130,6 +145,8 @@ export async function getComposioOAuthUrls(
 
 export const AGENT_LABELS: Record<string, string> = {
   research: "Market Research",
+  research_competitors: "Competitor Intel",
+  research_execution: "Execution Strategy",
   web: "Web & Landing Page",
   marketing: "Marketing & Social",
   technical: "Technical Architecture",
@@ -139,7 +156,7 @@ export const AGENT_LABELS: Record<string, string> = {
   design: "Design & Brand",
 };
 
-export const AGENT_ORDER = ["research", "web", "marketing", "technical", "legal", "ops", "sales", "design"];
+export const AGENT_ORDER = ["research", "research_competitors", "research_execution", "web", "marketing", "technical", "legal", "ops", "sales", "design"];
 
 const AGENT_ORDER_INDEX = new Map(AGENT_ORDER.map((agent, index) => [agent, index]));
 
