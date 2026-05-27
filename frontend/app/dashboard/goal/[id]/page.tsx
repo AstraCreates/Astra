@@ -4,7 +4,7 @@ import { use, useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { streamGoal, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder } from "@/lib/api";
+import { streamGoal, continueSession, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder } from "@/lib/api";
 import LiquidGlass from "@/components/LiquidGlass";
 import CompanyChat from "@/components/CompanyChat";
 
@@ -984,7 +984,6 @@ function ContinuePanel({ sessionId, founderId, company }: { sessionId: string; f
     setLoading(true);
     setError(null);
     try {
-      const { continueSession } = await import("@/lib/api");
       const result = await continueSession(founderId, sessionId, instruction);
       router.push(`/dashboard/goal/${result.session_id}?instruction=${encodeURIComponent(instruction)}&founder=${encodeURIComponent(founderId)}&company=${encodeURIComponent(company)}`);
     } catch (err) {
@@ -1218,7 +1217,7 @@ export default function GoalPage({ params }: { params: Promise<{ id: string }> }
       {/* Header */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <Link href="/dashboard" className="site-btn site-btn-ghost" style={{ minHeight: 32, padding: "0 13px", fontSize: 12 }}>
+          <Link href="/" className="site-btn site-btn-ghost" style={{ minHeight: 32, padding: "0 13px", fontSize: 12 }}>
             ← Back
           </Link>
           <h1 style={{ fontSize: 18, fontWeight: 600, color: "var(--fg)", margin: 0 }}>{title}</h1>
