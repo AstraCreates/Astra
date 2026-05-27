@@ -1712,7 +1712,11 @@ export function GoalWorkspace({
     research_competitors_2: "research_competitors",
     research_execution_2: "research_execution",
   };
-  const rawAgentList = planTasks.length > 0 ? sortAgentNamesByOrder(planTasks.map(t => t.agent)) : AGENT_ORDER;
+  // Also include agents that ran but aren't in planTasks (e.g. cached sessions with old planTasks)
+  const agentsWithData = Object.keys(agents).filter(a => agents[a].status !== "waiting" || agents[a].log.length > 0);
+  const rawAgentList = planTasks.length > 0
+    ? sortAgentNamesByOrder([...new Set([...planTasks.map(t => t.agent), ...agentsWithData])])
+    : AGENT_ORDER;
   const agentList = [...new Set(rawAgentList.map(a => PAIR_MAP[a] ?? a))];
 
   // Merge paired agent state: combine logs, urls, pick worst/best status
