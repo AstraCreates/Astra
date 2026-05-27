@@ -364,7 +364,23 @@ MVP_REQUIRED = [
 
 
 def _sanitize_package_json(repo_dir: str) -> None:
-    pkg_path = Path(repo_dir) / "frontend" / "package.json"
+    frontend = Path(repo_dir) / "frontend"
+
+    # Rename next.config.ts → next.config.mjs (not supported in Next.js 14)
+    ts_cfg = frontend / "next.config.ts"
+    if ts_cfg.exists():
+        import re as _re
+        mjs_cfg = frontend / "next.config.mjs"
+        if not mjs_cfg.exists():
+            content = ts_cfg.read_text()
+            content = _re.sub(r"^import type.*\n", "", content, flags=_re.MULTILINE)
+            content = _re.sub(r":\s*NextConfig\b", "", content)
+            content = content.replace("export default config satisfies NextConfig", "export default config")
+            mjs_cfg.write_text(content)
+        ts_cfg.unlink()
+        logger.warning("Sanitize: renamed next.config.ts → next.config.mjs")
+
+    pkg_path = frontend / "package.json"
     if not pkg_path.exists():
         return
     try:
@@ -419,7 +435,7 @@ Required deliverables (write all with real, working code — no TODOs):
 - frontend/package.json  (Next.js 14 + TypeScript + Tailwind. Real packages only: next, react, react-dom, tailwindcss, @tailwindcss/forms, clsx, lucide-react, @clerk/nextjs, @supabase/supabase-js, framer-motion, zod, react-hook-form. NEVER use @next/font — it was merged into next/font in Next.js 13, use next/font/google instead. @radix-ui/react-badge does NOT exist — use plain div.)
 - frontend/tailwind.config.ts
 - frontend/tsconfig.json
-- frontend/next.config.js
+- frontend/next.config.js  (NEVER next.config.ts or next.config.mjs — use .js only, Next.js 14 does not support .ts config)
 - frontend/app/layout.tsx
 - frontend/app/globals.css
 - frontend/app/page.tsx  (landing page specific to {goal} — real copy, real value props)
