@@ -763,7 +763,7 @@ function AgentDetail({
   });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, height: "100%", minHeight: 0 }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <span style={{ fontSize: 20 }}>{AGENT_ICONS[state.agent] ?? "🤖"}</span>
@@ -1823,7 +1823,7 @@ export function GoalWorkspace({
           </LiquidGlass>
 
           {/* Detail panel */}
-          <LiquidGlass style={{ minWidth: 0 }} contentStyle={{ padding: "32px", minHeight: 620 }}>
+          <LiquidGlass style={{ minWidth: 0 }} contentStyle={{ padding: "20px 28px", minHeight: 620, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             {selectedState ? (
               <AgentDetail state={selectedState} planTask={selectedPlanTask} sessionId={sessionId} founderId={founderId} />
             ) : (
