@@ -1617,10 +1617,15 @@ export function GoalWorkspace({
         const SEARCH_TOOLS = new Set(["web_search", "search_and_read", "news_search", "fetch_page", "patent_search", "search_and_fetch", "fetch_and_read", "research_papers"]);
 
         if (event.type === "plan_done") {
-          setPlanTasks(event.tasks);
+          // Merge into existing planTasks — second plan_done only carries non-research agents
+          setPlanTasks(prev => {
+            const incomingAgents = new Set(event.tasks.map((t: AgentTask) => t.agent));
+            const kept = prev.filter(t => !incomingAgents.has(t.agent));
+            return [...kept, ...event.tasks];
+          });
           for (const t of event.tasks) {
             const existing = next[t.agent];
-            // Don't reset agents already running or done (second plan_done fires after research completes)
+            // Don't reset agents already running or done
             if (existing && existing.status !== "waiting") continue;
             next[t.agent] = { task_id: t.id, agent: t.agent, instruction: t.instruction, status: "waiting", currentAction: null, currentTool: null, reasoning: null, result: null, log: [], visitedUrls: [], commits: [] };
           }
