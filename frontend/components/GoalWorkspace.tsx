@@ -44,7 +44,7 @@ interface AgentState {
 }
 
 const AGENT_ICONS: Record<string, string> = {
-  research: "🔬", research_competitors: "🏆", research_execution: "📋",
+  research: "🔬", research_2: "🔬", research_competitors: "🏆", research_competitors_2: "🏆", research_execution: "📋", research_execution_2: "📋",
   web: "🌐", marketing: "📢", technical: "⚙️",
   legal: "⚖️", ops: "🚀", sales: "🤝", design: "🎨",
 };
@@ -674,8 +674,11 @@ function BuildingIndicator({ label }: { label: string }) {
 function AgentPreview({ state }: { state: AgentState }) {
   switch (state.agent) {
     case "research":
+    case "research_2":
     case "research_competitors":
+    case "research_competitors_2":
     case "research_execution":
+    case "research_execution_2":
       return <ResearchPreview state={state} />;
     case "web": return <WebPreview state={state} />;
     case "technical": return <TechnicalPreview state={state} />;
