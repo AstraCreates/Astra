@@ -1737,7 +1737,7 @@ export function GoalWorkspace({
   const doneCount = Object.values(visibleAgents).filter(a => a.status === "done").length;
   const total = agentList.length;
 
-  const selected = PAIR_MAP[activeAgent] ?? activeAgent || agentList[0] || "";
+  const selected = (PAIR_MAP[activeAgent] ?? activeAgent) || agentList[0] || "";
   const selectedState = visibleAgents[selected];
   const selectedPlanTask = planTasks.find(t => t.agent === selected);
   const title = company || instruction.slice(0, 48) || "Astra";
