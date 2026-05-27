@@ -199,6 +199,8 @@ def generate_logo_brief(
     """
     Generate a logo design brief for a designer or AI image generator.
     """
+    if isinstance(competitors_to_avoid, str):
+        competitors_to_avoid = [c.strip() for c in competitors_to_avoid.split(",") if c.strip()]
     style_directions = {
         "minimal": "Clean wordmark or lettermark. Geometric sans-serif. No gradients.",
         "bold": "Strong icon + wordmark. High contrast. Can use thick strokes.",

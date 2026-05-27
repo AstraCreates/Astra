@@ -2,16 +2,18 @@
 claude_code_scaffold — clones a GitHub repo, runs Claude Code to build real code, commits + pushes.
 The technical agent calls this after github_create_repo to get actual working code into the repo.
 """
+import hashlib
+import json
 import logging
 import os
 import subprocess
 import tempfile
+import uuid
 
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-CLAUDE_BIN = "/Users/ishaangubbala/.local/bin/claude"
 
 
 def claude_code_scaffold(
@@ -72,15 +74,21 @@ Required files (write all with real working code, no TODOs):
 
 Start with file 1 immediately. Write each file completely before moving to the next."""
 
-            # Run Claude Code non-interactively
-            env = os.environ.copy()
+            # Run openclaude with DeepInfra backend
+            from backend.tools.git_tools import OPENCLAUDE_BIN, _make_env
+            env = _make_env()
             env["HOME"] = os.environ.get("HOME", "/Users/ishaangubbala")
-            # Use DeepInfra API key if provided (for user-facing runs)
-            effective_key = api_key or getattr(settings, "deepinfra_api_key", "") or getattr(settings, "planner_model_api_key", "")
-            if effective_key:
-                env["ANTHROPIC_API_KEY"] = effective_key
+            if api_key:
+                env["OPENAI_API_KEY"] = api_key
+
+            # Stable session UUID per repo — persistent conversation like TUI
+            repo_hash = hashlib.md5(repo_url.encode()).hexdigest()
+            oc_session_id = str(uuid.UUID(repo_hash))
+
             result = subprocess.run(
-                [CLAUDE_BIN, "--print", full_task, "--output-format", "text", "--dangerously-skip-permissions"],
+                [OPENCLAUDE_BIN, "--print", "--dangerously-skip-permissions",
+                 "--provider", "openai", "--model", "deepseek-ai/DeepSeek-V4-Pro",
+                 "--session-id", oc_session_id, full_task],
                 cwd=tmpdir,
                 capture_output=True,
                 text=True,
@@ -88,8 +96,8 @@ Start with file 1 immediately. Write each file completely before moving to the n
                 env=env,
             )
             claude_output = result.stdout.strip()
-            if result.returncode != 0:
-                logger.warning("claude exited %d: %s", result.returncode, result.stderr[:300])
+            if result.returncode not in (0, 1):
+                logger.warning("openclaude exited %d: %s", result.returncode, result.stderr[:300])
 
             # Stage any uncommitted changes Claude Code left behind
             status = subprocess.run(

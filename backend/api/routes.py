@@ -151,6 +151,19 @@ async def steer_session(body: SteerRequest):
     return {"ok": True, "session_id": body.session_id}
 
 
+@router.post("/steer/{session_id}")
+async def steer_session_path(session_id: str, body: dict):
+    """Path-param variant — frontend sends POST /steer/{session_id} with {message} body."""
+    from backend.core.events import publish, steer_push
+    message = body.get("message", "")
+    steer_push(session_id, message)
+    await publish(session_id, {
+        "type": "founder_steer",
+        "message": message,
+    })
+    return {"ok": True, "session_id": session_id}
+
+
 @router.post("/setup")
 async def setup_accounts(body: SetupRequest):
     """

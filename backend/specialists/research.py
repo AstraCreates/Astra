@@ -7,7 +7,7 @@ from backend.tools.patent_search import patent_search
 from backend.tools.web_search import news_search
 
 
-def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list):
+def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_name: str = "research"):
     """Wrap a research tool so every result is auto-logged to Obsidian."""
     @functools.wraps(tool_fn)
     def wrapper(*args, **kwargs):
@@ -48,7 +48,7 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list):
 
         try:
             obsidian_append(
-                agent="research",
+                agent=agent_name,
                 session_id=ctx.session_id,
                 heading=str(heading)[:120],
                 content=content,
@@ -62,7 +62,50 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list):
     return wrapper
 
 
-def build_research_agent(**kwargs) -> Agent:
+_FOCUS_ROLES = {
+    "research": (
+        "MARKET INTELLIGENCE (run ALL 8):\n"
+        "1. search_and_fetch('{topic} market size TAM SAR revenue 2024 2025 statistics')\n"
+        "2. search_and_fetch('{topic} industry growth rate forecast CAGR report')\n"
+        "3. search_and_fetch('{topic} venture capital funding rounds 2024 2025')\n"
+        "4. search_and_fetch('{topic} market trends emerging technology adoption')\n"
+        "5. search_and_fetch('{topic} customer demographics segments target audience')\n"
+        "6. search_and_fetch('{topic} regulatory environment compliance requirements')\n"
+        "7. news_search('{topic} 2025 2026 latest')\n"
+        "8. research_papers('{topic} academic study user behavior market')\n\n"
+        "Then 8+ fetch_and_read calls on the most valuable URLs found.\n"
+        "obsidian_log with: MARKET SIZE, GROWTH RATE, TAM/SAM/SOM, KEY SEGMENTS, REGULATORY, VC FUNDING DATA."
+    ),
+    "research_competitors": (
+        "COMPETITOR INTELLIGENCE (run ALL 8):\n"
+        "1. search_and_fetch('{topic} top competitors companies comparison 2025')\n"
+        "2. search_and_fetch('{topic} pricing model subscription freemium enterprise')\n"
+        "3. search_and_fetch('{topic} Y Combinator startup product hunt launch')\n"
+        "4. search_and_fetch('{topic} alternative software tool review G2 Capterra')\n"
+        "5. search_and_fetch('{topic} startup funding raised Series A B valuation')\n"
+        "6. search_and_fetch('{topic} product features comparison strengths weaknesses')\n"
+        "7. search_and_fetch('{topic} customer reviews complaints reddit forum')\n"
+        "8. patent_search('{topic}')\n\n"
+        "Then for EACH top competitor found: fetch_and_read(competitor_homepage_url) and fetch_and_read(competitor_pricing_url).\n"
+        "obsidian_log with: COMPETITOR TABLE (name, pricing, strengths, weaknesses, market position), WHITESPACE OPPORTUNITIES."
+    ),
+    "research_execution": (
+        "EXECUTION STRATEGY RESEARCH (run ALL 8):\n"
+        "1. search_and_fetch('how to build {topic} startup go-to-market strategy')\n"
+        "2. search_and_fetch('{topic} business model revenue streams monetization')\n"
+        "3. search_and_fetch('{topic} tech stack architecture how it works implementation')\n"
+        "4. search_and_fetch('{topic} sales strategy B2B B2C customer acquisition cost')\n"
+        "5. search_and_fetch('{topic} unit economics LTV CAC payback period')\n"
+        "6. search_and_fetch('{topic} founder story how they built it lessons learned')\n"
+        "7. search_and_fetch('{topic} user pain points problems complaints needs')\n"
+        "8. search_and_fetch('{topic} customer success stories case studies ROI')\n\n"
+        "Then 8+ fetch_and_read calls on the most actionable URLs found.\n"
+        "obsidian_log with: RECOMMENDED TECH STACK, GTM STRATEGY, PRICING MODEL, FIRST 90 DAYS PLAN, USER PERSONAS, KEY RISKS."
+    ),
+}
+
+
+def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     # Strip model overrides — research always uses planner model
     for k in ("model", "model_base_url", "model_api_key"):
         kwargs.pop(k, None)
@@ -70,67 +113,31 @@ def build_research_agent(**kwargs) -> Agent:
     # ctx_holder: mutable so wrappers can see the live AgentContext
     ctx_holder: list = [None]
 
-    auto_search = _make_auto_logging_tool(search_and_fetch, "search_and_fetch", ctx_holder)
-    auto_fetch = _make_auto_logging_tool(fetch_and_read, "fetch_and_read", ctx_holder)
-    auto_papers = _make_auto_logging_tool(research_papers, "research_papers", ctx_holder)
-    auto_news = _make_auto_logging_tool(news_search, "news_search", ctx_holder)
-    auto_patent = _make_auto_logging_tool(patent_search, "patent_search", ctx_holder)
+    auto_search = _make_auto_logging_tool(search_and_fetch, "search_and_fetch", ctx_holder, agent_name)
+    auto_fetch = _make_auto_logging_tool(fetch_and_read, "fetch_and_read", ctx_holder, agent_name)
+    auto_papers = _make_auto_logging_tool(research_papers, "research_papers", ctx_holder, agent_name)
+    auto_news = _make_auto_logging_tool(news_search, "news_search", ctx_holder, agent_name)
+    auto_patent = _make_auto_logging_tool(patent_search, "patent_search", ctx_holder, agent_name)
 
     from backend.config import settings
+    focus_searches = _FOCUS_ROLES.get(agent_name, _FOCUS_ROLES["research"])
     agent = Agent(
-        name="research",
-        # Research needs a capable model for multi-step tool use — use planner model
+        name=agent_name,
         model=settings.planner_model_name,
         model_base_url=settings.planner_model_base_url,
         model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
         role=(
-            "You are an elite deep research specialist. You produce investment-grade research on markets, "
-            "competitors, and business execution strategy. You do NOT stop until you have 50+ real sources.\n\n"
+            "You are an elite deep research specialist. You produce investment-grade research. "
+            "You do NOT stop until you have completed ALL mandatory searches below.\n\n"
             "TOOLS:\n"
-            "- search_and_fetch(query) — searches + fetches full content from 8 sites per call. Your PRIMARY tool.\n"
+            "- search_and_fetch(query) — searches + fetches full content from multiple sites. PRIMARY tool.\n"
             "- fetch_and_read(url) — read a specific URL in full depth.\n"
             "- research_papers(query) — academic papers.\n"
             "- news_search(query) — recent news.\n"
             "- patent_search(query) — IP landscape.\n"
-            "- obsidian_log — FINAL step only.\n\n"
-            "MANDATORY SEARCH SEQUENCE — run ALL of these (minimum 15 search_and_fetch calls + deep dives):\n\n"
-            "MARKET INTELLIGENCE (6 searches):\n"
-            "1. search_and_fetch('{topic} market size TAM SAR revenue 2024 2025 statistics')\n"
-            "2. search_and_fetch('{topic} industry growth rate forecast CAGR report')\n"
-            "3. search_and_fetch('{topic} venture capital funding rounds 2024 2025')\n"
-            "4. search_and_fetch('{topic} market trends emerging technology adoption')\n"
-            "5. search_and_fetch('{topic} customer demographics segments target audience')\n"
-            "6. search_and_fetch('{topic} regulatory environment compliance requirements')\n\n"
-            "COMPETITOR INTELLIGENCE (5 searches + deep dives):\n"
-            "7. search_and_fetch('{topic} top competitors companies comparison 2025')\n"
-            "8. search_and_fetch('{topic} pricing model subscription freemium enterprise')\n"
-            "9. search_and_fetch('{topic} Y Combinator startup product hunt')\n"
-            "10. search_and_fetch('{topic} alternative software tool review G2 Capterra')\n"
-            "11. For each top competitor found: fetch_and_read(competitor_url) — read their actual product, pricing, features\n\n"
-            "USER & PROBLEM RESEARCH (4 searches):\n"
-            "12. search_and_fetch('{topic} user pain points problems complaints reddit forum')\n"
-            "13. search_and_fetch('{topic} customer success stories case studies ROI')\n"
-            "14. search_and_fetch('{topic} why businesses fail common mistakes pitfalls')\n"
-            "15. search_and_fetch('{topic} user interview survey findings needs')\n\n"
-            "EXECUTION STRATEGY (6 searches):\n"
-            "16. search_and_fetch('how to build {topic} startup go-to-market strategy')\n"
-            "17. search_and_fetch('{topic} business model revenue streams monetization')\n"
-            "18. search_and_fetch('{topic} tech stack architecture how it works implementation')\n"
-            "19. search_and_fetch('{topic} sales strategy B2B B2C customer acquisition')\n"
-            "20. search_and_fetch('{topic} unit economics LTV CAC payback period')\n"
-            "21. search_and_fetch('{topic} founder story how they built it lessons learned')\n\n"
-            "ACADEMIC & PATENTS (3 calls):\n"
-            "22. research_papers('{topic} academic study user behavior')\n"
-            "23. news_search('{topic} 2025 2026 latest')\n"
-            "24. patent_search('{topic}')\n\n"
-            "DEEP DIVES (minimum 10 fetch_and_read calls on most valuable URLs found above)\n\n"
-            "After ALL searches (50+ sources total), call obsidian_log with a comprehensive structured report:\n"
-            "MARKET: size, growth rate, TAM/SAM/SOM, key segments\n"
-            "COMPETITORS: each competitor with pricing, strengths, weaknesses, market position\n"
-            "USERS: pain points, personas, willingness to pay, buying journey\n"
-            "EXECUTION: recommended tech stack, go-to-market, pricing strategy, first 90 days plan, hiring needs, key risks\n"
-            "OPPORTUNITY: whitespace, differentiation angles, timing thesis\n"
-            "Then done."
+            "- obsidian_log — FINAL step only after ALL searches complete.\n\n"
+            "YOUR MANDATORY SEARCH SEQUENCE (replace {topic} with the actual subject):\n\n"
+            + focus_searches
         ),
         tools={
             "search_and_fetch": auto_search,

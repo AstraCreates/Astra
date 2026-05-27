@@ -14,11 +14,22 @@ logger = logging.getLogger(__name__)
 _BH_SRC = "/tmp/browser-harness/src"
 
 
-# Domains that reliably 403 scrapers — skip fetch, use snippet only
+# Domains that reliably 403/404/auth-wall scrapers — skip fetch, use snippet only
 _BLOCKED_DOMAINS = {
+    # Academic paywalls
     "researchgate.net", "wiley.com", "springer.com", "elsevier.com",
     "jstor.org", "tandfonline.com", "sagepub.com", "nature.com",
     "sciencedirect.com", "acm.org", "ieee.org",
+    # Auth-required / bot-blocked social/business
+    "linkedin.com", "twitter.com", "x.com", "facebook.com", "instagram.com",
+    "tiktok.com", "pinterest.com",
+    # Login-walled news/data
+    "wsj.com", "ft.com", "bloomberg.com", "nytimes.com", "washingtonpost.com",
+    "hbr.org", "statista.com",
+    # Community sites that 404 when scraped
+    "quora.com", "glassdoor.com", "ziprecruiter.com",
+    # Redirect-loops / auth-required
+    "statista.com", "facebook.com", "reddit.com",
 }
 
 
@@ -53,7 +64,7 @@ def _http_get(url: str, timeout: float = 20.0) -> str:
                 data = gzip.decompress(data)
             return data.decode("utf-8", errors="replace")
     except urllib.error.HTTPError as e:
-        raise  # re-raise so fetch_and_read can handle gracefully
+        raise RuntimeError(f"{e.code} {e.reason}") from e
     except Exception as e:
         raise
 
@@ -86,11 +97,17 @@ def fetch_and_read(url: str) -> dict:
     Paywalled/bot-blocking domains (ResearchGate, Wiley, Springer, etc.) are skipped automatically.
     """
     if _is_blocked(url):
-        return {"url": url, "error": "paywalled/blocked domain — use snippet only", "content": ""}
+        return {"url": url, "skipped": "blocked domain", "content": ""}
+    # Encode non-ASCII chars so urllib doesn't choke
+    try:
+        url.encode("ascii")
+    except UnicodeEncodeError:
+        from urllib.parse import quote
+        url = quote(url, safe=":/?#[]@!$&'()*+,;=%")
     try:
         html = _http_get(url, timeout=25.0)
         if not html:
-            return {"url": url, "error": "Empty response", "content": ""}
+            return {"url": url, "skipped": "empty response", "content": ""}
 
         title_match = re.search(r"<title[^>]*>([^<]+)</title>", html, re.IGNORECASE)
         title = title_match.group(1).strip() if title_match else ""
@@ -103,13 +120,15 @@ def fetch_and_read(url: str) -> dict:
             "content_length": len(content),
         }
     except Exception as e:
-        # Don't log 403s as warnings — expected for many sites
-        if "403" not in str(e):
-            logger.warning("fetch_and_read failed for %s: %s", url, e)
-        return {"url": url, "error": str(e), "content": ""}
+        es = str(e)
+        # Expected HTTP errors — silent, fall back to snippet
+        if any(code in es for code in ("400", "401", "403", "404", "410", "429", "302", "301", "503", "521", "444", "codec")):
+            return {"url": url, "skipped": es[:40], "content": ""}
+        logger.warning("fetch_and_read failed for %s: %s", url, e)
+        return {"url": url, "skipped": str(e)[:80], "content": ""}
 
 
-def search_and_fetch(query: str, max_results: int = 8) -> dict:
+def search_and_fetch(query: str, max_results: int = 12) -> dict:
     """
     Search DuckDuckGo for the query, then fetch and read the actual content
     of each result page. Returns rich page content, not just snippets.
@@ -118,32 +137,49 @@ def search_and_fetch(query: str, max_results: int = 8) -> dict:
     try:
         from ddgs import DDGS
         with DDGS() as ddgs:
-            raw = list(ddgs.text(query, max_results=max_results * 2))
+            raw = list(ddgs.text(query, max_results=max_results * 3))
     except Exception as e:
         return {"query": query, "results": [], "error": f"Search failed: {e}"}
 
-    urls = [r.get("href", "") for r in raw if r.get("href", "").startswith("http") and not _is_blocked(r.get("href", ""))][:max_results + 2]
     snippets = {r.get("href", ""): r.get("body", "") for r in raw}
     titles = {r.get("href", ""): r.get("title", "") for r in raw}
 
+    fetch_urls = []
     results = []
-    with ThreadPoolExecutor(max_workers=6) as ex:
-        futures = {ex.submit(fetch_and_read, url): url for url in urls}
+    for r in raw:
+        url = r.get("href", "")
+        if not url.startswith("http"):
+            continue
+        if _is_blocked(url):
+            # Keep snippet — don't waste a fetch on auth-walled sites
+            snippet = snippets.get(url, "")
+            if snippet:
+                results.append({"url": url, "title": titles.get(url, ""), "snippet": snippet, "content": ""})
+        else:
+            fetch_urls.append(url)
+    fetch_urls = fetch_urls[:max_results + 4]
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futures = {ex.submit(fetch_and_read, url): url for url in fetch_urls}
         for fut in as_completed(futures, timeout=60):
             url = futures[fut]
             try:
                 page = fut.result()
-                if not page.get("error"):
+                content = page.get("content", "")
+                snippet = snippets.get(url, "")
+                if content or snippet:
                     results.append({
                         "url": url,
                         "title": page.get("title") or titles.get(url, ""),
-                        "snippet": snippets.get(url, ""),
-                        "content": page["content"],
+                        "snippet": snippet,
+                        "content": content,
                     })
-            except Exception as e:
-                results.append({"url": url, "title": titles.get(url, ""), "snippet": snippets.get(url, ""), "content": "", "error": str(e)})
+            except Exception:
+                snippet = snippets.get(url, "")
+                if snippet:
+                    results.append({"url": url, "title": titles.get(url, ""), "snippet": snippet, "content": ""})
 
-    # Sort by content length (more content = better)
+    # Sort: full content first, snippet-only last
     results.sort(key=lambda r: len(r.get("content", "")), reverse=True)
 
     formatted = [f"Query: {query}\n"]
@@ -153,7 +189,7 @@ def search_and_fetch(query: str, max_results: int = 8) -> dict:
         if r.get("content"):
             formatted.append(r["content"][:2000])
         elif r.get("snippet"):
-            formatted.append(r["snippet"])
+            formatted.append(f"[snippet only] {r['snippet']}")
 
     return {
         "query": query,

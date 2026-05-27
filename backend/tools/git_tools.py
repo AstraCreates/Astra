@@ -22,6 +22,81 @@ logger = logging.getLogger(__name__)
 
 OPENCLAUDE_BIN = "/opt/homebrew/bin/openclaude"
 
+
+def _research_error_docs(agent_output: str) -> str:
+    """
+    If agent_output contains library/API/framework errors, search for relevant docs
+    and return a context block to inject into the next openclaude message.
+    Returns empty string if no errors detected or search fails.
+    """
+    import re as _re
+    # Error detection patterns → extract library/API name for doc search
+    patterns = [
+        (r"Cannot find module '(@?[^']+)'", "npm package docs: {}"),
+        (r"Module not found: Can't resolve '(@?[^']+)'", "Next.js import {} docs fix"),
+        (r"ImportError: cannot import name '([^']+)' from '([^']+)'", "{1} {0} python docs"),
+        (r"ModuleNotFoundError: No module named '([^']+)'", "python {} docs install"),
+        (r"error TS\d+:.*'([^']+)'", "TypeScript error {} fix"),
+        (r"(?:TypeError|AttributeError|KeyError): .*?'([^']+)'", "{} python error fix"),
+        (r"404.*?npm.*?([a-z@][a-z0-9@/_-]+)", "npm package {} version docs"),
+        (r"No matching version found for ([^\s.]+)", "npm {} correct version"),
+        (r"(?:Error|error): ([A-Z][a-zA-Z]+Error[^\n]{0,60})", "fix {}"),
+        (r"ENOENT.*?'([^']+)'", "Node.js ENOENT {} fix"),
+        (r"(?:fastapi|starlette|uvicorn|pydantic).*?(?:Error|error)[^\n]{0,80}", "FastAPI {} docs"),
+        (r"(?:clerk|supabase|stripe|vercel).*?(?:Error|error|invalid|missing)[^\n]{0,80}", "{} API docs"),
+    ]
+
+    queries = []
+    for pat, tmpl in patterns:
+        m = _re.search(pat, agent_output, _re.IGNORECASE)
+        if m:
+            try:
+                groups = m.groups()
+                q = tmpl.format(*([groups[i] if i < len(groups) else "" for i in range(tmpl.count("{}"))]
+                                   if tmpl.count("{}") > 1 else [groups[0] if groups else m.group(0)]))
+                queries.append(q[:120])
+            except Exception:
+                queries.append(m.group(0)[:80])
+            if len(queries) >= 2:
+                break
+
+    if not queries:
+        # Generic: only research if clear error indicators present
+        error_keywords = ["Error:", "error:", "failed", "cannot", "undefined", "missing", "not found"]
+        if not any(kw in agent_output for kw in error_keywords):
+            return ""
+        # Extract most error-like line
+        for line in agent_output.split("\n"):
+            if any(kw in line for kw in ["Error:", "error:", "failed", "Cannot"]):
+                queries.append(f"fix: {line.strip()[:100]}")
+                break
+
+    if not queries:
+        return ""
+
+    try:
+        from backend.tools.web_search import web_search
+        all_snippets = []
+        for q in queries[:2]:
+            logger.info("Researching error docs for: %s", q)
+            result = web_search(query=q, max_results=3)
+            for r in (result.get("results") or [])[:2]:
+                title = r.get("title", "")
+                snippet = r.get("snippet") or r.get("description") or ""
+                url = r.get("url", "")
+                if snippet:
+                    all_snippets.append(f"• [{title}] {snippet}\n  Source: {url}")
+        if not all_snippets:
+            return ""
+        return (
+            "\n\n--- DOCUMENTATION CONTEXT (researched for the errors above) ---\n"
+            + "\n".join(all_snippets)
+            + "\n--- END DOCUMENTATION CONTEXT ---"
+        )
+    except Exception as e:
+        logger.debug("Error doc research failed: %s", e)
+        return ""
+
 # Workspace root — persistent per-session dirs under ~/Documents
 WORKSPACE_ROOT = Path.home() / "Documents" / "astra-workspaces"
 WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
@@ -428,6 +503,10 @@ Work autonomously until everything above is written and committed."""
                 # verification found issues — let PM loop continue
                 agent_reply = "Verification found issues. Please review the latest fixes."
                 continue
+            # Inject doc context for any library/API errors in the last reply
+            doc_ctx = _research_error_docs(agent_reply)
+            if doc_ctx:
+                next_msg = next_msg + doc_ctx
             logger.info("PM → openclaude: %s", next_msg[:120])
             agent_reply = _run_claude(local, next_msg, session_id=oc_session_id, timeout=3600)
             _sanitize_package_json(local)

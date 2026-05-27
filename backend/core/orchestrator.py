@@ -76,6 +76,8 @@ class Orchestrator:
             "- Each agent appears AT MOST ONCE.\n"
             "- Only include agents whose work is actually needed for this goal.\n"
             "- ALWAYS include research as the first task (id: t1, depends_on: []).\n"
+            "- ALWAYS include web — every startup needs a public landing page.\n"
+            "- ALWAYS include technical — every startup needs an MVP codebase.\n"
             "- All other agents MUST have depends_on: [\"t1\"] — they wait for research.\n"
             "- Instructions at this stage are brief placeholders — they will be rewritten with research context later.\n\n"
             "Format: {\"tasks\": [{\"id\": \"t1\", \"agent\": \"research\", \"instruction\": \"...\", \"depends_on\": []}, ...]}"
@@ -90,11 +92,24 @@ class Orchestrator:
         """Phase 2: replan non-research agents with full research context. Returns detailed instructions."""
         import json
         research_summary = ""
-        for k, v in research_result.items():
-            if v and isinstance(v, str) and len(v) > 10:
-                research_summary += f"\n{k}: {v[:400]}"
-        if not research_summary:
-            research_summary = json.dumps(research_result, default=str)[:1200]
+        # Priority 1: extract the structured obsidian report if present
+        obs = (
+            research_result.get("obsidian_content")
+            or research_result.get("formatted_text")
+            or research_result.get("report")
+            or ""
+        )
+        if isinstance(obs, str) and len(obs) > 200:
+            research_summary = obs[:6000]
+        else:
+            # Fallback: concatenate all string fields with a generous budget
+            for k, v in research_result.items():
+                if v and isinstance(v, str) and len(v) > 10:
+                    research_summary += f"\n### {k}\n{v[:1500]}"
+                    if len(research_summary) > 6000:
+                        break
+            if not research_summary:
+                research_summary = json.dumps(research_result, default=str)[:4000]
 
         system = (
             "You are a planning coordinator. Research on the goal is complete. "
@@ -144,13 +159,32 @@ class Orchestrator:
         if not initial_tasks:
             initial_tasks = [{"id": "t1", "agent": "research", "instruction": f"Research the market and competitive landscape for: {goal}", "depends_on": []}]
 
+        _RESEARCH_AGENTS = {"research", "research_competitors", "research_execution"}
         research_task = next((t for t in initial_tasks if t["agent"] == "research"), None)
-        other_agents_initial = [t for t in initial_tasks if t["agent"] != "research"]
+        other_agents_initial = [t for t in initial_tasks if t["agent"] not in _RESEARCH_AGENTS]
 
-        # Emit initial plan (shows research + placeholders for other agents)
+        # Force-include web + technical if planner omitted them
+        _existing_agents = {t["agent"] for t in other_agents_initial}
+        _mandatory = [
+            ("web", "Build and deploy a public landing page for this product."),
+            ("technical", f"Build a complete working MVP for: {goal}"),
+        ]
+        for _i, (_ag, _instr) in enumerate(_mandatory):
+            if _ag not in _existing_agents and _ag in self.specialists:
+                other_agents_initial.append({"id": f"forced_{_ag}", "agent": _ag, "instruction": _instr, "depends_on": []})
+
+        # Always run all 3 research agents — add them to the plan if planner omitted any
+        research_instruction = research_task["instruction"] if research_task else f"Research market, competitors, and execution strategy for: {goal}"
+        parallel_research_tasks = [
+            {"id": "r_market",      "agent": "research",             "instruction": research_instruction, "depends_on": []},
+            {"id": "r_competitors", "agent": "research_competitors",  "instruction": research_instruction, "depends_on": []},
+            {"id": "r_execution",   "agent": "research_execution",    "instruction": research_instruction, "depends_on": []},
+        ]
+
+        # Emit initial plan
         await publish(session_id, {
             "type": "plan_done",
-            "tasks": [{"id": t["id"], "agent": t["agent"], "instruction": t["instruction"]} for t in initial_tasks],
+            "tasks": [{"id": t["id"], "agent": t["agent"], "instruction": t["instruction"]} for t in parallel_research_tasks + other_agents_initial],
             "planner_model": self.planner.model,
         })
 
@@ -230,12 +264,24 @@ class Orchestrator:
             shared[f"result_{agent_name}"] = result  # also keyed by agent name for downstream context
             logger.info("Task %s (%s) done", tid, agent_name)
 
-        # Phase A: run research first
-        if research_task:
-            await _run_task(research_task)
+        # Phase A: run all 3 research agents in parallel
+        await asyncio.gather(*[_run_task(t) for t in parallel_research_tasks])
 
-            # Phase B: replan remaining agents with research context
-            research_result = completed.get(research_task["id"], {})
+        if True:
+            # Phase B: merge all research notes then replan
+            from backend.tools.obsidian_logger import _note_path
+            research_result = {}
+            merged_notes: list[str] = []
+            for rt in parallel_research_tasks:
+                research_result.update(completed.get(rt["id"], {}))
+                try:
+                    note_file = _note_path(rt["agent"], session_id, founder_id)
+                    if note_file.exists():
+                        merged_notes.append(f"## {rt['agent'].upper()}\n\n{note_file.read_text()}")
+                except Exception as _re:
+                    logger.debug("Could not read %s obsidian note: %s", rt["agent"], _re)
+            if merged_notes:
+                research_result["obsidian_content"] = "\n\n---\n\n".join(merged_notes)
             agents_needed = [t["agent"] for t in other_agents_initial]
             if agents_needed:
                 detailed_tasks = await self._replan_with_research(goal, research_result, agents_needed)
@@ -247,13 +293,11 @@ class Orchestrator:
                         "planner_model": self.planner.model,
                         "phase": "detailed",
                     })
-                    tasks = [research_task] + detailed_tasks
+                    tasks = parallel_research_tasks + detailed_tasks
                 else:
-                    tasks = initial_tasks
+                    tasks = parallel_research_tasks + other_agents_initial
 
-            remaining = [t for t in tasks if t["agent"] != "research"]
-        else:
-            remaining = list(tasks)
+            remaining = [t for t in tasks if t["agent"] not in _RESEARCH_AGENTS]
 
         # Run remaining agents in parallel (all depends_on research which is done)
         in_flight: set[str] = set()
@@ -302,3 +346,99 @@ class Orchestrator:
                 logger.warning("Proprietary engine post_run failed: %s", _pe)
 
         return {"session_id": session_id, "results": completed, "shared": shared}
+
+    async def continue_run(
+        self,
+        instruction: str,
+        founder_id: str,
+        prior_session_id: str,
+        agents: list[str] | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Continue work on an existing company. Loads full vault context from prior sessions,
+        runs the specified agents (or plans which agents to run) with the new instruction.
+        """
+        session_id = session_id or uuid.uuid4().hex[:8]
+        from backend.core.events import publish
+        from backend.tools.obsidian_logger import format_vault_context, _note_path
+
+        await publish(session_id, {"type": "goal_start", "goal": instruction, "founder_id": founder_id, "continue_from": prior_session_id})
+
+        # Load all prior vault notes for this founder to give full company context
+        shared: dict[str, Any] = {"prior_session_id": prior_session_id}
+        try:
+            vault_summary_parts = []
+            for agent_name in self.specialists:
+                ctx_text = await asyncio.to_thread(format_vault_context, agent_name, 5, founder_id)
+                if ctx_text:
+                    vault_summary_parts.append(f"## {agent_name}\n{ctx_text}")
+            shared["company_vault_context"] = "\n\n".join(vault_summary_parts)
+        except Exception as _ve:
+            logger.warning("Vault load failed: %s", _ve)
+
+        # If agents explicitly specified, skip planning
+        if agents:
+            tasks = [
+                {"id": f"c_{a}", "agent": a, "instruction": instruction, "depends_on": []}
+                for a in agents if a in self.specialists
+            ]
+        else:
+            # Ask planner which agents are needed for this follow-up
+            system = (
+                "You are a planning coordinator. A founder wants to continue working on their company.\n"
+                + self._AGENT_CAPS
+                + "\nReturn a task plan JSON for the agents needed. All depends_on: [].\n"
+                "Format: {\"tasks\": [{\"id\": \"c1\", \"agent\": \"<name>\", \"instruction\": \"<specific>\", \"depends_on\": []}]}"
+            )
+            user = (
+                f"Follow-up instruction: {instruction}\n\n"
+                f"Prior company context (vault notes):\n{shared.get('company_vault_context', '')[:4000]}\n\n"
+                "Which agents should handle this? Write their specific instructions referencing the prior context."
+            )
+            messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+            tasks = await self._llm_plan(messages)
+            if not tasks:
+                tasks = [{"id": "c1", "agent": "technical", "instruction": instruction, "depends_on": []}]
+
+        await publish(session_id, {
+            "type": "plan_done",
+            "tasks": [{"id": t["id"], "agent": t["agent"], "instruction": t["instruction"]} for t in tasks],
+            "planner_model": self.planner.model,
+        })
+
+        completed: dict[str, dict] = {}
+
+        async def _run_task(task: dict) -> None:
+            tid = task["id"]
+            agent_name = task["agent"]
+            agent = self.specialists.get(agent_name)
+            if agent is None:
+                completed[tid] = {"error": f"unknown agent {agent_name}"}
+                return
+            vault_ctx = await asyncio.to_thread(format_vault_context, agent_name, 5, founder_id)
+            ctx = AgentContext(
+                goal=task["instruction"],
+                founder_id=founder_id,
+                session_id=session_id,
+                shared={
+                    **shared,
+                    "prior_vault_notes": vault_ctx,
+                    "is_continuation": True,
+                    "prior_session_id": prior_session_id,
+                },
+            )
+            await publish(session_id, {"type": "agent_start", "agent": agent_name, "task_id": tid, "instruction": task["instruction"]})
+            result = await agent.run(ctx)
+            try:
+                from backend.tools.obsidian_logger import auto_log_if_missing
+                await asyncio.to_thread(auto_log_if_missing, agent_name, session_id, result, founder_id)
+            except Exception:
+                pass
+            completed[tid] = result
+            shared[f"result_{agent_name}"] = result
+            logger.info("Continue task %s (%s) done", tid, agent_name)
+
+        await asyncio.gather(*[_run_task(t) for t in tasks])
+        await publish(session_id, {"type": "goal_done", "results": completed})
+        return {"session_id": session_id, "results": completed}
