@@ -1555,6 +1555,7 @@ export function GoalWorkspace({
   const [agents, setAgents] = useState<Record<string, AgentState>>({});
   const [planTasks, setPlanTasks] = useState<AgentTask[]>([]);
   const [activeAgent, setActiveAgent] = useState<string>("");
+  const [expandedGoal, setExpandedGoal] = useState<string>("");
   const [done, setDone] = useState(false);
 
   // Restore from cache after first render (client-only)
@@ -1610,6 +1611,7 @@ export function GoalWorkspace({
       const event = JSON.parse(e.data);
       if (event.type === "ping" || event.type === "founder_steer") return;
       if (event.type === "detailed_plan") { setDetailedNodes(event.nodes ?? []); return; }
+      if (event.type === "goal_expanded") { setExpandedGoal(event.expanded ?? ""); return; }
       if (event.type === "session_expired") { setError("Session expired — backend was restarted. Run a new goal."); es.close(); return; }
 
       setAgents((prev) => {
@@ -1797,6 +1799,9 @@ export function GoalWorkspace({
           </span>
           {sessionId && <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{sessionId}</span>}
         </div>
+        {expandedGoal && (
+          <p style={{ margin: 0, fontSize: 12, color: "var(--fg-mute)", lineHeight: 1.6, maxWidth: 820 }}>{expandedGoal}</p>
+        )}
         {total > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ flex: 1, height: 3, borderRadius: 999, background: "rgba(0,0,0,0.08)", overflow: "hidden" }}>

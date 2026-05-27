@@ -181,6 +181,44 @@ class Orchestrator:
                 pass
         return []
 
+    async def _expand_goal(self, goal: str, session_id: str) -> str:
+        """Expand a terse founder prompt into a rich, specific goal using Llama 3.3 70B."""
+        from backend.config import settings
+        from backend.core.events import publish
+        system = (
+            "You are a startup idea expander. A founder gave you a short goal. "
+            "Expand it into 3-5 sentences that are specific and actionable:\n"
+            "- Name the target user and their exact pain point\n"
+            "- Name 2-3 key competitors and what gap exists\n"
+            "- Describe the core product differentiator\n"
+            "- Suggest a monetization model\n"
+            "Output ONLY the expanded goal. No headers, no lists, no meta-commentary."
+        )
+        try:
+            from openai import OpenAI
+            client = OpenAI(
+                base_url=settings.planner_model_base_url or "https://api.deepinfra.com/v1/openai",
+                api_key=settings.planner_model_api_key or settings.agent_model_api_key,
+            )
+            resp = await asyncio.to_thread(
+                client.chat.completions.create,
+                model="meta-llama/Llama-3.3-70B-Instruct",
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": goal},
+                ],
+                max_tokens=400,
+                temperature=0.7,
+            )
+            expanded = resp.choices[0].message.content.strip()
+            if expanded and len(expanded) > len(goal):
+                logger.info("Goal expanded: %s → %s", goal[:60], expanded[:80])
+                await publish(session_id, {"type": "goal_expanded", "original": goal, "expanded": expanded})
+                return expanded
+        except Exception as e:
+            logger.warning("Goal expansion failed (%s) — using original", e)
+        return goal
+
     async def run(self, goal: str, founder_id: str, constraints: dict = None, session_id: str = None) -> dict[str, Any]:
         session_id = session_id or uuid.uuid4().hex[:8]
         shared: dict[str, Any] = {"constraints": constraints or {}}
@@ -200,6 +238,9 @@ class Orchestrator:
             logger.warning("Proprietary engine pre_run skipped: %s", _pe, exc_info=True)
 
         from backend.core.events import publish
+
+        # Expand the goal with Llama 3.3 70B before anything else
+        goal = await self._expand_goal(goal, session_id)
 
         # Phase 1: initial plan — research always runs first
         initial_tasks = await self._initial_plan(goal)
