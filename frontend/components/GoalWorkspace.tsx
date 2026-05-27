@@ -1635,7 +1635,8 @@ export function GoalWorkspace({
         const addLog = (type: string, text: string): LogEntry[] => [...cur.log, { ts: Date.now(), type, text }];
 
         if (event.type === "agent_start") {
-          setActiveAgent(agent);
+          const _PAIR_MAP: Record<string, string> = { research_2: "research", research_competitors_2: "research_competitors", research_execution_2: "research_execution" };
+          setActiveAgent(_PAIR_MAP[agent] ?? agent);
           next[agent] = { ...cur, status: "running", instruction: event.instruction ?? cur.instruction, task_id: event.task_id ?? cur.task_id, log: addLog("info", "Started") };
         } else if (event.type === "agent_action") {
           const rawArgs = event.args;
@@ -1700,16 +1701,43 @@ export function GoalWorkspace({
     }
   }, [done, sessionId]);
 
-  const agentList = planTasks.length > 0 ? sortAgentNamesByOrder(planTasks.map(t => t.agent)) : AGENT_ORDER;
-  const doneCount = Object.values(agents).filter(a => a.status === "done").length;
-  const total = agentList.length;
+  // _2 variants are merged into their base for display — strip them from the sidebar list
+  const PAIR_MAP: Record<string, string> = {
+    research_2: "research",
+    research_competitors_2: "research_competitors",
+    research_execution_2: "research_execution",
+  };
+  const rawAgentList = planTasks.length > 0 ? sortAgentNamesByOrder(planTasks.map(t => t.agent)) : AGENT_ORDER;
+  const agentList = [...new Set(rawAgentList.map(a => PAIR_MAP[a] ?? a))];
 
-  const visibleAgents: Record<string, AgentState> = { ...agents };
-  for (const a of agentList) {
-    if (!visibleAgents[a]) visibleAgents[a] = { task_id: "", agent: a, instruction: "", status: "waiting", currentAction: null, currentTool: null, reasoning: null, result: null, log: [], visitedUrls: [], commits: [] };
+  // Merge paired agent state: combine logs, urls, pick worst/best status
+  function mergeAgentPair(base: string, agents: Record<string, AgentState>): AgentState {
+    const pair = base + "_2";
+    const a = agents[base];
+    const b = agents[pair];
+    if (!b) return a ?? { task_id: "", agent: base, instruction: "", status: "waiting", currentAction: null, currentTool: null, reasoning: null, result: null, log: [], visitedUrls: [], commits: [] };
+    if (!a) return { ...b, agent: base };
+    const statusRank = (s: AgentState["status"]) => s === "running" ? 3 : s === "done" ? 2 : s === "error" ? 1 : 0;
+    const mergedStatus: AgentState["status"] = statusRank(a.status) >= statusRank(b.status) ? a.status : b.status;
+    const mergedLog = [...(a.log ?? []), ...(b.log ?? [])].sort((x, y) => x.ts - y.ts);
+    const mergedUrls = [...new Set([...(a.visitedUrls ?? []), ...(b.visitedUrls ?? [])])];
+    const mergedCommits = [...new Set([...(a.commits ?? []), ...(b.commits ?? [])])];
+    const activeTool = a.currentTool ?? b.currentTool;
+    const activeAction = a.currentAction ?? b.currentAction;
+    const activeUrl = a.currentUrl ?? b.currentUrl;
+    const mergedResult = a.result || b.result ? { ...(b.result ?? {}), ...(a.result ?? {}) } : null;
+    return { ...a, status: mergedStatus, log: mergedLog, visitedUrls: mergedUrls, commits: mergedCommits, currentTool: activeTool, currentAction: activeAction, currentUrl: activeUrl, result: mergedResult };
   }
 
-  const selected = activeAgent || agentList[0] || "";
+  const visibleAgents: Record<string, AgentState> = {};
+  for (const a of agentList) {
+    visibleAgents[a] = mergeAgentPair(a, agents);
+  }
+
+  const doneCount = Object.values(visibleAgents).filter(a => a.status === "done").length;
+  const total = agentList.length;
+
+  const selected = PAIR_MAP[activeAgent] ?? activeAgent || agentList[0] || "";
   const selectedState = visibleAgents[selected];
   const selectedPlanTask = planTasks.find(t => t.agent === selected);
   const title = company || instruction.slice(0, 48) || "Astra";
