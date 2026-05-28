@@ -4,7 +4,7 @@ Sync LLM helper for content-generation tools.
 Models:
   "fast"    → DeepSeek-V4-Flash   (default, general purpose)
   "large"   → gpt-oss-120b        (small input, high output — docs, copy)
-  "instruct" → Llama-3.3-70B      (strict rule-following: HTML, design, sales)
+  "instruct" → Qwen3-235B      (strict rule-following: HTML, design, sales)
   "image"   → FLUX-2-pro          (image generation)
 """
 import re
@@ -12,7 +12,7 @@ from backend.config import settings
 
 _FAST_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
 _LARGE_MODEL = "openai/gpt-oss-120b"
-_INSTRUCT_MODEL = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+_INSTRUCT_MODEL = "Qwen/Qwen3-235B-A22B-Instruct-2507"
 _IMAGE_MODEL = "black-forest-labs/FLUX-2-pro"
 _PROMPT_MODEL = "openai/gpt-oss-120b"
 _DI_BASE = "https://api.deepinfra.com/v1/openai"
@@ -26,7 +26,7 @@ def generate(prompt: str, max_tokens: int | None = None, json_mode: bool = False
     """Call an LLM for content generation. Returns raw text.
     model="fast"     → DeepSeek-V4-Flash (general)
     model="large"    → gpt-oss-120b (high-output docs/copy)
-    model="instruct" → Llama-3.3-70B (strict rule-following: HTML, design constraints)
+    model="instruct" → Qwen3-235B (strict rule-following: HTML, design constraints)
     """
     import openai
     client = openai.OpenAI(base_url=_DI_BASE, api_key=_api_key())

@@ -217,7 +217,7 @@ class Orchestrator:
             )
             resp = await asyncio.to_thread(
                 client.chat.completions.create,
-                model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+                model="Qwen/Qwen3-235B-A22B-Instruct-2507",
                 messages=[
                     {"role": "system", "content": (
                         "Output ONLY a single company/product name for this startup idea. "
@@ -238,7 +238,7 @@ class Orchestrator:
         return "Venture"
 
     async def _expand_goal(self, goal: str, session_id: str) -> str:
-        """Expand a terse founder prompt into a rich, specific goal using Llama 3.3 70B."""
+        """Expand a terse founder prompt into a rich, specific goal using Qwen3-235B."""
         from backend.config import settings
         from backend.core.events import publish
         system = (
@@ -258,7 +258,7 @@ class Orchestrator:
             )
             resp = await asyncio.to_thread(
                 client.chat.completions.create,
-                model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+                model="Qwen/Qwen3-235B-A22B-Instruct-2507",
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": goal},
@@ -310,7 +310,7 @@ class Orchestrator:
         await publish(session_id, {"type": "company_name", "name": company_name})
         logger.info("Company name: %s", company_name)
 
-        # Expand the goal with Llama 3.3 70B before anything else
+        # Expand the goal with Qwen3-235B before anything else
         goal = await self._expand_goal(goal, session_id)
 
         # Phase 1: initial plan — research always runs first
