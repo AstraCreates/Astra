@@ -56,6 +56,11 @@ export default function SettingsPage() {
             Manage →
           </Link>
         } />
+        <Row label="Stripe" desc="View revenue, balance, and transactions" action={
+          <Link href="/payments" className="site-btn site-btn-ghost" style={{ fontSize: 12, padding: "0 14px", minHeight: 34 }}>
+            Payments →
+          </Link>
+        } />
       </Section>
 
       <Section title="Notifications">

@@ -172,9 +172,83 @@ function ServiceCard({
   );
 }
 
+function StripeCard({ founderId, email }: { founderId: string; email: string }) {
+  const [stripeStatus, setStripeStatus] = useState<{ connected: boolean; charges_enabled?: boolean; email?: string; livemode?: boolean } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [connecting, setConnecting] = useState(false);
+
+  useEffect(() => {
+    fetch(`${BASE}/stripe/status/${founderId}`)
+      .then(r => r.json())
+      .then(setStripeStatus)
+      .catch(() => setStripeStatus({ connected: false }))
+      .finally(() => setLoading(false));
+  }, [founderId]);
+
+  // Handle return from Stripe OAuth
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("stripe_connected") === "1") {
+      window.history.replaceState({}, "", window.location.pathname);
+      fetch(`${BASE}/stripe/status/${founderId}`).then(r => r.json()).then(setStripeStatus);
+    }
+  }, [founderId]);
+
+  const connect = async () => {
+    setConnecting(true);
+    try {
+      const res = await fetch(`${BASE}/stripe/oauth-url/${founderId}?email=${encodeURIComponent(email)}`);
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const isConnected = stripeStatus?.connected;
+
+  return (
+    <div style={{
+      ...glass(),
+      border: `1px solid ${isConnected ? "rgba(60,170,100,0.28)" : "rgba(255,255,255,0.09)"}`,
+      boxShadow: isConnected ? "inset 0 1px 0 rgba(255,255,255,0.10), 0 0 20px rgba(60,170,100,0.04)" : "inset 0 1px 0 rgba(255,255,255,0.10)",
+      overflow: "hidden", transition: "border-color 0.3s",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px" }}>
+        <span style={{ fontSize: 18, fontFamily: "var(--font-mono)", fontWeight: 700, flexShrink: 0, color: "var(--fg)" }}>$</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)" }}>Stripe</span>
+            {!loading && <StatusDot connected={!!isConnected} />}
+            {isConnected && <span style={{ fontSize: 10, color: "#6DC98A", fontFamily: "var(--font-mono)" }}>connected</span>}
+            {isConnected && stripeStatus?.livemode === false && (
+              <span style={{ fontSize: 10, color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>test mode</span>
+            )}
+          </div>
+          <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>
+            {isConnected ? stripeStatus?.email ?? "Account linked" : "Accept payments, track revenue"}
+          </span>
+        </div>
+        {loading ? (
+          <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>…</span>
+        ) : isConnected ? (
+          <Link href="/payments" className="site-btn site-btn-ghost" style={{ padding: "5px 14px", fontSize: 12, flexShrink: 0 }}>
+            View dashboard →
+          </Link>
+        ) : (
+          <button onClick={connect} disabled={connecting} style={{ padding: "5px 14px", borderRadius: 24, fontSize: 12, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.10)", color: "var(--fg-dim)", cursor: "pointer", flexShrink: 0 }}>
+            {connecting ? "Redirecting…" : "Connect →"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SetupPage() {
   const { user, isLoaded } = useUser();
   const founderId = user?.id ?? "founder_001";
+  const email = user?.primaryEmailAddress?.emailAddress ?? "";
 
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [composioKey, setComposioKey] = useState("");
@@ -317,6 +391,14 @@ export default function SetupPage() {
             />
           ))}
         </div>
+      </div>
+
+      {/* Stripe */}
+      <div>
+        <p style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>
+          Payments
+        </p>
+        <StripeCard founderId={founderId} email={email} />
       </div>
 
       {/* Composio OAuth */}

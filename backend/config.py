@@ -30,6 +30,15 @@ class Settings(BaseSettings):
     # Composio — replaces per-service OAuth for Gmail, LinkedIn, GitHub, Calendar, Notion
     composio_api_key: str = ""
 
+    # Credential store encryption key — generated once and fixed in .env
+    astra_creds_key: str = ""
+
+    # Stripe Standard Connect
+    stripe_secret_key: str = ""
+    stripe_client_id: str = ""
+    backend_url: str = "http://localhost:8000"
+    frontend_url: str = "http://localhost:3003"
+
     # Test email — dedicated Gmail for E2E provisioning tests
     test_email_base: str = ""
     test_email_imap_password: str = ""

@@ -73,7 +73,7 @@ async def provision_new_user(founder_id: str, email: str, name: str = "") -> dic
     # Platform creds — sync, fast
     platform = _provision_platform_creds(founder_id)
 
-    # Supabase + Composio in parallel (both API-based, no browser)
+    # Supabase + Composio in parallel (Stripe is connected via OAuth on the Payments page)
     supabase_fut = loop.run_in_executor(_EXECUTOR, _provision_supabase, founder_id, email)
     composio_fut = loop.run_in_executor(_EXECUTOR, _provision_composio_entity, founder_id)
 

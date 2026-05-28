@@ -8,6 +8,7 @@ from backend.tools.supabase_tools import supabase_generate_schema, supabase_crea
 from backend.tools.clerk_tools import clerk_generate_integration
 from backend.tools.posthog_tools import posthog_generate_integration
 from backend.tools.composio_tools import composio_linear_create_issue, composio_notion_create_page
+from backend.tools.stripe_tools import create_product_with_payment_link
 
 
 def build_technical_agent(**kwargs) -> Agent:
@@ -39,6 +40,7 @@ def build_technical_agent(**kwargs) -> Agent:
             "posthog_generate_integration": posthog_generate_integration,
             "composio_linear_create_issue": composio_linear_create_issue,
             "composio_notion_create_page": composio_notion_create_page,
+            "create_product_with_payment_link": create_product_with_payment_link,
             "obsidian_log": obsidian_log,
             "obsidian_read": obsidian_read,
             "obsidian_append": obsidian_append,

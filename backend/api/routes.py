@@ -24,6 +24,9 @@ from backend.api.schemas import (
     SetupRequest,
     SaveCredentialRequest,
     SteerRequest,
+    StripeEINUpgradeRequest,
+    StripeProductRequest,
+    StripeWebhookRegisterRequest,
 )
 from backend.provisioning.credentials_store import store_credentials
 
@@ -349,6 +352,129 @@ async def update_brain_proposal(founder_id: str, proposal_id: str, body: BrainPr
     return resolve_company_brain_proposal(founder_id, proposal_id, body.status)
 
 
+# ── Stripe Standard Connect ───────────────────────────────────────────────────
+
+@router.get("/stripe/oauth-url/{founder_id}")
+async def stripe_oauth_url(founder_id: str, email: str = "", frontend_base: str = "http://localhost:3003"):
+    """
+    Return the Stripe OAuth URL to send the founder to connect/create their Stripe account.
+    The redirect_uri points back to this backend's /stripe/callback endpoint.
+    """
+    from backend.tools.stripe_tools import get_oauth_url_with_email
+    from backend.config import settings
+    redirect_uri = f"{settings.backend_url}/stripe/callback"
+    try:
+        url = get_oauth_url_with_email(founder_id, redirect_uri, email)
+        return {"url": url}
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stripe/debug-callback")
+async def stripe_debug_callback(code: str = "", state: str = "", error: str = ""):
+    """Debug version — returns raw result instead of redirecting."""
+    from backend.tools.stripe_tools import exchange_oauth_code
+    if error:
+        return {"stripe_error": error}
+    result = exchange_oauth_code(code)
+    return {"code": code[:12], "state": state, "result": result}
+
+
+@router.get("/stripe/callback")
+async def stripe_callback(code: str = "", state: str = "", error: str = "", frontend_base: str = "http://localhost:3003"):
+    """
+    Stripe OAuth callback. Exchanges the code for an access_token, stores it,
+    then redirects the browser to the frontend payments page.
+    """
+    from fastapi.responses import RedirectResponse
+    from backend.tools.stripe_tools import exchange_oauth_code
+    from backend.provisioning.credentials_store import store_credentials
+    from backend.config import settings
+
+    fe_base = settings.frontend_url
+
+    if error:
+        return RedirectResponse(url=f"{fe_base}/payments?stripe_error={error}")
+
+    if not code or not state:
+        return RedirectResponse(url=f"{fe_base}/payments?stripe_error=missing_params")
+
+    founder_id = state
+    print(f"[STRIPE] callback code={code[:12]} founder={founder_id}", flush=True)
+    result = exchange_oauth_code(code)
+    print(f"[STRIPE] exchange result={result}", flush=True)
+
+    if "error" in result:
+        print(f"[STRIPE] exchange FAILED: {result}", flush=True)
+        return RedirectResponse(url=f"{fe_base}/payments?stripe_error=exchange_failed")
+
+    store_credentials(founder_id, "stripe", {
+        "access_token": result["access_token"],
+        "stripe_user_id": result["stripe_user_id"],
+        "livemode": result.get("livemode", False),
+    })
+
+    return RedirectResponse(url=f"{fe_base}/payments?stripe_connected=1")
+
+
+@router.get("/stripe/status/{founder_id}")
+async def stripe_status(founder_id: str):
+    """Check if the founder has connected Stripe and whether their account is active."""
+    from backend.tools.stripe_tools import get_account_status
+    from backend.provisioning.credentials_store import load_credentials
+
+    creds = load_credentials(founder_id, "stripe")
+    if not creds or not creds.get("access_token"):
+        return {"connected": False, "charges_enabled": False, "payouts_enabled": False}
+
+    status = get_account_status(creds["access_token"])
+    return {
+        **status,
+        "livemode": creds.get("livemode", False),
+        "upgraded_to_business": creds.get("upgraded_to_business", False),
+    }
+
+
+@router.get("/stripe/data/{founder_id}")
+async def stripe_data(founder_id: str):
+    """Return live balance, charges, payouts, and revenue metrics from the founder's Stripe account."""
+    from backend.tools.stripe_tools import get_stripe_data
+    from backend.provisioning.credentials_store import load_credentials
+
+    creds = load_credentials(founder_id, "stripe")
+    if not creds or not creds.get("access_token"):
+        raise HTTPException(status_code=404, detail="Stripe not connected. Connect via the Payments page.")
+
+    data = get_stripe_data(creds["access_token"])
+    if "error" in data:
+        raise HTTPException(status_code=500, detail=data["error"])
+    return data
+
+
+@router.post("/stripe/upgrade-ein/{founder_id}")
+async def stripe_upgrade_ein(founder_id: str, body: StripeEINUpgradeRequest):
+    """
+    Record that the founder has upgraded their Stripe account to their LLC/EIN.
+    With Standard Connect the founder updates Stripe directly — this marks it complete in Astra.
+    TODO: Auto-trigger this after NWRA LLC filing + IRS EIN confirmation.
+    """
+    from backend.tools.stripe_tools import record_ein_upgrade
+    from backend.provisioning.credentials_store import load_credentials, store_credentials
+
+    creds = load_credentials(founder_id, "stripe")
+    if not creds or not creds.get("access_token"):
+        raise HTTPException(status_code=404, detail="Stripe not connected for this founder.")
+
+    result = record_ein_upgrade(founder_id, body.ein, body.business_name)
+    store_credentials(founder_id, "stripe", {
+        **creds,
+        "ein_last4": body.ein[-4:],
+        "business_name": body.business_name,
+        "upgraded_to_business": True,
+    })
+    return result
+
+
 @router.get("/setup/{founder_id}")
 async def get_setup_status(founder_id: str):
     """Returns which services are connected for this founder."""
@@ -552,3 +678,140 @@ async def get_status(goal_id: str):
     goal = goals[0]
     tasks = db.table("tasks").select("*").eq("goal_id", goal_id).execute().data
     return {"goal": goal, "tasks": tasks}
+
+
+# ── Stripe Products ───────────────────────────────────────────────────────────
+
+@router.post("/stripe/products/{founder_id}")
+async def create_product(founder_id: str, body: StripeProductRequest):
+    """Create a Stripe product + price + payment link for the founder."""
+    from backend.tools.stripe_tools import create_product_with_payment_link
+    from backend.provisioning.credentials_store import load_credentials
+
+    creds = load_credentials(founder_id, "stripe")
+    if not creds or not creds.get("access_token"):
+        raise HTTPException(status_code=404, detail="Stripe not connected.")
+
+    result = create_product_with_payment_link(
+        access_token=creds["access_token"],
+        name=body.name,
+        description=body.description or "",
+        amount=body.amount,
+        currency=body.currency or "usd",
+        interval=body.interval or "",
+    )
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+    return result
+
+
+@router.get("/stripe/products/{founder_id}")
+async def list_products(founder_id: str):
+    """List all Stripe products with prices and payment links."""
+    from backend.tools.stripe_tools import list_stripe_products
+    from backend.provisioning.credentials_store import load_credentials
+
+    creds = load_credentials(founder_id, "stripe")
+    if not creds or not creds.get("access_token"):
+        raise HTTPException(status_code=404, detail="Stripe not connected.")
+
+    result = list_stripe_products(creds["access_token"])
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+    return result
+
+
+# ── Stripe Webhooks ───────────────────────────────────────────────────────────
+
+@router.post("/stripe/register-webhook/{founder_id}")
+async def register_webhook(founder_id: str, body: StripeWebhookRegisterRequest):
+    """Register a Stripe webhook endpoint for the founder's account."""
+    from backend.tools.stripe_tools import register_stripe_webhook
+    from backend.provisioning.credentials_store import load_credentials, store_credentials
+    from backend.config import settings
+
+    creds = load_credentials(founder_id, "stripe")
+    if not creds or not creds.get("access_token"):
+        raise HTTPException(status_code=404, detail="Stripe not connected.")
+
+    backend_base = (body.backend_url or settings.backend_url).rstrip("/")
+    endpoint_url = f"{backend_base}/stripe/webhook/{founder_id}"
+
+    result = register_stripe_webhook(creds["access_token"], endpoint_url)
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+
+    # Store webhook secret for signature verification
+    store_credentials(founder_id, "stripe", {
+        **creds,
+        "webhook_id": result["webhook_id"],
+        "webhook_secret": result["secret"],
+    })
+    return result
+
+
+@router.post("/stripe/webhook/{founder_id}")
+async def stripe_webhook(founder_id: str, request: Request):
+    """
+    Receive Stripe webhook events for a founder.
+    Stores event and publishes alert to SSE stream if a session is active.
+    """
+    from backend.tools.stripe_tools import store_webhook_event
+    from backend.provisioning.credentials_store import load_credentials
+
+    body = await request.body()
+    payload = json.loads(body)
+
+    event_type = payload.get("type", "")
+    event_data = payload.get("data", {}).get("object", {})
+
+    # Build a human-readable alert
+    alert = _build_alert(event_type, event_data)
+    event = {
+        "id": payload.get("id", ""),
+        "type": event_type,
+        "alert": alert,
+        "created": payload.get("created", int(time.time())),
+        "data": {k: event_data.get(k) for k in ("amount", "currency", "status", "description", "receipt_email") if event_data.get(k) is not None},
+    }
+
+    store_webhook_event(founder_id, event)
+    logger.info("Stripe webhook %s for founder %s: %s", event_type, founder_id, alert)
+    return {"received": True}
+
+
+def _build_alert(event_type: str, data: dict) -> str:
+    amount = data.get("amount")
+    currency = (data.get("currency") or "usd").upper()
+    amt_str = f"${amount / 100:.2f} {currency}" if amount else ""
+    email = data.get("receipt_email") or data.get("customer_email") or ""
+    customer = f" from {email}" if email else ""
+
+    if event_type == "payment_intent.succeeded":
+        return f"Payment received: {amt_str}{customer}"
+    if event_type == "charge.succeeded":
+        return f"Charge succeeded: {amt_str}{customer}"
+    if event_type == "payment_intent.payment_failed":
+        return f"Payment failed: {amt_str}{customer}"
+    if event_type == "charge.failed":
+        return f"Charge failed: {amt_str}{customer}"
+    if event_type == "charge.refunded":
+        return f"Refund issued: {amt_str}{customer}"
+    if event_type == "customer.subscription.created":
+        return f"New subscription started{customer}"
+    if event_type == "customer.subscription.deleted":
+        return f"Subscription cancelled{customer}"
+    if event_type == "customer.subscription.updated":
+        return f"Subscription updated{customer}"
+    if event_type == "payout.paid":
+        return f"Payout sent to bank: {amt_str}"
+    if event_type == "payout.failed":
+        return f"Payout failed: {amt_str}"
+    return event_type.replace(".", " ").title()
+
+
+@router.get("/stripe/events/{founder_id}")
+async def stripe_events(founder_id: str, limit: int = 20):
+    """Return recent Stripe webhook events/alerts for the founder."""
+    from backend.tools.stripe_tools import get_webhook_events
+    return {"events": get_webhook_events(founder_id, limit)}

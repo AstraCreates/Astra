@@ -85,3 +85,22 @@ class BrainProposalRequest(BaseModel):
 class BrainAskRequest(BaseModel):
     question: str
     limit: int = 8
+
+
+class StripeEINUpgradeRequest(BaseModel):
+    founder_id: str
+    ein: str
+    business_name: str
+
+
+class StripeProductRequest(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    amount: int              # in cents, e.g. 2900 = $29.00
+    currency: Optional[str] = "usd"
+    interval: Optional[str] = ""   # "month", "year", or "" for one-time
+
+
+class StripeWebhookRegisterRequest(BaseModel):
+    founder_id: str
+    backend_url: Optional[str] = "http://localhost:8000"
