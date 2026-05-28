@@ -427,13 +427,18 @@ class Agent:
         # Force one final synthesis call using everything gathered so far
         try:
             gathered = "\n\n".join(
-                f"[{name}]: {json.dumps(res)[:2000]}" for name, res in _tool_results
+                f"[{name}]: {json.dumps(res)[:1500]}" for name, res in _tool_results
             ) or "No tool results gathered."
-            synthesis_messages = messages + [{"role": "user", "content": (
-                f"You have reached the iteration limit. Synthesize ALL findings gathered above into a final structured response.\n"
-                f"Gathered data summary:\n{gathered[:6000]}\n\n"
-                "Respond with JSON: {\"action\": \"done\", \"output\": {\"summary\": \"...\", \"findings\": [...], \"sources\": [...]}}"
-            )}]
+            # Send ONLY system prompt + gathered data — NOT full history (avoids token explosion)
+            synthesis_messages = [
+                messages[0],  # system prompt
+                {"role": "user", "content": (
+                    f"GOAL: {ctx.goal}\n\n"
+                    f"Research data gathered:\n{gathered[:8000]}\n\n"
+                    "Synthesize into a final structured response. "
+                    "Respond with JSON: {\"action\": \"done\", \"output\": {\"summary\": \"...\", \"findings\": [...], \"sources\": [...]}}"
+                )},
+            ]
             raw = await asyncio.to_thread(self._call_llm, synthesis_messages)
             parsed = self._parse_json(raw)
             if parsed and parsed.get("action") == "done":
