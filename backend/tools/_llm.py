@@ -78,12 +78,19 @@ def generate_image(description: str, width: int = 1024, height: int = 1024) -> d
         )
         resp.raise_for_status()
         data = resp.json()
+        # FLUX-2-pro returns image_url; schnell/dev return images array with base64
+        url = data.get("image_url")
         images = data.get("images") or data.get("output") or []
         img = images[0] if images else None
+        b64 = None
+        if img:
+            b64 = img.get("image") if isinstance(img, dict) else img
+            if not url and isinstance(img, dict):
+                url = img.get("url")
         return {
             "prompt": image_prompt,
-            "url": img.get("url") if isinstance(img, dict) else None,
-            "base64": img.get("image") if isinstance(img, dict) else img,
+            "url": url,
+            "base64": b64,
             "model": _IMAGE_MODEL,
             "width": width,
             "height": height,
