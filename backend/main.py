@@ -43,7 +43,7 @@ async def _resume_interrupted_sessions() -> None:
         orch = get_orchestrator()
         for session_id in interrupted:
             try:
-                await _asyncio.to_thread(_restore_session, session_id)
+                await _asyncio.to_thread(_restore_session, session_id)  # returns (bool, bool) — just restore
                 events = _event_log.get(session_id, [])
                 event_dicts = [e for _, e in events]
 
