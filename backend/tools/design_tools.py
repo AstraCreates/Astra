@@ -44,10 +44,14 @@ def generate_wireframe(
 
 
 def generate_color_palette(
-    brand_vibe: str,
-    industry: str,
+    brand_vibe: str = "minimal",
+    industry: str = "",
     primary_hex: str = "",
+    brand_name: str = "",  # alias — model sometimes passes brand_name instead of brand_vibe
+    **kwargs,
 ) -> dict:
+    if not brand_vibe or brand_vibe == "minimal":
+        brand_vibe = brand_name or "minimal"
     """
     Generate a complete brand color palette with usage guidelines.
     brand_vibe: bold | minimal | friendly | professional | innovative | calm
