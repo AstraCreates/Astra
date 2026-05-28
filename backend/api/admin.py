@@ -1,15 +1,15 @@
 """Admin monitoring endpoints — /admin/*"""
 import asyncio
+import collections
 import os
 import platform
-import resource
 import subprocess
 import time
 from datetime import datetime, timezone
+from typing import Any
 
 import psutil
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
 
 from backend.core.events import _sessions, _completed, _event_log, _event_counters, _steer
 
@@ -17,34 +17,177 @@ router = APIRouter(prefix="/admin")
 
 _START_TIME = time.time()
 
+# In-process request counter: {endpoint: count}
+_request_counts: dict[str, int] = collections.defaultdict(int)
+# Rolling event-rate samples: list of (unix_ts, total_event_count)
+_event_rate_samples: list[tuple[float, int]] = []
 
-def _uptime() -> str:
-    secs = int(time.time() - _START_TIME)
+
+def _uptime_str(secs: int) -> str:
     h, rem = divmod(secs, 3600)
     m, s = divmod(rem, 60)
     return f"{h}h {m}m {s}s"
 
 
+def _uptime() -> str:
+    return _uptime_str(int(time.time() - _START_TIME))
+
+
+def _total_events() -> int:
+    return sum(len(v) for v in _event_log.values())
+
+
+# ──────────────────────────────────────────────
+# Index
+# ──────────────────────────────────────────────
+
+@router.get("/")
+async def index():
+    _request_counts["/admin/"] += 1
+    return {
+        "endpoints": [
+            "/admin/health",
+            "/admin/overview",
+            "/admin/system",
+            "/admin/system/processes",
+            "/admin/system/network",
+            "/admin/system/disk",
+            "/admin/sessions",
+            "/admin/sessions/{id}/events",
+            "/admin/sessions/{id}/timeline",
+            "/admin/agents",
+            "/admin/errors",
+            "/admin/founders",
+            "/admin/redis",
+            "/admin/asyncio",
+            "/admin/requests",
+            "/admin/env",
+            "/admin/git",
+            "/admin/logs",
+        ]
+    }
+
+
+# ──────────────────────────────────────────────
+# Health / Overview
+# ──────────────────────────────────────────────
+
 @router.get("/health")
 async def health():
+    _request_counts["/admin/health"] += 1
     return {"status": "ok", "uptime": _uptime(), "ts": datetime.now(timezone.utc).isoformat()}
 
 
+@router.get("/overview")
+async def overview():
+    """Single-page dashboard summary — everything at a glance."""
+    _request_counts["/admin/overview"] += 1
+
+    mem = psutil.virtual_memory()
+    cpu = psutil.cpu_percent(interval=0.3)
+    disk = psutil.disk_usage("/")
+    proc = psutil.Process()
+
+    active_sessions = [s for s in _sessions if s not in _completed]
+    total_events = _total_events()
+
+    # Aggregate agent stats
+    agent_runs: dict[str, int] = collections.defaultdict(int)
+    agent_errors: dict[str, int] = collections.defaultdict(int)
+    total_errors = 0
+    total_agent_starts = 0
+    founders: set[str] = set()
+
+    for sid, log in _event_log.items():
+        for _, ev in log:
+            t = ev.get("type", "")
+            a = ev.get("agent", "")
+            if t == "goal_start":
+                fid = ev.get("founder_id")
+                if fid:
+                    founders.add(fid)
+            if t == "agent_start":
+                agent_runs[a] += 1
+                total_agent_starts += 1
+            if t == "agent_error":
+                agent_errors[a] += 1
+                total_errors += 1
+
+    top_agents = sorted(agent_runs.items(), key=lambda x: -x[1])[:5]
+    error_agents = sorted(agent_errors.items(), key=lambda x: -x[1])[:5]
+
+    return {
+        "uptime": _uptime(),
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "system": {
+            "cpu_percent": cpu,
+            "mem_percent": mem.percent,
+            "mem_used_gb": round(mem.used / 1e9, 2),
+            "mem_total_gb": round(mem.total / 1e9, 2),
+            "disk_percent": disk.percent,
+            "disk_free_gb": round(disk.free / 1e9, 2),
+            "load_avg": [round(x, 2) for x in os.getloadavg()],
+            "process_rss_mb": round(proc.memory_info().rss / 1e6, 2),
+        },
+        "sessions": {
+            "total": len(_sessions),
+            "active": len(active_sessions),
+            "completed": len(_completed),
+            "active_ids": active_sessions,
+        },
+        "agents": {
+            "total_runs": total_agent_starts,
+            "total_errors": total_errors,
+            "error_rate_pct": round(total_errors / total_agent_starts * 100, 1) if total_agent_starts else 0,
+            "top_5": [{"agent": a, "runs": n} for a, n in top_agents],
+            "error_leaders": [{"agent": a, "errors": n} for a, n in error_agents],
+        },
+        "founders": {
+            "unique": len(founders),
+        },
+        "events": {
+            "total": total_events,
+        },
+    }
+
+
+# ──────────────────────────────────────────────
+# System
+# ──────────────────────────────────────────────
+
 @router.get("/system")
 async def system_info():
-    cpu = psutil.cpu_percent(interval=0.5)
+    _request_counts["/admin/system"] += 1
+    cpu_per_core = psutil.cpu_percent(interval=0.5, percpu=True)
+    cpu_times = psutil.cpu_times()
     mem = psutil.virtual_memory()
+    swap = psutil.swap_memory()
     disk = psutil.disk_usage("/")
+    disk_io = psutil.disk_io_counters()
     net = psutil.net_io_counters()
     boot = datetime.fromtimestamp(psutil.boot_time(), tz=timezone.utc).isoformat()
+    freq = psutil.cpu_freq()
 
     proc = psutil.Process()
     with proc.oneshot():
         proc_mem = proc.memory_info()
-        proc_cpu = proc.cpu_percent(interval=0.2)
+        proc_cpu = proc.cpu_percent(interval=0.1)
         proc_threads = proc.num_threads()
         proc_fds = proc.num_fds() if hasattr(proc, "num_fds") else None
-        proc_conns = len(proc.net_connections())
+        try:
+            proc_conns = len(proc.net_connections())
+        except Exception:
+            proc_conns = None
+        proc_children = len(proc.children(recursive=True))
+
+    # temp sensors (may not be available in containers)
+    temps: dict[str, Any] = {}
+    try:
+        raw = psutil.sensors_temperatures()
+        for name, entries in raw.items():
+            temps[name] = [{"label": e.label, "current": e.current, "high": e.high, "critical": e.critical} for e in entries]
+    except Exception:
+        pass
 
     return {
         "host": platform.node(),
@@ -53,10 +196,19 @@ async def system_info():
         "uptime": _uptime(),
         "boot_time": boot,
         "cpu": {
-            "percent": cpu,
+            "percent_total": sum(cpu_per_core) / len(cpu_per_core),
+            "percent_per_core": cpu_per_core,
             "count_logical": psutil.cpu_count(logical=True),
             "count_physical": psutil.cpu_count(logical=False),
-            "freq_mhz": round(psutil.cpu_freq().current, 1) if psutil.cpu_freq() else None,
+            "freq_current_mhz": round(freq.current, 1) if freq else None,
+            "freq_max_mhz": round(freq.max, 1) if freq else None,
+            "times": {
+                "user": round(cpu_times.user, 2),
+                "system": round(cpu_times.system, 2),
+                "idle": round(cpu_times.idle, 2),
+                "iowait": round(getattr(cpu_times, "iowait", 0), 2),
+                "steal": round(getattr(cpu_times, "steal", 0), 2),
+            },
             "load_avg_1m": round(os.getloadavg()[0], 2),
             "load_avg_5m": round(os.getloadavg()[1], 2),
             "load_avg_15m": round(os.getloadavg()[2], 2),
@@ -65,15 +217,22 @@ async def system_info():
             "total_gb": round(mem.total / 1e9, 2),
             "used_gb": round(mem.used / 1e9, 2),
             "available_gb": round(mem.available / 1e9, 2),
+            "cached_gb": round(getattr(mem, "cached", 0) / 1e9, 2),
+            "buffers_gb": round(getattr(mem, "buffers", 0) / 1e9, 2),
             "percent": mem.percent,
-            "swap_total_gb": round(psutil.swap_memory().total / 1e9, 2),
-            "swap_used_gb": round(psutil.swap_memory().used / 1e9, 2),
+            "swap_total_gb": round(swap.total / 1e9, 2),
+            "swap_used_gb": round(swap.used / 1e9, 2),
+            "swap_percent": swap.percent,
         },
         "disk": {
             "total_gb": round(disk.total / 1e9, 2),
             "used_gb": round(disk.used / 1e9, 2),
             "free_gb": round(disk.free / 1e9, 2),
             "percent": disk.percent,
+            "io_read_mb": round(disk_io.read_bytes / 1e6, 2) if disk_io else None,
+            "io_write_mb": round(disk_io.write_bytes / 1e6, 2) if disk_io else None,
+            "io_read_count": disk_io.read_count if disk_io else None,
+            "io_write_count": disk_io.write_count if disk_io else None,
         },
         "network": {
             "bytes_sent_mb": round(net.bytes_sent / 1e6, 2),
@@ -82,90 +241,269 @@ async def system_info():
             "packets_recv": net.packets_recv,
             "errin": net.errin,
             "errout": net.errout,
+            "dropin": net.dropin,
+            "dropout": net.dropout,
         },
         "process": {
             "pid": os.getpid(),
             "rss_mb": round(proc_mem.rss / 1e6, 2),
             "vms_mb": round(proc_mem.vms / 1e6, 2),
+            "shared_mb": round(getattr(proc_mem, "shared", 0) / 1e6, 2),
             "cpu_percent": proc_cpu,
             "threads": proc_threads,
             "open_fds": proc_fds,
             "open_connections": proc_conns,
+            "child_processes": proc_children,
         },
+        "temperatures": temps,
+    }
+
+
+@router.get("/system/processes")
+async def top_processes(limit: int = 20, sort_by: str = "cpu"):
+    """Top processes by CPU or memory."""
+    _request_counts["/admin/system/processes"] += 1
+    procs = []
+    for p in psutil.process_iter(["pid", "name", "cpu_percent", "memory_info", "status", "username", "cmdline", "create_time"]):
+        try:
+            info = p.info
+            procs.append({
+                "pid": info["pid"],
+                "name": info["name"],
+                "status": info["status"],
+                "username": info["username"],
+                "cpu_percent": info["cpu_percent"] or 0,
+                "rss_mb": round((info["memory_info"].rss if info["memory_info"] else 0) / 1e6, 2),
+                "cmd": " ".join(info["cmdline"] or [])[:120],
+                "age_s": int(time.time() - info["create_time"]) if info["create_time"] else None,
+            })
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+
+    key = "rss_mb" if sort_by == "mem" else "cpu_percent"
+    procs.sort(key=lambda x: -x[key])
+    return {"count": len(procs), "sort_by": sort_by, "processes": procs[:limit]}
+
+
+@router.get("/system/network")
+async def network_interfaces():
+    """Per-interface network stats and active connections."""
+    _request_counts["/admin/system/network"] += 1
+    ifaces = {}
+    per_iface = psutil.net_io_counters(pernic=True)
+    addrs = psutil.net_if_addrs()
+    stats = psutil.net_if_stats()
+
+    for name, counters in per_iface.items():
+        ifaces[name] = {
+            "bytes_sent_mb": round(counters.bytes_sent / 1e6, 2),
+            "bytes_recv_mb": round(counters.bytes_recv / 1e6, 2),
+            "packets_sent": counters.packets_sent,
+            "packets_recv": counters.packets_recv,
+            "errin": counters.errin,
+            "errout": counters.errout,
+            "speed_mbps": stats[name].speed if name in stats else None,
+            "is_up": stats[name].isup if name in stats else None,
+            "addresses": [
+                {"family": str(a.family), "address": a.address, "netmask": a.netmask}
+                for a in addrs.get(name, [])
+            ],
+        }
+
+    # Active connections summary
+    try:
+        conns = psutil.net_connections(kind="inet")
+        conn_states: dict[str, int] = collections.defaultdict(int)
+        for c in conns:
+            conn_states[c.status] += 1
+        connections = {"total": len(conns), "by_state": dict(conn_states)}
+    except Exception:
+        connections = {"total": None, "by_state": {}}
+
+    return {"interfaces": ifaces, "connections": connections}
+
+
+@router.get("/system/disk")
+async def disk_detail():
+    """All mounted partitions."""
+    _request_counts["/admin/system/disk"] += 1
+    parts = []
+    for p in psutil.disk_partitions(all=False):
+        try:
+            usage = psutil.disk_usage(p.mountpoint)
+            parts.append({
+                "device": p.device,
+                "mountpoint": p.mountpoint,
+                "fstype": p.fstype,
+                "total_gb": round(usage.total / 1e9, 2),
+                "used_gb": round(usage.used / 1e9, 2),
+                "free_gb": round(usage.free / 1e9, 2),
+                "percent": usage.percent,
+            })
+        except Exception:
+            pass
+    return {"partitions": parts}
+
+
+# ──────────────────────────────────────────────
+# Sessions
+# ──────────────────────────────────────────────
+
+def _parse_session(sid: str) -> dict:
+    log = _event_log.get(sid, [])
+    goal = None
+    founder_id = None
+    agents_seen: dict[str, str] = {}  # agent -> last status
+    errors: list[str] = []
+    started_at_ts: float | None = None
+    ended_at_ts: float | None = None
+    plan_nodes: list = []
+    tool_calls = 0
+
+    for _, ev in log:
+        t = ev.get("type", "")
+        if t == "goal_start":
+            goal = ev.get("goal", "")[:160]
+            founder_id = ev.get("founder_id")
+            started_at_ts = ev.get("ts_unix") or time.time()
+        if t == "goal_done":
+            ended_at_ts = ev.get("ts_unix") or time.time()
+        a = ev.get("agent")
+        if a:
+            if t == "agent_start":
+                agents_seen[a] = "running"
+            elif t == "agent_done":
+                agents_seen[a] = "done"
+            elif t == "agent_error":
+                agents_seen[a] = "error"
+                errors.append(f"{a}: {ev.get('error', '')[:200]}")
+        if t == "tool_call":
+            tool_calls += 1
+        if t == "detailed_plan" and "nodes" in ev:
+            plan_nodes = ev["nodes"]
+
+    duration = None
+    if started_at_ts and ended_at_ts:
+        duration = round(ended_at_ts - started_at_ts, 1)
+
+    return {
+        "session_id": sid,
+        "status": "completed" if sid in _completed else "running",
+        "goal": goal,
+        "founder_id": founder_id,
+        "agents": agents_seen,
+        "agent_count": len(agents_seen),
+        "event_count": len(log),
+        "tool_calls": tool_calls,
+        "errors": errors,
+        "error_count": len(errors),
+        "queue_depth": _sessions[sid].qsize() if sid in _sessions else 0,
+        "steer_messages": len(_steer.get(sid, [])),
+        "plan_nodes": len(plan_nodes),
+        "duration_s": duration,
     }
 
 
 @router.get("/sessions")
 async def sessions_overview():
-    active = [s for s in _sessions if s not in _completed]
-    completed = list(_completed)
-
-    rows = []
-    for sid in list(_sessions.keys()):
-        log = _event_log.get(sid, [])
-        event_count = len(log)
-        last_event = None
-        last_type = None
-        agents_seen: set[str] = set()
-        goal = None
-        founder_id = None
-        started_at = None
-
-        for _, ev in log:
-            t = ev.get("type", "")
-            if t == "goal_start":
-                goal = ev.get("goal", "")[:120]
-                founder_id = ev.get("founder_id")
-                started_at = ev.get("ts")
-            if "agent" in ev:
-                agents_seen.add(ev["agent"])
-            last_type = t
-
-        if log:
-            last_event = log[-1][1].get("type")
-
-        rows.append({
-            "session_id": sid,
-            "status": "completed" if sid in _completed else "running",
-            "goal": goal,
-            "founder_id": founder_id,
-            "agents_seen": sorted(agents_seen),
-            "event_count": event_count,
-            "queue_depth": _sessions[sid].qsize() if sid in _sessions else 0,
-            "last_event": last_event,
-            "steer_messages": len(_steer.get(sid, [])),
-        })
-
+    _request_counts["/admin/sessions"] += 1
+    rows = [_parse_session(sid) for sid in list(_sessions.keys())]
     rows.sort(key=lambda r: (r["status"] == "completed", r["session_id"]))
-
+    active = sum(1 for r in rows if r["status"] == "running")
     return {
-        "total": len(_sessions),
-        "active": len(active),
-        "completed": len(completed),
+        "total": len(rows),
+        "active": active,
+        "completed": len(rows) - active,
         "sessions": rows,
     }
 
 
 @router.get("/sessions/{session_id}/events")
-async def session_events(session_id: str, limit: int = 200):
+async def session_events(session_id: str, limit: int = 500, event_type: str = ""):
+    _request_counts["/admin/sessions/events"] += 1
     log = _event_log.get(session_id)
     if log is None:
         raise HTTPException(status_code=404, detail="session not found")
-    events = [{"id": eid, **ev} for eid, ev in log[-limit:]]
+    filtered = [(eid, ev) for eid, ev in log if not event_type or ev.get("type") == event_type]
+    tail = filtered[-limit:]
+    events = [{"id": eid, **ev} for eid, ev in tail]
+    types = collections.Counter(ev.get("type") for _, ev in log)
     return {
         "session_id": session_id,
+        "status": "completed" if session_id in _completed else "running",
         "total_events": len(log),
         "returned": len(events),
+        "event_types": dict(types.most_common()),
         "events": events,
     }
 
 
+@router.get("/sessions/{session_id}/timeline")
+async def session_timeline(session_id: str):
+    """Agent-level timeline: when each agent started/ended and how long it took."""
+    _request_counts["/admin/sessions/timeline"] += 1
+    log = _event_log.get(session_id)
+    if log is None:
+        raise HTTPException(status_code=404, detail="session not found")
+
+    agent_times: dict[str, dict] = {}
+    goal_start = None
+    goal_end = None
+
+    for _, ev in log:
+        t = ev.get("type", "")
+        ts = ev.get("ts_unix", time.time())
+        a = ev.get("agent")
+
+        if t == "goal_start":
+            goal_start = ts
+        if t == "goal_done":
+            goal_end = ts
+        if not a:
+            continue
+        if a not in agent_times:
+            agent_times[a] = {"agent": a, "started": None, "ended": None, "status": "waiting", "error": None}
+        at = agent_times[a]
+        if t == "agent_start":
+            at["started"] = ts
+            at["status"] = "running"
+        elif t == "agent_done":
+            at["ended"] = ts
+            at["status"] = "done"
+        elif t == "agent_error":
+            at["ended"] = ts
+            at["status"] = "error"
+            at["error"] = ev.get("error", "")[:200]
+
+    timeline = []
+    for at in agent_times.values():
+        duration = None
+        if at["started"] and at["ended"]:
+            duration = round(at["ended"] - at["started"], 1)
+        timeline.append({**at, "duration_s": duration})
+    timeline.sort(key=lambda x: x["started"] or 0)
+
+    total_duration = None
+    if goal_start and goal_end:
+        total_duration = round(goal_end - goal_start, 1)
+
+    return {
+        "session_id": session_id,
+        "total_duration_s": total_duration,
+        "agents": timeline,
+    }
+
+
+# ──────────────────────────────────────────────
+# Agents
+# ──────────────────────────────────────────────
+
 @router.get("/agents")
 async def agents_activity():
+    _request_counts["/admin/agents"] += 1
     agent_stats: dict[str, dict] = {}
 
     for sid, log in _event_log.items():
-        status = "completed" if sid in _completed else "running"
         for _, ev in log:
             agent = ev.get("agent")
             if not agent:
@@ -174,78 +512,202 @@ async def agents_activity():
                 agent_stats[agent] = {
                     "agent": agent,
                     "runs": 0,
+                    "completions": 0,
                     "errors": 0,
                     "sessions": set(),
+                    "total_duration_s": 0.0,
                     "last_status": None,
+                    "last_error": None,
+                    "_start_ts": {},
                 }
             s = agent_stats[agent]
-            s["sessions"].add(sid)
             t = ev.get("type", "")
+            ts = ev.get("ts_unix", 0)
+            s["sessions"].add(sid)
+
             if t == "agent_start":
                 s["runs"] += 1
+                s["_start_ts"][sid] = ts
+                s["last_status"] = "running"
+            elif t == "agent_done":
+                s["completions"] += 1
+                s["last_status"] = "done"
+                if sid in s["_start_ts"] and ts:
+                    s["total_duration_s"] += ts - s["_start_ts"].pop(sid, ts)
             elif t == "agent_error":
                 s["errors"] += 1
-            if t in ("agent_start", "agent_done", "agent_error"):
-                s["last_status"] = t
+                s["last_status"] = "error"
+                s["last_error"] = ev.get("error", "")[:200]
 
     result = []
     for s in agent_stats.values():
+        runs = s["runs"]
+        comps = s["completions"]
+        avg_dur = round(s["total_duration_s"] / comps, 1) if comps else None
         result.append({
-            **s,
-            "sessions": sorted(s["sessions"]),
+            "agent": s["agent"],
+            "runs": runs,
+            "completions": comps,
+            "errors": s["errors"],
+            "success_rate_pct": round(comps / runs * 100, 1) if runs else None,
+            "avg_duration_s": avg_dur,
             "session_count": len(s["sessions"]),
+            "sessions": sorted(s["sessions"]),
+            "last_status": s["last_status"],
+            "last_error": s["last_error"],
         })
     result.sort(key=lambda x: -x["runs"])
-    return {"agents": result}
+    return {"total_agents": len(result), "agents": result}
 
 
-@router.get("/logs")
-async def recent_logs(lines: int = 200):
-    log_file = "server.log"
-    if not os.path.exists(log_file):
-        # Try journald
-        try:
-            out = subprocess.check_output(
-                ["journalctl", "-u", "astra*", "--no-pager", f"-n{lines}"],
-                stderr=subprocess.DEVNULL, text=True
-            )
-            return {"source": "journald", "lines": out.strip().splitlines()[-lines:]}
-        except Exception:
-            return {"source": "none", "lines": []}
+# ──────────────────────────────────────────────
+# Errors
+# ──────────────────────────────────────────────
 
-    with open(log_file) as f:
-        all_lines = f.readlines()
-    tail = [l.rstrip() for l in all_lines[-lines:]]
-    return {"source": log_file, "total_lines": len(all_lines), "lines": tail}
+@router.get("/errors")
+async def all_errors(limit: int = 100):
+    """All agent errors across all sessions, newest first."""
+    _request_counts["/admin/errors"] += 1
+    errors = []
+    for sid, log in _event_log.items():
+        for eid, ev in log:
+            if ev.get("type") == "agent_error":
+                errors.append({
+                    "session_id": sid,
+                    "event_id": eid,
+                    "agent": ev.get("agent"),
+                    "task_id": ev.get("task_id"),
+                    "error": ev.get("error", "")[:500],
+                    "ts": ev.get("ts"),
+                })
+    errors.sort(key=lambda e: e["event_id"], reverse=True)
+    return {
+        "total_errors": len(errors),
+        "returned": min(len(errors), limit),
+        "errors": errors[:limit],
+    }
 
+
+# ──────────────────────────────────────────────
+# Founders
+# ──────────────────────────────────────────────
+
+@router.get("/founders")
+async def founders_stats():
+    _request_counts["/admin/founders"] += 1
+    founder_data: dict[str, dict] = {}
+
+    for sid, log in _event_log.items():
+        fid = None
+        goal = None
+        status = "completed" if sid in _completed else "running"
+        agent_runs = 0
+        errors = 0
+
+        for _, ev in log:
+            t = ev.get("type", "")
+            if t == "goal_start":
+                fid = ev.get("founder_id")
+                goal = ev.get("goal", "")[:120]
+            if t == "agent_start":
+                agent_runs += 1
+            if t == "agent_error":
+                errors += 1
+
+        if not fid:
+            continue
+
+        if fid not in founder_data:
+            founder_data[fid] = {
+                "founder_id": fid,
+                "sessions": [],
+                "total_agent_runs": 0,
+                "total_errors": 0,
+                "completed_sessions": 0,
+                "active_sessions": 0,
+            }
+        fd = founder_data[fid]
+        fd["sessions"].append({"session_id": sid, "goal": goal, "status": status})
+        fd["total_agent_runs"] += agent_runs
+        fd["total_errors"] += errors
+        if status == "completed":
+            fd["completed_sessions"] += 1
+        else:
+            fd["active_sessions"] += 1
+
+    result = sorted(founder_data.values(), key=lambda x: -len(x["sessions"]))
+    return {"unique_founders": len(result), "founders": result}
+
+
+# ──────────────────────────────────────────────
+# Redis
+# ──────────────────────────────────────────────
 
 @router.get("/redis")
 async def redis_info():
+    _request_counts["/admin/redis"] += 1
     try:
         import redis.asyncio as aioredis
         from backend.config import settings
         r = aioredis.from_url(settings.redis_url)
-        info = await r.info()
+        info = await r.info("all")
+        keyspace = await r.info("keyspace")
+        dbsize = await r.dbsize()
         await r.aclose()
         return {
             "connected": True,
             "version": info.get("redis_version"),
-            "uptime_seconds": info.get("uptime_in_seconds"),
-            "connected_clients": info.get("connected_clients"),
-            "used_memory_mb": round(info.get("used_memory", 0) / 1e6, 2),
-            "used_memory_peak_mb": round(info.get("used_memory_peak", 0) / 1e6, 2),
-            "total_commands_processed": info.get("total_commands_processed"),
-            "total_connections_received": info.get("total_connections_received"),
-            "keyspace_hits": info.get("keyspace_hits"),
-            "keyspace_misses": info.get("keyspace_misses"),
+            "mode": info.get("redis_mode"),
             "role": info.get("role"),
+            "uptime_seconds": info.get("uptime_in_seconds"),
+            "uptime_human": _uptime_str(info.get("uptime_in_seconds", 0)),
+            "clients": {
+                "connected": info.get("connected_clients"),
+                "blocked": info.get("blocked_clients"),
+                "tracking": info.get("tracking_clients"),
+                "max": info.get("maxclients"),
+            },
+            "memory": {
+                "used_mb": round(info.get("used_memory", 0) / 1e6, 2),
+                "used_peak_mb": round(info.get("used_memory_peak", 0) / 1e6, 2),
+                "used_rss_mb": round(info.get("used_memory_rss", 0) / 1e6, 2),
+                "maxmemory_mb": round(info.get("maxmemory", 0) / 1e6, 2),
+                "fragmentation_ratio": info.get("mem_fragmentation_ratio"),
+            },
+            "stats": {
+                "total_commands_processed": info.get("total_commands_processed"),
+                "total_connections_received": info.get("total_connections_received"),
+                "rejected_connections": info.get("rejected_connections"),
+                "keyspace_hits": info.get("keyspace_hits"),
+                "keyspace_misses": info.get("keyspace_misses"),
+                "hit_rate_pct": round(
+                    info.get("keyspace_hits", 0) /
+                    max(info.get("keyspace_hits", 0) + info.get("keyspace_misses", 1), 1) * 100, 1
+                ),
+                "expired_keys": info.get("expired_keys"),
+                "evicted_keys": info.get("evicted_keys"),
+                "ops_per_sec": info.get("instantaneous_ops_per_sec"),
+                "input_kbps": info.get("instantaneous_input_kbps"),
+                "output_kbps": info.get("instantaneous_output_kbps"),
+            },
+            "persistence": {
+                "rdb_last_save": info.get("rdb_last_bgsave_status"),
+                "aof_enabled": info.get("aof_enabled"),
+            },
+            "keyspace": keyspace,
+            "total_keys": dbsize,
         }
     except Exception as e:
         return {"connected": False, "error": str(e)}
 
 
+# ──────────────────────────────────────────────
+# Asyncio tasks
+# ──────────────────────────────────────────────
+
 @router.get("/asyncio")
 async def asyncio_stats():
+    _request_counts["/admin/asyncio"] += 1
     loop = asyncio.get_event_loop()
     all_tasks = asyncio.all_tasks(loop)
     task_list = []
@@ -258,16 +720,41 @@ async def asyncio_stats():
             "coro": getattr(coro, "__qualname__", str(coro)),
         })
     task_list.sort(key=lambda x: x["name"])
+    by_coro: dict[str, int] = collections.Counter(t["coro"] for t in task_list)
     return {
         "total_tasks": len(task_list),
         "running": sum(1 for t in task_list if not t["done"]),
+        "top_coros": dict(by_coro.most_common(10)),
         "tasks": task_list,
     }
 
 
+# ──────────────────────────────────────────────
+# Request stats
+# ──────────────────────────────────────────────
+
+@router.get("/requests")
+async def request_stats():
+    """Hit counts for admin endpoints since last restart."""
+    _request_counts["/admin/requests"] += 1
+    total = sum(_request_counts.values())
+    sorted_counts = dict(sorted(_request_counts.items(), key=lambda x: -x[1]))
+    return {
+        "total_admin_requests": total,
+        "uptime": _uptime(),
+        "per_endpoint": sorted_counts,
+        "total_events_in_memory": _total_events(),
+        "sessions_in_memory": len(_sessions),
+    }
+
+
+# ──────────────────────────────────────────────
+# Env
+# ──────────────────────────────────────────────
+
 @router.get("/env")
 async def env_check():
-    """Show which env vars are set (values redacted)."""
+    _request_counts["/admin/env"] += 1
     keys = [
         "SUPABASE_URL", "SUPABASE_KEY", "REDIS_URL",
         "AGENT_MODEL_BASE_URL", "AGENT_MODEL_NAME", "AGENT_MODEL_API_KEY",
@@ -275,6 +762,7 @@ async def env_check():
         "DEEPINFRA_API_KEY", "VERCEL_TOKEN", "GITHUB_TOKEN",
         "CLOUDFLARE_API_TOKEN", "COMPOSIO_API_KEY",
         "CLERK_SECRET_KEY", "SENDGRID_API_KEY", "OBSIDIAN_VAULT",
+        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
     ]
     result = {}
     for k in keys:
@@ -286,24 +774,99 @@ async def env_check():
     return result
 
 
+# ──────────────────────────────────────────────
+# Git
+# ──────────────────────────────────────────────
+
 @router.get("/git")
 async def git_status():
-    def _run(cmd):
-        try:
-            return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL, cwd="/opt/astra").strip()
-        except Exception:
+    _request_counts["/admin/git"] += 1
+
+    def _run(cmd, cwd="/opt/astra"):
+        for d in [cwd, ".", None]:
             try:
-                return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL).strip()
+                kw = {"cwd": d} if d else {}
+                return subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL, **kw).strip()
             except Exception:
-                return None
+                continue
+        return None
+
+    origin = _run(["git", "rev-parse", "origin/main"])
+    head = _run(["git", "rev-parse", "HEAD"])
+    behind = None
+    if origin and head:
+        try:
+            behind = int(subprocess.check_output(
+                ["git", "rev-list", "--count", f"HEAD..origin/main"],
+                text=True, stderr=subprocess.DEVNULL, cwd="/opt/astra"
+            ).strip())
+        except Exception:
+            pass
 
     return {
         "branch": _run(["git", "rev-parse", "--abbrev-ref", "HEAD"]),
-        "commit": _run(["git", "rev-parse", "HEAD"]),
+        "commit": head,
         "commit_short": _run(["git", "rev-parse", "--short", "HEAD"]),
         "commit_message": _run(["git", "log", "-1", "--pretty=%s"]),
         "commit_date": _run(["git", "log", "-1", "--pretty=%ci"]),
-        "origin_commit": _run(["git", "rev-parse", "origin/main"]),
-        "dirty": _run(["git", "status", "--porcelain"]) != "",
-        "recent_commits": (_run(["git", "log", "--oneline", "-10"]) or "").splitlines(),
+        "origin_commit": origin,
+        "commits_behind_origin": behind,
+        "in_sync": head == origin if head and origin else None,
+        "dirty": bool(_run(["git", "status", "--porcelain"])),
+        "recent_commits": (_run(["git", "log", "--oneline", "-15"]) or "").splitlines(),
+    }
+
+
+# ──────────────────────────────────────────────
+# Logs
+# ──────────────────────────────────────────────
+
+@router.get("/logs")
+async def recent_logs(lines: int = 300, filter: str = ""):
+    _request_counts["/admin/logs"] += 1
+    raw_lines: list[str] = []
+    source = "none"
+
+    # Try Docker container logs first
+    for container in ["astra-backend-1", "astra_backend_1"]:
+        try:
+            out = subprocess.check_output(
+                ["docker", "logs", "--tail", str(lines), container],
+                stderr=subprocess.STDOUT, text=True
+            )
+            raw_lines = out.strip().splitlines()
+            source = f"docker:{container}"
+            break
+        except Exception:
+            pass
+
+    # Fall back to journald
+    if not raw_lines:
+        try:
+            out = subprocess.check_output(
+                ["journalctl", "-u", "astra*", "--no-pager", f"-n{lines}"],
+                stderr=subprocess.DEVNULL, text=True
+            )
+            raw_lines = out.strip().splitlines()
+            source = "journald"
+        except Exception:
+            pass
+
+    # Fall back to server.log
+    if not raw_lines:
+        try:
+            with open("server.log") as f:
+                raw_lines = [l.rstrip() for l in f.readlines()[-lines:]]
+            source = "server.log"
+        except Exception:
+            pass
+
+    if filter:
+        raw_lines = [l for l in raw_lines if filter.lower() in l.lower()]
+
+    return {
+        "source": source,
+        "total_lines": len(raw_lines),
+        "filter": filter or None,
+        "lines": raw_lines[-lines:],
     }
