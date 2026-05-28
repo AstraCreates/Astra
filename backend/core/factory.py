@@ -31,13 +31,13 @@ def get_orchestrator() -> Orchestrator:
             model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
         )
         _small_kwargs = dict(
-            model="Qwen/Qwen3.5-9B",
+            model="meta-llama/Llama-4-Scout-17B-16E-Instruct",
             model_base_url=settings.agent_model_base_url,
             model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
         )
-        # Qwen3-32B for agents that must follow strict prompt rules
+        # Llama-4-Scout for agents that must follow strict prompt rules
         _instruct_kwargs = dict(
-            model="Qwen/Qwen3-32B",
+            model="meta-llama/Llama-4-Scout-17B-16E-Instruct",
             model_base_url=settings.agent_model_base_url,
             model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
         )

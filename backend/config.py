@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # Planner uses a stronger model for task decomposition
     planner_model_base_url: str = "https://api.deepinfra.com/v1/openai"
     planner_model_api_key: str = ""
-    planner_model_name: str = "Qwen/Qwen3.5-9B"
+    planner_model_name: str = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
     # Lighter model for non-reasoning agents (design)
     light_model_base_url: str = "https://api.deepinfra.com/v1/openai"
     light_model_name: str = "deepseek-ai/DeepSeek-V4-Flash"

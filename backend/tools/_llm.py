@@ -12,9 +12,9 @@ from backend.config import settings
 
 _FAST_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
 _LARGE_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
-_INSTRUCT_MODEL = "Qwen/Qwen3-32B"
+_INSTRUCT_MODEL = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
 _IMAGE_MODEL = "black-forest-labs/FLUX-2-pro"
-_PROMPT_MODEL = "Qwen/Qwen3.5-9B"
+_PROMPT_MODEL = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
 _DI_BASE = "https://api.deepinfra.com/v1/openai"
 
 
