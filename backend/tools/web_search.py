@@ -29,7 +29,7 @@ def deep_research(query: str, focus: str = "") -> dict:
             return future.result(timeout=300)
 
 
-_DEEPINFRA_MODELS = ["openai/gpt-oss-120b"]
+_DEEPINFRA_MODELS = ["deepseek-ai/DeepSeek-V4-Flash"]
 _GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b"]
 
 

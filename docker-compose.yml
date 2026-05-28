@@ -15,12 +15,14 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379
       - OBSIDIAN_VAULT=/data/astra_docs
+      - ASTRA_WORKSPACE=/data/astra-workspaces
     depends_on:
       - redis
     ports:
       - "8000:8000"
     volumes:
       - astra_docs_data:/data/astra_docs
+      - astra_workspaces_data:/data/astra-workspaces
 
   frontend:
     build:
@@ -59,3 +61,4 @@ services:
 volumes:
   redis_data:
   astra_docs_data:
+  astra_workspaces_data:
