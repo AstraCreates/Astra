@@ -16,7 +16,6 @@ _INSTRUCT_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
 _IMAGE_MODEL = "black-forest-labs/FLUX-2-pro"
 _PROMPT_MODEL = "openai/gpt-oss-120b"
 _DI_BASE = "https://api.deepinfra.com/v1/openai"
-_DI_IMAGE_BASE = "https://api.deepinfra.com/v1/inference"
 
 
 def _api_key() -> str:
@@ -117,11 +116,10 @@ def _save_image_to_vault(url: str | None, b64: str | None, prompt: str, founder_
 
 
 def generate_image(description: str, width: int = 1024, height: int = 1024, founder_id: str = "", session_id: str = "") -> dict:
-    """Generate an ad image using FLUX-2-pro.
-    Uses gpt-oss-120b to write an optimized image prompt, then calls FLUX.
-    Returns: {prompt, url, base64, model, local_path}
+    """Generate an ad image using FLUX-2-pro via OpenAI-compatible images/generations endpoint.
+    Uses gpt-oss-120b to write an optimized prompt, then calls FLUX. Returns b64_json.
     """
-    import openai, requests
+    import openai
 
     # Check monthly budget
     if founder_id:
@@ -160,34 +158,27 @@ def generate_image(description: str, width: int = 1024, height: int = 1024, foun
     )
     image_prompt = (prompt_resp.choices[0].message.content or description).strip()
 
-    # Step 2: Janus generates the image
+    # Step 2: FLUX generates image via OpenAI-compatible images/generations endpoint
     try:
-        headers = {"Authorization": f"Bearer {_api_key()}", "Content-Type": "application/json"}
-        resp = requests.post(
-            f"{_DI_IMAGE_BASE}/{_IMAGE_MODEL}",
-            headers=headers,
-            json={"prompt": image_prompt, "width": width, "height": height, "num_images": 1},
+        img_client = openai.OpenAI(base_url=_DI_BASE, api_key=_api_key())
+        size = f"{width}x{height}"
+        img_resp = img_client.images.generate(
+            model=_IMAGE_MODEL,
+            prompt=image_prompt,
+            size=size,
+            n=1,
+            response_format="b64_json",
             timeout=120.0,
         )
-        resp.raise_for_status()
-        data = resp.json()
-        # FLUX-2-pro returns image_url; schnell/dev return images array with base64
-        url = data.get("image_url")
-        images = data.get("images") or data.get("output") or []
-        img = images[0] if images else None
-        b64 = None
-        if img:
-            b64 = img.get("image") if isinstance(img, dict) else img
-            if not url and isinstance(img, dict):
-                url = img.get("url")
+        b64 = img_resp.data[0].b64_json if img_resp.data else None
         local_path = None
-        if founder_id and (url or b64):
+        if founder_id and b64:
             _record_image_spend(founder_id)
             if session_id:
-                local_path = _save_image_to_vault(url, b64, image_prompt, founder_id, session_id)
+                local_path = _save_image_to_vault(None, b64, image_prompt, founder_id, session_id)
         return {
             "prompt": image_prompt,
-            "url": url,
+            "url": None,
             "base64": b64,
             "model": _IMAGE_MODEL,
             "width": width,
