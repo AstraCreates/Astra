@@ -1,4 +1,5 @@
 from backend.core.agent import Agent
+from backend.tools import vercel_deploy
 
 
 def test_marketing_normalizes_ad_images():
@@ -44,3 +45,47 @@ def test_legal_normalizes_documents_from_tool_sequence():
     ])
     assert normalized["documents"][0]["doc_type"] == "privacy_policy"
     assert normalized["documents"][0]["path"] == "/tmp/privacy_policy.pdf"
+
+
+def test_generate_landing_page_html_accepts_html_without_doctype(mocker):
+    mocker.patch(
+        "backend.tools._llm.generate",
+        return_value="<html><head><title>X</title></head><body><h1>Custom</h1></body></html>",
+    )
+    html = vercel_deploy.generate_landing_page_html(
+        page_title="Acme",
+        headline="Build faster",
+        subheadline="A better way to ship.",
+        value_props=["Fast", "Simple", "Reliable"],
+        cta_text="Get started",
+        cta_url="https://example.com",
+        company_name="Acme",
+        business_context="Use #112233 and #f5f5f5",
+    )
+    assert html.lower().startswith("<!doctype html>")
+    assert "astra-fallback-template" not in html
+
+
+def test_generate_landing_page_html_rejects_fallback_style_signatures(mocker):
+    calls = {"n": 0}
+
+    def fake_generate(_prompt: str, model: str = "fast"):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return "<!DOCTYPE html><html><head><style>:root{--bg: #06080f; --bg2: #0d1117;}</style></head><body>Define your goal</body></html>"
+        return "<!DOCTYPE html><html><body><h1>Custom page</h1></body></html>"
+
+    mocker.patch("backend.tools._llm.generate", side_effect=fake_generate)
+    html = vercel_deploy.generate_landing_page_html(
+        page_title="Acme",
+        headline="Build faster",
+        subheadline="A better way to ship.",
+        value_props=["Fast", "Simple", "Reliable"],
+        cta_text="Get started",
+        cta_url="https://example.com",
+        company_name="Acme",
+        business_context="Use #112233 and #f5f5f5",
+    )
+    assert calls["n"] >= 2
+    assert "custom page" in html.lower()
+    assert "--bg: #06080f" not in html.lower()

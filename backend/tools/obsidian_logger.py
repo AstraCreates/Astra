@@ -254,3 +254,97 @@ def obsidian_session_index(
 
     filename.write_text("\n".join(sections))
     return {"indexed": True, "path": str(filename), "note": filename.name}
+
+
+def obsidian_backend_log(
+    session_id: str,
+    founder_id: str,
+    goal: str,
+    events: list[tuple[int, dict]],
+    results: dict[str, Any],
+) -> dict:
+    """
+    Write a merged backend run log with full event timeline, tool IO, and final outputs
+    including provenance for each extracted artifact.
+    """
+    folder = _session_dir(session_id, founder_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    filename = folder / "backend_log.md"
+
+    date = datetime.now().strftime("%Y-%m-%d")
+    time_str = datetime.now().strftime("%H:%M")
+
+    def _truncate(v: Any, n: int = 1600) -> str:
+        try:
+            s = json.dumps(v, indent=2, default=str) if not isinstance(v, str) else v
+        except Exception:
+            s = str(v)
+        return s if len(s) <= n else s[:n] + "\n... (truncated)"
+
+    lines: list[str] = [
+        "---",
+        f"date: {date}",
+        f"session: {session_id}",
+        "type: backend-log",
+        f"founder_id: {founder_id}",
+        "---",
+        "",
+        f"# Backend Session Log · {date} {time_str}",
+        "",
+        f"**Goal:** {goal}",
+        f"**Session:** `{session_id}`",
+        f"**Total events:** {len(events)}",
+        "",
+    ]
+
+    # Timeline
+    lines += ["## Event Timeline", ""]
+    for eid, ev in events:
+        et = ev.get("type", "unknown")
+        agent = ev.get("agent")
+        tool = ev.get("tool")
+        prefix = f"- `#{eid}` `{et}`"
+        if agent:
+            prefix += f" · agent=`{agent}`"
+        if tool:
+            prefix += f" · tool=`{tool}`"
+        lines.append(prefix)
+        if et == "agent_action":
+            args = ev.get("args", {})
+            lines.append("  - args:")
+            lines.append("```json")
+            lines.append(_truncate(args, 800))
+            lines.append("```")
+        if et == "agent_action_result":
+            lines.append("  - result:")
+            lines.append("```json")
+            lines.append(_truncate(ev.get("result"), 1200))
+            lines.append("```")
+    lines.append("")
+
+    # Final outputs + provenance
+    lines += ["## Final Outputs (with provenance)", ""]
+    for task_id, output in results.items():
+        out = output if isinstance(output, dict) else {"value": output}
+        agent = out.get("agent") or "unknown"
+        lines += [f"### Task `{task_id}` · Agent `{agent}`", ""]
+        lines += ["```json", _truncate(out, 3000), "```", ""]
+
+        # Artifact provenance by scanning timeline for this agent
+        lines += ["#### Provenance", ""]
+        found_any = False
+        for eid, ev in events:
+            if ev.get("agent") != agent:
+                continue
+            et = ev.get("type")
+            if et not in ("agent_action", "agent_action_result", "agent_done", "agent_error"):
+                continue
+            found_any = True
+            tool = ev.get("tool", "")
+            lines.append(f"- source_event_id: `{eid}` · type: `{et}` · tool: `{tool}`")
+        if not found_any:
+            lines.append("- No explicit provenance events found for this output.")
+        lines.append("")
+
+    filename.write_text("\n".join(lines))
+    return {"logged": True, "path": str(filename), "note": filename.name}

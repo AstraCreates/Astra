@@ -635,6 +635,20 @@ The result must look like it was designed by a real product team, not generated.
 Start the output with <!DOCTYPE html> immediately."""
 
     from backend.tools._llm import generate
+
+    def _looks_like_fallback_template(text: str) -> bool:
+        if not isinstance(text, str):
+            return False
+        lowered = text.lower()
+        markers = (
+            "astra-fallback-template",
+            "--bg: #06080f",
+            "--bg2: #0d1117",
+            "define your goal",
+            "astra builds it",
+        )
+        return any(m in lowered for m in markers)
+
     for attempt in range(3):
         try:
             html = generate(prompt, model="fast")
@@ -643,14 +657,14 @@ Start the output with <!DOCTYPE html> immediately."""
             doctype_pos = html.lower().find("<!doctype")
             if doctype_pos != -1:
                 body = html[doctype_pos:]
-                if "astra-fallback-template" not in body.lower():
+                if not _looks_like_fallback_template(body):
                     return body
             # Accept custom HTML even if DOCTYPE is missing/malformed.
             # This prevents unnecessary fallback-template usage when LLM output is otherwise valid.
             html_tag_pos = html.lower().find("<html")
             if html_tag_pos != -1:
                 body = html[html_tag_pos:]
-                if "astra-fallback-template" not in body.lower():
+                if not _looks_like_fallback_template(body):
                     return "<!DOCTYPE html>\n" + body
             logger.warning("LLM HTML attempt %d had no valid <!DOCTYPE>", attempt + 1)
         except Exception as e:
@@ -678,6 +692,58 @@ Start the output with <!DOCTYPE html> immediately."""
         </div>"""
 
     year = 2026
+    safe_props = "".join(f"<li>{p}</li>" for p in value_props[:6]) or "<li>Fast setup</li><li>Clear value</li><li>Reliable delivery</li>"
+    # Non-template deterministic fallback: minimal, brand-aware, and input-driven.
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="description" content="{subheadline}"/>
+  <meta property="og:title" content="{headline}"/>
+  <meta property="og:description" content="{subheadline}"/>
+  <title>{page_title}</title>
+  <style>
+    :root {{
+      --bg: #ffffff;
+      --fg: #111827;
+      --muted: #4b5563;
+      --line: #e5e7eb;
+      --accent: #2563eb;
+      --accent-2: #1d4ed8;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--fg); }}
+    .wrap {{ max-width: 980px; margin: 0 auto; padding: 32px 24px; }}
+    nav {{ display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--line); }}
+    .brand {{ font-weight: 700; }}
+    .hero {{ padding: 56px 0 32px; }}
+    h1 {{ margin: 0 0 12px; font-size: clamp(2rem, 5vw, 3.25rem); line-height: 1.1; }}
+    p {{ margin: 0; color: var(--muted); line-height: 1.6; }}
+    .cta {{ display: inline-block; margin-top: 24px; padding: 12px 20px; border-radius: 10px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; }}
+    .cta:hover {{ background: var(--accent-2); }}
+    .grid {{ margin-top: 32px; display: grid; gap: 10px; padding-left: 18px; }}
+    footer {{ margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }}
+    @media (max-width: 768px) {{ .wrap {{ padding: 24px 16px; }} }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <nav>
+      <div class="brand">{company_name or page_title}</div>
+      <a class="cta" href="{cta_url}">{cta_text}</a>
+    </nav>
+    <section class="hero">
+      <h1>{headline}</h1>
+      <p>{subheadline}</p>
+      <a class="cta" href="{cta_url}">{cta_text}</a>
+      <ul class="grid">{safe_props}</ul>
+    </section>
+    <footer>© {company_name or page_title} {year}. Privacy · Terms · Contact</footer>
+  </div>
+</body>
+</html>"""
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
