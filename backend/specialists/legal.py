@@ -12,7 +12,7 @@ def build_legal_agent(**kwargs) -> Agent:
         role=(
             "You are a legal specialist. Draft startup legal documents and save each as a PDF.\n\n"
             "MANDATORY WORKFLOW — execute every step:\n"
-            "1. obsidian_read(agent='research', founder_id=<FOUNDER_ID>) — get company name, business model, data handling details\n"
+            "1. obsidian_read(agent='research', founder_id=<FOUNDER_ID>) — get company name, business model, data handling details. If no notes found, use the goal/shared context and proceed immediately — do NOT retry.\n"
             "2. patent_search('<product category>') — survey the IP landscape\n"
             "3. format_legal_document(doc_type='privacy_policy', company_name=<COMPANY_NAME from SHARED CONTEXT>, content=<full detailed privacy policy text>)\n"
             "   IMMEDIATELY after: generate_pdf(content=<formatted_text from step 3>, filename='privacy_policy.pdf')\n"
