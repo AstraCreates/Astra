@@ -32,7 +32,7 @@ def get_orchestrator() -> Orchestrator:
         )
         # Qwen3-235B for agents that must follow strict prompt rules
         _instruct_kwargs = dict(
-            model="Qwen/Qwen3-235B-A22B-Instruct-2507",
+            model="Qwen/Qwen3-32B",
             model_base_url=settings.agent_model_base_url,
             model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
         )
