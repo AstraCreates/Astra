@@ -518,6 +518,18 @@ Work autonomously until everything above is written and committed."""
         # First message — kick off the build
         agent_reply = _run_claude(local, INITIAL_PROMPT, session_id=oc_session_id, timeout=3600)
         _sanitize_package_json(local)
+        # If initial build returned nothing useful (model planned instead of wrote), nudge it
+        initial_files = _staged_files(local)
+        if not initial_files:
+            logger.info("Initial prompt wrote no files — nudging openclaude to start writing")
+            agent_reply = _run_claude(
+                local,
+                "You haven't created any files yet. Stop planning. Start writing files NOW. "
+                "Begin with frontend/package.json, then frontend/app/page.tsx, then backend/main.py. "
+                "Use your Write tool on each file. Do not explain — just write the files.",
+                session_id=oc_session_id, timeout=3600,
+            )
+            _sanitize_package_json(local)
         sha = _commit_and_push(local, f"feat: mvp initial — {goal[:50]}")
         if sha:
             commits.append(sha)
@@ -552,27 +564,53 @@ Work autonomously until everything above is written and committed."""
 
         # Conversation loop — PM reads agent reply, sends next message, repeat until done
         import time
-        deadline = time.time() + 86400  # 24 hours max
-        while time.time() < deadline:
+        _MAX_PM_MESSAGES = 40
+        _STALL_THRESHOLD = 8   # messages with no new files = stall
+        pm_count = 0
+        last_file_count = len(_staged_files(local))
+        stall_count = 0
+        while pm_count < _MAX_PM_MESSAGES:
             missing = _missing_mvp_files(local, required_files)
+            if not missing:
+                logger.info("All required files present — running final verification")
+                if _verify_and_fix():
+                    break
             next_msg = _pm_respond(agent_reply, goal, context, missing)
             if next_msg is None:
                 logger.info("PM declared MVP done — running final verification")
                 if _verify_and_fix():
-                    break  # both passed — truly done
-                # verification found issues — let PM loop continue
+                    break
                 agent_reply = "Verification found issues. Please review the latest fixes."
                 continue
+            # Detect stall: openclaude keeps talking but not writing files
+            current_file_count = len(_staged_files(local))
+            if current_file_count > last_file_count:
+                stall_count = 0
+                last_file_count = current_file_count
+            else:
+                stall_count += 1
+            if stall_count >= _STALL_THRESHOLD:
+                logger.warning("PM loop stalled (%d msgs, no new files) — sending hard write directive", stall_count)
+                next_msg = (
+                    "STOP. You are not writing files. Use your Write tool RIGHT NOW to create the missing files. "
+                    f"Missing: {', '.join(missing[:5])}. "
+                    "No explanations. No planning. Write the first missing file immediately."
+                )
+                stall_count = 0
             # Inject doc context for any library/API errors in the last reply
             doc_ctx = _research_error_docs(agent_reply)
             if doc_ctx:
                 next_msg = next_msg + doc_ctx
-            logger.info("PM → openclaude: %s", next_msg[:120])
+            logger.info("PM[%d/%d] → openclaude: %s", pm_count + 1, _MAX_PM_MESSAGES, next_msg[:120])
             agent_reply = _run_claude(local, next_msg, session_id=oc_session_id, timeout=3600)
             _sanitize_package_json(local)
             sha = _commit_and_push(local, f"feat: mvp progress — {goal[:45]}")
             if sha:
                 commits.append(sha)
+            pm_count += 1
+
+        if pm_count >= _MAX_PM_MESSAGES:
+            logger.warning("PM loop hit max messages (%d) — stopping", _MAX_PM_MESSAGES)
 
         all_files = _staged_files(local)
         return {
