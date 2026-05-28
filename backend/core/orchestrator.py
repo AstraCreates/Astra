@@ -534,6 +534,14 @@ class Orchestrator:
 
             remaining = [t for t in tasks if t["agent"] not in _RESEARCH_AGENTS]
 
+        # design must finish before web (web uses brand colors/fonts from design output)
+        _design_task = next((t for t in remaining if t["agent"] == "design"), None)
+        _web_task = next((t for t in remaining if t["agent"] == "web"), None)
+        if _design_task and _web_task:
+            _web_task.setdefault("depends_on", [])
+            if _design_task["id"] not in _web_task["depends_on"]:
+                _web_task["depends_on"].append(_design_task["id"])
+
         # Run remaining agents in parallel (all depends_on research which is done)
         in_flight: set[str] = set()
         while remaining or in_flight:
