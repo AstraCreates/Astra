@@ -11,7 +11,7 @@ from backend.config import settings
 
 _FAST_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
 _LARGE_MODEL = "openai/gpt-oss-120b"
-_IMAGE_MODEL = "deepseek-ai/Janus-Pro-7B"
+_IMAGE_MODEL = "black-forest-labs/FLUX-1-schnell"
 _PROMPT_MODEL = "openai/gpt-oss-120b"
 _DI_BASE = "https://api.deepinfra.com/v1/openai"
 _DI_IMAGE_BASE = "https://api.deepinfra.com/v1/inference"
