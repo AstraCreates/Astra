@@ -57,8 +57,13 @@ def _expand_section(heading: str, body: str, doc_title: str) -> str:
     return body
 
 
-def generate_pdf(title: str, sections: list, output_dir: str = "/tmp/astra_docs", expand_content: bool = True) -> dict:
+def generate_pdf(title: str, sections: list, output_dir: str = "", expand_content: bool = True) -> dict:
     """Generate PDF. Args: title (str), sections (list — MUST be a JSON array of objects, e.g. [{"heading": "Executive Summary", "body": "text..."}, {"heading": "Market Size", "body": "text..."}]), expand_content (bool, default True). Returns {generated, path, filename}. IMPORTANT: sections must be a real list/array, NOT a string."""
+    import os as _os
+    from backend.config import settings
+    if not output_dir:
+        vault = _os.environ.get("OBSIDIAN_VAULT") or getattr(settings, "obsidian_vault", "") or "/tmp/astra_docs"
+        output_dir = str(vault).rstrip("/") + "/files"
     os.makedirs(output_dir, exist_ok=True)
     safe_title = title.lower().replace(" ", "_").encode("ascii", "ignore").decode()
     filename = f"{safe_title}_{uuid.uuid4().hex[:8]}.pdf"

@@ -660,10 +660,17 @@ async def serve_file(filename: str):
     from pathlib import Path
     from fastapi.responses import FileResponse
 
+    import os as _os
     safe_name = Path(filename).name
-    docs_dir = Path("/tmp/astra_docs")
-    path = docs_dir / safe_name
-    if not path.exists() or not path.is_file():
+    vault = _os.environ.get("OBSIDIAN_VAULT", "/tmp/astra_docs")
+    search_dirs = [Path(vault) / "files", Path(vault), Path("/tmp/astra_docs")]
+    path = None
+    for d in search_dirs:
+        candidate = d / safe_name
+        if candidate.exists() and candidate.is_file():
+            path = candidate
+            break
+    if path is None:
         raise HTTPException(status_code=404, detail="File not found")
     media_type, _ = mimetypes.guess_type(safe_name)
     return FileResponse(path, media_type=media_type or "application/octet-stream", filename=safe_name)
