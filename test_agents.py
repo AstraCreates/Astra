@@ -31,7 +31,7 @@ SCOUT = dict(
 
 # Agents that need more steps to complete their mandatory workflow
 _ITER_OVERRIDES = {
-    "web": 5,      # obsidian_read(design) + HTML gen + vercel + log + done
+    "web": 6,      # obsidian_read(design) + HTML gen + vercel + log + done + 1 buffer
     "ops": 5,      # PDF + stripe + log + done
     "legal": 6,    # read + patent + 3 PDFs + log + done
     "technical": 6,

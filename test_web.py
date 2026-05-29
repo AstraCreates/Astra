@@ -27,7 +27,7 @@ FLASH = dict(
 
 async def main():
     agent = build_web_agent(use_computer=False, **FLASH)
-    agent._max_iterations = 5
+    agent._max_iterations = 6
     t0 = time.time()
     result = await agent.run(CTX)
     elapsed = time.time() - t0
