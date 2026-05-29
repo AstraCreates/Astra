@@ -669,103 +669,128 @@ def generate_landing_page_html(
     _rng = random.Random(_seed + 1)
     _vibe_instruction = _rng.choice(_STRUCTURES)
 
-    prompt = f"""Act as an expert principal web designer and front-end developer. I need a fully coded, single-file responsive website using standard HTML, Tailwind CSS, and vanilla JavaScript. Write one index.html that is extremely long — equivalent to 3+ full pages of content in a single scrolling page. Use a persistent, premium sticky navbar with backdrop-blur-md with anchor links to each section.
+    # Pre-scaffold all 13 sections so the model fills content into an existing structure
+    # rather than inventing its own — models default to hero→features→CTA regardless
+    # of instructions; giving them the skeleton forces coverage of every required section.
+    scaffold = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{name}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- ADD Google Fonts <link> for: {_heading_font} here -->
+</head>
+<body>
+<!-- NAV: sticky top nav with backdrop blur, logo left, anchor links right -->
 
-Business/Project Context:
-Brand Name: {name}
-What we do: {headline}. {subheadline}
-Key capabilities: {props_text}
-Aesthetic: Modern, high-end, editorial, minimalist.
-Design Tokens: {_design_context or f"Choose a premium dark-mode aesthetic for {name}."}
+<!-- SECTION hero: full-viewport, big bold headline="{headline}", subheadline, 2 CTA buttons, animated scroll-down chevron -->
+<section id="hero"></section>
 
-Make the page extremely long, content-rich, and feature-dense with ALL of these sections in order:
+<!-- SECTION proof: infinite CSS-only auto-scrolling marquee ribbon of 8 integration logo names (styled as badges) -->
+<section id="proof"></section>
 
-1. HERO — Full-viewport, big bold typography, subtle looping gradient particle effect, animated "Scroll Down" indicator
-2. SOCIAL PROOF RIBBON — Infinite auto-scrolling marquee of 6-8 partner/integration logos (styled text emblems)
-3. CORE PHILOSOPHY — Split-screen: left side sticks on scroll with bold manifesto; right side scrolls with deep paragraphs and blockquotes about {name}
-4. BENTO GRID — 4-column asymmetric grid, each card with glassmorphism border (border-white/10), hover-lift, icon, title, description using the capabilities above
-5. STAT COUNTER — 4 impressive numbers, JS IntersectionObserver animates count from 0 on scroll
-6. HOW IT WORKS — 3-4 numbered steps with icons and explanations
-7. FEATURES — detailed cards for each capability above
-8. TESTIMONIALS — 3 detailed quotes, full name, job title, company
-9. PRICING — 3 tiers (Starter/Pro/Business), monthly prices, feature checklists, highlighted "most popular"
-10. TIMELINE — center-aligned, 5 major milestones with active scroll highlighting
-11. FAQ — 6-item accordion, smooth JS slide toggle, animated plus/minus icons
-12. WAITLIST CTA — full-width dark gradient, email input, functional submit with "You're on the list!" success message (no reload)
-13. MEGA-FOOTER — 4 columns: sitemap links, contact info, newsletter input, social links. © {name} 2026
+<!-- SECTION philosophy: sticky split — left column fixed manifesto, right column scrolls 3 paragraphs + blockquote about {name} -->
+<section id="philosophy"></section>
 
-Code requirements: Tailwind CDN, Google Fonts, all JS inline in the file."""
+<!-- SECTION bento: asymmetric CSS grid, 6 cards (2 large, 4 small), glassmorphism bg, hover-lift. One card per capability:
+{props_text} -->
+<section id="bento"></section>
 
-    from backend.tools._llm import generate
+<!-- SECTION stats: 4 large animated counters (JS IntersectionObserver, counts from 0 on scroll). Pick 4 impressive numbers for {name}. -->
+<section id="stats"></section>
 
-    def _looks_like_fallback_template(text: str) -> bool:
-        if not isinstance(text, str):
-            return False
-        return "astra-fallback-template" in text
+<!-- SECTION how: 3 steps numbered 01/02/03, each with icon + title + 2-sentence description of how {name} works -->
+<section id="how"></section>
+
+<!-- SECTION features: detailed alternating-layout cards (text-left/image-right, then text-right/image-left) for each capability above -->
+<section id="features"></section>
+
+<!-- SECTION testimonials: 3 cards with long quote, avatar initial circle, full name, job title, company -->
+<section id="testimonials"></section>
+
+<!-- SECTION pricing: 3 tiers — Starter/Pro/Business. Monthly price, 5-item checklist, CTA button. Pro = most popular badge. -->
+<section id="pricing"></section>
+
+<!-- SECTION timeline: vertical center-line, 5 milestones for {name}. Active milestone highlighted on scroll via JS. -->
+<section id="timeline"></section>
+
+<!-- SECTION faq: 6-item accordion. JS toggles answer visibility on click. Animated +/− icon. Real questions about {name}. -->
+<section id="faq"></section>
+
+<!-- SECTION waitlist: full-width email capture. On submit show "You're on the list!" inline, no page reload. -->
+<section id="waitlist"></section>
+
+<!-- SECTION footer: 4-column mega-footer — sitemap links, contact info, newsletter input, social links. © {name} 2026 -->
+<footer id="footer"></footer>
+
+<!-- ALL JS inline here: marquee, counter IntersectionObserver, accordion toggle, waitlist submit, timeline scroll highlight -->
+<script></script>
+</body>
+</html>"""
+
+    prompt = f"""Fill in every section of this HTML skeleton completely. Replace each HTML comment with full working code.
+Design tokens: {_design_context or f"dark premium aesthetic, {name}"}
+Brand: {name} | CTA: "{cta_text}" → {cta_url}
+Output ONLY the completed HTML — no explanation, no markdown fences.
+
+{scaffold}"""
 
     logger.info("design_context passed to HTML gen: %.600s", _design_context)
-    import time as _time, tempfile
-    from pathlib import Path as _Path
-    from backend.tools.git_tools import _run_claude
+    import time as _time, openai
+    from backend.tools._llm import _api_key, _DI_BASE
 
-    oc_prompt = (
-        f"Write the complete HTML to `index.html` using the Write tool RIGHT NOW. "
-        f"No explanation, no markdown — just write the file immediately.\n\n"
-        f"{prompt}"
-    )
-
-    for attempt in range(3):
-        logger.info("HTML gen attempt %d/3 (openclaude) …", attempt + 1)
+    for attempt in range(2):
+        logger.info("HTML gen attempt %d/2 (direct API, nemotron-nano) …", attempt + 1)
         t0 = _time.monotonic()
         try:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                logger.info("  tmpdir: %s", tmpdir)
-                stdout = _run_claude(tmpdir, oc_prompt, session_id=None, timeout=300, model="nvidia/NVIDIA-Nemotron-3-Super-120B-A12B")
-                elapsed = _time.monotonic() - t0
-                logger.info("  openclaude stdout (%d chars): %.500s", len(stdout), stdout)
-                index = _Path(tmpdir) / "index.html"
-                files = list(_Path(tmpdir).iterdir())
-                logger.info("  files in tmpdir: %s", [f.name for f in files])
-                if not index.exists():
-                    logger.warning("HTML attempt %d — index.html not written (%.1fs). Files: %s", attempt + 1, elapsed, [f.name for f in files])
-                    continue
-                html = index.read_text(encoding="utf-8")
-                # Post-process: replace any banned font imports/references with our chosen font.
-                # Prompting alone doesn't work — models are hardwired to default to Inter.
-                _banned_re = re.compile(r"\b(Inter|Poppins|Roboto|Lato|Open\+Sans|Open Sans)\b", re.IGNORECASE)
-                if _banned_re.search(html):
-                    # Replace Google Fonts URLs that reference banned fonts
-                    html = re.sub(
-                        r'(href="https://fonts\.googleapis\.com/css2\?)[^"]*"',
-                        f'href="https://fonts.googleapis.com/css2?family={_font_slug}:ital,wght@0,400;0,700;0,900;1,400&display=swap"',
-                        html,
-                    )
-                    # Replace font-family CSS references
-                    html = re.sub(r"'Inter'", f"'{_heading_font.split(',')[0].strip(chr(39))}'" , html)
-                    html = re.sub(r'"Inter"', f'"{_heading_font.split(",")[0].strip(chr(39))}"', html)
-                    html = re.sub(r"'Poppins'", f"'{_heading_font.split(',')[0].strip(chr(39))}'", html)
-                    html = re.sub(r'"Poppins"', f'"{_heading_font.split(",")[0].strip(chr(39))}"', html)
-                    html = re.sub(r"'Roboto'", f"'{_heading_font.split(',')[0].strip(chr(39))}'", html)
-                    logger.info("Post-processed font: replaced banned fonts with %s", _heading_font)
-                logger.info("HTML gen attempt %d done in %.1fs — %d chars", attempt + 1, elapsed, len(html))
-                logger.info("HTML preview (first 500): %.500s", html[:500])
-                html = re.sub(r"```html?", "", html, flags=re.IGNORECASE).strip().rstrip("`").strip()
-                doctype_pos = html.lower().find("<!doctype")
-                if doctype_pos != -1:
-                    body = html[doctype_pos:]
-                    if not _looks_like_fallback_template(body):
-                        logger.info("HTML accepted (%d chars)", len(body))
-                        return body
-                html_tag_pos = html.lower().find("<html")
-                if html_tag_pos != -1:
-                    body = html[html_tag_pos:]
-                    if not _looks_like_fallback_template(body):
-                        logger.info("HTML accepted via <html> path (%d chars)", len(body))
-                        return "<!DOCTYPE html>\n" + body
-                logger.warning("HTML attempt %d REJECTED — no <!DOCTYPE> or <html>. Preview: %.300r", attempt + 1, html[:300])
+            client = openai.OpenAI(base_url=_DI_BASE, api_key=_api_key())
+            resp = client.chat.completions.create(
+                model="Qwen/Qwen3-235B-A22B-Instruct-2507",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=32000,
+                timeout=600.0,
+            )
+            html = resp.choices[0].message.content or ""
+            elapsed = _time.monotonic() - t0
+            logger.info("HTML gen attempt %d done in %.1fs — %d chars", attempt + 1, elapsed, len(html))
+            _preview_path = "/tmp/astra_last_html.html"
+            try:
+                open(_preview_path, "w").write(html)
+                logger.info("HTML saved to %s — open in browser to preview", _preview_path)
+            except Exception:
+                pass
+
+            # Post-process: swap banned fonts for our chosen heading font
+            _banned_re = re.compile(r"\b(Inter|Poppins|Roboto|Lato|Open\+Sans|Open Sans)\b", re.IGNORECASE)
+            if _banned_re.search(html):
+                html = re.sub(
+                    r'(href="https://fonts\.googleapis\.com/css2\?)[^"]*"',
+                    f'href="https://fonts.googleapis.com/css2?family={_font_slug}:ital,wght@0,400;0,700;0,900;1,400&display=swap"',
+                    html,
+                )
+                _fn = _heading_font.split(",")[0].strip("'\"")
+                html = re.sub(r"'Inter'",   f"'{_fn}'", html)
+                html = re.sub(r'"Inter"',   f'"{_fn}"', html)
+                html = re.sub(r"'Poppins'", f"'{_fn}'", html)
+                html = re.sub(r'"Poppins"', f'"{_fn}"', html)
+                html = re.sub(r"'Roboto'",  f"'{_fn}'", html)
+                logger.info("Post-processed font: replaced banned fonts with %s", _heading_font)
+
+            html = re.sub(r"```html?", "", html, flags=re.IGNORECASE).strip().rstrip("`").strip()
+            doctype_pos = html.lower().find("<!doctype")
+            if doctype_pos != -1:
+                body = html[doctype_pos:]
+                logger.info("HTML accepted (%d chars)", len(body))
+                return body
+            html_tag_pos = html.lower().find("<html")
+            if html_tag_pos != -1:
+                body = html[html_tag_pos:]
+                logger.info("HTML accepted via <html> path (%d chars)", len(body))
+                return "<!DOCTYPE html>\n" + body
+            logger.warning("HTML attempt %d REJECTED — no <!DOCTYPE> or <html>. Preview: %.300r", attempt + 1, html[:300])
         except Exception as e:
             elapsed = _time.monotonic() - t0
             logger.warning("HTML gen attempt %d FAILED in %.1fs — %s: %s", attempt + 1, elapsed, type(e).__name__, e)
 
-
-    raise RuntimeError("generate_landing_page_html: LLM failed to produce valid HTML after 3 attempts")
+    raise RuntimeError("generate_landing_page_html: LLM failed to produce valid HTML after 2 attempts")
