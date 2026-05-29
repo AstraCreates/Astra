@@ -669,25 +669,38 @@ def generate_landing_page_html(
     _rng = random.Random(_seed + 1)
     _vibe_instruction = _rng.choice(_STRUCTURES)
 
-    prompt = f"""Create a comprehensive, long single-page website for {name}. This should be a complete marketing site — not a minimal landing page. Make every section fully built out with real copy, real detail, real visual hierarchy.
+    prompt = f"""Act as an expert principal web designer and front-end developer. Create a fully coded, comprehensive single-page responsive website using standard HTML, Tailwind CSS (via CDN), and vanilla JavaScript. Write the complete code to index.html.
 
-Product: {headline}. {subheadline}
-Key features: {props_text}
+Business Context:
+Brand Name: {name}
+What we do: {headline}. {subheadline}
+Key capabilities: {props_text}
 CTA: "{cta_text}" → {cta_url}
-Brand: {_design_context or f"Design something world-class for {name}."}
+Design tokens: {_design_context or f"Choose a premium, modern aesthetic for {name}."}
 
-REQUIRED SECTIONS — every single one must be fully implemented:
-1. Nav bar with links to each section
-2. Hero — big headline, subheadline, CTA button, maybe a stats bar
-3. How it works — 3-4 steps with icons and real explanations
-4. Features — each value prop above with full descriptions, not just a title
-5. Testimonials — 3 detailed fake quotes with names, job titles, companies
-6. Pricing — 3 tiers (Starter/Pro/Business), monthly prices, feature lists with checkmarks
-7. FAQ — 5 questions with full paragraph answers
-8. Email waitlist / final CTA section
-9. Footer with links and © {name} 2026
+Make the page exceptionally long, content-rich, and feature-dense with these exact sections:
 
-Make it long. Make it rich. Make it feel like a real funded startup's website."""
+1. STICKY NAV — backdrop-blur, logo left, anchor links right, CTA button
+
+2. HERO — full-viewport, bold oversized typography, subtle animated gradient background, "scroll down" indicator, stat bar with 3-4 impressive numbers
+
+3. SOCIAL PROOF RIBBON — infinite auto-scrolling marquee of 6 partner/integration logos (use text emblems if no images)
+
+4. HOW IT WORKS — 3 numbered steps, each with an icon, bold title, and 2-sentence explanation
+
+5. FEATURES — asymmetric bento grid layout, each card has glassmorphism border, hover-lift, icon, title, and detailed description using the key capabilities above
+
+6. TESTIMONIALS — 3 detailed quotes, each with full name, job title, company, and avatar placeholder
+
+7. PRICING — 3 tiers (Starter/Pro/Business) with monthly prices, feature checklist, highlighted "most popular" tier
+
+8. FAQ — 6-item accordion with smooth JS slide toggle, plus/minus icon that animates on open
+
+9. WAITLIST CTA — full-width dark gradient section, compelling heading, email input + submit button with success state (JS), subtext
+
+10. FOOTER — 4 columns: sitemap links, contact info, newsletter input, social links. © {name} 2026
+
+Code requirements: Tailwind via CDN, Google Fonts, all JS inline. Functional accordion and waitlist form with success message."""
 
     from backend.tools._llm import generate
 
@@ -702,19 +715,8 @@ Make it long. Make it rich. Make it feel like a real funded startup's website.""
     from backend.tools.git_tools import _run_claude
 
     oc_prompt = (
-        f"Write a single-file HTML+CSS website to `index.html` using the Write tool RIGHT NOW.\n\n"
-        f"CRITICAL: Keep CSS simple and inline — no long animations, no complex keyframes. "
-        f"Use that space for CONTENT instead. Every section below is required.\n\n"
-        f"REQUIRED SECTIONS (all 9 must exist in the HTML, in this order):\n"
-        f"1. <nav> with logo and anchor links\n"
-        f"2. <section id='hero'> headline + subheadline + CTA button\n"
-        f"3. <section id='how-it-works'> 3 numbered steps\n"
-        f"4. <section id='features'> feature cards\n"
-        f"5. <section id='testimonials'> 3 quotes with name + title\n"
-        f"6. <section id='pricing'> 3 tiers with prices and feature lists\n"
-        f"7. <section id='faq'> 5 questions and answers\n"
-        f"8. <section id='waitlist'> email input + submit button\n"
-        f"9. <footer> links + copyright\n\n"
+        f"Write the complete HTML to `index.html` using the Write tool RIGHT NOW. "
+        f"No explanation, no markdown — just write the file immediately.\n\n"
         f"{prompt}"
     )
 
