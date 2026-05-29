@@ -368,10 +368,10 @@ class Agent:
                         f"You MUST NOT call it again. Call done with the results you already have."
                     )})
                     continue
-                # Auto-inject previously generated HTML into vercel_deploy call
-                if tool_name == "vercel_deploy" and "html" not in args and _large_results.get("generate_landing_page_html"):
+                # Always use the actual cached HTML — LLM may pass a truncated/regenerated version
+                if tool_name == "vercel_deploy" and _large_results.get("generate_landing_page_html"):
                     args["html"] = _large_results["generate_landing_page_html"]
-                    logger.debug("[%s] auto-injected cached HTML into vercel_deploy args", self.name)
+                    logger.debug("[%s] forced cached HTML into vercel_deploy args (%d chars)", self.name, len(args["html"]))
                 await self._emit(ctx, "agent_action", action="tool", tool=tool_name, args=args, reasoning=reasoning)
                 result = await self._execute_tool(tool_name, args, ctx)
                 await self._emit(ctx, "agent_action_result", tool=tool_name, result=result)

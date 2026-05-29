@@ -536,6 +536,16 @@ def vercel_deploy(project_slug: str, html: str, css: str = "", js: str = "") -> 
                 except Exception:
                     pass
             if r.returncode == 0 and url:
+                # Disable Vercel SSO/deployment protection so site is publicly accessible
+                try:
+                    requests.patch(
+                        f"https://api.vercel.com/v9/projects/{project_slug}",
+                        json={"ssoProtection": None},
+                        headers={"Authorization": f"Bearer {token}"},
+                        timeout=10,
+                    )
+                except Exception:
+                    pass
                 logger.info("vercel_deploy: %s", url)
                 return {"deployed": True, "url": url, "project": project_slug}
             logger.warning("vercel CLI deploy failed rc=%d: %s", r.returncode, (r.stdout + r.stderr)[:400])
