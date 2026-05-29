@@ -522,21 +522,24 @@ def run_mvp_loop(
         # Pass 1: write each required file that's missing — one fresh openclaude call per file
         missing = _missing_mvp_files(local, required_files)
         logger.info("Pass 1: %d files to write", len(missing))
+        # Complex files (backend) need more time — simple files (config) need less
+        _LARGE_FILES = {"backend/main.py", "backend/routers/api.py", "frontend/app/page.tsx",
+                        "frontend/app/dashboard/page.tsx"}
         for rel_path in missing:
+            file_timeout = 600 if rel_path in _LARGE_FILES else 300
             prompt = _file_prompt(rel_path, goal, context, local)
-            logger.info("  writing %s ...", rel_path)
-            _run_claude(local, prompt, session_id=None, timeout=300)
+            logger.info("  writing %s (timeout=%ds)...", rel_path, file_timeout)
+            _run_claude(local, prompt, session_id=None, timeout=file_timeout)
             # Verify file appeared
             if Path(local, rel_path).exists():
                 logger.info("  ✓ %s written", rel_path)
             else:
                 logger.warning("  ✗ %s NOT written — retry", rel_path)
-                # One retry with more explicit instruction
                 retry_prompt = (
                     f"Use your Write tool RIGHT NOW to create the file `{rel_path}` in the current directory. "
                     f"Project: {goal}. Write real, complete code. No explanations."
                 )
-                _run_claude(local, retry_prompt, session_id=None, timeout=300)
+                _run_claude(local, retry_prompt, session_id=None, timeout=file_timeout)
 
         _sanitize_package_json(local)
         sha = _commit_and_push(local, f"feat: mvp build — {goal[:50]}")
