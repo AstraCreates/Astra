@@ -1,0 +1,146 @@
+"""SafeRun action classification.
+
+SafeRun is Astra's trust layer: every potentially risky external action should
+have a visible intent, risk level, evidence context, and result.
+"""
+
+from __future__ import annotations
+
+import uuid
+from typing import Any
+
+
+_RISKY_TOOLS: dict[str, dict[str, str]] = {
+    "vercel_deploy": {
+        "risk_level": "high",
+        "category": "public_deploy",
+        "approval_gate": "public_deploy",
+        "reason": "Deploys a public-facing website or preview surface.",
+    },
+    "vercel_deploy_from_github": {
+        "risk_level": "high",
+        "category": "public_deploy",
+        "approval_gate": "public_deploy",
+        "reason": "Deploys a public-facing website from source control.",
+    },
+    "send_email_campaign": {
+        "risk_level": "high",
+        "category": "outbound_send",
+        "approval_gate": "outbound_send",
+        "reason": "Sends outbound email to prospects or customers.",
+    },
+    "composio_gmail_send": {
+        "risk_level": "high",
+        "category": "outbound_send",
+        "approval_gate": "outbound_send",
+        "reason": "Sends email from a connected Gmail account.",
+    },
+    "resend_send_email": {
+        "risk_level": "high",
+        "category": "outbound_send",
+        "approval_gate": "outbound_send",
+        "reason": "Sends email through Resend.",
+    },
+    "composio_linkedin_post": {
+        "risk_level": "high",
+        "category": "public_post",
+        "approval_gate": "public_deploy",
+        "reason": "Publishes public social content.",
+    },
+    "build_crm_contact": {
+        "risk_level": "medium",
+        "category": "crm_write",
+        "approval_gate": "outbound_send",
+        "reason": "Creates or prepares a CRM/customer record.",
+    },
+    "github_create_repo": {
+        "risk_level": "medium",
+        "category": "code_change",
+        "approval_gate": "public_deploy",
+        "reason": "Creates source-control infrastructure.",
+    },
+    "composio_github_create_pr": {
+        "risk_level": "medium",
+        "category": "code_change",
+        "approval_gate": "public_deploy",
+        "reason": "Creates a pull request in a connected repository.",
+    },
+    "composio_github_create_issue": {
+        "risk_level": "low",
+        "category": "project_write",
+        "approval_gate": "public_deploy",
+        "reason": "Creates a project-management issue.",
+    },
+    "create_stripe_product": {
+        "risk_level": "high",
+        "category": "billing",
+        "approval_gate": "legal_publish",
+        "reason": "Creates billing objects in a connected Stripe account.",
+    },
+    "create_stripe_price": {
+        "risk_level": "high",
+        "category": "billing",
+        "approval_gate": "legal_publish",
+        "reason": "Creates pricing objects in a connected Stripe account.",
+    },
+    "create_stripe_payment_link": {
+        "risk_level": "high",
+        "category": "billing",
+        "approval_gate": "legal_publish",
+        "reason": "Creates a customer-facing payment link.",
+    },
+    "register_stripe_webhook": {
+        "risk_level": "medium",
+        "category": "billing_integration",
+        "approval_gate": "legal_publish",
+        "reason": "Changes Stripe integration behavior.",
+    },
+    "cloudflare_setup_vercel_domain": {
+        "risk_level": "high",
+        "category": "dns_change",
+        "approval_gate": "public_deploy",
+        "reason": "Changes public DNS/domain configuration.",
+    },
+    "cloudflare_setup_email_dns": {
+        "risk_level": "high",
+        "category": "dns_change",
+        "approval_gate": "outbound_send",
+        "reason": "Changes email DNS configuration.",
+    },
+}
+
+
+_SECRET_HINTS = ("token", "secret", "password", "api_key", "access_token", "authorization")
+
+
+def _safe_args(args: dict[str, Any]) -> dict[str, Any]:
+    safe: dict[str, Any] = {}
+    for key, value in args.items():
+        if any(hint in key.lower() for hint in _SECRET_HINTS):
+            safe[key] = "[redacted]"
+        elif isinstance(value, str):
+            safe[key] = value[:220] + ("..." if len(value) > 220 else "")
+        elif isinstance(value, (int, float, bool)) or value is None:
+            safe[key] = value
+        else:
+            safe[key] = str(value)[:220]
+    return safe
+
+
+def build_saferun_action(tool_name: str, args: dict[str, Any], agent_name: str) -> dict[str, Any] | None:
+    spec = _RISKY_TOOLS.get(tool_name)
+    if not spec:
+        return None
+    return {
+        "id": f"sr_{uuid.uuid4().hex[:10]}",
+        "tool": tool_name,
+        "agent": agent_name,
+        "risk_level": spec["risk_level"],
+        "category": spec["category"],
+        "approval_gate": spec["approval_gate"],
+        "approval_required": spec["risk_level"] in {"medium", "high"},
+        "mode": "approval_required" if spec["risk_level"] in {"medium", "high"} else "audit_only",
+        "reason": spec["reason"],
+        "args_preview": _safe_args(args),
+        "status": "planned",
+    }

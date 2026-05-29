@@ -23,6 +23,7 @@ SOURCE_CATALOG: dict[str, dict[str, str]] = {
     "google_drive": {"label": "Google Drive", "kind": "files"},
     "google_workspace": {"label": "Google Workspace", "kind": "docs"},
     "gmail": {"label": "Gmail", "kind": "email"},
+    "obsidian": {"label": "Obsidian", "kind": "company_brain"},
     "confluence": {"label": "Confluence", "kind": "docs"},
     "zendesk": {"label": "Zendesk", "kind": "support"},
     "granola": {"label": "Granola", "kind": "meetings"},
@@ -78,6 +79,13 @@ CONNECTOR_REQUIREMENTS: dict[str, dict[str, Any]] = {
         "setup_hint": "Save a Google OAuth access token with Gmail readonly scope, or connect Gmail through Composio.",
         "importer": True,
     },
+    "obsidian": {
+        "credential_fields": ["vault_path"],
+        "oauth_apps": [],
+        "setup_url": "obsidian://open",
+        "setup_hint": "Save a local Obsidian vault path. Astra will import Markdown notes that the backend can read.",
+        "importer": True,
+    },
     "confluence": {
         "credential_fields": ["base_url", "email", "api_token"],
         "oauth_apps": [],
@@ -101,7 +109,7 @@ CONNECTOR_REQUIREMENTS: dict[str, dict[str, Any]] = {
     },
 }
 
-DEFAULT_SOURCES = ["github", "notion", "linear", "gmail", "google_drive", "slack"]
+DEFAULT_SOURCES = ["github", "notion", "linear", "gmail", "google_drive", "slack", "obsidian"]
 
 STOP_WORDS = {
     "that", "with", "from", "this", "have", "will", "into", "your", "their",
@@ -188,6 +196,18 @@ def _empty_brain(founder_id: str) -> dict[str, Any]:
             "last_error": "",
             "history": [],
         },
+        "access_control": {
+            "owner_id": founder_id,
+            "roles": {
+                founder_id: "owner",
+            },
+            "role_permissions": {
+                "owner": ["read", "write", "admin", "approve", "export"],
+                "admin": ["read", "write", "approve", "export"],
+                "operator": ["read", "write"],
+                "viewer": ["read"],
+            },
+        },
     }
 
 
@@ -220,6 +240,7 @@ def _load(founder_id: str) -> dict[str, Any]:
         "last_error": "",
         "history": [],
     })
+    data.setdefault("access_control", _empty_brain(founder_id)["access_control"])
     for key, meta in SOURCE_CATALOG.items():
         data["sources"].setdefault(key, {
             "key": key,
@@ -263,6 +284,11 @@ def _record(
     canonical: bool = False,
     stale_risk: str = "medium",
     metadata: dict[str, Any] | None = None,
+    owner_id: str | None = None,
+    visibility: str = "team",
+    allowed_roles: list[str] | None = None,
+    version: int = 1,
+    previous_version_id: str | None = None,
 ) -> dict[str, Any]:
     content = re.sub(r"\s+", " ", content).strip()
     meta = metadata or {}
@@ -270,6 +296,9 @@ def _record(
     domain = meta.get("domain") or _infer_domain(title, content)
     return {
         "id": _record_id(source, title, content),
+        "version_id": _record_id(source, title, f"{content}:{version}:{previous_version_id or ''}"),
+        "version": version,
+        "previous_version_id": previous_version_id,
         "source": source,
         "kind": kind or SOURCE_CATALOG.get(source, {}).get("kind", "note"),
         "title": title.strip()[:180] or "Untitled",
@@ -280,6 +309,9 @@ def _record(
         "status": status,
         "domain": domain,
         "supersedes": meta.get("supersedes", []),
+        "owner_id": owner_id or meta.get("owner_id") or "",
+        "visibility": visibility or meta.get("visibility") or "team",
+        "allowed_roles": allowed_roles or meta.get("allowed_roles") or ["owner", "admin", "operator", "viewer"],
         "updated_at": _now(),
         "metadata": meta,
     }
@@ -295,6 +327,64 @@ def _upsert_records(data: dict[str, Any], records: list[dict[str, Any]]) -> int:
             changed += 1
     data["records"] = sorted(existing.values(), key=lambda r: (r.get("source", ""), r.get("title", "")))
     return changed
+
+
+def _viewer_role(data: dict[str, Any], viewer_id: str | None) -> str:
+    access = data.get("access_control") or {}
+    roles = access.get("roles") or {}
+    if viewer_id and viewer_id in roles:
+        return str(roles[viewer_id])
+    if viewer_id and viewer_id == access.get("owner_id"):
+        return "owner"
+    return "owner" if not viewer_id else "viewer"
+
+
+def _role_permissions(data: dict[str, Any], role: str) -> set[str]:
+    access = data.get("access_control") or {}
+    permissions = (access.get("role_permissions") or {}).get(role) or []
+    return set(permissions)
+
+
+def _can_read_record(record: dict[str, Any], role: str, viewer_id: str | None = None) -> bool:
+    visibility = record.get("visibility") or "team"
+    if visibility == "private" and record.get("owner_id") and record.get("owner_id") != viewer_id and role != "owner":
+        return False
+    allowed = set(record.get("allowed_roles") or ["owner", "admin", "operator", "viewer"])
+    return role in allowed or role == "owner"
+
+
+def _filter_readable_records(data: dict[str, Any], viewer_id: str | None = None) -> list[dict[str, Any]]:
+    role = _viewer_role(data, viewer_id)
+    if "read" not in _role_permissions(data, role) and role != "owner":
+        return []
+    return [record for record in data.get("records", []) if _can_read_record(record, role, viewer_id)]
+
+
+def configure_company_brain_access(
+    founder_id: str,
+    roles: dict[str, str] | None = None,
+    role_permissions: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    """Configure team roles and permission grants for Company Brain access."""
+    data = _load(founder_id)
+    access = data.setdefault("access_control", _empty_brain(founder_id)["access_control"])
+    access["owner_id"] = access.get("owner_id") or founder_id
+    if roles:
+        allowed_roles = {"owner", "admin", "operator", "viewer"}
+        current = dict(access.get("roles") or {})
+        for member_id, role in roles.items():
+            if role in allowed_roles:
+                current[str(member_id)] = role
+        current[founder_id] = "owner"
+        access["roles"] = current
+    if role_permissions:
+        current_permissions = dict(access.get("role_permissions") or {})
+        for role, permissions in role_permissions.items():
+            current_permissions[str(role)] = sorted(set(str(item) for item in permissions))
+        access["role_permissions"] = current_permissions
+    data["access_control"] = access
+    _save(founder_id, data)
+    return {"ok": True, "access_control": access}
 
 
 def _keywords(text: str, limit: int = 8) -> list[str]:

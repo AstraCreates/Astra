@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import LiquidGlass from "@/components/LiquidGlass";
-import { AGENT_LABELS } from "@/lib/api";
+import { AGENT_LABELS, askCompanyBrain } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -29,14 +29,30 @@ interface AgentRun {
   summary: string;
 }
 
+interface ReportCitation {
+  index: number;
+  title: string;
+  source: string;
+  canonical: boolean;
+}
+
 interface Message {
   id: string;
-  role: "user" | "agents";
+  role: "user" | "agents" | "report";
   text: string;
   timestamp: number;
   sessionId?: string;
   runs?: AgentRun[];
+  citations?: ReportCitation[];
+  confidence?: number;
   done?: boolean;
+}
+
+function isReportQuestion(text: string): boolean {
+  const q = text.toLowerCase();
+  const reportTerms = ["what did", "last week", "this week", "subteam", "team do", "worked on", "assigned", "blockers"];
+  const teams = ["engineering", "growth", "sales", "marketing", "product", "support", "ops", "legal"];
+  return reportTerms.some(term => q.includes(term)) && teams.some(team => q.includes(team));
 }
 
 export default function CompanyChat({
@@ -75,6 +91,36 @@ export default function CompanyChat({
   async function send(text: string) {
     if (!text.trim() || busy) return;
     const userMsg: Message = { id: crypto.randomUUID(), role: "user", text, timestamp: Date.now() };
+    if (isReportQuestion(text)) {
+      const reportMsg: Message = { id: crypto.randomUUID(), role: "report", text: "Checking Company Brain…", timestamp: Date.now(), done: false };
+      setMessages(prev => [...prev, userMsg, reportMsg]);
+      setInput("");
+      setBusy(true);
+      try {
+        const answer = await askCompanyBrain(founderId, text, 8);
+        setMessages(prev => prev.map(m => m.id === reportMsg.id ? {
+          ...m,
+          text: answer.answer,
+          citations: answer.citations?.slice(0, 5).map(citation => ({
+            index: citation.index,
+            title: citation.title,
+            source: citation.source,
+            canonical: citation.canonical,
+          })) ?? [],
+          confidence: answer.confidence,
+          done: true,
+        } : m));
+      } catch (err) {
+        setMessages(prev => prev.map(m => m.id === reportMsg.id ? {
+          ...m,
+          text: err instanceof Error ? err.message : "Could not answer from Company Brain.",
+          done: true,
+        } : m));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     const agentMsg: Message = { id: crypto.randomUUID(), role: "agents", text: "", timestamp: Date.now(), runs: [], done: false };
     setMessages(prev => [...prev, userMsg, agentMsg]);
     setInput("");
@@ -151,6 +197,27 @@ export default function CompanyChat({
                 background: "var(--action)", color: "var(--action-text)", fontSize: 14, lineHeight: 1.5,
               }}>
                 {msg.text}
+              </div>
+            ) : msg.role === "report" ? (
+              <div style={{ width: "100%", display: "grid", gap: 8 }}>
+                <div style={{ padding: "12px 14px", borderRadius: 16, border: "1px solid var(--line)", background: "rgba(255,255,255,0.035)", display: "grid", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>Company Brain report</span>
+                    {typeof msg.confidence === "number" && (
+                      <span style={{ fontSize: 10, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{Math.round(msg.confidence * 100)}% confidence</span>
+                    )}
+                  </div>
+                  <p style={{ fontSize: 13, color: "var(--text-2)", margin: 0, lineHeight: 1.55 }}>{msg.text}</p>
+                  {!!msg.citations?.length && (
+                    <div style={{ display: "grid", gap: 5, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+                      {msg.citations.map(citation => (
+                        <span key={`${citation.index}-${citation.title}`} style={{ fontSize: 11, color: "var(--text-2)", lineHeight: 1.4 }}>
+                          [{citation.index}] {citation.title} · {citation.source}{citation.canonical ? " · canonical" : ""}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 8 }}>
