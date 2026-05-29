@@ -502,6 +502,7 @@ def vercel_deploy(project_slug: str, html: str, css: str = "", js: str = "") -> 
     if not vercel_bin:
         return _local_fallback(project_slug, html, css, js)
 
+    import json as _json
     with tempfile.TemporaryDirectory() as tmpdir:
         with open(_os.path.join(tmpdir, "index.html"), "w") as f:
             f.write(html)
@@ -511,19 +512,24 @@ def vercel_deploy(project_slug: str, html: str, css: str = "", js: str = "") -> 
         if js:
             with open(_os.path.join(tmpdir, "app.js"), "w") as f:
                 f.write(js)
+        # vercel CLI requires vercel.json for static HTML (single-file deploys removed)
+        with open(_os.path.join(tmpdir, "vercel.json"), "w") as f:
+            _json.dump({"version": 2, "builds": [{"src": "index.html", "use": "@vercel/static"}], "routes": [{"src": "(.*)", "dest": "index.html"}]}, f)
 
         env = _os.environ.copy()
         env["VERCEL_TOKEN"] = token
         try:
             r = subprocess.run(
-                [vercel_bin, "--prod", "--yes", "--scope", "astratestingmail-9022s-projects"],
+                [vercel_bin, "--prod", "--yes",
+                 "--name", project_slug,
+                 "--scope", "astratestingmail-9022s-projects"],
                 cwd=tmpdir, capture_output=True, text=True, timeout=120, env=env,
             )
             url = next((l.strip() for l in r.stdout.splitlines() if l.strip().startswith("https://")), "")
             if r.returncode == 0 and url:
                 logger.info("vercel_deploy: %s", url)
                 return {"deployed": True, "url": url, "project": project_slug}
-            logger.warning("vercel CLI deploy failed: %s", (r.stdout + r.stderr)[:300])
+            logger.warning("vercel CLI deploy failed rc=%d: %s", r.returncode, (r.stdout + r.stderr)[:400])
         except Exception as e:
             logger.error("vercel_deploy CLI failed: %s", e)
 
@@ -773,12 +779,6 @@ Output ONLY the completed HTML — no explanation, no markdown fences.
                 html = index.read_text(encoding="utf-8")
                 elapsed = _time.monotonic() - t0
                 logger.info("HTML gen attempt %d done in %.1fs — %d chars", attempt + 1, elapsed, len(html))
-                _preview_path = "/tmp/astra_last_html.html"
-                try:
-                    open(_preview_path, "w").write(html)
-                    logger.info("HTML saved to %s", _preview_path)
-                except Exception:
-                    pass
 
             # Post-process: swap banned fonts for our chosen heading font
             _banned_re = re.compile(r"\b(Inter|Poppins|Roboto|Lato|Open\+Sans|Open Sans)\b", re.IGNORECASE)
@@ -800,14 +800,59 @@ Output ONLY the completed HTML — no explanation, no markdown fences.
             doctype_pos = html.lower().find("<!doctype")
             if doctype_pos != -1:
                 body = html[doctype_pos:]
-                logger.info("HTML accepted (%d chars)", len(body))
-                return body
-            html_tag_pos = html.lower().find("<html")
-            if html_tag_pos != -1:
-                body = html[html_tag_pos:]
-                logger.info("HTML accepted via <html> path (%d chars)", len(body))
-                return "<!DOCTYPE html>\n" + body
-            logger.warning("HTML attempt %d REJECTED — no <!DOCTYPE> or <html>. Preview: %.300r", attempt + 1, html[:300])
+            else:
+                html_tag_pos = html.lower().find("<html")
+                if html_tag_pos != -1:
+                    body = "<!DOCTYPE html>\n" + html[html_tag_pos:]
+                    logger.info("HTML accepted via <html> path (%d chars)", len(body))
+                else:
+                    logger.warning("HTML attempt %d REJECTED — no <!DOCTYPE> or <html>. Preview: %.300r", attempt + 1, html[:300])
+                    continue
+
+            # 2nd pass: review and improve the HTML for design quality
+            logger.info("HTML accepted (%d chars) — running 2nd-pass design review …", len(body))
+            review_prompt = (
+                f"{_design_system_prompt}\n\n"
+                "You are reviewing the following landing page HTML for design quality. "
+                "Identify and fix ALL of these issues if present:\n"
+                "- Generic hero copy (\"build your dreams\", \"launch faster\", etc.) — replace with specific copy\n"
+                "- Vibe-coded signals: sparkles ✨, random emojis, unjustified purple gradients\n"
+                "- Inconsistent spacing, mismatched border radii\n"
+                "- Missing or broken interactive elements (accordion not toggling, counter not animating)\n"
+                "- Any section that looks empty or has placeholder text\n"
+                "- Missing mobile responsiveness\n\n"
+                "Output ONLY the complete improved HTML — no explanation, no markdown fences.\n\n"
+                + body
+            )
+            review_oc_prompt = (
+                "Review and improve this HTML, then write the final version to `index.html` using the Write tool. "
+                "No explanation — just write the improved file immediately.\n\n"
+                + review_prompt
+            )
+            try:
+                with tempfile.TemporaryDirectory() as review_dir:
+                    _run_claude(review_dir, review_oc_prompt, session_id=None, timeout=480, model="Qwen/Qwen3.6-35B-A3B")
+                    reviewed = (_Path(review_dir) / "index.html")
+                    if reviewed.exists():
+                        reviewed_html = reviewed.read_text(encoding="utf-8")
+                        reviewed_html = re.sub(r"```html?", "", reviewed_html, flags=re.IGNORECASE).strip().rstrip("`").strip()
+                        dp = reviewed_html.lower().find("<!doctype")
+                        if dp != -1:
+                            body = reviewed_html[dp:]
+                            logger.info("2nd-pass review complete — %d chars", len(body))
+                        else:
+                            logger.warning("2nd-pass review produced no DOCTYPE — keeping original")
+                    else:
+                        logger.warning("2nd-pass review did not write index.html — keeping original")
+            except Exception as rev_err:
+                logger.warning("2nd-pass review failed (%s) — keeping original", rev_err)
+
+            try:
+                open("/tmp/astra_last_html.html", "w").write(body)
+            except Exception:
+                pass
+            logger.info("HTML final (%d chars)", len(body))
+            return body
         except Exception as e:
             elapsed = _time.monotonic() - t0
             logger.warning("HTML gen attempt %d FAILED in %.1fs — %s: %s", attempt + 1, elapsed, type(e).__name__, e)
