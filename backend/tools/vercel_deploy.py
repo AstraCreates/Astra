@@ -672,14 +672,21 @@ def generate_landing_page_html(
     prompt = f"""Create a stunning single-file HTML+CSS website for {name}.
 
 Product: {headline}. {subheadline}
-Key points to include: {props_text}
+Key features to cover: {props_text}
 CTA: "{cta_text}" → {cta_url}
 Brand: {_design_context or f"Design something world-class for {name}."}
 
-LAYOUT STRUCTURE — implement this exactly, it is the page structure:
-{_vibe_instruction}
+The site must include all of these content sections (in whatever order and layout makes sense):
+- Hero: compelling headline + subheadline + CTA
+- How it works: step-by-step or visual explanation of the product
+- Features: the key value props above, presented creatively
+- Social proof: 2-3 made-up testimonials with names/titles
+- Pricing: 3 tiers (Free/Pro/Enterprise or equivalent), include fake prices
+- FAQ: 4-5 relevant questions and answers
+- Final CTA / waitlist: email capture form
+- Footer: links, copyright © {name} 2026
 
-© {name} 2026."""
+Be creative with layout — don't default to the generic hero→cards grid→CTA pattern. Make it memorable."""
 
     from backend.tools._llm import generate
 
