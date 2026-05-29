@@ -492,53 +492,42 @@ def vercel_deploy_from_github(
 
 
 def vercel_deploy(project_slug: str, html: str, css: str = "", js: str = "") -> dict:
-    """Deploy HTML to Vercel. Args: project_slug (url-safe name), html (full HTML string), css (optional), js (optional). Returns: {deployed, url} or {deployed: false, local_path}."""
+    """Deploy HTML to Vercel via CLI. Returns: {deployed, url} or {deployed: false, local_path}."""
+    import tempfile, os as _os
     token = getattr(settings, "vercel_token", None)
-
     if not token:
         return _local_fallback(project_slug, html, css, js)
 
-    files = [
-        {"file": "index.html", "data": html, "encoding": "utf-8"},
-    ]
-    if css:
-        files.append({"file": "styles.css", "data": css, "encoding": "utf-8"})
-    if js:
-        files.append({"file": "app.js", "data": js, "encoding": "utf-8"})
-
-    try:
-        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-
-        # Resolve team ID from the token owner
-        user_resp = requests.get(f"{_VERCEL_API}/v2/user", headers=headers, timeout=10)
-        team_id = None
-        if user_resp.ok:
-            team_id = user_resp.json().get("user", {}).get("defaultTeamId")
-
-        deploy_url = f"{_VERCEL_API}/v13/deployments"
-        if team_id:
-            deploy_url += f"?teamId={team_id}"
-
-        # Create deployment
-        payload = {
-            "name": project_slug,
-            "files": files,
-            "projectSettings": {"framework": None},
-            "target": "production",
-        }
-        resp = requests.post(deploy_url, json=payload, headers=headers, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-        url = f"https://{data.get('url', '')}"
-        return {
-            "deployed": True,
-            "url": url,
-            "deployment_id": data.get("id"),
-            "project": project_slug,
-        }
-    except Exception as e:
-        logger.error("vercel_deploy failed: %s", e)
+    vercel_bin = subprocess.run(["which", "vercel"], capture_output=True, text=True).stdout.strip()
+    if not vercel_bin:
         return _local_fallback(project_slug, html, css, js)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        with open(_os.path.join(tmpdir, "index.html"), "w") as f:
+            f.write(html)
+        if css:
+            with open(_os.path.join(tmpdir, "styles.css"), "w") as f:
+                f.write(css)
+        if js:
+            with open(_os.path.join(tmpdir, "app.js"), "w") as f:
+                f.write(js)
+
+        env = _os.environ.copy()
+        env["VERCEL_TOKEN"] = token
+        try:
+            r = subprocess.run(
+                [vercel_bin, "--prod", "--yes", "--scope", "astratestingmail-9022s-projects"],
+                cwd=tmpdir, capture_output=True, text=True, timeout=120, env=env,
+            )
+            url = next((l.strip() for l in r.stdout.splitlines() if l.strip().startswith("https://")), "")
+            if r.returncode == 0 and url:
+                logger.info("vercel_deploy: %s", url)
+                return {"deployed": True, "url": url, "project": project_slug}
+            logger.warning("vercel CLI deploy failed: %s", (r.stdout + r.stderr)[:300])
+        except Exception as e:
+            logger.error("vercel_deploy CLI failed: %s", e)
+
+    return _local_fallback(project_slug, html, css, js)
 
 
 def _local_fallback(project_slug: str, html: str, css: str, js: str) -> dict:
