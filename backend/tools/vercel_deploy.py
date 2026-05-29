@@ -669,17 +669,17 @@ def generate_landing_page_html(
     _rng = random.Random(_seed + 1)
     _vibe_instruction = _rng.choice(_STRUCTURES)
 
-    prompt = f"""Create a fancy, visually stunning HTML and CSS landing page for {name}.
+    prompt = f"""Create a stunning single-file HTML+CSS website for {name}.
 
-{headline}. {subheadline}
-
-What it does: {props_text}
-
+Product: {headline}. {subheadline}
+Key points to include: {props_text}
 CTA: "{cta_text}" → {cta_url}
+Brand: {_design_context or f"Design something world-class for {name}."}
 
-Brand context: {_design_context or f"Design something incredible for {name}."}
+LAYOUT STRUCTURE — implement this exactly, it is the page structure:
+{_vibe_instruction}
 
-Make it look world-class. Be creative with the layout — surprise us. © {name} 2026."""
+© {name} 2026."""
 
     from backend.tools._llm import generate
 
