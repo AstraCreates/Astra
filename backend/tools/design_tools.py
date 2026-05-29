@@ -56,7 +56,8 @@ def generate_color_palette(
     Generate a complete brand color palette with usage guidelines.
     brand_vibe: bold | minimal | friendly | professional | innovative | calm
     """
-    palettes = {
+    # Fallback lookup table (used only if LLM call fails)
+    _fallback_palettes = {
         "bold": {
             "primary": primary_hex or "#FF3B30",
             "secondary": "#FF9500",
@@ -119,9 +120,41 @@ def generate_color_palette(
         },
     }
 
-    palette = palettes.get(brand_vibe, palettes["minimal"])
-    if primary_hex:
-        palette["primary"] = primary_hex
+    # Attempt LLM-generated contextual palette
+    palette = None
+    try:
+        from backend.tools._llm import generate as _llm_generate
+        prompt = (
+            f"You are a brand color expert. Generate a color palette for:\n"
+            f"Brand name: {brand_name or '(not specified)'}\n"
+            f"Industry: {industry or '(not specified)'}\n"
+            f"Brand vibe: {brand_vibe}\n"
+            f"Primary color override: {primary_hex or '(none — choose the best primary)'}\n\n"
+            f"Return ONLY a JSON object with exactly these keys: "
+            f"primary, secondary, accent, background, surface, text_primary, text_secondary, border. "
+            f"Values must be hex color codes (e.g. #1A2B3C). "
+            f"Ensure sufficient contrast ratios. "
+            f"{'Use ' + primary_hex + ' as the primary color.' if primary_hex else ''} "
+            f"Match the brand vibe and industry appropriately."
+        )
+        raw = _llm_generate(prompt, max_tokens=300, json_mode=True, model="fast", temperature=0.5)
+        parsed = json.loads(raw)
+        # Validate all required keys are present and look like hex colors
+        required_keys = {"primary", "secondary", "accent", "background", "surface", "text_primary", "text_secondary", "border"}
+        if required_keys.issubset(parsed.keys()) and all(
+            isinstance(parsed[k], str) and parsed[k].startswith("#") and len(parsed[k]) in (4, 7)
+            for k in required_keys
+        ):
+            palette = {k: parsed[k] for k in required_keys}
+            if primary_hex:
+                palette["primary"] = primary_hex
+    except Exception as e:
+        logger.warning("LLM color palette generation failed, using fallback: %s", e)
+
+    if palette is None:
+        palette = _fallback_palettes.get(brand_vibe, _fallback_palettes["minimal"])
+        if primary_hex:
+            palette["primary"] = primary_hex
 
     return {
         "brand_vibe": brand_vibe,
@@ -165,7 +198,7 @@ def generate_design_spec(
         "product_type": product_type,
         "target_audience": target_audience,
         "design_principles": _design_principles(brand_vibe),
-        "typography": _typography_spec(brand_vibe),
+        "typography": _typography_spec(brand_vibe, brand_name=product_name, industry=product_type),
         "spacing_system": {
             "base_unit": "4px",
             "scale": [4, 8, 12, 16, 20, 24, 32, 40, 48, 64, 80, 96],
@@ -244,39 +277,32 @@ def generate_logo_brief(
     }
 
 
+def _wireframe_llm_description(page_type: str, sections, style: str, audience: str) -> str:
+    """Call LLM to generate a contextual layout description for a page."""
+    try:
+        from backend.tools._llm import generate as _llm_generate
+        sections_str = ", ".join(sections) if sections else "standard sections"
+        prompt = (
+            f"You are a UX designer writing a concise wireframe description.\n"
+            f"Page type: {page_type}\n"
+            f"Style: {style}\n"
+            f"Target audience: {audience or 'general users'}\n"
+            f"Sections to include: {sections_str}\n\n"
+            f"Write 2-4 sentences describing the page layout, visual hierarchy, key UI zones, "
+            f"and how the sections are arranged. Be specific and practical — mention placement "
+            f"(top, left sidebar, hero area, grid, etc.), component types, and how the style "
+            f"influences the layout. Do not use ASCII art. Plain prose only."
+        )
+        return _llm_generate(prompt, max_tokens=200, model="fast", temperature=0.6)
+    except Exception as e:
+        logger.warning("LLM wireframe description failed for %s: %s", page_type, e)
+        return f"{page_type.capitalize()} page layout with {style} style for {audience or 'general users'}."
+
+
 def _landing_wireframe(sections, style, audience):
-    ascii_art = """
-┌─────────────────────────────────────────┐
-│  LOGO          Nav: Features Pricing CTA │
-├─────────────────────────────────────────┤
-│                                         │
-│         HERO HEADLINE (H1)              │
-│      Supporting subheadline text        │
-│                                         │
-│   [Primary CTA]    [Secondary CTA]      │
-│                                         │
-│   ████████ Social proof / logos ████   │
-├─────────────────────────────────────────┤
-│  Feature 1  │  Feature 2  │  Feature 3  │
-│  Icon+Text  │  Icon+Text  │  Icon+Text  │
-├─────────────────────────────────────────┤
-│         HOW IT WORKS (H2)               │
-│  Step 1 ──► Step 2 ──► Step 3          │
-├─────────────────────────────────────────┤
-│         TESTIMONIALS                    │
-│  "Quote" - Name, Company               │
-├─────────────────────────────────────────┤
-│         PRICING SECTION                 │
-│  [Free]  │  [Pro $X/mo]  │  [Enterprise]│
-├─────────────────────────────────────────┤
-│         FAQ                             │
-│  Question ▼  │  Question ▼             │
-├─────────────────────────────────────────┤
-│  Footer: Links | © Company | Privacy   │
-└─────────────────────────────────────────┘
-"""
+    description = _wireframe_llm_description("landing", sections, style, audience)
     return {
-        "ascii": ascii_art,
+        "ascii": description,
         "components": ["NavBar", "HeroSection", "SocialProof", "FeatureGrid", "HowItWorks", "Testimonials", "Pricing", "FAQ", "Footer"],
         "copy_guidelines": {
             "headline": "Problem-focused, outcome-driven, max 8 words",
@@ -287,24 +313,9 @@ def _landing_wireframe(sections, style, audience):
 
 
 def _dashboard_wireframe(sections, style, audience):
-    ascii_art = """
-┌─────────────────────────────────────────┐
-│ LOGO │ Search         │ Notif  Avatar   │
-├──────┼──────────────────────────────────┤
-│      │  ┌──────────┐  ┌──────────────┐ │
-│ Nav  │  │ Metric 1 │  │  Metric 2    │ │
-│      │  └──────────┘  └──────────────┘ │
-│ Home │  ┌──────────────────────────────┐│
-│ ...  │  │     Main Chart / Graph       ││
-│ ...  │  └──────────────────────────────┘│
-│ ...  │  ┌──────────┐  ┌──────────────┐ │
-│      │  │  Table   │  │  Recent Acts │ │
-│      │  │          │  │              │ │
-│ [+]  │  └──────────┘  └──────────────┘ │
-└──────┴──────────────────────────────────┘
-"""
+    description = _wireframe_llm_description("dashboard", sections, style, audience)
     return {
-        "ascii": ascii_art,
+        "ascii": description,
         "components": ["Sidebar", "TopNav", "MetricCards", "ChartArea", "DataTable", "ActivityFeed"],
         "copy_guidelines": {
             "metric_labels": "Short, clear. Show delta vs previous period.",
@@ -314,26 +325,9 @@ def _dashboard_wireframe(sections, style, audience):
 
 
 def _onboarding_wireframe(sections, style, audience):
-    ascii_art = """
-┌─────────────────────────────────────────┐
-│  LOGO              Step 1 of 3 ●──○──○  │
-├─────────────────────────────────────────┤
-│                                         │
-│         Welcome, [Name]!                │
-│                                         │
-│   Tell us about your company            │
-│                                         │
-│   Company name: [____________]          │
-│   Industry:     [____________]          │
-│   Team size:    [____________]          │
-│                                         │
-│              [Continue →]              │
-│                                         │
-│   Already have account? [Sign in]       │
-└─────────────────────────────────────────┘
-"""
+    description = _wireframe_llm_description("onboarding", sections, style, audience)
     return {
-        "ascii": ascii_art,
+        "ascii": description,
         "components": ["ProgressBar", "StepForm", "InputFields", "ContinueButton"],
         "copy_guidelines": {
             "heading": "Warm, personal. Use their name if available.",
@@ -344,25 +338,9 @@ def _onboarding_wireframe(sections, style, audience):
 
 
 def _pricing_wireframe(sections, style, audience):
-    ascii_art = """
-┌─────────────────────────────────────────┐
-│         PRICING (H1)                    │
-│    [Monthly]  [Annual -20%]             │
-├──────────┬──────────────┬───────────────┤
-│  FREE    │   PRO        │  ENTERPRISE   │
-│  $0/mo   │  $X/mo       │  Custom       │
-│──────────│──────────────│───────────────│
-│ ✓ feat   │ ✓ feat       │ ✓ Everything  │
-│ ✓ feat   │ ✓ feat       │ ✓ Custom SSO  │
-│ ✗ feat   │ ✓ feat       │ ✓ SLA         │
-│          │              │               │
-│ [Start]  │ [Start Free] │ [Contact Us]  │
-└──────────┴──────────────┴───────────────┘
-│  FAQ: Common questions about billing    │
-└─────────────────────────────────────────┘
-"""
+    description = _wireframe_llm_description("pricing", sections, style, audience)
     return {
-        "ascii": ascii_art,
+        "ascii": description,
         "components": ["PricingToggle", "PricingCards", "FeatureComparison", "PricingFAQ"],
         "copy_guidelines": {
             "tier_names": "Name tiers after outcomes, not features (e.g. 'Starter' vs 'Free')",
@@ -372,20 +350,9 @@ def _pricing_wireframe(sections, style, audience):
 
 
 def _settings_wireframe(sections, style, audience):
-    ascii_art = """
-┌─────────────────────────────────────────┐
-│  ← Back  │  Settings                   │
-├──────────┼──────────────────────────────┤
-│ Profile  │  Profile Settings            │
-│ Team     │  Name:    [____________]     │
-│ Billing  │  Email:   [____________]     │
-│ API Keys │  Avatar:  [Upload]           │
-│ Notifs   │                              │
-│ Danger   │  [Save Changes]              │
-└──────────┴──────────────────────────────┘
-"""
+    description = _wireframe_llm_description("settings", sections, style, audience)
     return {
-        "ascii": ascii_art,
+        "ascii": description,
         "components": ["SettingsSidebar", "SettingsPanel", "FormFields", "SaveButton", "DangerZone"],
         "copy_guidelines": {
             "danger_zone": "Clear warning copy. Destructive actions require confirm step.",
@@ -416,8 +383,8 @@ def _design_principles(vibe: str) -> list:
     return base + extras.get(vibe, [])
 
 
-def _typography_spec(vibe: str) -> dict:
-    fonts = {
+def _typography_spec(vibe: str, brand_name: str = "", industry: str = "") -> dict:
+    _fallback_fonts = {
         "minimal": {"heading": "Syne", "body": "DM Sans", "mono": "JetBrains Mono"},
         "bold": {"heading": "Bebas Neue", "body": "Manrope", "mono": "Fira Code"},
         "friendly": {"heading": "Nunito", "body": "Plus Jakarta Sans", "mono": "JetBrains Mono"},
@@ -426,11 +393,41 @@ def _typography_spec(vibe: str) -> dict:
         "calm": {"heading": "Playfair Display", "body": "Lato", "mono": "JetBrains Mono"},
         "energetic": {"heading": "Unbounded", "body": "Manrope", "mono": "Fira Code"},
     }
-    f = fonts.get(vibe, fonts["minimal"])
+
+    heading_font = None
+    body_font = None
+    try:
+        from backend.tools._llm import generate as _llm_generate
+        prompt = (
+            f"You are a typography expert. Choose Google Fonts for a brand:\n"
+            f"Brand name: {brand_name or '(not specified)'}\n"
+            f"Industry: {industry or '(not specified)'}\n"
+            f"Brand vibe: {vibe}\n\n"
+            f"Pick distinctive, appropriate Google Fonts. "
+            f"Avoid Inter, Poppins, and Roboto — use more characterful choices. "
+            f"Return ONLY a JSON object with exactly two keys: heading_font and body_font. "
+            f"Values must be valid Google Fonts names (e.g. 'Syne', 'DM Sans', 'Fraunces', 'Space Grotesk'). "
+            f"The pairing should feel cohesive and appropriate for the brand vibe and industry."
+        )
+        raw = _llm_generate(prompt, max_tokens=100, json_mode=True, model="fast", temperature=0.6)
+        parsed = json.loads(raw)
+        if "heading_font" in parsed and "body_font" in parsed:
+            heading_font = str(parsed["heading_font"]).strip()
+            body_font = str(parsed["body_font"]).strip()
+    except Exception as e:
+        logger.warning("LLM typography selection failed, using fallback: %s", e)
+
+    if not heading_font or not body_font:
+        f = _fallback_fonts.get(vibe, _fallback_fonts["minimal"])
+        heading_font = f["heading"]
+        body_font = f["body"]
+
+    mono_font = _fallback_fonts.get(vibe, _fallback_fonts["minimal"])["mono"]
+
     return {
-        "heading_font": f["heading"],
-        "body_font": f["body"],
-        "mono_font": f["mono"],
+        "heading_font": heading_font,
+        "body_font": body_font,
+        "mono_font": mono_font,
         "scale": {
             "xs": "12px / 1.4",
             "sm": "14px / 1.5",

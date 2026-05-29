@@ -10,6 +10,106 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Keyword → hashtag sets for audience/category-based hashtag selection
+_HASHTAG_MAP = {
+    "fitness": ["#fitness", "#health", "#workout", "#gym", "#wellness", "#fitlife"],
+    "health": ["#health", "#wellness", "#healthyliving", "#nutrition", "#mindfulness"],
+    "fintech": ["#fintech", "#finance", "#money", "#investing", "#personalfinance", "#wealthtech"],
+    "finance": ["#finance", "#money", "#investing", "#personalfinance", "#financialfreedom"],
+    "legal": ["#legaltech", "#legal", "#lawtech", "#legalinnovation", "#lawtechnology"],
+    "ecommerce": ["#ecommerce", "#shopify", "#onlineshopping", "#retail", "#dtc", "#dropshipping"],
+    "education": ["#edtech", "#education", "#learning", "#onlinecourses", "#elearning", "#studytips"],
+    "hr": ["#hrtech", "#humanresources", "#peopleops", "#hiring", "#talentacquisition"],
+    "real estate": ["#realestate", "#proptech", "#realty", "#housingmarket", "#realtorlife"],
+    "marketing": ["#marketing", "#digitalmarketing", "#contentmarketing", "#growthhacking", "#martech"],
+    "productivity": ["#productivity", "#gtd", "#timemanagement", "#workflow", "#efficiency"],
+    "ai": ["#ai", "#artificialintelligence", "#machinelearning", "#genai", "#aitools"],
+    "developer": ["#devtools", "#developer", "#coding", "#softwaredevelopment", "#programming"],
+    "b2b": ["#b2bsales", "#b2bmarketing", "#enterprise", "#saassales", "#businessgrowth"],
+    "sales": ["#sales", "#salestips", "#crm", "#revops", "#pipeline"],
+    "healthcare": ["#healthtech", "#healthcare", "#medtech", "#digitalhealth", "#telemedicine"],
+    "crypto": ["#crypto", "#blockchain", "#web3", "#defi", "#nft"],
+    "gaming": ["#gaming", "#gamedev", "#indiegame", "#esports", "#gamer"],
+    "travel": ["#travel", "#traveltech", "#digitalnomad", "#wanderlust", "#travelstartup"],
+    "food": ["#foodtech", "#food", "#restaurant", "#foodie", "#agtech"],
+}
+
+# Base hashtags always appended to reel/tiktok
+_REEL_BASE = ["#startuplife", "#buildinpublic", "#founder", "#startup"]
+_TIKTOK_BASE = ["#fyp", "#startup", "#founder", "#startuplife"]
+
+
+def _hashtags_for_audience(audience: str, base_tags: list[str], company_name: str, extra_slots: int = 9) -> str:
+    """Build a relevant hashtag string from audience keywords + base tags."""
+    audience_lower = audience.lower()
+    matched: list[str] = []
+    for keyword, tags in _HASHTAG_MAP.items():
+        if keyword in audience_lower:
+            for t in tags:
+                if t not in matched:
+                    matched.append(t)
+            if len(matched) >= extra_slots:
+                break
+    # Fill remaining slots generically
+    generic_fill = ["#saas", "#indiehacker", "#entrepreneurship", "#growthhacking", "#technology"]
+    for t in generic_fill:
+        if len(matched) >= extra_slots:
+            break
+        if t not in matched:
+            matched.append(t)
+    company_tag = f"#{company_name.lower().replace(' ', '')}"
+    all_tags = [company_tag] + matched[:extra_slots] + base_tags
+    return " ".join(all_tags)
+
+
+def _meta_targeting_from_audience(audience_desc: str) -> dict:
+    """Derive age_range and interests from audience description using keyword matching + LLM fallback."""
+    desc_lower = audience_desc.lower()
+
+    # Age range heuristics
+    age_range = "25-44"  # default
+    if any(w in desc_lower for w in ["teen", "teenager", "student", "college", "university", "gen z", "young adult"]):
+        age_range = "18-24"
+    elif any(w in desc_lower for w in ["senior", "retire", "60+", "older adult", "boomer"]):
+        age_range = "45-65"
+    elif any(w in desc_lower for w in ["millennial", "30s", "40s", "mid-career", "professional"]):
+        age_range = "28-45"
+    elif any(w in desc_lower for w in ["executive", "c-suite", "ceo", "cto", "vp", "director", "enterprise"]):
+        age_range = "35-55"
+
+    # Interest mapping
+    interest_candidates: list[str] = []
+    interest_keywords = {
+        "fitness": ["fitness", "health", "wellness", "workout"],
+        "finance": ["finance", "investing", "money", "wealth", "fintech"],
+        "legal": ["legal", "law", "compliance", "regulatory"],
+        "e-commerce": ["ecommerce", "e-commerce", "shopify", "retail", "dtc"],
+        "education": ["education", "edtech", "learning", "courses", "training"],
+        "real estate": ["real estate", "realty", "property", "proptech"],
+        "marketing": ["marketing", "content creation", "seo", "ads", "growth"],
+        "productivity": ["productivity", "workflow", "automation", "efficiency"],
+        "technology": ["tech", "software", "developer", "coding", "saas", "api"],
+        "artificial intelligence": ["ai", "machine learning", "generative ai", "llm"],
+        "human resources": ["hr", "hiring", "recruitment", "people ops"],
+        "entrepreneurship": ["founder", "startup", "entrepreneur", "bootstrapped"],
+        "small business": ["small business", "smb", "freelancer", "solopreneur"],
+        "sales": ["sales", "crm", "revenue", "pipeline", "leads"],
+        "healthcare": ["healthcare", "medical", "health", "patient", "clinical"],
+    }
+    for interest, keywords in interest_keywords.items():
+        if any(kw in desc_lower for kw in keywords):
+            interest_candidates.append(interest)
+
+    # Always include broad relevant defaults if not enough matched
+    if "entrepreneurship" not in interest_candidates:
+        interest_candidates.append("entrepreneurship")
+    if "small business" not in interest_candidates and len(interest_candidates) < 4:
+        interest_candidates.append("small business")
+    if len(interest_candidates) < 3:
+        interest_candidates.extend(["technology", "startups"])
+
+    return {"age_range": age_range, "interests": interest_candidates[:6]}
+
 
 def _llm_generate(prompt: str) -> str:
     try:
@@ -54,14 +154,29 @@ VISUAL_NOTES:
 
     raw = _llm_generate(prompt)
 
+    # If LLM failed entirely, generate a real fallback script via a shorter LLM call
+    if not raw:
+        fallback_prompt = (
+            f"Write a 30-second Instagram Reel script for {company_name}.\n"
+            f"Target audience: {target_audience}\n"
+            f"Value proposition: {value_prop}\n"
+            f"Tone: {tone}\n"
+            "Format: [0-3s] hook | [3-8s] problem | [8-20s] solution | [20-27s] result | [27-30s] CTA.\n"
+            "Output only the script, no headers."
+        )
+        fallback_script_text = _llm_generate(fallback_prompt) or (
+            f"[0-3s] Stop scrolling — {headline}\n"
+            f"[3-8s] If you're a {target_audience}, you know the struggle.\n"
+            f"[8-20s] {company_name} {value_prop}.\n"
+            "[20-27s] Real results, real fast.\n"
+            "[27-30s] Link in bio — try it free."
+        )
+    else:
+        fallback_script_text = ""
+
     script, caption, hashtags, visual = _parse_social_sections(
         raw,
-        fallback_script=(
-            f"Hook: '{headline}'\n"
-            f"Problem: Most {target_audience} struggle with [pain point].\n"
-            f"Solution: {company_name} -- {value_prop}\n"
-            "CTA: Link in bio to try it free."
-        ),
+        fallback_script=fallback_script_text,
         fallback_caption=(
             f"{headline}\n\nIf you're a {target_audience}, this is for you.\n"
             f"We built {company_name} to {value_prop.lower()}.\n\n"
@@ -69,12 +184,14 @@ VISUAL_NOTES:
         ),
     )
 
+    resolved_hashtags = hashtags or _hashtags_for_audience(target_audience, _REEL_BASE, company_name)
+
     package = {
         "platform": "instagram_reel",
         "duration_seconds": 30,
         "script": script,
         "caption": caption,
-        "hashtags": hashtags or f"#{company_name.lower().replace(' ', '')} #startuplife #buildinpublic #saas #founder",
+        "hashtags": resolved_hashtags,
         "visual_notes": visual,
         "posted": False,
     }
@@ -127,12 +244,16 @@ HASHTAGS:
         fallback_caption=f"{hook} | {company_name}",
     )
 
+    # Derive audience context from problem/solution for hashtag lookup
+    audience_context = f"{problem} {solution}"
+    resolved_hashtags = hashtags or _hashtags_for_audience(audience_context, _TIKTOK_BASE, company_name)
+
     package = {
         "platform": "tiktok",
         "duration_seconds": 30,
         "script": script,
         "caption": caption,
-        "hashtags": hashtags or f"#{company_name.lower().replace(' ', '')} #fyp #startup #saas",
+        "hashtags": resolved_hashtags,
         "posted": False,
         "note": "TikTok Content Posting API requires Business account approval. Content ready to post manually.",
     }
@@ -189,6 +310,8 @@ BEST PRIMARY TEXT: <primary text>"""
     ad_account_id = getattr(settings, "meta_ad_account_id", None)
     meta_token = getattr(settings, "meta_access_token", None)
 
+    targeting = _meta_targeting_from_audience(target_audience_description)
+
     ad_spec = {
         "platform": "meta_ads",
         "ad_name": f"{company_name} -- {best_headline[:40]}",
@@ -198,8 +321,8 @@ BEST PRIMARY TEXT: <primary text>"""
         "call_to_action": cta,
         "targeting": {
             "description": target_audience_description,
-            "age_range": "25-44",
-            "interests": ["entrepreneurship", "startups", "small business", "technology"],
+            "age_range": targeting["age_range"],
+            "interests": targeting["interests"],
         },
         "budget_usd_per_day": budget_usd_per_day,
         "posted": False,

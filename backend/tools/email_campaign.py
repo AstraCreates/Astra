@@ -59,21 +59,29 @@ def send_email_campaign(
         return {"sent": False, "error": str(e)}
 
 
-def build_email_html(subject: str, body_paragraphs: list[str], cta_text: str = "", cta_url: str = "") -> str:
+def build_email_html(
+    subject: str,
+    body_paragraphs: list[str],
+    cta_text: str = "",
+    cta_url: str = "",
+    brand_color: str = "#000000",
+    sender_name: str = "",
+) -> str:
     paras = "".join(f"<p style='margin:0 0 16px'>{p}</p>" for p in body_paragraphs)
     cta_block = ""
     if cta_text and cta_url:
         cta_block = (
             f"<p style='margin:24px 0'>"
-            f"<a href='{cta_url}' style='background:#000;color:#fff;padding:12px 28px;"
+            f"<a href='{cta_url}' style='background:{brand_color};color:#fff;padding:12px 28px;"
             f"border-radius:6px;text-decoration:none;font-weight:600'>{cta_text}</a></p>"
         )
+    footer_text = f"Sent by {sender_name}." if sender_name else "Sent via email."
     return f"""
 <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:580px;margin:0 auto;padding:40px 24px">
   <h2 style="font-size:1.5rem;margin:0 0 20px;font-weight:700">{subject}</h2>
   {paras}
   {cta_block}
   <hr style="border:none;border-top:1px solid #eee;margin:32px 0"/>
-  <p style="color:#999;font-size:.8rem">Sent via Astra — AI founding team.</p>
+  <p style="color:#999;font-size:.8rem">{footer_text}</p>
 </div>
 """

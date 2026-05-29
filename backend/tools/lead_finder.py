@@ -1,9 +1,11 @@
 """Lead discovery — find target leads via web search + enrichment."""
+import json
 import logging
 import re
 from typing import Optional
 
 from backend.tools.web_search import web_search
+from backend.tools._llm import generate
 
 logger = logging.getLogger(__name__)
 
@@ -121,50 +123,94 @@ def build_outreach_sequence(
     Generate a multi-touch cold outreach email sequence for a lead.
     Returns list of emails with subject, body, and send_day.
     """
-    emails = []
+    _SEND_DAYS = [1, 4, 10]
+    _TYPES = ["intro", "follow_up_1", "break_up"]
 
-    # Email 1 — Problem-focused intro
-    emails.append({
-        "send_day": 1,
-        "subject": f"Quick question about {lead_company}'s {_pain_point(lead_title)}",
-        "body": (
-            f"Hi {lead_name},\n\n"
-            f"I noticed {lead_company} is growing — congrats on that.\n\n"
-            f"We built {product_name} specifically for {lead_title}s who are dealing with "
-            f"{_pain_point(lead_title)}. {value_prop}\n\n"
-            f"Would it make sense to connect for 15 minutes this week?\n\n"
-            f"Best,"
-        ),
-        "type": "intro",
-    })
+    # Try LLM-generated personalized emails first
+    try:
+        pain = _pain_point(lead_title)
+        prompt = (
+            f"You are a B2B sales copywriter. Write {sequence_length} cold outreach emails for the following lead.\n\n"
+            f"Lead name: {lead_name}\n"
+            f"Lead title: {lead_title}\n"
+            f"Lead company: {lead_company}\n"
+            f"Product: {product_name}\n"
+            f"Value proposition: {value_prop}\n"
+            f"Primary pain point for this role: {pain}\n\n"
+            f"Rules:\n"
+            f"- Email 1: problem-focused intro, reference their role specifically, end with a soft ask for 15 min\n"
+            f"- Email 2 (if requested): brief follow-up, mention a concrete benefit or outcome\n"
+            f"- Email 3 (if requested): short break-up email, leave door open\n"
+            f"- Keep each body under 120 words, plain text, conversational, no marketing fluff\n"
+            f"- Do NOT sign off with a name — end with 'Best,'\n\n"
+            f"Return ONLY a JSON array of {sequence_length} objects: "
+            f'[{{"subject": "...", "body": "..."}}, ...]'
+        )
+        raw = generate(prompt, model="fast", json_mode=False, temperature=0.7)
+        # Extract JSON array from response
+        match = re.search(r"\[.*\]", raw, re.DOTALL)
+        if not match:
+            raise ValueError("No JSON array found in LLM response")
+        llm_emails = json.loads(match.group(0))
+        if not isinstance(llm_emails, list) or len(llm_emails) < sequence_length:
+            raise ValueError("LLM returned wrong number of emails")
 
-    if sequence_length >= 2:
+        emails = []
+        for i in range(sequence_length):
+            emails.append({
+                "send_day": _SEND_DAYS[i] if i < len(_SEND_DAYS) else _SEND_DAYS[-1] + (i - len(_SEND_DAYS) + 1) * 7,
+                "subject": llm_emails[i].get("subject", f"{product_name} for {lead_company}"),
+                "body": llm_emails[i].get("body", ""),
+                "type": _TYPES[i] if i < len(_TYPES) else f"follow_up_{i}",
+            })
+
+    except Exception as e:
+        logger.warning("build_outreach_sequence LLM failed, using templates: %s", e)
+        # Fallback to template strings
+        emails = []
+        pain = _pain_point(lead_title)
+
         emails.append({
-            "send_day": 4,
-            "subject": f"Re: {lead_company} + {product_name}",
+            "send_day": 1,
+            "subject": f"Quick question about {lead_company}'s {pain}",
             "body": (
                 f"Hi {lead_name},\n\n"
-                f"Wanted to follow up — we've helped similar companies save significant time on "
-                f"{_pain_point(lead_title)}.\n\n"
-                f"Happy to share a quick demo if you're curious. No pressure.\n\n"
+                f"I noticed {lead_company} is growing — congrats on that.\n\n"
+                f"We built {product_name} specifically for {lead_title}s who are dealing with "
+                f"{pain}. {value_prop}\n\n"
+                f"Would it make sense to connect for 15 minutes this week?\n\n"
                 f"Best,"
             ),
-            "type": "follow_up_1",
+            "type": "intro",
         })
 
-    if sequence_length >= 3:
-        emails.append({
-            "send_day": 10,
-            "subject": f"Last note — {product_name} for {lead_company}",
-            "body": (
-                f"Hi {lead_name},\n\n"
-                f"I'll keep this short — if the timing isn't right, totally understand.\n\n"
-                f"If {_pain_point(lead_title)} becomes a priority for {lead_company}, "
-                f"we'd love to help. Feel free to reach out anytime.\n\n"
-                f"Best,"
-            ),
-            "type": "break_up",
-        })
+        if sequence_length >= 2:
+            emails.append({
+                "send_day": 4,
+                "subject": f"Re: {lead_company} + {product_name}",
+                "body": (
+                    f"Hi {lead_name},\n\n"
+                    f"Wanted to follow up — we've helped similar companies save significant time on "
+                    f"{pain}.\n\n"
+                    f"Happy to share a quick demo if you're curious. No pressure.\n\n"
+                    f"Best,"
+                ),
+                "type": "follow_up_1",
+            })
+
+        if sequence_length >= 3:
+            emails.append({
+                "send_day": 10,
+                "subject": f"Last note — {product_name} for {lead_company}",
+                "body": (
+                    f"Hi {lead_name},\n\n"
+                    f"I'll keep this short — if the timing isn't right, totally understand.\n\n"
+                    f"If {pain} becomes a priority for {lead_company}, "
+                    f"we'd love to help. Feel free to reach out anytime.\n\n"
+                    f"Best,"
+                ),
+                "type": "break_up",
+            })
 
     return {
         "product": product_name,
@@ -176,17 +222,33 @@ def build_outreach_sequence(
 
 def _pain_point(title: str) -> str:
     t = title.lower()
-    if any(w in t for w in ["ceo", "founder", "president"]):
-        return "growth and operations"
-    if any(w in t for w in ["cto", "engineer", "technical"]):
-        return "developer workflow and tooling"
-    if any(w in t for w in ["marketing", "growth", "demand"]):
-        return "customer acquisition and campaigns"
-    if any(w in t for w in ["sales", "revenue", "account"]):
-        return "pipeline and outreach"
-    if any(w in t for w in ["product", "pm", "manager"]):
-        return "product delivery and prioritization"
-    return "core business challenges"
+    if any(w in t for w in ["ceo", "founder", "co-founder"]):
+        return "fundraising and go-to-market execution"
+    if "president" in t:
+        return "scaling revenue while managing costs"
+    if any(w in t for w in ["cto", "vp engineering", "head of engineering"]):
+        return "shipping faster without accumulating technical debt"
+    if any(w in t for w in ["engineer", "developer", "architect"]):
+        return "reducing repetitive work and speeding up delivery"
+    if any(w in t for w in ["cmo", "vp marketing", "head of marketing"]):
+        return "generating qualified pipeline at a lower CAC"
+    if any(w in t for w in ["marketing", "demand", "growth hacker"]):
+        return "running campaigns that convert without blowing budget"
+    if any(w in t for w in ["vp sales", "head of sales", "chief revenue"]):
+        return "shortening the sales cycle and hitting quota consistently"
+    if any(w in t for w in ["sales", "account executive", "account manager", "revenue"]):
+        return "filling the top of funnel and closing deals faster"
+    if any(w in t for w in ["cpo", "vp product", "head of product"]):
+        return "aligning roadmap to revenue and shipping on time"
+    if any(w in t for w in ["product manager", "pm ", " pm", "product owner"]):
+        return "cutting scope creep and getting features shipped"
+    if any(w in t for w in ["operations", "coo", "head of ops"]):
+        return "eliminating manual processes and reporting overhead"
+    if any(w in t for w in ["finance", "cfo", "controller"]):
+        return "forecasting accurately and reducing financial ops overhead"
+    if any(w in t for w in ["hr", "people", "recruiting", "talent"]):
+        return "hiring faster and reducing time-to-productivity for new hires"
+    return "time-consuming manual work slowing down the team"
 
 
 def _extract_name(title: str) -> str:
