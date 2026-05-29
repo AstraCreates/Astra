@@ -686,31 +686,43 @@ Start the output with <!DOCTYPE html> immediately."""
         # Only flag the explicit HTML comment marker — CSS vars / copy strings are too generic
         return "astra-fallback-template" in text
 
-    import time as _time
+    import time as _time, tempfile
+    from backend.tools.git_tools import _run_claude, _find_claude_bin
+
+    oc_prompt = (
+        f"Write a complete, production-quality single-file HTML landing page to `index.html` "
+        f"using the Write tool RIGHT NOW. No explanation, no markdown — just write the file.\n\n"
+        f"{prompt}"
+    )
+
     for attempt in range(3):
-        logger.info("HTML gen attempt %d/3 (model=nemotron, max_tokens=6000) …", attempt + 1)
+        logger.info("HTML gen attempt %d/3 (openclaude) …", attempt + 1)
         t0 = _time.monotonic()
         try:
-            html = generate(prompt, max_tokens=6000, model="nemotron", temperature=1.0)
-            elapsed = _time.monotonic() - t0
-            logger.info("HTML gen attempt %d done in %.1fs — raw len=%d chars", attempt + 1, elapsed, len(html))
-            logger.debug("HTML raw preview: %.300s", html[:300])
-            # Strip markdown fences then find DOCTYPE even if LLM added preamble text
-            html = re.sub(r"```html?", "", html, flags=re.IGNORECASE).strip().rstrip("`").strip()
-            doctype_pos = html.lower().find("<!doctype")
-            if doctype_pos != -1:
-                body = html[doctype_pos:]
-                if not _looks_like_fallback_template(body):
-                    logger.info("HTML accepted via <!DOCTYPE> path (%d chars)", len(body))
-                    return body
-            # Accept custom HTML even if DOCTYPE is missing/malformed.
-            html_tag_pos = html.lower().find("<html")
-            if html_tag_pos != -1:
-                body = html[html_tag_pos:]
-                if not _looks_like_fallback_template(body):
-                    logger.info("HTML accepted via <html> fallback path (%d chars)", len(body))
-                    return "<!DOCTYPE html>\n" + body
-            logger.warning("HTML attempt %d REJECTED — no <!DOCTYPE> or <html>. Preview: %.300r", attempt + 1, html[:300])
+            with tempfile.TemporaryDirectory() as tmpdir:
+                _run_claude(tmpdir, oc_prompt, session_id=None, timeout=300)
+                elapsed = _time.monotonic() - t0
+                index = Path(tmpdir) / "index.html"
+                if not index.exists():
+                    logger.warning("HTML attempt %d — openclaude did not write index.html (%.1fs)", attempt + 1, elapsed)
+                    continue
+                html = index.read_text(encoding="utf-8")
+                logger.info("HTML gen attempt %d done in %.1fs — %d chars", attempt + 1, elapsed, len(html))
+                logger.debug("HTML raw preview: %.300s", html[:300])
+                html = re.sub(r"```html?", "", html, flags=re.IGNORECASE).strip().rstrip("`").strip()
+                doctype_pos = html.lower().find("<!doctype")
+                if doctype_pos != -1:
+                    body = html[doctype_pos:]
+                    if not _looks_like_fallback_template(body):
+                        logger.info("HTML accepted (%d chars)", len(body))
+                        return body
+                html_tag_pos = html.lower().find("<html")
+                if html_tag_pos != -1:
+                    body = html[html_tag_pos:]
+                    if not _looks_like_fallback_template(body):
+                        logger.info("HTML accepted via <html> path (%d chars)", len(body))
+                        return "<!DOCTYPE html>\n" + body
+                logger.warning("HTML attempt %d REJECTED — no <!DOCTYPE> or <html>. Preview: %.300r", attempt + 1, html[:300])
         except Exception as e:
             elapsed = _time.monotonic() - t0
             logger.warning("HTML gen attempt %d FAILED in %.1fs — %s: %s", attempt + 1, elapsed, type(e).__name__, e)
