@@ -968,7 +968,7 @@ function AgentPreview({ state, founderId, company }: { state: AgentState; founde
 
 interface AgentChatMsg { role: "user" | "agent"; text: string; }
 
-function AgentChat({ agentKey, founderId }: { agentKey: string; founderId: string }) {
+function AgentChat({ agentKey, founderId, sessionId }: { agentKey: string; founderId: string; sessionId?: string }) {
   const [msgs, setMsgs] = useState<AgentChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -989,7 +989,7 @@ function AgentChat({ agentKey, founderId }: { agentKey: string; founderId: strin
       const res = await fetch(`${BASE}/chat/${agentKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target_agent: agentKey, question: q, founder_id: founderId }),
+        body: JSON.stringify({ target_agent: agentKey, question: q, founder_id: founderId, session_id: sessionId }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -1287,7 +1287,7 @@ function AgentDetail({
       </div>
 
       {/* ── Agent chat ──────────────────────────────────────────────── */}
-      <AgentChat agentKey={state.agent} founderId={founderId} />
+      <AgentChat agentKey={state.agent} founderId={founderId} sessionId={sessionId} />
     </div>
   );
 }

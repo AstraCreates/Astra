@@ -25,6 +25,7 @@ class AskRequest(BaseModel):
     question: str
     context: Optional[str] = None
     founder_id: str
+    session_id: Optional[str] = None    # for Obsidian note lookup
 
 
 class SetupRequest(BaseModel):

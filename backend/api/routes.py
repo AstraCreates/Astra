@@ -162,24 +162,53 @@ async def ask_agent(body: AskRequest):
 async def chat_agent(agent_key: str, body: AskRequest):
     """
     Lightweight single-turn chat with a specific agent.
-    Makes a direct LLM call with the agent's role as system prompt —
-    no tool calls, no JSON format, just a plain conversational response.
+    Injects company brain snippets, Obsidian vault notes, and session
+    context so the agent answers with full knowledge of the company.
     """
+    import re as _re
     import openai as _openai
     from backend.config import settings
 
     orch = get_orchestrator()
-    # Try exact key first, then strip trailing _N suffix (e.g. "research_3" → "research")
-    import re as _re
     base_key = _re.sub(r"_\d+$", "", agent_key)
     agent = orch.specialists.get(agent_key) or orch.specialists.get(base_key)
     if agent is None:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_key}' not found. Available: {list(orch.specialists.keys())}")
 
+    # ── 1. Company brain — semantic search on the question ───────────────────
+    brain_context = ""
+    try:
+        from backend.tools.company_brain import search_company_brain
+        results = search_company_brain(body.founder_id, body.question, limit=5)
+        snippets = results.get("results", [])
+        if snippets:
+            lines = [f"- [{r.get('source','?')}] {r.get('content','')[:300]}" for r in snippets]
+            brain_context = "COMPANY KNOWLEDGE:\n" + "\n".join(lines)
+    except Exception as e:
+        logger.warning("Brain context fetch failed: %s", e)
+
+    # ── 2. Obsidian vault note for this agent + session ───────────────────────
+    obsidian_context = ""
+    if body.session_id:
+        try:
+            from backend.tools.obsidian_logger import _note_path
+            note_file = _note_path(base_key, body.session_id, body.founder_id)
+            if note_file.exists():
+                text = note_file.read_text(encoding="utf-8")[:2000]
+                obsidian_context = f"YOUR PREVIOUS NOTES FOR THIS SESSION:\n{text}"
+        except Exception as e:
+            logger.warning("Obsidian context fetch failed: %s", e)
+
+    # ── 3. Assemble system prompt ─────────────────────────────────────────────
+    context_blocks = [b for b in [brain_context, obsidian_context, body.context or ""] if b.strip()]
+    context_section = ("\n\n" + "\n\n".join(context_blocks)) if context_blocks else ""
+
     system_prompt = (
         f"{agent.role}\n\n"
         "You are answering a direct question from the founder. "
-        "Be concise, specific, and helpful. Respond in plain text — no JSON, no markdown headers."
+        "Use the context below to give a specific, grounded answer. "
+        "Be concise and helpful. Respond in plain text — no JSON, no markdown headers."
+        f"{context_section}"
     )
 
     try:
@@ -197,8 +226,7 @@ async def chat_agent(agent_key: str, body: AskRequest):
             timeout=60.0,
         )
         reply = resp.choices[0].message.content or ""
-        import re
-        reply = re.sub(r"<think>.*?</think>", "", reply, flags=re.DOTALL).strip()
+        reply = _re.sub(r"<think>.*?</think>", "", reply, flags=_re.DOTALL).strip()
         return {"agent": agent_key, "response": reply}
     except Exception as e:
         logger.error("Chat agent %s error: %s", agent_key, e)
