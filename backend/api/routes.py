@@ -175,15 +175,22 @@ async def chat_agent(agent_key: str, body: AskRequest):
     if agent is None:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_key}' not found. Available: {list(orch.specialists.keys())}")
 
-    # ── 1. Company brain — semantic search on the question ───────────────────
+    # ── 1. Company brain — semantic search + canonical fallback ──────────────
     brain_context = ""
     try:
-        from backend.tools.company_brain import search_company_brain
-        results = search_company_brain(body.founder_id, body.question, limit=5)
+        from backend.tools.company_brain import search_company_brain, _load as _brain_load
+        results = search_company_brain(body.founder_id, body.question, limit=6)
         snippets = results.get("results", [])
         if snippets:
-            lines = [f"- [{r.get('source','?')}] {r.get('content','')[:300]}" for r in snippets]
-            brain_context = "COMPANY KNOWLEDGE:\n" + "\n".join(lines)
+            lines = [f"- [{r.get('source','?')}] {r.get('content','')[:400]}" for r in snippets]
+            brain_context = "COMPANY KNOWLEDGE (semantic search):\n" + "\n".join(lines)
+        else:
+            # Fallback: load ALL canonical records directly
+            data = _brain_load(body.founder_id)
+            records = [r for r in data.get("records", []) if r.get("status", "active") == "active"]
+            if records:
+                lines = [f"- [{r.get('source','?')}] {r.get('title','')}: {r.get('content','')[:300]}" for r in records[:10]]
+                brain_context = "COMPANY KNOWLEDGE (all records):\n" + "\n".join(lines)
     except Exception as e:
         logger.warning("Brain context fetch failed: %s", e)
 
@@ -211,18 +218,20 @@ async def chat_agent(agent_key: str, body: AskRequest):
         f"{context_section}"
     )
 
+    # Use chat model if configured, otherwise fall back to agent model
+    base_url = settings.chat_model_base_url or settings.agent_model_base_url
+    api_key = settings.chat_model_api_key or settings.agent_model_api_key
+    model_name = settings.chat_model_name or settings.agent_model_name
+
     try:
-        client = _openai.AsyncOpenAI(
-            base_url=settings.agent_model_base_url,
-            api_key=settings.agent_model_api_key,
-        )
+        client = _openai.AsyncOpenAI(base_url=base_url, api_key=api_key)
         resp = await client.chat.completions.create(
-            model=settings.agent_model_name,
+            model=model_name,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": body.question},
             ],
-            temperature=0.3,
+            temperature=0.7,
             timeout=60.0,
         )
         reply = resp.choices[0].message.content or ""

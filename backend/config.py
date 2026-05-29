@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     planner_model_base_url: str = "https://api.deepinfra.com/v1/openai"
     planner_model_api_key: str = ""
     planner_model_name: str = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
+    # Chat model — used for per-agent Q&A; should be a strong reasoning model
+    chat_model_base_url: str = "https://api.deepinfra.com/v1/openai"
+    chat_model_api_key: str = ""
+    chat_model_name: str = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
     # Lighter model for non-reasoning agents (design)
     light_model_base_url: str = "https://api.deepinfra.com/v1/openai"
     light_model_name: str = "deepseek-ai/DeepSeek-V4-Flash"
