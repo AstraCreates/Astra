@@ -687,7 +687,8 @@ Start the output with <!DOCTYPE html> immediately."""
         return "astra-fallback-template" in text
 
     import time as _time, tempfile
-    from backend.tools.git_tools import _run_claude, _find_claude_bin
+    from pathlib import Path as _Path
+    from backend.tools.git_tools import _run_claude
 
     oc_prompt = (
         f"Write a complete, production-quality single-file HTML landing page to `index.html` "
@@ -700,15 +701,19 @@ Start the output with <!DOCTYPE html> immediately."""
         t0 = _time.monotonic()
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
-                _run_claude(tmpdir, oc_prompt, session_id=None, timeout=300)
+                logger.info("  tmpdir: %s", tmpdir)
+                stdout = _run_claude(tmpdir, oc_prompt, session_id=None, timeout=300)
                 elapsed = _time.monotonic() - t0
-                index = Path(tmpdir) / "index.html"
+                logger.info("  openclaude stdout (%d chars): %.500s", len(stdout), stdout)
+                index = _Path(tmpdir) / "index.html"
+                files = list(_Path(tmpdir).iterdir())
+                logger.info("  files in tmpdir: %s", [f.name for f in files])
                 if not index.exists():
-                    logger.warning("HTML attempt %d — openclaude did not write index.html (%.1fs)", attempt + 1, elapsed)
+                    logger.warning("HTML attempt %d — index.html not written (%.1fs). Files: %s", attempt + 1, elapsed, [f.name for f in files])
                     continue
                 html = index.read_text(encoding="utf-8")
                 logger.info("HTML gen attempt %d done in %.1fs — %d chars", attempt + 1, elapsed, len(html))
-                logger.debug("HTML raw preview: %.300s", html[:300])
+                logger.info("HTML preview (first 500): %.500s", html[:500])
                 html = re.sub(r"```html?", "", html, flags=re.IGNORECASE).strip().rstrip("`").strip()
                 doctype_pos = html.lower().find("<!doctype")
                 if doctype_pos != -1:
