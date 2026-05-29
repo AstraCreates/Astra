@@ -14,7 +14,7 @@ from typing import Any
 
 
 def _root() -> Path:
-    root = Path(".astra/run_ledger")
+    root = Path(__file__).parent.parent / ".astra" / "run_ledger"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
