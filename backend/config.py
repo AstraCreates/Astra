@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     vercel_token: str = ""
     github_token: str = ""
 
+    # GitHub OAuth App — for one-click token generation via OAuth flow
+    github_client_id: str = ""
+    github_client_secret: str = ""
+
+    # Vercel OAuth Integration — for one-click token generation via OAuth flow
+    vercel_client_id: str = ""
+    vercel_client_secret: str = ""
+
     # Marketing / social
     sendgrid_api_key: str = ""
     meta_access_token: str = ""

@@ -593,6 +593,74 @@ async def stripe_upgrade_ein(founder_id: str, body: StripeEINUpgradeRequest):
     return result
 
 
+# ── GitHub OAuth ──────────────────────────────────────────────────────────────
+
+@router.get("/github/oauth-url/{founder_id}")
+async def github_oauth_url(founder_id: str):
+    """Return the GitHub OAuth authorization URL."""
+    from backend.config import settings
+    from urllib.parse import urlencode
+    if not settings.github_client_id:
+        raise HTTPException(status_code=500, detail="GITHUB_CLIENT_ID not configured")
+    redirect_uri = f"{settings.backend_url}/api/github/callback"
+    params = urlencode({
+        "client_id": settings.github_client_id,
+        "redirect_uri": redirect_uri,
+        "scope": "repo workflow read:org",
+        "state": founder_id,
+    })
+    return {"url": f"https://github.com/login/oauth/authorize?{params}"}
+
+
+@router.get("/github/callback")
+async def github_callback(code: str = "", state: str = "", error: str = ""):
+    """
+    GitHub OAuth callback. Exchanges the code for an access token,
+    stores it under the founder's credentials, then redirects to the
+    integrations page.
+    """
+    import httpx
+    from fastapi.responses import RedirectResponse
+    from backend.config import settings
+    from backend.provisioning.credentials_store import store_credentials
+
+    fe_base = settings.frontend_url
+
+    if error:
+        return RedirectResponse(url=f"{fe_base}/integrations?github_error={error}")
+    if not code or not state:
+        return RedirectResponse(url=f"{fe_base}/integrations?github_error=missing_params")
+
+    founder_id = state
+    redirect_uri = f"{settings.backend_url}/api/github/callback"
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            "https://github.com/login/oauth/access_token",
+            json={
+                "client_id": settings.github_client_id,
+                "client_secret": settings.github_client_secret,
+                "code": code,
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Accept": "application/json"},
+            timeout=15,
+        )
+
+    data = resp.json()
+    token = data.get("access_token")
+
+    if not token:
+        logger.error("GitHub OAuth exchange failed: %s", data)
+        return RedirectResponse(url=f"{fe_base}/integrations?github_error=exchange_failed")
+
+    store_credentials(founder_id, "github", {"token": token})
+    settings.github_token = token
+    logger.info("GitHub OAuth connected for founder %s", founder_id)
+
+    return RedirectResponse(url=f"{fe_base}/integrations?github_connected=1")
+
+
 @router.get("/setup/{founder_id}")
 async def get_setup_status(founder_id: str):
     """Returns which services are connected for this founder."""

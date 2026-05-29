@@ -86,26 +86,26 @@ async def _attach_screencast(context, page, send_message, refs: dict) -> None:
 
 async def _setup_popup_tracking(context, main_page, send_message, refs: dict) -> None:
     """
-    Listen for popups on any page. When one opens (e.g. Google/Apple OAuth),
-    switch the screencast and input target to it. When it closes, switch back
-    to the parent page.
+    Listen for ANY new page in the context (covers popups opened by CDP clicks,
+    which don't always fire page.on('popup')).  When one opens, switch the
+    screencast and input target to it.  When it closes, switch back to main_page.
     """
-    async def on_popup(popup_page, parent_page):
-        logger.info("Popup opened: %s", popup_page.url)
-        await _attach_screencast(context, popup_page, send_message, refs)
-        # Recurse — popups can open further popups
-        popup_page.on("popup", lambda p: asyncio.ensure_future(on_popup(p, popup_page)))
+    async def on_new_page(new_page):
+        if new_page is main_page:
+            return
+        logger.info("New page detected: %s", new_page.url)
+        await _attach_screencast(context, new_page, send_message, refs)
 
         async def on_close():
-            logger.info("Popup closed, switching back to parent")
+            logger.info("Popup/tab closed, switching back to main page")
             try:
-                await _attach_screencast(context, parent_page, send_message, refs)
+                await _attach_screencast(context, main_page, send_message, refs)
             except Exception as e:
-                logger.warning("Could not reattach screencast after popup close: %s", e)
+                logger.warning("Could not reattach screencast after page close: %s", e)
 
-        popup_page.on("close", lambda: asyncio.ensure_future(on_close()))
+        new_page.on("close", lambda: asyncio.ensure_future(on_close()))
 
-    main_page.on("popup", lambda p: asyncio.ensure_future(on_popup(p, main_page)))
+    context.on("page", lambda p: asyncio.ensure_future(on_new_page(p)))
 
 
 # ── Input forwarding ──────────────────────────────────────────────────────────
@@ -185,15 +185,29 @@ async def _input_forward_loop(refs: dict, event_q: _queue.Queue, stop: list) -> 
 
 # ── Login detection ────────────────────────────────────────────────────────────
 
-async def _wait_for_login(page, login_path: str, timeout: float = 300.0) -> bool:
+async def _wait_for_login(page, service_domain: str, login_path: str, timeout: float = 300.0) -> bool:
     """
-    Block until the main page URL no longer contains login_path.
-    Returns True on success, False on timeout.
+    Block until back on service_domain AND the URL no longer contains login_path.
+
+    This correctly handles OAuth redirects (e.g. main page → accounts.google.com →
+    back to github.com/dashboard): we only declare success once the user is back
+    on the target service, not mid-OAuth on a third-party domain.
     """
+    # First confirm we land on the login page (up to 10s)
+    for _ in range(20):
+        try:
+            if login_path in page.url:
+                break
+        except Exception:
+            pass
+        await asyncio.sleep(0.5)
+
+    # Now wait: must be on service_domain AND not on login_path
     deadline = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < deadline:
         try:
-            if login_path not in page.url:
+            url = page.url
+            if service_domain in url and login_path not in url:
                 return True
         except Exception:
             pass
@@ -271,7 +285,7 @@ async def connect_github_live(
             await page.goto("https://github.com/login", wait_until="domcontentloaded", timeout=30000)
             await asyncio.sleep(1)
 
-            logged_in = await _wait_for_login(page, "/login", timeout=300)
+            logged_in = await _wait_for_login(page, "github.com", "/login", timeout=300)
             if not logged_in:
                 await send_message({"type": "error", "message": "Login timed out (5 min)."})
                 return {"error": "login_timeout"}
@@ -379,7 +393,7 @@ async def connect_vercel_live(
             await page.goto("https://vercel.com/login", wait_until="domcontentloaded", timeout=30000)
             await asyncio.sleep(1)
 
-            logged_in = await _wait_for_login(page, "/login", timeout=300)
+            logged_in = await _wait_for_login(page, "vercel.com", "/login", timeout=300)
             if not logged_in:
                 await send_message({"type": "error", "message": "Login timed out."})
                 return {"error": "login_timeout"}
@@ -488,7 +502,7 @@ async def connect_sendgrid_live(
             await page.goto("https://app.sendgrid.com/login", wait_until="domcontentloaded", timeout=30000)
             await asyncio.sleep(1)
 
-            logged_in = await _wait_for_login(page, "/login", timeout=300)
+            logged_in = await _wait_for_login(page, "sendgrid.com", "/login", timeout=300)
             if not logged_in:
                 await send_message({"type": "error", "message": "Login timed out."})
                 return {"error": "login_timeout"}

@@ -380,58 +380,159 @@ function ServiceCard({
   founderId: string;
   onSaved: () => void;
 }) {
-  const [showModal, setShowModal] = useState(false);
+  const [popupOpen, setPopupOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [justConnected, setJustConnected] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const popupRef = useRef<Window | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // GitHub uses OAuth redirect — detect return from callback
+  useEffect(() => {
+    if (svc.key !== "github") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("github_connected") === "1") {
+      window.history.replaceState({}, "", window.location.pathname);
+      setJustConnected(true);
+      onSaved();
+    }
+  }, [svc.key, onSaved]);
+
+  const connectGitHubOAuth = async () => {
+    setConnecting(true);
+    setError(null);
+    try {
+      const res = await fetch(`${BASE}/github/oauth-url/${founderId}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.detail ?? `Error ${res.status}`);
+        setConnecting(false);
+        return;
+      }
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        setError("No OAuth URL returned from server");
+        setConnecting(false);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to reach server");
+      setConnecting(false);
+    }
+  };
+
+  const openPopup = () => {
+    const popup = window.open(svc.createUrl, `connect_${svc.key}`, "width=1060,height=720,scrollbars=yes,resizable=yes");
+    popupRef.current = popup;
+    setPopupOpen(true);
+    setValue("");
+    setError(null);
+    setTimeout(() => inputRef.current?.focus(), 300);
+  };
+
+  useEffect(() => {
+    if (!popupOpen) return;
+    const interval = setInterval(() => {
+      if (popupRef.current?.closed) { clearInterval(interval); setPopupOpen(false); }
+    }, 600);
+    return () => clearInterval(interval);
+  }, [popupOpen]);
+
+  async function save() {
+    if (!value.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await saveServiceCredential(founderId, svc.key, { [svc.credKey]: value.trim() });
+      setJustConnected(true);
+      setPopupOpen(false);
+      popupRef.current?.close();
+      setValue("");
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const isConnected = connected || justConnected;
+  const isGitHub = svc.key === "github";
 
   return (
-    <>
-      <div style={{
-        ...glass(),
-        border: `1px solid ${isConnected ? "rgba(60,170,100,0.28)" : "rgba(255,255,255,0.09)"}`,
-        boxShadow: isConnected
-          ? "inset 0 1px 0 rgba(255,255,255,0.10), 0 0 20px rgba(60,170,100,0.04)"
-          : "inset 0 1px 0 rgba(255,255,255,0.10)",
-        overflow: "hidden", transition: "border-color 0.3s",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px" }}>
-          <span style={{ fontSize: 20, flexShrink: 0 }}>{svc.icon}</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)" }}>{svc.label}</span>
-              <StatusDot connected={isConnected} />
-              {isConnected && <span style={{ fontSize: 10, color: "#6DC98A", fontFamily: "var(--font-mono)" }}>connected</span>}
-            </div>
-            <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>{svc.desc}</span>
+    <div style={{
+      ...glass(),
+      border: `1px solid ${isConnected ? "rgba(60,170,100,0.28)" : popupOpen ? "rgba(96,165,250,0.35)" : "rgba(255,255,255,0.09)"}`,
+      boxShadow: isConnected
+        ? "inset 0 1px 0 rgba(255,255,255,0.10), 0 0 20px rgba(60,170,100,0.04)"
+        : "inset 0 1px 0 rgba(255,255,255,0.10)",
+      overflow: "hidden", transition: "border-color 0.3s",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px" }}>
+        <span style={{ fontSize: 20, flexShrink: 0 }}>{svc.icon}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)" }}>{svc.label}</span>
+            <StatusDot connected={isConnected} />
+            {isConnected && <span style={{ fontSize: 10, color: "#6DC98A", fontFamily: "var(--font-mono)" }}>connected</span>}
+            {popupOpen && !isConnected && <span style={{ fontSize: 10, color: "#60a5fa", fontFamily: "var(--font-mono)" }}>popup open</span>}
           </div>
-          <button
-            onClick={() => setShowModal(true)}
-            style={{
-              padding: "5px 14px", borderRadius: 24, fontSize: 12, flexShrink: 0,
-              background: isConnected ? "rgba(60,170,100,0.10)" : "rgba(255,255,255,0.07)",
-              border: `1px solid ${isConnected ? "rgba(60,170,100,0.2)" : "rgba(255,255,255,0.12)"}`,
-              color: isConnected ? "#6DC98A" : "var(--fg-dim)",
-              cursor: "pointer", transition: "all 0.12s",
-            }}
-          >
-            {isConnected ? "Reconnect ↗" : "Connect ↗"}
-          </button>
+          <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>{svc.desc}</span>
         </div>
+        <button
+          onClick={isGitHub ? connectGitHubOAuth : openPopup}
+          disabled={connecting}
+          style={{
+            padding: "5px 14px", borderRadius: 24, fontSize: 12, flexShrink: 0,
+            background: isConnected ? "rgba(60,170,100,0.10)" : "rgba(255,255,255,0.07)",
+            border: `1px solid ${isConnected ? "rgba(60,170,100,0.2)" : "rgba(255,255,255,0.12)"}`,
+            color: isConnected ? "#6DC98A" : "var(--fg-dim)",
+            cursor: connecting ? "wait" : "pointer", transition: "all 0.12s",
+          }}
+        >
+          {connecting ? "Redirecting…" : isConnected ? "Reconnect ↗" : "Connect ↗"}
+        </button>
       </div>
 
-      {showModal && (
-        <IntegrationModal
-          serviceKey={svc.key}
-          label={svc.label}
-          icon={svc.icon}
-          stepCount={svc.steps}
-          founderId={founderId}
-          onConnected={() => { setJustConnected(true); onSaved(); }}
-          onClose={() => setShowModal(false)}
-        />
+      {/* OAuth error — shown for GitHub when redirect fails */}
+      {isGitHub && error && (
+        <div style={{ borderTop: "1px solid rgba(248,113,113,0.15)", padding: "10px 18px", background: "rgba(248,113,113,0.05)" }}>
+          <p style={{ margin: 0, fontSize: 11, color: "#f87171" }}>{error}</p>
+        </div>
       )}
-    </>
+
+      {/* Popup + paste panel — only for non-GitHub services */}
+      {!isGitHub && popupOpen && (
+        <div style={{
+          borderTop: "1px solid rgba(96,165,250,0.15)",
+          padding: "12px 18px", background: "rgba(96,165,250,0.04)",
+          display: "flex", flexDirection: "column", gap: 8,
+        }}>
+          <p style={{ margin: 0, fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.5 }}>
+            Create a token in the popup, then paste it here.{" "}
+            <span style={{ color: "#60a5fa" }}>The popup is open ↗</span>
+          </p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              ref={inputRef}
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              placeholder={svc.placeholder}
+              onKeyDown={e => e.key === "Enter" && save()}
+              className="site-input"
+              style={{ flex: 1, padding: "8px 12px", fontSize: 12, fontFamily: "var(--font-mono)" }}
+            />
+            <button onClick={save} disabled={saving || !value.trim()}
+              className="site-btn site-btn-primary" style={{ padding: "0 16px", fontSize: 12, flexShrink: 0 }}>
+              {saving ? "…" : "Save"}
+            </button>
+          </div>
+          {error && <p style={{ fontSize: 11, color: "#C97070", margin: 0 }}>{error}</p>}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -508,48 +609,166 @@ function StripeCard({ founderId, email }: { founderId: string; email: string }) 
   );
 }
 
-// ── Composio app grid with popup + polling ────────────────────────────────
+// ── Composio API key card — popup + paste ────────────────────────────────────
 
-function ComposioAppGrid({ founderId, composioUrls }: { founderId: string; composioUrls: Record<string, string> }) {
-  const [connected, setConnected] = useState<Record<string, boolean>>({});
-  const [polling, setPolling] = useState<string | null>(null);
+function ComposioKeyCard({ connected, saving, error, onSave }: {
+  connected: boolean;
+  saving: boolean;
+  error: string | null;
+  onSave: (key: string) => Promise<void>;
+}) {
+  const [popupOpen, setPopupOpen] = useState(false);
+  const [value, setValue] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const popupRef = useRef<Window | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const openPopup = () => {
+    const popup = window.open(
+      "https://app.composio.dev/settings",
+      "connect_composio",
+      "width=1060,height=720,scrollbars=yes,resizable=yes",
+    );
+    popupRef.current = popup;
+    setPopupOpen(true);
+    setValue("");
+    setLocalError(null);
+    setTimeout(() => inputRef.current?.focus(), 300);
+  };
+
+  useEffect(() => {
+    if (!popupOpen) return;
+    const interval = setInterval(() => {
+      if (popupRef.current?.closed) { clearInterval(interval); setPopupOpen(false); }
+    }, 600);
+    return () => clearInterval(interval);
+  }, [popupOpen]);
+
+  const save = async () => {
+    if (!value.trim()) return;
+    setLocalError(null);
+    try {
+      await onSave(value.trim());
+      setPopupOpen(false);
+      popupRef.current?.close();
+      setValue("");
+    } catch (e) {
+      setLocalError(e instanceof Error ? e.message : "Save failed");
+    }
+  };
+
+  return (
+    <div style={{
+      ...glass(),
+      border: `1px solid ${connected ? "rgba(60,170,100,0.28)" : popupOpen ? "rgba(96,165,250,0.35)" : "rgba(255,255,255,0.09)"}`,
+      boxShadow: connected
+        ? "inset 0 1px 0 rgba(255,255,255,0.10), 0 0 20px rgba(60,170,100,0.04)"
+        : "inset 0 1px 0 rgba(255,255,255,0.10)",
+      overflow: "hidden", transition: "border-color 0.3s",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px" }}>
+        <span style={{ fontSize: 20, flexShrink: 0 }}>🔗</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)" }}>Composio</span>
+            <StatusDot connected={connected} />
+            {connected && <span style={{ fontSize: 10, color: "#6DC98A", fontFamily: "var(--font-mono)" }}>connected</span>}
+            {popupOpen && !connected && <span style={{ fontSize: 10, color: "#60a5fa", fontFamily: "var(--font-mono)" }}>popup open</span>}
+          </div>
+          <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>Enables Gmail, LinkedIn, Notion, Linear, Calendar</span>
+        </div>
+        <button
+          onClick={openPopup}
+          style={{
+            padding: "5px 14px", borderRadius: 24, fontSize: 12, flexShrink: 0,
+            background: connected ? "rgba(60,170,100,0.10)" : "rgba(255,255,255,0.07)",
+            border: `1px solid ${connected ? "rgba(60,170,100,0.2)" : "rgba(255,255,255,0.12)"}`,
+            color: connected ? "#6DC98A" : "var(--fg-dim)",
+            cursor: "pointer", transition: "all 0.12s",
+          }}
+        >
+          {connected ? "Update key ↗" : "Connect ↗"}
+        </button>
+      </div>
+
+      {popupOpen && (
+        <div style={{
+          borderTop: "1px solid rgba(96,165,250,0.15)",
+          padding: "12px 18px", background: "rgba(96,165,250,0.04)",
+          display: "flex", flexDirection: "column", gap: 8,
+        }}>
+          <p style={{ margin: 0, fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.5 }}>
+            Copy your API key from the popup (Settings → API Keys), then paste it here.{" "}
+            <span style={{ color: "#60a5fa" }}>Popup is open ↗</span>
+          </p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              ref={inputRef}
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              placeholder="api_key_..."
+              onKeyDown={e => e.key === "Enter" && save()}
+              className="site-input"
+              style={{ flex: 1, padding: "8px 12px", fontSize: 12, fontFamily: "var(--font-mono)" }}
+            />
+            <button onClick={save} disabled={saving || !value.trim()}
+              className="site-btn site-btn-primary" style={{ padding: "0 16px", fontSize: 12, flexShrink: 0 }}>
+              {saving ? "…" : "Save"}
+            </button>
+          </div>
+          {(localError || error) && <p style={{ fontSize: 11, color: "#C97070", margin: 0 }}>{localError || error}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Composio app card (one per app, same style as ServiceCard) ───────────────
+
+function ComposioAppCard({
+  app, oauthUrl, founderId, initialConnected,
+}: {
+  app: typeof COMPOSIO_APPS[number];
+  oauthUrl: string;
+  founderId: string;
+  initialConnected: boolean;
+}) {
+  const [isConnected, setIsConnected] = useState(initialConnected);
+  const [popupOpen, setPopupOpen] = useState(false);
+  const popupRef = useRef<Window | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load initial status on mount
-  useEffect(() => {
-    fetch(`${BASE}/setup/composio/connected/${founderId}`)
-      .then(r => r.json())
-      .then(data => setConnected(data.apps ?? {}))
-      .catch(() => {});
-  }, [founderId]);
+  // Sync if parent refreshes initial status
+  useEffect(() => { setIsConnected(initialConnected); }, [initialConnected]);
 
-  const openOAuth = (appKey: string, url: string) => {
-    const popup = window.open(url, `composio_${appKey}`, "width=860,height=640,scrollbars=yes,resizable=yes");
-    if (!popup) { window.open(url, "_blank"); return; }
+  const isError = !oauthUrl || oauthUrl.startsWith("error:");
 
-    setPolling(appKey);
+  const openOAuth = () => {
+    if (isError) return;
+    const popup = window.open(oauthUrl, `composio_${app.key}`, "width=900,height=660,scrollbars=yes,resizable=yes");
+    if (!popup) { window.open(oauthUrl, "_blank"); return; }
+    popupRef.current = popup;
+    setPopupOpen(true);
+
     pollRef.current = setInterval(() => {
-      // Check if popup closed
       if (popup.closed) {
         clearInterval(pollRef.current!);
-        setPolling(null);
-        // Final status check
+        setPopupOpen(false);
+        // Final check after popup closes
         fetch(`${BASE}/setup/composio/connected/${founderId}`)
           .then(r => r.json())
-          .then(data => setConnected(data.apps ?? {}))
+          .then(data => { if (data.apps?.[app.key]) setIsConnected(true); })
           .catch(() => {});
         return;
       }
-      // Poll status while popup is open
       fetch(`${BASE}/setup/composio/connected/${founderId}`)
         .then(r => r.json())
         .then(data => {
-          const apps = data.apps ?? {};
-          if (apps[appKey]) {
-            setConnected(prev => ({ ...prev, [appKey]: true }));
+          if (data.apps?.[app.key]) {
+            setIsConnected(true);
             popup.close();
             clearInterval(pollRef.current!);
-            setPolling(null);
+            setPopupOpen(false);
           }
         })
         .catch(() => {});
@@ -559,43 +778,66 @@ function ComposioAppGrid({ founderId, composioUrls }: { founderId: string; compo
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
-      {COMPOSIO_APPS.map(app => {
-        const url = composioUrls[app.key];
-        const isError = !url || url.startsWith("error:");
-        const isConnected = connected[app.key] === true;
-        const isPolling = polling === app.key;
+    <div style={{
+      ...glass(),
+      border: `1px solid ${isConnected ? "rgba(60,170,100,0.28)" : popupOpen ? "rgba(96,165,250,0.35)" : "rgba(255,255,255,0.09)"}`,
+      boxShadow: isConnected
+        ? "inset 0 1px 0 rgba(255,255,255,0.10), 0 0 20px rgba(60,170,100,0.04)"
+        : "inset 0 1px 0 rgba(255,255,255,0.10)",
+      overflow: "hidden", transition: "border-color 0.3s",
+      opacity: isError ? 0.45 : 1,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px" }}>
+        <span style={{ fontSize: 20, flexShrink: 0 }}>{app.icon}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)" }}>{app.label}</span>
+            <StatusDot connected={isConnected} />
+            {isConnected && <span style={{ fontSize: 10, color: "#6DC98A", fontFamily: "var(--font-mono)" }}>connected</span>}
+            {popupOpen && !isConnected && <span style={{ fontSize: 10, color: "#60a5fa", fontFamily: "var(--font-mono)" }}>authorizing…</span>}
+          </div>
+          <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>{isError ? "requires Composio API key" : app.desc}</span>
+        </div>
+        <button
+          onClick={openOAuth}
+          disabled={isError || popupOpen}
+          style={{
+            padding: "5px 14px", borderRadius: 24, fontSize: 12, flexShrink: 0,
+            background: isConnected ? "rgba(60,170,100,0.10)" : isError ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.07)",
+            border: `1px solid ${isConnected ? "rgba(60,170,100,0.2)" : "rgba(255,255,255,0.12)"}`,
+            color: isConnected ? "#6DC98A" : isError ? "var(--fg-mute)" : "var(--fg-dim)",
+            cursor: isError || popupOpen ? "not-allowed" : "pointer",
+            transition: "all 0.12s",
+          }}
+        >
+          {popupOpen ? "Waiting…" : isConnected ? "Reconnect ↗" : "Connect ↗"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
-        return (
-          <button
-            key={app.key}
-            disabled={isError}
-            onClick={() => !isError && openOAuth(app.key, url)}
-            style={{
-              display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 24,
-              background: isConnected ? "rgba(60,170,100,0.10)" : isError ? "var(--glass-lo)" : "var(--glass-hi)",
-              border: `1px solid ${isConnected ? "rgba(60,170,100,0.28)" : isError ? "var(--line)" : "var(--line)"}`,
-              opacity: isError ? 0.45 : 1,
-              cursor: isError ? "not-allowed" : "pointer",
-              transition: "all 0.12s", textAlign: "left",
-            }}
-          >
-            <span style={{ fontSize: 16 }}>{app.icon}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ margin: 0, fontSize: 12, fontWeight: 500, color: "var(--fg)" }}>{app.label}</p>
-              <p style={{ margin: 0, fontSize: 10, color: "var(--fg-mute)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {isConnected ? "connected" : isPolling ? "waiting…" : app.desc}
-              </p>
-            </div>
-            {isConnected
-              ? <StatusDot connected={true} />
-              : isPolling
-                ? <span style={{ fontSize: 10, color: "#60a5fa" }}>⟳</span>
-                : !isError && <span style={{ fontSize: 11, color: "var(--fg)", flexShrink: 0 }}>↗</span>
-            }
-          </button>
-        );
-      })}
+function ComposioAppGrid({ founderId, composioUrls }: { founderId: string; composioUrls: Record<string, string> }) {
+  const [connected, setConnected] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    fetch(`${BASE}/setup/composio/connected/${founderId}`)
+      .then(r => r.json())
+      .then(data => setConnected(data.apps ?? {}))
+      .catch(() => {});
+  }, [founderId]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {COMPOSIO_APPS.map(app => (
+        <ComposioAppCard
+          key={app.key}
+          app={app}
+          oauthUrl={composioUrls[app.key] ?? ""}
+          founderId={founderId}
+          initialConnected={connected[app.key] === true}
+        />
+      ))}
     </div>
   );
 }
@@ -761,53 +1003,39 @@ export default function SetupPage() {
         <p style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>
           Composio — Gmail · LinkedIn · Calendar · Notion · Linear
         </p>
-        <div style={{ ...glass(), padding: "16px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* API key row */}
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 12, fontWeight: 500, color: "var(--fg)", margin: "0 0 4px" }}>Composio API Key</p>
-              <p style={{ fontSize: 11, color: "var(--fg-mute)", margin: 0 }}>
-                Free at{" "}
-                <a href="https://app.composio.dev/settings" target="_blank" rel="noopener noreferrer" style={{ color: "var(--fg)", textDecoration: "none" }}>
-                  app.composio.dev ↗
-                </a>
-              </p>
-            </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                value={composioKey}
-                onChange={e => setComposioKey(e.target.value)}
-                placeholder="api_key_..."
-                onKeyDown={e => e.key === "Enter" && saveComposioKey()}
-                className="site-input"
-                style={{ width: 200, padding: "7px 12px", fontSize: 12, fontFamily: "var(--font-mono)" }}
-              />
-              <button
-                onClick={saveComposioKey}
-                disabled={savingComposio || !composioKey.trim()}
-                className="site-btn site-btn-primary"
-                style={{ padding: "0 14px", fontSize: 12 }}
-              >
-                {savingComposio ? "…" : "Save"}
-              </button>
-            </div>
-          </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
 
-          {composioError && <p style={{ fontSize: 11, color: "#C97070", margin: 0 }}>{composioError}</p>}
+          {/* Composio API key — popup + paste, same as GitHub/Vercel */}
+          <ComposioKeyCard
+            connected={!!composioUrls && Object.keys(composioUrls).length > 0}
+            saving={savingComposio}
+            error={composioError}
+            onSave={async (key) => {
+              setSavingComposio(true);
+              setComposioError(null);
+              try {
+                await saveServiceCredential(founderId, "composio", { api_key: key });
+                setComposioKey("");
+                await loadComposioUrls();
+              } catch (e) {
+                setComposioError(e instanceof Error ? e.message : "Save failed");
+              } finally {
+                setSavingComposio(false);
+              }
+            }}
+          />
 
-          {/* OAuth app grid */}
+          {composioError && <p style={{ fontSize: 11, color: "#C97070", margin: "0 0 4px 0" }}>{composioError}</p>}
+
+          {/* Per-app OAuth cards */}
           {composioUrls && Object.keys(composioUrls).length > 0 && (
             <ComposioAppGrid founderId={founderId} composioUrls={composioUrls} />
           )}
 
-          {!composioUrls && (
-            <button
-              onClick={loadComposioUrls}
-              disabled={loadingUrls}
-              className="site-btn site-btn-ghost"
-              style={{ alignSelf: "flex-start", padding: "0 16px", fontSize: 12 }}
-            >
-              {loadingUrls ? "Loading OAuth links…" : "Load OAuth links →"}
+          {!composioUrls && !loadingUrls && (
+            <button onClick={loadComposioUrls} className="site-btn site-btn-ghost"
+              style={{ alignSelf: "flex-start", padding: "0 16px", fontSize: 12 }}>
+              Load OAuth links →
             </button>
           )}
         </div>
