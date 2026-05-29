@@ -530,14 +530,22 @@ class Agent:
         fn = self.tools.get(tool_name)
         if fn is None:
             return {"error": f"Unknown tool: {tool_name}"}
+        import time as _time
+        args_preview = {k: (str(v)[:120] + "…" if isinstance(v, str) and len(str(v)) > 120 else v) for k, v in args.items()}
+        logger.debug("[%s] → %s  args=%s", self.name, tool_name, args_preview)
+        t0 = _time.monotonic()
         try:
             if asyncio.iscoroutinefunction(fn):
                 result = await fn(**args)
             else:
                 result = await asyncio.to_thread(fn, **args)
+            elapsed = _time.monotonic() - t0
+            result_preview = str(result)[:200] if result is not None else "None"
+            logger.debug("[%s] ← %s  %.1fs  result=%.200s", self.name, tool_name, elapsed, result_preview)
             return result
         except Exception as e:
-            logger.error("%s tool %s failed: %s", self.name, tool_name, e)
+            elapsed = _time.monotonic() - t0
+            logger.error("[%s] ✗ %s  %.1fs  %s: %s", self.name, tool_name, elapsed, type(e).__name__, e)
             return {"error": str(e)}
 
     def _normalize_done_output(

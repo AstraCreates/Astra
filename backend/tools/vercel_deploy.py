@@ -642,26 +642,34 @@ Start the output with <!DOCTYPE html> immediately."""
         # Only flag the explicit HTML comment marker — CSS vars / copy strings are too generic
         return "astra-fallback-template" in text
 
+    import time as _time
     for attempt in range(3):
+        logger.info("HTML gen attempt %d/3 (model=nemotron, max_tokens=6000) …", attempt + 1)
+        t0 = _time.monotonic()
         try:
             html = generate(prompt, max_tokens=6000, model="nemotron")
+            elapsed = _time.monotonic() - t0
+            logger.info("HTML gen attempt %d done in %.1fs — raw len=%d chars", attempt + 1, elapsed, len(html))
+            logger.debug("HTML raw preview: %.300s", html[:300])
             # Strip markdown fences then find DOCTYPE even if LLM added preamble text
             html = re.sub(r"```html?", "", html, flags=re.IGNORECASE).strip().rstrip("`").strip()
             doctype_pos = html.lower().find("<!doctype")
             if doctype_pos != -1:
                 body = html[doctype_pos:]
                 if not _looks_like_fallback_template(body):
+                    logger.info("HTML accepted via <!DOCTYPE> path (%d chars)", len(body))
                     return body
             # Accept custom HTML even if DOCTYPE is missing/malformed.
-            # This prevents unnecessary fallback-template usage when LLM output is otherwise valid.
             html_tag_pos = html.lower().find("<html")
             if html_tag_pos != -1:
                 body = html[html_tag_pos:]
                 if not _looks_like_fallback_template(body):
+                    logger.info("HTML accepted via <html> fallback path (%d chars)", len(body))
                     return "<!DOCTYPE html>\n" + body
-            logger.warning("LLM HTML attempt %d had no valid <!DOCTYPE>. Preview: %.200r", attempt + 1, html[:200])
+            logger.warning("HTML attempt %d REJECTED — no <!DOCTYPE> or <html>. Preview: %.300r", attempt + 1, html[:300])
         except Exception as e:
-            logger.warning("LLM HTML generation attempt %d failed (%s)", attempt + 1, e)
+            elapsed = _time.monotonic() - t0
+            logger.warning("HTML gen attempt %d FAILED in %.1fs — %s: %s", attempt + 1, elapsed, type(e).__name__, e)
 
 
     raise RuntimeError("generate_landing_page_html: LLM failed to produce valid HTML after 3 attempts")
