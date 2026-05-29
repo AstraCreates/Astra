@@ -104,3 +104,7 @@ class StripeProductRequest(BaseModel):
 class StripeWebhookRegisterRequest(BaseModel):
     founder_id: str
     backend_url: Optional[str] = "http://localhost:8000"
+
+
+class InputResponse(BaseModel):
+    data: dict  # field_name → value

@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 _sessions: dict[str, asyncio.Queue] = {}
 _completed: set[str] = set()  # sessions that finished — reconnect gets immediate replay + close
 _steer: dict[str, list[str]] = {}  # inbound founder directives per session
+_input_responses: dict[str, dict] = {}  # request_id → founder input response
 
 # Persistent event log per session: list of (event_id, event_dict)
 _event_log: dict[str, list[tuple[int, dict]]] = {}
@@ -126,6 +127,22 @@ def publish_sync(session_id: str, event: dict) -> None:
             loop.create_task(publish(session_id, event))
     except Exception:
         pass
+
+
+def input_response_push(request_id: str, data: dict) -> None:
+    """Store founder's input response so the waiting agent can pick it up."""
+    _input_responses[request_id] = data
+
+
+async def input_response_wait(request_id: str, timeout: float = 300.0) -> dict | None:
+    """Block until the founder submits input for this request_id (max 5 min)."""
+    import time
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if request_id in _input_responses:
+            return _input_responses.pop(request_id)
+        await asyncio.sleep(0.5)
+    return None
 
 
 def steer_push(session_id: str, message: str) -> None:

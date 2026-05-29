@@ -5,7 +5,7 @@ import logging
 import time
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,7 @@ from backend.api.schemas import (
     StripeEINUpgradeRequest,
     StripeProductRequest,
     StripeWebhookRegisterRequest,
+    InputResponse,
 )
 from backend.provisioning.credentials_store import store_credentials
 
@@ -822,3 +823,106 @@ async def stripe_events(founder_id: str, limit: int = 20):
     """Return recent Stripe webhook events/alerts for the founder."""
     from backend.tools.stripe_tools import get_webhook_events
     return {"events": get_webhook_events(founder_id, limit)}
+
+
+# ── Agent input request ───────────────────────────────────────────────────────
+
+@router.post("/input/{session_id}/{request_id}")
+async def submit_input(session_id: str, request_id: str, body: InputResponse):
+    """
+    Founder submits their response to an agent input request (e.g. personal info for LLC filing).
+    The waiting agent picks this up and continues.
+    """
+    from backend.core.events import input_response_push, publish
+    input_response_push(request_id, body.data)
+    await publish(session_id, {"type": "agent_input_received", "request_id": request_id})
+    return {"ok": True, "request_id": request_id}
+
+
+@router.websocket("/llc/stream/{founder_id}")
+async def llc_stream(websocket: WebSocket, founder_id: str, company_name: str = "", state: str = "Wyoming"):
+    """
+    WebSocket endpoint for live LLC filing.
+    Playwright runs in a dedicated thread with its own ProactorEventLoop (required on Windows).
+    Frames are relayed to the WebSocket via run_coroutine_threadsafe.
+    Founder input is bridged via a thread-safe queue.Queue.
+    """
+    import sys
+    import queue
+    import threading
+
+    await websocket.accept()
+    main_loop = asyncio.get_running_loop()
+    input_q: queue.Queue = queue.Queue()
+    stop_event = threading.Event()
+
+    async def _send(msg: dict) -> None:
+        try:
+            await websocket.send_text(json.dumps(msg))
+        except Exception:
+            pass
+
+    def run_in_thread():
+        import asyncio as _aio
+        import traceback as _tb
+        # On Windows use ProactorEventLoop so Playwright can spawn Chromium
+        if sys.platform == "win32":
+            _loop = _aio.ProactorEventLoop()
+        else:
+            _loop = _aio.new_event_loop()
+        _aio.set_event_loop(_loop)
+
+        async def send_message(msg: dict) -> None:
+            if stop_event.is_set():
+                return
+            future = asyncio.run_coroutine_threadsafe(_send(msg), main_loop)
+            try:
+                future.result(timeout=10)
+            except Exception as e:
+                logger.warning("send_message failed: %s", e)
+
+        async def wait_input() -> dict | None:
+            deadline = _aio.get_event_loop().time() + 600
+            while _aio.get_event_loop().time() < deadline:
+                try:
+                    return input_q.get_nowait()
+                except queue.Empty:
+                    await _aio.sleep(0.3)
+            return None
+
+        try:
+            from backend.tools.llc_filing import file_llc_live
+            _loop.run_until_complete(file_llc_live(
+                founder_id=founder_id,
+                company_name=company_name or "My Company LLC",
+                state=state,
+                send_message=send_message,
+                wait_input=wait_input,
+            ))
+        except Exception as e:
+            err = _tb.format_exc()
+            logger.error("LLC filing thread error: %s", err)
+            future = asyncio.run_coroutine_threadsafe(
+                _send({"type": "error", "message": str(e)}), main_loop
+            )
+            try: future.result(timeout=5)
+            except Exception: pass
+
+    thread = threading.Thread(target=run_in_thread, daemon=True)
+    thread.start()
+
+    try:
+        async for msg_text in websocket.iter_text():
+            try:
+                msg = json.loads(msg_text)
+                if msg.get("type") == "founder_input":
+                    input_q.put(msg.get("data", {}))
+                elif msg.get("type") == "cancel":
+                    stop_event.set()
+                    break
+            except Exception:
+                pass
+    except WebSocketDisconnect:
+        stop_event.set()
+    except Exception:
+        stop_event.set()

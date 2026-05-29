@@ -45,6 +45,17 @@ class Settings(BaseSettings):
     backend_url: str = "http://localhost:8000"
     frontend_url: str = "http://localhost:3003"
 
+    # NWRA LLC filing — Astra's company card (pays for founder's LLC filing)
+    nwra_card_number: str = ""
+    nwra_card_expiry_month: str = ""
+    nwra_card_expiry_year: str = ""
+    nwra_card_cvv: str = ""
+    nwra_card_name: str = ""
+    nwra_billing_address: str = ""
+    nwra_billing_city: str = ""
+    nwra_billing_state: str = ""
+    nwra_billing_zip: str = ""
+
     # Test email — dedicated Gmail for E2E provisioning tests
     test_email_base: str = ""
     test_email_imap_password: str = ""

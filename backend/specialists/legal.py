@@ -1,9 +1,10 @@
-"""Legal specialist — generates NDAs, privacy policies, terms, patent landscape."""
+"""Legal specialist — generates NDAs, privacy policies, terms, patent landscape, LLC filing."""
 from backend.core.agent import Agent
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
 from backend.tools.pdf_generator import generate_pdf
 from backend.tools.patent_search import patent_search
 from backend.tools.doc_generator import format_legal_document
+from backend.tools.llc_filing import file_llc_live
 
 
 def build_legal_agent(**kwargs) -> Agent:
@@ -31,6 +32,7 @@ def build_legal_agent(**kwargs) -> Agent:
             "generate_pdf": generate_pdf,
             "patent_search": patent_search,
             "format_legal_document": format_legal_document,
+            "file_llc_live": file_llc_live,
             "obsidian_log": obsidian_log,
             "obsidian_read": obsidian_read,
             "obsidian_append": obsidian_append,
