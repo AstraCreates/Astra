@@ -642,14 +642,19 @@ COLORS: If design context has hex values, use them exactly. Otherwise pick a pal
 
 BORDERS & RADIUS: Pick ONE radius and use it everywhere (either 4px, 8px, 12px, or 16px — not mixed). Cards, buttons, inputs all match.
 
-LAYOUT SECTIONS (in this order):
-1. Nav: logo left (custom font, brand name), nav links center or right, single CTA button. Position: sticky. Border-bottom: 1px solid. Backdrop-filter: blur(12px). Background: semi-transparent version of page background.
-2. Hero: asymmetric OR centered — choose based on product. Large headline, concise subheadline (1 sentence max), ONE primary CTA button, optional ghost secondary. No sparkles. No emojis. No gradient text. Specific copy only.
-3. Social proof bar: real-looking metrics (format as "X,XXX" or "Y%" or "$ZM") with labels. Thin top/bottom borders. Subtle background.
-4. Features: 3-col grid desktop, 1-col mobile. Each card: consistent padding, ONE small icon or number, bold title, 2-line description. Hover: 0.15s border-color transition only — no lift, no scale, no shadow explosion.
-5. How it works: numbered steps (1, 2, 3) in a horizontal row. Step number large and in accent color. Dividers between. Clean.
-6. CTA section: 1 headline, 1 sentence, 1 button. That's it.
-7. Footer: © {name} 2026. Privacy · Terms · Contact. One line. Top border only.
+REQUIRED ELEMENTS (include all, but arrange and design them however suits the product — DO NOT use the same standard section order every time):
+- Sticky nav: brand name left, 1 CTA button. Backdrop-filter: blur(12px). Semi-transparent bg.
+- Hero: make it memorable. Choose ONE of: full-bleed dark, oversized editorial type, split with live UI mockup, asymmetric with floating stat cards, magazine pull-quote style, brutalist oversized grid. NOT a centered headline + subheadline + button — that's the default and it's banned.
+- Social proof: 3-4 real metrics (format "X,XXX" / "Y%" / "$ZM"). Can be inline in hero, a floating bar, or a dark band — your call.
+- Value section: features/benefits. Can be 2-col, 3-col, alternating rows, numbered list, or a large statement grid. NOT always 3-col cards.
+- Process/how-it-works: 3 steps. Horizontal, vertical, diagonal, or timeline — your call.
+- Final CTA: 1 headline, 1 line, 1 button.
+- Footer: © {name} 2026. Privacy · Terms · Contact. One line.
+
+LAYOUT CREATIVITY RULES:
+- Every generation must make a DIFFERENT structural choice. Think: what layout would a top design agency choose for THIS specific product?
+- Use asymmetry, overlap, large whitespace, or tight density — not the standard SaaS template.
+- Hero MUST be unique. If you find yourself doing "big headline, subheadline, button, then stats bar" — stop and redesign it.
 
 BANNED — automatic failure if any of these appear:
 ✗ Purple gradient hero (unless brand color is purple)
