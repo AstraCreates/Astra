@@ -482,9 +482,13 @@ def _file_prompt(rel_path: str, goal: str, context: str, local: str) -> str:
 
     return (
         f"You are a senior full-stack engineer building an MVP for: {goal}{ctx_block}{sibling_block}{hint_block}\n\n"
-        f"Task: write the file `{rel_path}` with complete, production-ready code. No TODOs. No placeholders.\n\n"
-        f"IMPORTANT: You MUST use your Write tool to create `{rel_path}`. "
-        f"Do not explain or plan. Write the file immediately and say DONE when finished."
+        f"Task: write the file `{rel_path}` with COMPLETE, production-ready code.\n"
+        f"Rules:\n"
+        f"- NO TODOs, NO placeholders, NO '// implement later', NO empty functions\n"
+        f"- Every class, function, and route must have a real, working implementation\n"
+        f"- The file must be immediately runnable/importable with no changes\n\n"
+        f"IMPORTANT: Use your Write tool RIGHT NOW to create `{rel_path}`. "
+        f"Do not explain. Do not plan. Write the complete file and say DONE."
     )
 
 

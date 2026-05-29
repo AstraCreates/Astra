@@ -25,7 +25,7 @@ def _vercel_cli_deploy(local_path: str, project_name: str = "", token: str = "")
     env = os.environ.copy()
     env["VERCEL_TOKEN"] = token
 
-    cmd = [vercel_bin, "deploy", "--prod", "--yes", "--token", token]
+    cmd = [vercel_bin, "deploy", "--prod", "--yes", "--token", token, "--scope", "astratestingmail-9022s-projects"]
     # --name is deprecated; set project name via vercel.json instead
     if project_name:
         import json as _json
