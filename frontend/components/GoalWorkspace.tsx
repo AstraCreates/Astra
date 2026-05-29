@@ -1286,8 +1286,8 @@ function AgentDetail({
         )}
       </div>
 
-      {/* ── Agent chat ──────────────────────────────────────────────── */}
-      <AgentChat agentKey={state.agent} founderId={founderId} sessionId={sessionId} />
+      {/* ── Agent chat — key resets state when switching agents ── */}
+      <AgentChat key={`${state.agent}-${sessionId ?? "nosession"}`} agentKey={state.agent} founderId={founderId} sessionId={sessionId} />
     </div>
   );
 }
