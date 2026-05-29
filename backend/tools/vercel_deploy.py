@@ -723,6 +723,23 @@ Use {_heading_font} for ALL headings. Body font: your choice (not Inter, not Pop
                     logger.warning("HTML attempt %d — index.html not written (%.1fs). Files: %s", attempt + 1, elapsed, [f.name for f in files])
                     continue
                 html = index.read_text(encoding="utf-8")
+                # Post-process: replace any banned font imports/references with our chosen font.
+                # Prompting alone doesn't work — models are hardwired to default to Inter.
+                _banned_re = re.compile(r"\b(Inter|Poppins|Roboto|Lato|Open\+Sans|Open Sans)\b", re.IGNORECASE)
+                if _banned_re.search(html):
+                    # Replace Google Fonts URLs that reference banned fonts
+                    html = re.sub(
+                        r'(href="https://fonts\.googleapis\.com/css2\?)[^"]*"',
+                        f'href="https://fonts.googleapis.com/css2?family={_font_slug}:ital,wght@0,400;0,700;0,900;1,400&display=swap"',
+                        html,
+                    )
+                    # Replace font-family CSS references
+                    html = re.sub(r"'Inter'", f"'{_heading_font.split(',')[0].strip(chr(39))}'" , html)
+                    html = re.sub(r'"Inter"', f'"{_heading_font.split(",")[0].strip(chr(39))}"', html)
+                    html = re.sub(r"'Poppins'", f"'{_heading_font.split(',')[0].strip(chr(39))}'", html)
+                    html = re.sub(r'"Poppins"', f'"{_heading_font.split(",")[0].strip(chr(39))}"', html)
+                    html = re.sub(r"'Roboto'", f"'{_heading_font.split(',')[0].strip(chr(39))}'", html)
+                    logger.info("Post-processed font: replaced banned fonts with %s", _heading_font)
                 logger.info("HTML gen attempt %d done in %.1fs — %d chars", attempt + 1, elapsed, len(html))
                 logger.info("HTML preview (first 500): %.500s", html[:500])
                 html = re.sub(r"```html?", "", html, flags=re.IGNORECASE).strip().rstrip("`").strip()
