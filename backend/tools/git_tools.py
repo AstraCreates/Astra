@@ -449,6 +449,43 @@ def _missing_mvp_files(local: str, required: list[str]) -> list[str]:
     return [f for f in required if f not in existing]
 
 
+def _file_prompt(rel_path: str, goal: str, context: str, local: str) -> str:
+    """Build a targeted single-file prompt with full context so model has no excuse to plan."""
+    # Read existing files for cross-file consistency (imports, types)
+    siblings = []
+    for p in ["frontend/package.json", "frontend/tsconfig.json", "backend/main.py", "backend/models.py"]:
+        fp = Path(local) / p
+        if fp.exists() and p != rel_path:
+            try:
+                siblings.append(f"--- {p} ---\n{fp.read_text()[:600]}")
+            except Exception:
+                pass
+    sibling_block = ("\n\nEXISTING FILES (for consistency):\n" + "\n".join(siblings)) if siblings else ""
+    ctx_block = f"\n\nCONTEXT:\n{context[:800]}" if context else ""
+
+    # File-specific guidance
+    hints = {
+        "frontend/package.json": (
+            "Use ONLY these real packages: next@14.2.21, react, react-dom, typescript, tailwindcss, "
+            "@tailwindcss/forms, clsx, lucide-react, @clerk/nextjs, @supabase/supabase-js, "
+            "framer-motion, zod, react-hook-form. "
+            "NEVER use @next/font (use next/font/google). NEVER use @radix-ui/react-badge."
+        ),
+        "frontend/next.config.js": "Use .js extension ONLY. Never next.config.ts or .mjs.",
+        "frontend/middleware.ts": "Use @clerk/nextjs/server. Protect /dashboard/* routes.",
+        "backend/requirements.txt": "Include: fastapi, uvicorn[standard], pydantic, python-dotenv, sqlalchemy, psycopg2-binary, python-jose[cryptography], passlib[bcrypt], httpx",
+    }
+    hint = hints.get(rel_path, "")
+    hint_block = f"\n\nFILE HINTS: {hint}" if hint else ""
+
+    return (
+        f"You are a senior full-stack engineer building an MVP for: {goal}{ctx_block}{sibling_block}{hint_block}\n\n"
+        f"Task: write the file `{rel_path}` with complete, production-ready code. No TODOs. No placeholders.\n\n"
+        f"IMPORTANT: You MUST use your Write tool to create `{rel_path}`. "
+        f"Do not explain or plan. Write the file immediately and say DONE when finished."
+    )
+
+
 def run_mvp_loop(
     repo_url: str,
     goal: str,
@@ -458,10 +495,8 @@ def run_mvp_loop(
     max_rounds: int = None,  # kept for API compat, ignored
 ) -> dict:
     """
-    Iterate with openclaude in a persistent session until MVP is done.
-    Orchestrator checks real file state after each iteration and tells
-    openclaude exactly what's still missing. No round cap — runs until
-    all required files exist or 24 hours elapsed.
+    Build MVP by calling openclaude once per missing file (no session-id — fresh context each call).
+    Avoids session state pollution that caused the PM loop to spin forever.
     """
     if not settings.github_token:
         return {"error": "GITHUB_TOKEN not set"}
@@ -469,148 +504,58 @@ def run_mvp_loop(
     if required_files is None:
         required_files = MVP_REQUIRED
 
-    ctx_block = f"\n\nCONTEXT FROM RESEARCH + OTHER AGENTS:\n{context}\n" if context else ""
-
-    INITIAL_PROMPT = f"""You are building a production MVP for: {goal}{ctx_block}
-
-Build a lean, working MVP — enough to demo and get first users. Not everything, just the core.
-
-Required deliverables (write all with real, working code — no TODOs):
-- frontend/package.json  (Next.js 14 + TypeScript + Tailwind. Real packages only: next, react, react-dom, tailwindcss, @tailwindcss/forms, clsx, lucide-react, @clerk/nextjs, @supabase/supabase-js, framer-motion, zod, react-hook-form. NEVER use @next/font — it was merged into next/font in Next.js 13, use next/font/google instead. @radix-ui/react-badge does NOT exist — use plain div.)
-- frontend/tailwind.config.ts
-- frontend/tsconfig.json
-- frontend/next.config.js  (NEVER next.config.ts or next.config.mjs — use .js only, Next.js 14 does not support .ts config)
-- frontend/app/layout.tsx
-- frontend/app/globals.css
-- frontend/app/page.tsx  (landing page specific to {goal} — real copy, real value props)
-- frontend/app/dashboard/page.tsx  (core dashboard)
-- frontend/app/dashboard/layout.tsx
-- frontend/components/Navbar.tsx
-- frontend/middleware.ts  (Clerk auth, protect /dashboard/*)
-- frontend/app/sign-in/[[...sign-in]]/page.tsx
-- frontend/app/sign-up/[[...sign-up]]/page.tsx
-- frontend/lib/supabase.ts
-- backend/main.py  (FastAPI, CORS, all routers mounted)
-- backend/models.py
-- backend/database.py
-- backend/routers/__init__.py
-- backend/routers/auth.py  (/register /login /me)
-- backend/routers/api.py  (core CRUD for {goal})
-- backend/requirements.txt
-- .env.example
-- docker-compose.yml
-- README.md
-
-After writing all files run: bash -c "git add -A && git commit -m 'feat: mvp build'"
-Work autonomously until everything above is written and committed."""
-
     try:
         local = _ensure_clone(repo_url, session_id)
-        # Fresh UUID per run — avoids resuming a corrupted prior session
         oc_session_id = str(uuid.uuid4())
-        # Persist so CompanyChat / continue_session can resume this conversation
         Path(local, ".oc_session_id").write_text(oc_session_id)
         commits = []
 
-        logger.info("MVP build start for %s (oc_session=%s)", repo_url, oc_session_id)
+        logger.info("MVP build start for %s", repo_url)
         _pull(local)
 
-        # First message — kick off the build
-        agent_reply = _run_claude(local, INITIAL_PROMPT, session_id=oc_session_id, timeout=3600)
+        # Pass 1: write each required file that's missing — one fresh openclaude call per file
+        missing = _missing_mvp_files(local, required_files)
+        logger.info("Pass 1: %d files to write", len(missing))
+        for rel_path in missing:
+            prompt = _file_prompt(rel_path, goal, context, local)
+            logger.info("  writing %s ...", rel_path)
+            _run_claude(local, prompt, session_id=None, timeout=300)
+            # Verify file appeared
+            if Path(local, rel_path).exists():
+                logger.info("  ✓ %s written", rel_path)
+            else:
+                logger.warning("  ✗ %s NOT written — retry", rel_path)
+                # One retry with more explicit instruction
+                retry_prompt = (
+                    f"Use your Write tool RIGHT NOW to create the file `{rel_path}` in the current directory. "
+                    f"Project: {goal}. Write real, complete code. No explanations."
+                )
+                _run_claude(local, retry_prompt, session_id=None, timeout=300)
+
         _sanitize_package_json(local)
-        # If initial build returned nothing useful (model planned instead of wrote), nudge it
-        initial_files = _staged_files(local)
-        if not initial_files:
-            logger.info("Initial prompt wrote no files — nudging openclaude to start writing")
-            agent_reply = _run_claude(
-                local,
-                "You haven't created any files yet. Stop planning. Start writing files NOW. "
-                "Begin with frontend/package.json, then frontend/app/page.tsx, then backend/main.py. "
-                "Use your Write tool on each file. Do not explain — just write the files.",
-                session_id=oc_session_id, timeout=3600,
-            )
-            _sanitize_package_json(local)
-        sha = _commit_and_push(local, f"feat: mvp initial — {goal[:50]}")
+        sha = _commit_and_push(local, f"feat: mvp build — {goal[:50]}")
         if sha:
             commits.append(sha)
 
-        # Dual verification after initial build
-        def _verify_and_fix() -> bool:
-            """Run openclaude self-test + planner review. Return True if both pass."""
-            # 1. openclaude tests its own code
-            oc_out = _openclaude_test_pass(local, oc_session_id)
+        # Pass 2: openclaude self-test + fix (fresh session, reads actual files on disk)
+        fix_session = str(uuid.uuid4())
+        logger.info("Pass 2: openclaude fix pass")
+        _run_claude(local, _OC_TEST_PROMPT, session_id=None, timeout=600)
+        _sanitize_package_json(local)
+        sha2 = _commit_and_push(local, f"fix: verification pass — {goal[:45]}")
+        if sha2:
+            commits.append(sha2)
+
+        # Pass 3: planner review → fix any remaining issues
+        current_files = _staged_files(local)
+        review = _planner_review(local, goal, current_files)
+        logger.info("Planner review: pass=%s issues=%s", review["pass"], review["issues"])
+        if not review["pass"] and review["fix_instructions"]:
+            _run_claude(local, review["fix_instructions"], session_id=None, timeout=600)
             _sanitize_package_json(local)
-            sha2 = _commit_and_push(local, f"fix: openclaude test pass — {goal[:40]}")
-            if sha2:
-                commits.append(sha2)
-
-            # 2. planner independently reviews
-            current_files = _staged_files(local)
-            review = _planner_review(local, goal, current_files)
-            logger.info("Planner review: pass=%s issues=%s", review["pass"], review["issues"])
-
-            if not review["pass"] and review["fix_instructions"]:
-                logger.info("Planner found issues — sending fix instructions to openclaude")
-                fix_reply = _run_claude(local, review["fix_instructions"], session_id=oc_session_id, timeout=1800)
-                _sanitize_package_json(local)
-                sha3 = _commit_and_push(local, f"fix: planner review fixes — {goal[:35]}")
-                if sha3:
-                    commits.append(sha3)
-                return False  # trigger another PM loop iteration
-
-            return review["pass"]
-
-        _verify_and_fix()
-
-        # Conversation loop — PM reads agent reply, sends next message, repeat until done
-        import time
-        _MAX_PM_MESSAGES = 40
-        _STALL_THRESHOLD = 8   # messages with no new files = stall
-        pm_count = 0
-        last_file_count = len(_staged_files(local))
-        stall_count = 0
-        while pm_count < _MAX_PM_MESSAGES:
-            missing = _missing_mvp_files(local, required_files)
-            if not missing:
-                logger.info("All required files present — running final verification")
-                if _verify_and_fix():
-                    break
-            next_msg = _pm_respond(agent_reply, goal, context, missing)
-            if next_msg is None:
-                logger.info("PM declared MVP done — running final verification")
-                if _verify_and_fix():
-                    break
-                agent_reply = "Verification found issues. Please review the latest fixes."
-                continue
-            # Detect stall: openclaude keeps talking but not writing files
-            current_file_count = len(_staged_files(local))
-            if current_file_count > last_file_count:
-                stall_count = 0
-                last_file_count = current_file_count
-            else:
-                stall_count += 1
-            if stall_count >= _STALL_THRESHOLD:
-                logger.warning("PM loop stalled (%d msgs, no new files) — sending hard write directive", stall_count)
-                next_msg = (
-                    "STOP. You are not writing files. Use your Write tool RIGHT NOW to create the missing files. "
-                    f"Missing: {', '.join(missing[:5])}. "
-                    "No explanations. No planning. Write the first missing file immediately."
-                )
-                stall_count = 0
-            # Inject doc context for any library/API errors in the last reply
-            doc_ctx = _research_error_docs(agent_reply)
-            if doc_ctx:
-                next_msg = next_msg + doc_ctx
-            logger.info("PM[%d/%d] → openclaude: %s", pm_count + 1, _MAX_PM_MESSAGES, next_msg[:120])
-            agent_reply = _run_claude(local, next_msg, session_id=oc_session_id, timeout=3600)
-            _sanitize_package_json(local)
-            sha = _commit_and_push(local, f"feat: mvp progress — {goal[:45]}")
-            if sha:
-                commits.append(sha)
-            pm_count += 1
-
-        if pm_count >= _MAX_PM_MESSAGES:
-            logger.warning("PM loop hit max messages (%d) — stopping", _MAX_PM_MESSAGES)
+            sha3 = _commit_and_push(local, f"fix: planner fixes — {goal[:45]}")
+            if sha3:
+                commits.append(sha3)
 
         all_files = _staged_files(local)
         return {
