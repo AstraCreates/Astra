@@ -526,6 +526,15 @@ def vercel_deploy(project_slug: str, html: str, css: str = "", js: str = "") -> 
                 cwd=tmpdir, capture_output=True, text=True, timeout=120, env=env,
             )
             url = next((l.strip() for l in r.stdout.splitlines() if l.strip().startswith("https://")), "")
+            # CLI may output JSON — extract url from it if line scan missed
+            if not url and r.returncode == 0:
+                try:
+                    import re as _re2
+                    m = _re2.search(r'"url"\s*:\s*"(https://[^"]+)"', r.stdout)
+                    if m:
+                        url = m.group(1)
+                except Exception:
+                    pass
             if r.returncode == 0 and url:
                 logger.info("vercel_deploy: %s", url)
                 return {"deployed": True, "url": url, "project": project_slug}
@@ -809,44 +818,7 @@ Output ONLY the completed HTML — no explanation, no markdown fences.
                     logger.warning("HTML attempt %d REJECTED — no <!DOCTYPE> or <html>. Preview: %.300r", attempt + 1, html[:300])
                     continue
 
-            # 2nd pass: review and improve the HTML for design quality
-            logger.info("HTML accepted (%d chars) — running 2nd-pass design review …", len(body))
-            review_prompt = (
-                f"{_design_system_prompt}\n\n"
-                "You are reviewing the following landing page HTML for design quality. "
-                "Identify and fix ALL of these issues if present:\n"
-                "- Generic hero copy (\"build your dreams\", \"launch faster\", etc.) — replace with specific copy\n"
-                "- Vibe-coded signals: sparkles ✨, random emojis, unjustified purple gradients\n"
-                "- Inconsistent spacing, mismatched border radii\n"
-                "- Missing or broken interactive elements (accordion not toggling, counter not animating)\n"
-                "- Any section that looks empty or has placeholder text\n"
-                "- Missing mobile responsiveness\n\n"
-                "Output ONLY the complete improved HTML — no explanation, no markdown fences.\n\n"
-                + body
-            )
-            review_oc_prompt = (
-                "Review and improve this HTML, then write the final version to `index.html` using the Write tool. "
-                "No explanation — just write the improved file immediately.\n\n"
-                + review_prompt
-            )
-            try:
-                with tempfile.TemporaryDirectory() as review_dir:
-                    _run_claude(review_dir, review_oc_prompt, session_id=None, timeout=480, model="Qwen/Qwen3.6-35B-A3B")
-                    reviewed = (_Path(review_dir) / "index.html")
-                    if reviewed.exists():
-                        reviewed_html = reviewed.read_text(encoding="utf-8")
-                        reviewed_html = re.sub(r"```html?", "", reviewed_html, flags=re.IGNORECASE).strip().rstrip("`").strip()
-                        dp = reviewed_html.lower().find("<!doctype")
-                        if dp != -1:
-                            body = reviewed_html[dp:]
-                            logger.info("2nd-pass review complete — %d chars", len(body))
-                        else:
-                            logger.warning("2nd-pass review produced no DOCTYPE — keeping original")
-                    else:
-                        logger.warning("2nd-pass review did not write index.html — keeping original")
-            except Exception as rev_err:
-                logger.warning("2nd-pass review failed (%s) — keeping original", rev_err)
-
+            logger.info("HTML accepted (%d chars)", len(body))
             try:
                 open("/tmp/astra_last_html.html", "w").write(body)
             except Exception:
