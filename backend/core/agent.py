@@ -110,6 +110,7 @@ class AgentContext:
     founder_id: str
     session_id: str
     shared: dict = field(default_factory=dict)  # P2P shared state
+    bypass_approvals: bool = False  # set True in tests to skip SafeRun approval gates
 
 
 class Agent:
@@ -554,10 +555,25 @@ class Agent:
                 })
         except Exception as e:
             logger.warning("[%s] SafeRun planning failed for %s: %s", self.name, tool_name, e)
-        if saferun_action and saferun_action.get("approval_required"):
+        if saferun_action and saferun_action.get("approval_required") and not ctx.bypass_approvals:
             gate_key = saferun_action.get("approval_gate")
             try:
                 from backend.core.events import approval_decision_wait, publish
+                from backend.approval_workflows import create_approval_request
+                approval_request = create_approval_request(
+                    ctx.session_id,
+                    str(gate_key),
+                    title=str(gate_key).replace("_", " ").title(),
+                    reason=saferun_action.get("reason", ""),
+                    action_id=saferun_action.get("id", ""),
+                    tool=tool_name,
+                    agent=self.name,
+                    risk_level=saferun_action.get("risk_level", "medium"),
+                )
+                await publish(ctx.session_id, {
+                    "type": "approval_request",
+                    "request": approval_request,
+                })
                 await publish(ctx.session_id, {
                     "type": "saferun_result",
                     "action_id": saferun_action["id"],

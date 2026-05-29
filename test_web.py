@@ -18,7 +18,7 @@ GOAL = (
     "based on biometrics. Target market: busy professionals aged 25-45. "
     "Founder has $50k budget and 6 months runway."
 )
-CTX = AgentContext(founder_id="test_founder", session_id="agent_smoke_test", goal=GOAL)
+CTX = AgentContext(founder_id="test_founder", session_id="agent_smoke_test", goal=GOAL, bypass_approvals=True)
 FLASH = dict(
     model="deepseek-ai/DeepSeek-V4-Flash",
     model_base_url=settings.planner_model_base_url,
