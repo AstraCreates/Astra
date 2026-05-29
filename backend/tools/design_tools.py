@@ -418,11 +418,13 @@ def _design_principles(vibe: str) -> list:
 
 def _typography_spec(vibe: str) -> dict:
     fonts = {
-        "minimal": {"heading": "Inter", "body": "Inter", "mono": "JetBrains Mono"},
-        "bold": {"heading": "Cal Sans", "body": "Inter", "mono": "Fira Code"},
-        "friendly": {"heading": "Plus Jakarta Sans", "body": "Plus Jakarta Sans", "mono": "JetBrains Mono"},
-        "professional": {"heading": "Merriweather", "body": "Source Sans 3", "mono": "Source Code Pro"},
+        "minimal": {"heading": "Syne", "body": "DM Sans", "mono": "JetBrains Mono"},
+        "bold": {"heading": "Bebas Neue", "body": "Manrope", "mono": "Fira Code"},
+        "friendly": {"heading": "Nunito", "body": "Plus Jakarta Sans", "mono": "JetBrains Mono"},
+        "professional": {"heading": "Fraunces", "body": "Source Sans 3", "mono": "Source Code Pro"},
         "innovative": {"heading": "Space Grotesk", "body": "DM Sans", "mono": "JetBrains Mono"},
+        "calm": {"heading": "Playfair Display", "body": "Lato", "mono": "JetBrains Mono"},
+        "energetic": {"heading": "Unbounded", "body": "Manrope", "mono": "Fira Code"},
     }
     f = fonts.get(vibe, fonts["minimal"])
     return {
