@@ -702,8 +702,10 @@ Make it long. Make it rich. Make it feel like a real funded startup's website.""
     from backend.tools.git_tools import _run_claude
 
     oc_prompt = (
-        f"Write a complete, production-quality single-file HTML landing page to `index.html` "
+        f"Write a LONG, comprehensive, production-quality single-file HTML+CSS website to `index.html` "
         f"using the Write tool RIGHT NOW. No explanation, no markdown — just write the file.\n\n"
+        f"The file MUST contain ALL of these sections or the task is incomplete: "
+        f"(1) nav, (2) hero, (3) how-it-works, (4) features, (5) testimonials, (6) pricing with 3 tiers, (7) FAQ, (8) email CTA, (9) footer.\n\n"
         f"{prompt}"
     )
 
