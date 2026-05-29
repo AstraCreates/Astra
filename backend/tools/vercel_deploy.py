@@ -603,6 +603,14 @@ def generate_landing_page_html(
     _heading_font = random.Random(_seed).choice(_HEADINGS)
     _design_context += f" Heading font: {_heading_font}."
 
+    # Build a concrete Google Fonts link the model must copy verbatim — no ambiguity.
+    _font_slug = re.sub(r"['\"]", "", _heading_font.split(",")[0]).strip().replace(" ", "+")
+    _gfonts_link = (
+        f'<link rel="preconnect" href="https://fonts.googleapis.com">'
+        f'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+        f'<link href="https://fonts.googleapis.com/css2?family={_font_slug}:wght@400;700;900&display=swap" rel="stylesheet">'
+    )
+
     if not any(kw in _design_context.lower() for kw in ("hex", "#", "color", "palette", "vibe")):
         _PALETTES = [
             ("warm cream + charcoal red", "#faf7f2", "#1a1a1a", "#c84b31"),
@@ -677,14 +685,15 @@ Design direction: {_vibe_instruction}
 
 DO NOT use the generic SaaS landing page structure (hero → feature cards grid → CTA section → footer). That layout is banned. Let the design direction above dictate the page structure organically. Copyright footer: © {name} 2026.
 
-CRITICAL font rule: NEVER use Inter, Roboto, Poppins, or system-ui for headings. Pick a distinctive Google Fonts heading font (Syne, Fraunces, Bebas Neue, Playfair Display, Unbounded, DM Serif Display, etc.)."""
+Typography requirement: the `<head>` MUST include exactly this Google Fonts link (copy verbatim):
+{_gfonts_link}
+Use {_heading_font} for ALL headings. Body font: your choice (not Inter, not Poppins, not Roboto)."""
 
     from backend.tools._llm import generate
 
     def _looks_like_fallback_template(text: str) -> bool:
         if not isinstance(text, str):
             return False
-        # Only flag the explicit HTML comment marker — CSS vars / copy strings are too generic
         return "astra-fallback-template" in text
 
     logger.info("design_context passed to HTML gen: %.600s", _design_context)
