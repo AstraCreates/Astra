@@ -715,7 +715,7 @@ Make it long. Make it rich. Make it feel like a real funded startup's website.""
         try:
             with tempfile.TemporaryDirectory() as tmpdir:
                 logger.info("  tmpdir: %s", tmpdir)
-                stdout = _run_claude(tmpdir, oc_prompt, session_id=None, timeout=300, model="anthropic/claude-sonnet-4-6")
+                stdout = _run_claude(tmpdir, oc_prompt, session_id=None, timeout=600, model="anthropic/claude-sonnet-4-6")
                 elapsed = _time.monotonic() - t0
                 logger.info("  openclaude stdout (%d chars): %.500s", len(stdout), stdout)
                 index = _Path(tmpdir) / "index.html"
