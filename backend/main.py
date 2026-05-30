@@ -34,11 +34,24 @@ async def _resume_interrupted_sessions() -> None:
     """On startup, detect sessions that were live when the backend last restarted and re-run remaining agents."""
     import asyncio as _asyncio
     await _asyncio.sleep(3)  # wait for orchestrator singleton to init
+    # Hard cap: only resume the most recent N sessions to avoid overloading the server
+    _MAX_RESUME = 2
     try:
         from backend.core.events import _redis_active_sessions, _restore_session, _event_log
         from backend.core.factory import get_orchestrator
         interrupted = await _asyncio.to_thread(_redis_active_sessions)
         if not interrupted:
+            return
+        # Limit to most recent sessions to prevent startup crash loop
+        if len(interrupted) > _MAX_RESUME:
+            logger.warning(
+                "Skipping session resume: %d interrupted sessions found (limit=%d). "
+                "Too many to safely resume on startup — mark all as expired.",
+                len(interrupted), _MAX_RESUME,
+            )
+            from backend.core.events import _completed
+            for sid in interrupted:
+                _completed.add(sid)
             return
         logger.info("Resuming %d interrupted session(s): %s", len(interrupted), interrupted)
         orch = get_orchestrator()
