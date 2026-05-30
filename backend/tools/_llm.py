@@ -8,8 +8,11 @@ Models:
   "nemotron"  → NVIDIA-Nemotron-3-Super-120B-A12B  (HTML/design generation)
   "image"     → FLUX-2-pro               (image generation)
 """
+import logging
 import re
 from backend.config import settings
+
+logger = logging.getLogger(__name__)
 
 _FAST_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
 _LARGE_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
