@@ -40,7 +40,6 @@ async def test_agent(agent: str, client: httpx.AsyncClient) -> tuple[str, str]:
                         "agents": [agent],
                         "bypass_planner": True,
                         "company_name": "InvoiceAI",
-                        "test_model": "meta-llama/Llama-3.2-3B-Instruct",
                     },
                 }, timeout=30)
                 if r.status_code != 502:
