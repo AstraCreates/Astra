@@ -81,7 +81,8 @@ _FINANCIAL_SEARCH_SEQUENCE = (
     "A. obsidian_log with sections: UNIT ECONOMICS (CAC, LTV, LTV:CAC, payback period), "
     "BURN & RUNWAY NORMS, REVENUE MULTIPLES & VALUATION, FUNDRAISING COMPS (recent rounds, investors, "
     "check sizes), INVESTOR RETURN EXPECTATIONS (IRR, MOIC, ownership targets), KEY BENCHMARKS SUMMARY.\n"
-    "B. generate_pdf — compile all findings into a structured Financial Benchmarks PDF with the sections above."
+    "B. generate_pdf — compile all findings into a structured Financial Benchmarks PDF with the sections above.\n"
+    "C. Call done with output containing: summary (2-3 sentence recap), key_benchmarks (dict of the most important numbers found), pdf_path (from generate_pdf result), sources (list of URLs cited)."
 )
 
 
@@ -114,7 +115,7 @@ def build_research_financial_agent(**kwargs) -> Agent:
         model=settings.planner_model_name,
         model_base_url=settings.planner_model_base_url,
         model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
-        max_iterations=14,
+        max_iterations=25,
         role=(
             "You are an elite financial research specialist producing investment-grade benchmarks. "
             "You extract precise, cited numbers — not vague ranges — from authoritative sources "
