@@ -290,6 +290,7 @@ class Agent:
                            "obsidian_log"}
         _one_shot_done: set[str] = set()
         _called_tools: set[str] = set()
+        _attempted_tools: set[str] = set()  # includes failed attempts
         _tool_results: list[tuple[str, dict[str, Any]]] = []
 
         while i < MAX_ITERATIONS:
@@ -334,7 +335,7 @@ class Agent:
                 output = parsed.get("output", {})
                 if isinstance(output, dict):
                     output = self._normalize_done_output(output, _tool_results)
-                    missing_output = self._missing_required_output(output)
+                    missing_output = self._missing_required_output(output, _attempted_tools)
                     if missing_output:
                         messages.append({"role": "user", "content": (
                             "You cannot call done yet. Output is missing required fields: "
@@ -376,6 +377,7 @@ class Agent:
                     args["html"] = _large_results["generate_landing_page_html"]
                     logger.debug("[%s] forced cached HTML into vercel_deploy args (%d chars)", self.name, len(args["html"]))
                 await self._emit(ctx, "agent_action", action="tool", tool=tool_name, args=args, reasoning=reasoning)
+                _attempted_tools.add(tool_name)
                 result = await self._execute_tool(tool_name, args, ctx)
                 await self._emit(ctx, "agent_action_result", tool=tool_name, result=result)
                 if "error" not in result:
@@ -499,7 +501,7 @@ class Agent:
             logger.warning("%s forced synthesis failed: %s", self.name, e)
         return {"status": "max_iterations_reached", "agent": self.name}
 
-    def _missing_required_output(self, output: dict[str, Any]) -> list[str]:
+    def _missing_required_output(self, output: dict[str, Any], attempted_tools: set[str] | None = None) -> list[str]:
         """Require key preview artifacts per role before accepting done."""
         if self.name == "legal":
             docs = output.get("documents")
@@ -536,8 +538,13 @@ class Agent:
             if not output.get("meta_ad"):
                 missing.append("meta_ad")
             ad_images = output.get("ad_images")
+            # Only require ad_images if generate_ad_image hasn't been attempted yet.
+            # If it was attempted (even if it failed), allow done to proceed — the error
+            # is already surfaced in the tool result and the agent shouldn't be blocked forever.
+            image_attempted = attempted_tools and "generate_ad_image" in attempted_tools
             if not isinstance(ad_images, list) or not ad_images:
-                missing.append("ad_images[]")
+                if not image_attempted:
+                    missing.append("ad_images[]")
             return missing
         return []
 

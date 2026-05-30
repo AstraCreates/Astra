@@ -12,6 +12,7 @@ from backend.tools.composio_tools import (
 
 
 def build_marketing_agent(**kwargs) -> Agent:
+    kwargs.setdefault("max_iterations", 20)
     return Agent(
         name="marketing",
         role=(
