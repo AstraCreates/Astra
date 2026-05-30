@@ -7,6 +7,9 @@ from backend.tools.llc_filing import file_llc_live
 
 
 def build_legal_entity_agent(**kwargs) -> Agent:
+    # 8-step workflow needs well over the default 5 iterations
+    kwargs.setdefault("max_iterations", 20)
+
     _obsidian_read_done = {"done": False}
 
     def _obsidian_read_once(**kw):
