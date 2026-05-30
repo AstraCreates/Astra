@@ -423,9 +423,11 @@ export default function OutreachPage() {
       });
       const data = await res.json();
       setFindResult(data);
-      if (data.contacts_stored > 0) {
-        // Auto-load results into the search list
-        await runSearch(1);
+      // Display contacts directly from API response — no Supabase needed
+      if (data.contacts && data.contacts.length > 0) {
+        setSearchResults(data.contacts);
+        setSearchTotal(data.contacts.length);
+        setSelectedContacts(new Set());
       }
     } catch (e) {
       setSearchError(e instanceof Error ? e.message : "Failed to find contacts");
@@ -657,7 +659,7 @@ export default function OutreachPage() {
                 ) : (
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <span style={{ color: "#4ade80", fontWeight: 600 }}>
-                      Found {findResult.contacts_stored} contacts with verified emails
+                      Found {findResult.contacts_found} contacts with verified emails
                     </span>
                     <span style={{ color: "var(--fg-mute)" }}>
                       Searched {findResult.domains_searched?.length || 0} companies: {(findResult.domains_searched || []).slice(0, 6).join(", ")}{(findResult.domains_searched?.length || 0) > 6 ? "…" : ""}
