@@ -2,6 +2,22 @@
 Tool registry. Maps tool names to sync callables.
 All tools must be sync (AstraAgent wraps execution in asyncio.to_thread).
 """
+from backend.tools.hunter_tools import (
+    hunter_domain_search,
+    hunter_find_email,
+    hunter_verify_email,
+    hunter_enrich_company,
+    hunter_enrich_person,
+    hunter_enrich_combined,
+    hunter_search_by_domains,
+    hunter_store_contacts,
+)
+from backend.tools.apollo_tools import (
+    apollo_search_people,
+    apollo_search_companies,
+    apollo_enrich_person,
+    apollo_enrich_company,
+)
 from backend.tools.web_search import web_search, news_search
 from backend.tools.patent_search import patent_search
 from backend.tools.vercel_deploy import vercel_deploy, generate_landing_page_html
@@ -33,6 +49,14 @@ from backend.tools.company_brain import (
     sync_company_brain,
 )
 from backend.tools.company_brain_connectors import import_company_brain_source, import_company_brain_sources
+from backend.tools.contact_scraper import (
+    bulk_discover_and_store,
+    search_local_contacts,
+    scrape_company_contacts,
+    get_github_org_contacts,
+    get_hn_hiring_contacts,
+    discover_via_web_search,
+)
 
 TOOL_REGISTRY: dict[str, callable] = {
     # Research
@@ -66,6 +90,28 @@ TOOL_REGISTRY: dict[str, callable] = {
     "composio_linear_create_issue": composio_linear_create_issue,
     "composio_calendar_create_event": composio_calendar_create_event,
     "composio_notion_create_page": composio_notion_create_page,
+
+    # Outreach — local scraper DB (free, no API needed)
+    "bulk_discover_and_store": bulk_discover_and_store,
+    "search_local_contacts": search_local_contacts,
+    "scrape_company_contacts": scrape_company_contacts,
+    "get_github_org_contacts": get_github_org_contacts,
+    "get_hn_hiring_contacts": get_hn_hiring_contacts,
+    "discover_via_web_search": discover_via_web_search,
+
+    # Outreach — Hunter.io (domain search + enrichment + composite store)
+    "hunter_domain_search": hunter_domain_search,
+    "hunter_find_email": hunter_find_email,
+    "hunter_verify_email": hunter_verify_email,
+    "hunter_enrich_company": hunter_enrich_company,
+    "hunter_enrich_person": hunter_enrich_person,
+    "hunter_enrich_combined": hunter_enrich_combined,
+    "hunter_search_by_domains": hunter_search_by_domains,
+    "hunter_store_contacts": hunter_store_contacts,
+    "apollo_search_people": apollo_search_people,
+    "apollo_search_companies": apollo_search_companies,
+    "apollo_enrich_person": apollo_enrich_person,
+    "apollo_enrich_company": apollo_enrich_company,
 
     # Company brain — normalized cross-tool context for humans and agents
     "company_brain_search": search_company_brain,

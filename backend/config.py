@@ -92,6 +92,10 @@ class Settings(BaseSettings):
     # Obsidian vault — agents write session logs here (separate from user's personal vault)
     obsidian_vault: str = "~/agent-workspace"
 
+    # Outreach / prospecting
+    hunter_api_key: str = ""
+    apollo_api_key: str = ""
+
     # User-project tool APIs
     resend_api_key: str = ""
     cloudflare_api_token: str = ""

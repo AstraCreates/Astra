@@ -1749,3 +1749,711 @@ async def composio_connected(founder_id: str, request: Request):
     from backend.tools.integration_connect import get_composio_app_status
     status = await asyncio.to_thread(get_composio_app_status, founder_id)
     return {"founder_id": founder_id, "apps": status}
+
+
+# ── Outreach tool ─────────────────────────────────────────────────────────────
+
+@router.get("/outreach/search/people")
+async def outreach_search_people(
+    request: Request,
+    founder_id: str,
+    titles: str = "",
+    seniorities: str = "",
+    locations: str = "",
+    industries: str = "",
+    company_sizes: str = "",
+    funding_stages: str = "",
+    domains_include: str = "",
+    domains_exclude: str = "",
+    keywords: str = "",
+    page: int = 1,
+    per_page: int = 25,
+):
+    """
+    Search contacts. Priority:
+      1. Local Supabase DB (free, instant)
+      2. Apollo API (if available on plan)
+      3. Web scraping fallback
+    """
+    require_founder_access(request, founder_id, min_role="viewer")
+
+    def _split(s: str) -> list[str]:
+        return [x.strip() for x in s.split(",") if x.strip()]
+
+    titles_list = _split(titles)
+    seniorities_list = _split(seniorities)
+    locations_list = _split(locations)
+    industries_list = _split(industries)
+    sizes_list = _split(company_sizes)
+    domains_inc = _split(domains_include)
+    domains_exc = _split(domains_exclude)
+    keywords_list = _split(keywords)
+
+    # 1. Query local DB first
+    from backend.tools.contact_scraper import search_local_contacts
+    local = await asyncio.to_thread(
+        search_local_contacts,
+        founder_id=founder_id,
+        titles=titles_list or None,
+        industries=industries_list or None,
+        locations=locations_list or None,
+        company_sizes=sizes_list or None,
+        seniorities=seniorities_list or None,
+        page=page,
+        limit=per_page,
+    )
+    if local["contacts"]:
+        from backend.tools.contact_seeder import is_seeding
+        return {**local, "source": "local_db", "seeding": is_seeding(founder_id)}
+
+    # Kick off the global Hunter seed if pool is empty
+    from backend.tools.contact_seeder import seed_contact_database, is_seeding, GLOBAL_FOUNDER_ID
+    if not is_seeding(founder_id):
+        try:
+            db = get_supabase()
+            global_count = db.table("outreach_contacts").select("id", count="exact").eq(
+                "founder_id", GLOBAL_FOUNDER_ID
+            ).limit(1).execute()
+            if (global_count.count or 0) == 0:
+                import threading
+                threading.Thread(target=seed_contact_database, daemon=True).start()
+                logger.info("[outreach] Auto-seeding global Hunter contact pool from search")
+        except Exception:
+            pass
+
+    # 2. Try Apollo
+    try:
+        from backend.tools.apollo_tools import apollo_search_people
+        result = await asyncio.to_thread(
+            apollo_search_people,
+            titles=titles_list,
+            seniorities=seniorities_list,
+            locations=locations_list,
+            industries=industries_list,
+            company_sizes=sizes_list,
+            funding_stages=_split(funding_stages),
+            domains_include=domains_inc,
+            domains_exclude=domains_exc,
+            keywords=keywords_list,
+            page=page,
+            per_page=per_page,
+        )
+        if result.get("contacts") and "error" not in result:
+            # Cache results in local DB for next time
+            asyncio.create_task(asyncio.to_thread(
+                _store_contacts_background, founder_id, result["contacts"]
+            ))
+            return {**result, "source": "apollo"}
+    except Exception as e:
+        logger.warning("Apollo search failed, falling back to scraper: %s", e)
+
+    # 3. If seeding is running, return empty + seeding flag so UI shows spinner
+    if is_seeding(founder_id):
+        return {"contacts": [], "total": 0, "page": page, "source": "seeding", "seeding": True}
+
+    # 4. Web scraping fallback (quick single-query scrape)
+    from backend.tools.contact_scraper import discover_via_web_search
+    scraped = await asyncio.to_thread(
+        discover_via_web_search,
+        titles=titles_list or ["founder", "CEO"],
+        industries=industries_list or None,
+        locations=locations_list or None,
+        limit=per_page,
+    )
+    if scraped:
+        asyncio.create_task(asyncio.to_thread(
+            _store_contacts_background, founder_id, scraped
+        ))
+    return {"contacts": scraped, "total": len(scraped), "page": page, "source": "scraper", "seeding": False}
+
+
+def _store_contacts_background(founder_id: str, contacts: list[dict]) -> None:
+    """Fire-and-forget: cache contacts in local DB."""
+    try:
+        from backend.db.client import get_supabase
+        db = get_supabase()
+        rows = [{
+            "founder_id": founder_id,
+            "email": c.get("email", ""),
+            "first_name": c.get("first_name", ""),
+            "last_name": c.get("last_name", ""),
+            "title": c.get("title", ""),
+            "company_name": c.get("company_name", ""),
+            "company_domain": c.get("company_domain", ""),
+            "linkedin_url": c.get("linkedin_url", ""),
+            "city": c.get("city", ""),
+            "country": c.get("country", ""),
+            "industry": c.get("company_industry", c.get("industry", "")),
+            "company_size": c.get("company_size", ""),
+            "seniority": c.get("seniority", ""),
+            "source": c.get("source", "api"),
+        } for c in contacts if c.get("email")]
+        if rows:
+            db.table("outreach_contacts").upsert(
+                rows, on_conflict="founder_id,email", ignore_duplicates=True
+            ).execute()
+    except Exception as e:
+        logger.warning("Background contact store failed: %s", e)
+
+
+@router.post("/outreach/discover/{founder_id}")
+async def discover_contacts(founder_id: str, body: dict, request: Request):
+    """
+    Trigger bulk contact discovery from free sources (web search, GitHub,
+    HackerNews, website scraping) and store results in the local database.
+    """
+    require_founder_access(request, founder_id, min_role="operator")
+    from backend.tools.contact_scraper import bulk_discover_and_store
+
+    result = await asyncio.to_thread(
+        bulk_discover_and_store,
+        founder_id=founder_id,
+        titles=body.get("titles"),
+        industries=body.get("industries"),
+        locations=body.get("locations"),
+        domains=body.get("domains"),
+        github_orgs=body.get("github_orgs"),
+        hn_keyword=body.get("hn_keyword", ""),
+        limit_per_source=body.get("limit_per_source", 50),
+    )
+    return result
+
+
+@router.get("/outreach/search/companies")
+async def outreach_search_companies(
+    request: Request,
+    founder_id: str,
+    locations: str = "",
+    industries: str = "",
+    company_sizes: str = "",
+    funding_stages: str = "",
+    keywords: str = "",
+    technologies: str = "",
+    page: int = 1,
+    per_page: int = 25,
+):
+    """Search Apollo for companies with filters."""
+    require_founder_access(request, founder_id, min_role="viewer")
+    from backend.tools.apollo_tools import apollo_search_companies
+
+    def _split(s: str) -> list[str]:
+        return [x.strip() for x in s.split(",") if x.strip()]
+
+    result = await asyncio.to_thread(
+        apollo_search_companies,
+        locations=_split(locations),
+        industries=_split(industries),
+        company_sizes=_split(company_sizes),
+        funding_stages=_split(funding_stages),
+        keywords=_split(keywords),
+        technologies=_split(technologies),
+        page=page,
+        per_page=per_page,
+    )
+    return result
+
+
+@router.get("/outreach/domain/{domain}")
+async def outreach_domain_search(
+    domain: str,
+    request: Request,
+    founder_id: str,
+    department: str = "",
+    seniority: str = "",
+    limit: int = 10,
+):
+    """Hunter domain search — all emails at a company domain."""
+    require_founder_access(request, founder_id, min_role="viewer")
+    from backend.tools.hunter_tools import hunter_domain_search
+    return await asyncio.to_thread(
+        hunter_domain_search,
+        domain=domain,
+        department=department,
+        seniority=seniority,
+        limit=limit,
+    )
+
+
+@router.get("/outreach/find-email")
+async def outreach_find_email(
+    request: Request,
+    founder_id: str,
+    domain: str,
+    first_name: str,
+    last_name: str,
+):
+    """Hunter email finder — find email for a person at a domain."""
+    require_founder_access(request, founder_id, min_role="viewer")
+    from backend.tools.hunter_tools import hunter_find_email
+    return await asyncio.to_thread(hunter_find_email, domain=domain, first_name=first_name, last_name=last_name)
+
+
+@router.get("/outreach/verify-email")
+async def outreach_verify_email(request: Request, founder_id: str, email: str):
+    """Hunter email verifier."""
+    require_founder_access(request, founder_id, min_role="viewer")
+    from backend.tools.hunter_tools import hunter_verify_email
+    return await asyncio.to_thread(hunter_verify_email, email=email)
+
+
+@router.get("/outreach/enrich/person")
+async def outreach_enrich_person(request: Request, founder_id: str, email: str):
+    """Combined Hunter + Apollo person enrichment."""
+    require_founder_access(request, founder_id, min_role="viewer")
+    from backend.tools.hunter_tools import hunter_enrich_combined
+    from backend.tools.apollo_tools import apollo_enrich_person
+
+    hunter_data, apollo_data = await asyncio.gather(
+        asyncio.to_thread(hunter_enrich_combined, email=email),
+        asyncio.to_thread(apollo_enrich_person, email=email),
+    )
+    # Merge: Apollo is authoritative for title/company, Hunter for verification
+    result = {**hunter_data}
+    if isinstance(apollo_data, dict) and "error" not in apollo_data:
+        result["apollo"] = apollo_data
+    return result
+
+
+@router.get("/outreach/enrich/company")
+async def outreach_enrich_company(request: Request, founder_id: str, domain: str):
+    """Combined Hunter + Apollo company enrichment."""
+    require_founder_access(request, founder_id, min_role="viewer")
+    from backend.tools.hunter_tools import hunter_enrich_company
+    from backend.tools.apollo_tools import apollo_enrich_company
+
+    hunter_data, apollo_data = await asyncio.gather(
+        asyncio.to_thread(hunter_enrich_company, domain=domain),
+        asyncio.to_thread(apollo_enrich_company, domain=domain),
+    )
+    result = {**hunter_data}
+    if isinstance(apollo_data, dict) and "error" not in apollo_data:
+        result["apollo"] = apollo_data
+    return result
+
+
+# ── Outreach contacts (saved to DB) ──────────────────────────────────────────
+
+@router.post("/outreach/contacts/{founder_id}")
+async def save_outreach_contacts(founder_id: str, body: dict, request: Request):
+    """Save a list of contacts to the founder's outreach database."""
+    require_founder_access(request, founder_id, min_role="operator")
+    contacts = body.get("contacts", [])
+    if not contacts:
+        raise HTTPException(status_code=400, detail="No contacts provided")
+
+    db = get_supabase()
+    rows = []
+    for c in contacts:
+        rows.append({
+            "founder_id": founder_id,
+            "email": c.get("email", ""),
+            "first_name": c.get("first_name", ""),
+            "last_name": c.get("last_name", ""),
+            "title": c.get("title", ""),
+            "company_name": c.get("company_name", ""),
+            "company_domain": c.get("company_domain", ""),
+            "linkedin_url": c.get("linkedin_url", ""),
+            "city": c.get("city", ""),
+            "state": c.get("state", ""),
+            "country": c.get("country", ""),
+            "industry": c.get("company_industry", c.get("industry", "")),
+            "company_size": c.get("company_size", ""),
+            "funding_stage": c.get("company_funding_stage", c.get("funding_stage", "")),
+            "seniority": c.get("seniority", ""),
+            "apollo_id": c.get("apollo_id") or None,
+            "source": c.get("source", "apollo"),
+        })
+
+    result = db.table("outreach_contacts").upsert(
+        rows, on_conflict="founder_id,email", ignore_duplicates=False
+    ).execute()
+    return {"saved": len(rows), "founder_id": founder_id}
+
+
+@router.get("/outreach/contacts/{founder_id}")
+async def get_outreach_contacts(
+    founder_id: str,
+    request: Request,
+    status: str = "",
+    page: int = 1,
+    limit: int = 25,
+):
+    """List saved contacts. Auto-seeds the DB on first visit (0 contacts)."""
+    require_founder_access(request, founder_id, min_role="viewer")
+    db = get_supabase()
+    query = db.table("outreach_contacts").select("*").eq("founder_id", founder_id)
+    if status:
+        query = query.eq("status", status)
+    result = query.order("created_at", desc=True).range((page - 1) * limit, page * limit - 1).execute()
+
+    contacts = result.data or []
+
+    # Auto-seed the global Hunter pool on first ever use (runs once, shared by all founders)
+    if not contacts and page == 1 and not status:
+        from backend.tools.contact_seeder import seed_contact_database, is_seeding, GLOBAL_FOUNDER_ID
+        if not is_seeding(founder_id):
+            # Check if __global__ pool exists
+            try:
+                global_count = db.table("outreach_contacts").select("id", count="exact").eq(
+                    "founder_id", GLOBAL_FOUNDER_ID
+                ).limit(1).execute()
+                pool_empty = (global_count.count or 0) == 0
+            except Exception:
+                pool_empty = True
+
+            if pool_empty:
+                import threading
+                threading.Thread(target=seed_contact_database, daemon=True).start()
+                logger.info("[outreach] Auto-seeding global Hunter contact pool")
+
+    from backend.tools.contact_seeder import is_seeding
+    return {
+        "contacts": contacts,
+        "page": page,
+        "founder_id": founder_id,
+        "seeding": is_seeding(founder_id),
+    }
+
+
+@router.patch("/outreach/contacts/{founder_id}/{contact_id}")
+async def update_outreach_contact(founder_id: str, contact_id: str, body: dict, request: Request):
+    """Update a contact's status or tags."""
+    require_founder_access(request, founder_id, min_role="operator")
+    db = get_supabase()
+    allowed = {k: v for k, v in body.items() if k in ("status", "tags", "title", "company_name")}
+    result = db.table("outreach_contacts").update(allowed).eq("id", contact_id).eq("founder_id", founder_id).execute()
+    return result.data[0] if result.data else {}
+
+
+# ── Outreach lists ────────────────────────────────────────────────────────────
+
+@router.get("/outreach/lists/{founder_id}")
+async def get_outreach_lists(founder_id: str, request: Request):
+    """List all saved contact lists."""
+    require_founder_access(request, founder_id, min_role="viewer")
+    db = get_supabase()
+    result = db.table("outreach_lists").select("*").eq("founder_id", founder_id).order("created_at", desc=True).execute()
+    return {"lists": result.data}
+
+
+@router.post("/outreach/lists/{founder_id}")
+async def create_outreach_list(founder_id: str, body: dict, request: Request):
+    """Create a contact list and optionally add contacts to it."""
+    require_founder_access(request, founder_id, min_role="operator")
+    db = get_supabase()
+    contact_ids = body.pop("contact_ids", [])
+
+    row = {
+        "founder_id": founder_id,
+        "name": body.get("name", "Untitled List"),
+        "description": body.get("description", ""),
+        "filters": body.get("filters", {}),
+        "contact_count": len(contact_ids),
+    }
+    list_result = db.table("outreach_lists").insert(row).execute()
+    list_id = list_result.data[0]["id"]
+
+    if contact_ids:
+        members = [{"list_id": list_id, "contact_id": cid} for cid in contact_ids]
+        db.table("outreach_list_members").insert(members).execute()
+
+    return list_result.data[0]
+
+
+@router.get("/outreach/lists/{founder_id}/{list_id}/contacts")
+async def get_list_contacts(founder_id: str, list_id: str, request: Request):
+    """Get all contacts in a list."""
+    require_founder_access(request, founder_id, min_role="viewer")
+    db = get_supabase()
+    members = db.table("outreach_list_members").select("contact_id").eq("list_id", list_id).execute()
+    contact_ids = [m["contact_id"] for m in members.data]
+    if not contact_ids:
+        return {"contacts": []}
+    contacts = db.table("outreach_contacts").select("*").in_("id", contact_ids).execute()
+    return {"contacts": contacts.data}
+
+
+# ── Outreach campaigns ────────────────────────────────────────────────────────
+
+@router.get("/outreach/campaigns/{founder_id}")
+async def get_campaigns(founder_id: str, request: Request):
+    require_founder_access(request, founder_id, min_role="viewer")
+    db = get_supabase()
+    result = db.table("outreach_campaigns").select("*").eq("founder_id", founder_id).order("created_at", desc=True).execute()
+    return {"campaigns": result.data}
+
+
+@router.post("/outreach/campaigns/{founder_id}")
+async def create_campaign(founder_id: str, body: dict, request: Request):
+    require_founder_access(request, founder_id, min_role="operator")
+    db = get_supabase()
+    row = {
+        "founder_id": founder_id,
+        "name": body.get("name", "New Campaign"),
+        "from_name": body.get("from_name", ""),
+        "from_email": body.get("from_email", ""),
+        "reply_to": body.get("reply_to", ""),
+        "steps": body.get("steps", []),
+        "product_name": body.get("product_name", ""),
+        "value_prop": body.get("value_prop", ""),
+        "daily_limit": body.get("daily_limit", 50),
+        "send_provider": body.get("send_provider", "gmail"),
+    }
+    result = db.table("outreach_campaigns").insert(row).execute()
+    return result.data[0]
+
+
+@router.patch("/outreach/campaigns/{founder_id}/{campaign_id}")
+async def update_campaign(founder_id: str, campaign_id: str, body: dict, request: Request):
+    require_founder_access(request, founder_id, min_role="operator")
+    db = get_supabase()
+    allowed = {k: v for k, v in body.items() if k in (
+        "name", "status", "from_name", "from_email", "reply_to",
+        "steps", "product_name", "value_prop", "daily_limit", "send_provider"
+    )}
+    result = db.table("outreach_campaigns").update(allowed).eq("id", campaign_id).eq("founder_id", founder_id).execute()
+    return result.data[0] if result.data else {}
+
+
+@router.post("/outreach/campaigns/{founder_id}/{campaign_id}/contacts")
+async def add_contacts_to_campaign(founder_id: str, campaign_id: str, body: dict, request: Request):
+    """Enroll contacts from a list (or explicit IDs) into a campaign."""
+    require_founder_access(request, founder_id, min_role="operator")
+    db = get_supabase()
+
+    contact_ids: list[str] = body.get("contact_ids", [])
+    list_id = body.get("list_id")
+
+    if list_id and not contact_ids:
+        members = db.table("outreach_list_members").select("contact_id").eq("list_id", list_id).execute()
+        contact_ids = [m["contact_id"] for m in members.data]
+
+    if not contact_ids:
+        raise HTTPException(status_code=400, detail="No contacts to enroll")
+
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    rows = [
+        {
+            "campaign_id": campaign_id,
+            "contact_id": cid,
+            "founder_id": founder_id,
+            "status": "active",
+            "next_send_at": now,
+        }
+        for cid in contact_ids
+    ]
+    db.table("outreach_campaign_contacts").upsert(rows, on_conflict="campaign_id,contact_id", ignore_duplicates=True).execute()
+    return {"enrolled": len(rows)}
+
+
+@router.get("/outreach/campaigns/{founder_id}/{campaign_id}/contacts")
+async def get_campaign_contacts(founder_id: str, campaign_id: str, request: Request):
+    require_founder_access(request, founder_id, min_role="viewer")
+    db = get_supabase()
+    result = db.table("outreach_campaign_contacts").select(
+        "*, outreach_contacts(first_name, last_name, email, company_name, title)"
+    ).eq("campaign_id", campaign_id).execute()
+    return {"contacts": result.data}
+
+
+@router.get("/outreach/campaigns/{founder_id}/{campaign_id}/stats")
+async def get_campaign_stats(founder_id: str, campaign_id: str, request: Request):
+    require_founder_access(request, founder_id, min_role="viewer")
+    db = get_supabase()
+    events = db.table("outreach_email_events").select("event_type").eq("campaign_id", campaign_id).execute()
+    counts: dict[str, int] = {}
+    for e in events.data:
+        et = e["event_type"]
+        counts[et] = counts.get(et, 0) + 1
+
+    sent = counts.get("sent", 0)
+    return {
+        "sent": sent,
+        "opened": counts.get("opened", 0),
+        "clicked": counts.get("clicked", 0),
+        "replied": counts.get("replied", 0),
+        "bounced": counts.get("bounced", 0),
+        "open_rate": round(counts.get("opened", 0) / sent * 100, 1) if sent else 0,
+        "click_rate": round(counts.get("clicked", 0) / sent * 100, 1) if sent else 0,
+        "reply_rate": round(counts.get("replied", 0) / sent * 100, 1) if sent else 0,
+    }
+
+
+@router.post("/outreach/campaigns/{founder_id}/{campaign_id}/generate-steps")
+async def generate_campaign_steps(founder_id: str, campaign_id: str, request: Request):
+    """Generate LLM email sequence steps for a campaign."""
+    require_founder_access(request, founder_id, min_role="operator")
+    db = get_supabase()
+    campaigns = db.table("outreach_campaigns").select("*").eq("id", campaign_id).eq("founder_id", founder_id).execute()
+    if not campaigns.data:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign = campaigns.data[0]
+
+    from backend.tools.lead_finder import build_outreach_sequence
+    steps = await asyncio.to_thread(
+        build_outreach_sequence,
+        product_name=campaign.get("product_name", "the product"),
+        value_prop=campaign.get("value_prop", ""),
+        lead_name="{{first_name}}",
+        lead_company="{{company_name}}",
+        lead_title="{{title}}",
+        sequence_length=3,
+    )
+
+    db.table("outreach_campaigns").update({"steps": steps}).eq("id", campaign_id).execute()
+    return {"steps": steps, "campaign_id": campaign_id}
+
+
+@router.post("/outreach/campaigns/{founder_id}/{campaign_id}/send-batch")
+async def send_campaign_batch(founder_id: str, campaign_id: str, request: Request):
+    """
+    Send the next due email to each active contact in the campaign via the
+    founder's connected Gmail (Composio). Respects daily_limit.
+    """
+    require_founder_access(request, founder_id, min_role="operator")
+    db = get_supabase()
+
+    # Load campaign + steps
+    camp_res = db.table("outreach_campaigns").select("*").eq("id", campaign_id).eq("founder_id", founder_id).execute()
+    if not camp_res.data:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign = camp_res.data[0]
+    steps: list[dict] = campaign.get("steps") or []
+    daily_limit: int = campaign.get("daily_limit") or 50
+
+    if not steps:
+        raise HTTPException(status_code=400, detail="No steps — generate the email sequence first")
+
+    from datetime import datetime, timedelta, timezone
+    now_dt = datetime.now(timezone.utc)
+    now_iso = now_dt.isoformat()
+
+    # Contacts due for their next step
+    due_res = db.table("outreach_campaign_contacts").select(
+        "*, outreach_contacts(first_name, last_name, email, company_name, title)"
+    ).eq("campaign_id", campaign_id).eq("status", "active").lte("next_send_at", now_iso).limit(daily_limit).execute()
+
+    sent = failed = skipped = 0
+
+    for cc in (due_res.data or []):
+        contact = cc.get("outreach_contacts") or {}
+        to_email = contact.get("email", "")
+        if not to_email:
+            skipped += 1
+            continue
+
+        step_idx = cc.get("current_step", 0)
+        if step_idx >= len(steps):
+            db.table("outreach_campaign_contacts").update({"status": "completed"}).eq("id", cc["id"]).execute()
+            skipped += 1
+            continue
+
+        step = steps[step_idx]
+
+        def _merge(text: str) -> str:
+            return (
+                text
+                .replace("{{first_name}}", contact.get("first_name", "there"))
+                .replace("{{last_name}}", contact.get("last_name", ""))
+                .replace("{{company_name}}", contact.get("company_name", "your company"))
+                .replace("{{title}}", contact.get("title", ""))
+            )
+
+        subject = _merge(step.get("subject", ""))
+        body = _merge(step.get("body", ""))
+
+        from backend.tools.composio_tools import composio_gmail_send
+        result = await asyncio.to_thread(composio_gmail_send, founder_id, to_email, subject, body)
+
+        success = "error" not in result
+
+        # Record send event
+        db.table("outreach_email_events").insert({
+            "founder_id": founder_id,
+            "campaign_id": campaign_id,
+            "campaign_contact_id": cc["id"],
+            "contact_id": cc["contact_id"],
+            "event_type": "sent" if success else "failed",
+            "step_index": step_idx,
+        }).execute()
+
+        if success:
+            sent += 1
+            next_idx = step_idx + 1
+            if next_idx >= len(steps):
+                db.table("outreach_campaign_contacts").update({
+                    "status": "completed",
+                    "current_step": next_idx,
+                    "last_sent_at": now_iso,
+                }).eq("id", cc["id"]).execute()
+            else:
+                days_gap = steps[next_idx].get("send_day", 3) - step.get("send_day", 1)
+                next_send = (now_dt + timedelta(days=max(days_gap, 1))).isoformat()
+                db.table("outreach_campaign_contacts").update({
+                    "current_step": next_idx,
+                    "last_sent_at": now_iso,
+                    "next_send_at": next_send,
+                }).eq("id", cc["id"]).execute()
+        else:
+            failed += 1
+            logger.warning("Gmail send failed for %s: %s", to_email, result.get("error"))
+
+    return {"sent": sent, "failed": failed, "skipped": skipped, "total_due": len(due_res.data or [])}
+
+
+# ── Email tracking pixels ─────────────────────────────────────────────────────
+
+_TRACKING_GIF = bytes.fromhex(
+    "47494638396101000100800000ffffff"
+    "00000021f90401000000002c00000000"
+    "010001000002024401003b"
+)
+
+
+@router.get("/track/open/{founder_id}/{campaign_id}/{cc_id}/{step_index}")
+async def track_open(founder_id: str, campaign_id: str, cc_id: str, step_index: int):
+    """Record email open event. Returns 1x1 transparent GIF."""
+    from fastapi.responses import Response
+    try:
+        db = get_supabase()
+        # Get contact_id from campaign_contact
+        cc = db.table("outreach_campaign_contacts").select("contact_id").eq("id", cc_id).execute()
+        contact_id = cc.data[0]["contact_id"] if cc.data else None
+        db.table("outreach_email_events").insert({
+            "founder_id": founder_id,
+            "campaign_id": campaign_id,
+            "campaign_contact_id": cc_id,
+            "contact_id": contact_id,
+            "event_type": "opened",
+            "step_index": step_index,
+        }).execute()
+    except Exception as e:
+        logger.warning("Track open failed: %s", e)
+    return Response(content=_TRACKING_GIF, media_type="image/gif", headers={
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Pragma": "no-cache",
+    })
+
+
+@router.get("/track/click/{founder_id}/{campaign_id}/{cc_id}/{step_index}")
+async def track_click(founder_id: str, campaign_id: str, cc_id: str, step_index: int, url: str = ""):
+    """Record click event and redirect to original URL."""
+    from fastapi.responses import RedirectResponse
+    from urllib.parse import unquote
+    try:
+        db = get_supabase()
+        cc = db.table("outreach_campaign_contacts").select("contact_id").eq("id", cc_id).execute()
+        contact_id = cc.data[0]["contact_id"] if cc.data else None
+        db.table("outreach_email_events").insert({
+            "founder_id": founder_id,
+            "campaign_id": campaign_id,
+            "campaign_contact_id": cc_id,
+            "contact_id": contact_id,
+            "event_type": "clicked",
+            "step_index": step_index,
+            "url": unquote(url),
+        }).execute()
+    except Exception as e:
+        logger.warning("Track click failed: %s", e)
+    return RedirectResponse(url=unquote(url) or "/", status_code=302)
