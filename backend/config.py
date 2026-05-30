@@ -107,7 +107,10 @@ class Settings(BaseSettings):
     deepinfra_api_key: str = ""
     notion_token: str = ""
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # Frontend env vars that may leak into .env — ignored by backend
+    next_public_clerk_publishable_key: str = ""
+
+    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
 settings = Settings()
