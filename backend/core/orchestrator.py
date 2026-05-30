@@ -464,6 +464,7 @@ class Orchestrator:
         from backend.core.events import publish
 
         _bypass_planner = bool((constraints or {}).get("bypass_planner"))
+        logger.info("ORCHESTRATOR bypass_planner=%s constraints_keys=%s", _bypass_planner, list((constraints or {}).keys()))
 
         if _bypass_planner:
             # Fast path for testing — skip all LLM pre-run calls, go straight to agent dispatch
