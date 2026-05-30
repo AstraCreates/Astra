@@ -654,7 +654,10 @@ class Orchestrator:
                 vault_context_text = ""
                 try:
                     from backend.tools.obsidian_logger import format_vault_context
-                    vault_context_text = await asyncio.to_thread(format_vault_context, agent_name, 3, founder_id)
+                    vault_context_text = await asyncio.wait_for(
+                        asyncio.to_thread(format_vault_context, agent_name, 3, founder_id),
+                        timeout=5.0,
+                    )
                 except Exception:
                     pass
                 ctx = AgentContext(
@@ -667,9 +670,14 @@ class Orchestrator:
                     vault_context=vault_context_text,
                 )
                 await publish(session_id, {"type": "agent_start", "agent": agent_name, "task_id": tid, "lane_id": lane_id})
-                result = await agent.run(ctx)
-                completed[tid] = result
-                await publish(session_id, {"type": "agent_done", "agent": agent_name, "task_id": tid, "result": result})
+                try:
+                    result = await agent.run(ctx)
+                    completed[tid] = result
+                    await publish(session_id, {"type": "agent_done", "agent": agent_name, "task_id": tid, "result": result})
+                except Exception as _agent_exc:
+                    err_msg = str(_agent_exc)[:400]
+                    completed[tid] = {"error": err_msg}
+                    await publish(session_id, {"type": "agent_error", "agent": agent_name, "task_id": tid, "error": err_msg})
 
             await asyncio.gather(*[_run_task(t) for t in bypass_tasks])
             await publish(session_id, {"type": "goal_done", "session_id": session_id})
