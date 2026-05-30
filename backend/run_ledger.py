@@ -8,9 +8,13 @@ running, what failed, what shipped, and how long did it take?
 from __future__ import annotations
 
 import json
+import os
+import threading
 import time
 from pathlib import Path
 from typing import Any
+
+_LEDGER_LOCK = threading.Lock()
 
 
 def _root() -> Path:
@@ -43,7 +47,7 @@ def _load() -> dict[str, Any]:
 def _save(data: dict[str, Any]) -> None:
     path = _index_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
+    tmp = path.parent / f"index_{os.getpid()}_{threading.get_ident()}.tmp"
     tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
     tmp.replace(path)
     try:
@@ -84,6 +88,11 @@ def _default(session_id: str) -> dict[str, Any]:
 
 
 def record_run_event(session_id: str, event_id: int, event: dict[str, Any]) -> dict[str, Any]:
+    with _LEDGER_LOCK:
+        return _record_run_event_locked(session_id, event_id, event)
+
+
+def _record_run_event_locked(session_id: str, event_id: int, event: dict[str, Any]) -> dict[str, Any]:
     data = _load()
     sessions = data.setdefault("sessions", {})
     row = {**_default(session_id), **(sessions.get(session_id) or {})}
