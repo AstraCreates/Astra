@@ -463,101 +463,109 @@ class Orchestrator:
 
         from backend.core.events import publish
 
-        # Generate company name before expansion so it feeds into expanded goal
-        company_name = await self._generate_company_name(goal)
-        shared["company_name"] = company_name
-        operating_plan = build_stack_operating_plan(stack_template, goal, company_name)
-        stack_manifest = build_stack_manifest(stack_template, goal, company_name)
-        stack_execution_blueprint = build_stack_execution_blueprint(stack_template, goal, company_name)
-        shared["stack_operating_plan"] = operating_plan
-        shared["stack_manifest"] = stack_manifest
-        shared["stack_execution_blueprint"] = stack_execution_blueprint
-        await publish(session_id, {"type": "company_name", "name": company_name})
-        await publish(session_id, {"type": "stack_operating_plan", "operating_plan": operating_plan})
-        await publish(session_id, {"type": "stack_manifest", "manifest": stack_manifest})
-        await publish(session_id, {"type": "stack_execution_contract", "execution_contract": build_stack_execution_contract(stack_template)})
-        await publish(session_id, {"type": "stack_execution_blueprint", "execution_blueprint": stack_execution_blueprint})
-        for lane in stack_execution_blueprint.get("lanes", []):
-            await publish(session_id, {
-                "type": "stack_lane_status",
-                "lane_id": lane.get("id"),
-                "agent": lane.get("agent"),
-                "status": "waiting",
-                "phase": lane.get("phase"),
-                "title": lane.get("title"),
-                "expected_artifacts": lane.get("deliverables", []),
-                "next_actor": "agent",
-            })
-        try:
-            import json as _json
-            await self._persist_brain_record(
-                founder_id=founder_id,
-                title=f"Stack Operating Plan - {company_name}",
-                content=_json.dumps(operating_plan, indent=2),
-                kind="operating_plan",
-                canonical=True,
-                stale_risk="low",
-            )
-            await self._persist_brain_record(
-                founder_id=founder_id,
-                title=f"Agent Department Manifest - {company_name}",
-                content=_json.dumps(stack_manifest, indent=2),
-                kind="department_manifest",
-                canonical=True,
-                stale_risk="low",
-            )
-        except Exception as _op:
-            logger.warning("Stack manifest brain record failed: %s", _op)
-        logger.info("Company name: %s", company_name)
+        _bypass_planner = bool((constraints or {}).get("bypass_planner"))
 
-        # Persist company identity to brain so chat always knows it
-        try:
-            from backend.tools.company_brain import add_company_brain_record
-            await asyncio.to_thread(
-                add_company_brain_record,
-                founder_id=founder_id,
-                source="astra",
-                title="Company Identity",
-                content=f"Company name: {company_name}\nFounder goal: {goal}\nSession: {session_id}",
-                kind="fact",
-                canonical=True,
-                stale_risk="low",
-            )
-        except Exception as _bi:
-            logger.warning("Brain identity record failed: %s", _bi)
+        if _bypass_planner:
+            # Fast path for testing — skip all LLM pre-run calls, go straight to agent dispatch
+            company_name = (constraints or {}).get("company_name") or "TestCo"
+            shared["company_name"] = company_name
+            await publish(session_id, {"type": "company_name", "name": company_name})
+            logger.info("bypass_planner=True — skipping company_name LLM, genome, goal_expand")
+        else:
+            # Generate company name before expansion so it feeds into expanded goal
+            company_name = await self._generate_company_name(goal)
+            shared["company_name"] = company_name
+            operating_plan = build_stack_operating_plan(stack_template, goal, company_name)
+            stack_manifest = build_stack_manifest(stack_template, goal, company_name)
+            stack_execution_blueprint = build_stack_execution_blueprint(stack_template, goal, company_name)
+            shared["stack_operating_plan"] = operating_plan
+            shared["stack_manifest"] = stack_manifest
+            shared["stack_execution_blueprint"] = stack_execution_blueprint
+            await publish(session_id, {"type": "company_name", "name": company_name})
+            await publish(session_id, {"type": "stack_operating_plan", "operating_plan": operating_plan})
+            await publish(session_id, {"type": "stack_manifest", "manifest": stack_manifest})
+            await publish(session_id, {"type": "stack_execution_contract", "execution_contract": build_stack_execution_contract(stack_template)})
+            await publish(session_id, {"type": "stack_execution_blueprint", "execution_blueprint": stack_execution_blueprint})
+            for lane in stack_execution_blueprint.get("lanes", []):
+                await publish(session_id, {
+                    "type": "stack_lane_status",
+                    "lane_id": lane.get("id"),
+                    "agent": lane.get("agent"),
+                    "status": "waiting",
+                    "phase": lane.get("phase"),
+                    "title": lane.get("title"),
+                    "expected_artifacts": lane.get("deliverables", []),
+                    "next_actor": "agent",
+                })
+            try:
+                import json as _json
+                await self._persist_brain_record(
+                    founder_id=founder_id,
+                    title=f"Stack Operating Plan - {company_name}",
+                    content=_json.dumps(operating_plan, indent=2),
+                    kind="operating_plan",
+                    canonical=True,
+                    stale_risk="low",
+                )
+                await self._persist_brain_record(
+                    founder_id=founder_id,
+                    title=f"Agent Department Manifest - {company_name}",
+                    content=_json.dumps(stack_manifest, indent=2),
+                    kind="department_manifest",
+                    canonical=True,
+                    stale_risk="low",
+                )
+            except Exception as _op:
+                logger.warning("Stack manifest brain record failed: %s", _op)
+            logger.info("Company name: %s", company_name)
 
-        try:
-            from backend.genome import build_company_genome
-            genome = build_company_genome(
-                session_id=session_id,
-                founder_id=founder_id,
-                company_name=company_name,
-                goal=goal,
-                stack_template=stack_template,
-                brain_context=str(shared.get("company_brain_context", "")),
-            )
-            shared["company_genome"] = genome
-            await publish(session_id, {"type": "company_genome", "genome": genome})
             try:
                 from backend.tools.company_brain import add_company_brain_record
-                import json as _json
                 await asyncio.to_thread(
                     add_company_brain_record,
                     founder_id=founder_id,
                     source="astra",
-                    title=f"Company Genome - {company_name}",
-                    content=_json.dumps(genome, indent=2),
-                    kind="genome",
+                    title="Company Identity",
+                    content=f"Company name: {company_name}\nFounder goal: {goal}\nSession: {session_id}",
+                    kind="fact",
                     canonical=True,
                     stale_risk="low",
                 )
-            except Exception as _gb:
-                logger.warning("Brain genome record failed: %s", _gb)
-        except Exception as _ge:
-            logger.warning("Company genome build failed: %s", _ge)
+            except Exception as _bi:
+                logger.warning("Brain identity record failed: %s", _bi)
 
-        # Expand the goal with Qwen3-235B before anything else
-        goal = await self._expand_goal(goal, session_id)
+            try:
+                from backend.genome import build_company_genome
+                genome = build_company_genome(
+                    session_id=session_id,
+                    founder_id=founder_id,
+                    company_name=company_name,
+                    goal=goal,
+                    stack_template=stack_template,
+                    brain_context=str(shared.get("company_brain_context", "")),
+                )
+                shared["company_genome"] = genome
+                await publish(session_id, {"type": "company_genome", "genome": genome})
+                try:
+                    from backend.tools.company_brain import add_company_brain_record
+                    import json as _json
+                    await asyncio.to_thread(
+                        add_company_brain_record,
+                        founder_id=founder_id,
+                        source="astra",
+                        title=f"Company Genome - {company_name}",
+                        content=_json.dumps(genome, indent=2),
+                        kind="genome",
+                        canonical=True,
+                        stale_risk="low",
+                    )
+                except Exception as _gb:
+                    logger.warning("Brain genome record failed: %s", _gb)
+            except Exception as _ge:
+                logger.warning("Company genome build failed: %s", _ge)
+
+            # Expand the goal with Qwen3-235B before anything else
+            goal = await self._expand_goal(goal, session_id)
 
         # Phase 1: stack plan — default to the productized outcome stack.
         _agent_filter: list[str] | None = (constraints or {}).get("agents") or (constraints or {}).get("agent_filter") or None
@@ -603,6 +611,59 @@ class Orchestrator:
             for _i, (_ag, _instr) in enumerate(_mandatory):
                 if _ag not in _existing_agents and _ag in self.specialists:
                     other_agents_initial.append({"id": f"forced_{_ag}", "agent": _ag, "instruction": _instr, "depends_on": []})
+
+        # bypass_planner: skip research wave + replan, dispatch requested agents immediately
+        if _bypass_planner and _is_custom:
+            bypass_tasks = [
+                {"id": f"bp_{a}", "agent": a, "instruction": goal, "depends_on": []}
+                for a in (_agent_filter or [])
+                if a in self.specialists
+            ]
+            await publish(session_id, {
+                "type": "plan_done",
+                "tasks": [{"id": t["id"], "agent": t["agent"], "instruction": t["instruction"]} for t in bypass_tasks],
+                "planner_model": "bypass",
+            })
+            completed: dict[str, dict] = {}
+            stack_lane_by_agent = {
+                lane.get("agent"): lane
+                for lane in (shared.get("stack_execution_blueprint") or {}).get("lanes", [])
+                if lane.get("agent")
+            }
+
+            async def _run_task(task: dict) -> None:  # noqa: F811
+                tid = task["id"]
+                agent_name = task["agent"]
+                agent = self.specialists.get(agent_name)
+                stack_lane = stack_lane_by_agent.get(agent_name, {})
+                lane_id = stack_lane.get("id") or task.get("id")
+                if agent is None:
+                    completed[tid] = {"error": f"unknown agent {agent_name}"}
+                    return
+                dep_results = {}
+                vault_context_text = ""
+                try:
+                    from backend.tools.obsidian_logger import format_vault_context
+                    vault_context_text = await asyncio.to_thread(format_vault_context, agent_name, 3, founder_id)
+                except Exception:
+                    pass
+                ctx = AgentContext(
+                    goal=goal,
+                    session_id=session_id,
+                    founder_id=founder_id,
+                    task_id=tid,
+                    shared=shared,
+                    dep_results=dep_results,
+                    vault_context=vault_context_text,
+                )
+                await publish(session_id, {"type": "agent_start", "agent": agent_name, "task_id": tid, "lane_id": lane_id})
+                result = await agent.run(ctx)
+                completed[tid] = result
+                await publish(session_id, {"type": "agent_done", "agent": agent_name, "task_id": tid, "result": result})
+
+            await asyncio.gather(*[_run_task(t) for t in bypass_tasks])
+            await publish(session_id, {"type": "goal_done", "session_id": session_id})
+            return {"session_id": session_id, "results": completed}
 
         # Run only configured research specialists in parallel.
         research_instruction = research_task["instruction"] if research_task else f"Research market, competitors, and execution strategy for: {goal}"
