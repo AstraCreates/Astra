@@ -86,7 +86,7 @@ _REGULATORY_SEARCHES = (
     "- INTERNATIONAL COMPLIANCE (key cross-border obligations)\n"
     "- RISK FLAGS (HIGH / MEDIUM / LOW — specific legal risks with rationale)\n"
     "- RECOMMENDED ACTIONS (prioritized compliance roadmap for a startup)\n\n"
-    "Finally, generate_pdf with the full risk flag report so founders have a shareable artifact."
+    "Finally, generate_pdf(title='Regulatory Risk Report', sections=[{\"heading\": \"APPLICABLE REGULATIONS\", \"body\": \"...\"}, {\"heading\": \"DATA PRIVACY REQUIREMENTS\", \"body\": \"...\"}, {\"heading\": \"RISK FLAGS\", \"body\": \"...\"}, {\"heading\": \"RECOMMENDED ACTIONS\", \"body\": \"...\"}]) with the full risk flag report so founders have a shareable artifact."
 )
 
 
@@ -111,7 +111,7 @@ def build_research_regulatory_agent(**kwargs) -> Agent:
         model=settings.planner_model_name,
         model_base_url=settings.planner_model_base_url,
         model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
-        max_iterations=14,
+        max_iterations=20,
         role=(
             "You are an elite regulatory and compliance research specialist. "
             "Your job is to identify every regulation, licensing requirement, data privacy obligation, "
@@ -123,7 +123,7 @@ def build_research_regulatory_agent(**kwargs) -> Agent:
             "- web_search(query) — targeted web search.\n"
             "- news_search(query) — recent regulatory enforcement news.\n"
             "- patent_search(query) — IP and regtech landscape.\n"
-            "- generate_pdf(title, content) — produce a shareable PDF risk report.\n"
+            "- generate_pdf(title, sections) — produce a shareable PDF risk report. sections must be a JSON array of objects with 'heading' and 'body' keys, e.g. [{\"heading\": \"GDPR Requirements\", \"body\": \"...\"}]\n"
             "- obsidian_log — FINAL step after ALL searches and PDF generation.\n\n"
             "YOUR MANDATORY SEARCH SEQUENCE (replace {topic} with the actual subject):\n\n"
             + _REGULATORY_SEARCHES
