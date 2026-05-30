@@ -454,17 +454,20 @@ class Orchestrator:
 
         try:
             from backend.tools.company_brain import company_brain_context, sync_company_brain
-            await asyncio.to_thread(sync_company_brain, founder_id, None)
-            shared["company_brain_context"] = await asyncio.to_thread(
-                company_brain_context, founder_id, goal, 8
+            await asyncio.wait_for(
+                asyncio.to_thread(sync_company_brain, founder_id, None),
+                timeout=8.0,
             )
-        except Exception as _cb:
+            shared["company_brain_context"] = await asyncio.wait_for(
+                asyncio.to_thread(company_brain_context, founder_id, goal, 8),
+                timeout=8.0,
+            )
+        except (asyncio.TimeoutError, Exception) as _cb:
             logger.warning("Company brain pre-run context skipped: %s", _cb)
 
         from backend.core.events import publish
 
         _bypass_planner = bool((constraints or {}).get("bypass_planner"))
-        logger.info("ORCHESTRATOR bypass_planner=%s constraints_keys=%s", _bypass_planner, list((constraints or {}).keys()))
 
         if _bypass_planner:
             # Fast path for testing — skip all LLM pre-run calls, go straight to agent dispatch
