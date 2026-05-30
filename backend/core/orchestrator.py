@@ -615,6 +615,12 @@ class Orchestrator:
 
         # bypass_planner: skip research wave + replan, dispatch requested agents immediately
         if _bypass_planner and _is_custom:
+            _test_model = (constraints or {}).get("test_model")
+            _original_models: dict[str, str] = {}
+            if _test_model:
+                for _name, _ag in self.specialists.items():
+                    _original_models[_name] = _ag.model
+                    _ag.model = _test_model
             bypass_tasks = [
                 {"id": f"bp_{a}", "agent": a, "instruction": goal, "depends_on": []}
                 for a in (_agent_filter or [])
@@ -664,6 +670,9 @@ class Orchestrator:
 
             await asyncio.gather(*[_run_task(t) for t in bypass_tasks])
             await publish(session_id, {"type": "goal_done", "session_id": session_id})
+            if _original_models:
+                for _name, _orig in _original_models.items():
+                    self.specialists[_name].model = _orig
             return {"session_id": session_id, "results": completed}
 
         # Run only configured research specialists in parallel.

@@ -37,6 +37,7 @@ async def test_agent(agent: str, client: httpx.AsyncClient) -> tuple[str, str]:
                 "agents": [agent],
                 "bypass_planner": True,
                 "company_name": "InvoiceAI",
+                "test_model": "meta-llama/Llama-4-Scout-17B-16E-Instruct",
             },
         }, timeout=30)
 
