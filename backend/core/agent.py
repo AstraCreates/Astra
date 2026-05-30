@@ -324,6 +324,7 @@ class Agent:
             if action == "done":
                 required_by_agent = {
                     "legal": {"format_legal_document", "generate_pdf"},
+                    "legal_docs": {"format_legal_document", "generate_pdf"},
                     "sales": {"find_leads", "build_outreach_sequence", "build_crm_contact"},
                     "design": {"generate_design_spec", "generate_wireframe", "generate_logo_brief"},
                 }
@@ -518,7 +519,7 @@ class Agent:
 
     def _missing_required_output(self, output: dict[str, Any], attempted_tools: set[str] | None = None) -> list[str]:
         """Require key preview artifacts per role before accepting done."""
-        if self.name == "legal":
+        if self.name in ("legal", "legal_docs"):
             docs = output.get("documents")
             if not isinstance(docs, list) or not docs:
                 return ["documents[]"]
@@ -745,7 +746,7 @@ class Agent:
                     out["logo_brief"] = result
             if wireframes:
                 out["wireframes"] = wireframes
-        elif self.name == "legal":
+        elif self.name in ("legal", "legal_docs"):
             docs = out.get("documents") if isinstance(out.get("documents"), list) else []
             current_doc: dict[str, Any] | None = None
             for tool_name, result in tool_results:
