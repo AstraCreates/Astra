@@ -85,7 +85,13 @@ _MARKET_RESEARCH_SEARCHES = (
     "- PRICING BENCHMARKS: competitor pricing tiers (free/starter/pro/enterprise), price per seat/month, "
     "packaging patterns, and recommended price positioning\n"
     "- MARKET OPPORTUNITY SUMMARY: 2-3 sentence pitch-ready framing of the opportunity with numbers\n"
-    "- DATA SOURCES: citations for all statistics used"
+    "- DATA SOURCES: citations for all statistics used\n\n"
+    "After obsidian_log completes, call done with output containing: "
+    "summary (2-3 sentence market opportunity recap with numbers), "
+    "tam (dollar figure + source), sam (dollar figure + rationale), "
+    "som (year-1 target + assumptions), cagr (growth rate), "
+    "icp (ideal customer profile summary), pricing_benchmarks (key pricing data found), "
+    "sources (list of URLs cited)."
 )
 
 
@@ -109,7 +115,7 @@ def build_research_market_agent(**kwargs) -> Agent:
         model=settings.planner_model_name,
         model_base_url=settings.planner_model_base_url,
         model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
-        max_iterations=12,
+        max_iterations=25,
         role=(
             "You are an elite market research analyst. You produce investment-grade market sizing, "
             "ICP definitions, pricing benchmarks, and opportunity framing that founders use in pitch decks "
