@@ -172,6 +172,35 @@ export default function SettingsPage() {
         <Row label="Stripe" desc="Connect payment context for launch and revenue work" action={<span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: "var(--glass-hi)", color: "var(--fg-dim)", border: "1px solid var(--line)", fontFamily: "var(--font-mono)" }}>Managed in integrations</span>} />
       </Section>
 
+      <Section title="Onboarding">
+        <Row
+          label="Restart onboarding"
+          desc="Re-run the setup wizard to change your stack or reconnect integrations"
+          action={
+            <button
+              onClick={() => { localStorage.removeItem("astra_onboarding_done"); window.location.href = "/onboarding"; }}
+              className="site-btn site-btn-ghost"
+              style={{ fontSize: 12, padding: "0 14px", minHeight: 34 }}
+            >
+              Restart →
+            </button>
+          }
+        />
+        <Row
+          label="Retake workspace tour"
+          desc="Replay the tooltip tour that explains each part of the workspace"
+          action={
+            <button
+              onClick={() => { localStorage.setItem("astra_show_tour", "1"); window.location.href = "/"; }}
+              className="site-btn site-btn-ghost"
+              style={{ fontSize: 12, padding: "0 14px", minHeight: 34 }}
+            >
+              Take tour →
+            </button>
+          }
+        />
+      </Section>
+
       <Section title="Notifications">
         <Row label="Browser notifications" desc="Get notified when a goal completes" action={
           <button

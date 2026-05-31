@@ -7,7 +7,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 
 export default function SiteNav() {
   const pathname = usePathname();
-  if (pathname === "/" || pathname === "/settings" || pathname === "/integrations" || pathname === "/payments" || pathname === "/brain" || pathname.startsWith("/dashboard") || pathname.startsWith("/admin")) return null;
+  if (pathname === "/" || pathname === "/onboarding" || pathname === "/settings" || pathname === "/integrations" || pathname === "/payments" || pathname === "/brain" || pathname.startsWith("/dashboard") || pathname.startsWith("/admin")) return null;
 
   return (
     <header className="site-nav">

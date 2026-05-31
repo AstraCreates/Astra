@@ -20,6 +20,7 @@ export default function AppHome() {
   );
 
   const forceNewGoal = searchParams.get("new") === "1";
+  const fromOnboarding = searchParams.get("from_onboarding") === "1";
   const latestSession = recentSessions[0];
   const activeSessionId = forceNewGoal ? "" : searchParams.get("session") ?? latestSession?.sessionId ?? "";
   const activeInstruction = forceNewGoal ? "" : searchParams.get("instruction") ?? latestSession?.instruction ?? "";
@@ -34,7 +35,7 @@ export default function AppHome() {
         instruction={activeInstruction}
         founderId={activeFounderId}
         company={activeCompany}
-        startNew={forceNewGoal || !activeSessionId}
+        startNew={!fromOnboarding && forceNewGoal}
       />
     </div>
   );

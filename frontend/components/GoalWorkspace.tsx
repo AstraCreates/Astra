@@ -5,13 +5,14 @@ import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SignInButton, useUser } from "@clerk/nextjs";
-import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, getCustomStackPackage, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder } from "@/lib/api";
+import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder } from "@/lib/api";
 import type { AgentDepartmentManifest, AgentStackTemplate, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
 import { saveSession, getSessionSnapshot, subscribeSessions, deleteSession, clearAllSessions } from "@/lib/history";
 import type { SessionRecord } from "@/lib/history";
 import LiquidGlass from "@/components/LiquidGlass";
 import CompanyChat from "@/components/CompanyChat";
 import ThemeToggle from "@/components/ThemeToggle";
+import WorkspaceTour from "@/components/WorkspaceTour";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -184,15 +185,6 @@ const STARTER_PROMPTS = [
 ];
 
 const SUBTEAM_OPTIONS = ["engineering", "growth", "sales", "marketing", "product", "support", "ops", "legal"];
-
-const AGENT_CATALOG = [
-  { id: "research", name: "Research", description: "Market sizing, competitor analysis, TAM/SAM/SOM, customer profiles", tools: ["web_search", "patent_search", "youtube_research"], icon: "🔍" },
-  { id: "legal", name: "Legal", description: "Privacy policy, terms of service, founder agreements — full PDFs", tools: ["format_legal_document", "generate_pdf", "patent_search"], icon: "⚖️" },
-  { id: "web", name: "Web", description: "Landing page designed and deployed to Vercel", tools: ["generate_landing_page_html", "vercel_deploy"], icon: "🌐" },
-  { id: "marketing", name: "Marketing", description: "Reels, TikTok, Meta ads, email campaigns, outreach sequences", tools: ["generate_meta_ad", "send_email_campaign", "outreach_find_leads"], icon: "📢" },
-  { id: "technical", name: "Technical", description: "Codebase scaffolded, GitHub repo created, Linear tickets, Notion pages", tools: ["github_create_repo", "claude_code_scaffold"], icon: "💻" },
-  { id: "ops", name: "Ops", description: "Executive summary, investor outreach, fundraising docs, SOPs", tools: ["generate_pdf", "send_email_campaign"], icon: "📋" },
-] as const;
 
 function pct(state: AgentState): number {
   if (state.status === "done") return 100;
@@ -1999,8 +1991,6 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
   const [manualStackOverride, setManualStackOverride] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [stackTab, setStackTab] = useState<"presets" | "custom">("presets");
-  const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(new Set(["research", "web", "technical"]));
 
   useEffect(() => {
     if (!open) return;
@@ -2061,36 +2051,16 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
     if (!instruction.trim()) return;
     setLoading(true);
     setError(null);
+    const parts = [
+      companyName.trim() && `Company name: ${companyName.trim()}.`,
+      domain.trim() && `Domain: ${domain.trim()}.`,
+      selectedStack && `Agent stack: ${selectedStack.name}. Outcome: ${selectedStack.primary_outcome}.`,
+      showStack && `Tech stack: Frontend=${techStack.frontend}, Backend=${techStack.backend}, Database=${techStack.database}, Auth=${techStack.auth}.`,
+    ].filter(Boolean);
+    const full = parts.length ? `${parts.join(" ")}\n\n${instruction}` : instruction;
     const founderId = user?.id ?? "anon";
     try {
-      let effectiveStackId = selectedStackId;
-      let constraints: Record<string, unknown> = {};
-
-      if (stackTab === "custom") {
-        const agentIds = [...selectedAgentIds];
-        if (agentIds.length === 0) {
-          setError("Select at least one agent to build a custom stack.");
-          setLoading(false);
-          return;
-        }
-        try {
-          await getCustomStackPackage(agentIds, instruction, founderId, companyName.trim());
-        } catch {
-          // Backend may not have endpoint yet — proceed with stack_id "custom" anyway
-        }
-        effectiveStackId = "custom";
-        constraints = { agent_filter: agentIds };
-      }
-
-      const parts = [
-        companyName.trim() && `Company name: ${companyName.trim()}.`,
-        domain.trim() && `Domain: ${domain.trim()}.`,
-        stackTab === "presets" && selectedStack && `Agent stack: ${selectedStack.name}. Outcome: ${selectedStack.primary_outcome}.`,
-        showStack && `Tech stack: Frontend=${techStack.frontend}, Backend=${techStack.backend}, Database=${techStack.database}, Auth=${techStack.auth}.`,
-      ].filter(Boolean);
-      const full = parts.length ? `${parts.join(" ")}\n\n${instruction}` : instruction;
-
-      const result = await submitGoal(founderId, full, constraints, effectiveStackId);
+      const result = await submitGoal(founderId, full, {}, selectedStackId);
       saveSession({
         sessionId: result.session_id,
         founderId,
@@ -2127,213 +2097,92 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div style={{ border: "1px solid var(--line)", borderRadius: 28, padding: "14px 16px", display: "grid", gap: 12, background: "rgba(255,255,255,0.03)" }}>
-            {/* Tab switcher: Presets | Custom */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-              <span className="site-label">Agent stack</span>
-              <div style={{ display: "flex", borderRadius: 10, border: "1px solid var(--line)", overflow: "hidden", flexShrink: 0 }}>
-                {(["presets", "custom"] as const).map(tab => (
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
+              <div style={{ display: "grid", gap: 5 }}>
+                <span className="site-label">Agent stack</span>
+                <strong style={{ color: "var(--fg)", fontSize: 15 }}>{selectedStack?.name ?? "Idea to Revenue Stack"}</strong>
+                <span style={{ color: "var(--fg-dim)", fontSize: 12, lineHeight: 1.55 }}>
+                  {selectedStack?.description ?? "Astra will build the company foundation: research, positioning, brand, landing page, roadmap, GTM, sales workflow, legal starter kit, and 30-day operating plan."}
+                </span>
+              </div>
+              <span style={{ border: "1px solid var(--line)", borderRadius: 999, padding: "7px 11px", color: "var(--fg-dim)", fontSize: 11, whiteSpace: "nowrap" }}>
+                {selectedStack?.artifacts.length ?? 18} outputs
+              </span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8 }}>
+              {(stackTemplates.length ? stackTemplates : [{
+                stack_id: "idea_to_revenue",
+                name: "Idea to Revenue Stack",
+                target_user: "Founders starting from a rough startup idea.",
+                primary_outcome: "Turn an idea into a launch-ready company foundation.",
+                description: "Company foundation, launch surface, GTM, sales, legal, and 30-day plan.",
+                input_prompts: [],
+                tasks: [],
+                artifacts: [],
+                approval_gates: [],
+                connector_requirements: [],
+                dashboard_sections: [],
+                completion_rules: [],
+              }]).map(stackTemplate => {
+                const active = stackTemplate.stack_id === selectedStackId;
+                return (
                   <button
-                    key={tab}
+                    key={stackTemplate.stack_id}
                     type="button"
-                    onClick={() => setStackTab(tab)}
+                    onClick={() => {
+                      setManualStackOverride(true);
+                      setSelectedStackId(stackTemplate.stack_id);
+                    }}
                     disabled={loading}
                     style={{
-                      padding: "5px 14px",
-                      fontSize: 12,
-                      fontWeight: 500,
+                      display: "grid",
+                      gap: 5,
+                      textAlign: "left",
+                      borderRadius: 20,
+                      border: `1px solid ${active ? "rgba(61,158,95,0.38)" : "var(--line)"}`,
+                      background: active ? "rgba(61,158,95,0.10)" : "rgba(255,255,255,0.025)",
+                      color: "var(--fg)",
+                      padding: "10px 11px",
                       cursor: "pointer",
-                      border: "none",
-                      background: stackTab === tab ? "rgba(37,99,235,0.15)" : "transparent",
-                      color: stackTab === tab ? "#60a5fa" : "var(--fg-mute)",
-                      borderRight: tab === "presets" ? "1px solid var(--line)" : "none",
-                      transition: "background 0.15s, color 0.15s",
                     }}
                   >
-                    {tab === "presets" ? "Presets" : "Custom"}
+                      <span style={{ fontSize: 12, fontWeight: 650 }}>{stackTemplate.name.replace(" Stack", "")}</span>
+                      <span style={{ fontSize: 10, color: active ? "#3D9E5F" : "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                      {stackRecommendation?.stack.stack_id === stackTemplate.stack_id ? "Recommended" : `${stackTemplate.tasks.length || "Template"} lanes`}
+                    </span>
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
-
-            {stackTab === "presets" ? (
-              <>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
-                  <div style={{ display: "grid", gap: 5 }}>
-                    <strong style={{ color: "var(--fg)", fontSize: 15 }}>{selectedStack?.name ?? "Idea to Revenue Stack"}</strong>
-                    <span style={{ color: "var(--fg-dim)", fontSize: 12, lineHeight: 1.55 }}>
-                      {selectedStack?.description ?? "Astra will build the company foundation: research, positioning, brand, landing page, roadmap, GTM, sales workflow, legal starter kit, and 30-day operating plan."}
-                    </span>
-                  </div>
-                  <span style={{ border: "1px solid var(--line)", borderRadius: 999, padding: "7px 11px", color: "var(--fg-dim)", fontSize: 11, whiteSpace: "nowrap" }}>
-                    {selectedStack?.artifacts.length ?? 18} outputs
-                  </span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8 }}>
-                  {(stackTemplates.length ? stackTemplates : [{
-                    stack_id: "idea_to_revenue",
-                    name: "Idea to Revenue Stack",
-                    target_user: "Founders starting from a rough startup idea.",
-                    primary_outcome: "Turn an idea into a launch-ready company foundation.",
-                    description: "Company foundation, launch surface, GTM, sales, legal, and 30-day plan.",
-                    input_prompts: [],
-                    tasks: [],
-                    artifacts: [],
-                    approval_gates: [],
-                    connector_requirements: [],
-                    dashboard_sections: [],
-                    completion_rules: [],
-                  }]).map(stackTemplate => {
-                    const active = stackTemplate.stack_id === selectedStackId;
-                    return (
-                      <button
-                        key={stackTemplate.stack_id}
-                        type="button"
-                        onClick={() => {
-                          setManualStackOverride(true);
-                          setSelectedStackId(stackTemplate.stack_id);
-                        }}
-                        disabled={loading}
-                        style={{
-                          display: "grid",
-                          gap: 5,
-                          textAlign: "left",
-                          borderRadius: 20,
-                          border: `1px solid ${active ? "rgba(61,158,95,0.38)" : "var(--line)"}`,
-                          background: active ? "rgba(61,158,95,0.10)" : "rgba(255,255,255,0.025)",
-                          color: "var(--fg)",
-                          padding: "10px 11px",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <span style={{ fontSize: 12, fontWeight: 650 }}>{stackTemplate.name.replace(" Stack", "")}</span>
-                        <span style={{ fontSize: 10, color: active ? "#3D9E5F" : "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                          {stackRecommendation?.stack.stack_id === stackTemplate.stack_id ? "Recommended" : `${stackTemplate.tasks.length || "Template"} lanes`}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-                {stackRecommendation && (
-                  <div style={{ display: "grid", gap: 6, borderRadius: 20, border: "1px solid rgba(61,158,95,0.18)", background: "rgba(61,158,95,0.06)", padding: "10px 12px" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                      <span className="site-label">Stack compiler</span>
-                      <span style={{ fontSize: 11, color: "#3D9E5F", fontFamily: "var(--font-jetbrains-mono)" }}>{Math.round(stackRecommendation.confidence * 100)}%</span>
-                    </div>
-                    <span style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.45 }}>{stackRecommendation.reason}</span>
-                    {stackRecommendation.matched_signals.length > 0 && (
-                      <span style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.45 }}>
-                        Signals: {stackRecommendation.matched_signals.join(" · ")}
-                      </span>
-                    )}
-                  </div>
-                )}
-                {stackReadiness && (
-                  <div style={{ display: "grid", gap: 7, borderRadius: 20, border: `1px solid ${stackReadiness.ready ? "rgba(61,158,95,0.18)" : "rgba(245,158,11,0.22)"}`, background: stackReadiness.ready ? "rgba(61,158,95,0.05)" : "rgba(245,158,11,0.06)", padding: "10px 12px" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                      <span className="site-label">Stack readiness</span>
-                      <span style={{ fontSize: 11, color: stackReadiness.ready ? "#3D9E5F" : "#D97706", fontFamily: "var(--font-jetbrains-mono)" }}>
-                        {stackReadiness.readiness_score}%
-                      </span>
-                    </div>
-                    <span style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.45 }}>
-                      {stackReadiness.connected_required}/{stackReadiness.required_total} required connectors ready
-                      {stackReadiness.missing_required > 0 ? ` · ${stackReadiness.missing_required} missing` : " · ready to operate"}
-                    </span>
-                    {stackReadiness.next_actions.slice(0, 2).map(action => (
-                      <span key={action} style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.45 }}>- {action}</span>
-                    ))}
-                  </div>
-                )}
-              </>
-            ) : (
-              /* Custom tab — agent picker */
-              <div style={{ display: "grid", gap: 10 }}>
+            {stackRecommendation && (
+              <div style={{ display: "grid", gap: 6, borderRadius: 20, border: "1px solid rgba(61,158,95,0.18)", background: "rgba(61,158,95,0.06)", padding: "10px 12px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <span style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.5 }}>
-                    Pick the agents you want. Each handles a dedicated lane of work.
-                  </span>
-                  <span style={{ fontSize: 11, color: selectedAgentIds.size > 0 ? "#3D9E5F" : "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)", whiteSpace: "nowrap" }}>
-                    {selectedAgentIds.size} selected
-                  </span>
+                  <span className="site-label">Stack compiler</span>
+                  <span style={{ fontSize: 11, color: "#3D9E5F", fontFamily: "var(--font-jetbrains-mono)" }}>{Math.round(stackRecommendation.confidence * 100)}%</span>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8 }}>
-                  {AGENT_CATALOG.map(agent => {
-                    const active = selectedAgentIds.has(agent.id);
-                    return (
-                      <button
-                        key={agent.id}
-                        type="button"
-                        disabled={loading}
-                        onClick={() => {
-                          setSelectedAgentIds(prev => {
-                            const next = new Set(prev);
-                            if (next.has(agent.id)) next.delete(agent.id);
-                            else next.add(agent.id);
-                            return next;
-                          });
-                        }}
-                        style={{
-                          display: "grid",
-                          gap: 7,
-                          textAlign: "left",
-                          borderRadius: 18,
-                          border: `1px solid ${active ? "rgba(37,99,235,0.45)" : "var(--line)"}`,
-                          background: active ? "rgba(37,99,235,0.10)" : "rgba(255,255,255,0.025)",
-                          color: "var(--fg)",
-                          padding: "11px 12px",
-                          cursor: "pointer",
-                          transition: "border-color 0.15s, background 0.15s",
-                          position: "relative",
-                        }}
-                      >
-                        {/* Checkbox indicator */}
-                        <div style={{
-                          position: "absolute", top: 10, right: 10,
-                          width: 16, height: 16, borderRadius: 4,
-                          border: `1.5px solid ${active ? "#60a5fa" : "rgba(176,180,186,0.3)"}`,
-                          background: active ? "#2563EB" : "transparent",
-                          display: "grid", placeItems: "center",
-                          transition: "background 0.15s, border-color 0.15s",
-                        }}>
-                          {active && <span style={{ fontSize: 9, color: "#fff", lineHeight: 1 }}>✓</span>}
-                        </div>
-
-                        {/* Agent header */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, paddingRight: 20 }}>
-                          <span style={{ fontSize: 18 }}>{agent.icon}</span>
-                          <span style={{ fontSize: 13, fontWeight: 650, color: active ? "var(--fg)" : "var(--fg-dim)" }}>{agent.name}</span>
-                        </div>
-
-                        {/* Description */}
-                        <span style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.5 }}>{agent.description}</span>
-
-                        {/* Tool chips */}
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                          {agent.tools.map(tool => (
-                            <span
-                              key={tool}
-                              style={{
-                                fontSize: 9, padding: "2px 7px", borderRadius: 999,
-                                border: `1px solid ${active ? "rgba(37,99,235,0.28)" : "rgba(176,180,186,0.15)"}`,
-                                background: active ? "rgba(37,99,235,0.08)" : "rgba(255,255,255,0.03)",
-                                color: active ? "#93c5fd" : "var(--fg-mute)",
-                                fontFamily: "var(--font-jetbrains-mono)",
-                                letterSpacing: "0.02em",
-                              }}
-                            >
-                              {tool}
-                            </span>
-                          ))}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-                {selectedAgentIds.size === 0 && (
-                  <div style={{ padding: "10px 12px", borderRadius: 14, background: "rgba(245,158,11,0.07)", border: "1px solid rgba(245,158,11,0.18)", fontSize: 11, color: "#D97706" }}>
-                    Select at least one agent to build a custom stack.
-                  </div>
+                <span style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.45 }}>{stackRecommendation.reason}</span>
+                {stackRecommendation.matched_signals.length > 0 && (
+                  <span style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.45 }}>
+                    Signals: {stackRecommendation.matched_signals.join(" · ")}
+                  </span>
                 )}
+              </div>
+            )}
+            {stackReadiness && (
+              <div style={{ display: "grid", gap: 7, borderRadius: 20, border: `1px solid ${stackReadiness.ready ? "rgba(61,158,95,0.18)" : "rgba(245,158,11,0.22)"}`, background: stackReadiness.ready ? "rgba(61,158,95,0.05)" : "rgba(245,158,11,0.06)", padding: "10px 12px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <span className="site-label">Stack readiness</span>
+                  <span style={{ fontSize: 11, color: stackReadiness.ready ? "#3D9E5F" : "#D97706", fontFamily: "var(--font-jetbrains-mono)" }}>
+                    {stackReadiness.readiness_score}%
+                  </span>
+                </div>
+                <span style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.45 }}>
+                  {stackReadiness.connected_required}/{stackReadiness.required_total} required connectors ready
+                  {stackReadiness.missing_required > 0 ? ` · ${stackReadiness.missing_required} missing` : " · ready to operate"}
+                </span>
+                {stackReadiness.next_actions.slice(0, 2).map(action => (
+                  <span key={action} style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.45 }}>- {action}</span>
+                ))}
               </div>
             )}
           </div>
@@ -2392,8 +2241,8 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 4 }}>
             {isSignedIn ? (
-              <button type="submit" disabled={loading || !instruction.trim() || (stackTab === "custom" && selectedAgentIds.size === 0)} className="site-btn site-btn-primary" style={{ padding: "0 24px", fontSize: 14 }}>
-                {loading ? "Launching..." : stackTab === "custom" ? `Build Custom Stack (${selectedAgentIds.size}) ->` : "Launch Astra ->"}
+              <button type="submit" disabled={loading || !instruction.trim()} className="site-btn site-btn-primary" style={{ padding: "0 24px", fontSize: 14 }}>
+                {loading ? "Launching..." : "Launch Astra ->"}
               </button>
             ) : (
               <SignInButton mode="modal">
@@ -2448,12 +2297,12 @@ function WorkspaceSidebar({
         </div>
       </div>
 
-      <button type="button" onClick={onNewGoal} className="site-btn site-btn-primary" style={{ width: "100%", minHeight: 42, justifyContent: "flex-start", padding: "0 14px", fontSize: 13 }}>
+      <button data-tour="new-goal-btn" type="button" onClick={onNewGoal} className="site-btn site-btn-primary" style={{ width: "100%", minHeight: 42, justifyContent: "flex-start", padding: "0 14px", fontSize: 13 }}>
         <span aria-hidden="true">＋</span>
         New goal
       </button>
 
-      <div style={{ display: "grid", gap: 8 }}>
+      <div data-tour="workspace-sidebar" style={{ display: "grid", gap: 8 }}>
         <a href="#current-run" style={{ ...navItemStyle, color: "var(--fg)" }}>
           <span aria-hidden="true">●</span>
           Current run
@@ -2462,17 +2311,21 @@ function WorkspaceSidebar({
           <span aria-hidden="true">▣</span>
           Plan
         </button>
-        <Link href="/settings" style={navItemStyle}>
-          <span aria-hidden="true">⚙</span>
-          Account settings
-        </Link>
-        <Link href="/integrations" style={navItemStyle}>
+        <Link data-tour="nav-integrations" href="/integrations" style={navItemStyle}>
           <span aria-hidden="true">⌘</span>
           Integrations
         </Link>
-        <Link href="/payments" style={navItemStyle}>
+        <Link data-tour="nav-outreach" href="/outreach" style={navItemStyle}>
+          <span aria-hidden="true">✉</span>
+          Outreach
+        </Link>
+        <Link data-tour="nav-payments" href="/payments" style={navItemStyle}>
           <span aria-hidden="true">$</span>
           Payments
+        </Link>
+        <Link href="/settings" style={navItemStyle}>
+          <span aria-hidden="true">⚙</span>
+          Settings
         </Link>
         <a href="https://astracreates.com/" style={navItemStyle}>
           <span aria-hidden="true">↗</span>
@@ -2837,6 +2690,18 @@ export function GoalWorkspace({
   }, [CACHE_KEY, sessionId]);
   const [newGoalOpen, setNewGoalOpen] = useState(startNew || !sessionId);
   const [planOpen, setPlanOpen] = useState(false);
+  const [showTour, setShowTour] = useState(false);
+
+  // Auto-trigger tour once after onboarding
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (localStorage.getItem("astra_show_tour") === "1") {
+      localStorage.removeItem("astra_show_tour");
+      // Small delay so sidebar elements are rendered
+      const t = window.setTimeout(() => setShowTour(true), 600);
+      return () => window.clearTimeout(t);
+    }
+  }, []);
   const [detailedNodes, setDetailedNodes] = useState<PlanNode[]>([]);
   const [pendingDetailedNodes, setPendingDetailedNodes] = useState<PlanNode[]>([]);
   const [nonResearchStarted, setNonResearchStarted] = useState(false);
@@ -3244,6 +3109,7 @@ export function GoalWorkspace({
 
   return (
     <div className="astra-app-layout" style={{ width: "100%", maxWidth: 1900, margin: "0 auto", display: "grid", gridTemplateColumns: "minmax(190px, 220px) minmax(0, 1fr)", gap: 24, alignItems: "stretch" }}>
+      {showTour && <WorkspaceTour onDone={() => setShowTour(false)} />}
       <NewGoalOverlay open={newGoalOpen} onClose={() => setNewGoalOpen(false)} />
       <PlanOverlay open={planOpen} onClose={() => setPlanOpen(false)} title={title} planTasks={planTasks} detailedNodes={detailedNodes} agents={agents} />
       <aside className="astra-workspace-sidebar" style={{ minWidth: 0, alignSelf: "start" }}>
