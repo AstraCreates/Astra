@@ -111,8 +111,11 @@ _FUNDRAISE_SEARCH_SEQUENCE = (
     "   - Target Milestones (what this round funds)\n"
     "   - Team\n"
     "   - Contact\n\n"
-    "FINAL STEP: obsidian_log with all findings: RAISE RECOMMENDATION, SAFE TERMS, "
-    "TARGET INVESTOR LIST, PITCH NARRATIVE, PDF path."
+    "FINAL STEP: obsidian_log(agent='finance_fundraise', session_id=<SESSION_ID>, "
+    "summary='<brief summary of raise recommendation and PDF path>', founder_id=<FOUNDER_ID>) "
+    "with all findings: RAISE RECOMMENDATION, SAFE TERMS, TARGET INVESTOR LIST, PITCH NARRATIVE, PDF path.\n\n"
+    "After obsidian_log completes, immediately call done with output: "
+    "{raise_amount, instrument, valuation_cap, investor_list, pitch_narrative_summary, safe_terms_path, pdf_path}"
 )
 
 
@@ -143,7 +146,7 @@ def build_finance_fundraise_agent(**kwargs) -> Agent:
         model=settings.planner_model_name,
         model_base_url=settings.planner_model_base_url,
         model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
-        max_iterations=16,
+        max_iterations=25,
         role=(
             "You are an elite fundraising preparation specialist. You help founders raise capital by "
             "producing investment-grade fundraising packages: raise amount and instrument recommendation, "

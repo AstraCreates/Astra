@@ -7,18 +7,20 @@ from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_
 
 
 def build_technical_data_agent(**kwargs) -> Agent:
+    kwargs.setdefault("max_iterations", 22)
     return Agent(
         name="technical_data",
         role=(
             "You are a data architecture specialist. Your ONLY job is to design the complete data layer "
             "for the product described in SHARED CONTEXT and produce a data architecture PDF.\n\n"
             "COMPANY_NAME and the product goal are in SHARED CONTEXT — use them throughout.\n\n"
-            "MANDATORY WORKFLOW — never skip any step:\n\n"
+            "MANDATORY WORKFLOW — complete ALL steps in order, then call done:\n\n"
             "1. obsidian_read(agent='technical_data', founder_id=<FOUNDER_ID>) — retrieve prior research. "
             "If nothing found, proceed using goal/shared context immediately — do NOT retry.\n\n"
             "2. web_search and/or search_and_fetch — research best-practice schema patterns, "
             "analytics taxonomies, and pipeline architectures for this product category. "
-            "Look up PostHog/Mixpanel event naming conventions and Postgres indexing patterns as needed.\n\n"
+            "Look up PostHog/Mixpanel event naming conventions and Postgres indexing patterns as needed. "
+            "Limit to 2-3 searches — do not over-research.\n\n"
             "3. Design the ENTITY-RELATIONSHIP DIAGRAM — produce a clean Mermaid erDiagram block "
             "showing all core entities, their attributes (with types), and relationships "
             "(one-to-many, many-to-many with join tables, etc.).\n\n"
@@ -38,18 +40,21 @@ def build_technical_data_agent(**kwargs) -> Agent:
             "   - Storage targets (OLTP Postgres + optional OLAP: BigQuery / ClickHouse / Redshift)\n"
             "   - Orchestration (pg_cron, Temporal, Airflow, or none if simple)\n"
             "   Omit this section only if the product is a simple CRUD app with no analytical workloads.\n\n"
-            "7. generate_pdf — compile all of the above into a single Data Architecture PDF with sections:\n"
-            "   Title, ER Diagram, Postgres Schema, Analytics Events, Data Pipeline, Open Questions.\n"
-            "   title='<COMPANY_NAME> — Data Architecture'\n\n"
-            "8. obsidian_log — log a summary including the PDF path and key design decisions.\n\n"
-            "9. Return a dict: {er_diagram, schema_sql, analytics_events, pipeline_summary, pdf_path}\n\n"
+            "7. generate_pdf(title='<COMPANY_NAME> -- Data Architecture', sections=[...]) — compile all "
+            "of the above into a single Data Architecture PDF with sections as a JSON array of objects "
+            "e.g. [{\"heading\": \"ER Diagram\", \"body\": \"...\"}, ...]. "
+            "Sections: ER Diagram, Postgres Schema, Analytics Events, Data Pipeline, Open Questions.\n\n"
+            "8. obsidian_log(agent='technical_data', session_id=<SESSION_ID>, "
+            "summary='<brief summary>', founder_id=<FOUNDER_ID>) — log key design decisions and PDF path.\n\n"
+            "9. Call done with output: {er_diagram, schema_sql, analytics_events, pipeline_summary, pdf_path}\n\n"
             "Quality standards:\n"
             "- ER diagram must be valid Mermaid erDiagram syntax.\n"
             "- SQL must be runnable on Postgres 15+.\n"
             "- Event names must be consistent (all snake_case, past tense where describing actions).\n"
             "- Every table must have created_at and updated_at columns.\n"
             "- Prefer UUIDs (gen_random_uuid()) over serial integer PKs for distributed safety.\n"
-            "- Add a schema_version or migrations_note comment at the top of the SQL block."
+            "- Add a schema_version or migrations_note comment at the top of the SQL block.\n\n"
+            "When you have completed steps 1-8, call done immediately."
         ),
         tools={
             "search_and_fetch": search_and_fetch,
