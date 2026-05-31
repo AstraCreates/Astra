@@ -89,15 +89,34 @@ Start with file 1 immediately. Write each file completely before moving to the n
             repo_hash = hashlib.md5(repo_url.encode()).hexdigest()
             oc_session_id = str(uuid.UUID(repo_hash))
 
-            # openclaude ignores subprocess cwd — must cd in shell so it writes files in the repo dir
+            # openclaude ignores subprocess cwd — must cd in shell so it writes files in the repo dir.
+            # Also: openclaude refuses --dangerously-skip-permissions when running as root, so we
+            # must drop to the 'astra' non-root user. sudo env_reset strips API keys, so we pass
+            # them explicitly via `sudo -u astra env KEY=VAL ...` rather than sudo -E.
             escaped_task = full_task.replace("'", "'\\''")
             oc_args = (
                 f"{OPENCLAUDE_BIN} --print --allow-dangerously-skip-permissions --dangerously-skip-permissions"
                 f" --provider openai --model deepseek-ai/DeepSeek-V4-Flash"
                 f" --session-id {oc_session_id}"
             )
-            # Run directly — cd into tmpdir via shell so openclaude writes files in the right place
-            shell_cmd = f"cd {tmpdir!r} && {oc_args} '{escaped_task}'"
+            import shutil as _shutil
+            if os.getuid() == 0 and _shutil.which("sudo"):
+                # Pass API keys explicitly since sudo env_reset strips them
+                openai_key = env.get("OPENAI_API_KEY", "")
+                openai_base = env.get("OPENAI_BASE_URL", "https://api.deepinfra.com/v1/openai")
+                openai_model = env.get("OPENAI_MODEL", "deepseek-ai/DeepSeek-V4-Flash")
+                # Make tmpdir writable by astra user
+                subprocess.run(["chmod", "-R", "777", tmpdir], capture_output=True)
+                shell_cmd = (
+                    f"cd {tmpdir!r} && "
+                    f"sudo -u astra env HOME=/home/astra "
+                    f"OPENAI_API_KEY={openai_key!r} "
+                    f"OPENAI_BASE_URL={openai_base!r} "
+                    f"OPENAI_MODEL={openai_model!r} "
+                    f"{oc_args} '{escaped_task}'"
+                )
+            else:
+                shell_cmd = f"cd {tmpdir!r} && {oc_args} '{escaped_task}'"
 
             result = subprocess.run(
                 shell_cmd,
