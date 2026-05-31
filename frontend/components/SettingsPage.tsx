@@ -49,6 +49,261 @@ function Row({ label, desc, action }: { label: string; desc?: string; action: Re
   );
 }
 
+// ─── Team types ───────────────────────────────────────────────────────────────
+interface TeamMember {
+  uid: string;
+  email?: string;
+  role: string;
+  status?: string;
+}
+
+interface Team {
+  id: string;
+  name: string;
+  founder_id: string;
+  members: TeamMember[];
+}
+
+// ─── TeamSection ──────────────────────────────────────────────────────────────
+function TeamSection({ founderId }: { founderId: string }) {
+  const [team, setTeam] = useState<Team | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [createName, setCreateName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [showCreateInput, setShowCreateInput] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+  const [removingUid, setRemovingUid] = useState<string | null>(null);
+
+  const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+  useEffect(() => {
+    if (!founderId) return;
+    setLoading(true);
+    fetch(`${BASE}/api/teams/me?founder_id=${encodeURIComponent(founderId)}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => setTeam(data ?? null))
+      .catch(() => setTeam(null))
+      .finally(() => setLoading(false));
+  }, [founderId, BASE]);
+
+  const handleCreate = async () => {
+    if (!createName.trim()) return;
+    setCreating(true);
+    setCreateError("");
+    try {
+      const res = await fetch(`${BASE}/api/teams`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: createName.trim(), founder_id: founderId }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const created: Team = await res.json();
+      setTeam(created);
+      setShowCreateInput(false);
+      setCreateName("");
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Failed to create team.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleInvite = async () => {
+    if (!team) return;
+    setInviteBusy(true);
+    setInviteError("");
+    try {
+      const body: Record<string, string> = { founder_id: founderId };
+      if (inviteEmail.trim()) body.email = inviteEmail.trim();
+      const res = await fetch(`${BASE}/api/teams/${team.id}/invites`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const url: string = data.invite_url ?? data.url ?? "";
+      if (url) await navigator.clipboard.writeText(url);
+      setInviteEmail("");
+      setShowInviteModal(false);
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : "Failed to generate invite.");
+    } finally {
+      setInviteBusy(false);
+    }
+  };
+
+  const handleRemove = async (uid: string) => {
+    if (!team) return;
+    setRemovingUid(uid);
+    try {
+      await fetch(`${BASE}/api/teams/${team.id}/members/${uid}?founder_id=${encodeURIComponent(founderId)}`, {
+        method: "DELETE",
+      });
+      setTeam((prev) => prev ? { ...prev, members: prev.members.filter((m) => m.uid !== uid) } : prev);
+    } catch {
+      // silently ignore remove errors
+    } finally {
+      setRemovingUid(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ padding: "14px 20px" }}>
+        <span style={{ fontSize: 12, color: "var(--fg-mute)" }}>Loading team…</span>
+      </div>
+    );
+  }
+
+  if (!team) {
+    return (
+      <div style={{ padding: "14px 20px", display: "grid", gap: 12 }}>
+        {showCreateInput ? (
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              placeholder="Team name…"
+              style={{ flex: 1, minHeight: 38, borderRadius: 16, border: "1px solid var(--line)", background: "var(--glass-hi)", color: "var(--fg)", padding: "0 14px", outline: "none", fontSize: 13 }}
+              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            />
+            <button
+              onClick={handleCreate}
+              disabled={creating || !createName.trim()}
+              className="site-btn site-btn-primary"
+              style={{ fontSize: 12, padding: "0 16px", minHeight: 38, opacity: creating ? 0.6 : 1 }}
+            >
+              {creating ? "Creating…" : "Create"}
+            </button>
+            <button
+              onClick={() => { setShowCreateInput(false); setCreateName(""); setCreateError(""); }}
+              className="site-btn site-btn-ghost"
+              style={{ fontSize: 12, padding: "0 14px", minHeight: 38 }}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <p style={{ margin: 0, fontSize: 13, color: "var(--fg-mute)" }}>You are not in a team yet.</p>
+            <button
+              onClick={() => setShowCreateInput(true)}
+              className="site-btn site-btn-primary"
+              style={{ fontSize: 12, padding: "0 16px", minHeight: 36 }}
+            >
+              Create Team
+            </button>
+          </div>
+        )}
+        {createError && (
+          <span style={{ fontSize: 12, color: "#C97070" }}>{createError}</span>
+        )}
+      </div>
+    );
+  }
+
+  const isOwner = team.founder_id === founderId;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column" }}>
+      {/* Team header row */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "14px 20px", borderBottom: "1px solid var(--line-2)" }}>
+        <div>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>{team.name}</p>
+          <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--fg-mute)" }}>{team.members.length} member{team.members.length !== 1 ? "s" : ""}</p>
+        </div>
+        {isOwner && (
+          <button
+            onClick={() => { setShowInviteModal(true); setInviteError(""); }}
+            className="site-btn site-btn-primary"
+            style={{ fontSize: 12, padding: "0 16px", minHeight: 36 }}
+          >
+            Invite →
+          </button>
+        )}
+      </div>
+
+      {/* Members list */}
+      {team.members.map((member) => (
+        <div key={member.uid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "11px 20px", borderBottom: "1px solid var(--line-2)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--glass-hi)", border: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <span style={{ fontSize: 11, color: "var(--fg-dim)", fontFamily: "var(--font-mono)" }}>{(member.email ?? member.uid).charAt(0).toUpperCase()}</span>
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.email ?? member.uid}</p>
+              <p style={{ margin: 0, fontSize: 10, color: "var(--fg-mute)" }}>{member.role}{member.status && member.status !== "active" ? ` · ${member.status}` : ""}</p>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 999, background: "var(--glass-hi)", color: member.uid === team.founder_id ? "#3D9E5F" : "var(--fg-dim)", border: "1px solid var(--line)", fontFamily: "var(--font-mono)" }}>
+              {member.uid === team.founder_id ? "owner" : member.role}
+            </span>
+            {isOwner && member.uid !== founderId && (
+              <button
+                onClick={() => handleRemove(member.uid)}
+                disabled={removingUid === member.uid}
+                className="site-btn"
+                style={{ fontSize: 11, padding: "0 10px", minHeight: 28, color: "#C97070", background: "rgba(180,60,60,0.10)", borderColor: "rgba(180,60,60,0.20)", opacity: removingUid === member.uid ? 0.5 : 1 }}
+              >
+                {removingUid === member.uid ? "…" : "Remove"}
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+
+      {/* Invite modal */}
+      {showInviteModal && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)" }} onClick={(e) => { if (e.target === e.currentTarget) setShowInviteModal(false); }}>
+          <div style={{ width: "100%", maxWidth: 420, borderRadius: 28, border: "1px solid var(--line)", background: "var(--glass)", backdropFilter: "var(--blur)", WebkitBackdropFilter: "var(--blur)", boxShadow: "var(--shadow-sm)", padding: 28, display: "grid", gap: 18 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 16, color: "var(--fg)", letterSpacing: "-0.01em" }}>Invite to {team.name}</h2>
+              <p style={{ margin: "5px 0 0", fontSize: 12, color: "var(--fg-mute)" }}>Enter an email to send a targeted invite, or skip to copy a generic link.</p>
+            </div>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>Email (optional)</span>
+              <input
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                placeholder="teammate@example.com"
+                type="email"
+                style={{ width: "100%", minHeight: 42, borderRadius: 18, border: "1px solid var(--line)", background: "var(--glass-hi)", color: "var(--fg)", padding: "0 14px", outline: "none", fontSize: 13, boxSizing: "border-box" }}
+                onKeyDown={(e) => e.key === "Enter" && handleInvite()}
+              />
+            </label>
+            {inviteError && (
+              <span style={{ fontSize: 12, color: "#C97070" }}>{inviteError}</span>
+            )}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => { setShowInviteModal(false); setInviteEmail(""); setInviteError(""); }}
+                className="site-btn site-btn-ghost"
+                style={{ fontSize: 12, padding: "0 14px", minHeight: 38 }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleInvite}
+                disabled={inviteBusy}
+                className="site-btn site-btn-primary"
+                style={{ fontSize: 12, padding: "0 18px", minHeight: 38, opacity: inviteBusy ? 0.6 : 1 }}
+              >
+                {inviteBusy ? "Generating…" : "Copy invite link"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function statusColor(status: string, ok?: boolean) {
   if (ok || status === "code_ready" || status === "production_verified") return "#3D9E5F";
   if (status === "needs_live_proof") return "#D97706";
@@ -455,6 +710,10 @@ export default function SettingsPage() {
             )}
           </div>
         </div>
+      </Section>
+
+      <Section title="Team">
+        <TeamSection founderId={founderId} />
       </Section>
 
       <Section title="Data">
