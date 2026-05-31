@@ -6,7 +6,7 @@ import { useUser, SignInButton } from "@clerk/nextjs";
 
 interface InviteInfo {
   team_name: string;
-  inviter_name: string;
+  invited_by: string;
   expires_at?: string;
 }
 
@@ -52,7 +52,7 @@ export default function AcceptInvitePage() {
         const body = await res.json().catch(() => ({}));
         throw new Error(body?.detail ?? "Failed to accept invite.");
       }
-      router.push("/dashboard");
+      router.push("/");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
       setAccepting(false);
@@ -127,7 +127,7 @@ export default function AcceptInvitePage() {
         {invite && (
           <>
             <p style={{ opacity: 0.7, marginBottom: 4 }}>
-              <strong>{invite.inviter_name}</strong> has invited you to join
+              You've been invited to join
             </p>
             <p style={{ fontSize: 20, fontWeight: 700, marginBottom: 28 }}>{invite.team_name}</p>
           </>

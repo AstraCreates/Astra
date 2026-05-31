@@ -16,7 +16,7 @@ function TeamBadge() {
     fetch(`${apiBase}/api/teams/me?founder_id=${encodeURIComponent(user.id)}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data?.team_name) setTeamName(data.team_name);
+        if (data?.teams?.[0]?.name) setTeamName(data.teams[0].name);
       })
       .catch(() => {});
   }, [isLoaded, user]);
