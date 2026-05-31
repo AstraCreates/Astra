@@ -86,9 +86,9 @@ def build_marketing_paid_agent(**kwargs) -> Agent:
             "Compile the full strategy into generate_pdf. The PDF must include all sections above: "
             "research summary, Google campaign structure, Meta funnel, audience specs, budget table, "
             "creative briefs, and ROAS targets. Use clear headings and tables where possible.\n"
-            "Then call obsidian_log with a summary of the strategy and the PDF path.\n"
-            "Return done with the PDF path and key metrics (total budget, expected ROAS, "
-            "channel split) in the result."
+            "Then call obsidian_log with summary=<one paragraph summary of strategy and PDF path>.\n"
+            "Finally call done with the PDF path and key metrics (total budget, expected ROAS, "
+            "channel split) in the result. You MUST call done once all steps are complete."
         ),
         tools={
             "web_search": web_search,

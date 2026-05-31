@@ -78,7 +78,7 @@ def get_orchestrator() -> Orchestrator:
             "marketing_content": build_marketing_content_agent(use_computer=True, **_highoutput_kwargs),
             "marketing_outreach": build_marketing_outreach_agent(use_computer=True, **_highoutput_kwargs),
             "marketing_seo": build_marketing_seo_agent(use_computer=True, max_iterations=25, max_tool_calls={"search_and_fetch": 6, "web_search": 8}, **_highoutput_kwargs),
-            "marketing_paid": build_marketing_paid_agent(use_computer=True, **_highoutput_kwargs),
+            "marketing_paid": build_marketing_paid_agent(use_computer=True, max_iterations=25, max_tool_calls={"search_and_fetch": 4, "web_search": 6}, **_highoutput_kwargs),
             "sales_pipeline": build_sales_pipeline_agent(use_computer=False, max_iterations=10, **_small_kwargs),
             "sales_enablement": build_sales_enablement_agent(use_computer=False, max_iterations=25, **_highoutput_kwargs),
             "technical_scaffold": build_technical_scaffold_agent(use_computer=True, **_coder_kwargs),
