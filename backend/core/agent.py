@@ -325,6 +325,7 @@ class Agent:
                 required_by_agent = {
                     "legal": {"format_legal_document", "generate_pdf"},
                     "legal_docs": {"format_legal_document", "generate_pdf"},
+                    "legal_ip": {"format_legal_document", "generate_pdf", "patent_search"},
                     "sales": {"find_leads", "build_outreach_sequence", "build_crm_contact"},
                     "design": {"generate_design_spec", "generate_wireframe", "generate_logo_brief"},
                     "sales_enablement": {"generate_pdf", "obsidian_log"},
