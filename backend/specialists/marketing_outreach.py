@@ -17,6 +17,13 @@ from backend.tools.hunter_tools import (
 
 def build_marketing_outreach_agent(**kwargs) -> Agent:
     kwargs.setdefault("max_iterations", 22)
+    kwargs.setdefault("max_tool_calls", {
+        "search_and_fetch": 4,
+        "company_brain_search": 2,
+        "hunter_search_by_domains": 1,
+        "hunter_domain_search": 2,
+        "build_outreach_sequence": 5,
+    })
     return Agent(
         name="marketing_outreach",
         role=(
