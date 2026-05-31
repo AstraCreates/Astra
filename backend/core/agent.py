@@ -293,6 +293,7 @@ class Agent:
         _one_shot_done: set[str] = set()
         _called_tools: set[str] = set()
         _attempted_tools: set[str] = set()  # includes failed attempts
+        _tool_attempt_counts: dict[str, int] = {}  # total attempts per tool (success + failure)
         _tool_results: list[tuple[str, dict[str, Any]]] = []
 
         while i < MAX_ITERATIONS:
@@ -378,13 +379,15 @@ class Agent:
                     )})
                     continue
                 # Enforce per-tool call limits (e.g. max 3 search calls for marketing)
+                # Count ALL attempts (success + failure) so retries don't bypass the cap.
                 _tool_call_limit = self._max_tool_calls.get(tool_name)
                 if _tool_call_limit is not None:
-                    _tool_success_count = sum(1 for tn, _ in _tool_results if tn == tool_name)
-                    if _tool_success_count >= _tool_call_limit:
+                    _tool_total_attempts = _tool_attempt_counts.get(tool_name, 0)
+                    if _tool_total_attempts >= _tool_call_limit:
+                        _tool_success_count = sum(1 for tn, _ in _tool_results if tn == tool_name)
                         messages.append({"role": "user", "content": (
-                            f"BLOCKED: {tool_name} has already been called {_tool_success_count} time(s) "
-                            f"(limit={_tool_call_limit}). You have enough research data. "
+                            f"BLOCKED: {tool_name} has already been attempted {_tool_total_attempts} time(s) "
+                            f"({_tool_success_count} succeeded, limit={_tool_call_limit}). You have enough research data. "
                             f"Stop calling {tool_name} and move on to content creation tools now."
                         )})
                         continue
@@ -394,6 +397,7 @@ class Agent:
                     logger.debug("[%s] forced cached HTML into vercel_deploy args (%d chars)", self.name, len(args["html"]))
                 await self._emit(ctx, "agent_action", action="tool", tool=tool_name, args=args, reasoning=reasoning)
                 _attempted_tools.add(tool_name)
+                _tool_attempt_counts[tool_name] = _tool_attempt_counts.get(tool_name, 0) + 1
                 result = await self._execute_tool(tool_name, args, ctx)
                 await self._emit(ctx, "agent_action_result", tool=tool_name, result=result)
                 if "error" not in result:
