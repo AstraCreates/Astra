@@ -161,6 +161,9 @@ def _ensure_clone(repo_url: str, session_id: str = "default") -> str:
         _sh(["git", "clone", "--depth", "1", _clone_url(repo_url), str(workspace)])
         _sh(["git", "config", "user.email", "astra-agent@astra.ai"], cwd=str(workspace))
         _sh(["git", "config", "user.name", "Astra Agent"], cwd=str(workspace))
+    # Ensure astra user (uid 1000) can write files in the workspace when running as root
+    if os.getuid() == 0:
+        subprocess.run(["chmod", "-R", "777", str(workspace)], capture_output=True)
     _clones[key] = str(workspace)
     return str(workspace)
 
