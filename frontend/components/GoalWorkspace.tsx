@@ -2688,7 +2688,7 @@ export function GoalWorkspace({
       });
     } catch {}
   }, [CACHE_KEY, sessionId]);
-  const [newGoalOpen, setNewGoalOpen] = useState(startNew || !sessionId);
+  const [newGoalOpen, setNewGoalOpen] = useState(startNew);
   const [planOpen, setPlanOpen] = useState(false);
   const [showTour, setShowTour] = useState(false);
 
@@ -2710,8 +2710,8 @@ export function GoalWorkspace({
   useEffect(() => { nonResearchStartedRef.current = nonResearchStarted; }, [nonResearchStarted]);
   useEffect(() => { pendingDetailedNodesRef.current = pendingDetailedNodes; }, [pendingDetailedNodes]);
   useEffect(() => {
-    if (startNew || !sessionId) queueMicrotask(() => setNewGoalOpen(true));
-  }, [startNew, sessionId]);
+    if (startNew) queueMicrotask(() => setNewGoalOpen(true));
+  }, [startNew]);
   const [error, setError] = useState<string | null>(null);
   const [reconnecting, setReconnecting] = useState(false);
   const [connected, setConnected] = useState(false);
