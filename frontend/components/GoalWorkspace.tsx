@@ -1871,9 +1871,14 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
   }, []);
 
   const submitInput = () => {
-    // Apply defaults for select fields the user didn't touch
     const data = { ...formValues };
-    fields.forEach(f => { if (f.type === "select" && !data[f.name] && f.default) data[f.name] = f.default; });
+    // For untouched selects: prefer field.default, then first available option
+    fields.forEach(f => {
+      if (f.type === "select" && !data[f.name]) {
+        if (f.default) data[f.name] = f.default;
+        else if (f.options?.[0]) data[f.name] = f.options[0].value;
+      }
+    });
     const missing = fields.filter(f => f.required && f.type !== "select" && !data[f.name]?.trim());
     if (missing.length > 0) { setFormError(`Required: ${missing.map(f => f.label).join(", ")}`); return; }
     setSubmitting(true); setFormError("");
