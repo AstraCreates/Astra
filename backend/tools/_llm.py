@@ -205,7 +205,7 @@ def generate_image(description: str, width: int = 1024, height: int = 1024, foun
         return {"prompt": image_prompt, "error": str(e), "model": _IMAGE_MODEL}
 
 
-_GEMINI_IMAGE_MODEL = "google/gemini-2.5-flash-preview-05-20"
+_GEMINI_IMAGE_MODEL = "google/gemini-2.5-flash-image"
 _OR_BASE = "https://openrouter.ai/api/v1"
 
 
