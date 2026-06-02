@@ -170,9 +170,9 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     # Role prompt is built at run-time (after queries are generated), so use a placeholder
     agent = Agent(
         name=agent_name,
-        model="deepseek-ai/DeepSeek-V4-Flash",
-        model_base_url=settings.agent_model_base_url,
-        model_api_key=settings.agent_model_api_key,
+        model="google/gemma-4-31b-it:free",
+        model_base_url=settings.openrouter_base_url,
+        model_api_key=settings.openrouter_api_key or settings.agent_model_api_key,
         max_iterations=40,
         role="ROLE_PLACEHOLDER",  # replaced at runtime after query generation
         tools={
@@ -394,12 +394,12 @@ async def _extract_topic(goal: str) -> str:
     try:
         from openai import OpenAI
         client = OpenAI(
-            base_url=settings.agent_model_base_url,
-            api_key=settings.agent_model_api_key,
+            base_url=settings.openrouter_base_url,
+            api_key=settings.openrouter_api_key or settings.agent_model_api_key,
         )
         resp = await asyncio.to_thread(
             client.chat.completions.create,
-            model="deepseek-ai/DeepSeek-V4-Flash",
+            model="google/gemma-4-31b-it:free",
             messages=[{
                 "role": "user",
                 "content": (
