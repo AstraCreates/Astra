@@ -239,11 +239,14 @@ async def submit_goal(body: GoalRequest, request: Request):
     except Exception as usage_exc:
         logger.warning("Usage accounting skipped: %s", usage_exc)
 
-    # Credit check and deduction — each goal run costs 10 credits
-    from backend.credits.store import check_credits, deduct_credits
-    if not check_credits(body.founder_id, required=10):
+    # Credit check — scale plan gets unlimited, others need at least 1 credit to start
+    from backend.credits.store import check_credits, get_balance
+    from backend.accounts import get_or_create_org as _get_org
+    _org = _get_org(body.founder_id)
+    _plan = (_org or {}).get("plan", "starter")
+    _unlimited = _plan in ("scale", "beta")
+    if not _unlimited and get_balance(body.founder_id) < 1:
         raise HTTPException(status_code=402, detail="Insufficient credits. Purchase more to continue.")
-    deduct_credits(body.founder_id, 10, "Goal run", session_id)
 
     constraints = dict(body.constraints or {})
     if body.stack_id:
@@ -282,6 +285,20 @@ async def submit_goal(body: GoalRequest, request: Request):
                 await publish(session_id, {"type": "goal_error", "error": str(e)})
             except Exception:
                 pass
+        finally:
+            # Deduct credits based on actual token usage — 10 credits per 1M tokens
+            if not _unlimited:
+                try:
+                    import math
+                    from backend.core.usage import get_session_cost
+                    from backend.credits.store import deduct_credits as _deduct
+                    usage = get_session_cost(session_id)
+                    tokens = usage.get("total_tokens", 0)
+                    credits_to_deduct = max(1, math.ceil(tokens * 10 / 1_000_000))
+                    _deduct(body.founder_id, credits_to_deduct,
+                            f"Goal run ({tokens:,} tokens)", session_id)
+                except Exception as _ce:
+                    logger.warning("Credit deduction failed for %s: %s", session_id, _ce)
 
     asyncio.create_task(_run())
     return {"session_id": session_id, "status": "running"}
