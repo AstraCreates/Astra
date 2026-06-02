@@ -371,26 +371,7 @@ def _build_queries(topic: str, agent_name: str) -> list:
 
 
 async def _extract_topic(goal: str) -> str:
-    """Extract the core product phrase from the goal using simple string processing."""
-    import re
-    goal = goal.replace("\n", " ").strip()
-    # Remove leading instruction verbs and articles
-    cleaned = re.sub(
-        r"^(build|create|make|develop|launch|start|design|implement|i want to|we want to|"
-        r"help me|i need|we need|build me|create me|make me|i'm building|we're building|"
-        r"i am building|build a|create a|make a|develop a)[:\s]+",
-        "", goal, flags=re.IGNORECASE
-    ).strip()
-    # Strip trailing implementation details after "with", "that", "for", "using"
-    cleaned = re.sub(r"\s+(with|that|for|using|which|where|featuring|including)\s+.*$", "", cleaned, flags=re.IGNORECASE).strip()
-    # Take first 60 chars, trim to last complete word
-    if len(cleaned) > 60:
-        cleaned = cleaned[:60].rsplit(" ", 1)[0]
-    return cleaned.strip() or goal[:60].strip()
-
-
-async def _unused_extract_topic_llm(goal: str) -> str:
-    """LLM-based topic extraction — kept as reference but replaced by deterministic version."""
+    """Extract the core product phrase using LLM — handles complex multi-sentence goals."""
     from backend.config import settings
     try:
         from openai import OpenAI
@@ -404,21 +385,31 @@ async def _unused_extract_topic_llm(goal: str) -> str:
             messages=[{
                 "role": "user",
                 "content": (
-                    f"Extract the core product/domain phrase from this goal. "
-                    f"Output ONLY 3-6 words that describe what the product IS — "
-                    f"no verbs like 'build' or 'create', no adjectives like 'real-time'. "
-                    f"Examples: 'co-founder matching platform', 'AI stock trading signals', "
-                    f"'restaurant inventory management software', 'B2B sales automation tool'.\n\n"
-                    f"Goal: {goal[:400]}\n\nProduct phrase:"
+                    "Extract the core product/domain phrase from this goal. "
+                    "Output ONLY 3-7 words that describe what the product IS. "
+                    "Rules: no verbs (build/create/make), write all words in full (never abbreviate), "
+                    "no acronyms, describe the product not the action.\n"
+                    "Examples:\n"
+                    "Goal: 'Build a co-founder matching platform' → 'co-founder matching platform'\n"
+                    "Goal: 'AI-predicted stock market signals for retail traders' → 'AI stock trading signal platform'\n"
+                    "Goal: 'Restaurant inventory management with AI' → 'restaurant inventory management software'\n"
+                    "Goal: 'B2B sales outreach automation tool' → 'B2B sales outreach automation'\n\n"
+                    f"Goal: {goal[:500]}\n\nProduct phrase:"
                 ),
             }],
             max_tokens=20,
             temperature=0.0,
         )
         phrase = resp.choices[0].message.content.strip().strip('"\'').strip()
-        if phrase and 3 <= len(phrase.split()) <= 8:
+        if phrase and 2 <= len(phrase.split()) <= 8:
             return phrase
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("_extract_topic LLM failed: %s", e)
+    # Regex fallback for when LLM is unavailable
+    import re
+    goal = goal.replace("\n", " ").strip()
+    cleaned = re.sub(r"^(build|create|make|develop|launch|start|design|implement|i want to|we want to|help me|i need)[:\s]+", "", goal, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r"\s+(with|that|for|using|which|where|featuring)\s+.*$", "", cleaned, flags=re.IGNORECASE).strip()
+    return (cleaned[:60].rsplit(" ", 1)[0] if len(cleaned) > 60 else cleaned) or goal[:60]
     # Fallback: first 60 chars of goal, cleaned
     return goal.replace("\n", " ").strip()[:60]
