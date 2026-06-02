@@ -135,36 +135,44 @@ def generate_image(description: str, width: int = 1024, height: int = 1024, foun
         if not allowed:
             return {"error": f"Monthly image budget exhausted (${_IMAGE_MONTHLY_BUDGET:.2f}/month). Resets next month.", "model": _IMAGE_MODEL}
 
-    # Step 1: gpt-oss-120b writes the FLUX image prompt
+    # Step 1: Write an optimized FLUX prompt from the concept description
     client = openai.OpenAI(base_url=_DI_BASE, api_key=_api_key())
     prompt_resp = client.chat.completions.create(
         model=_PROMPT_MODEL,
         messages=[
             {"role": "system", "content": (
-                "You are a creative director at a top-tier advertising agency. "
-                "Your job is to write image generation prompts for FLUX-2-pro diffusion model.\n\n"
-                "FLUX responds best to SHORT, DENSE prompts — 40 to 80 words maximum. "
-                "Long prompts degrade quality. Be precise, not verbose.\n\n"
-                "Great FLUX ad prompts have:\n"
-                "  • A single strong visual anchor (one person, one product, one moment)\n"
-                "  • Specific lighting in 3-5 words ('soft morning window light', 'dramatic side rim')\n"
-                "  • Emotional tone in 2-3 words ('quiet confidence', 'raw joy')\n"
-                "  • Large open area of negative space for text — say exactly where (top third, left half)\n"
-                "  • End with: 'editorial advertising photography, 35mm, magazine quality'\n\n"
-                "DO NOT include: brand names, logos, text, words, watermarks, charts, multiple people unless essential.\n"
-                "DO NOT use: 'photorealistic', 'ultra HD', 'masterpiece', 'beautiful' — these are filler.\n"
-                "Output ONLY the prompt. No explanation. No quotes. No markdown."
+                "You are a world-class art director who writes FLUX diffusion model prompts for premium brand advertising.\n\n"
+                "FLUX PROMPT RULES — follow exactly:\n"
+                "1. 50-70 words maximum. Every word must earn its place.\n"
+                "2. Start with the SUBJECT: one specific person or object, described precisely (age, clothing, posture, expression).\n"
+                "3. SETTING: one concrete environment (not 'studio' — say 'sunlit Copenhagen coffee shop', 'Tokyo rooftop at dusk').\n"
+                "4. LIGHTING: 3-5 words, cinematic and specific ('low golden backlight', 'overcast diffused daylight', 'single tungsten key light').\n"
+                "5. COMPOSITION: camera angle + negative space location for copy ('wide shot, large empty sky in top half', 'tight portrait, left third clear').\n"
+                "6. MOOD: 2-3 words of emotional tone ('understated ambition', 'quiet focus', 'joyful momentum').\n"
+                "7. END with exactly: 'shot on Leica, editorial advertising photography, magazine spread quality'\n\n"
+                "HARD BANS — never include these:\n"
+                "- No text, words, letters, logos, or watermarks in the scene\n"
+                "- No 'photorealistic', 'hyperrealistic', 'ultra HD', 'masterpiece', '8K'\n"
+                "- No vague moods ('beautiful', 'stunning', 'amazing')\n"
+                "- No generic settings ('modern office', 'white background', 'studio')\n"
+                "- No brand names\n\n"
+                "Output ONLY the prompt text. No explanation, no quotes, no markdown, no prefix."
             )},
             {"role": "user", "content": (
-                f"Ad concept and brand context:\n{description}\n\n"
-                "Write the FLUX-2-pro image prompt now. Keep it under 80 words."
+                f"Brand/product concept:\n{description}\n\n"
+                "Write the FLUX prompt now. Be specific and cinematic."
             )},
         ],
-        max_tokens=150,
-        temperature=0.75,
+        max_tokens=120,
+        temperature=0.6,
         timeout=30.0,
     )
     image_prompt = (prompt_resp.choices[0].message.content or description).strip()
+    # Strip any accidental quotes or prefixes the model adds
+    import re as _re
+    image_prompt = _re.sub(r'^["\'`]|["\'`]$', '', image_prompt).strip()
+    image_prompt = _re.sub(r'^(prompt|image|here is|here\'s)[:\s]+', '', image_prompt, flags=_re.IGNORECASE).strip()
+    logger.info("FLUX prompt: %s", image_prompt)
 
     # Step 2: FLUX generates image via OpenAI-compatible images/generations endpoint
     try:
