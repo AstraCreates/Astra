@@ -214,7 +214,7 @@ class Orchestrator:
             from backend.config import settings
             client = OpenAI(
                 base_url=settings.planner_model_base_url or "https://api.deepinfra.com/v1/openai",
-                api_key=settings.planner_model_api_key or settings.agent_model_api_key,
+                api_key=settings.openrouter_api_key or settings.planner_model_api_key or settings.agent_model_api_key,
             )
             resp = await asyncio.to_thread(
                 client.chat.completions.create,
@@ -255,7 +255,7 @@ class Orchestrator:
             from openai import OpenAI
             client = OpenAI(
                 base_url=settings.planner_model_base_url or "https://api.deepinfra.com/v1/openai",
-                api_key=settings.planner_model_api_key or settings.agent_model_api_key,
+                api_key=settings.openrouter_api_key or settings.planner_model_api_key or settings.agent_model_api_key,
             )
             resp = await asyncio.to_thread(
                 client.chat.completions.create,
