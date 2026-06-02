@@ -233,6 +233,12 @@ class Agent:
         return content
 
     def _parse_json(self, raw: str) -> dict:
+        # Strip <tool_call>...</tool_call> XML wrappers (ling model)
+        import re as _re
+        tc = _re.search(r'<tool_call>\s*(.*?)\s*</tool_call>', raw, _re.DOTALL)
+        if tc:
+            raw = tc.group(1)
+
         # Strategy 1: direct parse
         try:
             return json.loads(raw)
@@ -242,17 +248,32 @@ class Agent:
         # Strategy 2: find outermost { ... }
         start, end = raw.find("{"), raw.rfind("}")
         if start != -1 and end > start:
+            blob = raw[start:end + 1]
             try:
-                return json.loads(raw[start:end + 1])
+                return json.loads(blob)
+            except Exception:
+                pass
+            # Strategy 2b: Python single-quote dict (hy3-preview returns these)
+            try:
+                import ast
+                result = ast.literal_eval(blob)
+                if isinstance(result, dict):
+                    return result
             except Exception:
                 pass
 
         # Strategy 3: find all JSON-like blobs and try each
-        for m in re.finditer(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)?\}', raw, re.DOTALL):
+        for m in _re.finditer(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)?\}', raw, _re.DOTALL):
             try:
                 return json.loads(m.group())
             except Exception:
-                continue
+                try:
+                    import ast
+                    result = ast.literal_eval(m.group())
+                    if isinstance(result, dict):
+                        return result
+                except Exception:
+                    continue
 
         return {}
 
@@ -785,6 +806,26 @@ class Agent:
             except Exception as e:
                 logger.warning("[%s] SafeRun approval wait failed for %s: %s", self.name, tool_name, e)
                 return {"error": f"SafeRun approval check failed for {tool_name}: {e}"}
+        # Inject required context fields that models sometimes omit
+        if tool_name == "obsidian_log":
+            args.setdefault("session_id", ctx.session_id)
+            args.setdefault("founder_id", ctx.founder_id)
+            args.setdefault("agent", self.name)
+        # Unwrap common extra wrapper keys models accidentally include
+        import inspect as _inspect
+        try:
+            _sig_params = set(_inspect.signature(fn).parameters.keys())
+            # If args has a single wrapper key whose value is a dict with valid params, unwrap it
+            for _wrap_key in ("arguments", "tool_args", "parameters", "input", "kwargs"):
+                if list(args.keys()) == [_wrap_key] and isinstance(args.get(_wrap_key), dict):
+                    args = args[_wrap_key]
+                    break
+            # Strip any keys the function doesn't accept (if it doesn't use **kwargs)
+            _has_var_kw = any(p.kind == _inspect.Parameter.VAR_KEYWORD for p in _inspect.signature(fn).parameters.values())
+            if not _has_var_kw:
+                args = {k: v for k, v in args.items() if k in _sig_params}
+        except Exception:
+            pass
         args_preview = {k: (str(v)[:120] + "…" if isinstance(v, str) and len(str(v)) > 120 else v) for k, v in args.items()}
         logger.debug("[%s] → %s  args=%s", self.name, tool_name, args_preview)
         t0 = _time.monotonic()
