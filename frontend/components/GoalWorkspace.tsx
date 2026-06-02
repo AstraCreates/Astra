@@ -3138,12 +3138,13 @@ export function GoalWorkspace({
   // Auto-trigger tour once after onboarding
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (localStorage.getItem("astra_show_tour") === "1") {
+    if (localStorage.getItem("astra_show_tour") !== "1") return;
+    // Remove inside the callback so StrictMode's double-invoke doesn't eat the key
+    const t = window.setTimeout(() => {
       localStorage.removeItem("astra_show_tour");
-      // Small delay so sidebar elements are rendered
-      const t = window.setTimeout(() => setShowTour(true), 600);
-      return () => window.clearTimeout(t);
-    }
+      setShowTour(true);
+    }, 600);
+    return () => window.clearTimeout(t);
   }, []);
   const [detailedNodes, setDetailedNodes] = useState<PlanNode[]>([]);
   const [pendingDetailedNodes, setPendingDetailedNodes] = useState<PlanNode[]>([]);
