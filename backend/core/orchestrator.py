@@ -975,7 +975,22 @@ class Orchestrator:
         tasks = parallel_research_tasks + other_agents_initial
         logger.info("Task list: research_tasks=%s, other_agents=%s", [t["agent"] for t in parallel_research_tasks], [t["agent"] for t in other_agents_initial])
         remaining = [t for t in tasks if t["agent"] not in _RESEARCH_AGENTS]
-        logger.info("Non-research remaining tasks: %s", [t["agent"] for t in remaining])
+
+        # Map planner's research task ID to actual research task IDs
+        # If research_task exists and remaining tasks depend on it, replace with actual research task IDs
+        if research_task:
+            research_task_id = research_task.get("id", "t1")
+            actual_research_ids = [t["id"] for t in parallel_research_tasks]
+            logger.info("Mapping research deps: %s -> %s", research_task_id, actual_research_ids)
+            for t in remaining:
+                deps = t.get("depends_on", [])
+                if research_task_id in deps:
+                    # Replace the planner's research ID with actual research IDs
+                    new_deps = [d for d in deps if d != research_task_id]  # remove old research ID
+                    new_deps.extend(actual_research_ids)  # add all actual research task IDs
+                    t["depends_on"] = new_deps
+
+        logger.info("Non-research remaining tasks: %s", [(t["agent"], t.get("depends_on", [])) for t in remaining])
 
         # design must finish before web (web uses brand colors/fonts from design output)
         _design_task = next((t for t in remaining if t["agent"] == "design"), None)
