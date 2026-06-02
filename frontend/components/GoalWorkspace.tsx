@@ -1655,13 +1655,12 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect }: {
 
         return (
           <button key={name} onClick={() => onSelect(name)} style={{
-            display: "flex", alignItems: "center", gap: 6,
+            display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3,
             padding: "5px 10px 5px 8px",
             borderRadius: 999,
             border: `1px solid ${isActive ? "#2563EB" : isRunning ? "rgba(37,99,235,0.35)" : "var(--line)"}`,
             background: isActive ? "#EFF6FF" : isRunning ? "rgba(37,99,235,0.05)" : "rgba(255,255,255,0.03)",
             cursor: "pointer", transition: "background 0.15s, border-color 0.15s",
-            flexDirection: "column", alignItems: "flex-start",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontSize: 14 }}>{AGENT_ICONS[name] ?? "🤖"}</span>
