@@ -12,17 +12,17 @@ class Settings(BaseSettings):
     # OpenRouter — for models not on DeepInfra (better tool use)
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    # Tool-use model — strong at function calling (web/technical/ops agents)
+    # Tool-use model — ling for web agent (hy3-preview unavailable from this server)
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
-    tooluse_model_name: str = "tencent/hy3-preview"
-    # Planner — hy3-preview: better reasoning for goal decomposition
+    tooluse_model_name: str = "inclusionai/ling-2.6-flash"
+    # Planner — ling-2.6-flash: $0.01/$0.03/M, fast, works from server
     planner_model_base_url: str = "https://openrouter.ai/api/v1"
     planner_model_api_key: str = ""
-    planner_model_name: str = "tencent/hy3-preview"
-    # Chat model — hy3-preview: better Q&A reasoning
+    planner_model_name: str = "inclusionai/ling-2.6-flash"
+    # Chat model — ling-2.6-flash
     chat_model_base_url: str = "https://openrouter.ai/api/v1"
     chat_model_api_key: str = ""
-    chat_model_name: str = "tencent/hy3-preview"
+    chat_model_name: str = "inclusionai/ling-2.6-flash"
     # Light model — ling-2.6-flash: cheap, fast for research synthesis
     light_model_base_url: str = "https://openrouter.ai/api/v1"
     light_model_name: str = "inclusionai/ling-2.6-flash"
