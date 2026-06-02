@@ -2442,13 +2442,15 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
     const parts = [
       companyName.trim() && `Company name: ${companyName.trim()}.`,
       domain.trim() && `Domain: ${domain.trim()}.`,
+      selectedStackId === "full_stack" && `Agent stack: Full Stack with all ${customAgents.length} agents.`,
+      selectedStackId === "custom" && `Agent stack: Custom Stack with ${customAgents.length} agents: ${customAgents.join(", ")}.`,
       selectedStack && `Agent stack: ${selectedStack.name}. Outcome: ${selectedStack.primary_outcome}.`,
       showStack && `Tech stack: Frontend=${techStack.frontend}, Backend=${techStack.backend}, Database=${techStack.database}, Auth=${techStack.auth}.`,
     ].filter(Boolean);
     const full = parts.length ? `${parts.join(" ")}\n\n${instruction}` : instruction;
     const founderId = user?.id ?? "anon";
     try {
-      const constraints: Record<string, unknown> = selectedStackId === "custom" ? { agents: customAgents } : {};
+      const constraints: Record<string, unknown> = (selectedStackId === "custom" || selectedStackId === "full_stack") ? { agents: customAgents } : {};
       const result = await submitGoal(founderId, full, constraints, selectedStackId);
       saveSession({
         sessionId: result.session_id,
@@ -2489,13 +2491,15 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
               <div style={{ display: "grid", gap: 5 }}>
                 <span className="site-label">Agent stack</span>
-                <strong style={{ color: "var(--fg)", fontSize: 15 }}>{selectedStack?.name ?? "Idea to Revenue Stack"}</strong>
+                <strong style={{ color: "var(--fg)", fontSize: 15 }}>
+                  {selectedStackId === "full_stack" ? "Full Stack" : selectedStackId === "custom" ? "Custom Stack" : selectedStack?.name ?? "Idea to Revenue Stack"}
+                </strong>
                 <span style={{ color: "var(--fg-dim)", fontSize: 12, lineHeight: 1.55 }}>
-                  {selectedStack?.description ?? "Astra will build the company foundation: research, positioning, brand, landing page, roadmap, GTM, sales workflow, legal starter kit, and 30-day operating plan."}
+                  {selectedStackId === "full_stack" ? `Leverage all ${customAgents.length} agents across research, legal, marketing, sales, technical, finance, ops, web, and design.` : selectedStackId === "custom" ? `Custom selection of ${customAgents.length} agents tailored to your specific needs.` : selectedStack?.description ?? "Astra will build the company foundation: research, positioning, brand, landing page, roadmap, GTM, sales workflow, legal starter kit, and 30-day operating plan."}
                 </span>
               </div>
               <span style={{ border: "1px solid var(--line)", borderRadius: 999, padding: "7px 11px", color: "var(--fg-dim)", fontSize: 11, whiteSpace: "nowrap" }}>
-                {selectedStack?.artifacts.length ?? 18} outputs
+                {selectedStackId === "full_stack" || selectedStackId === "custom" ? `${customAgents.length} agents` : `${selectedStack?.artifacts.length ?? 18} outputs`}
               </span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8 }}>
@@ -2542,6 +2546,33 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
                   </button>
                 );
               })}
+              {/* Full Stack option */}
+              {(() => {
+                const active = selectedStackId === "full_stack";
+                const allAgentNames = agentCatalog.map(a => a.id);
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManualStackOverride(true);
+                      setSelectedStackId("full_stack");
+                      setCustomAgents(allAgentNames);
+                    }}
+                    disabled={loading}
+                    style={{
+                      display: "grid", gap: 5, textAlign: "left", borderRadius: 20,
+                      border: `1px solid ${active ? "rgba(168,85,247,0.45)" : "var(--line)"}`,
+                      background: active ? "rgba(168,85,247,0.10)" : "rgba(255,255,255,0.025)",
+                      color: "var(--fg)", padding: "10px 11px", cursor: "pointer",
+                    }}
+                  >
+                    <span style={{ fontSize: 12, fontWeight: 650 }}>🚀 Full Stack</span>
+                    <span style={{ fontSize: 10, color: active ? "#a855f7" : "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                      {active ? `${allAgentNames.length} agents` : "All agents"}
+                    </span>
+                  </button>
+                );
+              })()}
               {/* Custom stack option */}
               {(() => {
                 const active = selectedStackId === "custom";

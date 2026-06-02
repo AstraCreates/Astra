@@ -130,11 +130,56 @@ def _rebuild_approval_decisions(session_id: str, events: list[tuple[int, dict]])
         _capture_approval_decision(session_id, event)
 
 
+_SESSION_LOG_PATH = "/tmp/astra_session.log"
+_KEY_EVENT_TYPES = {
+    "goal_start", "goal_done", "goal_error",
+    "agent_start", "agent_done", "agent_error",
+    "agent_tool_call", "agent_thinking", "agent_action",
+    "plan_done", "company_name", "goal_expanded",
+    "stack_selected",
+}
+
+
+def _write_session_log(session_id: str, event: dict) -> None:
+    etype = event.get("type", "")
+    if etype not in _KEY_EVENT_TYPES:
+        return
+    try:
+        ts = event.get("ts_iso", "")
+        agent = event.get("agent", event.get("founder_id", ""))
+        extra = ""
+        if etype in ("agent_tool_call", "agent_action"):
+            tool = event.get("tool", event.get("action", ""))
+            args = event.get("args", event.get("task", event.get("detail", "")))
+            extra = f" tool={tool} args={str(args)[:80]}"
+        elif etype == "agent_done":
+            result = event.get("result", event.get("output", {}))
+            keys = list(result.keys()) if isinstance(result, dict) else str(result)[:40]
+            extra = f" result_keys={keys}"
+        elif etype == "agent_error":
+            extra = f" error={str(event.get('error', ''))[:120]}"
+        elif etype == "goal_start":
+            extra = f" goal={str(event.get('goal', ''))[:100]}"
+        elif etype == "company_name":
+            extra = f" name={event.get('name', '')}"
+        elif etype == "plan_done":
+            tasks = event.get("tasks", [])
+            extra = f" agents=[{', '.join(t.get('agent','') for t in tasks)}]"
+        elif etype == "agent_thinking":
+            extra = f" hint={event.get('hint', '')[:60]}"
+        line = f"[{ts}] {session_id[:8]} {etype:<22} {agent}{extra}\n"
+        with open(_SESSION_LOG_PATH, "a") as f:
+            f.write(line)
+    except Exception:
+        pass
+
+
 async def publish(session_id: str, event: dict) -> None:
     event.setdefault("ts_unix", time.time())
     event.setdefault("ts_iso", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(event["ts_unix"])))
     event_id = _next_id(session_id)
     _buffer(session_id, event_id, event)
+    _write_session_log(session_id, event)
     loop = asyncio.get_running_loop()
     # Persist to JSONL (durable, no TTL)
     from backend.core.session_store import append_event as _ss_append
