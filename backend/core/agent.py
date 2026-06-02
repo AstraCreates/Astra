@@ -159,9 +159,16 @@ class Agent:
 
     def _get_llm(self) -> openai.OpenAI:
         if self._llm is None:
+            extra = {}
+            if self._model_base_url and "openrouter" in self._model_base_url:
+                extra["default_headers"] = {
+                    "HTTP-Referer": "https://astracreates.com",
+                    "X-Title": "Astra",
+                }
             self._llm = openai.OpenAI(
                 base_url=self._model_base_url,
                 api_key=self._model_api_key,
+                **extra,
             )
         return self._llm
 
