@@ -214,12 +214,13 @@ class Agent:
                 })
             except Exception:
                 pass
-            # Deduct credits: each token costs 10 units; 1,000,000 units = 1 credit
+            # Deduct credits: credits = tokens / (gold_price / 1000)
             if not ctx.unlimited_credits:
                 try:
                     from backend.credits.store import deduct_credits
+                    from backend.credits.gold_price import tokens_to_credits
                     total_t = prompt_t + completion_t
-                    credits = total_t * 10
+                    credits = tokens_to_credits(total_t)
                     deduct_credits(ctx.founder_id, credits,
                                    f"{self.name} call ({total_t:,} tokens)", ctx.session_id)
                 except Exception as _ce:

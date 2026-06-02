@@ -57,7 +57,10 @@ async def get_credits_route(founder_id: str = ""):
         raise HTTPException(status_code=400, detail="founder_id query param required")
 
     from backend.credits.store import get_credits
+    from backend.credits.gold_price import get_gold_price
+    import asyncio
     data = get_credits(founder_id)
+    gold_price = await asyncio.to_thread(get_gold_price)
     return {
         "founder_id": data["founder_id"],
         "balance": data["balance"],
@@ -65,6 +68,8 @@ async def get_credits_route(founder_id: str = ""):
         "total_purchased": data["total_purchased"],
         "total_used": data["total_used"],
         "transactions": data["transactions"][-20:],
+        "gold_price_usd": round(gold_price, 2),
+        "credits_per_1k_tokens": round(1000 / (gold_price / 1000), 2),
     }
 
 
