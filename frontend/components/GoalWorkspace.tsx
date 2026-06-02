@@ -5,7 +5,8 @@ import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SignInButton, useUser } from "@clerk/nextjs";
-import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder } from "@/lib/api";
+import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment } from "@/lib/api";
+import type { DeploymentRecord } from "@/lib/api";
 import type { AgentCatalogEntry } from "@/lib/api";
 import type { AgentDepartmentManifest, AgentStackTemplate, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
 import { saveSession, getSessionSnapshot, subscribeSessions, deleteSession, clearAllSessions } from "@/lib/history";
@@ -324,7 +325,7 @@ function ResearchPreview({ state }: { state: AgentState }) {
   );
 }
 
-function WebPreview({ state }: { state: AgentState }) {
+function WebPreview({ state, sessionId, founderId }: { state: AgentState; sessionId?: string; founderId?: string }) {
   const url = state.previewUrl ?? (state.result?.url ?? state.result?.deployment_url ?? state.result?.project_url) as string | undefined;
   const commits = state.commits ?? [];
   const usedFallback = state.log.some(l => l.text.includes("fallback template"));
@@ -354,6 +355,9 @@ function WebPreview({ state }: { state: AgentState }) {
             <iframe src={url} style={{ width: "100%", height: "100%", border: "none" }} title="Site preview" />
           </div>
         </div>
+        {sessionId && founderId && (
+          <DeploymentCard sessionId={sessionId} founderId={founderId} />
+        )}
       </div>
     );
   }
@@ -1024,6 +1028,213 @@ function ResultDump({ result }: { result: Record<string, unknown> | null }) {
   );
 }
 
+// ── DeploymentCard ─────────────────────────────────────────────────────────────
+
+function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId: string }) {
+  const [deployment, setDeployment] = useState<DeploymentRecord | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [tokenInput, setTokenInput] = useState("");
+  const [domainInput, setDomainInput] = useState("");
+  const [showForm, setShowForm] = useState(false);
+
+  // Load or refresh deployment record
+  const reload = useCallback(() => {
+    if (!sessionId) return;
+    getDeployment(sessionId).then(setDeployment).catch(() => {});
+  }, [sessionId]);
+
+  useEffect(() => {
+    reload();
+    // Poll every 10s while running (agent may deploy during a session)
+    const interval = setInterval(reload, 10_000);
+    return () => clearInterval(interval);
+  }, [reload]);
+
+  const handlePublish = async () => {
+    if (!tokenInput.trim()) return;
+    setPublishing(true);
+    setPublishError(null);
+    try {
+      const result = await publishDeployment(sessionId, tokenInput.trim(), domainInput.trim() || undefined);
+      if (result.ok) {
+        setShowForm(false);
+        setDeployment(prev => prev ? { ...prev, status: "published", prod_url: result.prod_url, published_at: new Date().toISOString() } : prev);
+        reload();
+      } else {
+        setPublishError(result.error ?? "Publish failed");
+      }
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : "Publish failed");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  if (!deployment || deployment.status === "none") return null;
+
+  const isPublished = deployment.status === "published";
+
+  return (
+    <div style={{
+      borderRadius: 14,
+      border: "1px solid rgba(37,99,235,0.2)",
+      background: "rgba(37,99,235,0.04)",
+      padding: "14px 16px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 10,
+      marginTop: 8,
+    }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2563EB", fontWeight: 600 }}>
+          Deployment
+        </span>
+        {isPublished && (
+          <span style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase",
+            color: "#fff", background: "#3D9E5F", borderRadius: 6, padding: "2px 8px",
+          }}>
+            Live
+          </span>
+        )}
+        {!isPublished && (
+          <span style={{
+            fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
+            color: "#2563EB", background: "rgba(37,99,235,0.1)", borderRadius: 6, padding: "2px 8px",
+          }}>
+            Staged
+          </span>
+        )}
+      </div>
+
+      {/* Staging URL */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.07em" }}>Preview (Staging)</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{
+            fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-dim)",
+            flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
+            {deployment.staging_url.replace(/^https?:\/\//, "")}
+          </span>
+          <a
+            href={deployment.staging_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: 10, color: "#2563EB", textDecoration: "none", flexShrink: 0 }}
+            title="Open preview"
+          >
+            ↗
+          </a>
+        </div>
+      </div>
+
+      {/* Prod URL if published */}
+      {isPublished && deployment.prod_url && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <span style={{ fontSize: 10, color: "#3D9E5F", textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 600 }}>Production URL</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{
+              fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg)",
+              flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              fontWeight: 600,
+            }}>
+              {deployment.prod_url.replace(/^https?:\/\//, "")}
+            </span>
+            <a
+              href={deployment.prod_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 10, color: "#3D9E5F", textDecoration: "none", flexShrink: 0 }}
+              title="Open production site"
+            >
+              ↗
+            </a>
+          </div>
+        </div>
+      )}
+
+      {/* Publish to Production button / form */}
+      {!isPublished && !showForm && (
+        <button
+          onClick={() => setShowForm(true)}
+          style={{
+            padding: "8px 16px", borderRadius: 9, border: "none", cursor: "pointer",
+            background: "linear-gradient(135deg,#2563EB,#1d4ed8)",
+            color: "#fff", fontSize: 12, fontWeight: 600,
+            alignSelf: "flex-start",
+          }}
+        >
+          Publish to Production
+        </button>
+      )}
+
+      {!isPublished && showForm && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <input
+            type="password"
+            placeholder="Vercel API token (required)"
+            value={tokenInput}
+            onChange={e => setTokenInput(e.target.value)}
+            style={{
+              fontSize: 12, padding: "7px 10px", borderRadius: 8,
+              border: "1px solid rgba(37,99,235,0.3)", background: "var(--glass)",
+              color: "var(--fg)", outline: "none", width: "100%", boxSizing: "border-box",
+            }}
+          />
+          <input
+            type="text"
+            placeholder="Custom domain (optional, e.g. mysite.com)"
+            value={domainInput}
+            onChange={e => setDomainInput(e.target.value)}
+            style={{
+              fontSize: 12, padding: "7px 10px", borderRadius: 8,
+              border: "1px solid rgba(0,0,0,0.15)", background: "var(--glass)",
+              color: "var(--fg)", outline: "none", width: "100%", boxSizing: "border-box",
+            }}
+          />
+          {publishError && (
+            <div style={{ fontSize: 11, color: "#C0392B", padding: "6px 10px", borderRadius: 8, background: "rgba(192,57,43,0.08)", border: "1px solid rgba(192,57,43,0.2)" }}>
+              {publishError}
+            </div>
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={handlePublish}
+              disabled={publishing || !tokenInput.trim()}
+              style={{
+                flex: 1, padding: "8px 16px", borderRadius: 9, border: "none",
+                cursor: publishing || !tokenInput.trim() ? "not-allowed" : "pointer",
+                background: publishing || !tokenInput.trim() ? "rgba(37,99,235,0.3)" : "linear-gradient(135deg,#2563EB,#1d4ed8)",
+                color: "#fff", fontSize: 12, fontWeight: 600,
+              }}
+            >
+              {publishing ? "Publishing…" : "Confirm Publish"}
+            </button>
+            <button
+              onClick={() => { setShowForm(false); setPublishError(null); }}
+              style={{
+                padding: "8px 14px", borderRadius: 9, border: "1px solid rgba(0,0,0,0.15)",
+                cursor: "pointer", background: "transparent", color: "var(--fg-mute)", fontSize: 12,
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isPublished && deployment.published_at && (
+        <div style={{ fontSize: 10, color: "var(--fg-mute)" }}>
+          Published {new Date(deployment.published_at).toLocaleString()}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BuildingIndicator({ label, tool }: { label: string; tool?: string | null }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "18px 0" }}>
@@ -1040,13 +1251,13 @@ function BuildingIndicator({ label, tool }: { label: string; tool?: string | nul
   );
 }
 
-function AgentPreview({ state, founderId, company }: { state: AgentState; founderId?: string; company?: string }) {
+function AgentPreview({ state, founderId, company, sessionId }: { state: AgentState; founderId?: string; company?: string; sessionId?: string }) {
   switch (state.agent) {
     case "research":
     case "research_competitors":
     case "research_execution":
       return <ResearchPreview state={state} />;
-    case "web": return <WebPreview state={state} />;
+    case "web": return <WebPreview state={state} sessionId={sessionId} founderId={founderId} />;
     case "technical": return <TechnicalPreview state={state} />;
     case "design": return <DesignPreview state={state} />;
     case "marketing": return <MarketingPreview state={state} />;
@@ -1329,7 +1540,7 @@ function AgentDetail({
 
       {/* Tab content */}
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
-        {tab === "preview" && <AgentPreview state={state} founderId={founderId} company={company} />}
+        {tab === "preview" && <AgentPreview state={state} founderId={founderId} company={company} sessionId={sessionId} />}
 
         {tab === "plan" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

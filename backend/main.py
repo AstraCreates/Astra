@@ -6,6 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.api.routes import router
 from backend.api.admin import router as admin_router
 from backend.api.teams_routes import teams_router
+from backend.api.model_settings_routes import model_settings_router
+from backend.api.library_routes import library_router
+from backend.api.missions_routes import router as missions_router
+from backend.api.skills_routes import skills_router
+from backend.api.deployments_routes import deployments_router
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +27,19 @@ app.add_middleware(
 app.include_router(router)
 app.include_router(admin_router)
 app.include_router(teams_router, prefix="/api")
+app.include_router(model_settings_router, prefix="/api")
+app.include_router(library_router, prefix="/api")
+app.include_router(missions_router, prefix="/api")
+app.include_router(skills_router, prefix="/api")
+app.include_router(deployments_router, prefix="/api")
 
 
 @app.on_event("startup")
 async def startup_background_jobs():
     from backend.tools.company_brain_scheduler import start_company_brain_scheduler
     start_company_brain_scheduler(interval_seconds=60)
+    from backend.missions.scheduler import start_missions_scheduler
+    start_missions_scheduler(interval_seconds=3600)
     asyncio.create_task(_resume_interrupted_sessions())
     asyncio.create_task(_platform_alert_loop())
 

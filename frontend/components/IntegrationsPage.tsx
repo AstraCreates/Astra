@@ -7,6 +7,29 @@ import { apiFetch, saveServiceCredential, getComposioOAuthUrls, getSetupStatus, 
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const c = {
+  bg: "#FFFFFF",
+  surface: "#F8F9FA",
+  border: "#E5E7EB",
+  borderStrong: "#D1D5DB",
+  text: "#111827",
+  textSecondary: "#374151",
+  textMuted: "#9CA3AF",
+  grey: "#6B7280",
+  blue: "#2563EB",
+  blueHover: "#1D4ED8",
+  blueTint: "#EFF6FF",
+  blueBorder: "#BFDBFE",
+  green: "#16a34a",
+  greenTint: "#F0FDF4",
+  greenBorder: "#BBF7D0",
+  red: "#dc2626",
+  redTint: "#FEF2F2",
+  redBorder: "#FECACA",
+  amber: "#d97706",
+};
+
 const SERVICES = [
   {
     key: "github",
@@ -65,6 +88,31 @@ interface FilingField {
 }
 
 type ModalPhase = "connecting" | "running" | "user_control" | "interaction_needed" | "bot_filling" | "done" | "error";
+
+// ── Shared card style helper ───────────────────────────────────────────────
+
+function cardStyle(connected: boolean, active = false): React.CSSProperties {
+  return {
+    background: c.bg,
+    border: `1px solid ${connected ? c.greenBorder : active ? c.blue : c.border}`,
+    borderRadius: 12,
+    boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+    overflow: "hidden",
+    transition: "border-color 0.2s",
+  };
+}
+
+// ── StatusDot ────────────────────────────────────────────────────────────────
+
+function StatusDot({ connected }: { connected: boolean }) {
+  return (
+    <span style={{
+      width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
+      background: connected ? c.green : c.borderStrong,
+      display: "inline-block",
+    }} />
+  );
+}
 
 // ── IntegrationModal ───────────────────────────────────────────────────────
 
@@ -187,28 +235,35 @@ function IntegrationModal({
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 9999,
-      background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)",
+      background: "rgba(0,0,0,0.5)",
       display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
     }}>
       <div style={{
         width: "100%", maxWidth: 960, maxHeight: "calc(100vh - 48px)",
-        background: "var(--glass)", backdropFilter: "var(--blur)", WebkitBackdropFilter: "var(--blur)",
-        border: "1px solid var(--line)", borderRadius: 24,
-        boxShadow: "var(--shadow-lg)", overflow: "hidden", display: "flex", flexDirection: "column",
+        background: c.bg,
+        border: `1px solid ${c.border}`,
+        borderRadius: 16,
+        boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
+        overflow: "hidden", display: "flex", flexDirection: "column",
       }}>
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid var(--line-2)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: `1px solid ${c.border}`, background: c.surface }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 16 }}>{icon}</span>
-            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>Connecting {label}</span>
+            <span style={{ fontSize: 18 }}>{icon}</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: c.text }}>Connecting {label}</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>
+            <span style={{ fontSize: 12, color: c.textMuted }}>
               {stepNum > 0 ? `Step ${stepNum}/${stepCount} — ${stepName}` : stepName}
             </span>
             {phase !== "done" && (
-              <button onClick={() => { wsRef.current?.close(); onClose(); }}
-                className="site-btn site-btn-ghost" style={{ fontSize: 11, padding: "0 12px", minHeight: 28 }}>
+              <button
+                onClick={() => { wsRef.current?.close(); onClose(); }}
+                style={{
+                  fontSize: 12, padding: "5px 12px", borderRadius: 8,
+                  background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer",
+                }}
+              >
                 Cancel
               </button>
             )}
@@ -216,16 +271,16 @@ function IntegrationModal({
         </div>
 
         {/* Progress bar */}
-        <div style={{ height: 3, background: "var(--line-2)" }}>
+        <div style={{ height: 3, background: c.border }}>
           <div style={{
             height: "100%", borderRadius: 999, transition: "width 0.6s",
             width: `${phase === "done" ? 100 : stepPercent}%`,
-            background: phase === "done" ? "linear-gradient(90deg,#4ade80,#22d3ee)" : "linear-gradient(90deg,#60a5fa,#a78bfa)",
+            background: phase === "done" ? c.green : c.blue,
           }} />
         </div>
 
         {/* Browser canvas */}
-        <div style={{ position: "relative", background: "#0a0a0a", flex: "1 1 auto", overflow: "auto", minHeight: 280 }}>
+        <div style={{ position: "relative", background: "#0f172a", flex: "1 1 auto", overflow: "auto", minHeight: 280 }}>
           <canvas
             ref={canvasRef}
             tabIndex={isUserControl ? 0 : -1}
@@ -237,26 +292,23 @@ function IntegrationModal({
               objectFit: "contain", display: "block",
               pointerEvents: isUserControl ? "auto" : "none",
               cursor: isUserControl ? "crosshair" : "default",
-              outline: isUserControl ? "2px solid rgba(96,165,250,0.4)" : "none",
+              outline: isUserControl ? `2px solid ${c.blue}` : "none",
             }}
           />
 
-          {/* Lock overlay when bot is running */}
           {isLocked && phase !== "done" && phase !== "error" && phase !== "connecting" && (
             <div style={{ position: "absolute", inset: 0, cursor: "not-allowed", zIndex: 10 }} />
           )}
 
-          {/* User control banner */}
           {isUserControl && (
             <div style={{
               position: "absolute", top: 10, left: "50%", transform: "translateX(-50%)",
-              padding: "8px 18px", borderRadius: 20, zIndex: 20,
-              background: "rgba(96,165,250,0.15)", border: "1px solid rgba(96,165,250,0.4)",
+              padding: "8px 18px", borderRadius: 24, zIndex: 20,
+              background: c.blueTint, border: `1px solid ${c.blueBorder}`,
               display: "flex", alignItems: "center", gap: 8,
-              backdropFilter: "blur(8px)",
             }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#60a5fa", flexShrink: 0 }} className="animate-pulse" />
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", whiteSpace: "nowrap" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: c.blue, flexShrink: 0 }} />
+              <span style={{ fontSize: 12, color: c.blue, whiteSpace: "nowrap" }}>
                 {message || "Sign in — click and type directly in the browser"}
               </span>
             </div>
@@ -264,35 +316,41 @@ function IntegrationModal({
 
           {phase === "connecting" && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
-              <div style={{ width: 28, height: 28, border: "3px solid rgba(255,255,255,0.15)", borderTopColor: "#60a5fa", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+              <div style={{ width: 28, height: 28, border: "3px solid rgba(255,255,255,0.15)", borderTopColor: c.blue, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
               <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>Connecting…</span>
             </div>
           )}
 
           {(phase === "running" || phase === "bot_filling") && (
             <div style={{ position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", padding: "8px 20px", borderRadius: 20, background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", gap: 8, zIndex: 20, whiteSpace: "nowrap" }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#60a5fa", animation: "spin 0.8s linear infinite" }} />
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: c.blue, animation: "spin 0.8s linear infinite" }} />
               <span style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{stepName || "Working…"}</span>
             </div>
           )}
 
           {phase === "done" && (
-            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20, background: "rgba(0,0,0,0.6)" }}>
-              <div style={{ padding: "24px 36px", borderRadius: 24, background: "rgba(0,0,0,0.8)", border: "1px solid rgba(74,222,128,0.3)", textAlign: "center" }}>
-                <div style={{ fontSize: 36, marginBottom: 10 }}>✓</div>
-                <p style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#4ade80" }}>{label} Connected!</p>
-                <button onClick={onClose} className="site-btn site-btn-primary" style={{ marginTop: 14, padding: "0 24px", fontSize: 13 }}>Done</button>
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20, background: "rgba(0,0,0,0.5)" }}>
+              <div style={{ padding: "28px 40px", borderRadius: 16, background: c.bg, border: `1px solid ${c.greenBorder}`, textAlign: "center", boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}>
+                <div style={{ width: 48, height: 48, borderRadius: "50%", background: c.greenTint, border: `1px solid ${c.greenBorder}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 20 }}>✓</div>
+                <p style={{ margin: 0, fontSize: 16, fontWeight: 600, color: c.green }}>{label} Connected!</p>
+                <button
+                  onClick={onClose}
+                  style={{ marginTop: 16, padding: "8px 24px", borderRadius: 8, background: c.blue, color: "#FFFFFF", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500 }}
+                >Done</button>
               </div>
             </div>
           )}
 
           {phase === "error" && (
-            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20, background: "rgba(0,0,0,0.6)" }}>
-              <div style={{ padding: "20px 28px", borderRadius: 20, background: "rgba(0,0,0,0.8)", border: "1px solid rgba(248,113,113,0.3)", textAlign: "center", maxWidth: 400 }}>
-                <div style={{ fontSize: 24, marginBottom: 8 }}>⚠</div>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#f87171" }}>Connection failed</p>
-                <p style={{ margin: "6px 0 0", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{message}</p>
-                <button onClick={onClose} className="site-btn" style={{ marginTop: 12, fontSize: 12, padding: "0 16px", color: "#f87171", background: "rgba(248,113,113,0.1)", borderColor: "rgba(248,113,113,0.2)" }}>Close</button>
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20, background: "rgba(0,0,0,0.5)" }}>
+              <div style={{ padding: "24px 32px", borderRadius: 16, background: c.bg, border: `1px solid ${c.redBorder}`, textAlign: "center", maxWidth: 400, boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}>
+                <div style={{ fontSize: 24, marginBottom: 8, color: c.red }}>⚠</div>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: c.red }}>Connection failed</p>
+                <p style={{ margin: "6px 0 0", fontSize: 13, color: c.grey }}>{message}</p>
+                <button
+                  onClick={onClose}
+                  style={{ marginTop: 14, fontSize: 13, padding: "6px 18px", borderRadius: 8, color: c.red, background: c.redTint, border: `1px solid ${c.redBorder}`, cursor: "pointer" }}
+                >Close</button>
               </div>
             </div>
           )}
@@ -300,18 +358,17 @@ function IntegrationModal({
 
         {/* Interaction form */}
         {phase === "interaction_needed" && fields.length > 0 && (
-          <div style={{ padding: "16px 20px", borderTop: "1px solid var(--line-2)", display: "flex", flexDirection: "column", gap: 12 }}>
-            {message && <p style={{ margin: 0, fontSize: 12, color: "var(--fg-dim)" }}>{message}</p>}
+          <div style={{ padding: "16px 20px", borderTop: `1px solid ${c.border}`, display: "flex", flexDirection: "column", gap: 12, background: c.surface }}>
+            {message && <p style={{ margin: 0, fontSize: 13, color: c.textSecondary }}>{message}</p>}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
               {fields.filter(f => f.type !== "disclaimer").map(f => (
                 <div key={f.name} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  <label style={{ fontSize: 11, color: "var(--fg-mute)" }}>{f.label}{f.required && " *"}</label>
+                  <label style={{ fontSize: 11, color: c.grey, fontWeight: 500 }}>{f.label}{f.required && " *"}</label>
                   {f.type === "select" && f.options ? (
                     <select
                       value={formValues[f.name] ?? f.default ?? ""}
                       onChange={e => setFormValues(v => ({ ...v, [f.name]: e.target.value }))}
-                      className="site-input"
-                      style={{ padding: "7px 10px", fontSize: 12 }}
+                      style={{ padding: "8px 12px", fontSize: 13, borderRadius: 8, border: `1px solid ${c.border}`, background: c.bg, color: c.text, outline: "none" }}
                     >
                       {f.options.map(o => (
                         <option key={o.value} value={o.value}>{o.label}{o.description ? ` — ${o.description}` : ""}</option>
@@ -324,21 +381,25 @@ function IntegrationModal({
                       value={formValues[f.name] ?? ""}
                       onChange={e => setFormValues(v => ({ ...v, [f.name]: e.target.value }))}
                       onKeyDown={e => { if (e.key === "Enter") submitInput(); }}
-                      className="site-input"
-                      style={{ padding: "7px 10px", fontSize: 12 }}
+                      style={{ padding: "8px 12px", fontSize: 13, borderRadius: 8, border: `1px solid ${c.border}`, background: c.bg, color: c.text, outline: "none" }}
+                      onFocus={e => (e.target.style.borderColor = c.blue)}
+                      onBlur={e => (e.target.style.borderColor = c.border)}
                     />
                   )}
                 </div>
               ))}
             </div>
             {fields.find(f => f.type === "disclaimer") && (
-              <p style={{ margin: 0, fontSize: 11, color: "var(--fg-mute)", fontStyle: "italic" }}>
+              <p style={{ margin: 0, fontSize: 12, color: c.textMuted, fontStyle: "italic" }}>
                 {fields.find(f => f.type === "disclaimer")!.label}
               </p>
             )}
-            {formError && <p style={{ margin: 0, fontSize: 11, color: "#f87171" }}>{formError}</p>}
-            <button onClick={submitInput} disabled={submitting} className="site-btn site-btn-primary"
-              style={{ alignSelf: "flex-start", padding: "0 20px", fontSize: 13 }}>
+            {formError && <p style={{ margin: 0, fontSize: 12, color: c.red }}>{formError}</p>}
+            <button
+              onClick={submitInput}
+              disabled={submitting}
+              style={{ alignSelf: "flex-start", padding: "8px 20px", borderRadius: 8, background: c.blue, color: "#FFFFFF", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500 }}
+            >
               {submitting ? "…" : "Continue →"}
             </button>
           </div>
@@ -349,28 +410,7 @@ function IntegrationModal({
   );
 }
 
-function glass(extra?: React.CSSProperties): React.CSSProperties {
-  return {
-    background: "var(--glass)",
-    backdropFilter: "var(--blur)",
-    WebkitBackdropFilter: "var(--blur)",
-    border: "1px solid var(--line)",
-    boxShadow: "var(--shadow-sm)",
-    borderRadius: 28,
-    ...extra,
-  };
-}
-
-function StatusDot({ connected }: { connected: boolean }) {
-  return (
-    <span style={{
-      width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-      background: connected ? "#6DC98A" : "rgba(255,255,255,0.18)",
-      boxShadow: connected ? "0 0 6px rgba(109,201,138,0.5)" : "none",
-      display: "inline-block",
-    }} />
-  );
-}
+// ── ServiceCard ────────────────────────────────────────────────────────────
 
 function ServiceCard({
   svc, connected, founderId, onSaved,
@@ -389,7 +429,6 @@ function ServiceCard({
   const popupRef = useRef<Window | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // GitHub uses OAuth redirect — detect return from callback
   useEffect(() => {
     if (svc.key !== "github") return;
     const params = new URLSearchParams(window.location.search);
@@ -462,57 +501,48 @@ function ServiceCard({
   const isGitHub = svc.key === "github";
 
   return (
-    <div style={{
-      ...glass(),
-      border: `1px solid ${isConnected ? "rgba(60,170,100,0.28)" : popupOpen ? "rgba(96,165,250,0.35)" : "rgba(255,255,255,0.09)"}`,
-      boxShadow: isConnected
-        ? "inset 0 1px 0 rgba(255,255,255,0.10), 0 0 20px rgba(60,170,100,0.04)"
-        : "inset 0 1px 0 rgba(255,255,255,0.10)",
-      overflow: "hidden", transition: "border-color 0.3s",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px" }}>
-        <span style={{ fontSize: 20, flexShrink: 0 }}>{svc.icon}</span>
+    <div style={cardStyle(isConnected, popupOpen && !isConnected)}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: isConnected ? c.greenTint : c.bg }}>
+        <span style={{ fontSize: 22, flexShrink: 0 }}>{svc.icon}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)" }}>{svc.label}</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: c.text }}>{svc.label}</span>
             <StatusDot connected={isConnected} />
-            {isConnected && <span style={{ fontSize: 10, color: "#6DC98A", fontFamily: "var(--font-mono)" }}>connected</span>}
-            {popupOpen && !isConnected && <span style={{ fontSize: 10, color: "#60a5fa", fontFamily: "var(--font-mono)" }}>popup open</span>}
+            {isConnected && <span style={{ fontSize: 11, color: c.green, fontWeight: 500 }}>Connected</span>}
+            {popupOpen && !isConnected && <span style={{ fontSize: 11, color: c.blue, fontWeight: 500 }}>Popup open</span>}
           </div>
-          <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>{svc.desc}</span>
+          <span style={{ fontSize: 12, color: c.grey }}>{svc.desc}</span>
         </div>
         <button
           onClick={isGitHub ? connectGitHubOAuth : openPopup}
           disabled={connecting}
           style={{
-            padding: "5px 14px", borderRadius: 24, fontSize: 12, flexShrink: 0,
-            background: isConnected ? "rgba(60,170,100,0.10)" : "rgba(255,255,255,0.07)",
-            border: `1px solid ${isConnected ? "rgba(60,170,100,0.2)" : "rgba(255,255,255,0.12)"}`,
-            color: isConnected ? "#6DC98A" : "var(--fg-dim)",
-            cursor: connecting ? "wait" : "pointer", transition: "all 0.12s",
+            padding: "6px 14px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
+            background: isConnected ? c.greenTint : c.bg,
+            border: `1px solid ${isConnected ? c.greenBorder : c.border}`,
+            color: isConnected ? c.green : c.textSecondary,
+            cursor: connecting ? "wait" : "pointer",
           }}
         >
           {connecting ? "Redirecting…" : isConnected ? "Reconnect ↗" : "Connect ↗"}
         </button>
       </div>
 
-      {/* OAuth error — shown for GitHub when redirect fails */}
       {isGitHub && error && (
-        <div style={{ borderTop: "1px solid rgba(248,113,113,0.15)", padding: "10px 18px", background: "rgba(248,113,113,0.05)" }}>
-          <p style={{ margin: 0, fontSize: 11, color: "#f87171" }}>{error}</p>
+        <div style={{ borderTop: `1px solid ${c.redBorder}`, padding: "10px 18px", background: c.redTint }}>
+          <p style={{ margin: 0, fontSize: 12, color: c.red }}>{error}</p>
         </div>
       )}
 
-      {/* Popup + paste panel — only for non-GitHub services */}
       {!isGitHub && popupOpen && (
         <div style={{
-          borderTop: "1px solid rgba(96,165,250,0.15)",
-          padding: "12px 18px", background: "rgba(96,165,250,0.04)",
-          display: "flex", flexDirection: "column", gap: 8,
+          borderTop: `1px solid ${c.blueBorder}`,
+          padding: "14px 18px", background: c.blueTint,
+          display: "flex", flexDirection: "column", gap: 10,
         }}>
-          <p style={{ margin: 0, fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.5 }}>
+          <p style={{ margin: 0, fontSize: 13, color: c.textSecondary, lineHeight: 1.6 }}>
             Create a token in the popup, then paste it here.{" "}
-            <span style={{ color: "#60a5fa" }}>The popup is open ↗</span>
+            <span style={{ color: c.blue, fontWeight: 500 }}>The popup is open ↗</span>
           </p>
           <div style={{ display: "flex", gap: 8 }}>
             <input
@@ -521,20 +551,35 @@ function ServiceCard({
               onChange={e => setValue(e.target.value)}
               placeholder={svc.placeholder}
               onKeyDown={e => e.key === "Enter" && save()}
-              className="site-input"
-              style={{ flex: 1, padding: "8px 12px", fontSize: 12, fontFamily: "var(--font-mono)" }}
+              style={{
+                flex: 1, padding: "8px 12px", fontSize: 13, borderRadius: 8,
+                border: `1px solid ${c.border}`, background: c.bg, color: c.text, outline: "none",
+                fontFamily: "var(--font-geist-mono, monospace)",
+              }}
+              onFocus={e => (e.target.style.borderColor = c.blue)}
+              onBlur={e => (e.target.style.borderColor = c.border)}
             />
-            <button onClick={save} disabled={saving || !value.trim()}
-              className="site-btn site-btn-primary" style={{ padding: "0 16px", fontSize: 12, flexShrink: 0 }}>
+            <button
+              onClick={save}
+              disabled={saving || !value.trim()}
+              style={{
+                padding: "0 16px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
+                background: c.blue, color: "#FFFFFF", border: "none",
+                cursor: saving || !value.trim() ? "not-allowed" : "pointer",
+                opacity: saving || !value.trim() ? 0.6 : 1,
+              }}
+            >
               {saving ? "…" : "Save"}
             </button>
           </div>
-          {error && <p style={{ fontSize: 11, color: "#C97070", margin: 0 }}>{error}</p>}
+          {error && <p style={{ fontSize: 12, color: c.red, margin: 0 }}>{error}</p>}
         </div>
       )}
     </div>
   );
 }
+
+// ── StripeCard ─────────────────────────────────────────────────────────────
 
 function StripeCard({ founderId, email }: { founderId: string; email: string }) {
   const [stripeStatus, setStripeStatus] = useState<{ connected: boolean; charges_enabled?: boolean; email?: string; livemode?: boolean } | null>(null);
@@ -549,7 +594,6 @@ function StripeCard({ founderId, email }: { founderId: string; email: string }) 
       .finally(() => setLoading(false));
   }, [founderId]);
 
-  // Handle return from Stripe OAuth
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("stripe_connected") === "1") {
@@ -572,35 +616,35 @@ function StripeCard({ founderId, email }: { founderId: string; email: string }) 
   const isConnected = stripeStatus?.connected;
 
   return (
-    <div style={{
-      ...glass(),
-      border: `1px solid ${isConnected ? "rgba(60,170,100,0.28)" : "rgba(255,255,255,0.09)"}`,
-      boxShadow: isConnected ? "inset 0 1px 0 rgba(255,255,255,0.10), 0 0 20px rgba(60,170,100,0.04)" : "inset 0 1px 0 rgba(255,255,255,0.10)",
-      overflow: "hidden", transition: "border-color 0.3s",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px" }}>
-        <span style={{ fontSize: 18, fontFamily: "var(--font-mono)", fontWeight: 700, flexShrink: 0, color: "var(--fg)" }}>$</span>
+    <div style={cardStyle(!!isConnected)}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: isConnected ? c.greenTint : c.bg }}>
+        <span style={{ fontSize: 18, fontWeight: 700, flexShrink: 0, color: c.text, width: 28, textAlign: "center" }}>$</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)" }}>Stripe</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: c.text }}>Stripe</span>
             {!loading && <StatusDot connected={!!isConnected} />}
-            {isConnected && <span style={{ fontSize: 10, color: "#6DC98A", fontFamily: "var(--font-mono)" }}>connected</span>}
+            {isConnected && <span style={{ fontSize: 11, color: c.green, fontWeight: 500 }}>Connected</span>}
             {isConnected && stripeStatus?.livemode === false && (
-              <span style={{ fontSize: 10, color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>test mode</span>
+              <span style={{ fontSize: 11, color: c.textMuted }}>· Test mode</span>
             )}
           </div>
-          <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>
+          <span style={{ fontSize: 12, color: c.grey }}>
             {isConnected ? stripeStatus?.email ?? "Account linked" : "Accept payments, track revenue"}
           </span>
         </div>
         {loading ? (
-          <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>…</span>
+          <span style={{ fontSize: 13, color: c.textMuted }}>…</span>
         ) : isConnected ? (
-          <span style={{ fontSize: 11, color: "var(--fg-mute)", flexShrink: 0 }}>
-            Ready for stack runs
-          </span>
+          <span style={{ fontSize: 12, color: c.green, fontWeight: 500, flexShrink: 0 }}>Ready for stack runs</span>
         ) : (
-          <button onClick={connect} disabled={connecting} style={{ padding: "5px 14px", borderRadius: 24, fontSize: 12, background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.10)", color: "var(--fg-dim)", cursor: "pointer", flexShrink: 0 }}>
+          <button
+            onClick={connect}
+            disabled={connecting}
+            style={{
+              padding: "6px 14px", borderRadius: 8, fontSize: 13, fontWeight: 500, flexShrink: 0,
+              background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer",
+            }}
+          >
             {connecting ? "Redirecting…" : "Connect →"}
           </button>
         )}
@@ -609,7 +653,7 @@ function StripeCard({ founderId, email }: { founderId: string; email: string }) 
   );
 }
 
-// ── Composio API key card — popup + paste ────────────────────────────────────
+// ── ComposioKeyCard ────────────────────────────────────────────────────────
 
 function ComposioKeyCard({ connected, saving, error, onSave }: {
   connected: boolean;
@@ -658,33 +702,26 @@ function ComposioKeyCard({ connected, saving, error, onSave }: {
   };
 
   return (
-    <div style={{
-      ...glass(),
-      border: `1px solid ${connected ? "rgba(60,170,100,0.28)" : popupOpen ? "rgba(96,165,250,0.35)" : "rgba(255,255,255,0.09)"}`,
-      boxShadow: connected
-        ? "inset 0 1px 0 rgba(255,255,255,0.10), 0 0 20px rgba(60,170,100,0.04)"
-        : "inset 0 1px 0 rgba(255,255,255,0.10)",
-      overflow: "hidden", transition: "border-color 0.3s",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px" }}>
-        <span style={{ fontSize: 20, flexShrink: 0 }}>🔗</span>
+    <div style={cardStyle(connected, popupOpen && !connected)}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: connected ? c.greenTint : c.bg }}>
+        <span style={{ fontSize: 22, flexShrink: 0 }}>🔗</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)" }}>Composio</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: c.text }}>Composio</span>
             <StatusDot connected={connected} />
-            {connected && <span style={{ fontSize: 10, color: "#6DC98A", fontFamily: "var(--font-mono)" }}>connected</span>}
-            {popupOpen && !connected && <span style={{ fontSize: 10, color: "#60a5fa", fontFamily: "var(--font-mono)" }}>popup open</span>}
+            {connected && <span style={{ fontSize: 11, color: c.green, fontWeight: 500 }}>Connected</span>}
+            {popupOpen && !connected && <span style={{ fontSize: 11, color: c.blue, fontWeight: 500 }}>Popup open</span>}
           </div>
-          <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>Enables Gmail, LinkedIn, Notion, Linear, Calendar</span>
+          <span style={{ fontSize: 12, color: c.grey }}>Enables Gmail, LinkedIn, Notion, Linear, Calendar</span>
         </div>
         <button
           onClick={openPopup}
           style={{
-            padding: "5px 14px", borderRadius: 24, fontSize: 12, flexShrink: 0,
-            background: connected ? "rgba(60,170,100,0.10)" : "rgba(255,255,255,0.07)",
-            border: `1px solid ${connected ? "rgba(60,170,100,0.2)" : "rgba(255,255,255,0.12)"}`,
-            color: connected ? "#6DC98A" : "var(--fg-dim)",
-            cursor: "pointer", transition: "all 0.12s",
+            padding: "6px 14px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
+            background: connected ? c.greenTint : c.bg,
+            border: `1px solid ${connected ? c.greenBorder : c.border}`,
+            color: connected ? c.green : c.textSecondary,
+            cursor: "pointer",
           }}
         >
           {connected ? "Update key ↗" : "Connect ↗"}
@@ -693,13 +730,13 @@ function ComposioKeyCard({ connected, saving, error, onSave }: {
 
       {popupOpen && (
         <div style={{
-          borderTop: "1px solid rgba(96,165,250,0.15)",
-          padding: "12px 18px", background: "rgba(96,165,250,0.04)",
-          display: "flex", flexDirection: "column", gap: 8,
+          borderTop: `1px solid ${c.blueBorder}`,
+          padding: "14px 18px", background: c.blueTint,
+          display: "flex", flexDirection: "column", gap: 10,
         }}>
-          <p style={{ margin: 0, fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.5 }}>
+          <p style={{ margin: 0, fontSize: 13, color: c.textSecondary, lineHeight: 1.6 }}>
             Copy your API key from the popup (Settings → API Keys), then paste it here.{" "}
-            <span style={{ color: "#60a5fa" }}>Popup is open ↗</span>
+            <span style={{ color: c.blue, fontWeight: 500 }}>Popup is open ↗</span>
           </p>
           <div style={{ display: "flex", gap: 8 }}>
             <input
@@ -708,22 +745,35 @@ function ComposioKeyCard({ connected, saving, error, onSave }: {
               onChange={e => setValue(e.target.value)}
               placeholder="api_key_..."
               onKeyDown={e => e.key === "Enter" && save()}
-              className="site-input"
-              style={{ flex: 1, padding: "8px 12px", fontSize: 12, fontFamily: "var(--font-mono)" }}
+              style={{
+                flex: 1, padding: "8px 12px", fontSize: 13, borderRadius: 8,
+                border: `1px solid ${c.border}`, background: c.bg, color: c.text, outline: "none",
+                fontFamily: "var(--font-geist-mono, monospace)",
+              }}
+              onFocus={e => (e.target.style.borderColor = c.blue)}
+              onBlur={e => (e.target.style.borderColor = c.border)}
             />
-            <button onClick={save} disabled={saving || !value.trim()}
-              className="site-btn site-btn-primary" style={{ padding: "0 16px", fontSize: 12, flexShrink: 0 }}>
+            <button
+              onClick={save}
+              disabled={saving || !value.trim()}
+              style={{
+                padding: "0 16px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
+                background: c.blue, color: "#FFFFFF", border: "none",
+                cursor: saving || !value.trim() ? "not-allowed" : "pointer",
+                opacity: saving || !value.trim() ? 0.6 : 1,
+              }}
+            >
               {saving ? "…" : "Save"}
             </button>
           </div>
-          {(localError || error) && <p style={{ fontSize: 11, color: "#C97070", margin: 0 }}>{localError || error}</p>}
+          {(localError || error) && <p style={{ fontSize: 12, color: c.red, margin: 0 }}>{localError || error}</p>}
         </div>
       )}
     </div>
   );
 }
 
-// ── Composio app card (one per app, same style as ServiceCard) ───────────────
+// ── ComposioAppCard ────────────────────────────────────────────────────────
 
 function ComposioAppCard({
   app, oauthUrl, founderId, initialConnected,
@@ -738,7 +788,6 @@ function ComposioAppCard({
   const popupRef = useRef<Window | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Sync if parent refreshes initial status
   useEffect(() => { setIsConnected(initialConnected); }, [initialConnected]);
 
   const isError = !oauthUrl || oauthUrl.startsWith("error:");
@@ -754,7 +803,6 @@ function ComposioAppCard({
       if (popup.closed) {
         clearInterval(pollRef.current!);
         setPopupOpen(false);
-        // Final check after popup closes
         apiFetch(`${BASE}/setup/composio/connected/${founderId}`)
           .then(r => r.json())
           .then(data => { if (data.apps?.[app.key]) setIsConnected(true); })
@@ -778,36 +826,27 @@ function ComposioAppCard({
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   return (
-    <div style={{
-      ...glass(),
-      border: `1px solid ${isConnected ? "rgba(60,170,100,0.28)" : popupOpen ? "rgba(96,165,250,0.35)" : "rgba(255,255,255,0.09)"}`,
-      boxShadow: isConnected
-        ? "inset 0 1px 0 rgba(255,255,255,0.10), 0 0 20px rgba(60,170,100,0.04)"
-        : "inset 0 1px 0 rgba(255,255,255,0.10)",
-      overflow: "hidden", transition: "border-color 0.3s",
-      opacity: isError ? 0.45 : 1,
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px" }}>
+    <div style={{ ...cardStyle(isConnected, popupOpen && !isConnected), opacity: isError ? 0.45 : 1 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", background: isConnected ? c.greenTint : c.bg }}>
         <span style={{ fontSize: 20, flexShrink: 0 }}>{app.icon}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)" }}>{app.label}</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: c.text }}>{app.label}</span>
             <StatusDot connected={isConnected} />
-            {isConnected && <span style={{ fontSize: 10, color: "#6DC98A", fontFamily: "var(--font-mono)" }}>connected</span>}
-            {popupOpen && !isConnected && <span style={{ fontSize: 10, color: "#60a5fa", fontFamily: "var(--font-mono)" }}>authorizing…</span>}
+            {isConnected && <span style={{ fontSize: 11, color: c.green, fontWeight: 500 }}>Connected</span>}
+            {popupOpen && !isConnected && <span style={{ fontSize: 11, color: c.blue, fontWeight: 500 }}>Authorizing…</span>}
           </div>
-          <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>{isError ? "requires Composio API key" : app.desc}</span>
+          <span style={{ fontSize: 12, color: c.grey }}>{isError ? "Requires Composio API key" : app.desc}</span>
         </div>
         <button
           onClick={openOAuth}
           disabled={isError || popupOpen}
           style={{
-            padding: "5px 14px", borderRadius: 24, fontSize: 12, flexShrink: 0,
-            background: isConnected ? "rgba(60,170,100,0.10)" : isError ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.07)",
-            border: `1px solid ${isConnected ? "rgba(60,170,100,0.2)" : "rgba(255,255,255,0.12)"}`,
-            color: isConnected ? "#6DC98A" : isError ? "var(--fg-mute)" : "var(--fg-dim)",
+            padding: "5px 14px", borderRadius: 8, fontSize: 12, flexShrink: 0, fontWeight: 500,
+            background: isConnected ? c.greenTint : c.bg,
+            border: `1px solid ${isConnected ? c.greenBorder : c.border}`,
+            color: isConnected ? c.green : isError ? c.textMuted : c.textSecondary,
             cursor: isError || popupOpen ? "not-allowed" : "pointer",
-            transition: "all 0.12s",
           }}
         >
           {popupOpen ? "Waiting…" : isConnected ? "Reconnect ↗" : "Connect ↗"}
@@ -841,6 +880,18 @@ function ComposioAppGrid({ founderId, composioUrls }: { founderId: string; compo
     </div>
   );
 }
+
+// ── Section label ──────────────────────────────────────────────────────────
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "#9CA3AF", marginBottom: 10, fontWeight: 600, margin: "0 0 10px" }}>
+      {children}
+    </p>
+  );
+}
+
+// ── Main page ──────────────────────────────────────────────────────────────
 
 export default function SetupPage() {
   const { user, isLoaded } = useUser();
@@ -925,36 +976,43 @@ export default function SetupPage() {
 
   const connectedCount = status ? Object.values(status).filter(Boolean).length : 0;
   const totalServices = status ? Object.keys(status).length : 6;
+  const progressPct = status ? (connectedCount / totalServices) * 100 : 0;
 
   return (
-    <div style={{ width: "100%", maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24, padding: "0 0 40px" }}>
+    <div style={{ width: "100%", maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32, padding: "0 0 48px", fontFamily: "var(--font-geist-sans)" }}>
 
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <Link href="/" className="site-btn site-btn-ghost" style={{ padding: "0 14px", fontSize: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+          <Link href="/" style={{
+            fontSize: 13, padding: "6px 14px", borderRadius: 8,
+            background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`,
+            textDecoration: "none", fontWeight: 500,
+          }}>
             ← Back
           </Link>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, color: "var(--fg)", letterSpacing: "-0.02em" }}>
+            <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: c.text, letterSpacing: "-0.02em" }}>
               Integrations
             </h1>
-            <p style={{ fontSize: 13, color: "var(--fg-mute)", margin: "4px 0 0" }}>
+            <p style={{ fontSize: 13, color: c.grey, margin: "3px 0 0" }}>
               Connect services once — agents use them everywhere
             </p>
           </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+
+        {/* Progress indicator */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
           {status && (
-            <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--fg-mute)" }}>
-              {connectedCount}/{totalServices} connected
+            <span style={{ fontSize: 12, color: c.grey, fontWeight: 500 }}>
+              {connectedCount} of {totalServices} connected
             </span>
           )}
-          <div style={{ height: 4, width: 120, borderRadius: 999, background: "var(--line-2)", overflow: "hidden" }}>
+          <div style={{ height: 6, width: 120, borderRadius: 999, background: c.border, overflow: "hidden" }}>
             <div style={{
               height: "100%", borderRadius: 999,
-              width: status ? `${(connectedCount / totalServices) * 100}%` : "0%",
-              background: "linear-gradient(90deg,var(--text),var(--text-2))",
+              width: `${progressPct}%`,
+              background: progressPct === 100 ? c.green : c.blue,
               transition: "width 0.6s",
             }} />
           </div>
@@ -963,17 +1021,15 @@ export default function SetupPage() {
 
       {/* Founder ID chip */}
       {isLoaded && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderRadius: 24, background: "var(--glass-lo)", border: "1px solid var(--line)", width: "fit-content" }}>
-          <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>Founder ID</span>
-          <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--fg-dim)" }}>{founderId}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderRadius: 8, background: c.surface, border: `1px solid ${c.border}`, width: "fit-content" }}>
+          <span style={{ fontSize: 11, color: c.textMuted, fontWeight: 500 }}>Founder ID</span>
+          <span style={{ fontSize: 11, fontFamily: "var(--font-geist-mono, monospace)", color: c.grey }}>{founderId}</span>
         </div>
       )}
 
       {/* Core services */}
       <div>
-        <p style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>
-          Core services
-        </p>
+        <SectionLabel>Core services</SectionLabel>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {SERVICES.map(svc => (
             <ServiceCard
@@ -989,20 +1045,14 @@ export default function SetupPage() {
 
       {/* Stripe */}
       <div>
-        <p style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>
-          Payments
-        </p>
+        <SectionLabel>Payments</SectionLabel>
         <StripeCard founderId={founderId} email={email} />
       </div>
 
-      {/* Composio OAuth */}
+      {/* Composio */}
       <div>
-        <p style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>
-          Composio — Gmail · LinkedIn · Calendar · Notion · Linear
-        </p>
+        <SectionLabel>Composio — Gmail · LinkedIn · Calendar · Notion · Linear</SectionLabel>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-
-          {/* Composio API key — popup + paste, same as GitHub/Vercel */}
           <ComposioKeyCard
             connected={!!composioUrls && Object.keys(composioUrls).length > 0}
             saving={savingComposio}
@@ -1022,16 +1072,20 @@ export default function SetupPage() {
             }}
           />
 
-          {composioError && <p style={{ fontSize: 11, color: "#C97070", margin: "0 0 4px 0" }}>{composioError}</p>}
+          {composioError && <p style={{ fontSize: 12, color: c.red, margin: "0 0 4px 0" }}>{composioError}</p>}
 
-          {/* Per-app OAuth cards */}
           {composioUrls && Object.keys(composioUrls).length > 0 && (
             <ComposioAppGrid founderId={founderId} composioUrls={composioUrls} />
           )}
 
           {!composioUrls && !loadingUrls && (
-            <button onClick={loadComposioUrls} className="site-btn site-btn-ghost"
-              style={{ alignSelf: "flex-start", padding: "0 16px", fontSize: 12 }}>
+            <button
+              onClick={loadComposioUrls}
+              style={{
+                alignSelf: "flex-start", padding: "7px 16px", borderRadius: 8, fontSize: 13,
+                background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer", fontWeight: 500,
+              }}
+            >
               Load OAuth links →
             </button>
           )}
@@ -1040,21 +1094,26 @@ export default function SetupPage() {
 
       {/* Social — manual */}
       <div>
-        <p style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", marginBottom: 10, fontFamily: "var(--font-mono)" }}>
-          Social accounts — manual OAuth
-        </p>
-        <div style={{ ...glass(), padding: "14px 18px", display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <SectionLabel>Social accounts — manual OAuth</SectionLabel>
+        <div style={{
+          borderRadius: 12, border: `1px solid ${c.border}`,
+          background: c.bg, boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+          padding: "14px 18px", display: "flex", gap: 10, flexWrap: "wrap",
+        }}>
           {[
             { key: "instagram", label: "Instagram", icon: "📸", connected: status?.instagram },
             { key: "tiktok", label: "TikTok", icon: "🎵", connected: status?.tiktok },
             { key: "meta_ads", label: "Meta Ads", icon: "📢", connected: status?.meta_ads },
           ].map(svc => (
-            <div key={svc.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", borderRadius: 24, background: "var(--glass-lo)", border: "1px solid var(--line)" }}>
-              <span>{svc.icon}</span>
-              <span style={{ fontSize: 12, color: "var(--fg)" }}>{svc.label}</span>
+            <div key={svc.key} style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
+              borderRadius: 8, background: c.surface, border: `1px solid ${c.border}`,
+            }}>
+              <span style={{ fontSize: 16 }}>{svc.icon}</span>
+              <span style={{ fontSize: 13, color: c.text, fontWeight: 500 }}>{svc.label}</span>
               <StatusDot connected={!!svc.connected} />
-              <span style={{ fontSize: 10, color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>
-                {svc.connected ? "connected" : "requires phone verify"}
+              <span style={{ fontSize: 11, color: c.textMuted }}>
+                {svc.connected ? "Connected" : "Requires phone verify"}
               </span>
             </div>
           ))}
@@ -1065,49 +1124,59 @@ export default function SetupPage() {
       <div>
         <button
           onClick={() => setShowAutoProvision(v => !v)}
-          style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}
+          style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 6, marginBottom: showAutoProvision ? 12 : 0 }}
         >
-          <span style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>
+          <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.textMuted, fontWeight: 600 }}>
             Auto-provision (advanced) {showAutoProvision ? "▾" : "▸"}
           </span>
         </button>
 
         {showAutoProvision && (
-          <div style={{ ...glass(), padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-            <p style={{ fontSize: 12, color: "var(--fg-mute)", margin: 0, lineHeight: 1.6 }}>
+          <div style={{
+            borderRadius: 12, border: `1px solid ${c.border}`,
+            background: c.bg, boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+            padding: "18px 20px", display: "flex", flexDirection: "column", gap: 14,
+          }}>
+            <p style={{ fontSize: 13, color: c.grey, margin: 0, lineHeight: 1.6 }}>
               Astra can auto-create GitHub, Vercel, SendGrid, and Composio accounts using Playwright.
-              Provide the email/password for a <strong style={{ color: "var(--fg)" }}>new dedicated</strong> account — not your personal one.
+              Provide the email/password for a <strong style={{ color: c.text }}>new dedicated</strong> account — not your personal one.
             </p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <input
                 value={autoEmail}
                 onChange={e => setAutoEmail(e.target.value)}
                 placeholder="email@example.com"
                 type="email"
-                className="site-input"
-                style={{ padding: "8px 12px", fontSize: 12 }}
+                style={{ padding: "9px 12px", fontSize: 13, borderRadius: 8, border: `1px solid ${c.border}`, background: c.bg, color: c.text, outline: "none" }}
+                onFocus={e => (e.target.style.borderColor = c.blue)}
+                onBlur={e => (e.target.style.borderColor = c.border)}
               />
               <input
                 value={autoPassword}
                 onChange={e => setAutoPassword(e.target.value)}
                 placeholder="Strong password"
                 type="password"
-                className="site-input"
-                style={{ padding: "8px 12px", fontSize: 12 }}
+                style={{ padding: "9px 12px", fontSize: 13, borderRadius: 8, border: `1px solid ${c.border}`, background: c.bg, color: c.text, outline: "none" }}
+                onFocus={e => (e.target.style.borderColor = c.blue)}
+                onBlur={e => (e.target.style.borderColor = c.border)}
               />
             </div>
             <button
               onClick={runAutoProvision}
               disabled={autoProvisioning || !autoEmail.trim() || !autoPassword.trim()}
-              className="site-btn site-btn-primary"
-              style={{ alignSelf: "flex-start", padding: "0 20px", fontSize: 13 }}
+              style={{
+                alignSelf: "flex-start", padding: "8px 20px", borderRadius: 8, fontSize: 13, fontWeight: 500,
+                background: c.blue, color: "#FFFFFF", border: "none",
+                cursor: autoProvisioning || !autoEmail.trim() || !autoPassword.trim() ? "not-allowed" : "pointer",
+                opacity: autoProvisioning || !autoEmail.trim() || !autoPassword.trim() ? 0.6 : 1,
+              }}
             >
               {autoProvisioning ? "Provisioning… (2–5 min)" : "Auto-provision →"}
             </button>
             {autoResult && (
-              <div style={{ borderRadius: 24, background: "var(--glass-lo)", border: "1px solid var(--line)", padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ borderRadius: 8, background: c.surface, border: `1px solid ${c.border}`, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 5 }}>
                 {autoResult.map((line, i) => (
-                  <p key={i} style={{ margin: 0, fontSize: 12, color: line.startsWith("✓") ? "#6DC98A" : line.startsWith("✗") ? "#C97070" : "var(--fg)", lineHeight: 1.5 }}>
+                  <p key={i} style={{ margin: 0, fontSize: 13, color: line.startsWith("✓") ? c.green : line.startsWith("✗") ? c.red : c.text, lineHeight: 1.5 }}>
                     {line}
                   </p>
                 ))}
@@ -1119,7 +1188,14 @@ export default function SetupPage() {
 
       {/* CTA */}
       <div style={{ display: "flex", gap: 10, paddingTop: 4 }}>
-        <Link href="/" className="site-btn site-btn-primary" style={{ fontSize: 13, padding: "0 20px" }}>
+        <Link
+          href="/"
+          style={{
+            fontSize: 13, padding: "8px 20px", borderRadius: 8,
+            background: c.blue, color: "#FFFFFF", textDecoration: "none", fontWeight: 500,
+            display: "inline-block",
+          }}
+        >
           Back to app →
         </Link>
       </div>

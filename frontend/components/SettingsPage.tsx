@@ -26,11 +26,59 @@ import {
   type ProductionVerificationReport,
 } from "@/lib/api";
 
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const c = {
+  bg: "#FFFFFF",
+  surface: "#F8F9FA",
+  border: "#E5E7EB",
+  borderStrong: "#D1D5DB",
+  text: "#111827",
+  textSecondary: "#374151",
+  textMuted: "#9CA3AF",
+  grey: "#6B7280",
+  blue: "#2563EB",
+  blueHover: "#1D4ED8",
+  blueTint: "#EFF6FF",
+  green: "#16a34a",
+  greenTint: "#DCFCE7",
+  greenBorder: "#BBF7D0",
+  amber: "#d97706",
+  amberTint: "#FEF9C3",
+  amberBorder: "#FDE68A",
+  red: "#dc2626",
+  redTint: "#FEF2F2",
+  redBorder: "#FECACA",
+};
+
+function inputStyle(focused = false): React.CSSProperties {
+  return {
+    width: "100%",
+    minHeight: 42,
+    borderRadius: 8,
+    border: `1px solid ${focused ? c.blue : c.border}`,
+    background: c.bg,
+    color: c.text,
+    padding: "0 14px",
+    outline: "none",
+    fontSize: 13,
+    boxSizing: "border-box" as const,
+    fontFamily: "var(--font-geist-sans)",
+  };
+}
+
+// ── Section & Row ─────────────────────────────────────────────────────────────
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 1, borderRadius: 28, overflow: "hidden", border: "1px solid var(--line)", background: "var(--glass)", backdropFilter: "var(--blur)", WebkitBackdropFilter: "var(--blur)", boxShadow: "var(--shadow-sm)" }}>
-      <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--line-2)" }}>
-        <span style={{ fontSize: 11, letterSpacing: "0.10em", textTransform: "uppercase", color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>{title}</span>
+    <div style={{
+      display: "flex", flexDirection: "column",
+      borderRadius: 14, overflow: "hidden",
+      border: `1px solid ${c.border}`,
+      background: c.bg,
+      boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+    }}>
+      <div style={{ padding: "14px 20px", borderBottom: `1px solid ${c.border}`, background: c.surface }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: c.text }}>{title}</span>
       </div>
       {children}
     </div>
@@ -39,12 +87,49 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Row({ label, desc, action }: { label: string; desc?: string; action: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, padding: "14px 20px", borderBottom: "1px solid var(--line-2)" }}>
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      gap: 20, padding: "14px 20px", borderBottom: `1px solid ${c.border}`,
+    }}>
       <div>
-        <p style={{ margin: 0, fontSize: 13, color: "var(--fg)", fontWeight: 500 }}>{label}</p>
-        {desc && <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.4 }}>{desc}</p>}
+        <p style={{ margin: 0, fontSize: 13, color: c.text, fontWeight: 500 }}>{label}</p>
+        {desc && <p style={{ margin: "2px 0 0", fontSize: 12, color: c.grey, lineHeight: 1.5 }}>{desc}</p>}
       </div>
       {action}
+    </div>
+  );
+}
+
+// ── Badge ────────────────────────────────────────────────────────────────────
+
+function Badge({ children, color = "grey" }: { children: React.ReactNode; color?: "grey" | "green" | "amber" | "blue" | "red" }) {
+  const map = {
+    grey: { bg: "#F3F4F6", text: c.grey, border: c.border },
+    green: { bg: c.greenTint, text: c.green, border: c.greenBorder },
+    amber: { bg: c.amberTint, text: c.amber, border: c.amberBorder },
+    blue: { bg: c.blueTint, text: c.blue, border: "#BFDBFE" },
+    red: { bg: c.redTint, text: c.red, border: c.redBorder },
+  }[color];
+  return (
+    <span style={{
+      fontSize: 11, padding: "4px 10px", borderRadius: 999, fontWeight: 500, whiteSpace: "nowrap",
+      background: map.bg, color: map.text, border: `1px solid ${map.border}`,
+    }}>
+      {children}
+    </span>
+  );
+}
+
+// ── Mini card ─────────────────────────────────────────────────────────────────
+
+function MiniCard({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div style={{
+      borderRadius: 10, border: `1px solid ${c.border}`,
+      background: c.surface, padding: "10px 12px",
+      ...style,
+    }}>
+      {children}
     </div>
   );
 }
@@ -155,7 +240,7 @@ function TeamSection({ founderId }: { founderId: string }) {
   if (loading) {
     return (
       <div style={{ padding: "14px 20px" }}>
-        <span style={{ fontSize: 12, color: "var(--fg-mute)" }}>Loading team…</span>
+        <span style={{ fontSize: 13, color: c.textMuted }}>Loading team…</span>
       </div>
     );
   }
@@ -169,39 +254,49 @@ function TeamSection({ founderId }: { founderId: string }) {
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
               placeholder="Team name…"
-              style={{ flex: 1, minHeight: 38, borderRadius: 16, border: "1px solid var(--line)", background: "var(--glass-hi)", color: "var(--fg)", padding: "0 14px", outline: "none", fontSize: 13 }}
+              style={{ flex: 1, minHeight: 38, borderRadius: 8, border: `1px solid ${c.border}`, background: c.bg, color: c.text, padding: "0 14px", outline: "none", fontSize: 13 }}
+              onFocus={e => (e.target.style.borderColor = c.blue)}
+              onBlur={e => (e.target.style.borderColor = c.border)}
               onKeyDown={(e) => e.key === "Enter" && handleCreate()}
             />
             <button
               onClick={handleCreate}
               disabled={creating || !createName.trim()}
-              className="site-btn site-btn-primary"
-              style={{ fontSize: 12, padding: "0 16px", minHeight: 38, opacity: creating ? 0.6 : 1 }}
+              style={{
+                fontSize: 13, padding: "0 16px", minHeight: 38, borderRadius: 8,
+                background: c.blue, color: "#FFFFFF", border: "none",
+                cursor: creating || !createName.trim() ? "not-allowed" : "pointer",
+                opacity: creating ? 0.6 : 1, fontWeight: 500,
+              }}
             >
               {creating ? "Creating…" : "Create"}
             </button>
             <button
               onClick={() => { setShowCreateInput(false); setCreateName(""); setCreateError(""); }}
-              className="site-btn site-btn-ghost"
-              style={{ fontSize: 12, padding: "0 14px", minHeight: 38 }}
+              style={{
+                fontSize: 13, padding: "0 14px", minHeight: 38, borderRadius: 8,
+                background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer",
+              }}
             >
               Cancel
             </button>
           </div>
         ) : (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <p style={{ margin: 0, fontSize: 13, color: "var(--fg-mute)" }}>You are not in a team yet.</p>
+            <p style={{ margin: 0, fontSize: 13, color: c.grey }}>You are not in a team yet.</p>
             <button
               onClick={() => setShowCreateInput(true)}
-              className="site-btn site-btn-primary"
-              style={{ fontSize: 12, padding: "0 16px", minHeight: 36 }}
+              style={{
+                fontSize: 13, padding: "0 16px", minHeight: 36, borderRadius: 8,
+                background: c.blue, color: "#FFFFFF", border: "none", cursor: "pointer", fontWeight: 500,
+              }}
             >
               Create Team
             </button>
           </div>
         )}
         {createError && (
-          <span style={{ fontSize: 12, color: "#C97070" }}>{createError}</span>
+          <span style={{ fontSize: 12, color: c.red }}>{createError}</span>
         )}
       </div>
     );
@@ -212,16 +307,18 @@ function TeamSection({ founderId }: { founderId: string }) {
   return (
     <div style={{ display: "flex", flexDirection: "column" }}>
       {/* Team header row */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "14px 20px", borderBottom: "1px solid var(--line-2)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "14px 20px", borderBottom: `1px solid ${c.border}` }}>
         <div>
-          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>{team.name}</p>
-          <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--fg-mute)" }}>{team.members.length} member{team.members.length !== 1 ? "s" : ""}</p>
+          <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: c.text }}>{team.name}</p>
+          <p style={{ margin: "2px 0 0", fontSize: 12, color: c.grey }}>{team.members.length} member{team.members.length !== 1 ? "s" : ""}</p>
         </div>
         {isOwner && (
           <button
             onClick={() => { setShowInviteModal(true); setInviteError(""); }}
-            className="site-btn site-btn-primary"
-            style={{ fontSize: 12, padding: "0 16px", minHeight: 36 }}
+            style={{
+              fontSize: 13, padding: "0 16px", minHeight: 36, borderRadius: 8,
+              background: c.blue, color: "#FFFFFF", border: "none", cursor: "pointer", fontWeight: 500,
+            }}
           >
             Invite →
           </button>
@@ -229,27 +326,35 @@ function TeamSection({ founderId }: { founderId: string }) {
       </div>
 
       {/* Members list */}
-      {team.members.map((member) => (
-        <div key={member.uid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "11px 20px", borderBottom: "1px solid var(--line-2)" }}>
+      {team.members.map((member, i) => (
+        <div key={member.uid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 20px", borderBottom: `1px solid ${c.border}`, background: i % 2 === 1 ? c.surface : c.bg }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--glass-hi)", border: "1px solid var(--line)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <span style={{ fontSize: 11, color: "var(--fg-dim)", fontFamily: "var(--font-mono)" }}>{(member.email ?? member.uid).charAt(0).toUpperCase()}</span>
+            <div style={{
+              width: 32, height: 32, borderRadius: "50%",
+              background: c.blueTint, border: `1px solid #BFDBFE`,
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>
+              <span style={{ fontSize: 13, color: c.blue, fontWeight: 600 }}>{(member.email ?? member.uid).charAt(0).toUpperCase()}</span>
             </div>
             <div style={{ minWidth: 0 }}>
-              <p style={{ margin: 0, fontSize: 12, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.email ?? member.uid}</p>
-              <p style={{ margin: 0, fontSize: 10, color: "var(--fg-mute)" }}>{member.role}{member.status && member.status !== "active" ? ` · ${member.status}` : ""}</p>
+              <p style={{ margin: 0, fontSize: 13, color: c.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{member.email ?? member.uid}</p>
+              <p style={{ margin: 0, fontSize: 11, color: c.textMuted }}>{member.role}{member.status && member.status !== "active" ? ` · ${member.status}` : ""}</p>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-            <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 999, background: "var(--glass-hi)", color: member.uid === team.founder_id ? "#3D9E5F" : "var(--fg-dim)", border: "1px solid var(--line)", fontFamily: "var(--font-mono)" }}>
+            <Badge color={member.uid === team.founder_id ? "green" : "grey"}>
               {member.uid === team.founder_id ? "owner" : member.role}
-            </span>
+            </Badge>
             {isOwner && member.uid !== founderId && (
               <button
                 onClick={() => handleRemove(member.uid)}
                 disabled={removingUid === member.uid}
-                className="site-btn"
-                style={{ fontSize: 11, padding: "0 10px", minHeight: 28, color: "#C97070", background: "rgba(180,60,60,0.10)", borderColor: "rgba(180,60,60,0.20)", opacity: removingUid === member.uid ? 0.5 : 1 }}
+                style={{
+                  fontSize: 12, padding: "4px 10px", minHeight: 28, borderRadius: 6,
+                  color: c.red, background: c.redTint, border: `1px solid ${c.redBorder}`,
+                  cursor: removingUid === member.uid ? "not-allowed" : "pointer",
+                  opacity: removingUid === member.uid ? 0.5 : 1,
+                }}
               >
                 {removingUid === member.uid ? "…" : "Remove"}
               </button>
@@ -260,39 +365,55 @@ function TeamSection({ founderId }: { founderId: string }) {
 
       {/* Invite modal */}
       {showInviteModal && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)" }} onClick={(e) => { if (e.target === e.currentTarget) setShowInviteModal(false); }}>
-          <div style={{ width: "100%", maxWidth: 420, borderRadius: 28, border: "1px solid var(--line)", background: "var(--glass)", backdropFilter: "var(--blur)", WebkitBackdropFilter: "var(--blur)", boxShadow: "var(--shadow-sm)", padding: 28, display: "grid", gap: 18 }}>
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.4)" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowInviteModal(false); }}
+        >
+          <div style={{
+            width: "100%", maxWidth: 440, borderRadius: 16,
+            border: `1px solid ${c.border}`, background: c.bg,
+            boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
+            padding: 28, display: "grid", gap: 18,
+          }}>
             <div>
-              <h2 style={{ margin: 0, fontSize: 16, color: "var(--fg)", letterSpacing: "-0.01em" }}>Invite to {team.name}</h2>
-              <p style={{ margin: "5px 0 0", fontSize: 12, color: "var(--fg-mute)" }}>Enter an email to send a targeted invite, or skip to copy a generic link.</p>
+              <h2 style={{ margin: 0, fontSize: 17, color: c.text, fontWeight: 600, letterSpacing: "-0.01em" }}>Invite to {team.name}</h2>
+              <p style={{ margin: "5px 0 0", fontSize: 13, color: c.grey }}>Enter an email to send a targeted invite, or skip to copy a generic link.</p>
             </div>
             <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>Email (optional)</span>
+              <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.textMuted, fontWeight: 500 }}>Email (optional)</span>
               <input
                 value={inviteEmail}
                 onChange={(e) => setInviteEmail(e.target.value)}
                 placeholder="teammate@example.com"
                 type="email"
-                style={{ width: "100%", minHeight: 42, borderRadius: 18, border: "1px solid var(--line)", background: "var(--glass-hi)", color: "var(--fg)", padding: "0 14px", outline: "none", fontSize: 13, boxSizing: "border-box" }}
+                style={inputStyle()}
+                onFocus={e => (e.target.style.borderColor = c.blue)}
+                onBlur={e => (e.target.style.borderColor = c.border)}
                 onKeyDown={(e) => e.key === "Enter" && handleInvite()}
               />
             </label>
             {inviteError && (
-              <span style={{ fontSize: 12, color: "#C97070" }}>{inviteError}</span>
+              <span style={{ fontSize: 12, color: c.red }}>{inviteError}</span>
             )}
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button
                 onClick={() => { setShowInviteModal(false); setInviteEmail(""); setInviteError(""); }}
-                className="site-btn site-btn-ghost"
-                style={{ fontSize: 12, padding: "0 14px", minHeight: 38 }}
+                style={{
+                  fontSize: 13, padding: "0 16px", minHeight: 38, borderRadius: 8,
+                  background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer",
+                }}
               >
                 Cancel
               </button>
               <button
                 onClick={handleInvite}
                 disabled={inviteBusy}
-                className="site-btn site-btn-primary"
-                style={{ fontSize: 12, padding: "0 18px", minHeight: 38, opacity: inviteBusy ? 0.6 : 1 }}
+                style={{
+                  fontSize: 13, padding: "0 18px", minHeight: 38, borderRadius: 8,
+                  background: c.blue, color: "#FFFFFF", border: "none",
+                  cursor: inviteBusy ? "not-allowed" : "pointer", fontWeight: 500,
+                  opacity: inviteBusy ? 0.6 : 1,
+                }}
               >
                 {inviteBusy ? "Generating…" : "Copy invite link"}
               </button>
@@ -304,11 +425,16 @@ function TeamSection({ founderId }: { founderId: string }) {
   );
 }
 
-function statusColor(status: string, ok?: boolean) {
-  if (ok || status === "code_ready" || status === "production_verified") return "#3D9E5F";
-  if (status === "needs_live_proof") return "#D97706";
-  return "#C97070";
+function statusColor(status: string, ok?: boolean): "green" | "amber" | "red" {
+  if (ok || status === "code_ready" || status === "production_verified") return "green";
+  if (status === "needs_live_proof") return "amber";
+  return "red";
 }
+
+const statusHexColor = (status: string, ok?: boolean) => {
+  const col = statusColor(status, ok);
+  return col === "green" ? c.green : col === "amber" ? c.amber : c.red;
+};
 
 export default function SettingsPage() {
   const { user, isLoaded } = useUser();
@@ -398,35 +524,72 @@ export default function SettingsPage() {
   };
 
   return (
-    <div style={{ width: "100%", maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
+    <div style={{ width: "100%", maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24, fontFamily: "var(--font-geist-sans)" }}>
+
+      {/* Page header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <Link href="/" className="site-btn site-btn-ghost" style={{ padding: "0 14px", fontSize: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <Link href="/" style={{
+            fontSize: 13, padding: "6px 14px", borderRadius: 8,
+            background: c.bg, color: c.textSecondary,
+            border: `1px solid ${c.border}`, textDecoration: "none", fontWeight: 500,
+          }}>
             ← Back
           </Link>
           <div>
-            <h1 style={{ fontSize: 20, fontWeight: 600, margin: 0, color: "var(--fg)", letterSpacing: "-0.02em" }}>Settings</h1>
-            <p style={{ fontSize: 13, color: "var(--fg-mute)", margin: "4px 0 0" }}>Manage your account and preferences</p>
+            <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: c.text, letterSpacing: "-0.02em" }}>Settings</h1>
+            <p style={{ fontSize: 13, color: c.grey, margin: "3px 0 0" }}>Manage your account and preferences</p>
           </div>
         </div>
         <ThemeToggle />
       </div>
 
+      {/* Account */}
       <Section title="Account">
-        <Row label="Profile" desc={user?.primaryEmailAddress?.emailAddress ?? "Manage your Clerk account"} action={<UserButton />} />
-        <Row label="Plan" desc={org ? `${org.entitlements.remaining_runs}/${org.entitlements.monthly_runs} runs remaining · ${org.entitlements.remaining_team_seats} seats open` : "Developer workspace during beta"} action={<span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: "var(--glass-hi)", color: "var(--fg-dim)", border: "1px solid var(--line)", fontFamily: "var(--font-mono)" }}>{org?.entitlements.name ?? "Beta"}</span>} />
-        <Row label="Team access" desc={org ? `${Object.values(org.members).filter(member => member.status === "active").length} active member(s) · owner ${org.owner_id}` : "Team roles load from the organization control plane"} action={<span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: "var(--glass-hi)", color: "var(--fg-dim)", border: "1px solid var(--line)", fontFamily: "var(--font-mono)" }}>Roles</span>} />
+        <Row
+          label="Profile"
+          desc={user?.primaryEmailAddress?.emailAddress ?? "Manage your Clerk account"}
+          action={<UserButton />}
+        />
+        <Row
+          label="Plan"
+          desc={org ? `${org.entitlements.remaining_runs}/${org.entitlements.monthly_runs} runs remaining · ${org.entitlements.remaining_team_seats} seats open` : "Developer workspace during beta"}
+          action={<Badge color="blue">{org?.entitlements.name ?? "Beta"}</Badge>}
+        />
+        <Row
+          label="Team access"
+          desc={org ? `${Object.values(org.members).filter(member => member.status === "active").length} active member(s) · owner ${org.owner_id}` : "Team roles load from the organization control plane"}
+          action={<Badge>Roles</Badge>}
+        />
       </Section>
 
+      {/* Integrations */}
       <Section title="Integrations">
-        <Row label="GitHub · Vercel · Supabase · Composio" desc="Connect accounts for full agent capabilities" action={
-          <Link href="/integrations" className="site-btn site-btn-ghost" style={{ fontSize: 12, padding: "0 14px", minHeight: 34 }}>
-            Manage →
-          </Link>
-        } />
-        <Row label="Stripe" desc="Connect payment context for launch and revenue work" action={<span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: "var(--glass-hi)", color: "var(--fg-dim)", border: "1px solid var(--line)", fontFamily: "var(--font-mono)" }}>Managed in integrations</span>} />
+        <Row
+          label="GitHub · Vercel · Supabase · Composio"
+          desc="Connect accounts for full agent capabilities"
+          action={
+            <Link
+              href="/integrations"
+              style={{
+                fontSize: 13, padding: "6px 14px", borderRadius: 8,
+                background: c.bg, color: c.textSecondary,
+                border: `1px solid ${c.border}`, textDecoration: "none", fontWeight: 500,
+                display: "inline-block",
+              }}
+            >
+              Manage →
+            </Link>
+          }
+        />
+        <Row
+          label="Stripe"
+          desc="Connect payment context for launch and revenue work"
+          action={<Badge>Managed in integrations</Badge>}
+        />
       </Section>
 
+      {/* Onboarding */}
       <Section title="Onboarding">
         <Row
           label="Restart onboarding"
@@ -434,8 +597,10 @@ export default function SettingsPage() {
           action={
             <button
               onClick={() => { localStorage.removeItem("astra_onboarding_done"); window.location.href = "/onboarding"; }}
-              className="site-btn site-btn-ghost"
-              style={{ fontSize: 12, padding: "0 14px", minHeight: 34 }}
+              style={{
+                fontSize: 13, padding: "6px 14px", borderRadius: 8,
+                background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer",
+              }}
             >
               Restart →
             </button>
@@ -447,8 +612,10 @@ export default function SettingsPage() {
           action={
             <button
               onClick={() => { localStorage.setItem("astra_show_tour", "1"); window.location.href = "/"; }}
-              className="site-btn site-btn-ghost"
-              style={{ fontSize: 12, padding: "0 14px", minHeight: 34 }}
+              style={{
+                fontSize: 13, padding: "6px 14px", borderRadius: 8,
+                background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer",
+              }}
             >
               Take tour →
             </button>
@@ -456,241 +623,300 @@ export default function SettingsPage() {
         />
       </Section>
 
+      {/* Notifications */}
       <Section title="Notifications">
-        <Row label="Browser notifications" desc="Get notified when a goal completes" action={
-          <button
-            onClick={() => Notification.requestPermission()}
-            className="site-btn site-btn-primary"
-            style={{ fontSize: 12, padding: "0 14px", minHeight: 34 }}
-          >
-            Enable
-          </button>
-        } />
+        <Row
+          label="Browser notifications"
+          desc="Get notified when a goal completes"
+          action={
+            <button
+              onClick={() => Notification.requestPermission()}
+              style={{
+                fontSize: 13, padding: "6px 14px", borderRadius: 8,
+                background: c.blue, color: "#FFFFFF", border: "none", cursor: "pointer", fontWeight: 500,
+              }}
+            >
+              Enable
+            </button>
+          }
+        />
       </Section>
 
+      {/* Platform */}
       <Section title="Platform">
-        <Row label="Production status" desc={platform ? `${platform.status} · ${platform.state.sessions_active} active sessions · ${platform.state.events_buffered} events buffered` : "Checking backend readiness"} action={
-          <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: platform?.ready ? "rgba(61,158,95,0.12)" : "rgba(245,158,11,0.12)", color: platform?.ready ? "#3D9E5F" : "#D97706", border: "1px solid var(--line)", fontFamily: "var(--font-mono)" }}>
-            {platform?.ready ? "Ready" : "Degraded"}
-          </span>
-        } />
-        <Row label="Admin controls" desc={org ? `Public approval ${org.admin_controls.require_approval_for_public_actions ? "required" : "optional"} · external writes ${org.admin_controls.allow_agent_external_writes ? "enabled" : "approval-gated"}` : "Workspace controls load from the organization record"} action={
-          <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: "var(--glass-hi)", color: "var(--fg-dim)", border: "1px solid var(--line)", fontFamily: "var(--font-mono)" }}>
-            {org?.admin_controls.allowed_connectors.length ?? 0} connectors
-          </span>
-        } />
+        <Row
+          label="Production status"
+          desc={platform ? `${platform.status} · ${platform.state.sessions_active} active sessions · ${platform.state.events_buffered} events buffered` : "Checking backend readiness"}
+          action={<Badge color={platform?.ready ? "green" : "amber"}>{platform?.ready ? "Ready" : "Degraded"}</Badge>}
+        />
+        <Row
+          label="Admin controls"
+          desc={org ? `Public approval ${org.admin_controls.require_approval_for_public_actions ? "required" : "optional"} · external writes ${org.admin_controls.allow_agent_external_writes ? "enabled" : "approval-gated"}` : "Workspace controls load from the organization record"}
+          action={<Badge>{org?.admin_controls.allowed_connectors.length ?? 0} connectors</Badge>}
+        />
       </Section>
 
+      {/* Production Gate */}
       <Section title="Production Gate">
-        <div style={{ padding: 20, display: "grid", gap: 14 }}>
-          <div style={{ borderRadius: 24, border: "1px solid var(--line)", background: launchReadiness?.ok ? "rgba(61,158,95,0.10)" : "rgba(245,158,11,0.10)", padding: 16, display: "grid", gap: 12 }}>
+        <div style={{ padding: 24, display: "grid", gap: 16 }}>
+
+          {/* Launch readiness card */}
+          <div style={{
+            borderRadius: 12,
+            border: `1px solid ${launchReadiness?.ok ? c.greenBorder : c.amberBorder}`,
+            background: launchReadiness?.ok ? c.greenTint : c.amberTint,
+            padding: 18, display: "grid", gap: 14,
+          }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14, flexWrap: "wrap" }}>
               <div>
-                <p style={{ margin: 0, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>Final launch readiness</p>
-                <h2 style={{ margin: "7px 0 0", fontSize: 17, color: "var(--fg)", letterSpacing: "-0.01em" }}>{launchReadiness?.summary ?? "Loading aggregate launch gate…"}</h2>
+                <p style={{ margin: 0, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.grey, fontWeight: 500 }}>Final launch readiness</p>
+                <h2 style={{ margin: "7px 0 0", fontSize: 17, color: c.text, letterSpacing: "-0.01em", fontWeight: 600 }}>{launchReadiness?.summary ?? "Loading aggregate launch gate…"}</h2>
               </div>
-              <span style={{ fontSize: 11, padding: "4px 10px", borderRadius: 999, background: launchReadiness?.ok ? "rgba(61,158,95,0.14)" : "rgba(245,158,11,0.14)", color: launchReadiness?.ok ? "#3D9E5F" : "#D97706", border: "1px solid var(--line)", fontFamily: "var(--font-mono)" }}>
+              <Badge color={launchReadiness?.ok ? "green" : "amber"}>
                 {launchReadiness?.ok ? "Launch proven" : `${launchReadiness?.failed?.length ?? 0} gates failing`}
-              </span>
+              </Badge>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8 }}>
               {(launchReadiness?.checks ?? []).slice(0, 8).map((check) => (
-                <div key={check.key} style={{ borderRadius: 16, border: "1px solid var(--line-2)", background: "rgba(255,255,255,0.025)", padding: "9px 10px" }}>
-                  <p style={{ margin: 0, fontSize: 10, color: "var(--fg-mute)", fontFamily: "var(--font-mono)", textTransform: "uppercase" }}>{check.key.replaceAll("_", " ")}</p>
-                  <strong style={{ display: "block", marginTop: 5, fontSize: 12, color: check.ok ? "#3D9E5F" : "#D97706" }}>{check.ok ? "Pass" : "Needs proof"}</strong>
-                </div>
+                <MiniCard key={check.key}>
+                  <p style={{ margin: 0, fontSize: 10, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 500 }}>{check.key.replaceAll("_", " ")}</p>
+                  <strong style={{ display: "block", marginTop: 5, fontSize: 13, color: check.ok ? c.green : c.amber }}>{check.ok ? "Pass" : "Needs proof"}</strong>
+                </MiniCard>
               ))}
             </div>
             {!!launchReadiness?.failed?.length && (
               <div style={{ display: "grid", gap: 6 }}>
                 {launchReadiness.failed.slice(0, 4).map((check) => (
-                  <span key={check.key} style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.4 }}>· {check.key.replaceAll("_", " ")}: {check.message}</span>
+                  <span key={check.key} style={{ fontSize: 12, color: c.textSecondary, lineHeight: 1.5 }}>· {check.key.replaceAll("_", " ")}: {check.message}</span>
                 ))}
               </div>
             )}
-            <div style={{ borderRadius: 18, border: "1px solid var(--line-2)", background: "rgba(255,255,255,0.025)", padding: "10px 12px", display: "grid", gap: 4 }}>
-              <p style={{ margin: 0, fontSize: 10, color: "var(--fg-mute)", fontFamily: "var(--font-mono)", textTransform: "uppercase", letterSpacing: "0.10em" }}>Saved aggregate proof</p>
-              <strong style={{ fontSize: 13, color: latestLaunchProof?.proof?.ok ? "#3D9E5F" : "#D97706" }}>
+            <MiniCard>
+              <p style={{ margin: 0, fontSize: 10, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 500 }}>Saved aggregate proof</p>
+              <strong style={{ fontSize: 13, color: latestLaunchProof?.proof?.ok ? c.green : c.amber, display: "block", marginTop: 4 }}>
                 {latestLaunchProof?.proof ? `${latestLaunchProof.proof.summary} · ${latestLaunchProof.proof.id}` : "No saved production launch proof yet."}
               </strong>
               {latestLaunchProof?.proof?.paths?.latest_json && (
-                <span style={{ fontSize: 10, color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>{latestLaunchProof.proof.paths.latest_json}</span>
+                <span style={{ fontSize: 11, color: c.textMuted }}>{latestLaunchProof.proof.paths.latest_json}</span>
               )}
-            </div>
+            </MiniCard>
           </div>
 
+          {/* Verification header */}
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
             <div>
-              <h2 style={{ margin: 0, fontSize: 16, color: "var(--fg)", letterSpacing: "-0.01em" }}>Final deploy verification</h2>
-              <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--fg-mute)", lineHeight: 1.5 }}>
+              <h2 style={{ margin: 0, fontSize: 16, color: c.text, letterSpacing: "-0.01em", fontWeight: 600 }}>Final deploy verification</h2>
+              <p style={{ margin: "4px 0 0", fontSize: 13, color: c.grey, lineHeight: 1.6 }}>
                 Runs strict smoke, live connector validation, deploy evidence checks, and writes JSON/Markdown proof.
               </p>
             </div>
-            <span style={{ fontSize: 11, padding: "4px 10px", borderRadius: 999, background: latestVerification?.ok ? "rgba(61,158,95,0.12)" : "rgba(245,158,11,0.12)", color: latestVerification?.ok ? "#3D9E5F" : "#D97706", border: "1px solid var(--line)", fontFamily: "var(--font-mono)" }}>
+            <Badge color={latestVerification?.ok ? "green" : "amber"}>
               {latestVerification?.ok ? "Verified" : "Proof needed"}
-            </span>
+            </Badge>
           </div>
 
+          {/* URL + Stack inputs */}
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.5fr) minmax(160px, 0.7fr)", gap: 12 }}>
             <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>Production API URL</span>
-              <input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)}
-                style={{ width: "100%", minHeight: 42, borderRadius: 18, border: "1px solid var(--line)", background: "var(--glass-hi)", color: "var(--fg)", padding: "0 14px", outline: "none" }}
+              <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.textMuted, fontWeight: 500 }}>Production API URL</span>
+              <input
+                value={baseUrl}
+                onChange={(event) => setBaseUrl(event.target.value)}
+                style={inputStyle()}
+                onFocus={e => (e.target.style.borderColor = c.blue)}
+                onBlur={e => (e.target.style.borderColor = c.border)}
               />
             </label>
             <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>Stack</span>
-              <input value={stackId} onChange={(event) => setStackId(event.target.value)}
-                style={{ width: "100%", minHeight: 42, borderRadius: 18, border: "1px solid var(--line)", background: "var(--glass-hi)", color: "var(--fg)", padding: "0 14px", outline: "none" }}
+              <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.textMuted, fontWeight: 500 }}>Stack</span>
+              <input
+                value={stackId}
+                onChange={(event) => setStackId(event.target.value)}
+                style={inputStyle()}
+                onFocus={e => (e.target.style.borderColor = c.blue)}
+                onBlur={e => (e.target.style.borderColor = c.border)}
               />
             </label>
           </div>
 
+          {/* Controls row */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--fg-dim)" }}>
-              <input type="checkbox" checked={liveConnectors} onChange={(event) => setLiveConnectors(event.target.checked)} />
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: c.textSecondary, cursor: "pointer" }}>
+              <input type="checkbox" checked={liveConnectors} onChange={(event) => setLiveConnectors(event.target.checked)} style={{ accentColor: c.blue }} />
               Validate live connector credentials
             </label>
-            <button onClick={runFinalVerification} disabled={verificationBusy || !baseUrl.trim() || !stackId.trim()}
-              className="site-btn site-btn-primary"
-              style={{ fontSize: 12, padding: "0 16px", minHeight: 36, opacity: verificationBusy ? 0.6 : 1 }}
+            <button
+              onClick={runFinalVerification}
+              disabled={verificationBusy || !baseUrl.trim() || !stackId.trim()}
+              style={{
+                fontSize: 13, padding: "8px 20px", borderRadius: 8,
+                background: c.blue, color: "#FFFFFF", border: "none",
+                cursor: verificationBusy || !baseUrl.trim() || !stackId.trim() ? "not-allowed" : "pointer",
+                fontWeight: 500, opacity: verificationBusy ? 0.6 : 1,
+              }}
             >
               {verificationBusy ? "Running…" : "Run final gate →"}
             </button>
           </div>
 
           {verificationError && (
-            <div style={{ borderRadius: 18, border: "1px solid rgba(180,60,60,0.25)", background: "rgba(180,60,60,0.10)", color: "#C97070", padding: "10px 12px", fontSize: 12 }}>
+            <div style={{ borderRadius: 10, border: `1px solid ${c.redBorder}`, background: c.redTint, color: c.red, padding: "12px 14px", fontSize: 13 }}>
               {verificationError}
             </div>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div style={{ borderRadius: 22, border: "1px solid var(--line)", background: "var(--glass-hi)", padding: 14, minHeight: 132 }}>
-              <p style={{ margin: 0, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>Missing proof</p>
+          {/* Two-column report cards */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <MiniCard style={{ minHeight: 132 }}>
+              <p style={{ margin: 0, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.textMuted, fontWeight: 500 }}>Missing proof</p>
               <div style={{ marginTop: 10, display: "grid", gap: 7 }}>
                 {(deployEvidence?.missing?.length ? deployEvidence.missing.slice(0, 6) : ["No deploy evidence loaded yet."]).map((item) => (
-                  <span key={item} style={{ fontSize: 12, color: deployEvidence?.missing?.length ? "var(--fg-dim)" : "var(--fg-mute)", lineHeight: 1.45 }}>· {item}</span>
+                  <span key={item} style={{ fontSize: 12, color: deployEvidence?.missing?.length ? c.textSecondary : c.textMuted, lineHeight: 1.5 }}>· {item}</span>
                 ))}
               </div>
-            </div>
-            <div style={{ borderRadius: 22, border: "1px solid var(--line)", background: "var(--glass-hi)", padding: 14, minHeight: 132 }}>
-              <p style={{ margin: 0, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>Latest report</p>
-              <h3 style={{ margin: "10px 0 4px", fontSize: 14, color: "var(--fg)" }}>{latestVerification?.summary ?? "No production verification report yet."}</h3>
-              <p style={{ margin: 0, fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.45 }}>
+            </MiniCard>
+            <MiniCard style={{ minHeight: 132 }}>
+              <p style={{ margin: 0, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.textMuted, fontWeight: 500 }}>Latest report</p>
+              <h3 style={{ margin: "10px 0 4px", fontSize: 14, color: c.text, fontWeight: 600 }}>{latestVerification?.summary ?? "No production verification report yet."}</h3>
+              <p style={{ margin: 0, fontSize: 12, color: c.grey, lineHeight: 1.5 }}>
                 {latestVerification?.created_at ? `${latestVerification.created_at} · ${latestVerification.stack_id}` : "Run the final gate after production env and connector credentials are configured."}
               </p>
               {latestVerification?.verification_command && (
-                <code style={{ display: "block", marginTop: 10, fontSize: 10, color: "var(--fg-dim)", lineHeight: 1.5, whiteSpace: "normal" }}>{latestVerification.verification_command}</code>
+                <code style={{ display: "block", marginTop: 10, fontSize: 11, color: c.textSecondary, lineHeight: 1.5, whiteSpace: "normal", background: c.surface, padding: "6px 8px", borderRadius: 6, border: `1px solid ${c.border}` }}>{latestVerification.verification_command}</code>
               )}
-              {latestVerification?.id && (
-                <a
-                  href={productionVerificationMarkdownUrl(latestVerification.id)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="site-btn site-btn-ghost"
-                  style={{ display: "inline-flex", marginTop: 12, fontSize: 11, padding: "0 12px", minHeight: 30, textDecoration: "none" }}
-                >
-                Open Markdown proof →
-              </a>
-              )}
-              {latestVerification?.id && (
-                <a
-                  href={productionVerificationBundleUrl(latestVerification.id)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="site-btn site-btn-ghost"
-                  style={{ display: "inline-flex", marginTop: 8, marginLeft: 8, fontSize: 11, padding: "0 12px", minHeight: 30, textDecoration: "none" }}
-                >
-                  Download proof bundle →
-                </a>
-              )}
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
+                {latestVerification?.id && (
+                  <a
+                    href={productionVerificationMarkdownUrl(latestVerification.id)}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      fontSize: 12, padding: "5px 12px", borderRadius: 8,
+                      background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`,
+                      textDecoration: "none", fontWeight: 500, display: "inline-block",
+                    }}
+                  >
+                    Open Markdown proof →
+                  </a>
+                )}
+                {latestVerification?.id && (
+                  <a
+                    href={productionVerificationBundleUrl(latestVerification.id)}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      fontSize: 12, padding: "5px 12px", borderRadius: 8,
+                      background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`,
+                      textDecoration: "none", fontWeight: 500, display: "inline-block",
+                    }}
+                  >
+                    Download proof bundle →
+                  </a>
+                )}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
                 <button
                   onClick={verifyLatestManifest}
                   disabled={manifestBusy || !latestVerification?.id}
-                  className="site-btn site-btn-ghost"
-                  style={{ fontSize: 11, padding: "0 12px", minHeight: 30, opacity: manifestBusy || !latestVerification?.id ? 0.55 : 1 }}
+                  style={{
+                    fontSize: 12, padding: "5px 12px", borderRadius: 8,
+                    background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`,
+                    cursor: manifestBusy || !latestVerification?.id ? "not-allowed" : "pointer",
+                    opacity: manifestBusy || !latestVerification?.id ? 0.55 : 1,
+                  }}
                 >
                   {manifestBusy ? "Verifying…" : "Verify manifest"}
                 </button>
-                <span style={{ fontSize: 10, color: manifestVerification?.verified ? "#3D9E5F" : "#D97706", fontFamily: "var(--font-mono)", textTransform: "uppercase" }}>
+                <span style={{ fontSize: 11, color: manifestVerification?.verified ? c.green : c.amber, fontWeight: 500 }}>
                   {manifestVerification?.verified ? "Checksum verified" : "Checksum not verified"}
                 </span>
               </div>
-            </div>
+            </MiniCard>
           </div>
 
-          <div style={{ borderRadius: 22, border: "1px solid var(--line)", background: "var(--glass-hi)", padding: 14 }}>
+          {/* Setup requirements */}
+          <MiniCard>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div>
-                <p style={{ margin: 0, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>Setup requirements</p>
-                <h3 style={{ margin: "7px 0 0", fontSize: 14, color: "var(--fg)" }}>{requirements?.summary ?? "Loading production requirements…"}</h3>
+                <p style={{ margin: 0, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.textMuted, fontWeight: 500 }}>Setup requirements</p>
+                <h3 style={{ margin: "7px 0 0", fontSize: 14, color: c.text, fontWeight: 600 }}>{requirements?.summary ?? "Loading production requirements…"}</h3>
               </div>
-              <span style={{ fontSize: 11, padding: "4px 10px", borderRadius: 999, background: requirements?.ok ? "rgba(61,158,95,0.12)" : "rgba(245,158,11,0.12)", color: requirements?.ok ? "#3D9E5F" : "#D97706", border: "1px solid var(--line)", fontFamily: "var(--font-mono)" }}>
-                {requirements?.missing.length ?? 0} missing
-              </span>
+              <Badge color={requirements?.ok ? "green" : "amber"}>{requirements?.missing.length ?? 0} missing</Badge>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
               <div style={{ display: "grid", gap: 6 }}>
                 {(requirements?.environment ?? []).slice(0, 8).map((item) => (
-                  <div key={item.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 11, color: "var(--fg-dim)" }}>
+                  <div key={item.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 12, color: c.textSecondary }}>
                     <span>{item.key}</span>
-                    <span style={{ color: item.configured ? "#3D9E5F" : "#D97706", fontFamily: "var(--font-mono)" }}>{item.configured ? "set" : "missing"}</span>
+                    <span style={{ color: item.configured ? c.green : c.amber, fontWeight: 500 }}>{item.configured ? "set" : "missing"}</span>
                   </div>
                 ))}
               </div>
               <div style={{ display: "grid", gap: 6 }}>
                 {(requirements?.connectors ?? []).filter(connector => connector.required).map((connector) => (
-                  <div key={connector.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 11, color: "var(--fg-dim)" }}>
+                  <div key={connector.key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, fontSize: 12, color: c.textSecondary }}>
                     <span>{connector.label}</span>
-                    <span style={{ color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>{connector.credential_fields.filter(field => field.required).map(field => field.key).join(", ")}</span>
+                    <span style={{ color: c.textMuted }}>{connector.credential_fields.filter(field => field.required).map(field => field.key).join(", ")}</span>
                   </div>
                 ))}
               </div>
             </div>
             {requirements?.final_gate.command && (
-              <code style={{ display: "block", marginTop: 12, fontSize: 10, color: "var(--fg-dim)", lineHeight: 1.5, whiteSpace: "normal" }}>{requirements.final_gate.command}</code>
+              <code style={{ display: "block", marginTop: 12, fontSize: 11, color: c.textSecondary, lineHeight: 1.6, whiteSpace: "normal", background: "#F3F4F6", padding: "8px 10px", borderRadius: 6, border: `1px solid ${c.border}` }}>{requirements.final_gate.command}</code>
             )}
-          </div>
+          </MiniCard>
 
-          <div style={{ borderRadius: 22, border: "1px solid var(--line)", background: "var(--glass-hi)", padding: 14 }}>
+          {/* Objective evidence */}
+          <MiniCard>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
               <div>
-                <p style={{ margin: 0, fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>Objective evidence</p>
-                <h3 style={{ margin: "7px 0 0", fontSize: 14, color: "var(--fg)" }}>{requirements?.objective_evidence?.summary ?? "Loading objective evidence matrix…"}</h3>
+                <p style={{ margin: 0, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.textMuted, fontWeight: 500 }}>Objective evidence</p>
+                <h3 style={{ margin: "7px 0 0", fontSize: 14, color: c.text, fontWeight: 600 }}>{requirements?.objective_evidence?.summary ?? "Loading objective evidence matrix…"}</h3>
               </div>
-              <span style={{ fontSize: 11, padding: "4px 10px", borderRadius: 999, background: requirements?.objective_evidence?.production_proven ? "rgba(61,158,95,0.12)" : "rgba(245,158,11,0.12)", color: requirements?.objective_evidence?.production_proven ? "#3D9E5F" : "#D97706", border: "1px solid var(--line)", fontFamily: "var(--font-mono)" }}>
+              <Badge color={requirements?.objective_evidence?.production_proven ? "green" : "amber"}>
                 {requirements?.objective_evidence?.production_proven ? "Production proven" : "Live proof needed"}
-              </span>
+              </Badge>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginTop: 12 }}>
-              <div style={{ borderRadius: 18, border: "1px solid var(--line-2)", padding: 12, background: "rgba(255,255,255,0.03)" }}>
-                <p style={{ margin: 0, fontSize: 10, color: "var(--fg-mute)", letterSpacing: "0.10em", textTransform: "uppercase", fontFamily: "var(--font-mono)" }}>Code contract</p>
-                <strong style={{ display: "block", marginTop: 6, fontSize: 15, color: requirements?.objective_evidence?.code_contract_ready ? "#3D9E5F" : "#C97070" }}>
-                  {requirements?.objective_evidence?.code_contract_ready ? "Ready" : "Incomplete"}
-                </strong>
-              </div>
-              <div style={{ borderRadius: 18, border: "1px solid var(--line-2)", padding: 12, background: "rgba(255,255,255,0.03)" }}>
-                <p style={{ margin: 0, fontSize: 10, color: "var(--fg-mute)", letterSpacing: "0.10em", textTransform: "uppercase", fontFamily: "var(--font-mono)" }}>Live evidence</p>
-                <strong style={{ display: "block", marginTop: 6, fontSize: 15, color: requirements?.objective_evidence?.live_proof?.ok ? "#3D9E5F" : "#D97706" }}>
-                  {requirements?.objective_evidence?.live_proof?.ok ? "Verified" : "Missing"}
-                </strong>
-              </div>
-              <div style={{ borderRadius: 18, border: "1px solid var(--line-2)", padding: 12, background: "rgba(255,255,255,0.03)" }}>
-                <p style={{ margin: 0, fontSize: 10, color: "var(--fg-mute)", letterSpacing: "0.10em", textTransform: "uppercase", fontFamily: "var(--font-mono)" }}>Manifest</p>
-                <strong style={{ display: "block", marginTop: 6, fontSize: 15, color: manifestVerification?.verified || requirements?.objective_evidence?.live_proof?.manifest_verified ? "#3D9E5F" : "#D97706" }}>
-                  {manifestVerification?.verified || requirements?.objective_evidence?.live_proof?.manifest_verified ? "Verified" : "Needed"}
-                </strong>
-              </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginTop: 14 }}>
+              {[
+                {
+                  label: "Code contract",
+                  value: requirements?.objective_evidence?.code_contract_ready ? "Ready" : "Incomplete",
+                  ok: requirements?.objective_evidence?.code_contract_ready,
+                },
+                {
+                  label: "Live evidence",
+                  value: requirements?.objective_evidence?.live_proof?.ok ? "Verified" : "Missing",
+                  ok: requirements?.objective_evidence?.live_proof?.ok,
+                },
+                {
+                  label: "Manifest",
+                  value: (manifestVerification?.verified || requirements?.objective_evidence?.live_proof?.manifest_verified) ? "Verified" : "Needed",
+                  ok: manifestVerification?.verified || requirements?.objective_evidence?.live_proof?.manifest_verified,
+                },
+              ].map(({ label, value, ok }) => (
+                <div key={label} style={{
+                  borderRadius: 8, border: `1px solid ${c.border}`,
+                  padding: "12px", background: c.bg,
+                }}>
+                  <p style={{ margin: 0, fontSize: 10, color: c.textMuted, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 500 }}>{label}</p>
+                  <strong style={{ display: "block", marginTop: 6, fontSize: 15, color: ok ? c.green : c.amber }}>
+                    {value}
+                  </strong>
+                </div>
+              ))}
             </div>
 
-            <div style={{ display: "grid", gap: 7, marginTop: 12 }}>
+            <div style={{ display: "grid", gap: 7, marginTop: 14 }}>
               {(requirements?.objective_evidence?.requirements ?? []).map((item) => (
-                <div key={item.key} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 10, alignItems: "center", padding: "9px 10px", borderRadius: 16, border: "1px solid var(--line-2)", background: "rgba(255,255,255,0.025)" }}>
-                  <span style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.35 }}>{item.requirement}</span>
-                  <span style={{ fontSize: 10, color: statusColor(item.status, item.production_verified), fontFamily: "var(--font-mono)", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+                <div key={item.key} style={{
+                  display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto",
+                  gap: 10, alignItems: "center", padding: "9px 12px",
+                  borderRadius: 8, border: `1px solid ${c.border}`, background: c.bg,
+                }}>
+                  <span style={{ fontSize: 12, color: c.textSecondary, lineHeight: 1.4 }}>{item.requirement}</span>
+                  <span style={{ fontSize: 11, color: statusHexColor(item.status, item.production_verified), fontWeight: 500, textTransform: "uppercase", whiteSpace: "nowrap" }}>
                     {item.status.replaceAll("_", " ")}
                   </span>
                 </div>
@@ -698,33 +924,42 @@ export default function SettingsPage() {
             </div>
 
             {requirements?.final_gate.verify_manifest_endpoint && (
-              <code style={{ display: "block", marginTop: 12, fontSize: 10, color: "var(--fg-dim)", lineHeight: 1.5, whiteSpace: "normal" }}>
+              <code style={{ display: "block", marginTop: 12, fontSize: 11, color: c.textSecondary, lineHeight: 1.6, whiteSpace: "normal", background: "#F3F4F6", padding: "6px 10px", borderRadius: 6, border: `1px solid ${c.border}` }}>
                 Verify manifest: {requirements.final_gate.verify_manifest_endpoint}
                 {manifestVerification?.summary ? ` · ${manifestVerification.summary}` : ""}
               </code>
             )}
             {requirements?.final_gate.bundle_endpoint && (
-              <code style={{ display: "block", marginTop: 6, fontSize: 10, color: "var(--fg-dim)", lineHeight: 1.5, whiteSpace: "normal" }}>
+              <code style={{ display: "block", marginTop: 6, fontSize: 11, color: c.textSecondary, lineHeight: 1.6, whiteSpace: "normal", background: "#F3F4F6", padding: "6px 10px", borderRadius: 6, border: `1px solid ${c.border}` }}>
                 Export bundle: {requirements.final_gate.bundle_endpoint}
               </code>
             )}
-          </div>
+          </MiniCard>
         </div>
       </Section>
 
+      {/* Team */}
       <Section title="Team">
         <TeamSection founderId={founderId} />
       </Section>
 
+      {/* Data */}
       <Section title="Data">
-        <Row label="Session history" desc="Stored locally in your browser" action={
-          <button onClick={() => { if (confirm("Clear all session history?")) { localStorage.removeItem("astra_sessions"); window.location.reload(); } }}
-            className="site-btn"
-            style={{ fontSize: 12, padding: "0 14px", minHeight: 34, color: "#C97070", background: "rgba(180,60,60,0.10)", borderColor: "rgba(180,60,60,0.20)" }}
-          >
-            Clear history
-          </button>
-        } />
+        <Row
+          label="Session history"
+          desc="Stored locally in your browser"
+          action={
+            <button
+              onClick={() => { if (confirm("Clear all session history?")) { localStorage.removeItem("astra_sessions"); window.location.reload(); } }}
+              style={{
+                fontSize: 13, padding: "6px 14px", borderRadius: 8,
+                color: c.red, background: c.redTint, border: `1px solid ${c.redBorder}`, cursor: "pointer",
+              }}
+            >
+              Clear history
+            </button>
+          }
+        />
       </Section>
     </div>
   );

@@ -138,6 +138,8 @@ class Agent:
         model_api_key: str = None,
         max_iterations: int = None,
         max_tool_calls: dict[str, int] | None = None,
+        library_files: list[dict] = None,
+        skills: list[str] | None = None,
     ):
         self.name = name
         self.role = role
@@ -149,6 +151,8 @@ class Agent:
         self._model_api_key = model_api_key or settings.agent_model_api_key
         self._max_iterations = max_iterations
         self._max_tool_calls = max_tool_calls or {}
+        self._library_files: list[dict] = library_files or []
+        self._skills: list[str] = skills or []
         self._inbox: asyncio.Queue = asyncio.Queue()
         self._llm: Optional[openai.OpenAI] = None
 
@@ -240,7 +244,28 @@ class Agent:
             "Use find_elements to discover selectors before clicking.\n"
         ) if self.use_computer else ""
 
+        # Build library context block if canonical files are present
+        library_section = ""
+        if self._library_files:
+            files_to_inject = self._library_files[:5]
+            parts = ["\n\nLIBRARY CONTEXT (canonical founder documents — treat as ground truth):"]
+            for f in files_to_inject:
+                fname = f.get("filename", "untitled")
+                dept = f.get("department", "")
+                content = f.get("content", "")
+                if len(content) > 2000:
+                    content = content[:2000] + "\n... [truncated]"
+                parts.append(f"\n--- {fname} [{dept}] ---\n{content}")
+            library_section = "\n".join(parts)
+
+        # Build skills preamble — prepended before the agent role so the LLM
+        # treats skill guidance as the highest-priority context.
+        skills_section = ""
+        if self._skills:
+            skills_section = "\n---\n".join(self._skills) + "\n---\n"
+
         return (
+            skills_section +
             f"You are {self.name}, {self.role}.\n\n"
             f"TOOLS:\n{tool_list or '  (none)'}\n\n"
             f"SUB-AGENTS YOU CAN DELEGATE TO:\n{sub_list or '  (none)'}\n\n"
@@ -257,6 +282,7 @@ class Agent:
             "- Never invent tool results. Only report what tools actually returned.\n"
             "- If a tool fails, put the error in output and call done.\n"
             "- Use exact arg names from tool descriptions."
+            + library_section
         )
 
     async def run(self, ctx: AgentContext) -> dict[str, Any]:

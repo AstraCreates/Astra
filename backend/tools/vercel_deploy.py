@@ -292,6 +292,7 @@ def vercel_deploy_from_github(
     install_command: str = "",
     build_command: str = "",
     founder_id: str = "",
+    session_id: str = "",
     **kwargs,
 ) -> dict:
     """
@@ -460,14 +461,26 @@ def vercel_deploy_from_github(
             if build_error is None:
                 # Success
                 project_url = f"https://{project_name}.vercel.app"
+                staging_url = deployment_url or project_url
                 last_result = {
                     "deployed": True,
                     "project_url": project_url,
-                    "deployment_url": deployment_url or project_url,
+                    "deployment_url": staging_url,
                     "project_id": project_id,
                     "github_repo": repo_url,
                     "attempts": attempt,
                 }
+                # Record staging deployment
+                if session_id or founder_id:
+                    try:
+                        from backend.deployments.store import record_deployment as _record_dep
+                        _record_dep(
+                            session_id=session_id or "unknown",
+                            founder_id=founder_id or "unknown",
+                            staging_url=staging_url,
+                        )
+                    except Exception as _dep_err:
+                        logger.warning("record_deployment failed: %s", _dep_err)
                 break
 
             logger.warning("Deployment attempt %d failed: %s", attempt, build_error[:200])
@@ -491,7 +504,7 @@ def vercel_deploy_from_github(
         return {"deployed": False, "error": str(e)}
 
 
-def vercel_deploy(project_slug: str, html: str, css: str = "", js: str = "") -> dict:
+def vercel_deploy(project_slug: str, html: str, css: str = "", js: str = "", session_id: str = "", founder_id: str = "") -> dict:
     """Deploy HTML to Vercel via CLI. Returns: {deployed, url} or {deployed: false, local_path}."""
     import tempfile, os as _os
     token = getattr(settings, "vercel_token", None)
@@ -547,6 +560,17 @@ def vercel_deploy(project_slug: str, html: str, css: str = "", js: str = "") -> 
                 except Exception:
                     pass
                 logger.info("vercel_deploy: %s", url)
+                # Record staging deployment
+                if session_id or founder_id:
+                    try:
+                        from backend.deployments.store import record_deployment as _record_dep
+                        _record_dep(
+                            session_id=session_id or "unknown",
+                            founder_id=founder_id or "unknown",
+                            staging_url=url,
+                        )
+                    except Exception as _dep_err:
+                        logger.warning("record_deployment (html deploy) failed: %s", _dep_err)
                 return {"deployed": True, "url": url, "project": project_slug}
             logger.warning("vercel CLI deploy failed rc=%d: %s", r.returncode, (r.stdout + r.stderr)[:400])
         except Exception as e:

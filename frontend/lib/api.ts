@@ -1527,6 +1527,174 @@ export async function createOrganizationBillingPortal(
   return res.json();
 }
 
+export interface ModelSettingsResponse {
+  founder_id: string;
+  overrides: Record<string, string>;
+  available_models: string[];
+  agent_keys: string[];
+}
+
+export async function getModelSettings(founderId: string): Promise<ModelSettingsResponse> {
+  const res = await apiFetch(`${BASE}/api/model-settings?founder_id=${encodeURIComponent(founderId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function setModelOverride(
+  founderId: string,
+  agentKey: string,
+  model: string
+): Promise<{ ok: boolean; founder_id: string; agent_key: string; model: string }> {
+  const res = await apiFetch(`${BASE}/api/model-settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: founderId, agent_key: agentKey, model }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function clearModelOverride(
+  founderId: string,
+  agentKey: string
+): Promise<{ ok: boolean; founder_id: string; agent_key: string; was_set: boolean }> {
+  const res = await apiFetch(
+    `${BASE}/api/model-settings/${encodeURIComponent(agentKey)}?founder_id=${encodeURIComponent(founderId)}`,
+    { method: "DELETE" }
+  );
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ── Library ────────────────────────────────────────────────────────────────────
+
+export interface LibraryFile {
+  id: string;
+  founder_id: string;
+  department: string;
+  filename: string;
+  content?: string;
+  is_canonical: boolean;
+  created_at: string;
+  updated_at: string;
+  size_bytes: number;
+}
+
+export async function getLibraryFiles(
+  founderId: string,
+  department?: string
+): Promise<LibraryFile[]> {
+  const params = new URLSearchParams({ founder_id: founderId });
+  if (department) params.set("department", department);
+  const res = await apiFetch(`${BASE}/api/library?${params}`);
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.files ?? [];
+}
+
+export async function getLibraryFile(
+  founderId: string,
+  fileId: string
+): Promise<LibraryFile> {
+  const res = await apiFetch(
+    `${BASE}/api/library/${encodeURIComponent(fileId)}?founder_id=${encodeURIComponent(founderId)}`
+  );
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.file;
+}
+
+export async function createLibraryFile(body: {
+  founder_id: string;
+  department: string;
+  filename: string;
+  content: string;
+  is_canonical?: boolean;
+}): Promise<LibraryFile> {
+  const res = await apiFetch(`${BASE}/api/library`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.file;
+}
+
+export async function updateLibraryFile(
+  fileId: string,
+  body: {
+    founder_id: string;
+    content?: string;
+    filename?: string;
+    department?: string;
+    is_canonical?: boolean;
+  }
+): Promise<LibraryFile> {
+  const res = await apiFetch(`${BASE}/api/library/${encodeURIComponent(fileId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.file;
+}
+
+export async function deleteLibraryFile(
+  founderId: string,
+  fileId: string
+): Promise<void> {
+  const res = await apiFetch(
+    `${BASE}/api/library/${encodeURIComponent(fileId)}?founder_id=${encodeURIComponent(founderId)}`,
+    { method: "DELETE" }
+  );
+  if (!res.ok) throw new Error(await res.text());
+}
+
+// ── Staged deployments ─────────────────────────────────────────────────────────
+
+export interface DeploymentRecord {
+  session_id: string;
+  founder_id: string;
+  staging_url: string;
+  prod_url: string | null;
+  staged_at: string;
+  published_at: string | null;
+  status: "staged" | "published" | "none";
+}
+
+export async function getDeployment(sessionId: string): Promise<DeploymentRecord | null> {
+  const res = await apiFetch(`${BASE}/api/deployments/${encodeURIComponent(sessionId)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function listDeployments(founderId: string): Promise<DeploymentRecord[]> {
+  const res = await apiFetch(`${BASE}/api/deployments?founder_id=${encodeURIComponent(founderId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.deployments ?? [];
+}
+
+export async function publishDeployment(
+  sessionId: string,
+  vercelToken: string,
+  domain?: string
+): Promise<{ ok: boolean; prod_url: string | null; error?: string }> {
+  const res = await apiFetch(`${BASE}/api/deployments/${encodeURIComponent(sessionId)}/publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ vercel_token: vercelToken, domain: domain ?? null }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    return { ok: false, prod_url: null, error: text };
+  }
+  return res.json();
+}
+
 export const AGENT_LABELS: Record<string, string> = {
   research: "Market Research",
   research_competitors: "Competitor Intel",
@@ -1560,6 +1728,181 @@ export function sortAgentNamesByOrder(agentNames: string[]): string[] {
     if (aIndex !== bIndex) return aIndex - bIndex;
     return a.localeCompare(b);
   });
+}
+
+// ── Missions ───────────────────────────────────────────────────────────────────
+
+export interface Mission {
+  id: string;
+  founder_id: string;
+  department: string;
+  name: string;
+  goal: string;
+  primary_metric: string;
+  objectives: string[];
+  budget: { max_runs_per_day: number; max_cost_usd_per_run: number };
+  approval_policy: "auto" | "require_approval";
+  status: "active" | "paused" | "completed";
+  created_at: string;
+  last_run_at: string | null;
+  run_count: number;
+  total_cost_usd: number;
+  progress_notes: Array<{ timestamp: string; note: string; run_id: string }>;
+}
+
+export async function getMissions(founderId: string): Promise<Mission[]> {
+  const res = await apiFetch(`${BASE}/api/missions?founder_id=${encodeURIComponent(founderId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.missions ?? [];
+}
+
+export async function createMission(
+  data: Omit<Mission, "id" | "created_at" | "last_run_at" | "run_count" | "total_cost_usd" | "progress_notes">
+): Promise<Mission> {
+  const res = await apiFetch(`${BASE}/api/missions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const result = await res.json();
+  return result.mission ?? result;
+}
+
+export async function updateMission(id: string, data: Partial<Mission>): Promise<Mission> {
+  const res = await apiFetch(`${BASE}/api/missions/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const result = await res.json();
+  return result.mission ?? result;
+}
+
+export async function deleteMission(id: string): Promise<void> {
+  const res = await apiFetch(`${BASE}/api/missions/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+export async function runMission(id: string): Promise<{ ok: boolean; session_id: string }> {
+  const res = await apiFetch(`${BASE}/api/missions/${encodeURIComponent(id)}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Skills API
+// ---------------------------------------------------------------------------
+
+export interface Skill {
+  id: string;
+  founder_id: string;
+  name: string;
+  description: string;
+  content: string;
+  agent_keys: string[];
+  created_at: string;
+  is_builtin: boolean;
+}
+
+export async function listSkills(founderId: string): Promise<Skill[]> {
+  const res = await apiFetch(`${BASE}/api/skills?founder_id=${encodeURIComponent(founderId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.skills ?? [];
+}
+
+export async function getSkill(founderId: string, skillId: string): Promise<Skill> {
+  const res = await apiFetch(
+    `${BASE}/api/skills/${encodeURIComponent(skillId)}?founder_id=${encodeURIComponent(founderId)}`
+  );
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.skill;
+}
+
+export async function createSkill(
+  founderId: string,
+  body: { name: string; description?: string; content?: string; agent_keys?: string[]; is_builtin?: boolean }
+): Promise<Skill> {
+  const res = await apiFetch(`${BASE}/api/skills`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: founderId, ...body }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.skill;
+}
+
+export async function updateSkill(
+  founderId: string,
+  skillId: string,
+  body: { name?: string; description?: string; content?: string; agent_keys?: string[] }
+): Promise<Skill> {
+  const res = await apiFetch(`${BASE}/api/skills/${encodeURIComponent(skillId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: founderId, ...body }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.skill;
+}
+
+export async function deleteSkill(founderId: string, skillId: string): Promise<void> {
+  const res = await apiFetch(
+    `${BASE}/api/skills/${encodeURIComponent(skillId)}?founder_id=${encodeURIComponent(founderId)}`,
+    { method: "DELETE" }
+  );
+  if (!res.ok) throw new Error(await res.text());
+}
+
+export async function attachSkill(
+  founderId: string,
+  skillId: string,
+  agentKey: string
+): Promise<Skill> {
+  const res = await apiFetch(
+    `${BASE}/api/skills/${encodeURIComponent(skillId)}/attach?founder_id=${encodeURIComponent(founderId)}&agent_key=${encodeURIComponent(agentKey)}`,
+    { method: "POST" }
+  );
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.skill;
+}
+
+export async function detachSkill(
+  founderId: string,
+  skillId: string,
+  agentKey: string
+): Promise<Skill> {
+  const res = await apiFetch(
+    `${BASE}/api/skills/${encodeURIComponent(skillId)}/attach?founder_id=${encodeURIComponent(founderId)}&agent_key=${encodeURIComponent(agentKey)}`,
+    { method: "DELETE" }
+  );
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.skill;
+}
+
+export async function getSkillsForAgent(
+  founderId: string,
+  agentKey: string
+): Promise<Skill[]> {
+  const res = await apiFetch(
+    `${BASE}/api/skills/for-agent?founder_id=${encodeURIComponent(founderId)}&agent_key=${encodeURIComponent(agentKey)}`
+  );
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.skills ?? [];
 }
 
 export const TOOL_DESCRIPTIONS: Record<string, string> = {

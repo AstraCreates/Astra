@@ -34,6 +34,12 @@ from backend.specialists.finance_fundraise import build_finance_fundraise_agent
 _orchestrator: Orchestrator | None = None
 
 
+def reload_model_overrides() -> None:
+    """Invalidate the orchestrator singleton so it is rebuilt with new model settings on next call."""
+    global _orchestrator
+    _orchestrator = None
+
+
 def get_orchestrator() -> Orchestrator:
     global _orchestrator
     if _orchestrator is None:
