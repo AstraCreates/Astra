@@ -2740,6 +2740,83 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
   );
 }
 
+// ── Launch Checklist ─────────────────────────────────────────────────────────
+
+function LaunchChecklist({ sessionId, done, agents, agentList, selectedStack }: {
+  sessionId: string; done: boolean;
+  agents: Record<string, AgentState>;
+  agentList: string[];
+  selectedStack: AgentStackTemplate | null;
+}) {
+  const [open, setOpen] = useState(true);
+  const agentDone = (name: string) => agents[name]?.status === "done";
+  const has = (name: string) => agentList.includes(name);
+
+  const items = [
+    { id: "goal",      label: "Goal launched",          done: !!sessionId },
+    { id: "stack",     label: "Stack selected",         done: !!selectedStack },
+    ...(has("research")  ? [{ id: "research",  label: "Research complete",       done: agentDone("research") }]  : []),
+    ...(has("web")       ? [{ id: "web",       label: "Website built",           done: agentDone("web") }]       : []),
+    ...(has("technical") ? [{ id: "technical", label: "Technical scaffold done", done: agentDone("technical") }] : []),
+    ...(has("legal")     ? [{ id: "legal",     label: "Legal docs drafted",      done: agentDone("legal") }]     : []),
+    ...(has("marketing") ? [{ id: "marketing", label: "Marketing assets ready",  done: agentDone("marketing") }] : []),
+    ...(has("sales")     ? [{ id: "sales",     label: "Sales pipeline built",    done: agentDone("sales") }]     : []),
+    { id: "complete",  label: "Run complete",           done },
+  ];
+
+  const doneCount = items.filter(i => i.done).length;
+  const pct = items.length > 0 ? Math.round((doneCount / items.length) * 100) : 0;
+  const allDone = pct === 100;
+
+  useEffect(() => { if (done) setOpen(false); }, [done]);
+
+  return (
+    <div data-tour="launch-checklist" style={{
+      borderRadius: 14, overflow: "hidden", transition: "border-color 0.3s, background 0.3s",
+      border: `1px solid ${allDone ? "rgba(61,158,95,0.3)" : "var(--line)"}`,
+      background: allDone ? "rgba(61,158,95,0.04)" : "rgba(255,255,255,0.02)",
+    }}>
+      <button onClick={() => setOpen(o => !o)} style={{
+        width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "11px 16px", background: "none", border: "none", cursor: "pointer", gap: 12, textAlign: "left",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>Launch checklist</span>
+          <span style={{
+            fontSize: 11, padding: "1px 8px", borderRadius: 999, fontWeight: 600,
+            background: allDone ? "rgba(61,158,95,0.12)" : "rgba(37,99,235,0.10)",
+            color: allDone ? "#3D9E5F" : "#2563EB",
+          }}>{doneCount}/{items.length}</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 64, height: 3, borderRadius: 999, background: "var(--line-2)", overflow: "hidden" }}>
+            <div style={{ height: "100%", borderRadius: 999, width: `${pct}%`, background: allDone ? "#3D9E5F" : "#2563EB", transition: "width 0.5s" }} />
+          </div>
+          <span style={{ fontSize: 10, color: "var(--fg-mute)" }}>{open ? "▲" : "▼"}</span>
+        </div>
+      </button>
+      {open && (
+        <div style={{ borderTop: "1px solid var(--line-2)", padding: "10px 16px 14px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px" }}>
+          {items.map(item => (
+            <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{
+                width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: item.done ? "rgba(61,158,95,0.15)" : "transparent",
+                border: `1.5px solid ${item.done ? "#3D9E5F" : "rgba(255,255,255,0.18)"}`,
+                transition: "all 0.2s",
+              }}>
+                {item.done && <span style={{ fontSize: 8, color: "#3D9E5F", fontWeight: 800, lineHeight: 1 }}>✓</span>}
+              </div>
+              <span style={{ fontSize: 12, color: item.done ? "var(--fg)" : "var(--fg-mute)" }}>{item.label}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function WorkspaceSidebar({
   title,
   status,
@@ -3651,6 +3728,17 @@ export function GoalWorkspace({
         )}
         {error && <p style={{ borderRadius: 8, border: "1px solid rgba(192,57,43,0.25)", background: "rgba(192,57,43,0.06)", padding: "8px 14px", fontSize: 12, color: "#C0392B", margin: 0 }}>{error}</p>}
       </div>
+
+      {/* Launch checklist */}
+      {sessionId && (
+        <LaunchChecklist
+          sessionId={sessionId}
+          done={done}
+          agents={visibleAgents}
+          agentList={agentList}
+          selectedStack={selectedStack}
+        />
+      )}
 
       {/* Agent pills + detail */}
       {agentList.length > 0 && (
