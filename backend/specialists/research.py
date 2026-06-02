@@ -64,81 +64,78 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
 
 
 _FOCUS_ROLES = {
-    "research": (
-        "MARKET INTELLIGENCE:\n"
-        "STEP 1 — Run ONE batch_search with ALL these queries simultaneously:\n"
-        "batch_search(queries=[\n"
-        "  'TOPIC market size TAM revenue 2024 2025 statistics',\n"
-        "  'TOPIC industry growth rate forecast CAGR report',\n"
-        "  'TOPIC venture capital funding rounds 2024 2025',\n"
-        "  'TOPIC customer demographics segments target audience',\n"
-        "  'TOPIC regulatory environment compliance requirements',\n"
-        "  'TOPIC market trends emerging technology adoption'\n"
-        "])\n"
-        "STEP 2 — news_search('TOPIC 2025 2026 latest')\n"
-        "STEP 3 — research_papers('TOPIC academic study user behavior market')\n"
-        "STEP 4 — 6+ fetch_and_read calls on the most valuable URLs found.\n\n"
-        "SELF-EVALUATION (run before obsidian_log):\n"
-        "Check if you have ALL of these. For each missing item, run 2 more targeted searches before logging:\n"
-        "[ ] TAM number with source (e.g. '$4.2B market, Source: Grand View Research 2024')\n"
-        "[ ] CAGR / growth rate with source\n"
-        "[ ] At least 3 named VC-backed companies or funded startups in this space\n"
-        "[ ] Target customer segment with specific pain point\n"
-        "[ ] Regulatory or compliance note\n"
-        "If any box is unchecked, search for it specifically before logging.\n\n"
-        "obsidian_log with: MARKET SIZE, GROWTH RATE, TAM/SAM/SOM, KEY SEGMENTS, REGULATORY, VC FUNDING DATA."
-    ),
-    "research_competitors": (
-        "COMPETITOR INTELLIGENCE — find REAL named companies in this specific market.\n\n"
-        "STEP 1 — Run ONE batch_search replacing TOPIC with the FULL product phrase from your task (no abbreviations):\n"
-        "batch_search(queries=[\n"
-        "  'TOPIC top companies platforms named list 2024 2025',\n"
-        "  'TOPIC startups named companies crunchbase funding 2022 2023 2024',\n"
-        "  'TOPIC alternatives site:g2.com OR site:capterra.com OR site:producthunt.com',\n"
-        "  'TOPIC best ranked review techcrunch venturebeat',\n"
-        "  'TOPIC Y Combinator a16z sequoia backed named startup',\n"
-        "  'TOPIC pricing model subscription plans cost per month',\n"
-        "  'TOPIC market map landscape named players 2024 2025'\n"
-        "])\n"
-        "STEP 2 — news_search('TOPIC company startup funding launch 2024 2025')\n"
-        "STEP 3 — patent_search('TOPIC')\n"
-        "STEP 4 — youtube_research('TOPIC platform demo review walkthrough')\n\n"
-        "STEP 5 — DEEP DIVE ON NAMED COMPETITORS:\n"
-        "You MUST have at least 5 specific named companies. "
-        "If you have fewer than 5, run MORE searches with different terms before continuing. "
-        "For EACH named competitor: fetch_and_read(their homepage URL) then fetch_and_read(their /pricing URL).\n\n"
-        "SELF-EVALUATION (run before obsidian_log):\n"
-        "[ ] At least 5 named competitors with homepage URLs\n"
-        "[ ] Pricing for at least 3 of them (specific dollar amounts)\n"
-        "[ ] Funding amount for at least 2 of them\n"
-        "[ ] At least 1 clear gap or weakness in the competitive landscape\n"
-        "[ ] At least 1 YouTube or TikTok creator covering this space\n"
-        "For each unchecked box, run 2 more targeted searches before logging.\n\n"
-        "obsidian_log with: COMPETITOR TABLE (name, URL, pricing, funding, strengths, weaknesses, market position), "
-        "WHITESPACE OPPORTUNITIES, VIDEO INSIGHTS, PRICING COMPARISON."
-    ),
-    "research_execution": (
-        "EXECUTION STRATEGY RESEARCH — how to actually build and launch this specific product.\n\n"
-        "STEP 1 — Run ONE batch_search replacing TOPIC with the FULL product phrase from your task (no abbreviations):\n"
-        "batch_search(queries=[\n"
-        "  'how to build TOPIC startup go-to-market strategy',\n"
-        "  'TOPIC business model revenue streams monetization subscription',\n"
-        "  'TOPIC tech stack architecture engineering how it works',\n"
-        "  'TOPIC customer acquisition cost CAC LTV unit economics',\n"
-        "  'TOPIC user pain points reddit complaints what users want',\n"
-        "  'TOPIC regulatory legal compliance requirements'\n"
-        "])\n"
-        "STEP 2 — youtube_research('TOPIC how to build launch tutorial founder')\n"
-        "STEP 3 — 6+ fetch_and_read calls on the most actionable URLs found.\n\n"
-        "SELF-EVALUATION (run before obsidian_log):\n"
-        "[ ] Specific tech stack recommendation (name actual frameworks, DBs, APIs)\n"
-        "[ ] CAC and LTV estimates with source\n"
-        "[ ] At least 2 specific GTM channels with evidence they work for this space\n"
-        "[ ] Named user persona with specific pain point and willingness to pay\n"
-        "[ ] At least 1 regulatory or legal risk specific to this domain\n"
-        "For each unchecked box, run 2 more targeted searches before logging.\n\n"
-        "obsidian_log with: RECOMMENDED TECH STACK, GTM STRATEGY, PRICING MODEL, FIRST 90 DAYS PLAN, USER PERSONAS, KEY RISKS, REGULATORY NOTES, VIDEO CREATOR INSIGHTS."
-    ),
+    "research": {
+        "goal": "MARKET INTELLIGENCE",
+        "query_brief": (
+            "Generate 30 search queries to research the market for: TOPIC\n"
+            "Cover: market size/TAM, growth rate/CAGR, VC funding, customer segments, "
+            "regulatory landscape, market trends, academic research, news, use cases, "
+            "industry reports, demographics, pain points, geographic markets, adjacent markets."
+        ),
+        "instructions": (
+            "STEP 1 — Run batch_search with the first 8 queries from your SEARCH_QUERIES list.\n"
+            "STEP 2 — Run batch_search with queries 9-16.\n"
+            "STEP 3 — Run batch_search with queries 17-24.\n"
+            "STEP 4 — Run batch_search with queries 25-30 + news_search + research_papers.\n"
+            "STEP 5 — fetch_and_read the 8 most valuable URLs found across all results.\n\n"
+            "SELF-EVALUATION before obsidian_log:\n"
+            "[ ] TAM number with source\n[ ] CAGR with source\n"
+            "[ ] 3+ named VC-backed companies in this space\n"
+            "[ ] Target customer segment with specific pain point\n"
+            "[ ] Regulatory or compliance note\n"
+            "For each unchecked box, run 2 more searches.\n\n"
+            "obsidian_log: MARKET SIZE, GROWTH RATE, TAM/SAM/SOM, KEY SEGMENTS, REGULATORY, VC FUNDING."
+        ),
+    },
+    "research_competitors": {
+        "goal": "COMPETITOR INTELLIGENCE — find REAL named companies",
+        "query_brief": (
+            "Generate 30 search queries to find competitors for: TOPIC\n"
+            "Cover: named companies list, crunchbase/funding, G2/Capterra/ProductHunt alternatives, "
+            "YC/a16z/sequoia backed startups, pricing pages, market maps, reddit recommendations, "
+            "techcrunch/venturebeat reviews, vs comparisons, feature comparisons, customer reviews, "
+            "LinkedIn company searches, investor portfolios, patent holders, acquisition targets."
+        ),
+        "instructions": (
+            "STEP 1 — Run batch_search with queries 1-8.\n"
+            "STEP 2 — Run batch_search with queries 9-16.\n"
+            "STEP 3 — Run batch_search with queries 17-24.\n"
+            "STEP 4 — Run batch_search with queries 25-30 + patent_search + youtube_research.\n"
+            "STEP 5 — For EACH named competitor found: fetch_and_read their homepage + /pricing page.\n"
+            "         You MUST find at least 5 named companies. Run more searches if needed.\n\n"
+            "SELF-EVALUATION before obsidian_log:\n"
+            "[ ] 5+ named competitors with URLs\n[ ] Pricing for 3+ of them\n"
+            "[ ] Funding for 2+ of them\n[ ] 1+ clear market gap\n[ ] 1+ video creator in this space\n"
+            "For each unchecked box, run 2 more searches.\n\n"
+            "obsidian_log: COMPETITOR TABLE (name, URL, pricing, funding, strengths, weaknesses), "
+            "WHITESPACE OPPORTUNITIES, VIDEO INSIGHTS, PRICING COMPARISON."
+        ),
+    },
+    "research_execution": {
+        "goal": "EXECUTION STRATEGY — how to build and launch this product",
+        "query_brief": (
+            "Generate 30 search queries for execution strategy for: TOPIC\n"
+            "Cover: go-to-market strategy, tech stack choices, business model, revenue streams, "
+            "CAC/LTV/unit economics, sales channels, user pain points (reddit/forums), "
+            "founder interviews, YC advice, regulatory requirements, hiring plan, "
+            "pricing strategy, growth hacks, customer success stories, build vs buy decisions."
+        ),
+        "instructions": (
+            "STEP 1 — Run batch_search with queries 1-8.\n"
+            "STEP 2 — Run batch_search with queries 9-16.\n"
+            "STEP 3 — Run batch_search with queries 17-24.\n"
+            "STEP 4 — Run batch_search with queries 25-30 + youtube_research.\n"
+            "STEP 5 — fetch_and_read the 8 most actionable URLs.\n\n"
+            "SELF-EVALUATION before obsidian_log:\n"
+            "[ ] Specific tech stack (actual frameworks, DBs, APIs)\n"
+            "[ ] CAC and LTV estimates with source\n"
+            "[ ] 2+ GTM channels with evidence\n"
+            "[ ] Named user persona with pain point and WTP\n"
+            "[ ] 1+ regulatory risk specific to this domain\n"
+            "For each unchecked box, run 2 more searches.\n\n"
+            "obsidian_log: TECH STACK, GTM STRATEGY, PRICING MODEL, FIRST 90 DAYS, USER PERSONAS, KEY RISKS, REGULATORY."
+        ),
+    },
 }
 
 
@@ -164,39 +161,16 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
 
 
     from backend.config import settings
-    focus_searches = _FOCUS_ROLES.get(agent_name, _FOCUS_ROLES["research"])
+    focus_config = _FOCUS_ROLES.get(agent_name, _FOCUS_ROLES["research"])
+
+    # Role prompt is built at run-time (after queries are generated), so use a placeholder
     agent = Agent(
         name=agent_name,
         model=settings.planner_model_name,
         model_base_url=settings.planner_model_base_url,
         model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
         max_iterations=40,
-        role=(
-            "You are an elite deep research specialist. You produce investment-grade research. "
-            "Prioritize speed + quality: complete core coverage fast, then stop once evidence is sufficient.\n\n"
-            "CRITICAL — SEARCH QUERY RULES:\n"
-            "1. Copy the EXACT product/domain phrase from your TASK INSTRUCTION into every search query.\n"
-            "   Use the full descriptive phrase — NEVER shorten, abbreviate, or use acronyms.\n"
-            "   Example: task says 'co-founder matching platform' → search 'co-founder matching platform market size'\n"
-            "   NEVER: 'CO matching' or 'co matching' or just 'matching platform'\n"
-            "2. Your search queries MUST contain 4+ words describing the specific product/service.\n"
-            "3. FORBIDDEN in queries: single words, abbreviations, acronyms, Wikipedia searches.\n"
-            "4. If the task mentions a company name, include it in searches.\n\n"
-            "TOOLS:\n"
-            "- batch_search(queries=[...]) — run 3-8 searches IN PARALLEL. USE THIS FIRST for speed.\n"
-            "- search_and_fetch(query) — single search + fetch. Use for follow-up searches.\n"
-            "- fetch_and_read(url) — read a specific URL in full depth.\n"
-            "- research_papers(query) — academic papers.\n"
-            "- news_search(query) — recent news.\n"
-            "- patent_search(query) — IP landscape.\n"
-            "- youtube_research(query) — YouTube video metadata + transcripts.\n"
-            "- tiktok_research(query) — TikTok video metadata + captions.\n"
-            "- obsidian_log — FINAL step only after ALL searches complete.\n\n"
-            "SPEED REQUIREMENT: Start with ONE batch_search call containing 4-6 queries to run them all in parallel.\n"
-            "Then use individual search_and_fetch for follow-ups. This cuts research time by 4x.\n\n"
-            "YOUR MANDATORY SEARCH SEQUENCE — replace TOPIC with the FULL product/domain phrase from your task (4+ words, no abbreviations):\n\n"
-            + focus_searches
-        ),
+        role="ROLE_PLACEHOLDER",  # replaced at runtime after query generation
         tools={
             "batch_search": auto_batch,
             "search_and_fetch": auto_search,
@@ -217,13 +191,85 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
 
     async def _patched_run(ctx: AgentContext):
         ctx_holder[0] = ctx
-        if "TOPIC" in agent.role:
-            topic_phrase = await _extract_topic(ctx.goal or "")
-            agent.role = agent.role.replace("TOPIC", topic_phrase)
+        topic = await _extract_topic(ctx.goal or "")
+        queries = await _generate_queries(topic, focus_config["query_brief"])
+        # Format queries into 4 batches of ~8 for the agent to call sequentially
+        batches = [queries[i:i+8] for i in range(0, len(queries), 8)]
+        query_block = "\n".join(
+            f"Batch {i+1}: {b}" for i, b in enumerate(batches)
+        )
+        agent.role = (
+            f"You are an elite deep research specialist focused on: {focus_config['goal']}.\n\n"
+            f"SEARCH QUERIES (pre-generated for '{topic}' — use exactly as written):\n"
+            f"{query_block}\n\n"
+            "TOOLS:\n"
+            "- batch_search(queries=[...]) — runs up to 8 searches IN PARALLEL.\n"
+            "- search_and_fetch(query) — single search for follow-ups.\n"
+            "- fetch_and_read(url) — read a specific URL.\n"
+            "- research_papers(query) — academic papers.\n"
+            "- news_search(query) — recent news.\n"
+            "- patent_search(query) — IP landscape.\n"
+            "- youtube_research(query) — YouTube transcripts.\n"
+            "- tiktok_research(query) — TikTok content.\n"
+            "- obsidian_log — FINAL step only.\n\n"
+            f"{focus_config['instructions']}"
+        )
         return await _original_run(ctx)
 
     agent.run = _patched_run
     return agent
+
+
+async def _generate_queries(topic: str, query_brief: str) -> list:
+    """Ask the LLM to generate 30 targeted search queries for the given topic and research angle."""
+    import asyncio, json
+    from backend.config import settings
+    brief = query_brief.replace("TOPIC", topic)
+    try:
+        from openai import OpenAI
+        client = OpenAI(
+            base_url=settings.planner_model_base_url,
+            api_key=settings.planner_model_api_key or settings.agent_model_api_key,
+        )
+        resp = await asyncio.to_thread(
+            client.chat.completions.create,
+            model=settings.planner_model_name,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"{brief}\n\n"
+                    "Rules:\n"
+                    "- Each query must be 4-10 words\n"
+                    "- Use the exact topic phrase, never abbreviate it\n"
+                    "- Each query targets a different angle (don't repeat)\n"
+                    "- Include site: operators, named sources, and year filters where useful\n"
+                    "- No generic queries like 'technology trends' or 'market overview'\n\n"
+                    "Output ONLY a JSON array of 30 query strings. No explanation."
+                ),
+            }],
+            max_tokens=800,
+            temperature=0.4,
+        )
+        raw = resp.choices[0].message.content.strip()
+        # Strip markdown fences if present
+        if "```" in raw:
+            raw = raw.split("```")[1].lstrip("json").strip()
+        queries = json.loads(raw)
+        if isinstance(queries, list) and len(queries) >= 10:
+            return [str(q) for q in queries[:30]]
+    except Exception as e:
+        logger.warning("_generate_queries failed: %s", e)
+    # Fallback: basic queries using topic
+    return [
+        f"{topic} market size 2024 2025",
+        f"{topic} industry growth forecast",
+        f"{topic} top companies list",
+        f"{topic} funding rounds crunchbase",
+        f"{topic} customer reviews reddit",
+        f"{topic} pricing subscription cost",
+        f"{topic} go-to-market strategy",
+        f"{topic} tech stack architecture",
+    ]
 
 
 async def _extract_topic(goal: str) -> str:
