@@ -1,5 +1,9 @@
 """Research specialist — autonomous browser-powered research."""
+import asyncio
 import functools
+import logging
+
+logger = logging.getLogger(__name__)
 from backend.core.agent import Agent, AgentContext
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
 from backend.tools.browser_research import search_and_fetch, fetch_and_read, research_papers, batch_search
@@ -191,33 +195,62 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
 
     async def _patched_run(ctx: AgentContext):
         ctx_holder[0] = ctx
+
+        # Step 1: extract topic, then generate 30 queries for it
         topic = await _extract_topic(ctx.goal or "")
         queries = await _generate_queries(topic, focus_config["query_brief"])
-        # Format queries into 4 batches of ~8 for the agent to call sequentially
-        batches = [queries[i:i+8] for i in range(0, len(queries), 8)]
-        query_block = "\n".join(
-            f"Batch {i+1}: {b}" for i, b in enumerate(batches)
-        )
+
+        # Step 2: pipeline search — generate 3 queries, start searching, generate next 3 simultaneously
+        # Split into batches of 3 and run them as a pipeline with asyncio
+        import json as _json
+        search_results = await _pipeline_search(queries, batch_size=3)
+
+        # Combine all search results into a pre-fetched context block
+        combined = []
+        for r in search_results:
+            if isinstance(r, dict) and r.get("combined_formatted"):
+                combined.append(r["combined_formatted"][:4000])
+            elif isinstance(r, dict) and r.get("formatted"):
+                combined.append(r["formatted"][:2000])
+        pre_fetched = "\n\n---\n\n".join(combined)[:40000]
+
         agent.role = (
-            f"You are an elite deep research specialist focused on: {focus_config['goal']}.\n\n"
-            f"SEARCH QUERIES (pre-generated for '{topic}' — use exactly as written):\n"
-            f"{query_block}\n\n"
-            "TOOLS:\n"
-            "- batch_search(queries=[...]) — runs up to 8 searches IN PARALLEL.\n"
-            "- search_and_fetch(query) — single search for follow-ups.\n"
-            "- fetch_and_read(url) — read a specific URL.\n"
-            "- research_papers(query) — academic papers.\n"
-            "- news_search(query) — recent news.\n"
-            "- patent_search(query) — IP landscape.\n"
-            "- youtube_research(query) — YouTube transcripts.\n"
-            "- tiktok_research(query) — TikTok content.\n"
-            "- obsidian_log — FINAL step only.\n\n"
+            f"You are an elite deep research specialist focused on: {focus_config['goal']}.\n"
+            f"Topic: {topic}\n\n"
+            f"SEARCH RESULTS (already fetched — do NOT re-run these searches):\n"
+            f"{pre_fetched}\n\n"
+            "YOUR JOB NOW:\n"
+            "1. Read the search results above carefully.\n"
+            "2. Call fetch_and_read on the 6-8 most valuable URLs found in the results above.\n"
+            "3. Run news_search and research_papers for any gaps.\n"
+            "4. Self-evaluate and run targeted follow-up searches for anything missing.\n"
+            "5. Call obsidian_log with your complete findings.\n\n"
+            "TOOLS: fetch_and_read, search_and_fetch, news_search, research_papers, "
+            "patent_search, youtube_research, batch_search, obsidian_log.\n\n"
             f"{focus_config['instructions']}"
         )
         return await _original_run(ctx)
 
     agent.run = _patched_run
     return agent
+
+
+async def _pipeline_search(queries: list, batch_size: int = 3) -> list:
+    """
+    Pipeline: kick off searching each batch of `batch_size` queries as soon as
+    the previous batch is in-flight — no waiting for results before starting next.
+    Returns list of batch_search result dicts.
+    """
+    import asyncio
+    batches = [queries[i:i+batch_size] for i in range(0, len(queries), batch_size)]
+    tasks = [asyncio.create_task(_run_batch(b)) for b in batches]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    return [r for r in results if isinstance(r, dict)]
+
+
+async def _run_batch(queries: list) -> dict:
+    import asyncio
+    return await asyncio.to_thread(batch_search, queries, 6)
 
 
 async def _generate_queries(topic: str, query_brief: str) -> list:
