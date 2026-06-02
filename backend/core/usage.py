@@ -23,6 +23,7 @@ _PRICING: dict[str, tuple[float, float, float]] = {
     "moonshotai/kimi-k2.6:free":                         (0.00,  0.00,  0.00),
     "google/gemma-4-31b-it:free":                        (0.00,  0.00,  0.00),
     "inclusionai/ling-2.6-flash":                        (0.01,  0.03,  0.00),
+    "meta-llama/Llama-3.3-70B-Instruct-Turbo":           (0.05,  0.15,  0.01),
 }
 
 _DEFAULT_PRICING = (0.10, 0.30, 0.02)
