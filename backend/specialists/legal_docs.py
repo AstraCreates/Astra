@@ -14,9 +14,9 @@ def build_legal_docs_agent(**kwargs) -> Agent:
         _obsidian_read_done["done"] = True
         return obsidian_read(**kw)
 
+    kwargs.setdefault("max_iterations", 20)
     return Agent(
         name="legal_docs",
-        max_iterations=20,
         role=(
             "You are a legal documents specialist. Draft full legal documents and save each as a PDF.\n\n"
             "MANDATORY WORKFLOW — execute every step in order:\n"

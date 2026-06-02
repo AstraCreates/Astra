@@ -17,9 +17,9 @@ def build_legal_ip_agent(**kwargs) -> Agent:
         _obsidian_read_done["done"] = True
         return obsidian_read(**kw)
 
+    kwargs.setdefault("max_iterations", 20)
     return Agent(
         name="legal_ip",
-        max_iterations=20,
         role=(
             "You are an IP protection specialist. Analyze the patent landscape, assess trademark risk, "
             "draft trade secret and IP assignment policies, and produce a comprehensive IP strategy report as a PDF.\n\n"

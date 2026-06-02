@@ -6,6 +6,7 @@ from backend.tools.pdf_generator import generate_pdf
 
 
 def build_marketing_content_agent(**kwargs) -> Agent:
+    kwargs.setdefault("max_iterations", 25)
     return Agent(
         name="marketing_content",
         role=(
@@ -39,7 +40,6 @@ def build_marketing_content_agent(**kwargs) -> Agent:
             "Use the founder_id and session_id passed in context for every tool call that requires them.\n\n"
             "Once all 5 steps are complete, call done immediately with the full output payload."
         ),
-        max_iterations=25,
         tools={
             "generate_reel_package": generate_reel_package,
             "generate_tiktok_package": generate_tiktok_package,
