@@ -973,7 +973,9 @@ class Orchestrator:
         asyncio.create_task(_bg_replan())
 
         tasks = parallel_research_tasks + other_agents_initial
+        logger.info("Task list: research_tasks=%s, other_agents=%s", [t["agent"] for t in parallel_research_tasks], [t["agent"] for t in other_agents_initial])
         remaining = [t for t in tasks if t["agent"] not in _RESEARCH_AGENTS]
+        logger.info("Non-research remaining tasks: %s", [t["agent"] for t in remaining])
 
         # design must finish before web (web uses brand colors/fonts from design output)
         _design_task = next((t for t in remaining if t["agent"] == "design"), None)
@@ -984,6 +986,7 @@ class Orchestrator:
                 _web_task["depends_on"].append(_design_task["id"])
 
         # Run remaining agents in parallel (all depends_on research which is done)
+        logger.info("Starting non-research agents phase: remaining=%s", [t["agent"] for t in remaining])
         in_flight: set[str] = set()
         while remaining or in_flight:
             ready = [
