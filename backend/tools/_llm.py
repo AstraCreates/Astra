@@ -203,3 +203,146 @@ def generate_image(description: str, width: int = 1024, height: int = 1024, foun
         }
     except Exception as e:
         return {"prompt": image_prompt, "error": str(e), "model": _IMAGE_MODEL}
+
+
+def generate_logo(
+    brand_name: str,
+    style: str = "wordmark",
+    colors: str = "",
+    vibe: str = "",
+    founder_id: str = "",
+    session_id: str = "",
+) -> dict:
+    """Generate a logo image using FLUX.
+    style: 'wordmark' (full name + icon) or 'icon' (symbol only, no text).
+    colors: brand color hex codes or description.
+    vibe: brand personality (minimal, bold, playful, luxury, tech).
+    Returns {base64, prompt, style, brand_name}.
+    """
+    import openai
+
+    if founder_id:
+        allowed, _ = _check_image_budget(founder_id)
+        if not allowed:
+            return {"error": "Monthly image budget exhausted.", "style": style}
+
+    client = openai.OpenAI(base_url=_DI_BASE, api_key=_api_key())
+
+    if style == "wordmark":
+        system = (
+            "You write FLUX prompts for wordmark logos — company name rendered as a typographic logo.\n\n"
+            "Rules:\n"
+            "- Pure white background, centered composition\n"
+            "- The brand name must appear as clean, professional lettering\n"
+            "- Choose ONE distinctive font style: geometric sans / editorial serif / bold display / monospace tech\n"
+            "- Small icon or symbol to the LEFT of the text (abstract shape, not literal)\n"
+            "- Specify exact colors (hex or color name)\n"
+            "- No gradients, no drop shadows, no decorative borders\n"
+            "- End with: 'vector logo design, flat, white background, professional branding'\n"
+            "- 30-50 words max. Output ONLY the prompt."
+        )
+        user = f"Brand: {brand_name}\nColors: {colors or 'deep navy and electric blue'}\nVibe: {vibe or 'modern tech startup'}\nWrite the FLUX wordmark logo prompt."
+    else:  # icon
+        system = (
+            "You write FLUX prompts for icon logos — a standalone symbol with NO text.\n\n"
+            "Rules:\n"
+            "- Pure white background, centered composition\n"
+            "- Abstract geometric symbol that represents the brand concept\n"
+            "- Bold, simple, scalable — recognizable at small sizes\n"
+            "- Specify exact colors (hex or color name)\n"
+            "- No text, no letters, no brand name in the image\n"
+            "- End with: 'app icon design, flat vector, white background, minimal'\n"
+            "- 25-40 words max. Output ONLY the prompt."
+        )
+        user = f"Brand: {brand_name}\nColors: {colors or 'deep navy and electric blue'}\nVibe: {vibe or 'modern tech startup'}\nWhat the brand does: {vibe}\nWrite the FLUX icon logo prompt."
+
+    resp = client.chat.completions.create(
+        model=_PROMPT_MODEL,
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        max_tokens=80,
+        temperature=0.5,
+        timeout=20.0,
+    )
+    logo_prompt = (resp.choices[0].message.content or "").strip().strip('"\'')
+    logger.info("Logo prompt (%s): %s", style, logo_prompt)
+
+    try:
+        img_client = openai.OpenAI(base_url=_DI_BASE, api_key=_api_key())
+        img_resp = img_client.images.generate(
+            model=_IMAGE_MODEL,
+            prompt=logo_prompt,
+            size="1024x1024",
+            n=1,
+            response_format="b64_json",
+            timeout=120.0,
+        )
+        b64 = img_resp.data[0].b64_json if img_resp.data else None
+        if founder_id and b64:
+            _record_image_spend(founder_id)
+            if session_id:
+                _save_image_to_vault(None, b64, logo_prompt, founder_id, session_id)
+        return {"base64": b64, "prompt": logo_prompt, "style": style, "brand_name": brand_name}
+    except Exception as e:
+        return {"error": str(e), "style": style, "brand_name": brand_name}
+
+
+def composite_logo_on_image(
+    background_base64: str,
+    logo_base64: str,
+    position: str = "bottom-right",
+    scale: float = 0.15,
+) -> dict:
+    """Composite a logo onto an ad image using PIL.
+    position: 'bottom-right', 'bottom-left', 'top-right', 'top-left', 'bottom-center'
+    scale: logo size as fraction of image width (0.10-0.25 recommended)
+    Returns {base64} of the composited image.
+    """
+    try:
+        import base64 as _b64
+        from PIL import Image
+        import io
+
+        def _decode(b64str: str) -> Image.Image:
+            raw = b64str.split(",", 1)[-1] if "," in b64str else b64str
+            return Image.open(io.BytesIO(_b64.b64decode(raw))).convert("RGBA")
+
+        bg = _decode(background_base64)
+        logo = _decode(logo_base64)
+
+        # Resize logo
+        logo_w = int(bg.width * scale)
+        logo_h = int(logo.height * (logo_w / logo.width))
+        logo = logo.resize((logo_w, logo_h), Image.LANCZOS)
+
+        # Remove white background from logo (make it transparent)
+        data = logo.getdata()
+        new_data = []
+        for r, g, b, a in data:
+            if r > 240 and g > 240 and b > 240:
+                new_data.append((r, g, b, 0))
+            else:
+                new_data.append((r, g, b, a))
+        logo.putdata(new_data)
+
+        margin = int(bg.width * 0.03)
+        positions = {
+            "bottom-right": (bg.width - logo_w - margin, bg.height - logo_h - margin),
+            "bottom-left":  (margin, bg.height - logo_h - margin),
+            "top-right":    (bg.width - logo_w - margin, margin),
+            "top-left":     (margin, margin),
+            "bottom-center": ((bg.width - logo_w) // 2, bg.height - logo_h - margin),
+        }
+        pos = positions.get(position, positions["bottom-right"])
+
+        composite = bg.copy()
+        composite.paste(logo, pos, logo)
+
+        buf = io.BytesIO()
+        composite.convert("RGB").save(buf, format="PNG")
+        result_b64 = _b64.b64encode(buf.getvalue()).decode()
+        return {"base64": result_b64, "position": position}
+    except ImportError:
+        return {"error": "PIL not installed — run: pip install Pillow", "base64": background_base64}
+    except Exception as e:
+        logger.warning("composite_logo_on_image failed: %s", e)
+        return {"error": str(e), "base64": background_base64}

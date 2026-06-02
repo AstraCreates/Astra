@@ -500,6 +500,10 @@ function TechnicalPreview({ state }: { state: AgentState }) {
 function DesignPreview({ state }: { state: AgentState }) {
   const result = state.result ?? {};
 
+  // Logos from design agent
+  const logoWordmark = result.logo_wordmark as Record<string, unknown> | undefined;
+  const logoIcon = result.logo_icon as Record<string, unknown> | undefined;
+
   // Brand images from design agent (generate_brand_image tool) or adImages captured live
   const brandImagesRaw = (result.brand_images ?? result.brand_image ?? []) as Array<Record<string, unknown>>;
   const brandImages = [
@@ -591,6 +595,26 @@ function DesignPreview({ state }: { state: AgentState }) {
         <div style={{ borderRadius: 10, border: "1px solid rgba(0,0,0,0.08)", background: "rgba(255,255,255,0.03)", padding: "8px 10px", fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.6 }}>
           <div style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)", marginBottom: 4 }}>Logo direction</div>
           {logoBrief.slice(0, 320)}
+        </div>
+      )}
+      {(logoWordmark || logoIcon) && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)" }}>Logos</span>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            {[{ label: "Wordmark", data: logoWordmark }, { label: "Icon", data: logoIcon }].map(({ label, data }) => {
+              if (!data?.base64) return null;
+              const src = `data:image/png;base64,${data.base64}`;
+              return (
+                <div key={label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                  <div style={{ borderRadius: 10, border: "1px solid var(--line)", background: "#fff", padding: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <img src={src} alt={label} style={{ display: "block", maxWidth: label === "Wordmark" ? 200 : 80, maxHeight: 80, objectFit: "contain" }} />
+                  </div>
+                  <span style={{ fontSize: 9, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</span>
+                  <a href={src} download={`logo-${label.toLowerCase()}.png`} style={{ fontSize: 9, color: "#3D9E5F" }}>↓ download</a>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
       {brandImages.length > 0 && (
