@@ -239,7 +239,7 @@ class Orchestrator:
         return "Venture"
 
     async def _expand_goal(self, goal: str, session_id: str) -> str:
-        """Expand a terse founder prompt into a rich, specific goal using Qwen3-235B."""
+        """Expand a terse founder prompt using the planner model (fast, low latency)."""
         from backend.config import settings
         from backend.core.events import publish
         system = (
@@ -259,7 +259,7 @@ class Orchestrator:
             )
             resp = await asyncio.to_thread(
                 client.chat.completions.create,
-                model="deepseek-ai/DeepSeek-V4-Flash",
+                model=settings.planner_model_name,  # Llama-4-Scout — fast, cheap
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": goal},
@@ -892,13 +892,11 @@ class Orchestrator:
             })
             logger.info("Task %s (%s) done", tid, agent_name)
 
-        # Phase A: run all research agents in background; start other agents as soon
-        # as accumulated research output crosses a readiness threshold.
-        _research_ready = asyncio.Event()
-        _READINESS_CHARS = 1500  # minimum research text before unblocking other agents
+        # Phase A: start ALL agents immediately in parallel — research and specialists together.
+        # Research results flow into shared context as they arrive; specialists pick them up
+        # via shared["result_research"] etc. Replan runs in background and enriches instructions.
 
         def _collect_research() -> tuple[dict, list[str]]:
-            """Merge completed research results + vault notes into (result_dict, merged_notes)."""
             from backend.tools.obsidian_logger import _note_path
             import re as _re2
             result: dict = {}
@@ -917,82 +915,56 @@ class Orchestrator:
                     pass
             return result, notes
 
-        async def _run_research_tracked(task: dict) -> None:
-            await _run_task(task)
-            # After each research agent completes, check if we have enough to proceed
-            r, n = _collect_research()
-            total_text = len(r.get("obsidian_content", "") or "") + sum(len(x) for x in n)
-            if total_text >= _READINESS_CHARS or all(
-                rt["id"] in completed for rt in parallel_research_tasks
-            ):
-                _research_ready.set()
-
+        # Launch research in background
         research_bg_tasks = [
-            asyncio.create_task(_run_research_tracked(t)) for t in parallel_research_tasks
+            asyncio.create_task(_run_task(t)) for t in parallel_research_tasks
         ]
 
-        # Wait until research is ready OR all research completes (whichever comes first)
-        try:
-            await asyncio.wait_for(_research_ready.wait(), timeout=600)
-        except asyncio.TimeoutError:
-            _research_ready.set()
-
-        if True:
-            # Phase B: replan with whatever research is available; remaining research continues in background
-            research_result, merged_notes = _collect_research()
-            agents_needed = [t["agent"] for t in other_agents_initial]
-            if agents_needed:
+        # Background replan: when research is ready, update shared with enriched instructions
+        async def _bg_replan():
+            try:
+                # Wait for at least one research agent to finish
+                done, _ = await asyncio.wait(
+                    research_bg_tasks,
+                    return_when=asyncio.FIRST_COMPLETED,
+                    timeout=600,
+                )
+                if not done:
+                    return
+                research_result, merged_notes = _collect_research()
+                if merged_notes:
+                    research_result["obsidian_content"] = "\n\n---\n\n".join(merged_notes)
+                agents_needed = [t["agent"] for t in other_agents_initial]
+                if not agents_needed:
+                    return
                 detailed_tasks = await self._replan_with_research(goal, research_result, agents_needed, stack_context)
                 if detailed_tasks:
-                    detailed_by_agent = {t["agent"]: t for t in detailed_tasks}
-                    for task in detailed_tasks:
-                        template_task = stack_task_by_agent.get(task["agent"])
-                        if not template_task:
-                            continue
-                        task["stack_task_title"] = template_task.title
-                        task["expected_artifacts"] = list(template_task.artifacts)
-                        stack_deps = [
-                            detailed_by_agent[stack_task_by_agent[dep_agent].agent]["id"]
-                            for dep_agent in stack_task_by_agent
-                            if stack_task_by_agent[dep_agent].id in template_task.depends_on
-                            and stack_task_by_agent[dep_agent].agent in detailed_by_agent
-                            and stack_task_by_agent[dep_agent].agent not in _RESEARCH_AGENTS
-                        ]
-                        task["depends_on"] = stack_deps
-                    # Re-emit updated plan with detailed instructions
+                    # Update shared so any agent that hasn't started yet gets enriched instructions
+                    for dt in detailed_tasks:
+                        shared[f"enriched_instruction_{dt['agent']}"] = dt["instruction"]
                     await publish(session_id, {
                         "type": "plan_done",
                         "tasks": [{"id": t["id"], "agent": t["agent"], "instruction": t["instruction"]} for t in detailed_tasks],
                         "planner_model": self.planner.model,
                         "phase": "detailed",
                     })
-                    # Emit rich branching plan tree in background — don't block agents
+                    # Detailed plan tree in background
                     async def _bg_detailed_plan():
                         try:
                             _rs = research_result.get("obsidian_content") or ""
-                            if not _rs:
-                                import json as _json
-                                _rs = _json.dumps(research_result, default=str)[:5000]
                             tree_nodes = await self._generate_detailed_plan(goal, _rs, detailed_tasks)
                             if tree_nodes:
                                 await publish(session_id, {"type": "detailed_plan", "nodes": tree_nodes})
                         except Exception as _dp_err:
                             logger.warning("detailed_plan generation failed: %s", _dp_err)
                     asyncio.create_task(_bg_detailed_plan())
-                    tasks = parallel_research_tasks + detailed_tasks
-                else:
-                    # Research has already completed under runtime ids, so stack
-                    # dependencies that point at template research ids are satisfied.
-                    for task in other_agents_initial:
-                        task["depends_on"] = [
-                            dep for dep in task.get("depends_on", [])
-                            if dep not in {rt["id"] for rt in initial_tasks if rt["agent"] in _RESEARCH_AGENTS}
-                        ]
-                    tasks = parallel_research_tasks + other_agents_initial
+            except Exception as _rp_err:
+                logger.warning("Background replan failed: %s", _rp_err)
 
-            # Ensure all background research tasks finish (they continue enriching shared context)
-            asyncio.ensure_future(asyncio.gather(*research_bg_tasks, return_exceptions=True))
-            remaining = [t for t in tasks if t["agent"] not in _RESEARCH_AGENTS]
+        asyncio.create_task(_bg_replan())
+
+        tasks = parallel_research_tasks + other_agents_initial
+        remaining = [t for t in tasks if t["agent"] not in _RESEARCH_AGENTS]
 
         # design must finish before web (web uses brand colors/fonts from design output)
         _design_task = next((t for t in remaining if t["agent"] == "design"), None)
