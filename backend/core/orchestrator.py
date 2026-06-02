@@ -218,7 +218,7 @@ class Orchestrator:
             )
             resp = await asyncio.to_thread(
                 client.chat.completions.create,
-                model="deepseek-ai/DeepSeek-V4-Flash",
+                model=settings.or_planner_model,
                 messages=[
                     {"role": "system", "content": (
                         "Output ONLY a single company/product name for this startup idea. "

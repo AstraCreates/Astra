@@ -178,7 +178,7 @@ class Agent:
         extra: dict = {"cache_control": {"type": "ephemeral"}}
         # hy3-preview defaults to reasoning mode — disable for fast JSON output
         if "hy3" in self.model:
-            extra["reasoning"] = {"effort": "disabled"}
+            extra["reasoning"] = {"effort": "none"}
         kwargs: dict = dict(
             model=self.model,
             messages=messages,
