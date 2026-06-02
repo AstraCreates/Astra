@@ -986,19 +986,20 @@ class Orchestrator:
                 _web_task["depends_on"].append(_design_task["id"])
 
         # Run remaining agents in parallel (all depends_on research which is done)
-        logger.info("Starting non-research agents phase: remaining=%s", [t["agent"] for t in remaining])
+        logger.info("Starting non-research agents phase: remaining=%s, completed=%s", [t["agent"] for t in remaining], list(completed.keys()))
         in_flight: set[str] = set()
         while remaining or in_flight:
             ready = [
                 t for t in remaining
                 if all(dep in completed for dep in t.get("depends_on", []))
             ]
+            logger.info("Ready tasks: %s, remaining: %s, in_flight: %s", [t["agent"] for t in ready], [t["agent"] for t in remaining], in_flight)
             for t in ready:
                 remaining.remove(t)
                 in_flight.add(t["id"])
 
             if not ready and not in_flight:
-                logger.error("Dependency cycle or missing dep — aborting")
+                logger.error("Dependency cycle or missing dep — aborting. remaining=%s, completed=%s", [(t["agent"], t.get("depends_on", [])) for t in remaining], list(completed.keys()))
                 break
 
             if not ready:
