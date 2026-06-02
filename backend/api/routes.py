@@ -638,7 +638,9 @@ async def session_approval_workflow(session_id: str, request: Request):
 
 
 def _detect_rerun_intent(instruction: str, available_agents: list[str]) -> dict | None:
-    """Use LLM to detect if the message is a rerun request. Returns {agent, instruction} or None."""
+    """Use LLM to detect if the message is an agent action request.
+    Returns {agent, instruction, tools_only} or None if it's a general chat message.
+    """
     try:
         import openai, json as _json
         from backend.config import settings
@@ -651,26 +653,45 @@ def _detect_rerun_intent(instruction: str, available_agents: list[str]) -> dict 
             model=settings.or_planner_model,
             messages=[
                 {"role": "system", "content": (
-                    f"You are a chat intent classifier. Available agents: {agents_list}.\n\n"
-                    "If the user's message is asking to rerun, redo, regenerate, retry, or fix a specific agent, "
-                    "return JSON: {{\"intent\": \"rerun\", \"agent\": \"<agent_name>\", \"instruction\": \"<specific instruction or empty string>\"}}\n"
-                    "If it's NOT a rerun request, return JSON: {{\"intent\": \"other\"}}\n"
-                    "Map natural language to agent names: 'design'→design, 'logo'→design, 'landing page'→web, "
-                    "'website'→web, 'marketing'→marketing, 'ads'→marketing, 'legal'→legal, 'docs'→legal, "
-                    "'technical'→technical, 'code'→technical, 'mvp'→technical, 'sales'→sales, 'leads'→sales, "
-                    "'ops'→ops, 'fundraise'→ops, 'research'→research.\n"
+                    f"You are a chat intent classifier for an AI startup assistant. Available agents: {agents_list}.\n\n"
+                    "Classify the user's message and return JSON:\n\n"
+                    "IF the message asks an agent to do something (run, redo, fix, change, generate, update, make, add, remove anything):\n"
+                    '{"intent":"agent_action","agent":"<name>","instruction":"<complete precise instruction for the agent>","scope":"full"|"partial"}\n'
+                    "- scope=partial if they only want ONE thing changed (e.g. 'make the logo a star' → only regenerate logo, skip rest)\n"
+                    "- scope=full if they want the whole agent rerun\n"
+                    "- instruction must be a complete, specific task the agent can execute\n\n"
+                    "IF the message is a question or general chat (not asking an agent to do something):\n"
+                    '{"intent":"chat"}\n\n'
+                    "Agent mapping: logo/design/colors/wireframe/brand → design | landing page/website/deploy → web | "
+                    "marketing/ads/tiktok/instagram/email → marketing | legal/privacy/terms/docs → legal | "
+                    "code/mvp/technical/build/app → technical | sales/leads/outreach → sales | "
+                    "fundraise/investors/ops/pitch → ops | research/market/competitors → research\n\n"
+                    "For scope=partial, instruction must tell the agent to ONLY do that one thing and skip everything else.\n"
+                    "Example: 'make the logo a star' → agent=design, scope=partial, "
+                    'instruction="Regenerate ONLY the logo. Call generate_logo twice: once with style=wordmark and once with style=icon. '
+                    'For both, use a star geometric motif in the icon shape. Use the existing brand colors from your previous run. '
+                    'Skip color_palette, design_spec, wireframes, and brand_image — only regenerate logos. Call done with {logo_wordmark, logo_icon}."\n\n'
                     "Output ONLY valid JSON. No prose."
                 )},
                 {"role": "user", "content": instruction},
             ],
-            max_tokens=80,
+            max_tokens=300,
             temperature=0,
-            timeout=10.0,
+            timeout=15.0,
         )
         raw = (resp.choices[0].message.content or "").strip()
+        # Strip markdown fences
+        import re as _re
+        raw = _re.sub(r"^```(?:json)?\s*|\s*```$", "", raw).strip()
         parsed = _json.loads(raw)
-        if parsed.get("intent") == "rerun" and parsed.get("agent") in available_agents:
-            return {"agent": parsed["agent"], "instruction": parsed.get("instruction", "")}
+        if parsed.get("intent") == "agent_action" and parsed.get("agent") in available_agents:
+            return {
+                "agent": parsed["agent"],
+                "instruction": parsed.get("instruction", ""),
+                "scope": parsed.get("scope", "full"),
+            }
+        if parsed.get("intent") == "chat":
+            return None
     except Exception as e:
         logger.debug("rerun intent detection failed: %s", e)
     return None
