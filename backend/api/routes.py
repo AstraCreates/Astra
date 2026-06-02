@@ -247,10 +247,10 @@ async def submit_goal(body: GoalRequest, request: Request):
     _unlimited = _plan in ("scale", "beta")
     if not _unlimited and get_balance(body.founder_id) < 1:
         raise HTTPException(status_code=402, detail="Insufficient credits. Purchase more to continue.")
-
     constraints = dict(body.constraints or {})
     if body.stack_id:
         constraints["stack_id"] = body.stack_id
+    constraints["unlimited_credits"] = _unlimited
 
     # Register session in durable store before launching
     try:
@@ -285,20 +285,6 @@ async def submit_goal(body: GoalRequest, request: Request):
                 await publish(session_id, {"type": "goal_error", "error": str(e)})
             except Exception:
                 pass
-        finally:
-            # Deduct credits based on actual token usage — 10 credits per 1M tokens
-            if not _unlimited:
-                try:
-                    import math
-                    from backend.core.usage import get_session_cost
-                    from backend.credits.store import deduct_credits as _deduct
-                    usage = get_session_cost(session_id)
-                    tokens = usage.get("total_tokens", 0)
-                    credits_to_deduct = max(1, math.ceil(tokens * 10 / 1_000_000))
-                    _deduct(body.founder_id, credits_to_deduct,
-                            f"Goal run ({tokens:,} tokens)", session_id)
-                except Exception as _ce:
-                    logger.warning("Credit deduction failed for %s: %s", session_id, _ce)
 
     asyncio.create_task(_run())
     return {"session_id": session_id, "status": "running"}

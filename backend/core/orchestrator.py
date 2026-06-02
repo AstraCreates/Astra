@@ -738,10 +738,11 @@ class Orchestrator:
                 goal=task["instruction"],
                 founder_id=founder_id,
                 session_id=session_id,
+                unlimited_credits=bool((constraints or {}).get("unlimited_credits", False)),
                 shared={
                     **shared,
                     "prior_results": dep_results,
-                    "prior_vault_notes": vault_context_text,  # readable text, not raw dict
+                    "prior_vault_notes": vault_context_text,
                 },
             )
             if proprietary_engine:

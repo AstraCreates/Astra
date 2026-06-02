@@ -109,11 +109,12 @@ class AgentContext:
     goal: str
     founder_id: str
     session_id: str
-    shared: dict = field(default_factory=dict)  # P2P shared state
-    bypass_approvals: bool = False  # set True in tests to skip SafeRun approval gates
+    shared: dict = field(default_factory=dict)
+    bypass_approvals: bool = False
     task_id: str = ""
     dep_results: dict = field(default_factory=dict)
     vault_context: str = ""
+    unlimited_credits: bool = False  # scale/beta plans skip credit deduction
 
 
 class Agent:
@@ -173,16 +174,25 @@ class Agent:
             timeout=300.0,
             extra_body={"cache_control": {"type": "ephemeral"}},  # hint for providers that support explicit caching
         )
-        # Track token usage including cached tokens
+        # Track token usage and deduct credits per call
         if resp.usage and ctx:
             from backend.core.usage import record_usage
             cached = getattr(resp.usage, "prompt_tokens_details", None)
             cached_tokens = getattr(cached, "cached_tokens", 0) if cached else 0
-            record_usage(
-                ctx.session_id, self.model,
-                resp.usage.prompt_tokens, resp.usage.completion_tokens,
-                cached_tokens=cached_tokens,
-            )
+            prompt_t = resp.usage.prompt_tokens
+            completion_t = resp.usage.completion_tokens
+            record_usage(ctx.session_id, self.model, prompt_t, completion_t, cached_tokens=cached_tokens)
+            # Deduct credits: each token costs 10 units; 1,000,000 units = 1 credit
+            if not ctx.unlimited_credits:
+                try:
+                    import math
+                    from backend.credits.store import deduct_credits
+                    total_t = prompt_t + completion_t
+                    credits = max(1, math.ceil(total_t * 10 / 1_000_000))
+                    deduct_credits(ctx.founder_id, credits,
+                                   f"{self.name} call ({total_t:,} tokens)", ctx.session_id)
+                except Exception as _ce:
+                    logger.warning("Per-call credit deduction failed: %s", _ce)
         msg = resp.choices[0].message
         content = msg.content or ""
         # Strip DeepSeek-R1 <think> blocks
