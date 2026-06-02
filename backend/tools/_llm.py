@@ -264,20 +264,29 @@ def generate_logo(
             timeout=120.0,
         )
         # Extract base64 image from response
+        # OpenRouter Gemini returns images in message["images"] list (not content_parts)
         b64 = None
         msg = resp.choices[0].message if resp.choices else None
         if msg:
-            # Check content parts for image data
-            content = msg.content or ""
-            if hasattr(msg, "content_parts"):
+            # Method 1: raw dict images field (OpenRouter Gemini format)
+            raw_msg = resp.model_dump().get("choices", [{}])[0].get("message", {})
+            images = raw_msg.get("images") or []
+            for img in images:
+                url = (img.get("image_url") or {}).get("url", "") if isinstance(img, dict) else ""
+                if url.startswith("data:"):
+                    b64 = url.split(",", 1)[-1]
+                    break
+            # Method 2: content_parts
+            if not b64 and hasattr(msg, "content_parts"):
                 for part in (msg.content_parts or []):
                     if hasattr(part, "image_url") and part.image_url:
                         url = part.image_url.url or ""
                         if url.startswith("data:"):
                             b64 = url.split(",", 1)[-1]
                             break
-            # Fallback: look for base64 in content string
+            # Method 3: base64 pattern in content string
             if not b64:
+                content = msg.content or ""
                 m = _re.search(r'data:image/[^;]+;base64,([A-Za-z0-9+/=]+)', content)
                 if m:
                     b64 = m.group(1)
