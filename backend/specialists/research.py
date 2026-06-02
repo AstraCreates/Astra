@@ -32,7 +32,7 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
                     url = item.get("url", "")
                     title = item.get("title", "")
                     text = item.get("content") or item.get("text") or item.get("snippet") or ""
-                    lines.append(f"**[{title}]({url})**\n{text[:1500]}")
+                    lines.append(f"**[{title}]({url})**\n{text[:8000]}")
             content = "\n\n".join(lines) if lines else str(result)[:2000]
         elif isinstance(result, dict):
             # search_and_fetch returns {query, results, formatted}
@@ -44,7 +44,7 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
                     url = r.get("url", "")
                     title = r.get("title", "")
                     text = r.get("content") or r.get("snippet") or ""
-                    lines.append(f"**[{title}]({url})**\n{text[:1500]}")
+                    lines.append(f"**[{title}]({url})**\n{text[:8000]}")
                 content = "\n\n".join(lines) if lines else str(result)[:3000]
             else:
                 content = str(result)[:3000]
@@ -209,10 +209,10 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
         combined = []
         for r in search_results:
             if isinstance(r, dict) and r.get("combined_formatted"):
-                combined.append(r["combined_formatted"][:4000])
+                combined.append(r["combined_formatted"][:12000])
             elif isinstance(r, dict) and r.get("formatted"):
-                combined.append(r["formatted"][:2000])
-        pre_fetched = "\n\n---\n\n".join(combined)[:40000]
+                combined.append(r["formatted"][:8000])
+        pre_fetched = "\n\n---\n\n".join(combined)[:120000]
 
         agent.role = (
             f"You are an elite deep research specialist focused on: {focus_config['goal']}.\n"

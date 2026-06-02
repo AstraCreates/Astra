@@ -196,7 +196,7 @@ def search_and_fetch(query: str, max_results: int = 12) -> dict:
         formatted.append(f"\n### {r['title'] or r['url']}")
         formatted.append(f"URL: {r['url']}")
         if r.get("content"):
-            formatted.append(r["content"][:2000])
+            formatted.append(r["content"][:8000])
         elif r.get("snippet"):
             formatted.append(f"[snippet only] {r['snippet']}")
 
@@ -244,6 +244,6 @@ def batch_search(queries: list, max_results_each: int = 8) -> dict:
 
     return {
         "queries_run": len(queries),
-        "results_by_query": {q: {"total": r.get("total", 0), "formatted": r.get("formatted", "")[:2000]} for q, r in results_by_query.items()},
+        "results_by_query": {q: {"total": r.get("total", 0), "formatted": r.get("formatted", "")[:8000]} for q, r in results_by_query.items()},
         "combined_formatted": "\n".join(combined),
     }
