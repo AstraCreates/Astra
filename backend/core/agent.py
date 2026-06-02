@@ -454,6 +454,17 @@ class Agent:
             elif action == "tool":
                 tool_name = parsed.get("tool")
                 args = parsed.get("args", {})
+                # Some models wrap args under "arguments" key instead of "args"
+                if not args and "arguments" in parsed:
+                    args = parsed["arguments"]
+                    if isinstance(args, str):
+                        try:
+                            import json as _j; args = _j.loads(args)
+                        except Exception:
+                            args = {}
+                # Also unwrap if args itself has a single "arguments" key
+                if isinstance(args, dict) and list(args.keys()) == ["arguments"]:
+                    args = args["arguments"] or {}
                 # Hard-block repeated calls to one-shot tools
                 if tool_name in _ONE_SHOT_TOOLS and tool_name in _one_shot_done:
                     messages.append({"role": "user", "content": (

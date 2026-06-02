@@ -1000,13 +1000,21 @@ class Orchestrator:
             if _design_task["id"] not in _web_task["depends_on"]:
                 _web_task["depends_on"].append(_design_task["id"])
 
-        # Pre-populate completed with research task IDs so dependencies can resolve
-        # These will be filled in by research_bg_tasks as they complete
-        for rt in parallel_research_tasks:
-            completed[rt["id"]] = {}
+        # Wait for ALL research agents to finish, then fill completed so non-research deps resolve
+        logger.info("Waiting for research agents to finish: %s", [t["agent"] for t in parallel_research_tasks])
+        if research_bg_tasks:
+            await asyncio.gather(*research_bg_tasks)
+        logger.info("Research done. completed keys: %s", list(completed.keys()))
 
-        # Run remaining agents in parallel (all depends_on research which is done)
-        logger.info("Starting non-research agents phase: remaining=%s, completed=%s", [t["agent"] for t in remaining], list(completed.keys()))
+        # Now apply enriched instructions from background replan (if ready) before launching other agents
+        for t in remaining:
+            enriched = shared.get(f"enriched_instruction_{t['agent']}")
+            if enriched:
+                t["instruction"] = enriched
+                logger.info("Applied enriched instruction to %s", t["agent"])
+
+        # Run remaining agents in parallel (research is done, deps resolve)
+        logger.info("Starting non-research agents: %s", [t["agent"] for t in remaining])
         in_flight: set[str] = set()
         while remaining or in_flight:
             ready = [
