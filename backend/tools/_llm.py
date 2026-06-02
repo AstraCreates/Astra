@@ -213,12 +213,18 @@ def generate_logo(
     founder_id: str = "",
     session_id: str = "",
 ) -> dict:
-    """Generate a logo image using FLUX.
-    style: 'wordmark' (full name + icon) or 'icon' (symbol only, no text).
-    colors: brand color hex codes or description.
+    """Generate a logo.
+    style: 'wordmark' (SVG text mark — crisp, no FLUX hallucinations) or 'icon' (FLUX abstract geometric mark).
+    colors: brand hex codes or description.
     vibe: brand personality (minimal, bold, playful, luxury, tech).
-    Returns {base64, prompt, style, brand_name}.
+    Returns {base64, style, brand_name} — base64 is PNG or SVG.
     """
+    if style == "wordmark":
+        # Use programmatic SVG — FLUX cannot reliably render text
+        from backend.tools.logo_generator import generate_wordmark_svg
+        return generate_wordmark_svg(brand_name=brand_name, colors=colors, vibe=vibe)
+
+    # Icon: FLUX abstract geometric mark (no text)
     import openai
 
     if founder_id:
@@ -227,50 +233,34 @@ def generate_logo(
             return {"error": "Monthly image budget exhausted.", "style": style}
 
     client = openai.OpenAI(base_url=_DI_BASE, api_key=_api_key())
-
-    if style == "wordmark":
-        system = (
-            "You write FLUX prompts for wordmark logos — company name rendered as a typographic logo.\n\n"
-            "Rules:\n"
-            "- Pure white background, centered composition\n"
-            "- The brand name must appear as clean, professional lettering\n"
-            "- Choose ONE distinctive font style: geometric sans / editorial serif / bold display / monospace tech\n"
-            "- Small icon or symbol to the LEFT of the text (abstract shape, not literal)\n"
-            "- Specify exact colors (hex or color name)\n"
-            "- No gradients, no drop shadows, no decorative borders\n"
-            "- End with: 'vector logo design, flat, white background, professional branding'\n"
-            "- 30-50 words max. Output ONLY the prompt."
-        )
-        user = f"Brand: {brand_name}\nColors: {colors or 'deep navy and electric blue'}\nVibe: {vibe or 'modern tech startup'}\nWrite the FLUX wordmark logo prompt."
-    else:  # icon
-        system = (
-            "You write FLUX prompts for icon logos — a standalone symbol with NO text.\n\n"
-            "Rules:\n"
-            "- Pure white background, centered composition\n"
-            "- Abstract geometric symbol that represents the brand concept\n"
-            "- Bold, simple, scalable — recognizable at small sizes\n"
-            "- Specify exact colors (hex or color name)\n"
-            "- No text, no letters, no brand name in the image\n"
-            "- End with: 'app icon design, flat vector, white background, minimal'\n"
-            "- 25-40 words max. Output ONLY the prompt."
-        )
-        user = f"Brand: {brand_name}\nColors: {colors or 'deep navy and electric blue'}\nVibe: {vibe or 'modern tech startup'}\nWhat the brand does: {vibe}\nWrite the FLUX icon logo prompt."
+    system = (
+        "You write FLUX prompts for app icon logos — a standalone abstract symbol, NO text whatsoever.\n\n"
+        "Rules:\n"
+        "- Pure white background, centered\n"
+        "- ONE bold geometric shape or abstract mark (circle, interlocking rings, angular form, etc.)\n"
+        "- Represents the brand concept abstractly — NOT literally (no handshakes, no people)\n"
+        "- Specify exact colors using the brand palette\n"
+        "- Scalable — looks good at 32×32px\n"
+        "- End with: 'app icon, flat vector illustration, white background, no text, no letters'\n"
+        "- 25-40 words. Output ONLY the prompt."
+    )
+    user = f"Brand: {brand_name}\nColors: {colors or 'deep navy and electric blue'}\nVibe: {vibe or 'modern tech startup'}\nWrite the FLUX icon prompt."
 
     resp = client.chat.completions.create(
         model=_PROMPT_MODEL,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        max_tokens=80,
+        max_tokens=70,
         temperature=0.5,
         timeout=20.0,
     )
-    logo_prompt = (resp.choices[0].message.content or "").strip().strip('"\'')
-    logger.info("Logo prompt (%s): %s", style, logo_prompt)
+    icon_prompt = (resp.choices[0].message.content or "").strip().strip('"\'')
+    logger.info("Icon prompt: %s", icon_prompt)
 
     try:
         img_client = openai.OpenAI(base_url=_DI_BASE, api_key=_api_key())
         img_resp = img_client.images.generate(
             model=_IMAGE_MODEL,
-            prompt=logo_prompt,
+            prompt=icon_prompt,
             size="1024x1024",
             n=1,
             response_format="b64_json",
@@ -280,10 +270,10 @@ def generate_logo(
         if founder_id and b64:
             _record_image_spend(founder_id)
             if session_id:
-                _save_image_to_vault(None, b64, logo_prompt, founder_id, session_id)
-        return {"base64": b64, "prompt": logo_prompt, "style": style, "brand_name": brand_name}
+                _save_image_to_vault(None, b64, icon_prompt, founder_id, session_id)
+        return {"base64": b64, "prompt": icon_prompt, "style": "icon", "brand_name": brand_name}
     except Exception as e:
-        return {"error": str(e), "style": style, "brand_name": brand_name}
+        return {"error": str(e), "style": "icon", "brand_name": brand_name}
 
 
 def composite_logo_on_image(

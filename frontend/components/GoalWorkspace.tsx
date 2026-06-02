@@ -504,12 +504,17 @@ function DesignPreview({ state }: { state: AgentState }) {
   const logoWordmark = result.logo_wordmark as Record<string, unknown> | undefined;
   const logoIcon = result.logo_icon as Record<string, unknown> | undefined;
 
-  // Brand images from design agent (generate_brand_image tool) or adImages captured live
+  // Brand images — photos only, exclude logos (which live in logoWordmark/logoIcon)
+  const logoBase64Set = new Set([logoWordmark?.base64, logoIcon?.base64].filter(Boolean));
   const brandImagesRaw = (result.brand_images ?? result.brand_image ?? []) as Array<Record<string, unknown>>;
   const brandImages = [
     ...brandImagesRaw.map(img => ({ base64: img.base64 as string | undefined, url: img.url as string | undefined, prompt: img.prompt as string | undefined })),
     ...(state.adImages ?? []),
-  ].filter((img, i, arr) => (img.base64 || img.url) && arr.findIndex(x => (x.url && x.url === img.url) || (x.base64 && x.base64 === img.base64)) === i);
+  ].filter((img, i, arr) =>
+    (img.base64 || img.url) &&
+    !logoBase64Set.has(img.base64) &&
+    arr.findIndex(x => (x.url && x.url === img.url) || (x.base64 && x.base64 === img.base64)) === i
+  );
 
   // Find the color palette anywhere in the result (LLM may nest under any key)
   const rawPalette = findPalette(result) ?? null;
@@ -603,14 +608,20 @@ function DesignPreview({ state }: { state: AgentState }) {
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             {[{ label: "Wordmark", data: logoWordmark }, { label: "Icon", data: logoIcon }].map(({ label, data }) => {
               if (!data?.base64) return null;
-              const src = `data:image/png;base64,${data.base64}`;
+              const b64 = data.base64 as string;
+              // SVG base64 doesn't start with typical PNG/JPEG headers — detect and use correct mime
+              const isSvg = b64.startsWith("PHN2") || (data.svg as string | undefined)?.startsWith("<svg");
+              const mime = isSvg ? "image/svg+xml" : "image/png";
+              const src = isSvg && (data.svg as string)
+                ? `data:image/svg+xml;base64,${btoa(data.svg as string)}`
+                : `data:${mime};base64,${b64}`;
               return (
                 <div key={label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                  <div style={{ borderRadius: 10, border: "1px solid var(--line)", background: "#fff", padding: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <img src={src} alt={label} style={{ display: "block", maxWidth: label === "Wordmark" ? 200 : 80, maxHeight: 80, objectFit: "contain" }} />
+                  <div style={{ borderRadius: 10, border: "1px solid var(--line)", background: "#fff", padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "center", minWidth: 80 }}>
+                    <img src={src} alt={label} style={{ display: "block", maxWidth: label === "Wordmark" ? 240 : 72, maxHeight: 72, objectFit: "contain" }} />
                   </div>
                   <span style={{ fontSize: 9, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</span>
-                  <a href={src} download={`logo-${label.toLowerCase()}.png`} style={{ fontSize: 9, color: "#3D9E5F" }}>↓ download</a>
+                  <a href={src} download={`logo-${label.toLowerCase()}.${isSvg ? "svg" : "png"}`} style={{ fontSize: 9, color: "#3D9E5F" }}>↓ download</a>
                 </div>
               );
             })}
