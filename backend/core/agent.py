@@ -185,10 +185,9 @@ class Agent:
             # Deduct credits: each token costs 10 units; 1,000,000 units = 1 credit
             if not ctx.unlimited_credits:
                 try:
-                    import math
                     from backend.credits.store import deduct_credits
                     total_t = prompt_t + completion_t
-                    credits = max(1, math.ceil(total_t * 10 / 1_000_000))
+                    credits = total_t * 10
                     deduct_credits(ctx.founder_id, credits,
                                    f"{self.name} call ({total_t:,} tokens)", ctx.session_id)
                 except Exception as _ce:

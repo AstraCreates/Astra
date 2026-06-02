@@ -22,9 +22,9 @@ credits_router = APIRouter()
 # ── Credit packs ───────────────────────────────────────────────────────────────
 
 _PACKS: dict[str, dict] = {
-    "starter": {"credits": 50,   "price_cents": 499,  "label": "50 credits — $4.99"},
-    "pro":     {"credits": 200,  "price_cents": 1499, "label": "200 credits — $14.99"},
-    "scale":   {"credits": 1000, "price_cents": 4999, "label": "1000 credits — $49.99"},
+    "starter": {"credits": 50_000_000,   "price_cents": 499,  "label": "50M credits — $4.99"},
+    "pro":     {"credits": 250_000_000,  "price_cents": 1499, "label": "250M credits — $14.99"},
+    "scale":   {"credits": 1_500_000_000,"price_cents": 4999, "label": "1.5B credits — $49.99"},
 }
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
