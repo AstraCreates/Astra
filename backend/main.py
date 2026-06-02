@@ -11,6 +11,7 @@ from backend.api.library_routes import library_router
 from backend.api.missions_routes import router as missions_router
 from backend.api.skills_routes import skills_router
 from backend.api.deployments_routes import deployments_router
+from backend.api.credits_routes import credits_router
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ app.include_router(library_router, prefix="/api")
 app.include_router(missions_router, prefix="/api")
 app.include_router(skills_router, prefix="/api")
 app.include_router(deployments_router, prefix="/api")
+app.include_router(credits_router, prefix="/api")
 
 
 @app.on_event("startup")

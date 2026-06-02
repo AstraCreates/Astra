@@ -238,6 +238,13 @@ async def submit_goal(body: GoalRequest, request: Request):
         raise
     except Exception as usage_exc:
         logger.warning("Usage accounting skipped: %s", usage_exc)
+
+    # Credit check and deduction — each goal run costs 10 credits
+    from backend.credits.store import check_credits, deduct_credits
+    if not check_credits(body.founder_id, required=10):
+        raise HTTPException(status_code=402, detail="Insufficient credits. Purchase more to continue.")
+    deduct_credits(body.founder_id, 10, "Goal run", session_id)
+
     constraints = dict(body.constraints or {})
     if body.stack_id:
         constraints["stack_id"] = body.stack_id

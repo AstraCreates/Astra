@@ -1905,6 +1905,43 @@ export async function getSkillsForAgent(
   return data.skills ?? [];
 }
 
+// ── Credits ───────────────────────────────────────────────────────────────────
+
+export interface CreditBalance {
+  balance: number;
+  total_granted: number;
+  total_purchased: number;
+  total_used: number;
+  transactions: Array<{
+    id: string;
+    type: string;
+    amount: number;
+    description: string;
+    ts: string;
+  }>;
+}
+
+export async function getCredits(founderId: string): Promise<CreditBalance> {
+  const res = await apiFetch(
+    `${BASE}/api/credits?founder_id=${encodeURIComponent(founderId)}`
+  );
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function purchaseCredits(
+  founderId: string,
+  pack: "starter" | "pro" | "scale"
+): Promise<{ checkout_url: string }> {
+  const res = await apiFetch(`${BASE}/api/credits/purchase`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: founderId, pack }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
   github_create_repo: "Creating GitHub repository",
   supabase_create_project: "Provisioning Supabase database",

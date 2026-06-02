@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Show, SignInButton, SignUpButton, UserButton, useUser } from "@clerk/nextjs";
+import CreditsDisplay from "@/components/CreditsDisplay";
 
 function TeamBadge() {
   const { user, isLoaded } = useUser();
@@ -119,6 +120,7 @@ export default function SiteNav() {
 
         <Show when="signed-in">
           <TeamBadge />
+          <CreditsDisplay />
           <Link
             href="/?new=1"
             style={{
