@@ -7,16 +7,27 @@ logger = logging.getLogger(__name__)
 
 
 def generate_wireframe(
-    page_type: str,
-    sections: list,
+    page_type: str = "",
+    sections: list = None,
     style: str = "minimal",
     target_audience: str = "",
+    # aliases the LLM commonly uses
+    page: str = "",
+    layout_description: str = "",
+    brand_vibe: str = "",
+    **kwargs,
 ) -> dict:
     """
     Generate an ASCII wireframe + component spec for a web/app page.
     page_type: landing | dashboard | onboarding | pricing | settings | about
     style: minimal | corporate | startup | bold
     """
+    page_type = page_type or page or "landing"
+    if brand_vibe and style == "minimal":
+        style = brand_vibe
+    if sections is None:
+        sections = [layout_description] if layout_description else []
+
     templates = {
         "landing": _landing_wireframe,
         "dashboard": _dashboard_wireframe,
@@ -176,13 +187,15 @@ def generate_color_palette(
 
 
 def generate_design_spec(
-    product_name: str,
-    product_type: str,
-    target_audience: str,
+    product_name: str = "",
+    product_type: str = "saas",
+    target_audience: str = "founders",
     brand_vibe: str = "minimal",
     key_screens: list = None,
     brand_name: str = "",   # alias for product_name
     palette: dict = None,   # accepted but ignored (color palette already separate)
+    vibe: str = "",         # alias for brand_vibe
+    fonts: list = None,     # accepted for context, not used structurally
     **kwargs,
 ) -> dict:
     """
@@ -191,6 +204,8 @@ def generate_design_spec(
     """
     if brand_name and not product_name:
         product_name = brand_name
+    if vibe and brand_vibe == "minimal":
+        brand_vibe = vibe
     screens = key_screens or _default_screens(product_type)
 
     return {

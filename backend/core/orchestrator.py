@@ -589,9 +589,9 @@ class Orchestrator:
         if not initial_tasks:
             initial_tasks = [{"id": "t1", "agent": "research", "instruction": f"Research the market and competitive landscape for: {goal}", "depends_on": []}]
 
-        # Custom stack: keep only user-selected agents
+        # Custom stack: keep only user-selected agents (research always required)
         if _is_custom:
-            _allowed = set(_agent_filter)
+            _allowed = set(_agent_filter) | {"research"}
             initial_tasks = [t for t in initial_tasks if t["agent"] in _allowed]
             if not initial_tasks:
                 initial_tasks = [{"id": "t1", "agent": a, "instruction": goal, "depends_on": []} for a in _agent_filter if a in self.specialists]

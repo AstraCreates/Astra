@@ -9,18 +9,18 @@ class Settings(BaseSettings):
     agent_model_base_url: str = "https://api.deepinfra.com/v1/openai"
     agent_model_api_key: str = ""
     agent_model_name: str = "deepseek-ai/DeepSeek-V4-Flash"
-    # Planner uses a stronger model for task decomposition
+    # Planner — Step-3.5-Flash has built-in reasoning, better goal decomposition
     planner_model_base_url: str = "https://api.deepinfra.com/v1/openai"
     planner_model_api_key: str = ""
     planner_model_name: str = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
-    # Chat model — used for per-agent Q&A; should be a strong reasoning model
+    # Chat model — per-agent Q&A
     chat_model_base_url: str = "https://api.deepinfra.com/v1/openai"
     chat_model_api_key: str = ""
-    chat_model_name: str = "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8"
-    # Lighter model for non-reasoning agents (design)
+    chat_model_name: str = "Qwen/Qwen3-32B"
+    # Light model — fast/cheap for design and low-complexity agents
     light_model_base_url: str = "https://api.deepinfra.com/v1/openai"
-    light_model_name: str = "deepseek-ai/DeepSeek-V4-Flash"
-    # High-output model for docs/copy/HTML (small input, large output, non-coding)
+    light_model_name: str = "zai-org/GLM-4.7-Flash"
+    # High-output model — docs/copy/legal (Mistral excels at structured long-form)
     highoutput_model_base_url: str = "https://api.deepinfra.com/v1/openai"
     highoutput_model_name: str = "deepseek-ai/DeepSeek-V4-Flash"
     vertex_project: str = ""

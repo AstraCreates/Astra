@@ -143,7 +143,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
         model=settings.planner_model_name,
         model_base_url=settings.planner_model_base_url,
         model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
-        max_iterations=12,
+        max_iterations=40,
         role=(
             "You are an elite deep research specialist. You produce investment-grade research. "
             "Prioritize speed + quality: complete core coverage fast, then stop once evidence is sufficient.\n\n"

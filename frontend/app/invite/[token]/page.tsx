@@ -75,7 +75,7 @@ export default function AcceptInvitePage() {
         <div style={{ maxWidth: 420, margin: "0 auto" }}>
           <h1 style={{ marginBottom: 8 }}>You have an invite</h1>
           <p style={{ opacity: 0.6, marginBottom: 24 }}>Sign in to accept your team invitation.</p>
-          <SignInButton mode="modal" redirectUrl={`/invite/${token}`}>
+          <SignInButton mode="modal" fallbackRedirectUrl={`/invite/${token}`}>
             <button className="site-btn site-btn-primary px-6">Sign in to continue</button>
           </SignInButton>
         </div>

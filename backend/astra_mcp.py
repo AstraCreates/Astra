@@ -1,0 +1,436 @@
+"""Astra MCP Server — exposes the full Astra agent-stack system as MCP tools.
+
+Implements the MCP JSON-RPC stdio protocol so Claude (or any MCP client)
+can launch agent stacks, monitor sessions, retrieve artifacts, chat with
+agents, and steer running runs.
+
+Usage (stdio transport):
+  python -m backend.astra_mcp
+
+Claude Desktop config  (~/.claude/claude_desktop_config.json):
+  {
+    "mcpServers": {
+      "astra": {
+        "command": "python",
+        "args": ["-m", "backend.astra_mcp"],
+        "env": {
+          "ASTRA_API_URL": "http://167.235.151.204",
+          "ASTRA_FOUNDER_ID": "<your_clerk_user_id>"
+        }
+      }
+    }
+  }
+
+Claude Code MCP config  (~/.claude.json  →  mcpServers):
+  "astra": {
+    "type": "stdio",
+    "command": "python",
+    "args": ["-m", "backend.astra_mcp"],
+    "env": {
+      "ASTRA_API_URL": "http://167.235.151.204",
+      "ASTRA_FOUNDER_ID": "<your_clerk_user_id>"
+    }
+  }
+"""
+from __future__ import annotations
+
+import json
+import os
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any
+
+SERVER_INFO = {"name": "astra", "version": "1.0.0"}
+
+# ── Config ────────────────────────────────────────────────────────────────────
+
+def _api_url() -> str:
+    return os.environ.get("ASTRA_API_URL", "http://localhost:8000").rstrip("/")
+
+def _founder_id() -> str:
+    return os.environ.get("ASTRA_FOUNDER_ID", "founder_001")
+
+# ── HTTP helpers ──────────────────────────────────────────────────────────────
+
+def _get(path: str, params: dict | None = None, timeout: int = 15) -> Any:
+    url = _api_url() + path
+    if params:
+        url += "?" + urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
+    req = urllib.request.Request(url, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read())
+
+def _post(path: str, body: dict, timeout: int = 20) -> Any:
+    url = _api_url() + path
+    data = json.dumps(body).encode()
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read())
+
+# ── Tool schema builder ───────────────────────────────────────────────────────
+
+def _schema(properties: dict[str, Any], required: list[str] | None = None) -> dict[str, Any]:
+    return {"type": "object", "properties": properties, "required": required or [], "additionalProperties": False}
+
+# ── Tool definitions ──────────────────────────────────────────────────────────
+
+TOOLS: list[dict[str, Any]] = [
+    {
+        "name": "astra_submit_goal",
+        "description": (
+            "Launch an Astra agent-stack run. Describe any business goal in plain English — "
+            "Astra will decompose it and dispatch specialist agents (research, legal, web, "
+            "technical, marketing, ops, sales, design) to execute in parallel. "
+            "Returns a session_id you can use to monitor progress and retrieve results."
+        ),
+        "inputSchema": _schema({
+            "goal": {"type": "string", "description": "Plain-English description of what to build or achieve."},
+            "stack_id": {
+                "type": "string",
+                "description": "Agent stack preset to use. Options: idea_to_revenue, sales, marketing, founder_ops, support, product, custom. Defaults to idea_to_revenue.",
+                "default": "idea_to_revenue",
+            },
+            "agents": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Only for stack_id=custom: list of agent IDs to include (e.g. ['research','web','technical']). research is always included.",
+            },
+            "company_name": {"type": "string", "description": "Company or product name (optional, improves output quality)."},
+            "founder_id": {"type": "string", "description": "Founder/user ID. Defaults to ASTRA_FOUNDER_ID env var."},
+        }, ["goal"]),
+    },
+    {
+        "name": "astra_session_status",
+        "description": (
+            "Get the current status of an Astra session — which agents are running/done, "
+            "overall completion percentage, errors, and a short digest of what's been produced so far."
+        ),
+        "inputSchema": _schema({
+            "session_id": {"type": "string", "description": "Session ID returned by astra_submit_goal."},
+            "founder_id": {"type": "string", "description": "Founder/user ID."},
+        }, ["session_id"]),
+    },
+    {
+        "name": "astra_session_digest",
+        "description": (
+            "Get a comprehensive digest of a completed or in-progress Astra session: "
+            "key findings, decisions, artifacts produced, agent summaries, and next steps."
+        ),
+        "inputSchema": _schema({
+            "session_id": {"type": "string", "description": "Session ID."},
+            "founder_id": {"type": "string", "description": "Founder/user ID."},
+        }, ["session_id"]),
+    },
+    {
+        "name": "astra_session_artifacts",
+        "description": (
+            "Retrieve all artifacts produced in an Astra session — landing page URLs, "
+            "legal documents, research briefs, marketing copy, codebase links, financial models, etc."
+        ),
+        "inputSchema": _schema({
+            "session_id": {"type": "string", "description": "Session ID."},
+            "founder_id": {"type": "string", "description": "Founder/user ID."},
+        }, ["session_id"]),
+    },
+    {
+        "name": "astra_chat_agent",
+        "description": (
+            "Send a question or instruction directly to a specific Astra specialist agent "
+            "within a session context. The agent responds with expertise grounded in the "
+            "session's research, goals, and company context."
+        ),
+        "inputSchema": _schema({
+            "agent": {
+                "type": "string",
+                "description": "Agent ID to talk to. Options: research, legal, web, technical, marketing, ops, sales, design, research_market, research_financial, legal_docs, marketing_content, marketing_seo, technical_scaffold, etc.",
+            },
+            "question": {"type": "string", "description": "Question or instruction for the agent."},
+            "session_id": {"type": "string", "description": "Session ID for context (optional but recommended)."},
+            "company_name": {"type": "string", "description": "Company name for context."},
+            "founder_id": {"type": "string", "description": "Founder/user ID."},
+        }, ["agent", "question"]),
+    },
+    {
+        "name": "astra_steer",
+        "description": (
+            "Send a real-time steering instruction to a running Astra session — redirect agents, "
+            "add constraints, change priorities, or inject new information mid-run."
+        ),
+        "inputSchema": _schema({
+            "session_id": {"type": "string", "description": "Session ID of the running session."},
+            "message": {"type": "string", "description": "Steering instruction to inject into the running session."},
+            "founder_id": {"type": "string", "description": "Founder/user ID."},
+        }, ["session_id", "message"]),
+    },
+    {
+        "name": "astra_list_stacks",
+        "description": (
+            "List all available Astra agent stack presets with their descriptions, "
+            "expected outputs, and which agents they use."
+        ),
+        "inputSchema": _schema({}),
+    },
+    {
+        "name": "astra_list_agents",
+        "description": "List all available Astra specialist agents with their capabilities and what they produce.",
+        "inputSchema": _schema({}),
+    },
+    {
+        "name": "astra_recommend_stack",
+        "description": (
+            "Given a goal description, Astra recommends the best agent stack preset "
+            "and explains why. Use this before astra_submit_goal if unsure which stack to pick."
+        ),
+        "inputSchema": _schema({
+            "goal": {"type": "string", "description": "Plain-English goal to get a stack recommendation for."},
+        }, ["goal"]),
+    },
+    {
+        "name": "astra_approve",
+        "description": (
+            "Approve a pending safe-run gate in an Astra session. Some agent actions "
+            "(deploying to Vercel, sending emails, publishing legal docs) require founder "
+            "approval before execution. Use this to approve them."
+        ),
+        "inputSchema": _schema({
+            "session_id": {"type": "string"},
+            "action_key": {"type": "string", "description": "The approval gate key (e.g. 'public_deploy', 'send_outbound')."},
+            "founder_id": {"type": "string"},
+        }, ["session_id", "action_key"]),
+    },
+    {
+        "name": "astra_session_workboard",
+        "description": "Get the current task workboard for a session — all tasks, their status, assignees, and blockers.",
+        "inputSchema": _schema({
+            "session_id": {"type": "string"},
+            "founder_id": {"type": "string"},
+        }, ["session_id"]),
+    },
+]
+
+# ── Tool implementations ──────────────────────────────────────────────────────
+
+def _submit_goal(args: dict) -> dict:
+    founder_id = args.get("founder_id") or _founder_id()
+    stack_id = args.get("stack_id") or "idea_to_revenue"
+    constraints: dict[str, Any] = {}
+    if args.get("company_name"):
+        constraints["company_name"] = args["company_name"]
+    if stack_id == "custom" and args.get("agents"):
+        constraints["agents"] = args["agents"]
+    payload = {
+        "founder_id": founder_id,
+        "instruction": args["goal"],
+        "stack_id": stack_id,
+        "constraints": constraints,
+    }
+    result = _post("/goal", payload, timeout=15)
+    return {
+        "ok": True,
+        "session_id": result.get("session_id"),
+        "status": result.get("status"),
+        "message": f"Session started. Use astra_session_status(session_id='{result.get('session_id')}') to monitor progress.",
+        "monitor_url": f"{_api_url()}/stream/{result.get('session_id')}",
+    }
+
+def _session_status(args: dict) -> dict:
+    session_id = args["session_id"]
+    founder_id = args.get("founder_id") or _founder_id()
+    try:
+        state = _get(f"/sessions/{session_id}/state", {"founder_id": founder_id})
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    agents = state.get("agents", {})
+    done_count = sum(1 for a in agents.values() if a.get("status") == "done")
+    total = len(agents)
+    return {
+        "ok": True,
+        "session_id": session_id,
+        "done": state.get("done", False),
+        "agents_done": done_count,
+        "agents_total": total,
+        "completion_pct": round(done_count / total * 100) if total else 0,
+        "agents": {k: {"status": v.get("status"), "current_tool": v.get("currentTool")} for k, v in agents.items()},
+        "errors": [k for k, v in agents.items() if v.get("status") == "error"],
+    }
+
+def _session_digest(args: dict) -> dict:
+    session_id = args["session_id"]
+    founder_id = args.get("founder_id") or _founder_id()
+    try:
+        digest = _get(f"/sessions/{session_id}/digest", {"founder_id": founder_id})
+        return {"ok": True, "session_id": session_id, **digest}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _session_artifacts(args: dict) -> dict:
+    session_id = args["session_id"]
+    founder_id = args.get("founder_id") or _founder_id()
+    try:
+        state = _get(f"/sessions/{session_id}/state", {"founder_id": founder_id})
+        artifacts = state.get("artifacts", [])
+        return {"ok": True, "session_id": session_id, "artifact_count": len(artifacts), "artifacts": artifacts}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _chat_agent(args: dict) -> dict:
+    agent = args["agent"]
+    founder_id = args.get("founder_id") or _founder_id()
+    payload = {
+        "target_agent": agent,
+        "question": args["question"],
+        "founder_id": founder_id,
+        "session_id": args.get("session_id"),
+        "company_name": args.get("company_name"),
+    }
+    try:
+        result = _post(f"/chat/{agent}", payload)
+        return {"ok": True, "agent": agent, "response": result.get("response", result)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _steer(args: dict) -> dict:
+    session_id = args["session_id"]
+    try:
+        _post(f"/steer/{session_id}", {"message": args["message"]})
+        return {"ok": True, "session_id": session_id, "message": "Steering instruction delivered."}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _list_stacks(_args: dict) -> dict:
+    try:
+        data = _get("/stacks")
+        stacks = data.get("stacks", [])
+        return {
+            "ok": True,
+            "stacks": [
+                {"id": s["stack_id"], "name": s["name"], "target_user": s["target_user"],
+                 "primary_outcome": s["primary_outcome"], "agent_count": len(s.get("tasks", []))}
+                for s in stacks
+            ],
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _list_agents(_args: dict) -> dict:
+    try:
+        data = _get("/agents/catalog")
+        return {"ok": True, "agents": data.get("agents", [])}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _recommend_stack(args: dict) -> dict:
+    try:
+        result = _post("/stacks/recommend", {"instruction": args["goal"]})
+        stack = result.get("stack", {})
+        return {
+            "ok": True,
+            "recommended_stack_id": stack.get("stack_id"),
+            "recommended_stack_name": stack.get("name"),
+            "confidence": result.get("confidence"),
+            "reason": result.get("reason"),
+            "matched_signals": result.get("matched_signals", []),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _approve(args: dict) -> dict:
+    session_id = args["session_id"]
+    founder_id = args.get("founder_id") or _founder_id()
+    try:
+        result = _post("/stack/approval", {
+            "session_id": session_id,
+            "action_key": args["action_key"],
+            "decision": "approve",
+            "founder_id": founder_id,
+        })
+        return {"ok": True, **result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _workboard(args: dict) -> dict:
+    session_id = args["session_id"]
+    founder_id = args.get("founder_id") or _founder_id()
+    try:
+        result = _get(f"/sessions/{session_id}/workboard", {"founder_id": founder_id})
+        return {"ok": True, "session_id": session_id, **result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+_DISPATCH: dict[str, Any] = {
+    "astra_submit_goal": _submit_goal,
+    "astra_session_status": _session_status,
+    "astra_session_digest": _session_digest,
+    "astra_session_artifacts": _session_artifacts,
+    "astra_chat_agent": _chat_agent,
+    "astra_steer": _steer,
+    "astra_list_stacks": _list_stacks,
+    "astra_list_agents": _list_agents,
+    "astra_recommend_stack": _recommend_stack,
+    "astra_approve": _approve,
+    "astra_session_workboard": _workboard,
+}
+
+# ── JSON-RPC handler ──────────────────────────────────────────────────────────
+
+def _tool_result(payload: dict) -> dict:
+    is_error = not payload.get("ok", True)
+    return {
+        "content": [{"type": "text", "text": json.dumps(payload, indent=2, sort_keys=True)}],
+        "structuredContent": payload,
+        "isError": is_error,
+    }
+
+def handle_request(request: dict) -> dict | None:
+    request_id = request.get("id")
+    method = request.get("method")
+    params = request.get("params") or {}
+    if request_id is None:
+        return None
+    try:
+        if method == "initialize":
+            result = {
+                "protocolVersion": "2024-11-05",
+                "serverInfo": SERVER_INFO,
+                "capabilities": {"tools": {}},
+            }
+        elif method == "tools/list":
+            result = {"tools": TOOLS}
+        elif method == "tools/call":
+            name = params.get("name")
+            arguments = params.get("arguments") or {}
+            fn = _DISPATCH.get(name)
+            if fn is None:
+                raise ValueError(f"Unknown tool: {name}")
+            result = _tool_result(fn(arguments))
+        else:
+            raise ValueError(f"Unsupported method: {method}")
+        return {"jsonrpc": "2.0", "id": request_id, "result": result}
+    except Exception as exc:
+        return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32000, "message": str(exc)}}
+
+# ── Stdio server ──────────────────────────────────────────────────────────────
+
+def serve(stdin=None, stdout=None) -> None:
+    in_ = stdin or sys.stdin
+    out = stdout or sys.stdout
+    for line in in_:
+        if not line.strip():
+            continue
+        try:
+            request = json.loads(line)
+        except json.JSONDecodeError as exc:
+            response = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": str(exc)}}
+        else:
+            response = handle_request(request)
+        if response is not None:
+            out.write(json.dumps(response, separators=(",", ":")) + "\n")
+            out.flush()
+
+def main() -> None:
+    serve()
+
+if __name__ == "__main__":
+    main()

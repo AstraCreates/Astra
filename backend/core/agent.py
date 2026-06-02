@@ -160,7 +160,7 @@ class Agent:
             )
         return self._llm
 
-    def _call_llm(self, messages: list[dict]) -> str:
+    def _call_llm(self, messages: list[dict], ctx: "AgentContext | None" = None) -> str:
         resp = self._get_llm().chat.completions.create(
             model=self.model,
             messages=messages,
@@ -168,6 +168,10 @@ class Agent:
             response_format={"type": "json_object"},
             timeout=300.0,
         )
+        # Track token usage
+        if resp.usage and ctx:
+            from backend.core.usage import record_usage
+            record_usage(ctx.session_id, self.model, resp.usage.prompt_tokens, resp.usage.completion_tokens)
         msg = resp.choices[0].message
         content = msg.content or ""
         # Strip DeepSeek-R1 <think> blocks
@@ -283,7 +287,7 @@ class Agent:
 
     async def _run_loop(self, messages: list[dict], ctx: AgentContext, browser=None) -> dict[str, Any]:
         i = 0
-        MAX_ITERATIONS = self._max_iterations or 5
+        MAX_ITERATIONS = self._max_iterations or 20
         # Track consecutive failures per tool to break infinite retry loops
         _tool_fail_counts: dict[str, int] = {}
         _large_results: dict[str, Any] = {}  # stores large non-dict results (HTML etc.) by tool name
@@ -306,7 +310,7 @@ class Agent:
                     logger.info("%s received founder directive: %s", self.name, directive[:80])
             except Exception:
                 pass
-            raw = await asyncio.to_thread(self._call_llm, messages)
+            raw = await asyncio.to_thread(self._call_llm, messages, ctx)
             parsed = self._parse_json(raw)
 
             if not parsed:
@@ -427,7 +431,7 @@ class Agent:
                     if tool_name in _ONE_SHOT_TOOLS:
                         _one_shot_done.add(tool_name)
                     content = f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result)}"
-                    if i >= 15:
+                    if i >= MAX_ITERATIONS - 5:
                         content += f"\n\n[Iteration {i}/{MAX_ITERATIONS}] You are near the iteration limit. Wrap up: call obsidian_log then done unless one more tool call is critical."
                     if tool_name in _ONE_SHOT_TOOLS:
                         content += f"\n\nIMPORTANT: {tool_name} completed. Proceed to the next step — do NOT call {tool_name} again."
@@ -495,7 +499,7 @@ class Agent:
                     "Respond with JSON: {\"action\": \"done\", \"output\": {\"summary\": \"...\", \"findings\": [...], \"sources\": [...]}}"
                 )},
             ]
-            raw = await asyncio.to_thread(self._call_llm, synthesis_messages)
+            raw = await asyncio.to_thread(self._call_llm, synthesis_messages, ctx)
             parsed = self._parse_json(raw)
             if parsed and parsed.get("action") == "done":
                 output = parsed.get("output", {})

@@ -5,7 +5,8 @@ import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { SignInButton, useUser } from "@clerk/nextjs";
-import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder } from "@/lib/api";
+import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder } from "@/lib/api";
+import type { AgentCatalogEntry } from "@/lib/api";
 import type { AgentDepartmentManifest, AgentStackTemplate, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
 import { saveSession, getSessionSnapshot, subscribeSessions, deleteSession, clearAllSessions } from "@/lib/history";
 import type { SessionRecord } from "@/lib/history";
@@ -1061,11 +1062,28 @@ function AgentPreview({ state, founderId, company }: { state: AgentState; founde
 interface AgentChatMsg { role: "user" | "agent"; text: string; }
 
 function AgentChat({ agentKey, founderId, sessionId, company, goal }: { agentKey: string; founderId: string; sessionId?: string; company?: string; goal?: string }) {
-  const [msgs, setMsgs] = useState<AgentChatMsg[]>([]);
+  const storageKey = `astra_chat_${sessionId ?? "nosession"}_${agentKey}`;
+
+  const loadMsgs = (key: string): AgentChatMsg[] => {
+    try { return JSON.parse(localStorage.getItem(key) ?? "[]"); } catch { return []; }
+  };
+
+  const [msgs, setMsgs] = useState<AgentChatMsg[]>(() => loadMsgs(storageKey));
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const label = AGENT_LABELS[agentKey] ?? agentKey;
+
+  // Reload history when switching agents
+  useEffect(() => {
+    setMsgs(loadMsgs(storageKey));
+    setInput("");
+  }, [storageKey]);
+
+  // Persist on every change
+  useEffect(() => {
+    try { localStorage.setItem(storageKey, JSON.stringify(msgs)); } catch {}
+  }, [msgs, storageKey]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1380,8 +1398,6 @@ function AgentDetail({
         )}
       </div>
 
-      {/* ── Agent chat — key resets state when switching agents ── */}
-      <AgentChat key={`${state.agent}-${sessionId ?? "nosession"}`} agentKey={state.agent} founderId={founderId} sessionId={sessionId} company={company} goal={goal} />
     </div>
   );
 }
@@ -1395,40 +1411,27 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect }: {
   onSelect: (a: string) => void;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
       {agentList.map(name => {
         const state = agents[name];
         const status = state?.status ?? "waiting";
         const isActive = name === activeAgent;
-        const p = state ? pct(state) : 0;
         return (
           <button key={name} onClick={() => onSelect(name)} style={{
-            display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 24,
-            border: isActive ? "1px solid rgba(180,205,228,0.22)" : "1px solid transparent",
-            background: isActive ? "rgba(180,205,228,0.10)" : "transparent",
-            cursor: "pointer", textAlign: "left", transition: "background 0.15s",
-            boxShadow: isActive ? "0 1px 3px rgba(0,0,0,0.05)" : "none",
+            display: "flex", alignItems: "center", gap: 6, padding: "6px 12px 6px 8px",
+            borderRadius: 999,
+            border: `1px solid ${isActive ? "rgba(37,99,235,0.45)" : "var(--line)"}`,
+            background: isActive ? "rgba(37,99,235,0.10)" : "rgba(255,255,255,0.03)",
+            cursor: "pointer", transition: "background 0.15s, border-color 0.15s",
           }}>
-            <div style={{ position: "relative", width: 28, height: 28, flexShrink: 0 }}>
-              <svg viewBox="0 0 28 28" style={{ transform: "rotate(-90deg)", width: 28, height: 28 }}>
-                <circle cx="14" cy="14" r="11" fill="none" stroke="rgba(0,0,0,0.1)" strokeWidth="2.5" />
-                <circle cx="14" cy="14" r="11" fill="none" stroke={status === "done" ? "#3D9E5F" : status === "running" ? "#2563EB" : status === "error" ? "#C0392B" : "transparent"}
-                  strokeWidth="2.5"
-                  strokeDasharray={`${2 * Math.PI * 11}`}
-                  strokeDashoffset={`${2 * Math.PI * 11 * (1 - p / 100)}`}
-                  style={{ transition: "stroke-dashoffset 0.5s" }} />
-              </svg>
-              <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>{AGENT_ICONS[name] ?? "🤖"}</span>
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12, fontWeight: 500, color: isActive ? "var(--fg)" : "var(--fg-mute)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {AGENT_LABELS[name] ?? name}
-              </div>
-              <div style={{ fontSize: 10, color: STATUS_COLOR[status] ?? "rgba(0,0,0,0.25)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{status}</div>
-            </div>
-            {status === "running" && (
-              <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#2563EB", flexShrink: 0 }} className="animate-pulse" />
-            )}
+            <span style={{ fontSize: 14 }}>{AGENT_ICONS[name] ?? "🤖"}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: isActive ? "var(--fg)" : "var(--fg-mute)", whiteSpace: "nowrap" }}>
+              {AGENT_LABELS[name] ?? name}
+            </span>
+            <span style={{
+              width: 5, height: 5, borderRadius: "50%", flexShrink: 0,
+              background: status === "done" ? "#3D9E5F" : status === "running" ? "#2563EB" : status === "error" ? "#C0392B" : "rgba(255,255,255,0.15)",
+            }} className={status === "running" ? "animate-pulse" : ""} />
           </button>
         );
       })}
@@ -1860,26 +1863,145 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
 
 // ── Steer + Ask panels ─────────────────────────────────────────────────────
 
-function SteerPanel({ sessionId, isRunning }: { sessionId: string; isRunning: boolean }) {
-  const [msg, setMsg] = useState("");
-  const [sent, setSent] = useState(false);
-  if (!isRunning) return null;
-  const send = async () => {
-    if (!msg.trim()) return;
-    await apiFetch(`${BASE}/steer/${sessionId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg }) });
-    setSent(true); setMsg(""); setTimeout(() => setSent(false), 2000);
+interface UChatMsg { id: string; role: "user" | "agent" | "system"; agent?: string; text: string; }
+
+function UnifiedChat({ sessionId, founderId, company, goal, done, connected, agents }: {
+  sessionId: string; founderId: string; company?: string; goal?: string;
+  done: boolean; connected: boolean; agents: string[];
+}) {
+  const storageKey = `astra_uchat_${sessionId}`;
+  const [msgs, setMsgs] = useState<UChatMsg[]>(() => {
+    try { return JSON.parse(localStorage.getItem(storageKey) ?? "[]"); } catch { return []; }
+  });
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQ, setMentionQ] = useState("");
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { try { localStorage.setItem(storageKey, JSON.stringify(msgs)); } catch {} }, [msgs, storageKey]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs]);
+
+  const handleChange = (val: string) => {
+    setInput(val);
+    const lastAt = val.lastIndexOf("@");
+    if (lastAt >= 0 && !val.slice(lastAt).includes(" ")) {
+      setMentionQ(val.slice(lastAt + 1).toLowerCase());
+      setMentionOpen(true);
+    } else {
+      setMentionOpen(false);
+    }
   };
+
+  const insertMention = (a: string) => {
+    const lastAt = input.lastIndexOf("@");
+    setInput(input.slice(0, lastAt) + `@${a} `);
+    setMentionOpen(false);
+  };
+
+  const send = async () => {
+    const q = input.trim();
+    if (!q || loading) return;
+    setInput(""); setMentionOpen(false);
+    const userMsg: UChatMsg = { id: Date.now().toString(), role: "user", text: q };
+    setMsgs(m => [...m, userMsg]);
+    setLoading(true);
+    try {
+      const mentionMatch = q.match(/^@([\w_-]+)\s+([\s\S]+)$/);
+      if (mentionMatch) {
+        const [, agent, question] = mentionMatch;
+        const res = await apiFetch(`${BASE}/chat/${agent}`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target_agent: agent, question, founder_id: founderId, session_id: sessionId, company_name: company, goal }),
+        });
+        const data = await res.json();
+        setMsgs(m => [...m, { id: Date.now().toString(), role: "agent", agent, text: data.response ?? JSON.stringify(data) }]);
+      } else if (!done && connected) {
+        await apiFetch(`${BASE}/steer/${sessionId}`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: q }),
+        });
+        setMsgs(m => [...m, { id: Date.now().toString(), role: "system", text: "↑ Sent to all running agents" }]);
+      } else {
+        const res = await apiFetch(`${BASE}/sessions/${sessionId}/ask`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: q, founder_id: founderId }),
+        });
+        const data = await res.json().catch(() => ({}));
+        setMsgs(m => [...m, { id: Date.now().toString(), role: "agent", agent: "astra", text: data.answer ?? data.response ?? "No response" }]);
+      }
+    } catch (e) {
+      setMsgs(m => [...m, { id: Date.now().toString(), role: "agent", text: `⚠ ${e instanceof Error ? e.message : "Error"}` }]);
+    } finally { setLoading(false); }
+  };
+
+  const filteredAgents = agents.filter(a => a.toLowerCase().includes(mentionQ));
+  const placeholder = !connected && !done ? "Waiting for session…"
+    : done ? "Ask about results… or @research what was the TAM?"
+    : "Steer all agents… or @legal what entity should I form?";
+
   return (
-    <LiquidGlass contentStyle={{ padding: "12px 14px" }}>
-      <div style={{ fontSize: 11, color: "var(--fg-mute)", marginBottom: 8 }}>Steer agents mid-run</div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <input value={msg} onChange={e => setMsg(e.target.value)} onKeyDown={e => e.key === "Enter" && send()}
-          placeholder="e.g. focus on B2B customers"
-          className="site-input"
-          style={{ flex: 1, padding: "7px 12px", fontSize: 12 }} />
-        <button onClick={send} className="site-btn site-btn-primary" style={{ padding: "0 14px", fontSize: 12 }}>
-          {sent ? "Sent" : "Send"}
-        </button>
+    <LiquidGlass contentStyle={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-mute)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          {done ? "Ask Astra" : "Chat"}
+        </span>
+        <span style={{ fontSize: 10, color: "var(--fg-mute)" }}>
+          @agent to talk to a specific agent · plain message {done ? "asks about results" : "steers all agents"}
+        </span>
+      </div>
+
+      {msgs.length > 0 && (
+        <div style={{ maxHeight: 240, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+          {msgs.map(m => (
+            <div key={m.id} style={{ display: "flex", gap: 8, justifyContent: m.role === "user" ? "flex-end" : "flex-start", alignItems: "flex-end" }}>
+              {m.role !== "user" && (
+                <span style={{ fontSize: 10, color: "var(--fg-mute)", fontWeight: 700, whiteSpace: "nowrap", marginBottom: 2 }}>
+                  {m.agent ? `@${m.agent}` : "·"}
+                </span>
+              )}
+              <div style={{
+                maxWidth: "75%", padding: "7px 12px", borderRadius: 14, fontSize: 12, lineHeight: 1.6, wordBreak: "break-word", whiteSpace: "pre-wrap",
+                background: m.role === "user" ? "linear-gradient(135deg,#2563EB,#6366f1)" : m.role === "system" ? "rgba(99,102,241,0.08)" : "rgba(255,255,255,0.05)",
+                color: m.role === "user" ? "#fff" : "var(--fg-dim)",
+                border: m.role !== "user" ? "1px solid var(--line)" : "none",
+                fontStyle: m.role === "system" ? "italic" : "normal",
+              }}>{m.text}</div>
+            </div>
+          ))}
+          {loading && <div style={{ fontSize: 11, color: "var(--fg-mute)", display: "flex", alignItems: "center", gap: 6 }}><span className="animate-pulse">●</span> Thinking…</div>}
+          <div ref={bottomRef} />
+        </div>
+      )}
+
+      <div style={{ position: "relative" }}>
+        {mentionOpen && filteredAgents.length > 0 && (
+          <div style={{
+            position: "absolute", bottom: "calc(100% + 6px)", left: 0, right: 0,
+            background: "var(--surface, rgba(20,24,30,0.98))", border: "1px solid var(--line)",
+            borderRadius: 12, padding: 8, display: "flex", flexWrap: "wrap", gap: 4, zIndex: 20,
+          }}>
+            {filteredAgents.slice(0, 12).map(a => (
+              <button key={a} type="button" onClick={() => insertMention(a)}
+                style={{ padding: "3px 10px", borderRadius: 999, fontSize: 11, border: "1px solid var(--line)", background: "rgba(255,255,255,0.04)", cursor: "pointer", color: "var(--fg)" }}>
+                @{a}
+              </button>
+            ))}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            value={input} onChange={e => handleChange(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            placeholder={placeholder}
+            className="site-input"
+            style={{ flex: 1, padding: "9px 14px", fontSize: 13, borderRadius: 999 }}
+          />
+          <button onClick={send} disabled={loading || !input.trim()} className="site-btn site-btn-primary"
+            style={{ padding: "0 18px", borderRadius: 999, fontSize: 13 }}>
+            {loading ? "…" : "↑"}
+          </button>
+        </div>
       </div>
     </LiquidGlass>
   );
@@ -1989,6 +2111,10 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
   const [stackRecommendation, setStackRecommendation] = useState<StackRecommendation | null>(null);
   const [stackReadiness, setStackReadiness] = useState<StackReadiness | null>(null);
   const [manualStackOverride, setManualStackOverride] = useState(false);
+  const REQUIRED_AGENTS = new Set(["research"]);
+  const [customAgents, setCustomAgents] = useState<string[]>(["research", "web", "technical", "marketing"]);
+  const [customPickerOpen, setCustomPickerOpen] = useState(true);
+  const [agentCatalog, setAgentCatalog] = useState<AgentCatalogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1999,13 +2125,14 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
       .then(stacks => {
         if (cancelled) return;
         setStackTemplates(stacks);
-        if (stacks.length && !stacks.some(stack => stack.stack_id === selectedStackId)) {
+        if (stacks.length && selectedStackId !== "custom" && !stacks.some(stack => stack.stack_id === selectedStackId)) {
           setSelectedStackId(stacks[0].stack_id);
         }
       })
       .catch(() => {
         if (!cancelled) setStackTemplates([]);
       });
+    getAgentCatalog().then(c => { if (!cancelled) setAgentCatalog(c); }).catch(() => {});
     return () => { cancelled = true; };
   }, [open, selectedStackId]);
 
@@ -2060,7 +2187,8 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
     const full = parts.length ? `${parts.join(" ")}\n\n${instruction}` : instruction;
     const founderId = user?.id ?? "anon";
     try {
-      const result = await submitGoal(founderId, full, {}, selectedStackId);
+      const constraints: Record<string, unknown> = selectedStackId === "custom" ? { agents: customAgents } : {};
+      const result = await submitGoal(founderId, full, constraints, selectedStackId);
       saveSession({
         sessionId: result.session_id,
         founderId,
@@ -2153,7 +2281,112 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
                   </button>
                 );
               })}
+              {/* Custom stack option */}
+              {(() => {
+                const active = selectedStackId === "custom";
+                return (
+                  <button
+                    type="button"
+                    onClick={() => { setManualStackOverride(true); setSelectedStackId("custom"); setCustomPickerOpen(true); }}
+                    disabled={loading}
+                    style={{
+                      display: "grid", gap: 5, textAlign: "left", borderRadius: 20,
+                      border: `1px solid ${active ? "rgba(99,102,241,0.45)" : "var(--line)"}`,
+                      background: active ? "rgba(99,102,241,0.10)" : "rgba(255,255,255,0.025)",
+                      color: "var(--fg)", padding: "10px 11px", cursor: "pointer",
+                    }}
+                  >
+                    <span style={{ fontSize: 12, fontWeight: 650 }}>✨ Custom</span>
+                    <span style={{ fontSize: 10, color: active ? "#818cf8" : "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                      {active ? `${customAgents.length} agents` : "Pick your own"}
+                    </span>
+                  </button>
+                );
+              })()}
             </div>
+            {/* Custom agent picker */}
+            {selectedStackId === "custom" && agentCatalog.length > 0 && (() => {
+              const GROUP_ORDER = ["research", "legal", "marketing", "sales", "technical", "finance", "ops", "web", "design"];
+              const GROUP_LABELS: Record<string, string> = {
+                research: "Research", legal: "Legal", marketing: "Marketing",
+                sales: "Sales", technical: "Technical", finance: "Finance",
+                ops: "Ops", web: "Web", design: "Design",
+              };
+              const header = (
+                <div
+                  onClick={() => setCustomPickerOpen(o => !o)}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", padding: "6px 0" }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-dim)" }}>
+                    {customAgents.length} agent{customAgents.length === 1 ? "" : "s"} selected
+                  </span>
+                  <span style={{ fontSize: 11, color: "#818cf8" }}>{customPickerOpen ? "▲ collapse" : "▼ edit agents"}</span>
+                </div>
+              );
+              if (!customPickerOpen) return <div style={{ padding: "4px 0" }}>{header}</div>;
+              const GROUP_EMOJI: Record<string, string> = {
+                research: "🔍", legal: "⚖️", marketing: "📣", sales: "💰",
+                technical: "⚙️", finance: "📊", ops: "🧭", web: "🌐", design: "🎨",
+              };
+              const grouped: Record<string, AgentCatalogEntry[]> = {};
+              agentCatalog.forEach(agent => {
+                const group = agent.id.includes("_") ? agent.id.split("_")[0] : agent.id;
+                if (!grouped[group]) grouped[group] = [];
+                grouped[group].push(agent);
+              });
+              const picker = (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "12px 0 4px", maxHeight: 360, overflowY: "auto" }}>
+                  {GROUP_ORDER.filter(g => grouped[g]).map(group => (
+                    <div key={group}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 5, display: "flex", alignItems: "center", gap: 5 }}>
+                        <span>{GROUP_EMOJI[group]}</span>{GROUP_LABELS[group]}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 5 }}>
+                        {grouped[group].map(agent => {
+                          const on = customAgents.includes(agent.id);
+                          const required = REQUIRED_AGENTS.has(agent.id);
+                          return (
+                            <button
+                              key={agent.id}
+                              type="button"
+                              onClick={() => { if (!required) setCustomAgents(prev => on ? prev.filter(a => a !== agent.id) : [...prev, agent.id]); }}
+                              disabled={loading || required}
+                              style={{
+                                display: "flex", alignItems: "flex-start", flexDirection: "column", gap: 2,
+                                padding: "7px 10px", borderRadius: 12, textAlign: "left",
+                                border: `1px solid ${on ? "rgba(99,102,241,0.45)" : "var(--line)"}`,
+                                background: on ? "rgba(99,102,241,0.10)" : "rgba(255,255,255,0.02)",
+                                cursor: required ? "default" : "pointer",
+                                opacity: required ? 0.75 : 1,
+                              }}
+                            >
+                              <span style={{ fontSize: 11, fontWeight: 600, color: on ? "#a5b4fc" : "var(--fg)" }}>
+                                {agent.name}{required ? <span style={{ marginLeft: 5, fontSize: 9, color: "#818cf8", textTransform: "uppercase", letterSpacing: "0.06em" }}>required</span> : on && <span style={{ marginLeft: 5, color: "#818cf8" }}>✓</span>}
+                              </span>
+                              <span style={{ fontSize: 10, color: "var(--fg-mute)", lineHeight: 1.35 }}>{agent.description.slice(0, 60)}…</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 6 }}>
+                    <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>
+                      {customAgents.length === 0 ? "Select at least 1 agent" : `${customAgents.length} agent${customAgents.length === 1 ? "" : "s"} selected`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCustomPickerOpen(false)}
+                      disabled={customAgents.length === 0}
+                      style={{ padding: "5px 14px", borderRadius: 999, background: "#6366f1", color: "#fff", border: "none", fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: customAgents.length === 0 ? 0.4 : 1 }}
+                    >
+                      Done →
+                    </button>
+                  </div>
+                </div>
+              );
+              return <>{header}{picker}</>;
+            })()}
             {stackRecommendation && (
               <div style={{ display: "grid", gap: 6, borderRadius: 20, border: "1px solid rgba(61,158,95,0.18)", background: "rgba(61,158,95,0.06)", padding: "10px 12px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -2773,11 +3006,12 @@ export function GoalWorkspace({
   }, [done, selectedStack, selectedSubteam, sessionId, stackManifest, stackOperatingPlan]);
 
   useEffect(() => {
-    if (!sessionId || sessionId === "undefined") return;
+    if (!sessionId || sessionId === "undefined" || done) return;
     const es = streamGoal(sessionId);
     es.onopen = () => { setConnected(true); setReconnecting(false); errorCount.current = 0; everConnected.current = true; };
     es.onerror = () => {
       setConnected(false); errorCount.current += 1;
+      if (done) { es.close(); return; }
       if (errorCount.current >= 5) setError(everConnected.current ? "Connection lost — refresh to reconnect." : "Could not connect. Is the backend running?");
       else setReconnecting(true);
     };
@@ -3006,13 +3240,13 @@ export function GoalWorkspace({
           }
           setDone(true);
         }
-        else if (event.type === "goal_error") { setError(event.error ?? "Unknown error"); }
+        else if (event.type === "goal_error") { setError(event.error ?? "Unknown error"); setDone(true); }
 
         return next;
       });
     };
     return () => es.close();
-  }, [sessionId]);
+  }, [sessionId, done]);
 
   useEffect(() => {
     if (!done || notified.current) return;
@@ -3168,22 +3402,18 @@ export function GoalWorkspace({
         {error && <p style={{ borderRadius: 8, border: "1px solid rgba(192,57,43,0.25)", background: "rgba(192,57,43,0.06)", padding: "8px 14px", fontSize: 12, color: "#C0392B", margin: 0 }}>{error}</p>}
       </div>
 
-      {/* Main layout: sidebar + detail */}
+      {/* Agent pills + detail */}
       {agentList.length > 0 && (
-        <div className="goal-workspace-grid" style={{ display: "grid", gridTemplateColumns: "minmax(260px, 340px) minmax(0, 1fr)", gap: 22, alignItems: "stretch" }}>
-          {/* Agent sidebar */}
-          <LiquidGlass style={{ minWidth: 0 }} contentStyle={{ padding: "12px", display: "flex", flexDirection: "column", gap: 4, minHeight: 620 }}>
-            <AgentSidebar agentList={agentList} agents={visibleAgents} activeAgent={selected} onSelect={setActiveAgent} />
-          </LiquidGlass>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* Horizontal agent pill row */}
+          <AgentSidebar agentList={agentList} agents={visibleAgents} activeAgent={selected} onSelect={setActiveAgent} />
 
-          {/* Detail panel */}
-          <LiquidGlass style={{ minWidth: 0 }} contentStyle={{ padding: "20px 28px", minHeight: 620, display: "flex", flexDirection: "column" }}>
-            {selectedState ? (
+          {/* Detail panel — full width */}
+          {selectedState && (
+            <LiquidGlass style={{ minWidth: 0 }} contentStyle={{ padding: "20px 24px", display: "flex", flexDirection: "column" }}>
               <AgentDetail state={selectedState} planTask={selectedPlanTask} sessionId={sessionId} founderId={founderId} company={company || autoCompanyName} goal={instruction} />
-            ) : (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 200, color: "var(--fg-mute)", fontSize: 13 }}>Select an agent</div>
-            )}
-          </LiquidGlass>
+            </LiquidGlass>
+          )}
         </div>
       )}
 
@@ -3619,9 +3849,18 @@ export function GoalWorkspace({
         </div>
       )}
 
-      {/* Bottom panels */}
-      {connected && !error && !done && <SteerPanel sessionId={sessionId} isRunning={!done} />}
-      {done && <CompanyChat priorSessionId={sessionId} founderId={founderId} company={company} />}
+      {/* Unified chat — always shown once session exists */}
+      {sessionId && (
+        <UnifiedChat
+          sessionId={sessionId}
+          founderId={founderId}
+          company={company || autoCompanyName}
+          goal={instruction}
+          done={done}
+          connected={connected}
+          agents={agentList}
+        />
+      )}
 
 
       {/* Agent Input Request Modal — shown when agent needs founder info */}

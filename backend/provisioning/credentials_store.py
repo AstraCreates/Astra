@@ -3,7 +3,7 @@ import json
 import os
 from pathlib import Path
 
-_STORE_DIR = Path(__file__).parent.parent.parent / ".credentials"
+_STORE_DIR = Path(os.environ.get("OBSIDIAN_VAULT", "/data/astra_docs")) / "credentials"
 
 
 def _founder_path(founder_id: str) -> Path:

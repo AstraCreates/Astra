@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import { apiFetch, getStacks, recommendStack, getStackReadiness, saveServiceCredential, getComposioOAuthUrls } from "@/lib/api";
-import type { AgentStackTemplate, StackReadiness } from "@/lib/api";
+import { apiFetch, getStacks, getAgentCatalog, recommendStack, getStackReadiness, saveServiceCredential, getComposioOAuthUrls } from "@/lib/api";
+import type { AgentStackTemplate, AgentCatalogEntry, StackReadiness } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -100,6 +100,87 @@ const pasteInput: React.CSSProperties = {
   background: "rgba(0,0,0,0.2)",
   color: "var(--fg)", outline: "none",
 };
+
+// ── Step 2: Custom agent picker ───────────────────────────────────────────────
+
+const GROUP_ORDER = ["research", "legal", "marketing", "sales", "technical", "finance", "ops", "web", "design"];
+const GROUP_LABELS: Record<string, string> = {
+  research: "Research", legal: "Legal", marketing: "Marketing", sales: "Sales",
+  technical: "Technical", finance: "Finance", ops: "Ops", web: "Web", design: "Design",
+};
+const GROUP_EMOJI: Record<string, string> = {
+  research: "🔍", legal: "⚖️", marketing: "📣", sales: "💰",
+  technical: "⚙️", finance: "📊", ops: "🧭", web: "🌐", design: "🎨",
+};
+
+const _REQUIRED = new Set(["research"]);
+
+function StepCustomStack({ selected, onToggle, onBack, onNext }: {
+  selected: string[]; onToggle: (id: string) => void; onBack: () => void; onNext: () => void;
+}) {
+  const [catalog, setCatalog] = useState<AgentCatalogEntry[]>([]);
+  useEffect(() => { getAgentCatalog().then(setCatalog).catch(() => {}); }, []);
+
+  const grouped: Record<string, AgentCatalogEntry[]> = {};
+  catalog.forEach(agent => {
+    const group = agent.id.includes("_") ? agent.id.split("_")[0] : agent.id;
+    if (!grouped[group]) grouped[group] = [];
+    grouped[group].push(agent);
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div>
+        <h2 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 6px", color: "#e2e8f0" }}>Build your stack</h2>
+        <p style={{ fontSize: 13, color: "var(--fg-mute)", margin: 0, lineHeight: 1.6 }}>Pick the specific agents you need. Select at least 1.</p>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: 420, overflowY: "auto", paddingRight: 4 }}>
+        {GROUP_ORDER.filter(g => grouped[g]).map(group => (
+          <div key={group}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "var(--fg-mute, #94a3b8)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6, display: "flex", alignItems: "center", gap: 5 }}>
+              <span>{GROUP_EMOJI[group]}</span>{GROUP_LABELS[group]}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+              {grouped[group].map(agent => {
+                const active = selected.includes(agent.id);
+                const required = _REQUIRED.has(agent.id);
+                return (
+                  <div
+                    key={agent.id}
+                    onClick={() => { if (!required) onToggle(agent.id); }}
+                    style={{
+                      borderRadius: 12, border: `1.5px solid ${active ? "#2563EB" : "rgba(255,255,255,0.08)"}`,
+                      background: active ? "rgba(37,99,235,0.08)" : "rgba(255,255,255,0.03)",
+                      padding: "10px 12px", cursor: required ? "default" : "pointer",
+                      transition: "border-color 0.15s, background 0.15s", opacity: required ? 0.75 : 1,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 600, color: active ? "#93c5fd" : "#e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      {agent.name}
+                      {required
+                        ? <span style={{ fontSize: 9, color: "#2563EB", textTransform: "uppercase", letterSpacing: "0.06em" }}>required</span>
+                        : active && <span style={{ color: "#2563EB" }}>✓</span>}
+                    </div>
+                    <p style={{ fontSize: 10, color: "var(--fg-mute, #94a3b8)", margin: "3px 0 0", lineHeight: 1.4 }}>
+                      {agent.description.slice(0, 55)}…
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: "var(--fg-mute)", textAlign: "center" }}>
+        {selected.length === 0 ? "Select at least 1 agent" : `${selected.length} agent${selected.length === 1 ? "" : "s"} selected`}
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <button style={BTN_GHOST} onClick={onBack}>← Back</button>
+        <button style={{ ...BTN_PRIMARY, opacity: selected.length === 0 ? 0.4 : 1 }} onClick={onNext} disabled={selected.length === 0}>Continue →</button>
+      </div>
+    </div>
+  );
+}
 
 // ── Step 3: Connect integrations ─────────────────────────────────────────────
 // Everything is rendered inline (no sub-components) to avoid hook/scope issues.
@@ -486,10 +567,17 @@ export default function OnboardingWizard() {
   const [company, setCompany] = useState("");
   const [goal, setGoal] = useState("");
   const [selectedStackId, setSelectedStackId] = useState("idea_to_revenue");
+  const REQUIRED_AGENTS = new Set(["research"]);
+  const [customAgents, setCustomAgents] = useState<string[]>(["research", "web", "technical", "marketing"]);
   const [stacks, setStacks] = useState<AgentStackTemplate[]>([]);
   const [recommendation, setRecommendation] = useState<{ stack_id: string; reason: string } | null>(null);
   const [manualOverride, setManualOverride] = useState(false);
   const [readiness, setReadiness] = useState<StackReadiness | null>(null);
+
+  function toggleCustomAgent(id: string) {
+    if (REQUIRED_AGENTS.has(id)) return;
+    setCustomAgents(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
+  }
 
   useEffect(() => { getStacks().then(setStacks).catch(() => setStacks([])); }, []);
 
@@ -517,6 +605,12 @@ export default function OnboardingWizard() {
     localStorage.setItem("astra_show_tour", "1");
     if (goal.trim()) localStorage.setItem("astra_onboarding_goal", goal.trim());
     if (company.trim()) localStorage.setItem("astra_onboarding_company", company.trim());
+    if (selectedStackId === "custom" && customAgents.length > 0) {
+      localStorage.setItem("astra_custom_agents", JSON.stringify(customAgents));
+      localStorage.setItem("astra_onboarding_stack", "custom");
+    } else {
+      localStorage.setItem("astra_onboarding_stack", selectedStackId);
+    }
     // from_onboarding=1 tells AppHome not to open the new-goal overlay
     router.push("/?from_onboarding=1");
   }
@@ -540,7 +634,7 @@ export default function OnboardingWizard() {
 
       {/* Card */}
       <div style={{ width: "100%", maxWidth: 580, borderRadius: 28, border: "1px solid rgba(0,0,0,0.09)", background: "var(--glass)", backdropFilter: "var(--blur)", WebkitBackdropFilter: "var(--blur)", boxShadow: "var(--shadow-sm)", padding: "36px 40px" }}>
-        <StepDots step={step} />
+        <StepDots step={step} total={selectedStackId === "custom" ? 4 : 4} />
 
         {step === 0 && <StepWelcome name={name} setName={setName} company={company} setCompany={setCompany} goal={goal} setGoal={setGoal} onNext={() => setStep(1)} />}
 
@@ -549,19 +643,26 @@ export default function OnboardingWizard() {
             stacks={stacks} selectedStackId={selectedStackId}
             onSelect={id => { setManualOverride(true); setSelectedStackId(id); }}
             recommendation={recommendation} onBack={() => setStep(0)}
-            onNext={() => setStep(selectedStackId === "custom" ? 3 : 2)}
+            onNext={() => setStep(selectedStackId === "custom" ? 2 : 3)}
           />
         )}
 
-        {step === 2 && (
+        {step === 2 && selectedStackId === "custom" && (
+          <StepCustomStack
+            selected={customAgents} onToggle={toggleCustomAgent}
+            onBack={() => setStep(1)} onNext={() => setStep(4)}
+          />
+        )}
+
+        {step === 3 && (
           <StepConnectIntegrations
             stackName={stackName} readiness={readiness}
             founderId={founderId} userEmail={userEmail}
-            onBack={() => setStep(1)} onNext={() => setStep(3)}
+            onBack={() => setStep(1)} onNext={() => setStep(4)}
           />
         )}
 
-        {step === 3 && <StepDone name={name} company={company} stackName={stackName} onLaunch={handleLaunch} />}
+        {step === 4 && <StepDone name={name} company={company} stackName={stackName} onLaunch={handleLaunch} />}
 
         {/* Dev skip */}
         <div style={{ marginTop: 20, textAlign: "center" }}>

@@ -135,8 +135,11 @@ async def publish(session_id: str, event: dict) -> None:
     event.setdefault("ts_iso", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(event["ts_unix"])))
     event_id = _next_id(session_id)
     _buffer(session_id, event_id, event)
-    # Fire-and-forget persistence (don't block the event loop)
     loop = asyncio.get_running_loop()
+    # Persist to JSONL (durable, no TTL)
+    from backend.core.session_store import append_event as _ss_append
+    loop.run_in_executor(None, _ss_append, session_id, event_id, event)
+    # Also persist to Redis (fast in-flight buffer)
     loop.run_in_executor(None, _redis_append, session_id, event_id, event)
     try:
         from backend.run_ledger import record_run_event
@@ -209,19 +212,20 @@ def _fmt(event_id: int, event: dict) -> str:
 
 
 def _restore_session(session_id: str) -> tuple[bool, bool]:
-    """Try to restore session from Redis into memory.
+    """Try to restore session — JSONL first (durable), Redis as fallback.
     Returns (restored: bool, is_done: bool). Does NOT create asyncio objects (thread-safe).
     """
-    events = _redis_load(session_id)
+    from backend.core.session_store import load_events as _ss_load
+    events = _ss_load(session_id) or _redis_load(session_id)
     if not events:
         return False, False
     _event_log[session_id] = events
     _event_counters[session_id] = max(eid for eid, _ in events)
     _rebuild_approval_decisions(session_id, events)
-    is_done = any(e.get("type") in ("goal_done", "goal_error") for _, e in events)
-    if is_done:
+    done = any(e.get("type") in ("goal_done", "goal_error") for _, e in events)
+    if done:
         _completed.add(session_id)
-    return True, is_done
+    return True, done
 
 
 # Events that establish agent state — safe to replay on fresh connect without flooding the log

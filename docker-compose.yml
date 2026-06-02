@@ -21,6 +21,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
+      - ./backend:/app/backend  # live code mount — SCP + restart, no rebuild needed
       - astra_docs_data:/data/astra_docs
       - astra_workspaces_data:/data/astra-workspaces
       - brain_data:/app/.astra

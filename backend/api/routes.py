@@ -242,6 +242,25 @@ async def submit_goal(body: GoalRequest, request: Request):
     if body.stack_id:
         constraints["stack_id"] = body.stack_id
 
+    # Register session in durable store before launching
+    try:
+        from backend.core.session_store import register_session as _reg
+        _reg(
+            session_id=session_id,
+            founder_id=body.founder_id,
+            goal=body.instruction,
+            stack_id=body.stack_id or "",
+            company_name=str(constraints.get("company_name", "")),
+            agents=list(constraints.get("agents", [])),
+        )
+    except Exception as _se:
+        logger.warning("session_store.register_session failed: %s", _se)
+
+    # Pre-create the SSE queue so the frontend can connect before the first event arrives.
+    # Without this, stream_events sees an empty session and yields session_expired immediately.
+    from backend.core.events import _get_queue as _pre_queue
+    _pre_queue(session_id)
+
     async def _run():
         try:
             await orch.run(
@@ -277,6 +296,63 @@ async def stream_goal(session_id: str, request: Request):
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers": "Last-Event-ID, *",
     })
+
+
+@router.get("/sessions")
+async def list_sessions(request: Request, founder_id: str = "", limit: int = 50):
+    """List all sessions for a founder, newest first."""
+    from backend.core.session_store import list_sessions as _ls
+    return {"sessions": _ls(founder_id=founder_id or None, limit=limit)}
+
+
+@router.get("/sessions/{session_id}/meta")
+async def session_meta(session_id: str, request: Request):
+    """Full session metadata from durable store."""
+    from backend.core.session_store import get_session_meta
+    meta = get_session_meta(session_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="Session not found in store")
+    return meta
+
+
+@router.get("/sessions/{session_id}/replay")
+async def replay_session(session_id: str, request: Request):
+    """Stream the full event log for a session as SSE — rebuilds frontend from scratch."""
+    from backend.core.session_store import load_events as _load
+    from backend.core.events import _event_log, _fmt, _restore_session
+    import asyncio as _asyncio
+
+    # Load from JSONL or memory
+    events = _event_log.get(session_id)
+    if not events:
+        events = await _asyncio.to_thread(_load, session_id)
+    if not events:
+        raise HTTPException(status_code=404, detail="Session events not found")
+
+    async def _gen():
+        for eid, ev in events:
+            yield _fmt(eid, ev)
+        yield _fmt(len(events) + 1, {"type": "replay_complete"})
+
+    return StreamingResponse(_gen(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    })
+
+
+@router.get("/sessions/{session_id}/cost")
+async def session_cost(session_id: str, request: Request):
+    """Token usage and estimated USD cost for a session."""
+    from backend.core.usage import get_session_cost
+    return get_session_cost(session_id)
+
+
+@router.get("/cost")
+async def all_cost(request: Request):
+    """Aggregate token usage and cost across all sessions (admin)."""
+    from backend.core.usage import get_all_sessions_cost
+    return get_all_sessions_cost()
 
 
 @router.get("/sessions/{session_id}/digest")

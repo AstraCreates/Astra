@@ -920,6 +920,21 @@ export async function submitGoal(
   return res.json();
 }
 
+export interface AgentCatalogEntry {
+  id: string;
+  name: string;
+  description: string;
+  produces: string[];
+  depends_on: string[];
+}
+
+export async function getAgentCatalog(): Promise<AgentCatalogEntry[]> {
+  const res = await apiFetch(`${BASE}/agents/catalog`);
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.agents ?? [];
+}
+
 export async function getStacks(): Promise<AgentStackTemplate[]> {
   const res = await apiFetch(`${BASE}/stacks`);
   if (!res.ok) throw new Error(await res.text());
