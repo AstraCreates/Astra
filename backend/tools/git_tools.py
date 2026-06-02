@@ -232,22 +232,9 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
     escaped_prompt = prompt.replace("'", "'\\''")
     oc_args_str = " ".join(oc_args)
 
-    # openclaude ignores subprocess cwd — must cd in shell so it starts in the repo dir.
-    # Use explicit env var passing (not sudo -E) because env_reset in sudoers strips vars.
-    if os.getuid() == 0:
-        openai_key = env.get("OPENAI_API_KEY", "")
-        openai_base = env.get("OPENAI_BASE_URL", "https://api.deepinfra.com/v1/openai")
-        openai_model = env.get("OPENAI_MODEL", model)
-        shell_cmd = (
-            f"cd {local!r} && "
-            f"sudo -u astra env HOME=/home/astra "
-            f"OPENAI_API_KEY={openai_key!r} "
-            f"OPENAI_BASE_URL={openai_base!r} "
-            f"OPENAI_MODEL={openai_model!r} "
-            f"{oc_args_str} '{escaped_prompt}'"
-        )
-    else:
-        shell_cmd = f"cd {local!r} && {oc_args_str} '{escaped_prompt}'"
+    # openclaude must be run with cwd set to the target dir (it writes files there).
+    # Running as root works fine — skip sudo -u astra which loses the cwd.
+    shell_cmd = f"cd {local!r} && {oc_args_str} '{escaped_prompt}'"
 
     r = subprocess.run(shell_cmd, shell=True, capture_output=True, text=True, timeout=timeout, env=env)
     if r.returncode not in (0, 1):
