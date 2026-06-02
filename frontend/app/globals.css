@@ -318,8 +318,7 @@ p { margin: 0; }
 
 .astra-workspace-sidebar {
   position: sticky;
-  top: 50vh;
-  transform: translateY(-50%);
+  top: 48px;
 }
 
 .site-footer {
