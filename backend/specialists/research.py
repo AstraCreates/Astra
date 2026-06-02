@@ -2,6 +2,7 @@
 import asyncio
 import functools
 import logging
+import re as _re
 
 logger = logging.getLogger(__name__)
 from backend.core.agent import Agent, AgentContext
@@ -152,7 +153,6 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     ctx_holder: list = [None]
 
     # _2/_3/_4 variants log to same Obsidian note as base so notes merge
-    import re as _re
     log_name = _re.sub(r"_\d+$", "", agent_name)
     auto_search = _make_auto_logging_tool(search_and_fetch, "search_and_fetch", ctx_holder, log_name)
     auto_batch = _make_auto_logging_tool(batch_search, "batch_search", ctx_holder, log_name)
@@ -196,9 +196,9 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     async def _patched_run(ctx: AgentContext):
         ctx_holder[0] = ctx
 
-        # Step 1: extract topic, then generate 30 queries for it
+        # Step 1: extract topic deterministically, build 30 queries from templates
         topic = await _extract_topic(ctx.goal or "")
-        queries = await _generate_queries(topic, focus_config["query_brief"])
+        queries = _build_queries(topic, agent_name)
 
         # Step 2: pipeline search — generate 3 queries, start searching, generate next 3 simultaneously
         # Split into batches of 3 and run them as a pipeline with asyncio
@@ -253,83 +253,144 @@ async def _run_batch(queries: list) -> dict:
     return await asyncio.to_thread(batch_search, queries, 6)
 
 
-def _sanitize_queries(queries: list, topic: str) -> list:
-    """Remove abbreviations and ensure every query contains the topic phrase."""
+_MARKET_SUFFIXES = [
+    "market size TAM revenue 2024 2025",
+    "industry growth rate CAGR forecast",
+    "venture capital funding rounds 2024",
+    "customer demographics target audience",
+    "regulatory compliance requirements",
+    "market trends emerging 2025",
+    "top investors backed startups",
+    "total addressable market analysis",
+    "user behavior survey research",
+    "geographic market regions breakdown",
+    "adjacent markets opportunities",
+    "industry report grand view research",
+    "market share leading companies",
+    "demand drivers growth factors",
+    "barriers to entry challenges",
+    "B2B B2C customer segments",
+    "pricing benchmarks industry average",
+    "revenue model subscription freemium",
+    "pain points user problems",
+    "news funding launch 2025 2026",
+    "academic study analysis",
+    "competitive landscape overview",
+    "technology adoption curve",
+    "enterprise SMB customer split",
+    "sales cycle length deal size",
+    "unit economics LTV CAC payback",
+    "churn retention benchmarks",
+    "seasonal trends patterns",
+    "international expansion markets",
+    "regulation policy government impact",
+]
+
+_COMPETITOR_SUFFIXES = [
+    "top companies named list 2024 2025",
+    "startups crunchbase funding raised",
+    "alternatives site:g2.com OR site:capterra.com",
+    "best tools ranked site:producthunt.com",
+    "Y Combinator backed startup named",
+    "a16z sequoia funded company",
+    "pricing plans subscription cost per month",
+    "market map landscape named players",
+    "vs comparison named competitors",
+    "reviews reddit users recommend",
+    "site:techcrunch.com funding announcement",
+    "site:venturebeat.com startup",
+    "customer complaints weaknesses",
+    "feature comparison strengths",
+    "free trial demo overview",
+    "founder CEO interview story",
+    "team size employees revenue",
+    "latest news launch product update",
+    "API integration partners",
+    "acquisition merger exit",
+    "patent holder IP owner",
+    "enterprise SMB focus market",
+    "NPS customer satisfaction score",
+    "growth rate MRR ARR metrics",
+    "channel distribution partnership",
+    "white label reseller program",
+    "open source alternative",
+    "international global expansion",
+    "Series A B C funding 2023 2024",
+    "valuation unicorn decacorn",
+]
+
+_EXECUTION_SUFFIXES = [
+    "go-to-market strategy how to launch",
+    "business model revenue streams",
+    "tech stack architecture engineering",
+    "customer acquisition cost CAC LTV",
+    "user pain points reddit forum complaints",
+    "regulatory legal compliance requirements",
+    "sales strategy B2C B2B channels",
+    "founder interview lessons learned YC",
+    "first 100 customers acquisition",
+    "product market fit signals",
+    "pricing strategy freemium tiered",
+    "viral growth loop referral",
+    "content marketing SEO strategy",
+    "paid acquisition channels ROI",
+    "hiring team roles first employees",
+    "unit economics payback period",
+    "churn reduction retention tactics",
+    "onboarding activation best practices",
+    "API integrations technical requirements",
+    "database schema architecture choices",
+    "frontend backend framework choice",
+    "infrastructure scaling cloud provider",
+    "security compliance GDPR SOC2",
+    "partnership channel sales strategy",
+    "investor pitch deck metrics",
+    "fundraising timeline milestones",
+    "competitive differentiation moat",
+    "community building early adopters",
+    "case study success story ROI",
+    "youtube tutorial founder how to build",
+]
+
+_ROLE_SUFFIXES = {
+    "research": _MARKET_SUFFIXES,
+    "research_market": _MARKET_SUFFIXES,
+    "research_financial": _MARKET_SUFFIXES,
+    "research_regulatory": _MARKET_SUFFIXES,
+    "research_competitors": _COMPETITOR_SUFFIXES,
+    "research_execution": _EXECUTION_SUFFIXES,
+}
+
+
+def _build_queries(topic: str, agent_name: str) -> list:
+    """Build 30 search queries deterministically — no LLM, no hallucination."""
     import re
-    # Words from the topic that should never be abbreviated
-    topic_words = set(topic.lower().split())
-    clean = []
-    for q in queries:
-        q = str(q).strip()
-        # Drop queries shorter than 4 words — too generic
-        if len(q.split()) < 4:
-            q = f"{topic} {q}"
-        # Drop queries that don't contain ANY word from the topic (completely off-topic)
-        q_lower = q.lower()
-        if not any(w in q_lower for w in topic_words if len(w) > 3):
-            q = f"{topic} {q}"
-        # Replace isolated uppercase abbreviations (1-3 capital letters alone) that
-        # aren't part of a longer word — e.g. "CO market size" → "{topic} market size"
-        q = re.sub(r'\b[A-Z]{1,3}\b(?!\w)', topic, q)
-        clean.append(q[:100])  # cap length
-    return clean
-
-
-async def _generate_queries(topic: str, query_brief: str) -> list:
-    """Ask the LLM to generate 30 targeted search queries for the given topic and research angle."""
-    import json
-    from backend.config import settings
-    brief = query_brief.replace("TOPIC", topic)
-    try:
-        from openai import OpenAI
-        client = OpenAI(
-            base_url=settings.planner_model_base_url,
-            api_key=settings.planner_model_api_key or settings.agent_model_api_key,
-        )
-        resp = await asyncio.to_thread(
-            client.chat.completions.create,
-            model=settings.planner_model_name,
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"{brief}\n\n"
-                    f"The topic phrase is: \"{topic}\"\n\n"
-                    "STRICT RULES — violating any rule makes the query invalid:\n"
-                    f"1. Every query MUST contain the words from \"{topic}\" written out IN FULL — never shorten, never abbreviate\n"
-                    "2. NEVER use acronyms or initialisms (no CO, AI alone, SaaS alone, etc.) — write the full words\n"
-                    "3. Each query must be 5-10 words\n"
-                    "4. Each query targets a different angle (no repeats)\n"
-                    "5. Include site: operators and year filters (2024, 2025) where useful\n\n"
-                    "Output ONLY a JSON array of 30 query strings. No explanation, no markdown."
-                ),
-            }],
-            max_tokens=1000,
-            temperature=0.3,
-        )
-        raw = resp.choices[0].message.content.strip()
-        if "```" in raw:
-            raw = raw.split("```")[1].lstrip("json").strip()
-        queries = json.loads(raw)
-        if isinstance(queries, list) and len(queries) >= 10:
-            return _sanitize_queries([str(q) for q in queries[:30]], topic)
-    except Exception as e:
-        logger.warning("_generate_queries failed: %s", e)
-    # Fallback: basic queries using topic
-    return [
-        f"{topic} market size 2024 2025",
-        f"{topic} industry growth forecast",
-        f"{topic} top companies list",
-        f"{topic} funding rounds crunchbase",
-        f"{topic} customer reviews reddit",
-        f"{topic} pricing subscription cost",
-        f"{topic} go-to-market strategy",
-        f"{topic} tech stack architecture",
-    ]
+    base = _re.sub(r"_\d+$", "", agent_name)
+    suffixes = _ROLE_SUFFIXES.get(base, _MARKET_SUFFIXES)
+    return [f"{topic} {s}" for s in suffixes]
 
 
 async def _extract_topic(goal: str) -> str:
-    """Extract a 3-6 word search-friendly product phrase from the goal."""
-    import asyncio
+    """Extract the core product phrase from the goal using simple string processing."""
+    import re
+    goal = goal.replace("\n", " ").strip()
+    # Remove leading instruction verbs and articles
+    cleaned = re.sub(
+        r"^(build|create|make|develop|launch|start|design|implement|i want to|we want to|"
+        r"help me|i need|we need|build me|create me|make me|i'm building|we're building|"
+        r"i am building|build a|create a|make a|develop a)[:\s]+",
+        "", goal, flags=re.IGNORECASE
+    ).strip()
+    # Strip trailing implementation details after "with", "that", "for", "using"
+    cleaned = re.sub(r"\s+(with|that|for|using|which|where|featuring|including)\s+.*$", "", cleaned, flags=re.IGNORECASE).strip()
+    # Take first 60 chars, trim to last complete word
+    if len(cleaned) > 60:
+        cleaned = cleaned[:60].rsplit(" ", 1)[0]
+    return cleaned.strip() or goal[:60].strip()
+
+
+async def _unused_extract_topic_llm(goal: str) -> str:
+    """LLM-based topic extraction — kept as reference but replaced by deterministic version."""
     from backend.config import settings
     try:
         from openai import OpenAI
