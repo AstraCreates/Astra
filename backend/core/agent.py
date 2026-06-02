@@ -174,17 +174,18 @@ class Agent:
 
     def _call_llm(self, messages: list[dict], ctx: "AgentContext | None" = None) -> str:
         extra: dict = {"cache_control": {"type": "ephemeral"}}
-        # hy3-preview defaults to reasoning mode — disable it for fast JSON output
-        if "hy3" in self.model:
-            extra["reasoning"] = {"effort": "disabled"}
-        resp = self._get_llm().chat.completions.create(
+        is_openrouter = "openrouter" in (self._model_base_url or "")
+        kwargs: dict = dict(
             model=self.model,
             messages=messages,
             temperature=0.1,
-            response_format={"type": "json_object"},
             timeout=300.0,
             extra_body=extra,
         )
+        # json_object response_format not supported by all OpenRouter models
+        if not is_openrouter:
+            kwargs["response_format"] = {"type": "json_object"}
+        resp = self._get_llm().chat.completions.create(**kwargs)
         # Track token usage and deduct credits per call
         if resp.usage and ctx:
             from backend.core.usage import record_usage
