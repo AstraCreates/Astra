@@ -1,4 +1,4 @@
-"""Design specialist — wireframes, mockups, color palettes, design specs, logo briefs."""
+"""Design specialist — wireframes, mockups, color palettes, design specs, logo briefs, brand images."""
 from backend.core.agent import Agent
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
 from backend.tools.design_tools import (
@@ -7,6 +7,7 @@ from backend.tools.design_tools import (
     generate_design_spec,
     generate_logo_brief,
 )
+from backend.tools._llm import generate_image as generate_brand_image
 from backend.tools.web_search import web_search
 
 
@@ -24,18 +25,20 @@ def build_design_agent(**kwargs) -> Agent:
             "6. generate_wireframe(page='dashboard', layout_description=<main app view>, brand_vibe=<vibe>) — app\n"
             "7. generate_wireframe(page='onboarding', layout_description=<signup flow>, brand_vibe=<vibe>) — onboarding\n"
             "8. generate_logo_brief(brand_name=<COMPANY_NAME>, industry=<industry>, style='wordmark', vibe=<description>)\n"
-            "9. obsidian_log — log all outputs with full CSS variables and hex codes\n"
-            "10. done — return {design_spec, color_palette, wireframes: [array of 3], logo_brief}\n\n"
+            "9. generate_brand_image(description='hero image for <COMPANY_NAME> — <product description>, <visual style from palette>, editorial advertising photography', founder_id=<FOUNDER_ID>, session_id=<SESSION>) — brand hero image\n"
+            "10. obsidian_log — log all outputs with full CSS variables and hex codes\n"
+            "11. done — return {design_spec, color_palette, wireframes: [array of 3], logo_brief, brand_images: [{base64, prompt}]}\n\n"
             "CRITICAL: Use SPECIFIC Google Font names (e.g. 'Syne', 'DM Sans', 'Cabinet Grotesk', 'Plus Jakarta Sans'). "
             "Use BOLD, DISTINCTIVE colors — never generic grey/white-only palettes. "
             "Your done output MUST include: design_spec (object with css_variables key containing raw CSS), "
-            "color_palette (object mapping role→hex), wireframes (array ≥3), logo_brief (string or object)."
+            "color_palette (object mapping role→hex), wireframes (array ≥3), logo_brief (string or object), brand_images (array)."
         ),
         tools={
             "generate_wireframe": generate_wireframe,
             "generate_color_palette": generate_color_palette,
             "generate_design_spec": generate_design_spec,
             "generate_logo_brief": generate_logo_brief,
+            "generate_brand_image": generate_brand_image,
             "web_search": web_search,
             "obsidian_log": obsidian_log,
             "obsidian_read": obsidian_read,

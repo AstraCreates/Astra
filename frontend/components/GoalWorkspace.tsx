@@ -500,6 +500,13 @@ function TechnicalPreview({ state }: { state: AgentState }) {
 function DesignPreview({ state }: { state: AgentState }) {
   const result = state.result ?? {};
 
+  // Brand images from design agent (generate_brand_image tool) or adImages captured live
+  const brandImagesRaw = (result.brand_images ?? result.brand_image ?? []) as Array<Record<string, unknown>>;
+  const brandImages = [
+    ...brandImagesRaw.map(img => ({ base64: img.base64 as string | undefined, url: img.url as string | undefined, prompt: img.prompt as string | undefined })),
+    ...(state.adImages ?? []),
+  ].filter((img, i, arr) => (img.base64 || img.url) && arr.findIndex(x => (x.url && x.url === img.url) || (x.base64 && x.base64 === img.base64)) === i);
+
   // Find the color palette anywhere in the result (LLM may nest under any key)
   const rawPalette = findPalette(result) ?? null;
 
@@ -584,6 +591,28 @@ function DesignPreview({ state }: { state: AgentState }) {
         <div style={{ borderRadius: 10, border: "1px solid rgba(0,0,0,0.08)", background: "rgba(255,255,255,0.03)", padding: "8px 10px", fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.6 }}>
           <div style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)", marginBottom: 4 }}>Logo direction</div>
           {logoBrief.slice(0, 320)}
+        </div>
+      )}
+      {brandImages.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)" }}>Brand Images</span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {brandImages.map((img, i) => {
+              const src = img.url ?? (img.base64 ? `data:image/png;base64,${img.base64}` : null);
+              if (!src) return null;
+              return (
+                <div key={i} style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: "1px solid rgba(0,0,0,0.12)" }}>
+                  <img src={src} alt={img.prompt ?? `Brand image ${i + 1}`} style={{ display: "block", maxWidth: 320, maxHeight: 320, objectFit: "cover" }} />
+                  {img.prompt && (
+                    <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.6)", padding: "4px 8px" }}>
+                      <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)", lineHeight: 1.4 }}>{img.prompt.slice(0, 100)}{img.prompt.length > 100 ? "…" : ""}</span>
+                    </div>
+                  )}
+                  <a href={src} target="_blank" rel="noopener noreferrer" style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.5)", borderRadius: 6, padding: "2px 6px", fontSize: 9, color: "#fff", textDecoration: "none" }}>↗</a>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
       {allColors.length === 0 && !spec && isDone && <ResultDump result={state.result} />}
@@ -3541,7 +3570,7 @@ export function GoalWorkspace({
           // Capture ad images from generate_ad_image tool result
           let newAdImages = cur.adImages;
           const eventImageUrl = (event.result?.url as string | undefined) ?? (event.result?.image_url as string | undefined);
-          if (event.tool === "generate_ad_image" && ok && (eventImageUrl || event.result?.base64)) {
+          if ((event.tool === "generate_ad_image" || event.tool === "generate_brand_image") && ok && (eventImageUrl || event.result?.base64)) {
             const img = { url: eventImageUrl, base64: event.result.base64 as string | undefined, prompt: event.result.prompt as string | undefined };
             newAdImages = [...(cur.adImages ?? []), img];
           }
