@@ -909,30 +909,54 @@ class Orchestrator:
             })
             logger.info("Task %s (%s) done", tid, agent_name)
 
-        # Phase A: run all 3 research agents in parallel
-        await asyncio.gather(*[_run_task(t) for t in parallel_research_tasks])
+        # Phase A: run all research agents in background; start other agents as soon
+        # as accumulated research output crosses a readiness threshold.
+        _research_ready = asyncio.Event()
+        _READINESS_CHARS = 1500  # minimum research text before unblocking other agents
+
+        def _collect_research() -> tuple[dict, list[str]]:
+            """Merge completed research results + vault notes into (result_dict, merged_notes)."""
+            from backend.tools.obsidian_logger import _note_path
+            import re as _re2
+            result: dict = {}
+            notes: list[str] = []
+            seen: set[str] = set()
+            for rt in parallel_research_tasks:
+                result.update(completed.get(rt["id"], {}))
+                try:
+                    base = _re2.sub(r"_\d+$", "", rt["agent"])
+                    nf = _note_path(base, session_id, founder_id)
+                    key = str(nf)
+                    if nf.exists() and key not in seen:
+                        seen.add(key)
+                        notes.append(f"## {base.upper()}\n\n{nf.read_text()}")
+                except Exception:
+                    pass
+            return result, notes
+
+        async def _run_research_tracked(task: dict) -> None:
+            await _run_task(task)
+            # After each research agent completes, check if we have enough to proceed
+            r, n = _collect_research()
+            total_text = len(r.get("obsidian_content", "") or "") + sum(len(x) for x in n)
+            if total_text >= _READINESS_CHARS or all(
+                rt["id"] in completed for rt in parallel_research_tasks
+            ):
+                _research_ready.set()
+
+        research_bg_tasks = [
+            asyncio.create_task(_run_research_tracked(t)) for t in parallel_research_tasks
+        ]
+
+        # Wait until research is ready OR all research completes (whichever comes first)
+        try:
+            await asyncio.wait_for(_research_ready.wait(), timeout=600)
+        except asyncio.TimeoutError:
+            _research_ready.set()
 
         if True:
-            # Phase B: merge all research notes then replan
-            from backend.tools.obsidian_logger import _note_path
-            research_result = {}
-            merged_notes: list[str] = []
-            _seen_note_paths: set[str] = set()
-            for rt in parallel_research_tasks:
-                research_result.update(completed.get(rt["id"], {}))
-                try:
-                    # _2/_3/_4 variants write to same base agent name — deduplicate
-                    import re as _re
-                    base_agent = _re.sub(r"_\d+$", "", rt["agent"])
-                    note_file = _note_path(base_agent, session_id, founder_id)
-                    note_key = str(note_file)
-                    if note_file.exists() and note_key not in _seen_note_paths:
-                        _seen_note_paths.add(note_key)
-                        merged_notes.append(f"## {base_agent.upper()}\n\n{note_file.read_text()}")
-                except Exception as _re:
-                    logger.debug("Could not read %s obsidian note: %s", rt["agent"], _re)
-            if merged_notes:
-                research_result["obsidian_content"] = "\n\n---\n\n".join(merged_notes)
+            # Phase B: replan with whatever research is available; remaining research continues in background
+            research_result, merged_notes = _collect_research()
             agents_needed = [t["agent"] for t in other_agents_initial]
             if agents_needed:
                 detailed_tasks = await self._replan_with_research(goal, research_result, agents_needed, stack_context)
@@ -983,6 +1007,8 @@ class Orchestrator:
                         ]
                     tasks = parallel_research_tasks + other_agents_initial
 
+            # Ensure all background research tasks finish (they continue enriching shared context)
+            asyncio.ensure_future(asyncio.gather(*research_bg_tasks, return_exceptions=True))
             remaining = [t for t in tasks if t["agent"] not in _RESEARCH_AGENTS]
 
         # design must finish before web (web uses brand colors/fonts from design output)
