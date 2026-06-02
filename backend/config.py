@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     or_planner_model: str = "tencent/hy3-preview"
-    or_highoutput_model: str = "deepseek-ai/DeepSeek-V4-Flash"
+    or_highoutput_model: str = "tencent/hy3-preview"
     or_light_model: str = "inclusionai/ling-2.6-flash"
     # Tool-use model — hy3-preview for web agent (strong agentic workflows)
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
@@ -29,9 +29,9 @@ class Settings(BaseSettings):
     # Light model — ling-2.6-flash: cheap, fast for research synthesis
     light_model_base_url: str = "https://openrouter.ai/api/v1"
     light_model_name: str = "inclusionai/ling-2.6-flash"
-    # High-output model — DeepSeek V4 Flash: cheap, fast, strong tool use
-    highoutput_model_base_url: str = "https://api.deepinfra.com/v1/openai"
-    highoutput_model_name: str = "deepseek-ai/DeepSeek-V4-Flash"
+    # High-output model — hy3-preview via OpenRouter
+    highoutput_model_base_url: str = "https://openrouter.ai/api/v1"
+    highoutput_model_name: str = "tencent/hy3-preview"
     vertex_project: str = ""
     vertex_location: str = "us-central1"
 
