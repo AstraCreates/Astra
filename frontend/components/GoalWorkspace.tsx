@@ -3348,12 +3348,23 @@ export function GoalWorkspace({
   useEffect(() => {
     if (!sessionId || sessionId === "undefined" || done) return;
     const es = streamGoal(sessionId);
-    es.onopen = () => { setConnected(true); setReconnecting(false); errorCount.current = 0; everConnected.current = true; };
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    es.onopen = () => {
+      setConnected(true); setReconnecting(false); errorCount.current = 0; everConnected.current = true;
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    };
     es.onerror = () => {
-      setConnected(false); errorCount.current += 1;
+      setConnected(false);
       if (done) { es.close(); return; }
-      if (errorCount.current >= 5) setError(everConnected.current ? "Connection lost — refresh to reconnect." : "Could not connect. Is the backend running?");
-      else setReconnecting(true);
+      errorCount.current += 1;
+      if (errorCount.current >= 10) {
+        setError(everConnected.current ? "Connection lost — refresh to reconnect." : "Could not connect. Is the backend running?");
+      } else {
+        // Debounce: only show "reconnecting" after 3s of sustained errors
+        if (!reconnectTimer) {
+          reconnectTimer = setTimeout(() => { setReconnecting(true); reconnectTimer = null; }, 3000);
+        }
+      }
     };
 
     es.onmessage = (e) => {
@@ -3418,7 +3429,7 @@ export function GoalWorkspace({
         setOutcomes(prev => [...prev.filter(o => o.id !== event.outcome.id), event.outcome as OutcomeLedgerEvent].slice(-30));
         return;
       }
-      if (event.type === "session_expired") { setError("Session expired — backend was restarted. Run a new goal."); es.close(); return; }
+      if (event.type === "session_expired") { setDone(true); es.close(); return; }
 
       setAgents((prev) => {
         const next = { ...prev };

@@ -149,12 +149,23 @@ async def publish(session_id: str, event: dict) -> None:
     await _get_queue(session_id).put((event_id, event))
 
 
+_main_loop: asyncio.AbstractEventLoop | None = None
+
+
+def set_main_loop(loop: asyncio.AbstractEventLoop) -> None:
+    global _main_loop
+    _main_loop = loop
+
+
 def publish_sync(session_id: str, event: dict) -> None:
-    """Fire-and-forget from sync context (runs in same event loop)."""
+    """Fire-and-forget from sync/thread context using the main event loop."""
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(publish(session_id, event))
+        loop = _main_loop or asyncio.get_running_loop()
+        asyncio.run_coroutine_threadsafe(publish(session_id, event), loop)
+    except RuntimeError:
+        # No running loop (tests/scripts) — buffer synchronously
+        event.setdefault("ts_unix", __import__("time").time())
+        _buffer(session_id, _next_id(session_id), event)
     except Exception:
         pass
 

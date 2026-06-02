@@ -38,6 +38,9 @@ app.include_router(credits_router, prefix="/api")
 
 @app.on_event("startup")
 async def startup_background_jobs():
+    # Store main event loop so publish_sync works from threads
+    from backend.core.events import set_main_loop
+    set_main_loop(asyncio.get_running_loop())
     from backend.tools.company_brain_scheduler import start_company_brain_scheduler
     start_company_brain_scheduler(interval_seconds=60)
     from backend.missions.scheduler import start_missions_scheduler
