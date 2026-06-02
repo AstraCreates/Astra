@@ -61,9 +61,10 @@ def get_orchestrator() -> Orchestrator:
             model_base_url=settings.highoutput_model_base_url,
             model_api_key=_or_key,
         )
+        # Research + simple agents — ling-2.6-flash ($0.01/$0.03/M, fast)
         _small_kwargs = dict(
-            model=settings.planner_model_name,
-            model_base_url=settings.planner_model_base_url,
+            model=settings.light_model_name,
+            model_base_url=settings.light_model_base_url,
             model_api_key=_or_key,
         )
         # research_financial/regulatory need 1M ctx — keep on DeepSeek

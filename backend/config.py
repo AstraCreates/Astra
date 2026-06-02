@@ -15,15 +15,15 @@ class Settings(BaseSettings):
     # Tool-use model — strong at function calling (web/technical/ops agents)
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
     tooluse_model_name: str = "tencent/hy3-preview"
-    # Planner — Ling Flash: $0.01/$0.03/M, fast, 262k ctx
+    # Planner — hy3-preview: better reasoning for goal decomposition
     planner_model_base_url: str = "https://openrouter.ai/api/v1"
     planner_model_api_key: str = ""
-    planner_model_name: str = "inclusionai/ling-2.6-flash"
-    # Chat model — Ling Flash: cheap, fast for Q&A
+    planner_model_name: str = "tencent/hy3-preview"
+    # Chat model — hy3-preview: better Q&A reasoning
     chat_model_base_url: str = "https://openrouter.ai/api/v1"
     chat_model_api_key: str = ""
-    chat_model_name: str = "inclusionai/ling-2.6-flash"
-    # Light model — Ling Flash
+    chat_model_name: str = "tencent/hy3-preview"
+    # Light model — ling-2.6-flash: cheap, fast for research synthesis
     light_model_base_url: str = "https://openrouter.ai/api/v1"
     light_model_name: str = "inclusionai/ling-2.6-flash"
     # High-output model — Kimi K2.6 free: free tier, 262k ctx, great at writing + tool use
