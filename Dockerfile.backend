@@ -10,7 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && echo "astra ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    playwright install chromium && \
+    playwright install-deps chromium
 
 COPY . .
 
