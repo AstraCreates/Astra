@@ -370,8 +370,50 @@ def _build_queries(topic: str, agent_name: str) -> list:
     return [f"{topic} {s}" for s in suffixes]
 
 
+def _regex_extract_topic(goal: str) -> str:
+    """Deterministic topic extraction — no LLM, no hallucination."""
+    goal = goal.replace("\n", " ").strip()
+    # Remove leading instruction verbs
+    cleaned = _re.sub(
+        r"^(build|create|make|develop|launch|start|design|implement|i want to|we want to|"
+        r"help me build|i need|we need|build me|create me)[:\s]+(?:a\s+|an\s+|the\s+)?",
+        "", goal, flags=_re.IGNORECASE
+    ).strip()
+    # Trim at implementation details
+    cleaned = _re.sub(
+        r"\s+(with|that|for|using|which|where|featuring|including|and a|also)\s+.*$",
+        "", cleaned, flags=_re.IGNORECASE
+    ).strip()
+    # Cap length
+    if len(cleaned) > 60:
+        cleaned = cleaned[:60].rsplit(" ", 1)[0]
+    return cleaned.strip() or goal[:60].strip()
+
+
+def _is_bad_topic(phrase: str) -> bool:
+    """Return True if the phrase looks like a hallucination/abbreviation."""
+    words = phrase.strip().split()
+    # Too short
+    if len(words) < 2:
+        return True
+    # All-caps single token (CO, AI, B2B alone, etc.)
+    if any(_re.fullmatch(r'[A-Z]{1,4}', w) for w in words):
+        return True
+    # Contains math/code
+    if any(c in phrase for c in ['=', '+', '->', '()', '<', '>']):
+        return True
+    return False
+
+
 async def _extract_topic(goal: str) -> str:
-    """Extract the core product phrase using LLM — handles complex multi-sentence goals."""
+    """Extract the core product phrase. Regex first (reliable), LLM to enhance if needed."""
+    # Always start with deterministic regex — never hallucinates
+    regex_result = _regex_extract_topic(goal)
+
+    # Only use LLM for complex multi-sentence goals where regex truncates badly
+    if len(goal.split()) <= 12:
+        return regex_result  # short goal, regex is perfect
+
     from backend.config import settings
     try:
         from openai import OpenAI
@@ -386,30 +428,23 @@ async def _extract_topic(goal: str) -> str:
                 "role": "user",
                 "content": (
                     "Extract the core product/domain phrase from this goal. "
-                    "Output ONLY 3-7 words that describe what the product IS. "
-                    "Rules: no verbs (build/create/make), write all words in full (never abbreviate), "
-                    "no acronyms, describe the product not the action.\n"
+                    "Output ONLY 3-6 words. Write ALL words in FULL — never abbreviate, never use acronyms alone.\n"
+                    "CRITICAL: 'co-founder' must stay as 'co-founder' not 'CO'. "
+                    "'artificial intelligence' not 'AI' alone. Write the full hyphenated word.\n"
                     "Examples:\n"
-                    "Goal: 'Build a co-founder matching platform' → 'co-founder matching platform'\n"
-                    "Goal: 'AI-predicted stock market signals for retail traders' → 'AI stock trading signal platform'\n"
-                    "Goal: 'Restaurant inventory management with AI' → 'restaurant inventory management software'\n"
-                    "Goal: 'B2B sales outreach automation tool' → 'B2B sales outreach automation'\n\n"
-                    f"Goal: {goal[:500]}\n\nProduct phrase:"
+                    "→ 'co-founder matching platform'\n"
+                    "→ 'AI stock trading signal platform'\n"
+                    "→ 'restaurant inventory management software'\n\n"
+                    f"Goal: {goal[:400]}\n\nProduct phrase (3-6 words, no abbreviations):"
                 ),
             }],
-            max_tokens=20,
+            max_tokens=15,
             temperature=0.0,
         )
         phrase = resp.choices[0].message.content.strip().strip('"\'').strip()
-        if phrase and 2 <= len(phrase.split()) <= 8:
+        if phrase and 2 <= len(phrase.split()) <= 8 and not _is_bad_topic(phrase):
             return phrase
     except Exception as e:
         logger.warning("_extract_topic LLM failed: %s", e)
-    # Regex fallback for when LLM is unavailable
-    import re
-    goal = goal.replace("\n", " ").strip()
-    cleaned = re.sub(r"^(build|create|make|develop|launch|start|design|implement|i want to|we want to|help me|i need)[:\s]+", "", goal, flags=re.IGNORECASE).strip()
-    cleaned = re.sub(r"\s+(with|that|for|using|which|where|featuring)\s+.*$", "", cleaned, flags=re.IGNORECASE).strip()
-    return (cleaned[:60].rsplit(" ", 1)[0] if len(cleaned) > 60 else cleaned) or goal[:60]
-    # Fallback: first 60 chars of goal, cleaned
-    return goal.replace("\n", " ").strip()[:60]
+
+    return regex_result
