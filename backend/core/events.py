@@ -135,6 +135,7 @@ _KEY_EVENT_TYPES = {
     "goal_start", "goal_done", "goal_error",
     "agent_start", "agent_done", "agent_error",
     "agent_tool_call", "agent_thinking", "agent_action",
+    "agent_unknown_action",
     "plan_done", "company_name", "goal_expanded",
     "stack_selected",
 }
@@ -167,6 +168,8 @@ def _write_session_log(session_id: str, event: dict) -> None:
             extra = f" agents=[{', '.join(t.get('agent','') for t in tasks)}]"
         elif etype == "agent_thinking":
             extra = f" hint={event.get('hint', '')[:60]}"
+        elif etype == "agent_unknown_action":
+            extra = f" action={event.get('action')} keys={event.get('parsed_keys')} raw={event.get('raw_snippet','')[:60]}"
         line = f"[{ts}] {session_id[:8]} {etype:<22} {agent}{extra}\n"
         with open(_SESSION_LOG_PATH, "a") as f:
             f.write(line)

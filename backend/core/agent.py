@@ -550,6 +550,33 @@ class Agent:
             elif action == "computer_use" and browser is None:
                 messages.append({"role": "user", "content": "computer_use not available. Use tool or delegate."})
 
+            elif action in ("tool_call", "function_call", "call_tool", "use_tool") or (action is None and parsed.get("tool") in self.tools):
+                # Normalize: some models output {"action":"tool_call",...} or {"tool":"name","args":{}} with no action
+                parsed["action"] = "tool"
+                tool_name = parsed.get("tool") or parsed.get("function") or parsed.get("name")
+                args = parsed.get("args") or parsed.get("parameters") or parsed.get("input") or {}
+                if not args and "arguments" in parsed:
+                    args = parsed["arguments"]
+                    if isinstance(args, str):
+                        try:
+                            import json as _j; args = _j.loads(args)
+                        except Exception:
+                            args = {}
+                if tool_name and tool_name in self.tools:
+                    await self._emit(ctx, "agent_action", action="tool", tool=tool_name, args=args, reasoning=reasoning)
+                    result = await self._execute_tool(tool_name, args, ctx)
+                    await self._emit(ctx, "agent_action_result", tool=tool_name, result=result)
+                    if "error" not in result:
+                        _called_tools.add(tool_name)
+                        if isinstance(result, dict):
+                            _tool_results.append((tool_name, result))
+                    if "error" in result:
+                        messages.append({"role": "user", "content": f"TOOL FAILED: {json.dumps(result)}"})
+                    else:
+                        messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result)}"})
+                else:
+                    messages.append({"role": "user", "content": f"Unknown tool '{tool_name}'. Use: tool, delegate, computer_use, or done."})
+
             elif action in self.tools:
                 # Model used action name directly instead of {"action":"tool","tool":"<name>"}
                 tool_name = action
@@ -571,7 +598,9 @@ class Agent:
                     messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result)}"})
 
             else:
-                messages.append({"role": "user", "content": "Unknown action. Use: tool, delegate, computer_use, or done."})
+                logger.warning("[%s] iter=%d unknown action=%r parsed_keys=%s raw=%r", self.name, i, action, list(parsed.keys()), raw[:200])
+                await self._emit(ctx, "agent_unknown_action", action=action, parsed_keys=list(parsed.keys()), raw_snippet=raw[:120])
+                messages.append({"role": "user", "content": f"Unknown action '{action}'. Valid actions: tool, delegate, computer_use, done. Respond with a valid JSON action now."})
 
         logger.warning("%s hit MAX_ITERATIONS (%d) — forcing synthesis from gathered data", self.name, MAX_ITERATIONS)
         # Force one final synthesis call using everything gathered so far
