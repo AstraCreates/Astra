@@ -43,31 +43,29 @@ def reload_model_overrides() -> None:
 def get_orchestrator() -> Orchestrator:
     global _orchestrator
     if _orchestrator is None:
+        # Use OR-prefixed fields — Coolify doesn't override these (new names)
         _or_key = settings.openrouter_api_key or settings.agent_model_api_key
-        # Tool-use agents — tencent/hy3-preview via OpenRouter (better function calling)
+        _or_base = settings.openrouter_base_url  # always https://openrouter.ai/api/v1
         _coder_kwargs = dict(
-            model=settings.tooluse_model_name,
-            model_base_url=settings.tooluse_model_base_url,
+            model=settings.or_planner_model,    # hy3-preview
+            model_base_url=_or_base,
             model_api_key=_or_key,
         )
-        # Fallback to DeepSeek for 1M ctx needs (research financial/regulatory)
         _deepseek_kwargs = dict(
             model="deepseek-ai/DeepSeek-V4-Flash",
             model_base_url=settings.agent_model_base_url,
             model_api_key=settings.agent_model_api_key,
         )
         _highoutput_kwargs = dict(
-            model=settings.highoutput_model_name,
-            model_base_url=settings.highoutput_model_base_url,
+            model=settings.or_highoutput_model,  # kimi-k2.6:free
+            model_base_url=_or_base,
             model_api_key=_or_key,
         )
-        # Research + simple agents — ling-2.6-flash ($0.01/$0.03/M, fast)
         _small_kwargs = dict(
-            model=settings.light_model_name,
-            model_base_url=settings.light_model_base_url,
+            model=settings.or_light_model,  # ling-2.6-flash
+            model_base_url=_or_base,
             model_api_key=_or_key,
         )
-        # research_financial/regulatory need 1M ctx — keep on DeepSeek
         _large_ctx_kwargs = _deepseek_kwargs
         specialists = {
             # Research — Llama-4-Scout (fast, 320k ctx, good synthesis)
@@ -140,8 +138,8 @@ def get_orchestrator() -> Orchestrator:
             role="planning coordinator. Decompose founder goals into specialist tasks scoped to each agent's actual capabilities.",
             tools={},
             sub_agents=list(specialists.values()),
-            model=settings.planner_model_name,
-            model_base_url=settings.planner_model_base_url,
+            model=settings.or_planner_model,
+            model_base_url=_or_base,
             model_api_key=_or_key,
         )
         _orchestrator = Orchestrator(planner=planner, specialists=specialists)

@@ -213,7 +213,7 @@ class Orchestrator:
             from openai import OpenAI
             from backend.config import settings
             client = OpenAI(
-                base_url=settings.planner_model_base_url or "https://api.deepinfra.com/v1/openai",
+                base_url=settings.openrouter_base_url,
                 api_key=settings.openrouter_api_key or settings.planner_model_api_key or settings.agent_model_api_key,
             )
             resp = await asyncio.to_thread(
@@ -254,12 +254,12 @@ class Orchestrator:
         try:
             from openai import OpenAI
             client = OpenAI(
-                base_url=settings.planner_model_base_url or "https://api.deepinfra.com/v1/openai",
+                base_url=settings.openrouter_base_url,
                 api_key=settings.openrouter_api_key or settings.planner_model_api_key or settings.agent_model_api_key,
             )
             resp = await asyncio.to_thread(
                 client.chat.completions.create,
-                model=settings.planner_model_name,  # Llama-4-Scout — fast, cheap
+                model=settings.or_planner_model,
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": goal},

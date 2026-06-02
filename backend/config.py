@@ -9,9 +9,12 @@ class Settings(BaseSettings):
     agent_model_base_url: str = "https://api.deepinfra.com/v1/openai"
     agent_model_api_key: str = ""
     agent_model_name: str = "deepseek-ai/DeepSeek-V4-Flash"
-    # OpenRouter — for models not on DeepInfra (better tool use)
+    # OpenRouter — NOT overridden by Coolify (new field names)
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    or_planner_model: str = "tencent/hy3-preview"
+    or_highoutput_model: str = "moonshotai/kimi-k2.6:free"
+    or_light_model: str = "inclusionai/ling-2.6-flash"
     # Tool-use model — hy3-preview for web agent (strong agentic workflows)
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
     tooluse_model_name: str = "tencent/hy3-preview"

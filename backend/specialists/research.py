@@ -170,8 +170,8 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     # Role prompt is built at run-time (after queries are generated), so use a placeholder
     agent = Agent(
         name=agent_name,
-        model=settings.light_model_name,
-        model_base_url=settings.light_model_base_url,
+        model=settings.or_light_model,
+        model_base_url=settings.openrouter_base_url,
         model_api_key=settings.openrouter_api_key or settings.planner_model_api_key or settings.agent_model_api_key,
         max_iterations=40,
         role="ROLE_PLACEHOLDER",  # replaced at runtime after query generation
@@ -376,12 +376,12 @@ async def _extract_topic(goal: str) -> str:
     try:
         from openai import OpenAI
         client = OpenAI(
-            base_url=settings.light_model_base_url,
+            base_url=settings.openrouter_base_url,
             api_key=settings.openrouter_api_key or settings.planner_model_api_key or settings.agent_model_api_key,
         )
         resp = await asyncio.to_thread(
             client.chat.completions.create,
-            model=settings.light_model_name,
+            model=settings.or_light_model,
             messages=[{
                 "role": "user",
                 "content": (
