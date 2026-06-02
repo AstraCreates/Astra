@@ -55,11 +55,9 @@ async def _resume_interrupted_sessions() -> None:
         from backend.core.session_store import scan_interrupted as _ss_interrupted
         from backend.core.events import _redis_active_sessions, _restore_session, _event_log
         from backend.core.factory import get_orchestrator
-        # JSONL store is primary — no TTL, no cap
+        # JSONL store is the only source — Redis fallback removed to prevent
+        # old sessions with huge contexts from blocking the thread pool on startup
         interrupted = await _asyncio.to_thread(_ss_interrupted)
-        if not interrupted:
-            # Fall back to Redis for sessions started before JSONL store was added
-            interrupted = await _asyncio.to_thread(_redis_active_sessions)
         if not interrupted:
             return
         # Limit to most recent sessions to prevent startup crash loop

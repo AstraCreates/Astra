@@ -262,7 +262,6 @@ async def submit_goal(body: GoalRequest, request: Request):
     _pre_queue(session_id)
 
     async def _run():
-        logger.info("GOAL_RUN_START session=%s founder=%s", session_id, body.founder_id)
         try:
             await orch.run(
                 goal=body.instruction,
@@ -270,13 +269,12 @@ async def submit_goal(body: GoalRequest, request: Request):
                 constraints=constraints,
                 session_id=session_id,
             )
-            logger.info("GOAL_RUN_DONE session=%s", session_id)
         except Exception as e:
-            logger.error("GOAL_RUN_ERROR session=%s error=%s", session_id, e, exc_info=True)
+            logger.error("goal run error session=%s: %s", session_id, e, exc_info=True)
             try:
                 await publish(session_id, {"type": "goal_error", "error": str(e)})
-            except Exception as pe:
-                logger.error("GOAL_PUBLISH_ERROR session=%s publish_err=%s", session_id, pe)
+            except Exception:
+                pass
 
     asyncio.create_task(_run())
     return {"session_id": session_id, "status": "running"}
