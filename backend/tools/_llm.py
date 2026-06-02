@@ -205,6 +205,14 @@ def generate_image(description: str, width: int = 1024, height: int = 1024, foun
         return {"prompt": image_prompt, "error": str(e), "model": _IMAGE_MODEL}
 
 
+_GEMINI_IMAGE_MODEL = "google/gemini-2.5-flash-preview-05-20"
+_OR_BASE = "https://openrouter.ai/api/v1"
+
+
+def _or_api_key() -> str:
+    return settings.openrouter_api_key or settings.agent_model_api_key
+
+
 def generate_logo(
     brand_name: str,
     style: str = "wordmark",
@@ -213,67 +221,76 @@ def generate_logo(
     founder_id: str = "",
     session_id: str = "",
 ) -> dict:
-    """Generate a logo.
-    style: 'wordmark' (SVG text mark — crisp, no FLUX hallucinations) or 'icon' (FLUX abstract geometric mark).
-    colors: brand hex codes or description.
+    """Generate a logo image using Gemini 2.5 Flash via OpenRouter.
+    style: 'wordmark' (brand name as typographic logo with icon) or 'icon' (symbol only, no text).
+    colors: brand hex codes or color description.
     vibe: brand personality (minimal, bold, playful, luxury, tech).
-    Returns {base64, style, brand_name} — base64 is PNG or SVG.
+    Returns {base64, prompt, style, brand_name}.
     """
-    if style == "wordmark":
-        # Use programmatic SVG — FLUX cannot reliably render text
-        from backend.tools.logo_generator import generate_wordmark_svg
-        return generate_wordmark_svg(brand_name=brand_name, colors=colors, vibe=vibe)
-
-    # Icon: FLUX abstract geometric mark (no text)
-    import openai
+    import openai, re as _re
 
     if founder_id:
         allowed, _ = _check_image_budget(founder_id)
         if not allowed:
             return {"error": "Monthly image budget exhausted.", "style": style}
 
-    client = openai.OpenAI(base_url=_DI_BASE, api_key=_api_key())
-    system = (
-        "You write FLUX prompts for app icon logos — a standalone abstract symbol, NO text whatsoever.\n\n"
-        "Rules:\n"
-        "- Pure white background, centered\n"
-        "- ONE bold geometric shape or abstract mark (circle, interlocking rings, angular form, etc.)\n"
-        "- Represents the brand concept abstractly — NOT literally (no handshakes, no people)\n"
-        "- Specify exact colors using the brand palette\n"
-        "- Scalable — looks good at 32×32px\n"
-        "- End with: 'app icon, flat vector illustration, white background, no text, no letters'\n"
-        "- 25-40 words. Output ONLY the prompt."
-    )
-    user = f"Brand: {brand_name}\nColors: {colors or 'deep navy and electric blue'}\nVibe: {vibe or 'modern tech startup'}\nWrite the FLUX icon prompt."
+    if style == "wordmark":
+        prompt = (
+            f"Create a professional wordmark logo for '{brand_name}'. "
+            f"Design: the exact text '{brand_name}' in bold, distinctive typography with a small geometric icon to the left. "
+            f"Colors: {colors or 'deep navy #0f172a and electric blue #2563eb'}. "
+            f"Style: {vibe or 'modern tech startup'}, clean, minimal, no gradients. "
+            f"Pure white background. The brand name must be clearly legible. "
+            f"Flat vector design, professional branding quality."
+        )
+    else:
+        prompt = (
+            f"Create a professional icon logo for '{brand_name}'. "
+            f"Design: ONE bold abstract geometric symbol — no text, no letters, no brand name. "
+            f"The shape should abstractly represent: {vibe or 'connection and growth'}. "
+            f"Colors: {colors or 'deep navy #0f172a and electric blue #2563eb'}. "
+            f"Pure white background, centered composition. "
+            f"Flat vector style, scalable app icon quality, recognizable at small sizes."
+        )
 
-    resp = client.chat.completions.create(
-        model=_PROMPT_MODEL,
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        max_tokens=70,
-        temperature=0.5,
-        timeout=20.0,
-    )
-    icon_prompt = (resp.choices[0].message.content or "").strip().strip('"\'')
-    logger.info("Icon prompt: %s", icon_prompt)
+    logger.info("Gemini logo prompt (%s): %s", style, prompt[:120])
 
     try:
-        img_client = openai.OpenAI(base_url=_DI_BASE, api_key=_api_key())
-        img_resp = img_client.images.generate(
-            model=_IMAGE_MODEL,
-            prompt=icon_prompt,
-            size="1024x1024",
-            n=1,
-            response_format="b64_json",
+        client = openai.OpenAI(base_url=_OR_BASE, api_key=_or_api_key())
+        resp = client.chat.completions.create(
+            model=_GEMINI_IMAGE_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            extra_body={"modalities": ["image", "text"]},
             timeout=120.0,
         )
-        b64 = img_resp.data[0].b64_json if img_resp.data else None
+        # Extract base64 image from response
+        b64 = None
+        msg = resp.choices[0].message if resp.choices else None
+        if msg:
+            # Check content parts for image data
+            content = msg.content or ""
+            if hasattr(msg, "content_parts"):
+                for part in (msg.content_parts or []):
+                    if hasattr(part, "image_url") and part.image_url:
+                        url = part.image_url.url or ""
+                        if url.startswith("data:"):
+                            b64 = url.split(",", 1)[-1]
+                            break
+            # Fallback: look for base64 in content string
+            if not b64:
+                m = _re.search(r'data:image/[^;]+;base64,([A-Za-z0-9+/=]+)', content)
+                if m:
+                    b64 = m.group(1)
+
         if founder_id and b64:
             _record_image_spend(founder_id)
             if session_id:
-                _save_image_to_vault(None, b64, icon_prompt, founder_id, session_id)
-        return {"base64": b64, "prompt": icon_prompt, "style": "icon", "brand_name": brand_name}
+                _save_image_to_vault(None, b64, prompt, founder_id, session_id)
+
+        return {"base64": b64, "prompt": prompt, "style": style, "brand_name": brand_name}
     except Exception as e:
-        return {"error": str(e), "style": "icon", "brand_name": brand_name}
+        logger.warning("Gemini logo generation failed (%s): %s", style, e)
+        return {"error": str(e), "style": style, "brand_name": brand_name}
 
 
 def composite_logo_on_image(

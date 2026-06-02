@@ -609,19 +609,14 @@ function DesignPreview({ state }: { state: AgentState }) {
             {[{ label: "Wordmark", data: logoWordmark }, { label: "Icon", data: logoIcon }].map(({ label, data }) => {
               if (!data?.base64) return null;
               const b64 = data.base64 as string;
-              const svgRaw = data.svg as string | undefined;
-              // PHN2 is base64 for "<sv" (SVG start), or check format field
-              const isSvg = data.format === "svg" || b64.startsWith("PHN2") || b64.startsWith("77u/PHN2");
-              const src = isSvg
-                ? `data:image/svg+xml;base64,${b64}`
-                : `data:image/png;base64,${b64}`;
+              const src = `data:image/png;base64,${b64}`;
               return (
                 <div key={label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
                   <div style={{ borderRadius: 10, border: "1px solid var(--line)", background: "#fff", padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "center", minWidth: 80 }}>
                     <img src={src} alt={label} style={{ display: "block", maxWidth: label === "Wordmark" ? 240 : 72, maxHeight: 72, objectFit: "contain" }} />
                   </div>
                   <span style={{ fontSize: 9, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</span>
-                  <a href={src} download={`logo-${label.toLowerCase()}.${isSvg ? "svg" : "png"}`} style={{ fontSize: 9, color: "#3D9E5F", textDecoration: "none" }}>↓ download</a>
+                  <a href={src} download={`logo-${label.toLowerCase()}.png`} style={{ fontSize: 9, color: "#3D9E5F", textDecoration: "none" }}>↓ download</a>
                 </div>
               );
             })}
