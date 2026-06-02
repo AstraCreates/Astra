@@ -3646,7 +3646,7 @@ export function GoalWorkspace({
           // Capture ad images from generate_ad_image tool result
           let newAdImages = cur.adImages;
           const eventImageUrl = (event.result?.url as string | undefined) ?? (event.result?.image_url as string | undefined);
-          if ((event.tool === "generate_ad_image" || event.tool === "generate_brand_image") && ok && (eventImageUrl || event.result?.base64)) {
+          if ((event.tool === "generate_ad_image" || event.tool === "generate_brand_image" || event.tool === "generate_brand_board") && ok && (eventImageUrl || event.result?.base64)) {
             const img = { url: eventImageUrl, base64: event.result.base64 as string | undefined, prompt: event.result.prompt as string | undefined };
             newAdImages = [...(cur.adImages ?? []), img];
           }
@@ -3666,7 +3666,7 @@ export function GoalWorkspace({
               if (r.style === "wordmark") liveResult = { ...liveResult, logo_wordmark: r };
               else liveResult = { ...liveResult, logo_icon: r };
             }
-            else if (tool === "generate_brand_image" || tool === "generate_ad_image") {
+            else if (tool === "generate_brand_board" || tool === "generate_brand_image" || tool === "generate_ad_image") {
               const imgs = (liveResult.brand_images as unknown[]) ?? [];
               if (r.base64) liveResult = { ...liveResult, brand_images: [...imgs, r] };
             }

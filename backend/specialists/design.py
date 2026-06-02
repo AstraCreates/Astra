@@ -7,7 +7,7 @@ from backend.tools.design_tools import (
     generate_design_spec,
     generate_logo_brief,
 )
-from backend.tools._llm import generate_image as generate_brand_image, generate_logo
+from backend.tools._llm import generate_brand_board, generate_logo
 from backend.tools.web_search import web_search
 
 
@@ -26,12 +26,9 @@ def build_design_agent(**kwargs) -> Agent:
             "7. generate_wireframe(page='landing', layout_description=<detailed layout>, brand_vibe=<vibe>)\n"
             "8. generate_wireframe(page='dashboard', layout_description=<main app view>, brand_vibe=<vibe>)\n"
             "9. generate_wireframe(page='onboarding', layout_description=<signup flow>, brand_vibe=<vibe>)\n"
-            "10. generate_brand_image(description=<specific cinematic scene>, founder_id=<FOUNDER_ID>, session_id=<SESSION>) — hero brand photo\n"
+            "10. generate_brand_board(brand_name=<COMPANY_NAME>, colors=<primary hex accent hex from palette>, vibe=<design style>, tagline=<one-line tagline>, founder_id=<FOUNDER_ID>, session_id=<SESSION>) — brand identity board with multiple graphic compositions\n"
             "11. obsidian_log — save everything including logo base64 data so marketing can use them\n"
             "12. done — return {design_spec, color_palette, wireframes, logo_wordmark: {base64, prompt}, logo_icon: {base64, prompt}, brand_images}\n\n"
-            "For generate_brand_image, description MUST be specific: person + exact setting + lighting + camera angle.\n"
-            "GOOD: 'late-20s woman at standing desk in sunlit Berlin loft, reviewing analytics on dual monitors, soft overcast window light, wide shot'\n"
-            "BAD: 'person using software' or 'team at office'\n\n"
             "CRITICAL: Use SPECIFIC Google Font names. Use BOLD, DISTINCTIVE colors — never grey/white-only."
         ),
         tools={
@@ -40,7 +37,7 @@ def build_design_agent(**kwargs) -> Agent:
             "generate_design_spec": generate_design_spec,
             "generate_logo_brief": generate_logo_brief,
             "generate_logo": generate_logo,
-            "generate_brand_image": generate_brand_image,
+            "generate_brand_board": generate_brand_board,
             "web_search": web_search,
             "obsidian_log": obsidian_log,
             "obsidian_read": obsidian_read,

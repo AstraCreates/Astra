@@ -213,48 +213,13 @@ def _or_api_key() -> str:
     return settings.openrouter_api_key or settings.agent_model_api_key
 
 
-def generate_logo(
-    brand_name: str,
-    style: str = "wordmark",
-    colors: str = "",
-    vibe: str = "",
-    founder_id: str = "",
-    session_id: str = "",
-) -> dict:
-    """Generate a logo image using Gemini 2.5 Flash via OpenRouter.
-    style: 'wordmark' (brand name as typographic logo with icon) or 'icon' (symbol only, no text).
-    colors: brand hex codes or color description.
-    vibe: brand personality (minimal, bold, playful, luxury, tech).
-    Returns {base64, prompt, style, brand_name}.
-    """
+def _gemini_image(prompt: str, founder_id: str = "", session_id: str = "") -> dict:
+    """Call Gemini image model via OpenRouter. Returns {base64, prompt} or {error}."""
     import openai, re as _re
-
     if founder_id:
         allowed, _ = _check_image_budget(founder_id)
         if not allowed:
-            return {"error": "Monthly image budget exhausted.", "style": style}
-
-    if style == "wordmark":
-        prompt = (
-            f"Create a professional wordmark logo for '{brand_name}'. "
-            f"Design: the exact text '{brand_name}' in bold, distinctive typography with a small geometric icon to the left. "
-            f"Colors: {colors or 'deep navy #0f172a and electric blue #2563eb'}. "
-            f"Style: {vibe or 'modern tech startup'}, clean, minimal, no gradients. "
-            f"Pure white background. The brand name must be clearly legible. "
-            f"Flat vector design, professional branding quality."
-        )
-    else:
-        prompt = (
-            f"Create a professional icon logo for '{brand_name}'. "
-            f"Design: ONE bold abstract geometric symbol — no text, no letters, no brand name. "
-            f"The shape should abstractly represent: {vibe or 'connection and growth'}. "
-            f"Colors: {colors or 'deep navy #0f172a and electric blue #2563eb'}. "
-            f"Pure white background, centered composition. "
-            f"Flat vector style, scalable app icon quality, recognizable at small sizes."
-        )
-
-    logger.info("Gemini logo prompt (%s): %s", style, prompt[:120])
-
+            return {"error": "Monthly image budget exhausted."}
     try:
         client = openai.OpenAI(base_url=_OR_BASE, api_key=_or_api_key())
         resp = client.chat.completions.create(
@@ -263,43 +228,101 @@ def generate_logo(
             extra_body={"modalities": ["image", "text"]},
             timeout=120.0,
         )
-        # Extract base64 image from response
-        # OpenRouter Gemini returns images in message["images"] list (not content_parts)
         b64 = None
-        msg = resp.choices[0].message if resp.choices else None
-        if msg:
-            # Method 1: raw dict images field (OpenRouter Gemini format)
-            raw_msg = resp.model_dump().get("choices", [{}])[0].get("message", {})
-            images = raw_msg.get("images") or []
-            for img in images:
-                url = (img.get("image_url") or {}).get("url", "") if isinstance(img, dict) else ""
-                if url.startswith("data:"):
-                    b64 = url.split(",", 1)[-1]
-                    break
-            # Method 2: content_parts
-            if not b64 and hasattr(msg, "content_parts"):
-                for part in (msg.content_parts or []):
-                    if hasattr(part, "image_url") and part.image_url:
-                        url = part.image_url.url or ""
-                        if url.startswith("data:"):
-                            b64 = url.split(",", 1)[-1]
-                            break
-            # Method 3: base64 pattern in content string
-            if not b64:
-                content = msg.content or ""
-                m = _re.search(r'data:image/[^;]+;base64,([A-Za-z0-9+/=]+)', content)
-                if m:
-                    b64 = m.group(1)
-
+        raw_msg = resp.model_dump().get("choices", [{}])[0].get("message", {})
+        for img in (raw_msg.get("images") or []):
+            url = (img.get("image_url") or {}).get("url", "") if isinstance(img, dict) else ""
+            if url.startswith("data:"):
+                b64 = url.split(",", 1)[-1]
+                break
+        if not b64:
+            content = (resp.choices[0].message.content or "") if resp.choices else ""
+            m = _re.search(r'data:image/[^;]+;base64,([A-Za-z0-9+/=]+)', content)
+            if m:
+                b64 = m.group(1)
         if founder_id and b64:
             _record_image_spend(founder_id)
             if session_id:
-                _save_image_to_vault(None, b64, prompt, founder_id, session_id)
-
-        return {"base64": b64, "prompt": prompt, "style": style, "brand_name": brand_name}
+                _save_image_to_vault(None, b64, prompt[:120], founder_id, session_id)
+        return {"base64": b64, "prompt": prompt}
     except Exception as e:
-        logger.warning("Gemini logo generation failed (%s): %s", style, e)
-        return {"error": str(e), "style": style, "brand_name": brand_name}
+        return {"error": str(e), "prompt": prompt}
+
+
+def generate_brand_board(
+    brand_name: str,
+    colors: str = "",
+    vibe: str = "",
+    tagline: str = "",
+    founder_id: str = "",
+    session_id: str = "",
+) -> dict:
+    """Generate a brand identity board using Gemini — multiple graphic compositions in a grid.
+    Shows brand name in bold typographic treatments, geometric elements, color palette applied.
+    Returns {base64, prompt, brand_name}.
+    """
+    primary_color = (colors.split()[0] if colors else "#0f172a")
+    accent_color = (colors.split()[-1] if colors and len(colors.split()) > 1 else "#2563eb")
+
+    prompt = (
+        f"Create a brand identity mood board for '{brand_name}' in a clean grid layout. "
+        f"Show 6 different graphic design compositions arranged in a 3x2 grid, each using the brand name and these colors: {colors or 'deep navy and electric blue'}. "
+        f"Include: (1) Large bold oversized typography on solid color background, "
+        f"(2) Brand name with abstract geometric line art, "
+        f"(3) Horizontal banner with brand name and tagline '{tagline or 'Built for founders'}', "
+        f"(4) Dark background with brand name in contrasting color, "
+        f"(5) Square composition with geometric pattern and brand name, "
+        f"(6) Minimal composition showing the brand mark with color swatches. "
+        f"Visual style: {vibe or 'bold, modern, startup'}. "
+        f"NO photographs, NO people, NO gradients unless subtle. "
+        f"Pure graphic design — flat colors, geometric shapes, strong typography. "
+        f"The brand name must be clearly legible in every panel. "
+        f"Make it look like a premium brand identity presentation from a top design agency."
+    )
+    result = _gemini_image(prompt, founder_id, session_id)
+    result["brand_name"] = brand_name
+    return result
+
+
+def generate_logo(
+    brand_name: str,
+    style: str = "wordmark",
+    colors: str = "",
+    vibe: str = "",
+    founder_id: str = "",
+    session_id: str = "",
+) -> dict:
+    """Generate a logo using Gemini. Both wordmark and icon use the SAME geometric motif so they match.
+    style: 'wordmark' (name + icon side by side) or 'icon' (symbol only).
+    Returns {base64, prompt, style, brand_name}.
+    """
+    if style == "wordmark":
+        prompt = (
+            f"Design a professional wordmark logo for '{brand_name}' on a pure white background. "
+            f"Layout: a small bold geometric symbol on the LEFT, then the brand name '{brand_name}' in clean sans-serif on the RIGHT. "
+            f"The geometric symbol should be a simple abstract shape (e.g. interlocking arcs, angular bracket, bold dot with ring) — NOT a letter. "
+            f"Colors: {colors or 'deep navy and electric blue'}. "
+            f"Typography: bold weight, tight tracking, modern. "
+            f"Style: {vibe or 'modern tech startup'}. No gradients, no shadows, no decorative elements. "
+            f"The result must look like a real startup's logo — clean, scalable, professional. "
+            f"Pure white background. Horizontal layout. Logo should be centered in the frame."
+        )
+    else:
+        prompt = (
+            f"Design a standalone icon logo for '{brand_name}' on a pure white background. "
+            f"The icon must use the EXACT SAME geometric motif as would appear in the wordmark — just the symbol alone, no text. "
+            f"A simple bold abstract shape (e.g. interlocking arcs, angular bracket, bold dot with ring). "
+            f"Colors: {colors or 'deep navy and electric blue'}. "
+            f"Style: {vibe or 'modern tech startup'}. Flat vector, no gradients, no shadows. "
+            f"Centered in a square frame. Must look great at 32x32px. "
+            f"Pure white background. No text, no letters, no brand name."
+        )
+
+    logger.info("Gemini logo (%s): %s", style, prompt[:120])
+    result = _gemini_image(prompt, founder_id, session_id)
+    result["style"] = style
+    result["brand_name"] = brand_name
+    return result
 
 
 def composite_logo_on_image(
