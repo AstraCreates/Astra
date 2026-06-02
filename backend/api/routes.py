@@ -429,6 +429,55 @@ async def session_state(session_id: str, request: Request):
     return snapshot
 
 
+@router.post("/sessions/{session_id}/rerun/{agent_name}")
+async def rerun_agent(session_id: str, agent_name: str, body: dict, request: Request):
+    """Rerun a specific agent within an existing session, picking up all prior context."""
+    from backend.core.agent import AgentContext
+    from backend.core.factory import get_orchestrator
+    from backend.core.events import publish
+    import asyncio
+
+    founder_id = body.get("founder_id", "")
+    instruction = body.get("instruction", "")
+    await _require_session_access(request, session_id, min_role="viewer")
+
+    orch = get_orchestrator()
+    agent = orch.specialists.get(agent_name)
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found. Available: {sorted(orch.specialists.keys())}")
+
+    # Load prior research/context from obsidian vault
+    vault_context = ""
+    try:
+        from backend.tools.obsidian_logger import format_vault_context
+        vault_context = format_vault_context(agent_name, 5, founder_id)
+    except Exception:
+        pass
+
+    # Use provided instruction or fall back to a sensible default
+    if not instruction:
+        instruction = f"Redo your full workflow for the session. Use any research already in context."
+
+    ctx = AgentContext(
+        goal=instruction,
+        founder_id=founder_id,
+        session_id=session_id,
+        shared={"prior_vault_notes": vault_context, "rerun": True},
+    )
+
+    await publish(session_id, {"type": "agent_start", "agent": agent_name, "task_id": f"rerun_{agent_name}", "instruction": instruction})
+
+    async def _run():
+        try:
+            result = await agent.run(ctx)
+            await publish(session_id, {"type": "agent_done", "agent": agent_name, "task_id": f"rerun_{agent_name}", "result": result})
+        except Exception as e:
+            await publish(session_id, {"type": "agent_error", "agent": agent_name, "task_id": f"rerun_{agent_name}", "error": str(e)})
+
+    asyncio.create_task(_run())
+    return {"ok": True, "session_id": session_id, "agent": agent_name, "status": "started"}
+
+
 @router.post("/sessions/{session_id}/ask")
 async def ask_session(session_id: str, body: SessionAskRequest, request: Request):
     from backend.session_digest import answer_session_question
@@ -588,13 +637,92 @@ async def session_approval_workflow(session_id: str, request: Request):
     return get_approval_workflow(session_id)
 
 
+def _detect_rerun_intent(instruction: str, available_agents: list[str]) -> dict | None:
+    """Use LLM to detect if the message is a rerun request. Returns {agent, instruction} or None."""
+    try:
+        import openai, json as _json
+        from backend.config import settings
+        client = openai.OpenAI(
+            base_url=settings.openrouter_base_url,
+            api_key=settings.openrouter_api_key or settings.agent_model_api_key,
+        )
+        agents_list = ", ".join(available_agents)
+        resp = client.chat.completions.create(
+            model=settings.or_planner_model,
+            messages=[
+                {"role": "system", "content": (
+                    f"You are a chat intent classifier. Available agents: {agents_list}.\n\n"
+                    "If the user's message is asking to rerun, redo, regenerate, retry, or fix a specific agent, "
+                    "return JSON: {{\"intent\": \"rerun\", \"agent\": \"<agent_name>\", \"instruction\": \"<specific instruction or empty string>\"}}\n"
+                    "If it's NOT a rerun request, return JSON: {{\"intent\": \"other\"}}\n"
+                    "Map natural language to agent names: 'design'→design, 'logo'→design, 'landing page'→web, "
+                    "'website'→web, 'marketing'→marketing, 'ads'→marketing, 'legal'→legal, 'docs'→legal, "
+                    "'technical'→technical, 'code'→technical, 'mvp'→technical, 'sales'→sales, 'leads'→sales, "
+                    "'ops'→ops, 'fundraise'→ops, 'research'→research.\n"
+                    "Output ONLY valid JSON. No prose."
+                )},
+                {"role": "user", "content": instruction},
+            ],
+            max_tokens=80,
+            temperature=0,
+            timeout=10.0,
+        )
+        raw = (resp.choices[0].message.content or "").strip()
+        parsed = _json.loads(raw)
+        if parsed.get("intent") == "rerun" and parsed.get("agent") in available_agents:
+            return {"agent": parsed["agent"], "instruction": parsed.get("instruction", "")}
+    except Exception as e:
+        logger.debug("rerun intent detection failed: %s", e)
+    return None
+
+
 @router.post("/goal/continue")
 async def continue_goal(body: ContinueRequest, request: Request):
     """Run follow-up tasks on an existing company session with full vault context."""
     require_founder_access(request, body.founder_id, min_role="operator")
     import uuid as _uuid
-    session_id = _uuid.uuid4().hex[:12]
     orch = get_orchestrator()
+
+    # Detect rerun intent via LLM — no regex
+    rerun = await asyncio.to_thread(
+        _detect_rerun_intent, body.instruction, list(orch.specialists.keys())
+    )
+    if rerun:
+        # Rerun a specific agent in the prior session
+        session_id = body.prior_session_id or _uuid.uuid4().hex[:12]
+        agent_name = rerun["agent"]
+        instruction = rerun["instruction"] or f"Redo your full workflow with all available context."
+
+        vault_context = ""
+        try:
+            from backend.tools.obsidian_logger import format_vault_context
+            vault_context = await asyncio.to_thread(format_vault_context, agent_name, 5, body.founder_id)
+        except Exception:
+            pass
+
+        from backend.core.agent import AgentContext
+        ctx = AgentContext(
+            goal=instruction,
+            founder_id=body.founder_id,
+            session_id=session_id,
+            shared={"prior_vault_notes": vault_context, "rerun": True},
+        )
+        agent = orch.specialists[agent_name]
+        await publish(session_id, {"type": "agent_start", "agent": agent_name, "task_id": f"rerun_{agent_name}", "instruction": instruction})
+        await publish(session_id, {"type": "chat_intent", "intent": "rerun", "agent": agent_name})
+
+        async def _rerun():
+            try:
+                result = await agent.run(ctx)
+                await publish(session_id, {"type": "agent_done", "agent": agent_name, "task_id": f"rerun_{agent_name}", "result": result})
+                await publish(session_id, {"type": "goal_done", "results": {agent_name: result}})
+            except Exception as e:
+                await publish(session_id, {"type": "agent_error", "agent": agent_name, "error": str(e)})
+
+        asyncio.create_task(_rerun())
+        return {"session_id": session_id, "status": "running", "prior_session_id": body.prior_session_id, "rerun": agent_name}
+
+    session_id = _uuid.uuid4().hex[:12]
 
     async def _run():
         try:

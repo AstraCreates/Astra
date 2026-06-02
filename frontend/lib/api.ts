@@ -1942,6 +1942,21 @@ export async function purchaseCredits(
   return res.json();
 }
 
+export async function rerunAgent(
+  sessionId: string,
+  agentName: string,
+  founderId: string,
+  instruction?: string,
+): Promise<{ ok: boolean; session_id: string; agent: string }> {
+  const res = await apiFetch(`${BASE}/api/sessions/${encodeURIComponent(sessionId)}/rerun/${encodeURIComponent(agentName)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: founderId, instruction: instruction ?? "" }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
   github_create_repo: "Creating GitHub repository",
   supabase_create_project: "Provisioning Supabase database",

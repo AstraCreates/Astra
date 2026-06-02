@@ -1484,6 +1484,7 @@ function AgentDetail({
   founderId,
   company,
   goal,
+  onRerun,
 }: {
   state: AgentState;
   planTask: AgentTask | undefined;
@@ -1491,12 +1492,28 @@ function AgentDetail({
   founderId: string;
   company?: string;
   goal?: string;
+  onRerun?: (agentName: string) => void;
 }) {
   const [tab, setTab] = useState<DetailTab>("preview");
   const [obsidianNote, setObsidianNote] = useState<string | null>(null);
   const [obsidianLoading, setObsidianLoading] = useState(false);
   const [obsidianError, setObsidianError] = useState<string | null>(null);
+  const [rerunning, setRerunning] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
+
+  async function handleRerun() {
+    if (rerunning) return;
+    setRerunning(true);
+    try {
+      const { rerunAgent } = await import("@/lib/api");
+      await rerunAgent(sessionId, state.agent, founderId);
+      onRerun?.(state.agent);
+    } catch (e) {
+      console.error("Rerun failed:", e);
+    } finally {
+      setRerunning(false);
+    }
+  }
   useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [state.log.length]);
 
   useEffect(() => {
@@ -1562,6 +1579,25 @@ function AgentDetail({
             <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.4 }}>{state.instruction.slice(0, 100)}</p>
           )}
         </div>
+        {/* Rerun button — shown when done or errored */}
+        {(isDone || state.status === "error") && (
+          <button
+            onClick={handleRerun}
+            disabled={rerunning}
+            title={`Rerun ${AGENT_LABELS[state.agent] ?? state.agent}`}
+            style={{
+              display: "flex", alignItems: "center", gap: 5, padding: "5px 10px",
+              borderRadius: 8, border: "1px solid rgba(180,205,228,0.25)",
+              background: rerunning ? "rgba(37,99,235,0.12)" : "rgba(255,255,255,0.04)",
+              color: rerunning ? "#2563EB" : "var(--fg-dim)", cursor: rerunning ? "default" : "pointer",
+              fontSize: 11, fontWeight: 500, flexShrink: 0,
+              transition: "all 0.15s",
+            }}
+          >
+            <span style={{ fontSize: 13 }}>{rerunning ? "⟳" : "↺"}</span>
+            {rerunning ? "Running…" : "Rerun"}
+          </button>
+        )}
         {/* % badge */}
         <div style={{ position: "relative", width: 40, height: 40, flexShrink: 0 }}>
           <svg viewBox="0 0 40 40" style={{ transform: "rotate(-90deg)" }}>
@@ -1686,11 +1722,12 @@ function useNow(intervalMs = 1000) {
   return now;
 }
 
-function AgentSidebar({ agentList, agents, activeAgent, onSelect }: {
+function AgentSidebar({ agentList, agents, activeAgent, onSelect, onRerun }: {
   agentList: string[];
   agents: Record<string, AgentState>;
   activeAgent: string;
   onSelect: (a: string) => void;
+  onRerun?: (agentName: string) => void;
 }) {
   const now = useNow(1000);
   return (
@@ -1730,6 +1767,15 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect }: {
                 width: 5, height: 5, borderRadius: "50%", flexShrink: 0,
                 background: status === "done" ? "#22C55E" : status === "running" ? "#2563EB" : status === "error" ? "#EF4444" : "rgba(255,255,255,0.15)",
               }} className={status === "running" ? "animate-pulse" : ""} />
+              {(status === "done" || status === "error") && onRerun && (
+                <span
+                  title={`Rerun ${AGENT_LABELS[name] ?? name}`}
+                  onClick={e => { e.stopPropagation(); onRerun(name); }}
+                  style={{ fontSize: 11, color: "var(--fg-mute)", cursor: "pointer", lineHeight: 1, padding: "0 2px", borderRadius: 4, transition: "color 0.1s" }}
+                  onMouseEnter={e => (e.currentTarget.style.color = "#2563EB")}
+                  onMouseLeave={e => (e.currentTarget.style.color = "var(--fg-mute)")}
+                >↺</span>
+              )}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 4, paddingLeft: 20 }}>
               {modelShort && (
@@ -3870,12 +3916,35 @@ export function GoalWorkspace({
       {agentList.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {/* Horizontal agent pill row */}
-          <AgentSidebar agentList={agentList} agents={visibleAgents} activeAgent={selected} onSelect={setActiveAgent} />
+          <AgentSidebar
+            agentList={agentList}
+            agents={visibleAgents}
+            activeAgent={selected}
+            onSelect={setActiveAgent}
+            onRerun={async (agentName) => {
+              setAgents(prev => ({ ...prev, [agentName]: { ...prev[agentName], status: "running", currentAction: "Rerunning…" } }));
+              setActiveAgent(agentName);
+              const { rerunAgent } = await import("@/lib/api");
+              rerunAgent(sessionId, agentName, founderId).catch(console.error);
+            }}
+          />
 
           {/* Detail panel — full width */}
           {selectedState && (
             <LiquidGlass style={{ minWidth: 0 }} contentStyle={{ padding: "20px 24px", display: "flex", flexDirection: "column" }}>
-              <AgentDetail state={selectedState} planTask={selectedPlanTask} sessionId={sessionId} founderId={founderId} company={company || autoCompanyName} goal={instruction} />
+              <AgentDetail
+                state={selectedState}
+                planTask={selectedPlanTask}
+                sessionId={sessionId}
+                founderId={founderId}
+                company={company || autoCompanyName}
+                goal={instruction}
+                onRerun={async (agentName) => {
+                  setAgents(prev => ({ ...prev, [agentName]: { ...prev[agentName], status: "running", currentAction: "Rerunning…" } }));
+                  const { rerunAgent } = await import("@/lib/api");
+                  rerunAgent(sessionId, agentName, founderId).catch(console.error);
+                }}
+              />
             </LiquidGlass>
           )}
         </div>
