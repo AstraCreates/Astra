@@ -310,7 +310,7 @@ function TeamSection({ founderId }: { founderId: string }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "14px 20px", borderBottom: `1px solid ${c.border}` }}>
         <div>
           <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: c.text }}>{team.name}</p>
-          <p style={{ margin: "2px 0 0", fontSize: 12, color: c.grey }}>{team.members.length} member{team.members.length !== 1 ? "s" : ""}</p>
+          <p style={{ margin: "2px 0 0", fontSize: 12, color: c.grey }}>{team.members?.length ?? 0} member{(team.members?.length ?? 0) !== 1 ? "s" : ""}</p>
         </div>
         {isOwner && (
           <button
@@ -326,7 +326,7 @@ function TeamSection({ founderId }: { founderId: string }) {
       </div>
 
       {/* Members list */}
-      {team.members.map((member, i) => (
+      {(team.members ?? []).map((member, i) => (
         <div key={member.uid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 20px", borderBottom: `1px solid ${c.border}`, background: i % 2 === 1 ? c.surface : c.bg }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
             <div style={{
