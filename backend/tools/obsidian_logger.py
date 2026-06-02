@@ -92,11 +92,15 @@ def obsidian_log(
     tags: list[str] = None,
     links: list[str] = None,
     founder_id: str | None = None,
+    content: str = "",  # alias for summary
+    **kwargs,
 ) -> dict:
     """
     Write a structured session note at:
       vault/founders/<founder_id>/sessions/<session_id>/<agent>.md
     """
+    if content and not summary:
+        summary = content
     folder = _session_dir(session_id, founder_id)
     folder.mkdir(parents=True, exist_ok=True)
 

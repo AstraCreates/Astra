@@ -230,8 +230,9 @@ class Orchestrator:
                 max_tokens=10,
                 temperature=0.85,
             )
-            raw = (resp.choices[0].message.content or "").strip().split()[0]
-            name = re.sub(r"[^a-zA-Z0-9]", "", raw)
+            choices = resp.choices or []
+            raw = ((choices[0].message.content if choices else None) or "").strip()
+            name = re.sub(r"[^a-zA-Z0-9]", "", raw.split()[0] if raw.split() else "")
             if len(name) >= 3:
                 return name
         except Exception as e:
@@ -267,7 +268,8 @@ class Orchestrator:
                 max_tokens=400,
                 temperature=0.7,
             )
-            expanded = resp.choices[0].message.content.strip()
+            choices = resp.choices or []
+            expanded = ((choices[0].message.content if choices else None) or "").strip()
             if expanded and len(expanded) > len(goal):
                 logger.info("Goal expanded: %s → %s", goal[:60], expanded[:80])
                 await publish(session_id, {"type": "goal_expanded", "original": goal, "expanded": expanded})
