@@ -388,11 +388,16 @@ class Agent:
             parsed = self._parse_json(raw)
 
             if not parsed:
-                logger.warning("%s iteration %d: unparseable response — raw: %r", self.name, i, raw[:300])
-                await self._emit(ctx, "agent_thinking", iteration=i, hint=raw[:80])
-                messages.append({"role": "assistant", "content": raw})
-                messages.append({"role": "user", "content": "Respond with valid JSON only. No prose. No markdown. Start with {."})
-                continue
+                # Handle plain-text "done" from models that don't follow JSON format
+                raw_stripped = raw.strip().lower().strip('"\'')
+                if raw_stripped in ("done", "complete", "finished"):
+                    parsed = {"action": "done", "result": {}}
+                else:
+                    logger.warning("%s iteration %d: unparseable response — raw: %r", self.name, i, raw[:300])
+                    await self._emit(ctx, "agent_thinking", iteration=i, hint=raw[:80])
+                    messages.append({"role": "assistant", "content": raw})
+                    messages.append({"role": "user", "content": 'Respond with valid JSON only. Example: {"action":"done","result":{}} or {"action":"tool_call","tool":"batch_search","args":{"queries":["..."]}}. No prose.'})
+                    continue
 
             action = parsed.get("action")
             reasoning = parsed.get("reasoning", "")
