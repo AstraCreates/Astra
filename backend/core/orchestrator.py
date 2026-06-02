@@ -1000,6 +1000,11 @@ class Orchestrator:
             if _design_task["id"] not in _web_task["depends_on"]:
                 _web_task["depends_on"].append(_design_task["id"])
 
+        # Pre-populate completed with research task IDs so dependencies can resolve
+        # These will be filled in by research_bg_tasks as they complete
+        for rt in parallel_research_tasks:
+            completed[rt["id"]] = {}
+
         # Run remaining agents in parallel (all depends_on research which is done)
         logger.info("Starting non-research agents phase: remaining=%s, completed=%s", [t["agent"] for t in remaining], list(completed.keys()))
         in_flight: set[str] = set()
