@@ -213,21 +213,50 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
         **kwargs,
     )
 
-    # Patch run to:
-    # 1. Inject ctx into ctx_holder
-    # 2. Replace TOPIC in the role prompt with the actual goal phrase so the
-    #    LLM never has to guess — prevents "co-founder" → "CO" hallucinations
     _original_run = agent.run
 
     async def _patched_run(ctx: AgentContext):
         ctx_holder[0] = ctx
-        # Extract a clean topic phrase from the goal (first 120 chars, strip newlines)
-        raw_goal = (ctx.goal or "").replace("\n", " ").strip()
-        topic_phrase = raw_goal[:120]
-        # Replace TOPIC placeholder in the agent's role with the actual goal phrase
         if "TOPIC" in agent.role:
+            topic_phrase = await _extract_topic(ctx.goal or "")
             agent.role = agent.role.replace("TOPIC", topic_phrase)
         return await _original_run(ctx)
 
     agent.run = _patched_run
     return agent
+
+
+async def _extract_topic(goal: str) -> str:
+    """Extract a 3-6 word search-friendly product phrase from the goal."""
+    import asyncio
+    from backend.config import settings
+    try:
+        from openai import OpenAI
+        client = OpenAI(
+            base_url=settings.planner_model_base_url,
+            api_key=settings.planner_model_api_key or settings.agent_model_api_key,
+        )
+        resp = await asyncio.to_thread(
+            client.chat.completions.create,
+            model=settings.planner_model_name,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Extract the core product/domain phrase from this goal. "
+                    f"Output ONLY 3-6 words that describe what the product IS — "
+                    f"no verbs like 'build' or 'create', no adjectives like 'real-time'. "
+                    f"Examples: 'co-founder matching platform', 'AI stock trading signals', "
+                    f"'restaurant inventory management software', 'B2B sales automation tool'.\n\n"
+                    f"Goal: {goal[:400]}\n\nProduct phrase:"
+                ),
+            }],
+            max_tokens=20,
+            temperature=0.0,
+        )
+        phrase = resp.choices[0].message.content.strip().strip('"\'').strip()
+        if phrase and 3 <= len(phrase.split()) <= 8:
+            return phrase
+    except Exception:
+        pass
+    # Fallback: first 60 chars of goal, cleaned
+    return goal.replace("\n", " ").strip()[:60]
