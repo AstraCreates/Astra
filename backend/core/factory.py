@@ -57,9 +57,9 @@ def get_orchestrator() -> Orchestrator:
             model_api_key=settings.agent_model_api_key,
         )
         _highoutput_kwargs = dict(
-            model=settings.or_highoutput_model,  # kimi-k2.6:free
-            model_base_url=_or_base,
-            model_api_key=_or_key,
+            model=settings.or_highoutput_model,  # DeepSeek-V4-Flash via deepinfra
+            model_base_url=settings.agent_model_base_url,
+            model_api_key=settings.agent_model_api_key,
         )
         _small_kwargs = dict(
             model=settings.or_light_model,  # ling-2.6-flash

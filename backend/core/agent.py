@@ -550,11 +550,11 @@ class Agent:
             elif action == "computer_use" and browser is None:
                 messages.append({"role": "user", "content": "computer_use not available. Use tool or delegate."})
 
-            elif action in ("tool_call", "function_call", "call_tool", "use_tool") or (action is None and parsed.get("tool") in self.tools):
+            elif action in ("tool_call", "function_call", "call_tool", "use_tool") or (action is None and (parsed.get("tool") in self.tools or parsed.get("name") in self.tools)):
                 # Normalize: some models output {"action":"tool_call",...} or {"tool":"name","args":{}} with no action
                 parsed["action"] = "tool"
                 tool_name = parsed.get("tool") or parsed.get("function") or parsed.get("name")
-                args = parsed.get("args") or parsed.get("parameters") or parsed.get("input") or {}
+                args = parsed.get("args") or parsed.get("parameters") or parsed.get("input") or parsed.get("arguments") or {}
                 if not args and "arguments" in parsed:
                     args = parsed["arguments"]
                     if isinstance(args, str):
