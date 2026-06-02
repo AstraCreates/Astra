@@ -612,8 +612,17 @@ function DesignPreview({ state }: { state: AgentState }) {
               const src = `data:image/png;base64,${b64}`;
               return (
                 <div key={label} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                  <div style={{ borderRadius: 10, border: "1px solid var(--line)", background: "#fff", padding: "10px 16px", display: "flex", alignItems: "center", justifyContent: "center", minWidth: 80 }}>
-                    <img src={src} alt={label} style={{ display: "block", maxWidth: label === "Wordmark" ? 240 : 72, maxHeight: 72, objectFit: "contain" }} />
+                  {/* Checkerboard + white so both white-bg and transparent logos are visible */}
+                  <div style={{
+                    borderRadius: 10, border: "1px solid var(--line)", padding: "12px 20px",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    minWidth: label === "Wordmark" ? 200 : 80, minHeight: 80,
+                    backgroundImage: "linear-gradient(45deg, #e5e5e5 25%, transparent 25%), linear-gradient(-45deg, #e5e5e5 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e5e5 75%), linear-gradient(-45deg, transparent 75%, #e5e5e5 75%)",
+                    backgroundSize: "12px 12px",
+                    backgroundPosition: "0 0, 0 6px, 6px -6px, -6px 0px",
+                    backgroundColor: "#f0f0f0",
+                  }}>
+                    <img src={src} alt={label} style={{ display: "block", maxWidth: label === "Wordmark" ? 260 : 80, maxHeight: 80, objectFit: "contain" }} />
                   </div>
                   <span style={{ fontSize: 9, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</span>
                   <a href={src} download={`logo-${label.toLowerCase()}.png`} style={{ fontSize: 9, color: "#3D9E5F", textDecoration: "none" }}>↓ download</a>
