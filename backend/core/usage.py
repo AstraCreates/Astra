@@ -19,6 +19,7 @@ _PRICING: dict[str, tuple[float, float, float]] = {
     "Qwen/Qwen3.6-35B-A3B":                              (0.15,  0.95,  0.04),
     "meta-llama/Llama-4-Scout-17B-16E-Instruct":         (0.08,  0.30,  0.02),
     "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8": (0.15,  0.60,  0.03),
+    "tencent/hy3-preview":                               (0.14,  0.14,  0.03),
 }
 
 _DEFAULT_PRICING = (0.10, 0.30, 0.02)

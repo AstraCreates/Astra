@@ -9,6 +9,12 @@ class Settings(BaseSettings):
     agent_model_base_url: str = "https://api.deepinfra.com/v1/openai"
     agent_model_api_key: str = ""
     agent_model_name: str = "deepseek-ai/DeepSeek-V4-Flash"
+    # OpenRouter — for models not on DeepInfra (better tool use)
+    openrouter_api_key: str = ""
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # Tool-use model — strong at function calling (web/technical/ops agents)
+    tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
+    tooluse_model_name: str = "tencent/hy3-preview"
     # Planner — fast, good instruction following, 320k ctx
     planner_model_base_url: str = "https://api.deepinfra.com/v1/openai"
     planner_model_api_key: str = ""

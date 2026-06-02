@@ -43,10 +43,18 @@ def reload_model_overrides() -> None:
 def get_orchestrator() -> Orchestrator:
     global _orchestrator
     if _orchestrator is None:
+        _or_key = settings.openrouter_api_key or settings.agent_model_api_key
+        # Tool-use agents — tencent/hy3-preview via OpenRouter (better function calling)
         _coder_kwargs = dict(
+            model=settings.tooluse_model_name,
+            model_base_url=settings.tooluse_model_base_url,
+            model_api_key=_or_key,
+        )
+        # Fallback to DeepSeek for 1M ctx needs (research financial/regulatory)
+        _deepseek_kwargs = dict(
             model="deepseek-ai/DeepSeek-V4-Flash",
-            model_base_url=settings.planner_model_base_url,
-            model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
+            model_base_url=settings.agent_model_base_url,
+            model_api_key=settings.agent_model_api_key,
         )
         _highoutput_kwargs = dict(
             model=settings.highoutput_model_name,
@@ -58,12 +66,8 @@ def get_orchestrator() -> Orchestrator:
             model_base_url=settings.agent_model_base_url,
             model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
         )
-        # research_financial/regulatory need 1M ctx to handle large research dumps
-        _large_ctx_kwargs = dict(
-            model="deepseek-ai/DeepSeek-V4-Flash",
-            model_base_url=settings.agent_model_base_url,
-            model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
-        )
+        # research_financial/regulatory need 1M ctx — keep on DeepSeek
+        _large_ctx_kwargs = _deepseek_kwargs
         specialists = {
             # Research — Llama-4-Scout (fast, 320k ctx, good synthesis)
             "research": build_research_agent(agent_name="research", use_computer=True),
@@ -82,7 +86,7 @@ def get_orchestrator() -> Orchestrator:
             # Writing agents — Mistral-Small-3.2 ($0.075/$0.20, 125k ctx, great long-form)
             "marketing": build_marketing_agent(use_computer=True, **_highoutput_kwargs),
             "legal": build_legal_agent(use_computer=True, **_highoutput_kwargs),
-            "ops": build_ops_agent(use_computer=True, **_highoutput_kwargs),
+            "ops": build_ops_agent(use_computer=True, **_coder_kwargs),
             "design": build_design_agent(use_computer=False, **_highoutput_kwargs),
             "legal_docs": build_legal_docs_agent(use_computer=True, **_highoutput_kwargs),
             "legal_entity": build_legal_entity_agent(use_computer=True, **_highoutput_kwargs),
