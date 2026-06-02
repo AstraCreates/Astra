@@ -588,15 +588,24 @@ class Orchestrator:
         research_task = next((t for t in initial_tasks if t["agent"] == "research"), None)
         other_agents_initial = [t for t in initial_tasks if t["agent"] not in _RESEARCH_AGENTS]
 
-        # Force-include web + technical if planner omitted them (always do this)
+        # Force-include missing agents:
+        # - If custom stack: add any agents from the filter that aren't in the plan
+        # - If default stack: always add web + technical
         _existing_agents = {t["agent"] for t in other_agents_initial}
-        _mandatory = [
-            ("web", "Build and deploy a public landing page for this product."),
-            ("technical", f"Build a complete working MVP for: {goal}"),
-        ]
-        for _i, (_ag, _instr) in enumerate(_mandatory):
-            if _ag not in _existing_agents and _ag in self.specialists:
-                other_agents_initial.append({"id": f"forced_{_ag}", "agent": _ag, "instruction": _instr, "depends_on": []})
+        if _is_custom and _agent_filter:
+            # Add all custom agents that aren't already scheduled
+            for _ag in _agent_filter:
+                if _ag not in _existing_agents and _ag in self.specialists and _ag not in _RESEARCH_AGENTS:
+                    other_agents_initial.append({"id": f"custom_{_ag}", "agent": _ag, "instruction": goal, "depends_on": []})
+        else:
+            # Default: add web + technical if missing
+            _mandatory = [
+                ("web", "Build and deploy a public landing page for this product."),
+                ("technical", f"Build a complete working MVP for: {goal}"),
+            ]
+            for _i, (_ag, _instr) in enumerate(_mandatory):
+                if _ag not in _existing_agents and _ag in self.specialists:
+                    other_agents_initial.append({"id": f"forced_{_ag}", "agent": _ag, "instruction": _instr, "depends_on": []})
 
         # bypass_planner: skip research wave + replan, dispatch requested agents immediately
         if _bypass_planner and _is_custom:
