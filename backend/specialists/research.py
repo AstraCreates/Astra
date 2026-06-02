@@ -1,10 +1,5 @@
 """Research specialist — autonomous browser-powered research."""
-import asyncio
 import functools
-import logging
-import re as _re
-
-logger = logging.getLogger(__name__)
 from backend.core.agent import Agent, AgentContext
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
 from backend.tools.browser_research import search_and_fetch, fetch_and_read, research_papers, batch_search
@@ -33,7 +28,7 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
                     url = item.get("url", "")
                     title = item.get("title", "")
                     text = item.get("content") or item.get("text") or item.get("snippet") or ""
-                    lines.append(f"**[{title}]({url})**\n{text[:8000]}")
+                    lines.append(f"**[{title}]({url})**\n{text[:1500]}")
             content = "\n\n".join(lines) if lines else str(result)[:2000]
         elif isinstance(result, dict):
             # search_and_fetch returns {query, results, formatted}
@@ -45,7 +40,7 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
                     url = r.get("url", "")
                     title = r.get("title", "")
                     text = r.get("content") or r.get("snippet") or ""
-                    lines.append(f"**[{title}]({url})**\n{text[:8000]}")
+                    lines.append(f"**[{title}]({url})**\n{text[:1500]}")
                 content = "\n\n".join(lines) if lines else str(result)[:3000]
             else:
                 content = str(result)[:3000]
@@ -69,78 +64,81 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
 
 
 _FOCUS_ROLES = {
-    "research": {
-        "goal": "MARKET INTELLIGENCE",
-        "query_brief": (
-            "Generate 30 search queries to research the market for: TOPIC\n"
-            "Cover: market size/TAM, growth rate/CAGR, VC funding, customer segments, "
-            "regulatory landscape, market trends, academic research, news, use cases, "
-            "industry reports, demographics, pain points, geographic markets, adjacent markets."
-        ),
-        "instructions": (
-            "STEP 1 — Run batch_search with the first 8 queries from your SEARCH_QUERIES list.\n"
-            "STEP 2 — Run batch_search with queries 9-16.\n"
-            "STEP 3 — Run batch_search with queries 17-24.\n"
-            "STEP 4 — Run batch_search with queries 25-30 + news_search + research_papers.\n"
-            "STEP 5 — fetch_and_read the 8 most valuable URLs found across all results.\n\n"
-            "SELF-EVALUATION before obsidian_log:\n"
-            "[ ] TAM number with source\n[ ] CAGR with source\n"
-            "[ ] 3+ named VC-backed companies in this space\n"
-            "[ ] Target customer segment with specific pain point\n"
-            "[ ] Regulatory or compliance note\n"
-            "For each unchecked box, run 2 more searches.\n\n"
-            "obsidian_log: MARKET SIZE, GROWTH RATE, TAM/SAM/SOM, KEY SEGMENTS, REGULATORY, VC FUNDING."
-        ),
-    },
-    "research_competitors": {
-        "goal": "COMPETITOR INTELLIGENCE — find REAL named companies",
-        "query_brief": (
-            "Generate 30 search queries to find competitors for: TOPIC\n"
-            "Cover: named companies list, crunchbase/funding, G2/Capterra/ProductHunt alternatives, "
-            "YC/a16z/sequoia backed startups, pricing pages, market maps, reddit recommendations, "
-            "techcrunch/venturebeat reviews, vs comparisons, feature comparisons, customer reviews, "
-            "LinkedIn company searches, investor portfolios, patent holders, acquisition targets."
-        ),
-        "instructions": (
-            "STEP 1 — Run batch_search with queries 1-8.\n"
-            "STEP 2 — Run batch_search with queries 9-16.\n"
-            "STEP 3 — Run batch_search with queries 17-24.\n"
-            "STEP 4 — Run batch_search with queries 25-30 + patent_search + youtube_research.\n"
-            "STEP 5 — For EACH named competitor found: fetch_and_read their homepage + /pricing page.\n"
-            "         You MUST find at least 5 named companies. Run more searches if needed.\n\n"
-            "SELF-EVALUATION before obsidian_log:\n"
-            "[ ] 5+ named competitors with URLs\n[ ] Pricing for 3+ of them\n"
-            "[ ] Funding for 2+ of them\n[ ] 1+ clear market gap\n[ ] 1+ video creator in this space\n"
-            "For each unchecked box, run 2 more searches.\n\n"
-            "obsidian_log: COMPETITOR TABLE (name, URL, pricing, funding, strengths, weaknesses), "
-            "WHITESPACE OPPORTUNITIES, VIDEO INSIGHTS, PRICING COMPARISON."
-        ),
-    },
-    "research_execution": {
-        "goal": "EXECUTION STRATEGY — how to build and launch this product",
-        "query_brief": (
-            "Generate 30 search queries for execution strategy for: TOPIC\n"
-            "Cover: go-to-market strategy, tech stack choices, business model, revenue streams, "
-            "CAC/LTV/unit economics, sales channels, user pain points (reddit/forums), "
-            "founder interviews, YC advice, regulatory requirements, hiring plan, "
-            "pricing strategy, growth hacks, customer success stories, build vs buy decisions."
-        ),
-        "instructions": (
-            "STEP 1 — Run batch_search with queries 1-8.\n"
-            "STEP 2 — Run batch_search with queries 9-16.\n"
-            "STEP 3 — Run batch_search with queries 17-24.\n"
-            "STEP 4 — Run batch_search with queries 25-30 + youtube_research.\n"
-            "STEP 5 — fetch_and_read the 8 most actionable URLs.\n\n"
-            "SELF-EVALUATION before obsidian_log:\n"
-            "[ ] Specific tech stack (actual frameworks, DBs, APIs)\n"
-            "[ ] CAC and LTV estimates with source\n"
-            "[ ] 2+ GTM channels with evidence\n"
-            "[ ] Named user persona with pain point and WTP\n"
-            "[ ] 1+ regulatory risk specific to this domain\n"
-            "For each unchecked box, run 2 more searches.\n\n"
-            "obsidian_log: TECH STACK, GTM STRATEGY, PRICING MODEL, FIRST 90 DAYS, USER PERSONAS, KEY RISKS, REGULATORY."
-        ),
-    },
+    "research": (
+        "MARKET INTELLIGENCE:\n"
+        "STEP 1 — Run ONE batch_search with ALL these queries simultaneously:\n"
+        "batch_search(queries=[\n"
+        "  'TOPIC market size TAM revenue 2024 2025 statistics',\n"
+        "  'TOPIC industry growth rate forecast CAGR report',\n"
+        "  'TOPIC venture capital funding rounds 2024 2025',\n"
+        "  'TOPIC customer demographics segments target audience',\n"
+        "  'TOPIC regulatory environment compliance requirements',\n"
+        "  'TOPIC market trends emerging technology adoption'\n"
+        "])\n"
+        "STEP 2 — news_search('TOPIC 2025 2026 latest')\n"
+        "STEP 3 — research_papers('TOPIC academic study user behavior market')\n"
+        "STEP 4 — 6+ fetch_and_read calls on the most valuable URLs found.\n\n"
+        "SELF-EVALUATION (run before obsidian_log):\n"
+        "Check if you have ALL of these. For each missing item, run 2 more targeted searches before logging:\n"
+        "[ ] TAM number with source (e.g. '$4.2B market, Source: Grand View Research 2024')\n"
+        "[ ] CAGR / growth rate with source\n"
+        "[ ] At least 3 named VC-backed companies or funded startups in this space\n"
+        "[ ] Target customer segment with specific pain point\n"
+        "[ ] Regulatory or compliance note\n"
+        "If any box is unchecked, search for it specifically before logging.\n\n"
+        "obsidian_log with: MARKET SIZE, GROWTH RATE, TAM/SAM/SOM, KEY SEGMENTS, REGULATORY, VC FUNDING DATA."
+    ),
+    "research_competitors": (
+        "COMPETITOR INTELLIGENCE — find REAL named companies in this specific market.\n\n"
+        "STEP 1 — Run ONE batch_search replacing TOPIC with the FULL product phrase from your task (no abbreviations):\n"
+        "batch_search(queries=[\n"
+        "  'TOPIC top companies platforms named list 2024 2025',\n"
+        "  'TOPIC startups named companies crunchbase funding 2022 2023 2024',\n"
+        "  'TOPIC alternatives site:g2.com OR site:capterra.com OR site:producthunt.com',\n"
+        "  'TOPIC best ranked review techcrunch venturebeat',\n"
+        "  'TOPIC Y Combinator a16z sequoia backed named startup',\n"
+        "  'TOPIC pricing model subscription plans cost per month',\n"
+        "  'TOPIC market map landscape named players 2024 2025'\n"
+        "])\n"
+        "STEP 2 — news_search('TOPIC company startup funding launch 2024 2025')\n"
+        "STEP 3 — patent_search('TOPIC')\n"
+        "STEP 4 — youtube_research('TOPIC platform demo review walkthrough')\n\n"
+        "STEP 5 — DEEP DIVE ON NAMED COMPETITORS:\n"
+        "You MUST have at least 5 specific named companies. "
+        "If you have fewer than 5, run MORE searches with different terms before continuing. "
+        "For EACH named competitor: fetch_and_read(their homepage URL) then fetch_and_read(their /pricing URL).\n\n"
+        "SELF-EVALUATION (run before obsidian_log):\n"
+        "[ ] At least 5 named competitors with homepage URLs\n"
+        "[ ] Pricing for at least 3 of them (specific dollar amounts)\n"
+        "[ ] Funding amount for at least 2 of them\n"
+        "[ ] At least 1 clear gap or weakness in the competitive landscape\n"
+        "[ ] At least 1 YouTube or TikTok creator covering this space\n"
+        "For each unchecked box, run 2 more targeted searches before logging.\n\n"
+        "obsidian_log with: COMPETITOR TABLE (name, URL, pricing, funding, strengths, weaknesses, market position), "
+        "WHITESPACE OPPORTUNITIES, VIDEO INSIGHTS, PRICING COMPARISON."
+    ),
+    "research_execution": (
+        "EXECUTION STRATEGY RESEARCH — how to actually build and launch this specific product.\n\n"
+        "STEP 1 — Run ONE batch_search replacing TOPIC with the FULL product phrase from your task (no abbreviations):\n"
+        "batch_search(queries=[\n"
+        "  'how to build TOPIC startup go-to-market strategy',\n"
+        "  'TOPIC business model revenue streams monetization subscription',\n"
+        "  'TOPIC tech stack architecture engineering how it works',\n"
+        "  'TOPIC customer acquisition cost CAC LTV unit economics',\n"
+        "  'TOPIC user pain points reddit complaints what users want',\n"
+        "  'TOPIC regulatory legal compliance requirements'\n"
+        "])\n"
+        "STEP 2 — youtube_research('TOPIC how to build launch tutorial founder')\n"
+        "STEP 3 — 6+ fetch_and_read calls on the most actionable URLs found.\n\n"
+        "SELF-EVALUATION (run before obsidian_log):\n"
+        "[ ] Specific tech stack recommendation (name actual frameworks, DBs, APIs)\n"
+        "[ ] CAC and LTV estimates with source\n"
+        "[ ] At least 2 specific GTM channels with evidence they work for this space\n"
+        "[ ] Named user persona with specific pain point and willingness to pay\n"
+        "[ ] At least 1 regulatory or legal risk specific to this domain\n"
+        "For each unchecked box, run 2 more targeted searches before logging.\n\n"
+        "obsidian_log with: RECOMMENDED TECH STACK, GTM STRATEGY, PRICING MODEL, FIRST 90 DAYS PLAN, USER PERSONAS, KEY RISKS, REGULATORY NOTES, VIDEO CREATOR INSIGHTS."
+    ),
 }
 
 
@@ -153,6 +151,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     ctx_holder: list = [None]
 
     # _2/_3/_4 variants log to same Obsidian note as base so notes merge
+    import re as _re
     log_name = _re.sub(r"_\d+$", "", agent_name)
     auto_search = _make_auto_logging_tool(search_and_fetch, "search_and_fetch", ctx_holder, log_name)
     auto_batch = _make_auto_logging_tool(batch_search, "batch_search", ctx_holder, log_name)
@@ -165,16 +164,39 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
 
 
     from backend.config import settings
-    focus_config = _FOCUS_ROLES.get(agent_name, _FOCUS_ROLES["research"])
-
-    # Role prompt is built at run-time (after queries are generated), so use a placeholder
+    focus_searches = _FOCUS_ROLES.get(agent_name, _FOCUS_ROLES["research"])
     agent = Agent(
         name=agent_name,
-        model="deepseek-ai/DeepSeek-V4-Flash",
-        model_base_url=settings.openrouter_base_url,
-        model_api_key=settings.openrouter_api_key or settings.agent_model_api_key,
+        model=settings.planner_model_name,
+        model_base_url=settings.planner_model_base_url,
+        model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
         max_iterations=40,
-        role="ROLE_PLACEHOLDER",  # replaced at runtime after query generation
+        role=(
+            "You are an elite deep research specialist. You produce investment-grade research. "
+            "Prioritize speed + quality: complete core coverage fast, then stop once evidence is sufficient.\n\n"
+            "CRITICAL — SEARCH QUERY RULES:\n"
+            "1. Copy the EXACT product/domain phrase from your TASK INSTRUCTION into every search query.\n"
+            "   Use the full descriptive phrase — NEVER shorten, abbreviate, or use acronyms.\n"
+            "   Example: task says 'co-founder matching platform' → search 'co-founder matching platform market size'\n"
+            "   NEVER: 'CO matching' or 'co matching' or just 'matching platform'\n"
+            "2. Your search queries MUST contain 4+ words describing the specific product/service.\n"
+            "3. FORBIDDEN in queries: single words, abbreviations, acronyms, Wikipedia searches.\n"
+            "4. If the task mentions a company name, include it in searches.\n\n"
+            "TOOLS:\n"
+            "- batch_search(queries=[...]) — run 3-8 searches IN PARALLEL. USE THIS FIRST for speed.\n"
+            "- search_and_fetch(query) — single search + fetch. Use for follow-up searches.\n"
+            "- fetch_and_read(url) — read a specific URL in full depth.\n"
+            "- research_papers(query) — academic papers.\n"
+            "- news_search(query) — recent news.\n"
+            "- patent_search(query) — IP landscape.\n"
+            "- youtube_research(query) — YouTube video metadata + transcripts.\n"
+            "- tiktok_research(query) — TikTok video metadata + captions.\n"
+            "- obsidian_log — FINAL step only after ALL searches complete.\n\n"
+            "SPEED REQUIREMENT: Start with ONE batch_search call containing 4-6 queries to run them all in parallel.\n"
+            "Then use individual search_and_fetch for follow-ups. This cuts research time by 4x.\n\n"
+            "YOUR MANDATORY SEARCH SEQUENCE — replace TOPIC with the FULL product/domain phrase from your task (4+ words, no abbreviations):\n\n"
+            + focus_searches
+        ),
         tools={
             "batch_search": auto_batch,
             "search_and_fetch": auto_search,
@@ -191,324 +213,21 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
         **kwargs,
     )
 
+    # Patch run to:
+    # 1. Inject ctx into ctx_holder
+    # 2. Replace TOPIC in the role prompt with the actual goal phrase so the
+    #    LLM never has to guess — prevents "co-founder" → "CO" hallucinations
     _original_run = agent.run
 
     async def _patched_run(ctx: AgentContext):
         ctx_holder[0] = ctx
-
-        # Extract topic then build the 30 topic-specific queries
-        topic = await _extract_topic(ctx.goal or "")
-        queries = _build_queries(topic, agent_name)
-
-        # Format queries into 4 sequential batches of 8 for the agent to call
-        batches = [queries[i:i+8] for i in range(0, min(len(queries), 32), 8)]
-        batch_lines = []
-        for i, batch in enumerate(batches, 1):
-            quoted = [f'"{q}"' for q in batch]
-            batch_lines.append(f"Batch {i}: batch_search(queries=[{', '.join(quoted)}])")
-        query_block = "\n".join(batch_lines)
-
-        agent.role = (
-            f"You are an elite research specialist. Task: {focus_config['goal']}.\n"
-            f"Topic: \"{topic}\"\n\n"
-            "RULES (non-negotiable):\n"
-            f"1. Execute the queries below EXACTLY as written — every query contains \"{topic}\".\n"
-            "2. After batch_search returns results, ONLY call fetch_and_read on URLs where the page title "
-            f"or snippet explicitly mentions \"{topic}\" or a direct synonym. "
-            "Skip Wikipedia, generic news, social media, unrelated company pages.\n"
-            "3. NEVER search for anything outside the provided query list.\n"
-            "4. If a batch_search returns no useful results, move to the next batch — do not improvise.\n\n"
-            f"QUERIES (run all 4 batches in order):\n{query_block}\n\n"
-            "STEPS:\n"
-            "1. batch_search(Batch 1) → review titles/snippets → fetch_and_read ONLY relevant URLs.\n"
-            "2. batch_search(Batch 2) → same filter.\n"
-            "3. batch_search(Batch 3) → same filter.\n"
-            "4. batch_search(Batch 4) → same filter.\n"
-            "5. news_search for recent news if gaps remain.\n"
-            "6. Self-evaluate checklist below → targeted follow-up batch_search if needed.\n"
-            "7. obsidian_log with complete findings.\n\n"
-            f"{focus_config['instructions']}"
-        )
+        # Extract a clean topic phrase from the goal (first 120 chars, strip newlines)
+        raw_goal = (ctx.goal or "").replace("\n", " ").strip()
+        topic_phrase = raw_goal[:120]
+        # Replace TOPIC placeholder in the agent's role with the actual goal phrase
+        if "TOPIC" in agent.role:
+            agent.role = agent.role.replace("TOPIC", topic_phrase)
         return await _original_run(ctx)
 
     agent.run = _patched_run
     return agent
-
-
-def _build_queries(topic: str, agent_name: str) -> list:
-    """
-    Build targeted search queries. Each query quotes the topic to force relevance —
-    search engines only return pages that actually mention the topic.
-    """
-    base = _re.sub(r"_\d+$", "", agent_name)
-    t = topic  # shorthand
-
-    if base in ("research", "research_market"):
-        return [
-            f'"{t}" market size',
-            f'"{t}" total addressable market',
-            f'"{t}" funding rounds',
-            f'"{t}" venture capital',
-            f'"{t}" customer demographics',
-            f'"{t}" market trends',
-            f'"{t}" industry report',
-            f'"{t}" growth rate',
-            f'"{t}" revenue forecast',
-            f'"{t}" market analysis',
-            f'"{t}" pricing strategy',
-            f'"{t}" customer pain points',
-            f'"{t}" market opportunity',
-            f'"{t}" competitive landscape',
-            f'"{t}" use cases',
-            f'"{t}" case studies',
-            f'"{t}" industry statistics',
-            f'"{t}" startup companies',
-            f'"{t}" business model',
-            f'"{t}" market regulations',
-            f'"{t}" adoption rate',
-            f'"{t}" consumer demand',
-            f'"{t}" market players',
-            f'"{t}" TAM SAM SOM',
-            f'"{t}" geographic markets',
-            f'"{t}" customer segments',
-            f'"{t}" market barriers',
-            f'"{t}" future outlook',
-            f'"{t}" investor interest',
-            f'"{t}" market research report',
-        ]
-
-    if base == "research_financial":
-        return [
-            f'"{t}" funding rounds',
-            f'"{t}" funding raised',
-            f'"{t}" Series A funding',
-            f'"{t}" Series B funding',
-            f'"{t}" angel investors',
-            f'"{t}" venture capital funding',
-            f'"{t}" seed funding',
-            f'"{t}" investor list',
-            f'"{t}" company valuation',
-            f'"{t}" revenue metrics',
-            f'"{t}" annual revenue',
-            f'"{t}" business model',
-            f'"{t}" SaaS metrics',
-            f'"{t}" unit economics',
-            f'"{t}" customer acquisition cost',
-            f'"{t}" lifetime value',
-            f'"{t}" churn rate',
-            f'"{t}" growth metrics',
-            f'"{t}" financial performance',
-            f'"{t}" IPO prospects',
-            f'"{t}" acquisition targets',
-            f'"{t}" exit strategy',
-            f'"{t}" pitch deck',
-            f'"{t}" investor pitch',
-            f'"{t}" financial projections',
-            f'"{t}" burn rate',
-            f'"{t}" runway',
-            f'"{t}" equity structure',
-            f'"{t}" cap table',
-            f'"{t}" financial health',
-        ]
-
-    if base == "research_regulatory":
-        return [
-            f'"{t}" compliance requirements',
-            f'"{t}" regulatory requirements',
-            f'"{t}" legal requirements',
-            f'"{t}" data privacy',
-            f'"{t}" GDPR compliance',
-            f'"{t}" CCPA compliance',
-            f'"{t}" licensing requirements',
-            f'"{t}" permits needed',
-            f'"{t}" security requirements',
-            f'"{t}" SOC2 certification',
-            f'"{t}" HIPAA compliance',
-            f'"{t}" tax implications',
-            f'"{t}" employment law',
-            f'"{t}" labor law',
-            f'"{t}" intellectual property',
-            f'"{t}" patent requirements',
-            f'"{t}" trademark registration',
-            f'"{t}" copyright laws',
-            f'"{t}" insurance requirements',
-            f'"{t}" liability coverage',
-            f'"{t}" contract requirements',
-            f'"{t}" terms and conditions',
-            f'"{t}" privacy policy',
-            f'"{t}" antitrust regulations',
-            f'"{t}" FTC regulations',
-            f'"{t}" SEC rules',
-            f'"{t}" audit requirements',
-            f'"{t}" compliance checklist',
-            f'"{t}" regulatory landscape',
-            f'"{t}" legal framework',
-        ]
-
-    if base == "research_competitors":
-        return [
-            f'"{t}" competitors',
-            f'"{t}" alternatives',
-            f'"{t}" competitor analysis',
-            f'"{t}" market comparison',
-            f'"{t}" competing products',
-            f'"{t}" vs comparison',
-            f'"{t}" competitive landscape',
-            f'"{t}" competitor pricing',
-            f'"{t}" competitor features',
-            f'"{t}" competitor reviews',
-            f'"{t}" industry players',
-            f'"{t}" market leaders',
-            f'"{t}" top companies',
-            f'"{t}" startup competitors',
-            f'"{t}" funded startups',
-            f'"{t}" company comparison',
-            f'"{t}" product comparison',
-            f'"{t}" feature comparison',
-            f'"{t}" pricing comparison',
-            f'"{t}" customer reviews',
-            f'"{t}" user feedback',
-            f'"{t}" product reviews',
-            f'"{t}" case studies',
-            f'"{t}" competitor case studies',
-            f'"{t}" company funding',
-            f'"{t}" investor backed',
-            f'"{t}" company valuation',
-            f'"{t}" IPO acquisition',
-            f'"{t}" free alternatives',
-            f'"{t}" open source alternatives',
-            f'"{t}" funding Series A B site:crunchbase.com 2023 2024',
-            f'"{t}" startup pitch deck investor presentation',
-            f'"{t}" customer reviews complaints site:g2.com OR site:trustpilot.com',
-            f'"{t}" feature comparison table strengths weaknesses',
-            f'"{t}" CEO founder interview company overview',
-            f'"{t}" revenue ARR MRR growth metrics',
-            f'"{t}" acquisition partnership integration',
-            f'"{t}" open source alternative github',
-            f'"{t}" enterprise pricing annual contract',
-            f'"{t}" free trial freemium model overview',
-            f'"{t}" API documentation developer platform',
-            f'"{t}" customers case study named clients',
-            f'"{t}" product launch new features 2025',
-            f'"{t}" team size employees headcount linkedin',
-            f'"{t}" white label reseller OEM',
-            f'"{t}" international expansion countries',
-            f'"{t}" valuation latest funding round 2024',
-            f'"{t}" NPS score customer satisfaction',
-            f'"{t}" site:linkedin.com company overview employees',
-            f'"{t}" named companies founded 2020 2021 2022 2023',
-        ]
-
-    # research_execution
-    return [
-        f'"{t}" go-to-market strategy',
-        f'"{t}" launch strategy',
-        f'"{t}" business model',
-        f'"{t}" revenue model',
-        f'"{t}" pricing strategy',
-        f'"{t}" customer acquisition',
-        f'"{t}" marketing strategy',
-        f'"{t}" sales strategy',
-        f'"{t}" product launch',
-        f'"{t}" MVP development',
-        f'"{t}" tech stack',
-        f'"{t}" team building',
-        f'"{t}" founder interview',
-        f'"{t}" startup story',
-        f'"{t}" case study',
-        f'"{t}" success story',
-        f'"{t}" lessons learned',
-        f'"{t}" product roadmap',
-        f'"{t}" growth hacking',
-        f'"{t}" user feedback',
-        f'"{t}" customer retention',
-        f'"{t}" unit economics',
-        f'"{t}" financial metrics',
-        f'"{t}" operational efficiency',
-        f'"{t}" partner strategy',
-        f'"{t}" distribution channels',
-        f'"{t}" conversion optimization',
-        f'"{t}" market validation',
-        f'"{t}" product market fit',
-        f'"{t}" competitive advantage',
-    ]
-
-
-def _regex_extract_topic(goal: str) -> str:
-    """Deterministic topic extraction — no LLM, no hallucination."""
-    goal = goal.replace("\n", " ").strip()
-    # Remove leading instruction verbs
-    cleaned = _re.sub(
-        r"^(build|create|make|develop|launch|start|design|implement|i want to|we want to|"
-        r"help me build|i need|we need|build me|create me)[:\s]+(?:a\s+|an\s+|the\s+)?",
-        "", goal, flags=_re.IGNORECASE
-    ).strip()
-    # Trim at implementation details
-    cleaned = _re.sub(
-        r"\s+(with|that|for|using|which|where|featuring|including|and a|also)\s+.*$",
-        "", cleaned, flags=_re.IGNORECASE
-    ).strip()
-    # Cap length
-    if len(cleaned) > 60:
-        cleaned = cleaned[:60].rsplit(" ", 1)[0]
-    return cleaned.strip() or goal[:60].strip()
-
-
-def _is_bad_topic(phrase: str) -> bool:
-    """Return True if the phrase looks like a hallucination/abbreviation."""
-    words = phrase.strip().split()
-    # Too short
-    if len(words) < 2:
-        return True
-    # All-caps single token (CO, AI, B2B alone, etc.)
-    if any(_re.fullmatch(r'[A-Z]{1,4}', w) for w in words):
-        return True
-    # Contains math/code
-    if any(c in phrase for c in ['=', '+', '->', '()', '<', '>']):
-        return True
-    return False
-
-
-async def _extract_topic(goal: str) -> str:
-    """Extract the core product phrase. Regex first (reliable), LLM to enhance if needed."""
-    # Always start with deterministic regex — never hallucinates
-    regex_result = _regex_extract_topic(goal)
-
-    # Only use LLM for complex multi-sentence goals where regex truncates badly
-    if len(goal.split()) <= 12:
-        return regex_result  # short goal, regex is perfect
-
-    from backend.config import settings
-    try:
-        from openai import OpenAI
-        client = OpenAI(
-            base_url=settings.openrouter_base_url,
-            api_key=settings.openrouter_api_key or settings.agent_model_api_key,
-        )
-        resp = await asyncio.to_thread(
-            client.chat.completions.create,
-            model="deepseek-ai/DeepSeek-V4-Flash",
-            messages=[{
-                "role": "user",
-                "content": (
-                    "Extract the core product/domain phrase from this goal. "
-                    "Output ONLY 3-6 words. Write ALL words in FULL — never abbreviate, never use acronyms alone.\n"
-                    "CRITICAL: 'co-founder' must stay as 'co-founder' not 'CO'. "
-                    "'artificial intelligence' not 'AI' alone. Write the full hyphenated word.\n"
-                    "Examples:\n"
-                    "→ 'co-founder matching platform'\n"
-                    "→ 'AI stock trading signal platform'\n"
-                    "→ 'restaurant inventory management software'\n\n"
-                    f"Goal: {goal[:400]}\n\nProduct phrase (3-6 words, no abbreviations):"
-                ),
-            }],
-            max_tokens=15,
-            temperature=0.0,
-        )
-        phrase = resp.choices[0].message.content.strip().strip('"\'').strip()
-        if phrase and 2 <= len(phrase.split()) <= 8 and not _is_bad_topic(phrase):
-            return phrase
-    except Exception as e:
-        logger.warning("_extract_topic LLM failed: %s", e)
-
-    return regex_result
