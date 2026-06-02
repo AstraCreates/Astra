@@ -9,20 +9,21 @@ class Settings(BaseSettings):
     agent_model_base_url: str = "https://api.deepinfra.com/v1/openai"
     agent_model_api_key: str = ""
     agent_model_name: str = "deepseek-ai/DeepSeek-V4-Flash"
-    # Planner — Step-3.5-Flash has built-in reasoning, better goal decomposition
+    # Planner — fast, good instruction following, 320k ctx
     planner_model_base_url: str = "https://api.deepinfra.com/v1/openai"
     planner_model_api_key: str = ""
     planner_model_name: str = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
-    # Chat model — per-agent Q&A
+    # Chat model — Q&A about sessions, needs 320k ctx to read research outputs
     chat_model_base_url: str = "https://api.deepinfra.com/v1/openai"
     chat_model_api_key: str = ""
-    chat_model_name: str = "Qwen/Qwen3-32B"
+    chat_model_name: str = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
     # Light model — fast/cheap for design and low-complexity agents
     light_model_base_url: str = "https://api.deepinfra.com/v1/openai"
-    light_model_name: str = "zai-org/GLM-4.7-Flash"
-    # High-output model — docs/copy/legal (Mistral excels at structured long-form)
+    light_model_name: str = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
+    # High-output model — marketing/legal/ops/finance: structured long-form writing
+    # Mistral-Small: $0.075/$0.20 vs DeepSeek-V4-Flash $0.10/$0.20 — cheaper input, same output
     highoutput_model_base_url: str = "https://api.deepinfra.com/v1/openai"
-    highoutput_model_name: str = "deepseek-ai/DeepSeek-V4-Flash"
+    highoutput_model_name: str = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
     vertex_project: str = ""
     vertex_location: str = "us-central1"
 
