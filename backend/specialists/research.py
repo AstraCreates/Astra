@@ -253,9 +253,31 @@ async def _run_batch(queries: list) -> dict:
     return await asyncio.to_thread(batch_search, queries, 6)
 
 
+def _sanitize_queries(queries: list, topic: str) -> list:
+    """Remove abbreviations and ensure every query contains the topic phrase."""
+    import re
+    # Words from the topic that should never be abbreviated
+    topic_words = set(topic.lower().split())
+    clean = []
+    for q in queries:
+        q = str(q).strip()
+        # Drop queries shorter than 4 words — too generic
+        if len(q.split()) < 4:
+            q = f"{topic} {q}"
+        # Drop queries that don't contain ANY word from the topic (completely off-topic)
+        q_lower = q.lower()
+        if not any(w in q_lower for w in topic_words if len(w) > 3):
+            q = f"{topic} {q}"
+        # Replace isolated uppercase abbreviations (1-3 capital letters alone) that
+        # aren't part of a longer word — e.g. "CO market size" → "{topic} market size"
+        q = re.sub(r'\b[A-Z]{1,3}\b(?!\w)', topic, q)
+        clean.append(q[:100])  # cap length
+    return clean
+
+
 async def _generate_queries(topic: str, query_brief: str) -> list:
     """Ask the LLM to generate 30 targeted search queries for the given topic and research angle."""
-    import asyncio, json
+    import json
     from backend.config import settings
     brief = query_brief.replace("TOPIC", topic)
     try:
@@ -271,25 +293,25 @@ async def _generate_queries(topic: str, query_brief: str) -> list:
                 "role": "user",
                 "content": (
                     f"{brief}\n\n"
-                    "Rules:\n"
-                    "- Each query must be 4-10 words\n"
-                    "- Use the exact topic phrase, never abbreviate it\n"
-                    "- Each query targets a different angle (don't repeat)\n"
-                    "- Include site: operators, named sources, and year filters where useful\n"
-                    "- No generic queries like 'technology trends' or 'market overview'\n\n"
-                    "Output ONLY a JSON array of 30 query strings. No explanation."
+                    f"The topic phrase is: \"{topic}\"\n\n"
+                    "STRICT RULES — violating any rule makes the query invalid:\n"
+                    f"1. Every query MUST contain the words from \"{topic}\" written out IN FULL — never shorten, never abbreviate\n"
+                    "2. NEVER use acronyms or initialisms (no CO, AI alone, SaaS alone, etc.) — write the full words\n"
+                    "3. Each query must be 5-10 words\n"
+                    "4. Each query targets a different angle (no repeats)\n"
+                    "5. Include site: operators and year filters (2024, 2025) where useful\n\n"
+                    "Output ONLY a JSON array of 30 query strings. No explanation, no markdown."
                 ),
             }],
-            max_tokens=800,
-            temperature=0.4,
+            max_tokens=1000,
+            temperature=0.3,
         )
         raw = resp.choices[0].message.content.strip()
-        # Strip markdown fences if present
         if "```" in raw:
             raw = raw.split("```")[1].lstrip("json").strip()
         queries = json.loads(raw)
         if isinstance(queries, list) and len(queries) >= 10:
-            return [str(q) for q in queries[:30]]
+            return _sanitize_queries([str(q) for q in queries[:30]], topic)
     except Exception as e:
         logger.warning("_generate_queries failed: %s", e)
     # Fallback: basic queries using topic
