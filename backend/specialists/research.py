@@ -196,37 +196,37 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     async def _patched_run(ctx: AgentContext):
         ctx_holder[0] = ctx
 
-        # Step 1: extract topic deterministically, build 30 queries from templates
+        # Extract topic then build the 30 topic-specific queries
         topic = await _extract_topic(ctx.goal or "")
         queries = _build_queries(topic, agent_name)
 
-        # Step 2: pipeline search — generate 3 queries, start searching, generate next 3 simultaneously
-        # Split into batches of 3 and run them as a pipeline with asyncio
-        import json as _json
-        search_results = await _pipeline_search(queries, batch_size=3)
-
-        # Combine all search results into a pre-fetched context block
-        combined = []
-        for r in search_results:
-            if isinstance(r, dict) and r.get("combined_formatted"):
-                combined.append(r["combined_formatted"][:12000])
-            elif isinstance(r, dict) and r.get("formatted"):
-                combined.append(r["formatted"][:8000])
-        pre_fetched = "\n\n---\n\n".join(combined)[:120000]
+        # Format queries into 4 sequential batches of 8 for the agent to call
+        batches = [queries[i:i+8] for i in range(0, min(len(queries), 32), 8)]
+        batch_lines = []
+        for i, batch in enumerate(batches, 1):
+            quoted = [f'"{q}"' for q in batch]
+            batch_lines.append(f"Batch {i}: batch_search(queries=[{', '.join(quoted)}])")
+        query_block = "\n".join(batch_lines)
 
         agent.role = (
-            f"You are an elite deep research specialist focused on: {focus_config['goal']}.\n"
-            f"Topic: {topic}\n\n"
-            f"SEARCH RESULTS (already fetched — do NOT re-run these searches):\n"
-            f"{pre_fetched}\n\n"
-            "YOUR JOB NOW:\n"
-            "1. Read the search results above carefully.\n"
-            "2. Call fetch_and_read on the 6-8 most valuable URLs found in the results above.\n"
-            "3. Run news_search and research_papers for any gaps.\n"
-            "4. Self-evaluate and run targeted follow-up searches for anything missing.\n"
-            "5. Call obsidian_log with your complete findings.\n\n"
-            "TOOLS: fetch_and_read, search_and_fetch, news_search, research_papers, "
-            "patent_search, youtube_research, batch_search, obsidian_log.\n\n"
+            f"You are an elite research specialist. Task: {focus_config['goal']}.\n"
+            f"Topic: \"{topic}\"\n\n"
+            "RULES (non-negotiable):\n"
+            f"1. Execute the queries below EXACTLY as written — every query contains \"{topic}\".\n"
+            "2. After batch_search returns results, ONLY call fetch_and_read on URLs where the page title "
+            f"or snippet explicitly mentions \"{topic}\" or a direct synonym. "
+            "Skip Wikipedia, generic news, social media, unrelated company pages.\n"
+            "3. NEVER search for anything outside the provided query list.\n"
+            "4. If a batch_search returns no useful results, move to the next batch — do not improvise.\n\n"
+            f"QUERIES (run all 4 batches in order):\n{query_block}\n\n"
+            "STEPS:\n"
+            "1. batch_search(Batch 1) → review titles/snippets → fetch_and_read ONLY relevant URLs.\n"
+            "2. batch_search(Batch 2) → same filter.\n"
+            "3. batch_search(Batch 3) → same filter.\n"
+            "4. batch_search(Batch 4) → same filter.\n"
+            "5. news_search for recent news if gaps remain.\n"
+            "6. Self-evaluate checklist below → targeted follow-up batch_search if needed.\n"
+            "7. obsidian_log with complete findings.\n\n"
             f"{focus_config['instructions']}"
         )
         return await _original_run(ctx)
@@ -235,139 +235,115 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     return agent
 
 
-async def _pipeline_search(queries: list, batch_size: int = 3) -> list:
-    """
-    Pipeline: kick off searching each batch of `batch_size` queries as soon as
-    the previous batch is in-flight — no waiting for results before starting next.
-    Returns list of batch_search result dicts.
-    """
-    import asyncio
-    batches = [queries[i:i+batch_size] for i in range(0, len(queries), batch_size)]
-    tasks = [asyncio.create_task(_run_batch(b)) for b in batches]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    return [r for r in results if isinstance(r, dict)]
-
-
-async def _run_batch(queries: list) -> dict:
-    import asyncio
-    return await asyncio.to_thread(batch_search, queries, 6)
-
-
-_MARKET_SUFFIXES = [
-    "market size TAM revenue 2024 2025",
-    "industry growth rate CAGR forecast",
-    "venture capital funding rounds 2024",
-    "customer demographics target audience",
-    "regulatory compliance requirements",
-    "market trends emerging 2025",
-    "top investors backed startups",
-    "total addressable market analysis",
-    "user behavior survey research",
-    "geographic market regions breakdown",
-    "adjacent markets opportunities",
-    "industry report grand view research",
-    "market share leading companies",
-    "demand drivers growth factors",
-    "barriers to entry challenges",
-    "B2B B2C customer segments",
-    "pricing benchmarks industry average",
-    "revenue model subscription freemium",
-    "pain points user problems",
-    "news funding launch 2025 2026",
-    "academic study analysis",
-    "competitive landscape overview",
-    "technology adoption curve",
-    "enterprise SMB customer split",
-    "sales cycle length deal size",
-    "unit economics LTV CAC payback",
-    "churn retention benchmarks",
-    "seasonal trends patterns",
-    "international expansion markets",
-    "regulation policy government impact",
-]
-
-_COMPETITOR_SUFFIXES = [
-    "top companies named list 2024 2025",
-    "startups crunchbase funding raised",
-    "alternatives site:g2.com OR site:capterra.com",
-    "best tools ranked site:producthunt.com",
-    "Y Combinator backed startup named",
-    "a16z sequoia funded company",
-    "pricing plans subscription cost per month",
-    "market map landscape named players",
-    "vs comparison named competitors",
-    "reviews reddit users recommend",
-    "site:techcrunch.com funding announcement",
-    "site:venturebeat.com startup",
-    "customer complaints weaknesses",
-    "feature comparison strengths",
-    "free trial demo overview",
-    "founder CEO interview story",
-    "team size employees revenue",
-    "latest news launch product update",
-    "API integration partners",
-    "acquisition merger exit",
-    "patent holder IP owner",
-    "enterprise SMB focus market",
-    "NPS customer satisfaction score",
-    "growth rate MRR ARR metrics",
-    "channel distribution partnership",
-    "white label reseller program",
-    "open source alternative",
-    "international global expansion",
-    "Series A B C funding 2023 2024",
-    "valuation unicorn decacorn",
-]
-
-_EXECUTION_SUFFIXES = [
-    "go-to-market strategy how to launch",
-    "business model revenue streams",
-    "tech stack architecture engineering",
-    "customer acquisition cost CAC LTV",
-    "user pain points reddit forum complaints",
-    "regulatory legal compliance requirements",
-    "sales strategy B2C B2B channels",
-    "founder interview lessons learned YC",
-    "first 100 customers acquisition",
-    "product market fit signals",
-    "pricing strategy freemium tiered",
-    "viral growth loop referral",
-    "content marketing SEO strategy",
-    "paid acquisition channels ROI",
-    "hiring team roles first employees",
-    "unit economics payback period",
-    "churn reduction retention tactics",
-    "onboarding activation best practices",
-    "API integrations technical requirements",
-    "database schema architecture choices",
-    "frontend backend framework choice",
-    "infrastructure scaling cloud provider",
-    "security compliance GDPR SOC2",
-    "partnership channel sales strategy",
-    "investor pitch deck metrics",
-    "fundraising timeline milestones",
-    "competitive differentiation moat",
-    "community building early adopters",
-    "case study success story ROI",
-    "youtube tutorial founder how to build",
-]
-
-_ROLE_SUFFIXES = {
-    "research": _MARKET_SUFFIXES,
-    "research_market": _MARKET_SUFFIXES,
-    "research_financial": _MARKET_SUFFIXES,
-    "research_regulatory": _MARKET_SUFFIXES,
-    "research_competitors": _COMPETITOR_SUFFIXES,
-    "research_execution": _EXECUTION_SUFFIXES,
-}
-
-
 def _build_queries(topic: str, agent_name: str) -> list:
-    """Build 30 search queries deterministically — no LLM, no hallucination."""
-    import re
+    """
+    Build targeted search queries. Each query quotes the topic to force relevance —
+    search engines only return pages that actually mention the topic.
+    """
     base = _re.sub(r"_\d+$", "", agent_name)
-    suffixes = _ROLE_SUFFIXES.get(base, _MARKET_SUFFIXES)
-    return [f"{topic} {s}" for s in suffixes]
+    t = topic  # shorthand
+
+    if base in ("research", "research_market", "research_financial", "research_regulatory"):
+        return [
+            f'"{t}" market size revenue 2024 2025',
+            f'"{t}" industry growth rate CAGR forecast report',
+            f'"{t}" total addressable market TAM analysis',
+            f'"{t}" venture capital funding startups 2024',
+            f'"{t}" customer segments target audience demographics',
+            f'"{t}" regulatory compliance legal requirements',
+            f'"{t}" market trends 2025 emerging technology',
+            f'"{t}" pricing model subscription cost benchmark',
+            f'"{t}" user pain points problems challenges',
+            f'"{t}" site:statista.com OR site:grandviewresearch.com OR site:mordorintelligence.com',
+            f'"{t}" site:crunchbase.com funding investment',
+            f'"{t}" site:techcrunch.com OR site:venturebeat.com news 2024 2025',
+            f'"{t}" industry report pdf download 2024',
+            f'"{t}" market share leading companies revenue',
+            f'"{t}" barriers entry challenges startup',
+            f'"{t}" B2B enterprise customer size deal',
+            f'"{t}" unit economics LTV CAC payback period',
+            f'"{t}" geographic expansion international markets',
+            f'"{t}" regulatory environment government policy',
+            f'"{t}" adoption rate growth statistics data',
+            f'"{t}" investor analysis report 2025',
+            f'"{t}" competitive landscape map 2024',
+            f'"{t}" use cases customer success stories',
+            f'"{t}" market opportunity whitespace gap',
+            f'"{t}" patent filings technology IP landscape',
+            f'"{t}" reddit forum discussion community',
+            f'"{t}" academic research study findings',
+            f'"{t}" news funding announcement 2025',
+            f'"{t}" analyst report gartner forrester',
+            f'"{t}" growth driver trend forecast next 5 years',
+        ]
+
+    if base == "research_competitors":
+        return [
+            f'"{t}" companies platforms list 2024 2025',
+            f'"{t}" startups site:crunchbase.com funding raised',
+            f'"{t}" alternatives competitors site:g2.com',
+            f'"{t}" best tools site:producthunt.com',
+            f'"{t}" Y Combinator YC startup companies',
+            f'"{t}" top companies site:techcrunch.com OR site:venturebeat.com',
+            f'"{t}" pricing plans cost per month comparison',
+            f'"{t}" market map named players landscape 2024',
+            f'"{t}" vs comparison alternatives review',
+            f'"{t}" reviews site:reddit.com OR site:hackernews.com',
+            f'"{t}" funding Series A B site:crunchbase.com 2023 2024',
+            f'"{t}" startup pitch deck investor presentation',
+            f'"{t}" customer reviews complaints site:g2.com OR site:trustpilot.com',
+            f'"{t}" feature comparison table strengths weaknesses',
+            f'"{t}" CEO founder interview company overview',
+            f'"{t}" revenue ARR MRR growth metrics',
+            f'"{t}" acquisition partnership integration',
+            f'"{t}" open source alternative github',
+            f'"{t}" enterprise pricing annual contract',
+            f'"{t}" free trial freemium model overview',
+            f'"{t}" API documentation developer platform',
+            f'"{t}" customers case study named clients',
+            f'"{t}" product launch new features 2025',
+            f'"{t}" team size employees headcount linkedin',
+            f'"{t}" white label reseller OEM',
+            f'"{t}" international expansion countries',
+            f'"{t}" valuation latest funding round 2024',
+            f'"{t}" NPS score customer satisfaction',
+            f'"{t}" site:linkedin.com company overview employees',
+            f'"{t}" named companies founded 2020 2021 2022 2023',
+        ]
+
+    # research_execution
+    return [
+        f'"{t}" go-to-market strategy launch plan',
+        f'"{t}" business model revenue streams monetization',
+        f'"{t}" tech stack architecture engineering choices',
+        f'"{t}" customer acquisition cost CAC payback',
+        f'"{t}" user pain points site:reddit.com OR site:quora.com',
+        f'"{t}" regulatory compliance legal requirements startup',
+        f'"{t}" sales strategy channels B2B B2C',
+        f'"{t}" founder interview how built site:ycombinator.com OR site:techcrunch.com',
+        f'"{t}" first 100 customers growth hacks',
+        f'"{t}" pricing strategy free trial conversion',
+        f'"{t}" product market fit signals indicators',
+        f'"{t}" LTV CAC unit economics SaaS metrics',
+        f'"{t}" content marketing SEO growth strategy',
+        f'"{t}" paid acquisition ROI channels performance',
+        f'"{t}" hiring team early employees roles',
+        f'"{t}" retention churn reduction onboarding',
+        f'"{t}" infrastructure scaling cloud architecture',
+        f'"{t}" security compliance GDPR SOC2 certification',
+        f'"{t}" partnership integration channel sales',
+        f'"{t}" investor pitch metrics fundraising',
+        f'"{t}" competitive moat defensibility advantage',
+        f'"{t}" community building early adopters waitlist',
+        f'"{t}" site:indiehackers.com OR site:ycombinator.com startup lessons',
+        f'"{t}" case study ROI success metrics',
+        f'"{t}" youtube tutorial how to build launch',
+        f'"{t}" API integration third party tools',
+        f'"{t}" database schema architecture backend choices',
+        f'"{t}" frontend framework design system choices',
+        f'"{t}" viral loop referral growth product led',
+        f'"{t}" failure lessons what not to do startup',
+    ]
 
 
 def _regex_extract_topic(goal: str) -> str:
