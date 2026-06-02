@@ -77,12 +77,13 @@ def get_orchestrator() -> Orchestrator:
             # Financial/regulatory research needs 1M ctx for large data dumps
             "research_financial": build_research_financial_agent(use_computer=True, **_large_ctx_kwargs),
             "research_regulatory": build_research_regulatory_agent(use_computer=True, **_large_ctx_kwargs),
-            # Code agents — DeepSeek-V4-Flash (1M ctx, strong at code)
+            # Web — hy3-preview (best tool calling for deploy/HTML gen)
             "web": build_web_agent(use_computer=True, **_coder_kwargs),
-            "technical": build_technical_agent(use_computer=True, **_coder_kwargs),
-            "technical_scaffold": build_technical_scaffold_agent(use_computer=True, **_coder_kwargs),
-            "technical_infra": build_technical_infra_agent(use_computer=True, **_coder_kwargs),
-            "technical_data": build_technical_data_agent(use_computer=True, **_coder_kwargs),
+            # Technical — kimi-k2.6:free (built for long-horizon coding)
+            "technical": build_technical_agent(use_computer=True, **_highoutput_kwargs),
+            "technical_scaffold": build_technical_scaffold_agent(use_computer=True, **_highoutput_kwargs),
+            "technical_infra": build_technical_infra_agent(use_computer=True, **_highoutput_kwargs),
+            "technical_data": build_technical_data_agent(use_computer=True, **_highoutput_kwargs),
             # Writing agents — Mistral-Small-3.2 ($0.075/$0.20, 125k ctx, great long-form)
             "marketing": build_marketing_agent(use_computer=True, **_highoutput_kwargs),
             "legal": build_legal_agent(use_computer=True, **_highoutput_kwargs),
