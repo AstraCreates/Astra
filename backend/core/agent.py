@@ -171,11 +171,18 @@ class Agent:
             temperature=0.1,
             response_format={"type": "json_object"},
             timeout=300.0,
+            extra_body={"cache_control": {"type": "ephemeral"}},  # hint for providers that support explicit caching
         )
-        # Track token usage
+        # Track token usage including cached tokens
         if resp.usage and ctx:
             from backend.core.usage import record_usage
-            record_usage(ctx.session_id, self.model, resp.usage.prompt_tokens, resp.usage.completion_tokens)
+            cached = getattr(resp.usage, "prompt_tokens_details", None)
+            cached_tokens = getattr(cached, "cached_tokens", 0) if cached else 0
+            record_usage(
+                ctx.session_id, self.model,
+                resp.usage.prompt_tokens, resp.usage.completion_tokens,
+                cached_tokens=cached_tokens,
+            )
         msg = resp.choices[0].message
         content = msg.content or ""
         # Strip DeepSeek-R1 <think> blocks
