@@ -2458,7 +2458,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 120, display: "grid", placeItems: "center", padding: 24, background: "rgba(5,8,13,0.52)", backdropFilter: "blur(18px)", WebkitBackdropFilter: "blur(18px)" }}>
-      <LiquidGlass style={{ width: "min(1120px, 100%)" }} contentStyle={{ padding: "28px 30px", display: "flex", flexDirection: "column", gap: 18 }}>
+      <LiquidGlass style={{ width: "min(1120px, 100%)", maxHeight: "calc(100vh - 48px)" }} contentStyle={{ padding: "28px 30px", display: "flex", flexDirection: "column", gap: 18, maxHeight: "calc(100vh - 48px)", overflowY: "auto" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
           <div style={{ flex: 1, display: "grid", gap: 5 }}>
             <span className="site-label">New goal</span>
