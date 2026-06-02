@@ -174,8 +174,11 @@ class Agent:
 
     def _call_llm(self, messages: list[dict], ctx: "AgentContext | None" = None) -> str:
         import time as _time
-        extra: dict = {"cache_control": {"type": "ephemeral"}}
         is_openrouter = "openrouter" in (self._model_base_url or "")
+        extra: dict = {"cache_control": {"type": "ephemeral"}}
+        # hy3-preview defaults to reasoning mode — disable for fast JSON output
+        if "hy3" in self.model:
+            extra["reasoning"] = {"effort": "disabled"}
         kwargs: dict = dict(
             model=self.model,
             messages=messages,
@@ -183,6 +186,7 @@ class Agent:
             timeout=300.0,
             extra_body=extra,
         )
+        # json_object not supported by OpenRouter models
         if not is_openrouter:
             kwargs["response_format"] = {"type": "json_object"}
         _t0 = _time.monotonic()
