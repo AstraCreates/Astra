@@ -119,6 +119,8 @@ interface AgentState {
   currentTool: string | null;
   lastToolAt: number | null;
   reasoning: string | null;
+  model: string | null;
+  tks: number | null;
   result: Record<string, unknown> | null;
   log: LogEntry[];
   mirrorVerdict?: "pass" | "flag" | "block";
@@ -1646,11 +1648,15 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect }: {
           ? secsAgo < 60 ? `${secsAgo}s ago` : `${Math.floor(secsAgo / 60)}m ago`
           : null;
         const toolLabel = tool ? tool.replace(/_/g, " ") : null;
+        const modelShort = state?.model
+          ? state.model.split("/").pop()?.replace(/:free$/, "") ?? null
+          : null;
+        const tks = state?.tks ?? null;
 
         return (
           <button key={name} onClick={() => onSelect(name)} style={{
             display: "flex", alignItems: "center", gap: 6,
-            padding: isRunning && toolLabel ? "5px 10px 5px 8px" : "6px 12px 6px 8px",
+            padding: "5px 10px 5px 8px",
             borderRadius: 999,
             border: `1px solid ${isActive ? "#2563EB" : isRunning ? "rgba(37,99,235,0.35)" : "var(--line)"}`,
             background: isActive ? "#EFF6FF" : isRunning ? "rgba(37,99,235,0.05)" : "rgba(255,255,255,0.03)",
@@ -1667,16 +1673,23 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect }: {
                 background: status === "done" ? "#22C55E" : status === "running" ? "#2563EB" : status === "error" ? "#EF4444" : "rgba(255,255,255,0.15)",
               }} className={status === "running" ? "animate-pulse" : ""} />
             </div>
-            {isRunning && toolLabel && (
-              <div style={{ display: "flex", alignItems: "center", gap: 4, paddingLeft: 20 }}>
-                <span style={{ fontSize: 9, color: "#6B7280", whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {toolLabel}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, paddingLeft: 20 }}>
+              {modelShort && (
+                <span style={{ fontSize: 9, color: "#2563EB", whiteSpace: "nowrap", fontFamily: "var(--font-jetbrains-mono)", opacity: 0.8 }}>
+                  {modelShort}
                 </span>
-                {agoLabel && (
-                  <span style={{ fontSize: 9, color: "#9CA3AF", whiteSpace: "nowrap" }}>· {agoLabel}</span>
-                )}
-              </div>
-            )}
+              )}
+              {isRunning && tks !== null && (
+                <span style={{ fontSize: 9, color: "#22C55E", whiteSpace: "nowrap", fontFamily: "var(--font-jetbrains-mono)" }}>
+                  {tks}t/s
+                </span>
+              )}
+              {isRunning && toolLabel && (
+                <span style={{ fontSize: 9, color: "#6B7280", whiteSpace: "nowrap", maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis" }}>
+                  · {toolLabel}{agoLabel ? ` ${agoLabel}` : ""}
+                </span>
+              )}
+            </div>
           </button>
         );
       })}
@@ -3423,7 +3436,7 @@ export function GoalWorkspace({
             const existing = next[t.agent];
             // Don't reset agents already running or done
             if (existing && existing.status !== "waiting") continue;
-            next[t.agent] = { task_id: t.id, agent: t.agent, instruction: t.instruction, status: "waiting", currentAction: null, currentTool: null, lastToolAt: null, reasoning: null, result: null, log: [], visitedUrls: [], commits: [] };
+            next[t.agent] = { task_id: t.id, agent: t.agent, instruction: t.instruction, status: "waiting", currentAction: null, currentTool: null, lastToolAt: null, reasoning: null, model: null, tks: null, result: null, log: [], visitedUrls: [], commits: [] };
           }
           if (!activeAgent && event.tasks.length > 0) setActiveAgent(event.tasks[0].agent);
           return next;
@@ -3432,7 +3445,7 @@ export function GoalWorkspace({
         const agent = event.agent;
         if (!agent) return next;
 
-        const cur: AgentState = next[agent] ?? { task_id: "", agent, instruction: "", status: "waiting", currentAction: null, currentTool: null, lastToolAt: null, reasoning: null, result: null, log: [], visitedUrls: [], commits: [] };
+        const cur: AgentState = next[agent] ?? { task_id: "", agent, instruction: "", status: "waiting", currentAction: null, currentTool: null, lastToolAt: null, reasoning: null, model: null, tks: null, result: null, log: [], visitedUrls: [], commits: [] };
         const addLog = (type: string, text: string): LogEntry[] => [...cur.log, { ts: Date.now(), type, text }];
 
         if (event.type === "agent_start") {
@@ -3492,6 +3505,8 @@ export function GoalWorkspace({
             newAdImages = [...(cur.adImages ?? []), img];
           }
           next[agent] = { ...cur, log: addLog(ok ? "result" : "error", text), visitedUrls: newVisited, currentUrl: newUrl ?? cur.currentUrl, commits: newCommits, filesPreview: newFiles, filesCount: newFilesCount, adImages: newAdImages };
+        } else if (event.type === "model_stats") {
+          next[agent] = { ...cur, model: event.model ?? null, tks: event.tks ?? null };
         } else if (event.type === "agent_thinking") {
           next[agent] = { ...cur, log: addLog("info", `Thinking… (step ${event.iteration})`) };
         } else if (event.type === "agent_done") {
@@ -3607,7 +3622,7 @@ export function GoalWorkspace({
     const pair = base + "_2";
     const a = agents[base];
     const b = agents[pair];
-    if (!b) return a ?? { task_id: "", agent: base, instruction: "", status: "waiting", currentAction: null, currentTool: null, lastToolAt: null, reasoning: null, result: null, log: [], visitedUrls: [], commits: [] };
+    if (!b) return a ?? { task_id: "", agent: base, instruction: "", status: "waiting", currentAction: null, currentTool: null, lastToolAt: null, reasoning: null, model: null, tks: null, result: null, log: [], visitedUrls: [], commits: [] };
     if (!a) return { ...b, agent: base };
     const statusRank = (s: AgentState["status"]) => s === "running" ? 3 : s === "done" ? 2 : s === "error" ? 1 : 0;
     const mergedStatus: AgentState["status"] = statusRank(a.status) >= statusRank(b.status) ? a.status : b.status;

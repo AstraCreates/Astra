@@ -173,6 +173,7 @@ class Agent:
         return self._llm
 
     def _call_llm(self, messages: list[dict], ctx: "AgentContext | None" = None) -> str:
+        import time as _time
         extra: dict = {"cache_control": {"type": "ephemeral"}}
         is_openrouter = "openrouter" in (self._model_base_url or "")
         kwargs: dict = dict(
@@ -182,10 +183,11 @@ class Agent:
             timeout=300.0,
             extra_body=extra,
         )
-        # json_object response_format not supported by all OpenRouter models
         if not is_openrouter:
             kwargs["response_format"] = {"type": "json_object"}
+        _t0 = _time.monotonic()
         resp = self._get_llm().chat.completions.create(**kwargs)
+        _elapsed = _time.monotonic() - _t0
         # Track token usage and deduct credits per call
         if resp.usage and ctx:
             from backend.core.usage import record_usage
@@ -194,6 +196,20 @@ class Agent:
             prompt_t = resp.usage.prompt_tokens
             completion_t = resp.usage.completion_tokens
             record_usage(ctx.session_id, self.model, prompt_t, completion_t, cached_tokens=cached_tokens)
+            # Emit model stats event (model name + tk/s) for UI display
+            try:
+                from backend.core.events import publish_sync
+                tks = round(completion_t / _elapsed, 1) if _elapsed > 0 else 0
+                publish_sync(ctx.session_id, {
+                    "type": "model_stats",
+                    "agent": self.name,
+                    "model": self.model,
+                    "tokens": prompt_t + completion_t,
+                    "completion_tokens": completion_t,
+                    "tks": tks,
+                })
+            except Exception:
+                pass
             # Deduct credits: each token costs 10 units; 1,000,000 units = 1 credit
             if not ctx.unlimited_credits:
                 try:
