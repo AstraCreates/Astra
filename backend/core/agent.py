@@ -422,6 +422,10 @@ class Agent:
                     continue
 
             action = parsed.get("action")
+            # If action is missing but parsed has an "output" key containing a dict with "action", unwrap it
+            if action is None and isinstance(parsed.get("output"), dict) and parsed["output"].get("action"):
+                parsed = parsed["output"]
+                action = parsed.get("action")
             reasoning = parsed.get("reasoning", "")
             tool_hint = parsed.get("tool", "")
             logger.info("[%s] iter=%d  action=%-12s  %s", self.name, i, action, (tool_hint or reasoning)[:80])
