@@ -3194,6 +3194,7 @@ export function GoalWorkspace({
   const [expandedGoal, setExpandedGoal] = useState<string>("");
   const [autoCompanyName, setAutoCompanyName] = useState<string>("");
   const [done, setDone] = useState(false);
+  const [sessionCost, setSessionCost] = useState<{total_tokens: number; total_cost_usd: number; cached_tokens: number} | null>(null);
   const [inputRequest, setInputRequest] = useState<InputRequest | null>(null);
   const [selectedStack, setSelectedStack] = useState<AgentStackTemplate | null>(null);
   const [runArtifacts, setRunArtifacts] = useState<RunArtifactState[]>([]);
@@ -3583,6 +3584,16 @@ export function GoalWorkspace({
     }
   }, [done, sessionId]);
 
+  // Poll session token/cost stats
+  useEffect(() => {
+    if (!sessionId) return;
+    const fetch = () => apiFetch(`${BASE}/sessions/${sessionId}/cost`).then(r => r.json()).then(d => setSessionCost(d)).catch(() => {});
+    fetch();
+    if (done) return;
+    const id = setInterval(fetch, 10000);
+    return () => clearInterval(id);
+  }, [sessionId, done]);
+
   const PAIR_MAP: Record<string, string> = {};
   // Also include agents that ran but aren't in planTasks (e.g. cached sessions with old planTasks)
   const agentsWithData = Object.keys(agents).filter(a => agents[a].status !== "waiting" || agents[a].log.length > 0);
@@ -3776,6 +3787,22 @@ export function GoalWorkspace({
                   </div>
                 ))}
               </div>
+              {sessionCost && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                  {[
+                    ["Tokens", sessionCost.total_tokens?.toLocaleString() ?? "—"],
+                    ["Cost", sessionCost.total_cost_usd != null ? `$${sessionCost.total_cost_usd.toFixed(4)}` : "—"],
+                    ["Cached", sessionCost.cached_tokens != null && sessionCost.total_tokens > 0
+                      ? `${Math.round(sessionCost.cached_tokens / sessionCost.total_tokens * 100)}%`
+                      : "—"],
+                  ].map(([label, value]) => (
+                    <div key={label} style={{ padding: "11px 10px", borderRadius: 18, background: "rgba(37,99,235,0.04)", border: "1px solid rgba(37,99,235,0.12)", display: "grid", gap: 4 }}>
+                      <span style={{ fontSize: 15, color: "var(--fg)", fontFamily: "var(--font-jetbrains-mono)" }}>{value}</span>
+                      <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div style={{ display: "grid", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                   <span style={{ fontSize: 12, color: "var(--fg-dim)" }}>Overall completion</span>
