@@ -1622,7 +1622,7 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect }: {
   onSelect: (a: string) => void;
 }) {
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+    <div data-tour="agent-tabs" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
       {agentList.map(name => {
         const state = agents[name];
         const status = state?.status ?? "waiting";
@@ -2152,7 +2152,7 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
     : "Steer all agents… or @legal what entity should I form?";
 
   return (
-    <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 16, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+    <div data-tour="unified-chat" style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 16, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>
           {done ? "Ask Astra" : "Chat"}

@@ -42,6 +42,18 @@ const TOUR_STEPS: TourStep[] = [
     description: "Connect Stripe to accept payments. Once live, your revenue dashboard updates here in real time.",
     position: "right",
   },
+  {
+    target: "agent-tabs",
+    title: "Switch between agents",
+    description: "Each pill is one of your 8 AI agents. Click any to see its live output, artifacts, and logs in real time.",
+    position: "bottom",
+  },
+  {
+    target: "unified-chat",
+    title: "Chat with your agents",
+    description: "Steer all agents at once with a plain message, or route to a specific one with @agent — e.g. @research what's the TAM? Works during a run and after.",
+    position: "top",
+  },
 ];
 
 // ── Tooltip ───────────────────────────────────────────────────────────────────
