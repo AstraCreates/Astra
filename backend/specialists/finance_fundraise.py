@@ -140,9 +140,9 @@ def build_finance_fundraise_agent(**kwargs) -> Agent:
 
     agent = Agent(
         name=agent_name,
-        model=settings.planner_model_name,
-        model_base_url=settings.planner_model_base_url,
-        model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
+        model=settings.or_highoutput_model,
+        model_base_url=settings.openrouter_base_url,
+        model_api_key=settings.openrouter_api_key or settings.agent_model_api_key,
         max_iterations=25,
         role=(
             "You are an elite fundraising preparation specialist. You help founders raise capital by "

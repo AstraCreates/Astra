@@ -110,9 +110,9 @@ def build_research_regulatory_agent(**kwargs) -> Agent:
 
     agent = Agent(
         name="research_regulatory",
-        model=settings.planner_model_name,
-        model_base_url=settings.planner_model_base_url,
-        model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
+        model="deepseek-ai/DeepSeek-V4-Flash",
+        model_base_url=settings.agent_model_base_url,
+        model_api_key=settings.agent_model_api_key,
         max_iterations=25,
         role=(
             "You are an elite regulatory and compliance research specialist. "
