@@ -2152,35 +2152,35 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
     : "Steer all agents… or @legal what entity should I form?";
 
   return (
-    <LiquidGlass contentStyle={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 16, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-mute)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>
           {done ? "Ask Astra" : "Chat"}
         </span>
-        <span style={{ fontSize: 10, color: "var(--fg-mute)" }}>
-          @agent to talk to a specific agent · plain message {done ? "asks about results" : "steers all agents"}
+        <span style={{ fontSize: 11, color: "#9CA3AF" }}>
+          @agent to route · plain message {done ? "asks about results" : "steers all agents"}
         </span>
       </div>
 
       {msgs.length > 0 && (
-        <div style={{ maxHeight: 240, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, padding: "4px 0" }}>
           {msgs.map(m => (
             <div key={m.id} style={{ display: "flex", gap: 8, justifyContent: m.role === "user" ? "flex-end" : "flex-start", alignItems: "flex-end" }}>
               {m.role !== "user" && (
-                <span style={{ fontSize: 10, color: "var(--fg-mute)", fontWeight: 700, whiteSpace: "nowrap", marginBottom: 2 }}>
+                <span style={{ fontSize: 10, color: "#6B7280", fontWeight: 700, whiteSpace: "nowrap", marginBottom: 2 }}>
                   {m.agent ? `@${m.agent}` : "·"}
                 </span>
               )}
               <div style={{
-                maxWidth: "75%", padding: "7px 12px", borderRadius: 14, fontSize: 12, lineHeight: 1.6, wordBreak: "break-word", whiteSpace: "pre-wrap",
-                background: m.role === "user" ? "linear-gradient(135deg,#2563EB,#6366f1)" : m.role === "system" ? "rgba(99,102,241,0.08)" : "rgba(255,255,255,0.05)",
-                color: m.role === "user" ? "#fff" : "var(--fg-dim)",
-                border: m.role !== "user" ? "1px solid var(--line)" : "none",
+                maxWidth: "75%", padding: "8px 12px", borderRadius: 12, fontSize: 13, lineHeight: 1.6, wordBreak: "break-word", whiteSpace: "pre-wrap",
+                background: m.role === "user" ? "#2563EB" : m.role === "system" ? "#EFF6FF" : "#F8F9FA",
+                color: m.role === "user" ? "#fff" : m.role === "system" ? "#1D4ED8" : "#111827",
+                border: m.role === "user" ? "none" : "1px solid #E5E7EB",
                 fontStyle: m.role === "system" ? "italic" : "normal",
               }}>{m.text}</div>
             </div>
           ))}
-          {loading && <div style={{ fontSize: 11, color: "var(--fg-mute)", display: "flex", alignItems: "center", gap: 6 }}><span className="animate-pulse">●</span> Thinking…</div>}
+          {loading && <div style={{ fontSize: 12, color: "#9CA3AF", display: "flex", alignItems: "center", gap: 6 }}><span className="animate-pulse" style={{ color: "#2563EB" }}>●</span> Thinking…</div>}
           <div ref={bottomRef} />
         </div>
       )}
@@ -2189,12 +2189,12 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
         {mentionOpen && filteredAgents.length > 0 && (
           <div style={{
             position: "absolute", bottom: "calc(100% + 6px)", left: 0, right: 0,
-            background: "var(--surface, rgba(20,24,30,0.98))", border: "1px solid var(--line)",
+            background: "#fff", border: "1px solid #E5E7EB", boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
             borderRadius: 12, padding: 8, display: "flex", flexWrap: "wrap", gap: 4, zIndex: 20,
           }}>
             {filteredAgents.slice(0, 12).map(a => (
               <button key={a} type="button" onClick={() => insertMention(a)}
-                style={{ padding: "3px 10px", borderRadius: 999, fontSize: 11, border: "1px solid var(--line)", background: "rgba(255,255,255,0.04)", cursor: "pointer", color: "var(--fg)" }}>
+                style={{ padding: "3px 10px", borderRadius: 999, fontSize: 11, border: "1px solid #E5E7EB", background: "#F8F9FA", cursor: "pointer", color: "#374151" }}>
                 @{a}
               </button>
             ))}
@@ -2205,16 +2205,15 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
             value={input} onChange={e => handleChange(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
             placeholder={placeholder}
-            className="site-input"
-            style={{ flex: 1, padding: "9px 14px", fontSize: 13, borderRadius: 999 }}
+            style={{ flex: 1, padding: "10px 16px", fontSize: 13, borderRadius: 999, border: "1px solid #E5E7EB", background: "#F8F9FA", color: "#111827", outline: "none" }}
           />
-          <button onClick={send} disabled={loading || !input.trim()} className="site-btn site-btn-primary"
-            style={{ padding: "0 18px", borderRadius: 999, fontSize: 13 }}>
+          <button onClick={send} disabled={loading || !input.trim()}
+            style={{ padding: "0 20px", borderRadius: 999, fontSize: 13, background: loading || !input.trim() ? "#E5E7EB" : "#2563EB", color: loading || !input.trim() ? "#9CA3AF" : "#fff", border: "none", cursor: loading || !input.trim() ? "default" : "pointer", fontWeight: 600 }}>
             {loading ? "…" : "↑"}
           </button>
         </div>
       </div>
-    </LiquidGlass>
+    </div>
   );
 }
 
