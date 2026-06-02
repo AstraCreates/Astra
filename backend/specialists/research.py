@@ -170,7 +170,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     # Role prompt is built at run-time (after queries are generated), so use a placeholder
     agent = Agent(
         name=agent_name,
-        model="google/gemma-4-31b-it:free",
+        model="inclusionai/ling-2.6-flash",
         model_base_url=settings.openrouter_base_url,
         model_api_key=settings.openrouter_api_key or settings.agent_model_api_key,
         max_iterations=40,
@@ -399,7 +399,7 @@ async def _extract_topic(goal: str) -> str:
         )
         resp = await asyncio.to_thread(
             client.chat.completions.create,
-            model="google/gemma-4-31b-it:free",
+            model="inclusionai/ling-2.6-flash",
             messages=[{
                 "role": "user",
                 "content": (
