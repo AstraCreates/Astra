@@ -217,3 +217,33 @@ def research_papers(query: str, max_results: int = 5) -> dict:
     # Search specifically for papers via DuckDuckGo
     paper_query = f"{query} research paper OR study OR analysis filetype:pdf OR site:arxiv.org OR site:scholar.google.com OR site:pubmed.ncbi.nlm.nih.gov OR site:ssrn.com"
     return search_and_fetch(paper_query, max_results=max_results)
+
+
+def batch_search(queries: list, max_results_each: int = 8) -> dict:
+    """
+    Run multiple search queries IN PARALLEL and return all results combined.
+    Use this to run 3-8 searches simultaneously instead of one at a time.
+    queries: list of search query strings (max 8 for speed).
+    Returns: {results_by_query: {query: {results, formatted}}, combined_formatted: str}
+    """
+    queries = queries[:8]  # cap to prevent abuse
+    results_by_query: dict = {}
+
+    with ThreadPoolExecutor(max_workers=min(len(queries), 6)) as ex:
+        futures = {ex.submit(search_and_fetch, q, max_results_each): q for q in queries}
+        for fut in as_completed(futures, timeout=120):
+            q = futures[fut]
+            try:
+                results_by_query[q] = fut.result()
+            except Exception as e:
+                results_by_query[q] = {"query": q, "results": [], "error": str(e)}
+
+    combined = []
+    for q, r in results_by_query.items():
+        combined.append(f"\n\n## QUERY: {q}\n{r.get('formatted', '')[:3000]}")
+
+    return {
+        "queries_run": len(queries),
+        "results_by_query": {q: {"total": r.get("total", 0), "formatted": r.get("formatted", "")[:2000]} for q, r in results_by_query.items()},
+        "combined_formatted": "\n".join(combined),
+    }

@@ -2,7 +2,7 @@
 import functools
 from backend.core.agent import Agent, AgentContext
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
-from backend.tools.browser_research import search_and_fetch, fetch_and_read, research_papers
+from backend.tools.browser_research import search_and_fetch, fetch_and_read, research_papers, batch_search
 from backend.tools.patent_search import patent_search
 from backend.tools.web_search import news_search
 from backend.tools.video_research import youtube_research, tiktok_research
@@ -65,16 +65,19 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
 
 _FOCUS_ROLES = {
     "research": (
-        "MARKET INTELLIGENCE (run ALL 8):\n"
-        "1. search_and_fetch('{topic} market size TAM SAR revenue 2024 2025 statistics')\n"
-        "2. search_and_fetch('{topic} industry growth rate forecast CAGR report')\n"
-        "3. search_and_fetch('{topic} venture capital funding rounds 2024 2025')\n"
-        "4. search_and_fetch('{topic} market trends emerging technology adoption')\n"
-        "5. search_and_fetch('{topic} customer demographics segments target audience')\n"
-        "6. search_and_fetch('{topic} regulatory environment compliance requirements')\n"
-        "7. news_search('{topic} 2025 2026 latest')\n"
-        "8. research_papers('{topic} academic study user behavior market')\n\n"
-        "Then 8+ fetch_and_read calls on the most valuable URLs found.\n\n"
+        "MARKET INTELLIGENCE:\n"
+        "STEP 1 — Run ONE batch_search with ALL these queries simultaneously:\n"
+        "batch_search(queries=[\n"
+        "  '{topic} market size TAM revenue 2024 2025 statistics',\n"
+        "  '{topic} industry growth rate forecast CAGR report',\n"
+        "  '{topic} venture capital funding rounds 2024 2025',\n"
+        "  '{topic} customer demographics segments target audience',\n"
+        "  '{topic} regulatory environment compliance requirements',\n"
+        "  '{topic} market trends emerging technology adoption'\n"
+        "])\n"
+        "STEP 2 — news_search('{topic} 2025 2026 latest')\n"
+        "STEP 3 — research_papers('{topic} academic study user behavior market')\n"
+        "STEP 4 — 6+ fetch_and_read calls on the most valuable URLs found.\n\n"
         "SELF-EVALUATION (run before obsidian_log):\n"
         "Check if you have ALL of these. For each missing item, run 2 more targeted searches before logging:\n"
         "[ ] TAM number with source (e.g. '$4.2B market, Source: Grand View Research 2024')\n"
@@ -90,20 +93,19 @@ _FOCUS_ROLES = {
         "STEP 0 — TOPIC EXTRACTION (do this first, before any search):\n"
         "Read your task instruction. Extract a SPECIFIC topic like 'AI stock trading signals retail investors' or "
         "'transparent equity prediction platform'. NEVER use generic terms like 'AI', 'fintech', 'platform' alone.\n\n"
-        "STEP 1 — FIND NAMED COMPETITORS (run ALL, use your extracted topic):\n"
-        "1. search_and_fetch('{topic} top companies platforms named list 2024 2025')\n"
-        "2. search_and_fetch('{topic} startups named companies founded 2020 2021 2022 2023 2024 crunchbase')\n"
-        "3. search_and_fetch('{topic} alternatives site:g2.com OR site:capterra.com OR site:producthunt.com')\n"
-        "4. search_and_fetch('{topic} best ranked review techcrunch venturebeat forbes')\n"
-        "5. search_and_fetch('{topic} Y Combinator a16z sequoia backed named startup')\n"
-        "6. search_and_fetch('{topic} vs comparison named tools')\n"
-        "7. search_and_fetch('{topic} reddit recommended named tools which platform')\n"
-        "8. search_and_fetch('{topic} pricing model subscription plans cost per month')\n"
-        "9. search_and_fetch('{topic} market map landscape named players 2024 2025')\n"
-        "10. news_search('{topic} company startup funding launch 2024 2025')\n"
-        "11. patent_search('{topic}')\n"
-        "12. youtube_research('{topic} platform demo review walkthrough named')\n"
-        "13. tiktok_research('{topic} review named product')\n\n"
+        "STEP 1 — Run ONE batch_search with ALL these queries simultaneously:\n"
+        "batch_search(queries=[\n"
+        "  '{topic} top companies platforms named list 2024 2025',\n"
+        "  '{topic} startups named companies crunchbase funding 2022 2023 2024',\n"
+        "  '{topic} alternatives site:g2.com OR site:capterra.com OR site:producthunt.com',\n"
+        "  '{topic} best ranked review techcrunch venturebeat',\n"
+        "  '{topic} Y Combinator a16z sequoia backed named startup',\n"
+        "  '{topic} pricing model subscription plans cost per month',\n"
+        "  '{topic} market map landscape named players 2024 2025'\n"
+        "])\n"
+        "STEP 2 — news_search('{topic} company startup funding launch 2024 2025')\n"
+        "STEP 3 — patent_search('{topic}')\n"
+        "STEP 4 — youtube_research('{topic} platform demo review walkthrough')\n\n"
         "STEP 2 — DEEP DIVE ON NAMED COMPETITORS:\n"
         "After steps 1-10 you MUST have at least 5 specific named companies (e.g. Trade Ideas, TrendSpider, Tickeron). "
         "If you have fewer than 5, run MORE searches with different terms before continuing. "
@@ -124,18 +126,17 @@ _FOCUS_ROLES = {
         "STEP 0 — TOPIC EXTRACTION (do this first):\n"
         "Read your task instruction. Extract a SPECIFIC product/domain like 'AI trading signal SaaS retail investors'. "
         "NEVER use generic terms like 'AI', 'startup', 'platform' alone in queries.\n\n"
-        "MANDATORY SEARCHES (run ALL 10, replace {topic} with your specific extracted topic):\n"
-        "1. search_and_fetch('how to build {topic} startup go-to-market strategy step by step')\n"
-        "2. search_and_fetch('{topic} business model revenue streams monetization subscription')\n"
-        "3. search_and_fetch('{topic} tech stack architecture engineering how it works')\n"
-        "4. search_and_fetch('{topic} customer acquisition cost CAC LTV unit economics')\n"
-        "5. search_and_fetch('{topic} sales strategy B2C B2B growth channels')\n"
-        "6. search_and_fetch('{topic} founder interview how they built lessons learned YC')\n"
-        "7. search_and_fetch('{topic} user pain points reddit complaints what users want')\n"
-        "8. search_and_fetch('{topic} regulatory legal compliance requirements')\n"
-        "9. youtube_research('{topic} how to build launch tutorial founder')\n"
-        "10. tiktok_research('{topic} product launch growth tips')\n\n"
-        "Then 8+ fetch_and_read calls on the most actionable URLs found.\n\n"
+        "STEP 1 — Run ONE batch_search with ALL these queries simultaneously:\n"
+        "batch_search(queries=[\n"
+        "  'how to build {topic} startup go-to-market strategy',\n"
+        "  '{topic} business model revenue streams monetization subscription',\n"
+        "  '{topic} tech stack architecture engineering how it works',\n"
+        "  '{topic} customer acquisition cost CAC LTV unit economics',\n"
+        "  '{topic} user pain points reddit complaints what users want',\n"
+        "  '{topic} regulatory legal compliance requirements'\n"
+        "])\n"
+        "STEP 2 — youtube_research('{topic} how to build launch tutorial founder')\n"
+        "STEP 3 — 6+ fetch_and_read calls on the most actionable URLs found.\n\n"
         "SELF-EVALUATION (run before obsidian_log):\n"
         "Check if you have ALL of these. For each missing item, run 2 more targeted searches:\n"
         "[ ] Specific tech stack recommendation (not generic — name actual frameworks, DBs, APIs)\n"
@@ -161,6 +162,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     import re as _re
     log_name = _re.sub(r"_\d+$", "", agent_name)
     auto_search = _make_auto_logging_tool(search_and_fetch, "search_and_fetch", ctx_holder, log_name)
+    auto_batch = _make_auto_logging_tool(batch_search, "batch_search", ctx_holder, log_name)
     auto_fetch = _make_auto_logging_tool(fetch_and_read, "fetch_and_read", ctx_holder, log_name)
     auto_papers = _make_auto_logging_tool(research_papers, "research_papers", ctx_holder, log_name)
     auto_news = _make_auto_logging_tool(news_search, "news_search", ctx_holder, log_name)
@@ -188,18 +190,22 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
             "NEVER search Wikipedia. NEVER search for generic technology terms alone.\n"
             "Every query must include the specific domain from your task instruction.\n\n"
             "TOOLS:\n"
-            "- search_and_fetch(query) — searches + fetches full content from multiple sites. PRIMARY tool.\n"
+            "- batch_search(queries=[...]) — run 3-8 searches IN PARALLEL. USE THIS FIRST for speed.\n"
+            "- search_and_fetch(query) — single search + fetch. Use for follow-up searches.\n"
             "- fetch_and_read(url) — read a specific URL in full depth.\n"
             "- research_papers(query) — academic papers.\n"
             "- news_search(query) — recent news.\n"
             "- patent_search(query) — IP landscape.\n"
-            "- youtube_research(query) — YouTube video metadata + transcripts for competitor/creator analysis.\n"
-            "- tiktok_research(query) — TikTok video metadata + captions for viral trend analysis.\n"
+            "- youtube_research(query) — YouTube video metadata + transcripts.\n"
+            "- tiktok_research(query) — TikTok video metadata + captions.\n"
             "- obsidian_log — FINAL step only after ALL searches complete.\n\n"
+            "SPEED REQUIREMENT: Start with ONE batch_search call containing 4-6 queries to run them all in parallel.\n"
+            "Then use individual search_and_fetch for follow-ups. This cuts research time by 4x.\n\n"
             "YOUR MANDATORY SEARCH SEQUENCE (replace {topic} with your extracted SPECIFIC topic — never a generic word):\n\n"
             + focus_searches
         ),
         tools={
+            "batch_search": auto_batch,
             "search_and_fetch": auto_search,
             "fetch_and_read": auto_fetch,
             "research_papers": auto_papers,
