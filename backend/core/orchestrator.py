@@ -588,16 +588,15 @@ class Orchestrator:
         research_task = next((t for t in initial_tasks if t["agent"] == "research"), None)
         other_agents_initial = [t for t in initial_tasks if t["agent"] not in _RESEARCH_AGENTS]
 
-        # Force-include web + technical if planner omitted them (skip for custom stacks)
-        if not _is_custom:
-            _existing_agents = {t["agent"] for t in other_agents_initial}
-            _mandatory = [
-                ("web", "Build and deploy a public landing page for this product."),
-                ("technical", f"Build a complete working MVP for: {goal}"),
-            ]
-            for _i, (_ag, _instr) in enumerate(_mandatory):
-                if _ag not in _existing_agents and _ag in self.specialists:
-                    other_agents_initial.append({"id": f"forced_{_ag}", "agent": _ag, "instruction": _instr, "depends_on": []})
+        # Force-include web + technical if planner omitted them (always do this)
+        _existing_agents = {t["agent"] for t in other_agents_initial}
+        _mandatory = [
+            ("web", "Build and deploy a public landing page for this product."),
+            ("technical", f"Build a complete working MVP for: {goal}"),
+        ]
+        for _i, (_ag, _instr) in enumerate(_mandatory):
+            if _ag not in _existing_agents and _ag in self.specialists:
+                other_agents_initial.append({"id": f"forced_{_ag}", "agent": _ag, "instruction": _instr, "depends_on": []})
 
         # bypass_planner: skip research wave + replan, dispatch requested agents immediately
         if _bypass_planner and _is_custom:
