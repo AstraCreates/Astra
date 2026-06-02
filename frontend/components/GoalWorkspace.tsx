@@ -645,8 +645,8 @@ function DesignPreview({ state }: { state: AgentState }) {
           </div>
         </div>
       )}
-      {allColors.length === 0 && !spec && isDone && <ResultDump result={state.result} />}
-      {allColors.length === 0 && !spec && !isDone && <BuildingIndicator label="Building design system…" tool={state.currentTool ?? undefined} />}
+      {allColors.length === 0 && !spec && !brandImages.length && !logoWordmark && !logoIcon && isDone && <ResultDump result={state.result} />}
+      {allColors.length === 0 && !spec && !brandImages.length && !logoWordmark && !logoIcon && !isDone && <BuildingIndicator label="Building design system…" tool={state.currentTool ?? undefined} />}
     </div>
   );
 }
@@ -3650,7 +3650,47 @@ export function GoalWorkspace({
             const img = { url: eventImageUrl, base64: event.result.base64 as string | undefined, prompt: event.result.prompt as string | undefined };
             newAdImages = [...(cur.adImages ?? []), img];
           }
-          next[agent] = { ...cur, log: addLog(ok ? "result" : "error", text), visitedUrls: newVisited, currentUrl: newUrl ?? cur.currentUrl, commits: newCommits, filesPreview: newFiles, filesCount: newFilesCount, adImages: newAdImages };
+          // Progressively merge tool outputs into result so preview panels update live
+          let liveResult = cur.result ? { ...cur.result } : {} as Record<string, unknown>;
+          if (ok && event.result && typeof event.result === "object") {
+            const r = event.result as Record<string, unknown>;
+            const tool = event.tool as string;
+            // Map tool name → result key used by preview components
+            if (tool === "generate_color_palette") liveResult = { ...liveResult, color_palette: r };
+            else if (tool === "generate_design_spec") liveResult = { ...liveResult, design_spec: r };
+            else if (tool === "generate_wireframe") {
+              const wfs = (liveResult.wireframes as unknown[]) ?? [];
+              liveResult = { ...liveResult, wireframes: [...wfs, r] };
+            }
+            else if (tool === "generate_logo") {
+              if (r.style === "wordmark") liveResult = { ...liveResult, logo_wordmark: r };
+              else liveResult = { ...liveResult, logo_icon: r };
+            }
+            else if (tool === "generate_brand_image" || tool === "generate_ad_image") {
+              const imgs = (liveResult.brand_images as unknown[]) ?? [];
+              if (r.base64) liveResult = { ...liveResult, brand_images: [...imgs, r] };
+            }
+            else if (tool === "composite_logo_on_image" && r.base64) {
+              const imgs = (liveResult.brand_images as unknown[]) ?? [];
+              liveResult = { ...liveResult, brand_images: [...imgs, r] };
+            }
+            else if (tool === "generate_reel_package") liveResult = { ...liveResult, reel_package: r };
+            else if (tool === "generate_tiktok_package") liveResult = { ...liveResult, tiktok_package: r };
+            else if (tool === "generate_meta_ad") liveResult = { ...liveResult, meta_ad: r };
+            else if (tool === "build_email_html") liveResult = { ...liveResult, email_campaign: r };
+            else if (tool === "format_legal_document") {
+              const docs = (liveResult.documents as unknown[]) ?? [];
+              liveResult = { ...liveResult, documents: [...docs, r] };
+            }
+            else if (tool === "generate_pdf" && r.path) {
+              const pdfs = (liveResult.pdfs as string[]) ?? [];
+              liveResult = { ...liveResult, pdfs: [...pdfs, r.path as string] };
+            }
+            else if (tool === "generate_design_spec") liveResult = { ...liveResult, design_spec: r };
+            else if (tool === "find_leads") liveResult = { ...liveResult, leads: r };
+            else if (tool === "generate_logo_brief") liveResult = { ...liveResult, logo_brief: r };
+          }
+          next[agent] = { ...cur, result: liveResult, log: addLog(ok ? "result" : "error", text), visitedUrls: newVisited, currentUrl: newUrl ?? cur.currentUrl, commits: newCommits, filesPreview: newFiles, filesCount: newFilesCount, adImages: newAdImages };
         } else if (event.type === "model_stats") {
           next[agent] = { ...cur, model: event.model ?? null, tks: event.tks ?? null };
         } else if (event.type === "agent_thinking") {
