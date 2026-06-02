@@ -59,12 +59,12 @@ def get_orchestrator() -> Orchestrator:
         _highoutput_kwargs = dict(
             model=settings.highoutput_model_name,
             model_base_url=settings.highoutput_model_base_url,
-            model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
+            model_api_key=_or_key,
         )
         _small_kwargs = dict(
-            model="meta-llama/Llama-4-Scout-17B-16E-Instruct",
-            model_base_url=settings.agent_model_base_url,
-            model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
+            model=settings.planner_model_name,
+            model_base_url=settings.planner_model_base_url,
+            model_api_key=_or_key,
         )
         # research_financial/regulatory need 1M ctx — keep on DeepSeek
         _large_ctx_kwargs = _deepseek_kwargs
@@ -140,7 +140,7 @@ def get_orchestrator() -> Orchestrator:
             sub_agents=list(specialists.values()),
             model=settings.planner_model_name,
             model_base_url=settings.planner_model_base_url,
-            model_api_key=settings.planner_model_api_key or settings.agent_model_api_key,
+            model_api_key=_or_key,
         )
         _orchestrator = Orchestrator(planner=planner, specialists=specialists)
     return _orchestrator

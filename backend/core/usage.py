@@ -20,6 +20,8 @@ _PRICING: dict[str, tuple[float, float, float]] = {
     "meta-llama/Llama-4-Scout-17B-16E-Instruct":         (0.08,  0.30,  0.02),
     "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8": (0.15,  0.60,  0.03),
     "tencent/hy3-preview":                               (0.14,  0.14,  0.03),
+    "moonshotai/kimi-k2.6:free":                         (0.00,  0.00,  0.00),
+    "inclusionai/ling-2.6-flash":                        (0.01,  0.03,  0.00),
 }
 
 _DEFAULT_PRICING = (0.10, 0.30, 0.02)

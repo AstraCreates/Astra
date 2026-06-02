@@ -15,21 +15,20 @@ class Settings(BaseSettings):
     # Tool-use model — strong at function calling (web/technical/ops agents)
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
     tooluse_model_name: str = "tencent/hy3-preview"
-    # Planner — fast, good instruction following, 320k ctx
-    planner_model_base_url: str = "https://api.deepinfra.com/v1/openai"
+    # Planner — Ling Flash: $0.01/$0.03/M, fast, 262k ctx
+    planner_model_base_url: str = "https://openrouter.ai/api/v1"
     planner_model_api_key: str = ""
-    planner_model_name: str = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
-    # Chat model — Q&A about sessions, needs 320k ctx to read research outputs
-    chat_model_base_url: str = "https://api.deepinfra.com/v1/openai"
+    planner_model_name: str = "inclusionai/ling-2.6-flash"
+    # Chat model — Ling Flash: cheap, fast for Q&A
+    chat_model_base_url: str = "https://openrouter.ai/api/v1"
     chat_model_api_key: str = ""
-    chat_model_name: str = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
-    # Light model — fast/cheap for design and low-complexity agents
-    light_model_base_url: str = "https://api.deepinfra.com/v1/openai"
-    light_model_name: str = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
-    # High-output model — marketing/legal/ops/finance: structured long-form writing
-    # Mistral-Small: $0.075/$0.20 vs DeepSeek-V4-Flash $0.10/$0.20 — cheaper input, same output
-    highoutput_model_base_url: str = "https://api.deepinfra.com/v1/openai"
-    highoutput_model_name: str = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
+    chat_model_name: str = "inclusionai/ling-2.6-flash"
+    # Light model — Ling Flash
+    light_model_base_url: str = "https://openrouter.ai/api/v1"
+    light_model_name: str = "inclusionai/ling-2.6-flash"
+    # High-output model — Kimi K2.6 free: free tier, 262k ctx, great at writing + tool use
+    highoutput_model_base_url: str = "https://openrouter.ai/api/v1"
+    highoutput_model_name: str = "moonshotai/kimi-k2.6:free"
     vertex_project: str = ""
     vertex_location: str = "us-central1"
 
