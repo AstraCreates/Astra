@@ -454,13 +454,10 @@ class Orchestrator:
 
         try:
             from backend.tools.company_brain import company_brain_context, sync_company_brain
-            await asyncio.wait_for(
-                asyncio.to_thread(sync_company_brain, founder_id, None),
-                timeout=8.0,
-            )
+            # Reduced timeout: company brain is nice-to-have, not blocking
             shared["company_brain_context"] = await asyncio.wait_for(
-                asyncio.to_thread(company_brain_context, founder_id, goal, 8),
-                timeout=8.0,
+                asyncio.to_thread(company_brain_context, founder_id, goal, 4),
+                timeout=3.0,
             )
         except (asyncio.TimeoutError, Exception) as _cb:
             logger.warning("Company brain pre-run context skipped: %s", _cb)
@@ -476,8 +473,11 @@ class Orchestrator:
             await publish(session_id, {"type": "company_name", "name": company_name})
             logger.info("bypass_planner=True — skipping company_name LLM, genome, goal_expand")
         else:
-            # Generate company name before expansion so it feeds into expanded goal
-            company_name = await self._generate_company_name(goal)
+            # Run company name generation and goal expansion in parallel
+            company_name, goal = await asyncio.gather(
+                self._generate_company_name(goal),
+                self._expand_goal(goal, session_id),
+            )
             shared["company_name"] = company_name
             operating_plan = build_stack_operating_plan(stack_template, goal, company_name)
             stack_manifest = build_stack_manifest(stack_template, goal, company_name)
@@ -538,38 +538,21 @@ class Orchestrator:
             except Exception as _bi:
                 logger.warning("Brain identity record failed: %s", _bi)
 
-            try:
-                from backend.genome import build_company_genome
-                genome = build_company_genome(
-                    session_id=session_id,
-                    founder_id=founder_id,
-                    company_name=company_name,
-                    goal=goal,
-                    stack_template=stack_template,
-                    brain_context=str(shared.get("company_brain_context", "")),
-                )
-                shared["company_genome"] = genome
-                await publish(session_id, {"type": "company_genome", "genome": genome})
+            # Build genome in background — doesn't block agents from starting
+            async def _build_genome_bg():
                 try:
-                    from backend.tools.company_brain import add_company_brain_record
-                    import json as _json
-                    await asyncio.to_thread(
-                        add_company_brain_record,
-                        founder_id=founder_id,
-                        source="astra",
-                        title=f"Company Genome - {company_name}",
-                        content=_json.dumps(genome, indent=2),
-                        kind="genome",
-                        canonical=True,
-                        stale_risk="low",
+                    from backend.genome import build_company_genome
+                    genome = build_company_genome(
+                        session_id=session_id, founder_id=founder_id,
+                        company_name=company_name, goal=goal,
+                        stack_template=stack_template,
+                        brain_context=str(shared.get("company_brain_context", "")),
                     )
-                except Exception as _gb:
-                    logger.warning("Brain genome record failed: %s", _gb)
-            except Exception as _ge:
-                logger.warning("Company genome build failed: %s", _ge)
-
-            # Expand the goal with Qwen3-235B before anything else
-            goal = await self._expand_goal(goal, session_id)
+                    shared["company_genome"] = genome
+                    await publish(session_id, {"type": "company_genome", "genome": genome})
+                except Exception as _ge:
+                    logger.warning("Company genome build failed: %s", _ge)
+            asyncio.create_task(_build_genome_bg())
 
         # Phase 1: stack plan — default to the productized outcome stack.
         _agent_filter: list[str] | None = (constraints or {}).get("agents") or (constraints or {}).get("agent_filter") or None
