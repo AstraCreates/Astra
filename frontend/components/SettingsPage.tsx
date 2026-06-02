@@ -453,6 +453,23 @@ export default function SettingsPage() {
   const [verificationBusy, setVerificationBusy] = useState(false);
   const [manifestBusy, setManifestBusy] = useState(false);
   const [verificationError, setVerificationError] = useState("");
+  const [backendStatus, setBackendStatus] = useState<"checking" | "online" | "offline">("checking");
+  const [backendLatency, setBackendLatency] = useState<number | null>(null);
+
+  useEffect(() => {
+    const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+    async function ping() {
+      const t0 = Date.now();
+      try {
+        const res = await fetch(`${API}/health`, { signal: AbortSignal.timeout(5000) });
+        if (res.ok) { setBackendStatus("online"); setBackendLatency(Date.now() - t0); }
+        else setBackendStatus("offline");
+      } catch { setBackendStatus("offline"); setBackendLatency(null); }
+    }
+    ping();
+    const id = setInterval(ping, 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -644,6 +661,22 @@ export default function SettingsPage() {
 
       {/* Platform */}
       <Section title="Platform">
+        <Row
+          label="Backend"
+          desc={backendStatus === "checking" ? "Pinging server…" : backendStatus === "online" ? `Reachable · ${backendLatency}ms` : "Cannot reach server"}
+          action={
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{
+                width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                background: backendStatus === "online" ? c.green : backendStatus === "offline" ? c.red : c.amber,
+                boxShadow: backendStatus === "online" ? `0 0 6px ${c.green}` : backendStatus === "offline" ? `0 0 6px ${c.red}` : "none",
+              }} />
+              <Badge color={backendStatus === "online" ? "green" : backendStatus === "offline" ? "red" : "amber"}>
+                {backendStatus === "checking" ? "Checking" : backendStatus === "online" ? "Online" : "Offline"}
+              </Badge>
+            </div>
+          }
+        />
         <Row
           label="Production status"
           desc={platform ? `${platform.status} · ${platform.state.sessions_active} active sessions · ${platform.state.events_buffered} events buffered` : "Checking backend readiness"}
