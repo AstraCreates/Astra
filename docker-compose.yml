@@ -25,26 +25,6 @@ services:
       - astra_docs_data:/data/astra_docs
       - astra_workspaces_data:/data/astra-workspaces
       - brain_data:/app/.astra
-    labels:
-      - autoheal=true
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=5).status == 200 else 1)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # Watches for unhealthy containers (label autoheal=true) and restarts them,
-  # so a hung single-worker backend self-recovers instead of 502'ing forever.
-  autoheal:
-    image: willfarrell/autoheal:latest
-    restart: unless-stopped
-    environment:
-      - AUTOHEAL_CONTAINER_LABEL=autoheal
-      - AUTOHEAL_INTERVAL=15
-      - AUTOHEAL_START_PERIOD=60
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
 
   frontend:
     build:
@@ -69,14 +49,6 @@ services:
       - backend
     ports:
       - "3000:3000"
-    labels:
-      - autoheal=true
-    healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
 
   nginx:
     image: nginx:alpine
