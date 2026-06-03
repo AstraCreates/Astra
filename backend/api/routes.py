@@ -2594,6 +2594,23 @@ async def get_outreach_contacts(
     }
 
 
+@router.get("/outreach/contacts/{founder_id}/semantic")
+async def semantic_search_contacts(founder_id: str, request: Request, q: str = "", limit: int = 25):
+    """Natural-language ('smart') search over the founder's saved contacts.
+    Free TF-IDF ranking — no paid embeddings."""
+    require_founder_access(request, founder_id, min_role="viewer")
+    if not q.strip():
+        return {"contacts": [], "query": q}
+    from backend.tools.contact_seeder import GLOBAL_FOUNDER_ID
+    db = get_outreach_db()
+    rows = db.table("outreach_contacts").select("*").in_(
+        "founder_id", list({founder_id, GLOBAL_FOUNDER_ID})
+    ).execute().data or []
+    from backend.outreach.semantic_search import rank_contacts
+    ranked = rank_contacts(q, rows, limit=limit)
+    return {"contacts": ranked, "query": q, "total": len(ranked)}
+
+
 @router.patch("/outreach/contacts/{founder_id}/{contact_id}")
 async def update_outreach_contact(founder_id: str, contact_id: str, body: dict, request: Request):
     """Update a contact's status or tags."""
@@ -2669,6 +2686,110 @@ async def import_contacts_csv(founder_id: str, body: dict, request: Request):
             rows[i:i + 100], on_conflict="founder_id,email", ignore_duplicates=False
         ).execute()
     return {"imported": len(rows), "skipped": skipped, "founder_id": founder_id}
+
+
+@router.post("/outreach/import-gmail/{founder_id}")
+async def import_contacts_gmail(founder_id: str, body: dict, request: Request):
+    """Import contacts from the founder's Google account via the People API.
+
+    The frontend passes the Google OAuth access_token obtained at sign-in (with
+    contacts.readonly + contacts.other.readonly scopes). Pulls both saved
+    contacts ('connections') and auto-saved 'otherContacts' (people you've
+    emailed), normalizes them, and stores them in the free contact DB.
+    """
+    require_founder_access(request, founder_id, min_role="operator")
+    token = (body.get("access_token") or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="access_token is required")
+
+    import httpx
+
+    headers = {"Authorization": f"Bearer {token}"}
+    person_fields = "names,emailAddresses,organizations"
+    collected: list[dict] = []
+
+    def _harvest(people: list[dict]) -> None:
+        for p in people:
+            emails = p.get("emailAddresses") or []
+            if not emails:
+                continue
+            email = (emails[0].get("value") or "").strip().lower()
+            if not email or "@" not in email:
+                continue
+            name = (p.get("names") or [{}])[0]
+            org = (p.get("organizations") or [{}])[0]
+            collected.append({
+                "founder_id": founder_id,
+                "email": email,
+                "first_name": name.get("givenName", ""),
+                "last_name": name.get("familyName", ""),
+                "title": org.get("title", ""),
+                "company_name": org.get("name", ""),
+                "source": "gmail",
+            })
+
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            # 1. Saved contacts (connections), paginated.
+            page_token = ""
+            for _ in range(10):  # cap at 10 pages (~2000 contacts)
+                params = {"personFields": person_fields, "pageSize": 200}
+                if page_token:
+                    params["pageToken"] = page_token
+                r = await client.get(
+                    "https://people.googleapis.com/v1/people/me/connections",
+                    headers=headers, params=params,
+                )
+                if r.status_code == 401:
+                    raise HTTPException(status_code=401, detail="Google token expired or missing contacts scope. Sign out and sign in again.")
+                if r.status_code != 200:
+                    break
+                data = r.json()
+                _harvest(data.get("connections", []))
+                page_token = data.get("nextPageToken", "")
+                if not page_token:
+                    break
+
+            # 2. Other contacts (people you've emailed but not saved).
+            page_token = ""
+            for _ in range(10):
+                params = {"readMask": "names,emailAddresses", "pageSize": 200}
+                if page_token:
+                    params["pageToken"] = page_token
+                r = await client.get(
+                    "https://people.googleapis.com/v1/otherContacts",
+                    headers=headers, params=params,
+                )
+                if r.status_code != 200:
+                    break
+                data = r.json()
+                _harvest(data.get("otherContacts", []))
+                page_token = data.get("nextPageToken", "")
+                if not page_token:
+                    break
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("Gmail import failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Google People API error: {e}")
+
+    # Dedupe by email, keeping the richest record.
+    by_email: dict[str, dict] = {}
+    for c in collected:
+        prev = by_email.get(c["email"])
+        if prev is None or (not prev.get("first_name") and c.get("first_name")):
+            by_email[c["email"]] = c
+    rows = list(by_email.values())
+
+    if not rows:
+        return {"imported": 0, "founder_id": founder_id, "note": "No contacts with email addresses were found in this Google account."}
+
+    db = get_outreach_db()
+    for i in range(0, len(rows), 100):
+        db.table("outreach_contacts").upsert(
+            rows[i:i + 100], on_conflict="founder_id,email", ignore_duplicates=False
+        ).execute()
+    return {"imported": len(rows), "founder_id": founder_id}
 
 
 # ── Outreach lists ────────────────────────────────────────────────────────────

@@ -290,6 +290,8 @@ export default function OutreachPage() {
   const [csvImporting, setCsvImporting] = useState(false);
   const [csvResult, setCsvResult] = useState<{ imported: number; skipped: number; error?: string } | null>(null);
   const csvInputRef = useRef<HTMLInputElement | null>(null);
+  const [gmailImporting, setGmailImporting] = useState(false);
+  const [gmailResult, setGmailResult] = useState<{ imported?: number; note?: string; error?: string } | null>(null);
 
   // ── Search / filter state ─────────────────────────────────────────────────
   const [searchTitles, setSearchTitles] = useState("");
@@ -460,6 +462,56 @@ export default function OutreachPage() {
     } finally {
       setCsvImporting(false);
       if (csvInputRef.current) csvInputRef.current.value = "";
+    }
+  };
+
+  const importGmail = async () => {
+    setGmailImporting(true);
+    setGmailResult(null);
+    try {
+      const sess = await fetch("/api/auth/session").then(r => r.json()).catch(() => null);
+      const token = sess?.accessToken;
+      if (!token) {
+        setGmailResult({ error: "Sign in with Google first (and grant contacts access) to import from Gmail." });
+        return;
+      }
+      const res = await apiFetch(`${BASE}/outreach/import-gmail/${founderId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ access_token: token }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setGmailResult({ error: data?.detail || "Gmail import failed" });
+        return;
+      }
+      setGmailResult(data);
+      if (data.imported > 0) {
+        setTab("contacts");
+        loadContacts();
+      }
+    } catch (e) {
+      setGmailResult({ error: e instanceof Error ? e.message : "Gmail import failed" });
+    } finally {
+      setGmailImporting(false);
+    }
+  };
+
+  const [smartQuery, setSmartQuery] = useState("");
+  const smartSearch = async () => {
+    if (!smartQuery.trim()) return;
+    setSearching(true);
+    setSearchError("");
+    try {
+      const res = await apiFetch(`${BASE}/outreach/contacts/${founderId}/semantic?q=${encodeURIComponent(smartQuery.trim())}&limit=50`);
+      const data = await res.json();
+      setSearchResults(data.contacts || []);
+      setSearchTotal((data.contacts || []).length);
+      setSelectedContacts(new Set());
+    } catch (e) {
+      setSearchError(e instanceof Error ? e.message : "Smart search failed");
+    } finally {
+      setSearching(false);
     }
   };
 
@@ -701,29 +753,49 @@ export default function OutreachPage() {
             )}
           </div>
 
-          {/* CSV import — bring your own contact list */}
+          {/* Bring your own contacts — Gmail + CSV */}
           <div style={{ ...glass({ padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }) }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>Import a CSV</div>
-              <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>Bring your own list — columns like email, first name, last name, title, company are matched automatically.</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>Bring your own contacts</div>
+              <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>Import from your Google account (saved + emailed contacts), or upload a CSV — columns like email, name, title, company are matched automatically.</div>
+              {gmailResult && (
+                <div style={{ fontSize: 12, marginTop: 6, color: gmailResult.error ? "#f87171" : "#4ade80" }}>
+                  {gmailResult.error ? gmailResult.error : (gmailResult.note || `Imported ${gmailResult.imported} contact${gmailResult.imported === 1 ? "" : "s"} from Gmail.`)}
+                </div>
+              )}
               {csvResult && (
                 <div style={{ fontSize: 12, marginTop: 6, color: csvResult.error ? "#f87171" : "#4ade80" }}>
                   {csvResult.error ? csvResult.error : `Imported ${csvResult.imported} contact${csvResult.imported === 1 ? "" : "s"}${csvResult.skipped ? ` · skipped ${csvResult.skipped} without a valid email` : ""}.`}
                 </div>
               )}
             </div>
-            <input ref={csvInputRef} type="file" accept=".csv,text/csv" style={{ display: "none" }}
-              onChange={e => { const f = e.target.files?.[0]; if (f) importCsv(f); }} />
-            <button onClick={() => csvInputRef.current?.click()} disabled={csvImporting}
-              className="site-btn site-btn-ghost" style={{ padding: "0 20px", height: 36, fontSize: 13, whiteSpace: "nowrap" }}>
-              {csvImporting ? "Importing…" : "Upload CSV"}
-            </button>
+            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+              <button onClick={importGmail} disabled={gmailImporting}
+                className="site-btn site-btn-ghost" style={{ padding: "0 18px", height: 36, fontSize: 13, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 7 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                {gmailImporting ? "Importing…" : "Import from Gmail"}
+              </button>
+              <input ref={csvInputRef} type="file" accept=".csv,text/csv" style={{ display: "none" }}
+                onChange={e => { const f = e.target.files?.[0]; if (f) importCsv(f); }} />
+              <button onClick={() => csvInputRef.current?.click()} disabled={csvImporting}
+                className="site-btn site-btn-ghost" style={{ padding: "0 18px", height: 36, fontSize: 13, whiteSpace: "nowrap" }}>
+                {csvImporting ? "Importing…" : "Upload CSV"}
+              </button>
+            </div>
           </div>
 
           {/* Filter + results — shown once contacts exist */}
           <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 14, alignItems: "start" }}>
             <div style={{ ...glass({ padding: "14px", display: "flex", flexDirection: "column", gap: 12 }) }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Filter saved contacts</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Smart search</span>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                <input value={smartQuery} onChange={e => setSmartQuery(e.target.value)}
+                  placeholder='e.g. "fintech founders in NYC"'
+                  onKeyDown={e => e.key === "Enter" && smartSearch()} className="site-input" style={{ padding: "6px 10px", fontSize: 12 }} />
+                <button onClick={smartSearch} disabled={searching || !smartQuery.trim()} className="site-btn site-btn-ghost"
+                  style={{ height: 30, fontSize: 11, width: "100%" }}>{searching ? "Searching…" : "Smart search →"}</button>
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 4 }}>Filter saved contacts</span>
               {[
                 { label: "Job Title", value: searchTitles, set: setSearchTitles, placeholder: "CEO, CTO, Founder" },
                 { label: "Location", value: searchLocations, set: setSearchLocations, placeholder: "United States" },

@@ -2,6 +2,7 @@
 from backend.core.agent import Agent
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
 from backend.tools.lead_finder import build_outreach_sequence, find_leads, enrich_lead
+from backend.tools.contact_scraper import bulk_discover_and_store
 from backend.tools.browser_research import search_and_fetch, fetch_and_read
 from backend.tools.inbox_warmer import build_crm_contact
 from backend.tools.hunter_tools import (
@@ -83,12 +84,16 @@ def build_sales_agent(**kwargs) -> Agent:
             "RULES:\n"
             "- Always complete all 5 steps before finishing.\n"
             "- find_leads() uses web search — it always works without any API key.\n"
+            "- IMPORTANT: also call bulk_discover_and_store(titles=[<buyer roles>], industries=[<ICP industry>], "
+            "locations=[<region>]) to find REAL email addresses and save them to the founder's Outreach contact "
+            "database so they appear in the Outreach tab. Call it once per distinct ICP segment.\n"
             "- Never call hunter_search_by_domains with placeholder domains like 'example.com'.\n"
             "- Sequences must reference the contact's specific company and role.\n"
             "- If you cannot find contacts, synthesize realistic ICPs from the product description and build sequences for them.\n"
         ),
         tools={
             "find_leads": find_leads,
+            "bulk_discover_and_store": bulk_discover_and_store,
             "enrich_lead": enrich_lead,
             "search_and_fetch": search_and_fetch,
             "fetch_and_read": fetch_and_read,
