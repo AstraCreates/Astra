@@ -2,7 +2,14 @@
 import functools
 from backend.core.agent import Agent, AgentContext
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
-from backend.tools.browser_research import search_and_fetch, fetch_and_read, research_papers
+from backend.tools.browser_research import (
+    search_and_fetch,
+    fetch_and_read,
+    research_papers,
+    batch_search,
+    build_research_queries,
+    run_research_pipeline,
+)
 from backend.tools.patent_search import patent_search
 from backend.tools.web_search import news_search
 from backend.tools.video_research import youtube_research, tiktok_research
@@ -65,53 +72,36 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
 
 _FOCUS_ROLES = {
     "research": (
-        "MARKET INTELLIGENCE (run ALL 8):\n"
-        "1. search_and_fetch('{topic} market size TAM SAR revenue 2024 2025 statistics')\n"
-        "2. search_and_fetch('{topic} industry growth rate forecast CAGR report')\n"
-        "3. search_and_fetch('{topic} venture capital funding rounds 2024 2025')\n"
-        "4. search_and_fetch('{topic} market trends emerging technology adoption')\n"
-        "5. search_and_fetch('{topic} customer demographics segments target audience')\n"
-        "6. search_and_fetch('{topic} regulatory environment compliance requirements')\n"
-        "7. news_search('{topic} 2025 2026 latest')\n"
-        "8. research_papers('{topic} academic study user behavior market')\n\n"
-        "Then 8+ fetch_and_read calls on the most valuable URLs found.\n"
-        "obsidian_log with: MARKET SIZE, GROWTH RATE, TAM/SAM/SOM, KEY SEGMENTS, REGULATORY, VC FUNDING DATA."
+        "MARKET INTELLIGENCE:\n"
+        "1. Call run_research_pipeline(topic='{topic}', focus='market') for the core evidence package.\n"
+        "   If run_research_pipeline is unavailable, call build_research_queries(topic='{topic}', focus='market'), then run ONE batch_search using those queries.\n"
+        "   The query plan covers: market size/TAM, CAGR/growth forecasts, "
+        "customer segments/ICP, pricing benchmarks, regulation, funding/news, and analyst reports.\n"
+        "2. Run news_search once for latest 2025/2026 developments.\n"
+        "3. Run research_papers once only if academic/user-behavior evidence is relevant.\n"
+        "4. Use fetch_and_read only for the 3-5 highest-value URLs from batch_search, prioritizing primary/analyst/competitor sources.\n\n"
+        "obsidian_log with: MARKET SIZE, GROWTH RATE, TAM/SAM/SOM, KEY SEGMENTS, REGULATORY, VC FUNDING DATA, and SOURCES."
     ),
     "research_competitors": (
-        "COMPETITOR INTELLIGENCE (run ALL 15):\n"
-        "1. search_and_fetch('{topic} top companies platforms list 2024 2025')\n"
-        "2. search_and_fetch('{topic} startups to watch named companies founded 2020 2021 2022 2023 2024')\n"
-        "3. search_and_fetch('{topic} crunchbase funding raised valuation startup')\n"
-        "4. search_and_fetch('{topic} Y Combinator a16z sequoia backed startup company')\n"
-        "5. search_and_fetch('{topic} alternatives competitors site:g2.com OR site:capterra.com OR site:producthunt.com')\n"
-        "6. search_and_fetch('{topic} best platform tool ranked review techcrunch venturebeat')\n"
-        "7. search_and_fetch('{topic} pricing model subscription freemium enterprise')\n"
-        "8. search_and_fetch('{topic} customer reviews complaints reddit forum')\n"
-        "9. search_and_fetch('{topic} product features comparison strengths weaknesses')\n"
-        "10. search_and_fetch('{topic} market map landscape 2024 2025')\n"
-        "11. news_search('{topic} company startup launch 2024 2025')\n"
-        "12. patent_search('{topic}')\n"
-        "13. youtube_research('{topic} platform demo review walkthrough')\n"
-        "14. tiktok_research('{topic} review product')\n\n"
-        "CRITICAL: After step 1-6, you MUST have a list of specific named companies/platforms. "
-        "If you haven't found at least 5 named competitors, run additional searches with more specific terms. "
-        "Then for EACH named competitor found: fetch_and_read(competitor_homepage_url) and fetch_and_read(competitor_pricing_url).\n"
-        "obsidian_log with: COMPETITOR TABLE (name, URL, pricing, funding, strengths, weaknesses, market position), WHITESPACE OPPORTUNITIES, VIDEO INSIGHTS."
+        "COMPETITOR INTELLIGENCE:\n"
+        "1. Call run_research_pipeline(topic='{topic}', focus='competitors') for the core evidence package.\n"
+        "   If run_research_pipeline is unavailable, call build_research_queries(topic='{topic}', focus='competitors'), then run ONE batch_search using those queries.\n"
+        "   The query plan covers: named competitors, G2/Capterra/ProductHunt alternatives, "
+        "Crunchbase/funding, pricing pages, reviews/complaints, YC/a16z/VC-backed startups, and market maps.\n"
+        "2. Extract at least 5 named competitors. If fewer than 5 are found, run ONE additional targeted batch_search with narrower terms.\n"
+        "3. fetch_and_read homepage/pricing pages for the top 3-5 competitors only.\n"
+        "4. Run patent_search once and youtube_research once when product demos/reviews matter.\n\n"
+        "obsidian_log with: COMPETITOR TABLE (name, URL, pricing, funding, strengths, weaknesses, market position), WHITESPACE OPPORTUNITIES, and SOURCES."
     ),
     "research_execution": (
-        "EXECUTION STRATEGY RESEARCH (run ALL 10):\n"
-        "1. search_and_fetch('how to build {topic} startup go-to-market strategy')\n"
-        "2. search_and_fetch('{topic} business model revenue streams monetization')\n"
-        "3. search_and_fetch('{topic} tech stack architecture how it works implementation')\n"
-        "4. search_and_fetch('{topic} sales strategy B2B B2C customer acquisition cost')\n"
-        "5. search_and_fetch('{topic} unit economics LTV CAC payback period')\n"
-        "6. search_and_fetch('{topic} founder story how they built it lessons learned')\n"
-        "7. search_and_fetch('{topic} user pain points problems complaints needs')\n"
-        "8. search_and_fetch('{topic} customer success stories case studies ROI')\n"
-        "9. youtube_research('{topic} startup founder how to build tutorial')\n"
-        "10. tiktok_research('{topic} startup tips growth hacks')\n\n"
-        "Then 8+ fetch_and_read calls on the most actionable URLs found.\n"
-        "obsidian_log with: RECOMMENDED TECH STACK, GTM STRATEGY, PRICING MODEL, FIRST 90 DAYS PLAN, USER PERSONAS, KEY RISKS, VIDEO CREATOR INSIGHTS."
+        "EXECUTION STRATEGY RESEARCH:\n"
+        "1. Call run_research_pipeline(topic='{topic}', focus='execution') for the core evidence package.\n"
+        "   If run_research_pipeline is unavailable, call build_research_queries(topic='{topic}', focus='execution'), then run ONE batch_search using those queries.\n"
+        "   The query plan covers: GTM strategy, revenue model, tech stack/architecture, "
+        "CAC/LTV/unit economics, founder case studies, pain points/complaints, and ROI/customer stories.\n"
+        "2. Use fetch_and_read for the 3-5 most actionable sources only.\n"
+        "3. Run youtube_research once if founder demos/tutorials are likely useful.\n\n"
+        "obsidian_log with: RECOMMENDED TECH STACK, GTM STRATEGY, PRICING MODEL, FIRST 90 DAYS PLAN, USER PERSONAS, KEY RISKS, and SOURCES."
     ),
 }
 
@@ -129,6 +119,9 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     log_name = _re.sub(r"_\d+$", "", agent_name)
     auto_search = _make_auto_logging_tool(search_and_fetch, "search_and_fetch", ctx_holder, log_name)
     auto_fetch = _make_auto_logging_tool(fetch_and_read, "fetch_and_read", ctx_holder, log_name)
+    auto_batch = _make_auto_logging_tool(batch_search, "batch_search", ctx_holder, log_name)
+    auto_query_plan = _make_auto_logging_tool(build_research_queries, "build_research_queries", ctx_holder, log_name)
+    auto_pipeline = _make_auto_logging_tool(run_research_pipeline, "run_research_pipeline", ctx_holder, log_name)
     auto_papers = _make_auto_logging_tool(research_papers, "research_papers", ctx_holder, log_name)
     auto_news = _make_auto_logging_tool(news_search, "news_search", ctx_holder, log_name)
     auto_patent = _make_auto_logging_tool(patent_search, "patent_search", ctx_holder, log_name)
@@ -137,18 +130,22 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
 
 
     from backend.config import settings
+    from backend.core.key_rotator import get_openrouter_key
     focus_searches = _FOCUS_ROLES.get(agent_name, _FOCUS_ROLES["research"])
     agent = Agent(
         name=agent_name,
         model="meta-llama/llama-3.3-70b-instruct",
         model_base_url=settings.openrouter_base_url,
-        model_api_key=settings.openrouter_api_key or settings.agent_model_api_key,
+        model_api_key=get_openrouter_key() or settings.agent_model_api_key,
         max_iterations=40,
         role=(
             "You are an elite deep research specialist. You produce investment-grade research. "
             "Prioritize speed + quality: complete core coverage fast, then stop once evidence is sufficient.\n\n"
             "TOOLS:\n"
-            "- search_and_fetch(query) — searches + fetches full content from multiple sites. PRIMARY tool.\n"
+            "- run_research_pipeline(topic, focus) — complete first-pass research: query plan + parallel searches + deduped sources. Use this first.\n"
+            "- build_research_queries(topic, focus) — creates a high-coverage query plan. Use this before batch_search.\n"
+            "- batch_search(queries, max_results_each=6) — runs multiple searches in parallel. PRIMARY tool; use this first.\n"
+            "- search_and_fetch(query) — single targeted search + page fetch. Use only for follow-up gaps.\n"
             "- fetch_and_read(url) — read a specific URL in full depth.\n"
             "- research_papers(query) — academic papers.\n"
             "- news_search(query) — recent news.\n"
@@ -156,11 +153,20 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
             "- youtube_research(query) — YouTube video metadata + transcripts for competitor/creator analysis.\n"
             "- tiktok_research(query) — TikTok video metadata + captions for viral trend analysis.\n"
             "- obsidian_log — FINAL step only after ALL searches complete.\n\n"
-            "YOUR MANDATORY SEARCH SEQUENCE (replace {topic} with the actual subject):\n\n"
+            "RESEARCH QUALITY RULES:\n"
+            "- Generate specific, source-seeking queries. Avoid vague searches like just the product category.\n"
+            "- Prefer primary sources, analyst reports, competitor pages, government/public datasets, and reputable review sites.\n"
+            "- Check run_research_pipeline.coverage. If coverage.ready is false, fill gaps with one targeted batch_search or clearly mark uncertainty.\n"
+            "- Always name concrete companies, numbers, dates, and URLs. If evidence is weak, say so.\n"
+            "- Do not spend the run on endless searching. After batch_search plus focused fetches, synthesize and finish.\n\n"
+            "YOUR SEARCH PLAN (replace {topic} with the actual subject):\n\n"
             + focus_searches
         ),
         tools={
+            "run_research_pipeline": auto_pipeline,
+            "build_research_queries": auto_query_plan,
             "search_and_fetch": auto_search,
+            "batch_search": auto_batch,
             "fetch_and_read": auto_fetch,
             "research_papers": auto_papers,
             "news_search": auto_news,
