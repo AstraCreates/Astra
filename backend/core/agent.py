@@ -196,8 +196,45 @@ class Agent:
         # json_object not supported by OpenRouter models
         if not is_openrouter:
             kwargs["response_format"] = {"type": "json_object"}
+        # Rate-limit/transient resilience: retry with key rotation + backoff.
+        # On 429 we rotate to the next OpenRouter key; on 5xx/timeout we just
+        # back off. Honors a Retry-After header when the provider sends one.
+        import openai as _openai
+        import random as _random
+        _max_attempts = 5
         _t0 = _time.monotonic()
-        resp = self._get_llm().chat.completions.create(**kwargs)
+        for _attempt in range(_max_attempts):
+            try:
+                resp = self._get_llm().chat.completions.create(**kwargs)
+                break
+            except Exception as _e:
+                _status = getattr(_e, "status_code", None)
+                _is_rate = isinstance(_e, _openai.RateLimitError) or _status == 429
+                _is_transient = (
+                    isinstance(_e, (_openai.APITimeoutError, _openai.APIConnectionError))
+                    or (isinstance(_status, int) and _status >= 500)
+                )
+                if _attempt == _max_attempts - 1 or not (_is_rate or _is_transient):
+                    raise
+                # Prefer the provider's Retry-After; else exponential backoff + jitter.
+                _retry_after = None
+                _r = getattr(_e, "response", None)
+                if _r is not None:
+                    try:
+                        _retry_after = float(_r.headers.get("retry-after"))
+                    except Exception:
+                        _retry_after = None
+                _base = 2.0 if _is_rate else 1.0
+                _delay = _retry_after if _retry_after else _base * (2 ** _attempt) + _random.uniform(0, 0.5)
+                _delay = min(_delay, 30.0)
+                logger.warning(
+                    "%s LLM call attempt %d/%d failed (%s status=%s); %s retry in %.1fs",
+                    self.name, _attempt + 1, _max_attempts, type(_e).__name__, _status,
+                    "rotating key," if _is_rate else "", _delay,
+                )
+                # Force a fresh client so OpenRouter rotates to the next key.
+                self._llm = None
+                _time.sleep(_delay)
         _elapsed = _time.monotonic() - _t0
         # Track token usage and deduct credits per call
         if resp.usage and ctx:
