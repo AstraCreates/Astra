@@ -18,7 +18,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_INITIAL_CREDITS = 50_000_000  # ~1 full run at tokens × 10 rate
+_INITIAL_CREDITS = 10_000_000_000_000  # 10T — effectively unlimited for beta
 _MAX_TRANSACTIONS = 100
 
 # Per-user locks to avoid cross-user contention
