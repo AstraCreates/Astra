@@ -2580,12 +2580,11 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
       onClose();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      // Swallow Clerk quota/token errors — the goal may have launched anyway
-      if (msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("token") || msg.toLowerCase().includes("clerk")) {
-        // Goal likely submitted fine, just auth token failed — proceed to session
-        return;
-      }
-      setError(msg || "Failed to submit goal");
+      // Clerk token errors: goal was submitted (backend returns 200 before auth check),
+      // but we lost the session_id. Just reset and let user try again.
+      setError(msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("clerk")
+        ? "Auth token issue — please try again."
+        : (msg || "Failed to submit goal"));
       setLoading(false);
     }
   }
