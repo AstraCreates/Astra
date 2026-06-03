@@ -6,6 +6,14 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+def _resolve_brand_vibe(brand_vibe: str = "", fallback: str = "minimal") -> str:
+    text = (brand_vibe or "").lower()
+    for key in ("luxury", "bold", "friendly", "professional", "innovative", "calm", "minimal"):
+        if key in text:
+            return key
+    return fallback
+
+
 def generate_wireframe(
     page_type: str = "",
     sections: list = None,
@@ -24,7 +32,7 @@ def generate_wireframe(
     """
     page_type = page_type or page or "landing"
     if brand_vibe and style == "minimal":
-        style = brand_vibe
+        style = _resolve_brand_vibe(brand_vibe)
     if sections is None:
         sections = [layout_description] if layout_description else []
 
@@ -59,8 +67,11 @@ def generate_color_palette(
     industry: str = "",
     primary_hex: str = "",
     brand_name: str = "",  # alias — model sometimes passes brand_name instead of brand_vibe
+    vibe: str = "",
     **kwargs,
 ) -> dict:
+    if vibe and (not brand_vibe or brand_vibe == "minimal"):
+        brand_vibe = vibe
     if not brand_vibe or brand_vibe == "minimal":
         brand_vibe = brand_name or "minimal"
     """
@@ -129,7 +140,18 @@ def generate_color_palette(
             "text_secondary": "#0369A1",
             "border": "#BAE6FD",
         },
+        "luxury": {
+            "primary": primary_hex or "#2A2118",
+            "secondary": "#8B6F3E",
+            "accent": "#B8894D",
+            "background": "#FBF7EF",
+            "surface": "#FFFFFF",
+            "text_primary": "#1F1710",
+            "text_secondary": "#6F5E4B",
+            "border": "#E5D6C3",
+        },
     }
+    palette_key = _resolve_brand_vibe(brand_vibe)
 
     # Attempt LLM-generated contextual palette
     palette = None
@@ -163,12 +185,13 @@ def generate_color_palette(
         logger.warning("LLM color palette generation failed, using fallback: %s", e)
 
     if palette is None:
-        palette = _fallback_palettes.get(brand_vibe, _fallback_palettes["minimal"])
+        palette = _fallback_palettes.get(palette_key, _fallback_palettes["minimal"])
         if primary_hex:
             palette["primary"] = primary_hex
 
     return {
-        "brand_vibe": brand_vibe,
+        "brand_vibe": palette_key,
+        "brand_vibe_raw": brand_vibe,
         "industry": industry,
         "colors": palette,
         "css_variables": "\n".join(f"  --color-{k.replace('_', '-')}: {v};" for k, v in palette.items()),
@@ -206,6 +229,7 @@ def generate_design_spec(
         product_name = brand_name
     if vibe and brand_vibe == "minimal":
         brand_vibe = vibe
+    brand_vibe = _resolve_brand_vibe(brand_vibe)
     screens = key_screens or _default_screens(product_type)
 
     return {
@@ -258,12 +282,15 @@ def generate_logo_brief(
     """
     if isinstance(competitors_to_avoid, str):
         competitors_to_avoid = [c.strip() for c in competitors_to_avoid.split(",") if c.strip()]
+    brand_vibe = _resolve_brand_vibe(brand_vibe)
     style_directions = {
         "minimal": "Clean wordmark or lettermark. Geometric sans-serif. No gradients.",
         "bold": "Strong icon + wordmark. High contrast. Can use thick strokes.",
         "friendly": "Rounded shapes, approachable icon, warm colors.",
         "professional": "Classic serif or geometric sans. Icon optional. Conservative.",
         "innovative": "Abstract mark, modern typeface, can use gradients sparingly.",
+        "calm": "Soft colors, gentle curves, trustworthy feel.",
+        "luxury": "Editorial typography, refined mark, premium restraint, high craft.",
     }
 
     return {
@@ -394,6 +421,13 @@ def _design_principles(vibe: str) -> list:
         "bold": ["High contrast creates hierarchy", "Motion should communicate, not decorate"],
         "friendly": ["Rounded corners and soft colors build trust",
                      "Friendly microcopy at every friction point"],
+        "professional": ["Clear hierarchy builds trust", "Dense information should still feel calm"],
+        "innovative": ["Forward-looking interactions should clarify the product intelligence",
+                       "Use data, signal, or system motifs to make the product feel advanced"],
+        "calm": ["Reduce cognitive load through soft contrast and predictable structure",
+                 "Use gentle motion and reassuring empty states"],
+        "luxury": ["Fewer, more intentional elements create perceived value",
+                   "Editorial rhythm and refined details should guide attention"],
     }
     return base + extras.get(vibe, [])
 
@@ -406,6 +440,7 @@ def _typography_spec(vibe: str, brand_name: str = "", industry: str = "") -> dic
         "professional": {"heading": "Fraunces", "body": "Source Sans 3", "mono": "Source Code Pro"},
         "innovative": {"heading": "Space Grotesk", "body": "DM Sans", "mono": "JetBrains Mono"},
         "calm": {"heading": "Playfair Display", "body": "Lato", "mono": "JetBrains Mono"},
+        "luxury": {"heading": "Cormorant Garamond", "body": "Manrope", "mono": "IBM Plex Mono"},
         "energetic": {"heading": "Unbounded", "body": "Manrope", "mono": "Fira Code"},
     }
 

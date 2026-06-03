@@ -4,7 +4,6 @@ Specialists run in dependency order; results flow back into shared context.
 """
 import asyncio
 import logging
-import uuid
 from typing import Any
 
 from backend.core.agent import Agent, AgentContext
@@ -196,7 +195,7 @@ class Orchestrator:
                 pass
         return []
 
-    async def _generate_company_name(self, goal: str) -> str:
+    async def _generate_company_name(self, goal: str, creative_brief: dict | None = None) -> str:
         """Extract or invent a company/product name from the goal."""
         import re
         # Explicit name patterns: frontend sends "Company name: X." or "called X", quoted names
@@ -223,9 +222,13 @@ class Orchestrator:
                     {"role": "system", "content": (
                         "Output ONLY a single company/product name for this startup idea. "
                         "1-2 words max. CamelCase. Memorable, domain-friendly, not generic. "
+                        "Do not default to obvious names from the prompt. Follow the creative direction when supplied. "
                         "No explanation. No punctuation. Just the name."
                     )},
-                    {"role": "user", "content": goal[:300]},
+                    {"role": "user", "content": (
+                        f"Startup idea:\n{goal[:300]}\n\n"
+                        f"Creative direction:\n{json.dumps(creative_brief or {}, indent=2)}"
+                    )},
                 ],
                 max_tokens=10,
                 temperature=0.85,
@@ -375,11 +378,16 @@ class Orchestrator:
             logger.warning("Company brain record write failed for %s: %s", title, exc)
 
     async def run(self, goal: str, founder_id: str, constraints: dict = None, session_id: str = None) -> dict[str, Any]:
-        session_id = session_id or uuid.uuid4().hex[:8]
-        shared: dict[str, Any] = {"constraints": constraints or {}}
+        if not session_id:
+            from backend.core.session_ids import new_session_id
+            session_id = new_session_id()
+        from backend.core.creative import build_creative_brief
+        creative_brief = (constraints or {}).get("creative_brief") or build_creative_brief(session_id, goal)
+        shared: dict[str, Any] = {"constraints": constraints or {}, "creative_brief": creative_brief}
 
         from backend.core.events import publish
         await publish(session_id, {"type": "goal_start", "goal": goal, "founder_id": founder_id})
+        await publish(session_id, {"type": "creative_brief", "creative_brief": creative_brief})
 
         from backend.stacks import build_approval_queue, build_stack_execution_blueprint, build_stack_execution_contract, build_stack_manifest, build_stack_operating_plan, get_stack_template, task_execution_guidance
         stack_template = get_stack_template((constraints or {}).get("stack_id"))
@@ -477,7 +485,7 @@ class Orchestrator:
         else:
             # Run company name generation and goal expansion in parallel
             company_name, goal = await asyncio.gather(
-                self._generate_company_name(goal),
+                self._generate_company_name(goal, creative_brief),
                 self._expand_goal(goal, session_id),
             )
             shared["company_name"] = company_name
@@ -1103,14 +1111,19 @@ class Orchestrator:
         Continue work on an existing company. Loads full vault context from prior sessions,
         runs the specified agents (or plans which agents to run) with the new instruction.
         """
-        session_id = session_id or uuid.uuid4().hex[:8]
+        if not session_id:
+            from backend.core.session_ids import new_session_id
+            session_id = new_session_id()
         from backend.core.events import publish
         from backend.tools.obsidian_logger import format_vault_context, _note_path
+        from backend.core.creative import build_creative_brief
+        creative_brief = build_creative_brief(session_id, instruction)
 
         await publish(session_id, {"type": "goal_start", "goal": instruction, "founder_id": founder_id, "continue_from": prior_session_id})
+        await publish(session_id, {"type": "creative_brief", "creative_brief": creative_brief})
 
         # Load all prior vault notes for this founder to give full company context
-        shared: dict[str, Any] = {"prior_session_id": prior_session_id}
+        shared: dict[str, Any] = {"prior_session_id": prior_session_id, "creative_brief": creative_brief}
         try:
             vault_summary_parts = []
             for agent_name in self.specialists:

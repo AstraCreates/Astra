@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import uuid
 from typing import Any
+
+from backend.core.session_ids import new_session_id
 
 logger = logging.getLogger(__name__)
 
@@ -107,11 +108,12 @@ def _estimate_cost(result: Any) -> float:
     return float(result.get("cost_usd") or result.get("cost") or 0.0)
 
 
-async def run_mission(mission_id: str) -> dict[str, Any]:
+async def run_mission(mission_id: str, session_id: str | None = None) -> dict[str, Any]:
     """Execute a single mission run.
 
     Args:
         mission_id: UUID of the mission to run.
+        session_id: Optional externally-created session ID for manual runs.
 
     Returns:
         A dict with keys:
@@ -127,7 +129,7 @@ async def run_mission(mission_id: str) -> dict[str, Any]:
         increment_run_count,
     )
 
-    session_id = uuid.uuid4().hex[:12]
+    session_id = session_id or new_session_id()
 
     try:
         mission = get_mission(mission_id)

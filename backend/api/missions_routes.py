@@ -12,11 +12,11 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-import uuid
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
+from backend.core.session_ids import new_session_id
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +180,7 @@ async def run_mission(mission_id: str, background_tasks: BackgroundTasks):
     if mission.get("status") == "paused":
         raise HTTPException(status_code=409, detail="Mission is paused — resume it before running")
 
-    session_id = uuid.uuid4().hex[:12]
+    session_id = new_session_id()
     background_tasks.add_task(mission_runner, mission_id=mission_id, session_id=session_id)
     logger.info("Mission manual run triggered: %s session=%s", mission_id, session_id)
     return {"ok": True, "session_id": session_id}

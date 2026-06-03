@@ -7,11 +7,41 @@ import logging
 import re
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from urllib.parse import quote_plus
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 logger = logging.getLogger(__name__)
 
 _BH_SRC = "/tmp/browser-harness/src"
+
+_QUERY_BLUEPRINTS = {
+    "market": [
+        "{topic} market size TAM SAM SOM 2025 report statistics",
+        "{topic} CAGR forecast 2025 2026 2030 industry report",
+        "{topic} customer segments ICP buyer persona demographics firmographics",
+        "{topic} pricing benchmark subscription tiers competitor pricing",
+        "{topic} regulation compliance requirements risks",
+        "{topic} funding rounds venture capital startups 2024 2025",
+        "{topic} analyst report market map competitors",
+    ],
+    "competitors": [
+        "{topic} top competitors alternatives companies platforms 2025",
+        "{topic} site:g2.com OR site:capterra.com OR site:producthunt.com alternatives reviews",
+        "{topic} Crunchbase funding valuation startup competitors",
+        "{topic} pricing page subscription enterprise competitor",
+        "{topic} customer complaints reddit reviews problems",
+        "{topic} YC a16z Sequoia backed startup competitor",
+        "{topic} market map landscape companies",
+    ],
+    "execution": [
+        "{topic} go to market strategy startup playbook",
+        "{topic} business model revenue streams monetization pricing",
+        "{topic} technical architecture stack implementation guide",
+        "{topic} CAC LTV unit economics benchmark",
+        "{topic} founder case study how they built",
+        "{topic} customer pain points complaints jobs to be done",
+        "{topic} customer success story ROI case study",
+    ],
+}
 
 
 # Domains that reliably 403/404/auth-wall scrapers — skip fetch, use snippet only
@@ -39,6 +69,79 @@ def _is_blocked(url: str) -> bool:
     from urllib.parse import urlparse
     host = urlparse(url).netloc.lower().lstrip("www.")
     return any(host == d or host.endswith("." + d) for d in _BLOCKED_DOMAINS)
+
+
+def _domain(url: str) -> str:
+    return urlparse(url).netloc.lower().lstrip("www.")
+
+
+def _normalize_url(url: str) -> str:
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        return url
+    tracking_prefixes = ("utm_",)
+    tracking_keys = {"fbclid", "gclid", "mc_cid", "mc_eid", "ref", "ref_src"}
+    query = [
+        (k, v)
+        for k, v in parse_qsl(parsed.query, keep_blank_values=True)
+        if k not in tracking_keys and not any(k.startswith(prefix) for prefix in tracking_prefixes)
+    ]
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path.rstrip("/") or "/", "", urlencode(query), ""))
+
+
+def _source_score(result: dict, query: str) -> int:
+    """Prefer source-diverse, information-dense results before fetching."""
+    url = result.get("href") or result.get("url") or ""
+    title = (result.get("title") or "").lower()
+    body = (result.get("body") or result.get("snippet") or "").lower()
+    host = _domain(url)
+    text = f"{title} {body}"
+    score = 0
+    if any(word in text for word in ("market size", "tam", "cagr", "forecast", "funding", "pricing", "benchmark")):
+        score += 4
+    if any(word in text for word in ("report", "study", "survey", "data", "statistics", "analysis")):
+        score += 3
+    if any(d in host for d in (
+        "gartner.com", "forrester.com", "mckinsey.com", "bcg.com", "deloitte.com",
+        "grandviewresearch.com", "mordorintelligence.com", "ibisworld.com",
+        "crunchbase.com", "pitchbook.com", "ycombinator.com", "a16z.com",
+        "g2.com", "capterra.com", "producthunt.com", "sec.gov", "census.gov",
+    )):
+        score += 3
+    if "site:" in query.lower():
+        score += 1
+    if any(d in host for d in ("pinterest.", "facebook.", "instagram.", "x.com", "twitter.")):
+        score -= 4
+    return score
+
+
+def build_research_queries(topic: str, focus: str = "market", limit: int = 7) -> dict:
+    """Build source-seeking search queries for a research lane.
+
+    This gives agents a deterministic, high-coverage query plan before they
+    start browsing, instead of relying on the model to invent a good search mix
+    every run.
+    """
+    clean_topic = re.sub(r"\s+", " ", (topic or "").strip())
+    if not clean_topic:
+        return {"topic": topic, "focus": focus, "queries": [], "error": "topic is required"}
+    normalized_focus = (focus or "market").strip().lower()
+    if normalized_focus not in _QUERY_BLUEPRINTS:
+        normalized_focus = "market"
+    queries = [template.format(topic=clean_topic) for template in _QUERY_BLUEPRINTS[normalized_focus]]
+    deduped = []
+    seen = set()
+    for query in queries:
+        key = query.lower()
+        if key not in seen:
+            seen.add(key)
+            deduped.append(query)
+    return {
+        "topic": clean_topic,
+        "focus": normalized_focus,
+        "queries": deduped[: max(1, min(limit, 8))],
+        "recommended_tool": "batch_search",
+    }
 
 
 def _http_get(url: str, timeout: float = 20.0) -> str:
@@ -150,15 +253,27 @@ def search_and_fetch(query: str, max_results: int = 12) -> dict:
     except Exception as e:
         return {"query": query, "results": [], "error": f"Search failed: {e}"}
 
-    snippets = {r.get("href", ""): r.get("body", "") for r in raw}
-    titles = {r.get("href", ""): r.get("title", "") for r in raw}
+    ranked_raw = sorted(raw, key=lambda r: _source_score(r, query), reverse=True)
+    snippets = {}
+    titles = {}
 
     fetch_urls = []
     results = []
-    for r in raw:
-        url = r.get("href", "")
+    seen_urls = set()
+    seen_domains = {}
+    for r in ranked_raw:
+        url = _normalize_url(r.get("href", ""))
         if not url.startswith("http"):
             continue
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+        host = _domain(url)
+        seen_domains[host] = seen_domains.get(host, 0) + 1
+        if seen_domains[host] > 2:
+            continue
+        snippets[url] = r.get("body", "")
+        titles[url] = r.get("title", "")
         if _is_blocked(url):
             # Keep snippet — don't waste a fetch on auth-walled sites
             snippet = snippets.get(url, "")
@@ -205,6 +320,7 @@ def search_and_fetch(query: str, max_results: int = 12) -> dict:
         "results": results,
         "formatted": "\n".join(formatted),
         "total": len(results),
+        "sources": [{"title": r.get("title", ""), "url": r.get("url", "")} for r in results if r.get("url")],
     }
 
 
@@ -239,11 +355,100 @@ def batch_search(queries: list, max_results_each: int = 8) -> dict:
                 results_by_query[q] = {"query": q, "results": [], "error": str(e)}
 
     combined = []
+    all_sources = []
+    seen_sources = set()
     for q, r in results_by_query.items():
         combined.append(f"\n\n## QUERY: {q}\n{r.get('formatted', '')[:3000]}")
+        for source in r.get("sources", []):
+            url = source.get("url", "")
+            if url and url not in seen_sources:
+                seen_sources.add(url)
+                all_sources.append(source)
 
     return {
         "queries_run": len(queries),
         "results_by_query": {q: {"total": r.get("total", 0), "formatted": r.get("formatted", "")[:8000]} for q, r in results_by_query.items()},
         "combined_formatted": "\n".join(combined),
+        "sources": all_sources[:50],
+    }
+
+
+def _research_coverage(focus: str, queries: list[str], search: dict) -> dict:
+    sources = search.get("sources", [])
+    source_domains: dict[str, int] = {}
+    for source in sources:
+        host = _domain(source.get("url", ""))
+        if host:
+            source_domains[host] = source_domains.get(host, 0) + 1
+
+    results_by_query = search.get("results_by_query", {})
+    covered_queries = [
+        query
+        for query in queries
+        if (results_by_query.get(query) or {}).get("total", 0) > 0
+    ]
+
+    required_sources = 8 if focus in {"market", "competitors"} else 6
+    required_domains = 4 if focus in {"market", "competitors"} else 3
+    required_query_coverage = min(5, len(queries))
+
+    gaps = []
+    if len(sources) < required_sources:
+        gaps.append(f"source_count_below_{required_sources}")
+    if len(source_domains) < required_domains:
+        gaps.append(f"domain_diversity_below_{required_domains}")
+    if len(covered_queries) < required_query_coverage:
+        gaps.append(f"query_coverage_below_{required_query_coverage}")
+    if not search.get("combined_formatted", "").strip():
+        gaps.append("no_combined_evidence")
+
+    return {
+        "ready": not gaps,
+        "gaps": gaps,
+        "source_count": len(sources),
+        "domain_count": len(source_domains),
+        "source_domains": source_domains,
+        "query_coverage": {
+            "covered": len(covered_queries),
+            "total": len(queries),
+            "missing": [query for query in queries if query not in covered_queries],
+        },
+    }
+
+
+def run_research_pipeline(topic: str, focus: str = "market", max_results_each: int = 6) -> dict:
+    """Plan and run a complete source-diverse research pass.
+
+    Agents should use this when they need reliable first-pass evidence quickly:
+    it plans lane-specific queries, executes them in parallel, dedupes sources,
+    and returns a compact evidence package for synthesis.
+    """
+    plan = build_research_queries(topic, focus=focus, limit=7)
+    queries = plan.get("queries", [])
+    if not queries:
+        return {
+            **plan,
+            "results_by_query": {},
+            "sources": [],
+            "combined_formatted": "",
+            "coverage": {"ready": False, "gaps": ["topic is required"], "source_count": 0, "domain_count": 0},
+        }
+    search = batch_search(queries, max_results_each=max_results_each)
+    coverage = _research_coverage(plan["focus"], queries, search)
+    return {
+        "topic": plan["topic"],
+        "focus": plan["focus"],
+        "queries": queries,
+        "queries_run": search.get("queries_run", 0),
+        "results_by_query": search.get("results_by_query", {}),
+        "sources": search.get("sources", []),
+        "source_count": coverage["source_count"],
+        "source_domains": coverage["source_domains"],
+        "coverage": coverage,
+        "combined_formatted": search.get("combined_formatted", ""),
+        "next_step": (
+            "Synthesize findings with concrete numbers, named companies, dates, caveats, and URLs."
+            if coverage["ready"]
+            else "Evidence is thin. Fill coverage gaps before making strong claims, or explicitly label uncertainty."
+        ),
     }

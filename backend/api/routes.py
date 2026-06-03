@@ -225,8 +225,8 @@ async def stack_connector_validation_route(stack_id: str, founder_id: str, reque
 @router.post("/goal")
 async def submit_goal(body: GoalRequest, request: Request):
     actor_id = require_founder_access(request, body.founder_id, min_role="operator")
-    import uuid as _uuid
-    session_id = _uuid.uuid4().hex[:12]
+    from backend.core.session_ids import new_session_id
+    session_id = new_session_id()
     orch = get_orchestrator()
     try:
         from backend.accounts import get_or_create_org, record_usage
@@ -701,7 +701,7 @@ def _detect_rerun_intent(instruction: str, available_agents: list[str]) -> dict 
 async def continue_goal(body: ContinueRequest, request: Request):
     """Run follow-up tasks on an existing company session with full vault context."""
     require_founder_access(request, body.founder_id, min_role="operator")
-    import uuid as _uuid
+    from backend.core.session_ids import new_session_id
     orch = get_orchestrator()
 
     # Detect rerun intent via LLM — no regex
@@ -710,7 +710,7 @@ async def continue_goal(body: ContinueRequest, request: Request):
     )
     if rerun:
         # Rerun a specific agent in the prior session
-        session_id = body.prior_session_id or _uuid.uuid4().hex[:12]
+        session_id = body.prior_session_id or new_session_id()
         agent_name = rerun["agent"]
         instruction = rerun["instruction"] or f"Redo your full workflow with all available context."
 
@@ -743,7 +743,7 @@ async def continue_goal(body: ContinueRequest, request: Request):
         asyncio.create_task(_rerun())
         return {"session_id": session_id, "status": "running", "prior_session_id": body.prior_session_id, "rerun": agent_name}
 
-    session_id = _uuid.uuid4().hex[:12]
+    session_id = new_session_id()
 
     async def _run():
         try:
@@ -765,6 +765,7 @@ async def continue_goal(body: ContinueRequest, request: Request):
 async def ask_agent(body: AskRequest, request: Request):
     require_founder_access(request, body.founder_id, min_role="viewer")
     from backend.core.agent import AgentContext
+    from backend.core.session_ids import new_session_id
 
     orch = get_orchestrator()
     agent = orch.specialists.get(body.target_agent)
@@ -774,7 +775,7 @@ async def ask_agent(body: AskRequest, request: Request):
     ctx = AgentContext(
         goal=body.question,
         founder_id=body.founder_id,
-        session_id=f"ask_{uuid.uuid4().hex[:8]}",
+        session_id=f"ask_{new_session_id()}",
         shared={"context": body.context or ""},
     )
     result = await agent.run(ctx)

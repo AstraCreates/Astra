@@ -2382,6 +2382,176 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
   );
 }
 
+function TaskWorkboardTable({
+  planTasks,
+  agents,
+  sessionWorkboard,
+  stackOperatingPlan,
+  onSelectAgent,
+}: {
+  planTasks: AgentTask[];
+  agents: Record<string, AgentState>;
+  sessionWorkboard: SessionWorkboard | null;
+  stackOperatingPlan: StackOperatingPlan | null;
+  onSelectAgent: (agent: string) => void;
+}) {
+  const plannedRows = sortAgentNamesByOrder(planTasks.map(t => t.agent)).map((agentName, index) => {
+    const task = planTasks.find(t => t.agent === agentName);
+    const lane = stackOperatingPlan?.lanes.find(item => item.agent === agentName || item.id === task?.id);
+    const state = agents[agentName];
+    const title = lane?.title || (task?.instruction ? task.instruction.split(/[.;—-]/)[0].slice(0, 84) : AGENT_LABELS[agentName] ?? agentName);
+    const expectedArtifacts = lane?.artifacts ?? [];
+    return {
+      id: task?.id ?? agentName,
+      index,
+      agent: agentName,
+      title,
+      description: lane?.mission || task?.instruction || "Waiting for planner details.",
+      status: state?.status ?? "waiting",
+      owner: AGENT_LABELS[agentName] ?? agentName,
+      nextActor: state?.status === "done" ? "founder_review" : state?.status === "running" ? "agent" : "agent",
+      blockers: state?.status === "error" ? ["Agent needs attention before this lane can finish."] : [],
+      dependsOn: lane?.depends_on ?? [],
+      expectedCount: expectedArtifacts.length,
+      readyCount: state?.status === "done" ? expectedArtifacts.length : 0,
+      summary: summarizeResult(state),
+    };
+  });
+
+  const workboardRows = sessionWorkboard?.items.map((item, index) => ({
+    id: item.id,
+    index,
+    agent: item.agent,
+    title: item.title,
+    description: item.mission || item.summary || "No task detail available yet.",
+    status: item.status,
+    owner: item.owner || AGENT_LABELS[item.agent] || item.agent,
+    nextActor: item.next_actor,
+    blockers: item.blockers,
+    dependsOn: item.depends_on,
+    expectedCount: item.expected_artifacts.length,
+    readyCount: item.ready_artifacts.length,
+    summary: item.summary,
+  })) ?? [];
+
+  const rows = workboardRows.length ? workboardRows : plannedRows;
+  const counts = sessionWorkboard?.counts;
+
+  if (!rows.length) {
+    return (
+      <div className="site-card-soft" style={{ padding: "14px 15px", color: "var(--text-3)", fontSize: 13, lineHeight: 1.6 }}>
+        Waiting for the planner to publish the task graph.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "grid", gap: 3 }}>
+          <span className="site-label">Tasks</span>
+          <span style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.45 }}>
+            {sessionWorkboard?.summary || "Detailed execution lanes with owners, dependencies, artifacts, and live status."}
+          </span>
+        </div>
+        <span className="site-pill" data-status={counts?.blocked ? "warning" : counts?.running ? "running" : "idle"} style={{ whiteSpace: "nowrap" }}>
+          {counts ? `${counts.done}/${counts.total} done · ${counts.founder_next} founder next` : `${rows.length} lanes`}
+        </span>
+      </div>
+
+      <div className="site-card-soft" style={{ overflow: "hidden", background: "rgba(255,255,255,0.06)" }}>
+        {rows.slice(0, 12).map((row, i) => {
+          const isDone = row.status === "done" || row.status === "completed";
+          const isRunning = row.status === "running";
+          const isBlocked = row.blockers.length > 0 || row.status === "blocked" || row.status === "error";
+          const statusColor = isDone ? "#10B981" : isBlocked ? "#D97706" : isRunning ? "#2563EB" : "var(--text-muted)";
+          const actorLabel = row.nextActor.replace("_", " ");
+          return (
+            <button
+              key={row.id}
+              type="button"
+              className="astra-task-row"
+              onClick={() => onSelectAgent(row.agent)}
+              style={{
+                borderTop: i ? "1px solid var(--border)" : "none",
+                background: isBlocked ? "rgba(255,255,255,0.12)" : "transparent",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 22,
+                  height: 22,
+                  marginTop: 2,
+                  borderRadius: 0,
+                  border: `1.5px solid ${isDone ? "#FFFFFF" : "currentColor"}`,
+                  background: isDone ? "var(--accent)" : "transparent",
+                  color: "#fff",
+                  display: "grid",
+                  placeItems: "center",
+                  fontSize: 12,
+                  fontWeight: 800,
+                }}
+              >
+                {isDone ? "✓" : ""}
+              </span>
+
+              <span style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 15, lineHeight: 1.3, fontWeight: 650, color: "var(--text)", overflowWrap: "anywhere" }}>
+                    {row.title}
+                  </span>
+                  {isBlocked && (
+                    <span style={{ padding: "2px 8px", borderRadius: 999, background: "var(--brand-pink)", color: "#FFFFFF", fontSize: 11, fontWeight: 700 }}>
+                      urgent
+                    </span>
+                  )}
+                </span>
+                <span style={{ fontSize: 13, color: "var(--text-2)", lineHeight: 1.55 }}>
+                  {row.description}
+                </span>
+                {(row.summary || row.blockers[0]) && (
+                  <span style={{ fontSize: 12, color: isBlocked ? "#92400E" : "var(--text-3)", lineHeight: 1.45 }}>
+                    {row.blockers[0] || row.summary}
+                  </span>
+                )}
+              </span>
+
+              <span style={{ display: "grid", gap: 8, justifyItems: "start", minWidth: 0 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                  <span style={{ width: 7, height: 7, borderRadius: 999, background: statusColor }} className={isRunning ? "animate-pulse" : ""} />
+                  <span style={{ fontSize: 11, color: statusColor, textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 650 }}>
+                    {row.status.replace("_", " ")}
+                  </span>
+                </span>
+                <span style={{ fontSize: 12, color: "var(--text-2)", lineHeight: 1.4 }}>{row.owner}</span>
+                <span style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  <span className="site-pill" data-status={row.nextActor === "founder" ? "warning" : "idle"}>{actorLabel}</span>
+                  <span className="site-pill" data-status={row.readyCount && row.readyCount >= row.expectedCount ? "done" : "idle"}>
+                    {row.readyCount}/{row.expectedCount || 0} artifacts
+                  </span>
+                  {row.dependsOn.length > 0 && (
+                    <span className="site-pill" data-status="idle">{row.dependsOn.length} deps</span>
+                  )}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AstraOrbitField() {
+  return (
+    <div className="astra-orbit-field" aria-hidden="true">
+      <span className="astra-comet" />
+      <span className="astra-comet" />
+    </div>
+  );
+}
+
 function AskPanel({ sessionId, founderId }: { sessionId: string; founderId: string }) {
   const [msg, setMsg] = useState(""); const [reply, setReply] = useState(""); const [loading, setLoading] = useState(false);
   const ask = async () => {
@@ -2923,9 +3093,10 @@ function LaunchChecklist({ sessionId, done, agents, agentList, selectedStack }: 
 
   return (
     <div data-tour="launch-checklist" style={{
-      borderRadius: 14, overflow: "hidden", transition: "border-color 0.3s, background 0.3s",
-      border: `1px solid ${allDone ? "rgba(61,158,95,0.3)" : "var(--line)"}`,
-      background: allDone ? "rgba(61,158,95,0.04)" : "rgba(255,255,255,0.02)",
+      borderRadius: "var(--r)", overflow: "hidden", transition: "border-color 0.3s, background 0.3s",
+      border: `1px solid ${allDone ? "rgba(16,185,129,0.30)" : "var(--border)"}`,
+      background: allDone ? "rgba(16,185,129,0.05)" : "var(--bg)",
+      boxShadow: "var(--shadow-sm)",
     }}>
       <button onClick={() => setOpen(o => !o)} style={{
         width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -2947,14 +3118,14 @@ function LaunchChecklist({ sessionId, done, agents, agentList, selectedStack }: 
         </div>
       </button>
       {open && (
-        <div style={{ borderTop: "1px solid var(--line-2)", padding: "10px 16px 14px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px" }}>
+        <div style={{ borderTop: "1px solid var(--border)", padding: "10px 16px 14px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "6px 16px" }}>
           {items.map(item => (
             <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{
                 width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
                 display: "flex", alignItems: "center", justifyContent: "center",
                 background: item.done ? "rgba(61,158,95,0.15)" : "transparent",
-                border: `1.5px solid ${item.done ? "#3D9E5F" : "rgba(255,255,255,0.18)"}`,
+                border: `1.5px solid ${item.done ? "#10B981" : "var(--border-strong)"}`,
                 transition: "all 0.2s",
               }}>
                 {item.done && <span style={{ fontSize: 8, color: "#3D9E5F", fontWeight: 800, lineHeight: 1 }}>✓</span>}
@@ -2988,22 +3159,22 @@ function WorkspaceSidebar({
     width: "100%",
     minHeight: 42,
     padding: "0 13px",
-    borderRadius: 22,
-    border: "1px solid rgba(176,180,186,0.10)",
-    background: "rgba(255,255,255,0.025)",
-    color: "var(--fg-dim)",
+    borderRadius: "var(--r)",
+    border: "1px solid var(--border)",
+    background: "var(--bg)",
+    color: "var(--text-2)",
     fontSize: 13,
     textDecoration: "none",
     cursor: "pointer",
   };
 
   return (
-    <LiquidGlass style={{ minWidth: 0 }} contentStyle={{ padding: 14, display: "flex", flexDirection: "column", gap: 14, minHeight: "100%" }}>
+    <div className="site-card" style={{ minWidth: 0, padding: 14, display: "flex", flexDirection: "column", gap: 14, minHeight: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 4px 10px" }}>
-        <div style={{ width: 28, height: 28, borderRadius: 10, display: "grid", placeItems: "center", background: "rgba(168,172,178,0.92)", color: "rgba(10,14,22,0.92)", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>A</div>
+        <div style={{ width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center", background: "var(--accent)", color: "#fff", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>A</div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 12, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--fg)", whiteSpace: "nowrap" }}>Astra</div>
-          <div style={{ fontSize: 10, color: "var(--fg-mute)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{status}</div>
+          <div style={{ fontSize: 12, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--text)", whiteSpace: "nowrap" }}>Astra</div>
+          <div style={{ fontSize: 10, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{status}</div>
         </div>
       </div>
 
@@ -3046,14 +3217,14 @@ function WorkspaceSidebar({
       <SessionHistory currentSessionId={sessionId} />
 
       <div style={{ display: "grid", gap: 10 }}>
-        <div style={{ padding: "12px 13px", borderRadius: 22, border: "1px solid rgba(176,180,186,0.10)", background: "rgba(255,255,255,0.025)", display: "grid", gap: 5 }}>
-          <span style={{ fontSize: 10, color: "var(--fg-mute)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Session</span>
-          <span style={{ fontSize: 12, color: "var(--fg)", lineHeight: 1.45, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
-          <span style={{ fontSize: 10, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sessionId || "new draft"}</span>
+        <div className="site-card-soft" style={{ padding: "12px 13px", display: "grid", gap: 5 }}>
+          <span style={{ fontSize: 10, color: "var(--text-3)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Session</span>
+          <span style={{ fontSize: 12, color: "var(--text)", lineHeight: 1.45, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
+          <span style={{ fontSize: 10, color: "var(--text-3)", fontFamily: "var(--font-jetbrains-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sessionId || "new draft"}</span>
         </div>
         <ThemeToggle />
       </div>
-    </LiquidGlass>
+    </div>
   );
 }
 
@@ -3884,7 +4055,7 @@ export function GoalWorkspace({
   };
 
   return (
-    <div className="astra-app-layout" style={{ width: "100%", maxWidth: 1900, margin: "0 auto", display: "grid", gridTemplateColumns: "minmax(190px, 220px) minmax(0, 1fr)", gap: 24, alignItems: "stretch" }}>
+    <div className="astra-app-layout astra-brand-stage" style={{ width: "100%", maxWidth: 1900, margin: "0 auto", display: "grid", gridTemplateColumns: "minmax(190px, 220px) minmax(0, 1fr)", gap: 24, alignItems: "stretch" }}>
       {showTour && <WorkspaceTour onDone={() => setShowTour(false)} />}
       <NewGoalOverlay open={newGoalOpen} onClose={() => setNewGoalOpen(false)} />
       <PlanOverlay open={planOpen} onClose={() => setPlanOpen(false)} title={title} planTasks={planTasks} detailedNodes={detailedNodes} agents={agents} />
@@ -3901,43 +4072,46 @@ export function GoalWorkspace({
         justifyContent: "center",
       }}>
       {/* Header */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div className="astra-run-header" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <AstraOrbitField />
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <h1 style={{ fontSize: 18, fontWeight: 600, color: "var(--fg)", margin: 0 }}>{title}</h1>
+          <h1 className="astra-run-title" style={{ color: "inherit", margin: 0 }}>{title}</h1>
           <span style={{
-            fontSize: 11, letterSpacing: "0.06em", padding: "3px 10px", borderRadius: 999,
-            color: done ? "#3D9E5F" : error ? "#C0392B" : reconnecting ? "#B45309" : connected ? "#2563EB" : "var(--fg-mute)",
-            background: done ? "rgba(61,158,95,0.08)" : error ? "rgba(192,57,43,0.08)" : reconnecting ? "rgba(180,83,9,0.08)" : connected ? "rgba(37,99,235,0.08)" : "rgba(0,0,0,0.04)",
-            border: `1px solid ${done ? "rgba(61,158,95,0.22)" : error ? "rgba(192,57,43,0.22)" : reconnecting ? "rgba(180,83,9,0.22)" : connected ? "rgba(37,99,235,0.22)" : "rgba(0,0,0,0.1)"}`,
+            fontSize: 11, letterSpacing: "0.12em", padding: "4px 10px", borderRadius: 999,
+            color: "#050505",
+            background: "#FFFFFF",
+            border: "1px solid rgba(255,255,255,0.9)",
+            textTransform: "uppercase",
+            fontFamily: "var(--font-jetbrains-mono)",
           }}>
             {statusText}
           </span>
-          {sessionId && <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{sessionId}</span>}
+          {sessionId && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.78)", fontFamily: "var(--font-jetbrains-mono)" }}>{sessionId}</span>}
         </div>
         {selectedStack && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>Agent stack</span>
-            <span style={{ fontSize: 13, color: "var(--fg)", fontWeight: 600 }}>{selectedStack.name}</span>
-            <span style={{ fontSize: 12, color: "var(--fg-dim)" }}>{selectedStack.primary_outcome}</span>
+            <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "rgba(255,255,255,0.68)", fontFamily: "var(--font-jetbrains-mono)" }}>Agent stack</span>
+            <span style={{ fontSize: 13, color: "#FFFFFF", fontWeight: 700 }}>{selectedStack.name}</span>
+            <span style={{ fontSize: 12, color: "rgba(255,255,255,0.78)" }}>{selectedStack.primary_outcome}</span>
           </div>
         )}
         {autoCompanyName && (
-          <span style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-dim)", letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "var(--font-jetbrains-mono)" }}>{autoCompanyName}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.84)", letterSpacing: "0.04em", textTransform: "uppercase", fontFamily: "var(--font-jetbrains-mono)" }}>{autoCompanyName}</span>
         )}
         {expandedGoal && (
-          <p style={{ margin: 0, fontSize: 12, color: "var(--fg-mute)", lineHeight: 1.6, maxWidth: 820 }}>{expandedGoal}</p>
+          <p style={{ margin: 0, fontSize: 13, color: "rgba(255,255,255,0.80)", lineHeight: 1.6, maxWidth: 820 }}>{expandedGoal}</p>
         )}
         {total > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ flex: 1, height: 3, borderRadius: 999, background: "rgba(0,0,0,0.08)", overflow: "hidden" }}>
-              <div style={{ height: "100%", borderRadius: 999, transition: "width 0.7s", width: `${(doneCount / total) * 100}%`, background: done ? "#3D9E5F" : "#2563EB" }} />
+            <div style={{ flex: 1, height: 3, borderRadius: 999, background: "rgba(255,255,255,0.24)", overflow: "hidden" }}>
+              <div style={{ height: "100%", borderRadius: 999, transition: "width 0.7s", width: `${(doneCount / total) * 100}%`, background: "#FFFFFF" }} />
             </div>
-            <span style={{ fontSize: 11, color: "var(--fg-dim)", flexShrink: 0, fontFamily: "var(--font-jetbrains-mono)" }}>{doneCount}/{total}</span>
+            <span style={{ fontSize: 11, color: "#FFFFFF", flexShrink: 0, fontFamily: "var(--font-jetbrains-mono)" }}>{doneCount}/{total}</span>
           </div>
         )}
         {total === 0 && connected && !error && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--fg-mute)" }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2563EB" }} className="animate-pulse" />
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "rgba(255,255,255,0.82)" }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#FFFFFF" }} className="animate-pulse" />
             Planner building task graph…
           </div>
         )}
@@ -3974,7 +4148,7 @@ export function GoalWorkspace({
 
           {/* Detail panel — full width */}
           {selectedState && (
-            <LiquidGlass style={{ minWidth: 0 }} contentStyle={{ padding: "20px 24px", display: "flex", flexDirection: "column" }}>
+            <div className="site-card astra-panel-white" style={{ minWidth: 0, padding: "20px 24px", display: "flex", flexDirection: "column" }}>
               <AgentDetail
                 state={selectedState}
                 planTask={selectedPlanTask}
@@ -3988,14 +4162,14 @@ export function GoalWorkspace({
                   rerunAgent(sessionId, agentName, founderId).catch(console.error);
                 }}
               />
-            </LiquidGlass>
+            </div>
           )}
         </div>
       )}
 
       {agentList.length > 0 && (
-        <div className="blob-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 18, alignItems: "stretch" }}>
-          <LiquidGlass contentStyle={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 18, height: 420, minHeight: 420 }}>
+        <div className="astra-dashboard-grid">
+          <div className="site-card" style={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 18, height: 420, minHeight: 420 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <span className="site-label">Progress</span>
               <h3 style={{ fontSize: 18, margin: 0 }}>Session health</h3>
@@ -4008,7 +4182,7 @@ export function GoalWorkspace({
                   ["Errors", failedCount],
                   ["Total", total],
                 ].map(([label, value]) => (
-                  <div key={label} style={{ padding: "11px 10px", borderRadius: 18, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(176,180,186,0.10)", display: "grid", gap: 4 }}>
+                  <div key={label} className="astra-mini-slab" style={{ padding: "11px 10px", borderRadius: 0, display: "grid", gap: 4 }}>
                     <span style={{ fontSize: 17, color: "var(--fg)" }}>{value}</span>
                     <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</span>
                   </div>
@@ -4023,7 +4197,7 @@ export function GoalWorkspace({
                       ? `${Math.round(sessionCost.cached_tokens / sessionCost.total_tokens * 100)}%`
                       : "—"],
                   ].map(([label, value]) => (
-                    <div key={label} style={{ padding: "11px 10px", borderRadius: 18, background: "rgba(37,99,235,0.04)", border: "1px solid rgba(37,99,235,0.12)", display: "grid", gap: 4 }}>
+                    <div key={label} className="astra-mini-slab" style={{ padding: "11px 10px", borderRadius: 0, display: "grid", gap: 4 }}>
                       <span style={{ fontSize: 15, color: "var(--fg)", fontFamily: "var(--font-jetbrains-mono)" }}>{value}</span>
                       <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</span>
                     </div>
@@ -4040,11 +4214,11 @@ export function GoalWorkspace({
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div style={{ padding: "12px 13px", borderRadius: 18, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)", display: "grid", gap: 3 }}>
+                <div className="astra-mini-slab" style={{ padding: "12px 13px", borderRadius: 0, display: "grid", gap: 3 }}>
                   <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Active lanes</span>
                   <span style={{ fontSize: 13, color: "var(--fg)", lineHeight: 1.45 }}>{activeAgents.length ? activeAgents.map(a => AGENT_LABELS[a] ?? a).join(" · ") : "No agents running"}</span>
                 </div>
-                <div style={{ padding: "12px 13px", borderRadius: 18, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)", display: "grid", gap: 3 }}>
+                <div className="astra-mini-slab" style={{ padding: "12px 13px", borderRadius: 0, display: "grid", gap: 3 }}>
                   <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Captured activity</span>
                   <span style={{ fontSize: 13, color: "var(--fg)", lineHeight: 1.45 }}>{totalVisitedUrls} sites visited · {totalCommits} commits · {outcomes.length} outcomes</span>
                 </div>
@@ -4113,9 +4287,9 @@ export function GoalWorkspace({
                 )}
               </div>
             </div>
-          </LiquidGlass>
+          </div>
 
-          <LiquidGlass contentStyle={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 18, height: 420, minHeight: 420 }}>
+          <div className="site-card astra-panel-blue" style={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 18, minHeight: 420 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <span className="site-label">Plan</span>
               <h3 style={{ fontSize: 18, margin: 0 }}>Task graph</h3>
@@ -4186,54 +4360,13 @@ export function GoalWorkspace({
                   </div>
                 </div>
               )}
-              {planTasks.length ? sortAgentNamesByOrder(planTasks.map(t => t.agent)).map((agentName, index) => {
-                const task = planTasks.find(t => t.agent === agentName);
-                const state = visibleAgents[agentName];
-                if (!task) return null;
-                return (
-                  <div key={agentName} style={{ display: "grid", gridTemplateColumns: "22px 1fr", alignItems: "flex-start", gap: 10 }}>
-                    <span style={{ width: 22, height: 22, borderRadius: 999, display: "grid", placeItems: "center", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(176,180,186,0.10)", color: "var(--fg-mute)", fontSize: 10, fontFamily: "var(--font-jetbrains-mono)" }}>{index + 1}</span>
-                    <div style={{ display: "grid", gap: 3 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 12, color: "var(--fg)" }}>{AGENT_LABELS[agentName] ?? agentName}</span>
-                        <span style={{ fontSize: 10, color: STATUS_COLOR[state?.status ?? "waiting"], textTransform: "uppercase", letterSpacing: "0.08em" }}>{state?.status ?? "waiting"}</span>
-                      </div>
-                      <span style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.45 }}>{task.instruction}</span>
-                    </div>
-                  </div>
-                );
-              }) : (
-                <div style={{ padding: "12px 13px", borderRadius: 18, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)", color: "var(--fg-mute)", fontSize: 13, lineHeight: 1.6 }}>
-                  Waiting for the planner to publish the task graph.
-                </div>
-              )}
-              {sessionWorkboard && (
-                <div style={{ display: "grid", gap: 9, borderTop: "1px solid rgba(176,180,186,0.10)", paddingTop: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <span className="site-label">Workboard</span>
-                    <span style={{ fontSize: 11, color: sessionWorkboard.counts.blocked ? "#D97706" : "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                      {sessionWorkboard.counts.founder_next} founder · {sessionWorkboard.counts.agent_next} agent
-                    </span>
-                  </div>
-                  <div style={{ padding: "12px 13px", borderRadius: 18, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)", display: "grid", gap: 8 }}>
-                    <span style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.45 }}>{sessionWorkboard.summary}</span>
-                    {sessionWorkboard.items.slice(0, 5).map(item => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setActiveAgent(item.agent)}
-                        style={{ display: "grid", gap: 4, padding: "9px 10px", borderRadius: 14, background: item.blockers.length ? "rgba(245,158,11,0.08)" : "rgba(255,255,255,0.025)", border: `1px solid ${item.blockers.length ? "rgba(245,158,11,0.18)" : "rgba(176,180,186,0.10)"}`, textAlign: "left" }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                          <span style={{ fontSize: 12, color: "var(--fg)" }}>{item.title}</span>
-                          <span style={{ fontSize: 10, color: item.next_actor === "founder" ? "#D97706" : item.next_actor === "founder_review" ? "var(--fg-mute)" : "#2563EB", textTransform: "uppercase", letterSpacing: "0.08em" }}>{item.next_actor.replace("_", " ")}</span>
-                        </div>
-                        <span style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.4 }}>{item.status}{item.blockers.length ? ` · ${item.blockers[0]}` : item.summary ? ` · ${item.summary}` : ""}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <TaskWorkboardTable
+                planTasks={planTasks}
+                agents={visibleAgents}
+                sessionWorkboard={sessionWorkboard}
+                stackOperatingPlan={stackOperatingPlan}
+                onSelectAgent={setActiveAgent}
+              />
               {companyGenome && (
                 <div style={{ display: "grid", gap: 9, borderTop: "1px solid rgba(176,180,186,0.10)", paddingTop: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -4285,9 +4418,9 @@ export function GoalWorkspace({
                 </div>
               )}
             </div>
-          </LiquidGlass>
+          </div>
 
-          <LiquidGlass contentStyle={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 18, height: 420, minHeight: 420 }}>
+          <div className="site-card astra-panel-white" style={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 18, minHeight: 360 }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span className="site-label">Outputs</span>
@@ -4437,7 +4570,7 @@ export function GoalWorkspace({
                 </div>
               )}
             </div>
-          </LiquidGlass>
+          </div>
         </div>
       )}
 

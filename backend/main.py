@@ -209,7 +209,7 @@ async def mcp_http(request: Request):
             args = params.get("arguments") or {}
             founder_id = args.get("founder_id") or "founder_001"
             if name == "astra_submit_goal":
-                import uuid as _uuid
+                from backend.core.session_ids import new_session_id
                 from backend.core.factory import get_orchestrator
                 orch = get_orchestrator()
                 stack_id = args.get("stack_id") or "idea_to_revenue"
@@ -219,7 +219,7 @@ async def mcp_http(request: Request):
                 if stack_id == "custom" and args.get("agents"):
                     constraints["agents"] = args["agents"]
                 constraints["stack_id"] = stack_id
-                session_id = _uuid.uuid4().hex[:12]
+                session_id = new_session_id()
                 _asyncio.create_task(orch.run(
                     goal=args["goal"], founder_id=founder_id,
                     constraints=constraints, session_id=session_id,
