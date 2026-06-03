@@ -273,12 +273,30 @@ def _format_deep_report(query: str, report: str, sources: list) -> str:
     return "\n".join(lines)
 
 
+def _robust_text_search(query: str, max_results: int) -> list:
+    """ddgs text search rotating reliable backends (auto/bing) with retries —
+    the default/duckduckgo/google/brave backends often return 0 on this host."""
+    import time as _t
+    try:
+        from ddgs import DDGS
+    except Exception:
+        return []
+    for backend in ("auto", "bing"):
+        for attempt in range(2):
+            try:
+                r = list(DDGS(timeout=12).text(query, max_results=max_results, backend=backend))
+                if r:
+                    return r
+            except Exception:
+                pass
+            _t.sleep(0.3 * (attempt + 1))
+    return []
+
+
 def web_search(query: str, max_results: int = 8) -> dict:
     """Search the web. Returns {query, results: [{title, url, snippet}], formatted: str}."""
     try:
-        from ddgs import DDGS
-        with DDGS() as ddgs:
-            raw = list(ddgs.text(query, max_results=max_results))
+        raw = _robust_text_search(query, max_results)
         results = [
             {"title": r.get("title", ""), "url": r.get("href", ""), "snippet": r.get("body", "")}
             for r in raw
@@ -296,9 +314,22 @@ def web_search(query: str, max_results: int = 8) -> dict:
 def news_search(query: str, max_results: int = 5) -> dict:
     """Search recent news. Returns {query, results: [{title, url, snippet, date}], formatted: str}."""
     try:
-        from ddgs import DDGS
-        with DDGS() as ddgs:
-            raw = list(ddgs.news(query, max_results=max_results))
+        import time as _t
+        raw = []
+        try:
+            from ddgs import DDGS
+            for backend in ("auto", "bing"):
+                try:
+                    raw = list(DDGS(timeout=12).news(query, max_results=max_results, backend=backend))
+                    if raw:
+                        break
+                except Exception:
+                    _t.sleep(0.3)
+        except Exception:
+            raw = []
+        # Fall back to web text search if news returns nothing.
+        if not raw:
+            return web_search(query, max_results=max_results)
         results = [
             {
                 "title": r.get("title", ""),

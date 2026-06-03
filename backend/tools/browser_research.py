@@ -13,6 +13,34 @@ logger = logging.getLogger(__name__)
 
 _BH_SRC = "/tmp/browser-harness/src"
 
+# Reliable search backends in priority order. On this host the default/
+# duckduckgo/google/brave backends frequently return "No results found",
+# while "auto" and "bing" work fast (<2s). Rotate through the good ones with
+# retries so a single rate-limited backend never yields 0 sites.
+_SEARCH_BACKENDS = ("auto", "bing")
+
+
+def _robust_search(query: str, max_results: int = 12) -> list[dict]:
+    """Return search results, rotating reliable ddgs backends with retries.
+    Never hangs (each call is bounded) and never silently returns 0 if any
+    backend works."""
+    import time as _t
+    try:
+        from ddgs import DDGS
+    except Exception as e:
+        logger.warning("ddgs import failed: %s", e)
+        return []
+    for backend in _SEARCH_BACKENDS:
+        for attempt in range(2):
+            try:
+                r = list(DDGS(timeout=12).text(query, max_results=max_results, backend=backend))
+                if r:
+                    return r
+            except Exception as e:
+                logger.debug("search backend=%s attempt=%d failed: %s", backend, attempt, e)
+            _t.sleep(0.3 * (attempt + 1))
+    return []
+
 _QUERY_BLUEPRINTS = {
     "market": [
         "{topic} market size TAM SAM SOM 2025 report statistics",
@@ -246,12 +274,9 @@ def search_and_fetch(query: str, max_results: int = 12) -> dict:
     of each result page. Returns rich page content, not just snippets.
     Use for: websites, news, blogs, company pages, research papers, anything.
     """
-    try:
-        from ddgs import DDGS
-        with DDGS() as ddgs:
-            raw = list(ddgs.text(query, max_results=max_results * 3))
-    except Exception as e:
-        return {"query": query, "results": [], "error": f"Search failed: {e}"}
+    raw = _robust_search(query, max_results=max_results * 2)
+    if not raw:
+        return {"query": query, "results": [], "error": "Search returned no results"}
 
     ranked_raw = sorted(raw, key=lambda r: _source_score(r, query), reverse=True)
     snippets = {}
