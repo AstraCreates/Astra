@@ -11,12 +11,19 @@ import logging
 import os
 import re
 import subprocess
+import threading
 import uuid
 from pathlib import Path
 
 import openai
 
 from backend.config import settings
+
+# Cap concurrent Claude Code (openclaude) subprocesses across ALL sessions so a
+# burst of technical-agent builds can't exhaust CPU/RAM on a small box. Each
+# build is mostly LLM-I/O bound; this just prevents pile-ups. Tune via env.
+_BUILD_SLOTS = int(os.environ.get("ASTRA_MAX_CONCURRENT_BUILDS", "4"))
+_build_semaphore = threading.Semaphore(_BUILD_SLOTS)
 
 logger = logging.getLogger(__name__)
 
@@ -251,7 +258,8 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
     else:
         shell_cmd = f"cd {local!r} && {oc_args_str} '{escaped_prompt}'"
 
-    r = subprocess.run(shell_cmd, shell=True, capture_output=True, text=True, timeout=timeout, env=env)
+    with _build_semaphore:
+        r = subprocess.run(shell_cmd, shell=True, capture_output=True, text=True, timeout=timeout, env=env)
     if r.returncode not in (0, 1):
         logger.warning("openclaude exited %d: %s", r.returncode, r.stderr[:200])
     return r.stdout.strip()

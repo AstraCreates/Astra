@@ -24,7 +24,28 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_lock = threading.Lock()
+# Global lock guards ONLY the shared index.json. Per-session data (events.jsonl,
+# meta.json) is guarded by per-session locks so concurrent sessions don't
+# serialize their event writes through a single global lock — the main
+# contention point when many users run at once.
+_index_lock = threading.Lock()
+_session_locks: dict[str, threading.Lock] = {}
+_session_locks_guard = threading.Lock()
+
+
+def _session_lock(session_id: str) -> threading.Lock:
+    lock = _session_locks.get(session_id)
+    if lock is None:
+        with _session_locks_guard:
+            lock = _session_locks.get(session_id)
+            if lock is None:
+                lock = threading.Lock()
+                _session_locks[session_id] = lock
+    return lock
+
+
+# Back-compat alias (older call sites used the single global lock).
+_lock = _index_lock
 
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -87,15 +108,16 @@ def register_session(
         "completed_at": None,
         "artifact_count": 0,
     }
-    with _lock:
+    with _session_lock(session_id):
         meta_path(session_id).write_text(json.dumps(meta, indent=2))
+    with _index_lock:
         index = _load_index()
         index[session_id] = {k: meta[k] for k in ("session_id", "founder_id", "goal", "stack_id", "status", "created_at", "completed_at")}
         _save_index(index)
 
 
 def update_session_status(session_id: str, status: str, artifact_count: int | None = None) -> None:
-    with _lock:
+    with _session_lock(session_id):
         p = meta_path(session_id)
         try:
             meta = json.loads(p.read_text()) if p.exists() else {"session_id": session_id}
@@ -107,7 +129,8 @@ def update_session_status(session_id: str, status: str, artifact_count: int | No
         if artifact_count is not None:
             meta["artifact_count"] = artifact_count
         p.write_text(json.dumps(meta, indent=2))
-        # Update index
+    # Update the shared index under its own lock.
+    with _index_lock:
         index = _load_index()
         if session_id in index:
             index[session_id]["status"] = status
@@ -118,10 +141,11 @@ def update_session_status(session_id: str, status: str, artifact_count: int | No
 # ── Event persistence ──────────────────────────────────────────────────────────
 
 def append_event(session_id: str, event_id: int, event: dict) -> None:
-    """Append one event to the session's JSONL file. Thread-safe."""
+    """Append one event to the session's JSONL file. Thread-safe per session."""
     line = json.dumps({"id": event_id, "event": event}, separators=(",", ":")) + "\n"
     try:
-        with _lock:
+        # Per-session lock: appends for different sessions run concurrently.
+        with _session_lock(session_id):
             with events_path(session_id).open("a") as f:
                 f.write(line)
         # Mark done/error in meta
@@ -137,11 +161,12 @@ def append_event(session_id: str, event_id: int, event: dict) -> None:
 
 
 def _increment_artifacts(session_id: str) -> None:
-    p = meta_path(session_id)
     try:
-        meta = json.loads(p.read_text()) if p.exists() else {}
-        meta["artifact_count"] = meta.get("artifact_count", 0) + 1
-        p.write_text(json.dumps(meta, indent=2))
+        with _session_lock(session_id):
+            p = meta_path(session_id)
+            meta = json.loads(p.read_text()) if p.exists() else {}
+            meta["artifact_count"] = meta.get("artifact_count", 0) + 1
+            p.write_text(json.dumps(meta, indent=2))
     except Exception:
         pass
 
