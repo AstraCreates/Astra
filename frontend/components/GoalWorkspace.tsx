@@ -594,22 +594,43 @@ class PreviewErrorBoundary extends Component<{ children: ReactNode }, { hasError
   }
 }
 
-function DesignPreview({ state }: { state: AgentState }) {
+function DesignPreview({ state, sessionId }: { state: AgentState; sessionId?: string }) {
   const result = state.result ?? {};
 
-  // Logos from design agent
-  const logoWordmark = result.logo_wordmark as Record<string, unknown> | undefined;
-  const logoIcon = result.logo_icon as Record<string, unknown> | undefined;
+  // SSE strips large base64 images, so fetch the real ones from the durable store.
+  const [fetched, setFetched] = useState<{ logos?: Record<string, string>; brand_images?: Array<{ base64: string; prompt?: string }> } | null>(null);
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    const load = () => {
+      apiFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/images`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (!cancelled && d) setFetched(d); })
+        .catch(() => {});
+    };
+    load();
+    // Poll while the design agent is still working so images appear as they finish.
+    const interval = state.status === "done" ? null : setInterval(load, 8000);
+    return () => { cancelled = true; if (interval) clearInterval(interval); };
+  }, [sessionId, state.status]);
 
-  // Brand images — photos only, exclude logos (which live in logoWordmark/logoIcon)
+  const isValidB64 = (b?: unknown) => typeof b === "string" && b.length > 100 && !b.startsWith("[base64:");
+
+  // Logos: prefer fetched (full) images; fall back to result if it has real base64.
+  const rawWordmark = result.logo_wordmark as Record<string, unknown> | undefined;
+  const rawIcon = result.logo_icon as Record<string, unknown> | undefined;
+  const logoWordmark = (fetched?.logos?.wordmark ? { base64: fetched.logos.wordmark } : (isValidB64(rawWordmark?.base64) ? rawWordmark : undefined)) as Record<string, unknown> | undefined;
+  const logoIcon = (fetched?.logos?.icon ? { base64: fetched.logos.icon } : (isValidB64(rawIcon?.base64) ? rawIcon : undefined)) as Record<string, unknown> | undefined;
+
   const logoBase64Set = new Set([logoWordmark?.base64, logoIcon?.base64].filter(Boolean));
   const _bi = result.brand_images ?? result.brand_image;
   const brandImagesRaw = (Array.isArray(_bi) ? _bi : []) as Array<Record<string, unknown>>;
   const brandImages = [
+    ...(fetched?.brand_images ?? []).map(img => ({ base64: img.base64, url: undefined as string | undefined, prompt: img.prompt })),
     ...brandImagesRaw.map(img => ({ base64: img.base64 as string | undefined, url: img.url as string | undefined, prompt: img.prompt as string | undefined })),
     ...(state.adImages ?? []),
   ].filter((img, i, arr) =>
-    (img.base64 || img.url) &&
+    (isValidB64(img.base64) || img.url) &&
     !logoBase64Set.has(img.base64) &&
     arr.findIndex(x => (x.url && x.url === img.url) || (x.base64 && x.base64 === img.base64)) === i
   );
@@ -1428,7 +1449,7 @@ function AgentPreview({ state, founderId, company, sessionId }: { state: AgentSt
       return <ResearchPreview state={state} />;
     case "web": return <WebPreview state={state} sessionId={sessionId} founderId={founderId} />;
     case "technical": return <TechnicalPreview state={state} />;
-    case "design": return <DesignPreview state={state} />;
+    case "design": return <DesignPreview state={state} sessionId={sessionId} />;
     case "marketing": return <MarketingPreview state={state} />;
     case "legal": return <LegalPreview state={state} founderId={founderId} company={company} />;
     case "sales": return <SalesPreview state={state} />;

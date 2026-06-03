@@ -407,6 +407,52 @@ async def kill_session(session_id: str, request: Request):
     return {"ok": True, "killed": cancelled, "session_id": session_id}
 
 
+@router.get("/sessions/{session_id}/images")
+async def session_images(session_id: str, request: Request):
+    """Return design images (logos, brand board) with full base64 from the durable
+    store. SSE strips large base64 to avoid browser crashes, so the preview fetches
+    the real images here."""
+    from backend.core.session_store import load_events
+    events = await asyncio.to_thread(load_events, session_id) or []
+    logos: dict[str, str] = {}
+    brand_images: list[dict] = []
+    seen: set[str] = set()
+
+    def _add_image(b64, prompt="", style=""):
+        if not isinstance(b64, str) or len(b64) < 100:
+            return
+        key = b64[:64]
+        if key in seen:
+            return
+        seen.add(key)
+        if style in ("wordmark", "icon"):
+            logos[style] = b64
+        else:
+            brand_images.append({"base64": b64, "prompt": str(prompt or "")[:300]})
+
+    def _scan(obj):
+        if isinstance(obj, dict):
+            b64 = obj.get("base64")
+            if isinstance(b64, str):
+                _add_image(b64, obj.get("prompt", ""), obj.get("style", ""))
+            for k, v in obj.items():
+                if k == "logo_wordmark" and isinstance(v, dict):
+                    _add_image(v.get("base64"), v.get("prompt", ""), "wordmark")
+                elif k == "logo_icon" and isinstance(v, dict):
+                    _add_image(v.get("base64"), v.get("prompt", ""), "icon")
+                else:
+                    _scan(v)
+        elif isinstance(obj, list):
+            for item in obj:
+                _scan(item)
+
+    for _id, e in events:
+        if e.get("type") in ("agent_action_result", "agent_done", "stack_artifact"):
+            _scan(e.get("result"))
+            _scan(e.get("artifact"))
+    return {"logos": logos, "brand_images": brand_images[:12]}
+
+
 @router.get("/sessions/{session_id}/meta")
 async def session_meta(session_id: str, request: Request):
     """Full session metadata from durable store."""
