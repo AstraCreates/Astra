@@ -206,10 +206,15 @@ def _commit_and_push(local: str, message: str) -> str | None:
 
 
 def _make_env() -> dict:
+    # openclaude talks to the DeepInfra endpoint below, so it needs a DeepInfra
+    # key. Prefer the DeepInfra-specific keys; planner_model_api_key is often an
+    # OpenRouter key (sk-or-...) which would 401 against DeepInfra and make every
+    # build spin until timeout. Only fall back to it if it's NOT an OpenRouter key.
+    planner_key = getattr(settings, "planner_model_api_key", "") or ""
     deepinfra_key = (
-        getattr(settings, "planner_model_api_key", "")
-        or getattr(settings, "deepinfra_api_key", "")
+        getattr(settings, "deepinfra_api_key", "")
         or getattr(settings, "agent_model_api_key", "")
+        or (planner_key if not planner_key.startswith("sk-or-") else "")
     )
     env = os.environ.copy()
     env["OPENAI_BASE_URL"] = "https://api.deepinfra.com/v1/openai"
