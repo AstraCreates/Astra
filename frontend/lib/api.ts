@@ -911,9 +911,10 @@ export async function submitGoal(
   constraints: Record<string, unknown> = {},
   stackId = "idea_to_revenue"
 ): Promise<{ session_id: string; status: string }> {
-  const res = await apiFetch(`${BASE}/goal`, {
+  // Use plain fetch — backend auth is disabled so no Clerk token needed
+  const res = await fetch(`${BASE}/goal`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "x-astra-user-id": founderId },
     body: JSON.stringify({ founder_id: founderId, instruction, constraints, stack_id: stackId }),
   });
   if (!res.ok) throw new Error(await res.text());

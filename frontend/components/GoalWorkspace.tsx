@@ -2579,12 +2579,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
       router.push(`/?session=${encodeURIComponent(result.session_id)}&instruction=${encodeURIComponent(instruction)}&founder=${encodeURIComponent(founderId)}&company=${encodeURIComponent(companyName)}`);
       onClose();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // Clerk token errors: goal was submitted (backend returns 200 before auth check),
-      // but we lost the session_id. Just reset and let user try again.
-      setError(msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("clerk")
-        ? "Auth token issue — please try again."
-        : (msg || "Failed to submit goal"));
+      setError(err instanceof Error ? err.message : "Failed to submit goal");
       setLoading(false);
     }
   }
