@@ -177,6 +177,34 @@ def _write_session_log(session_id: str, event: dict) -> None:
         pass
 
 
+def _strip_base64(event: dict) -> dict:
+    """Strip large base64 fields from events before putting them in the SSE queue.
+    Base64 images can be 300KB-1MB each and cause browser crashes when streamed.
+    The full data is preserved in the JSONL store — only the SSE stream is stripped.
+    """
+    import re as _re
+    result = event.get("result")
+    if not isinstance(result, dict):
+        return event
+    # Check if any value looks like base64 image data (>10KB)
+    has_large_b64 = any(
+        isinstance(v, str) and len(v) > 10_000 and _re.match(r'^[A-Za-z0-9+/=]+$', v[:100])
+        for v in result.values()
+    )
+    if not has_large_b64:
+        return event
+    # Strip base64 but keep metadata
+    clean_result = {}
+    for k, v in result.items():
+        if isinstance(v, str) and len(v) > 10_000 and _re.match(r'^[A-Za-z0-9+/=]+$', v[:100]):
+            clean_result[k] = f"[base64:{len(v)}chars]"
+        elif isinstance(v, dict) and isinstance(v.get("base64"), str) and len(v["base64"]) > 10_000:
+            clean_result[k] = {**v, "base64": f"[base64:{len(v['base64'])}chars]"}
+        else:
+            clean_result[k] = v
+    return {**event, "result": clean_result, "_base64_stripped": True}
+
+
 async def publish(session_id: str, event: dict) -> None:
     event.setdefault("ts_unix", time.time())
     event.setdefault("ts_iso", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(event["ts_unix"])))
@@ -184,7 +212,7 @@ async def publish(session_id: str, event: dict) -> None:
     _buffer(session_id, event_id, event)
     _write_session_log(session_id, event)
     loop = asyncio.get_running_loop()
-    # Persist to JSONL (durable, no TTL)
+    # Persist full event (with base64) to JSONL store
     from backend.core.session_store import append_event as _ss_append
     loop.run_in_executor(None, _ss_append, session_id, event_id, event)
     # Also persist to Redis (fast in-flight buffer)
@@ -194,7 +222,9 @@ async def publish(session_id: str, event: dict) -> None:
         loop.run_in_executor(None, record_run_event, session_id, event_id, event)
     except Exception:
         pass
-    await _get_queue(session_id).put((event_id, event))
+    # Strip base64 before putting into SSE queue to prevent browser crashes
+    sse_event = _strip_base64(event)
+    await _get_queue(session_id).put((event_id, sse_event))
 
 
 _main_loop: asyncio.AbstractEventLoop | None = None
