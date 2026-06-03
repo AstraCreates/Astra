@@ -21,4 +21,7 @@ ENV PYTHONPATH=/app
 
 EXPOSE 8000
 
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# Worker count is env-driven (WEB_CONCURRENCY, default 1). Running >1 worker
+# requires ASTRA_MULTIWORKER=1 so the SSE fan-out and kill switch use Redis
+# (cross-worker) instead of in-process state.
+CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers ${WEB_CONCURRENCY:-1}"]

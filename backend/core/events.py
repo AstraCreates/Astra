@@ -29,16 +29,41 @@ _REDIS_TTL = 8 * 3600  # 8 hours
 
 # ── Redis helpers ──────────────────────────────────────────────────────────────
 
+_redis_client = None
+_redis_failed_at = 0.0
+
+
 def _redis():
-    """Return a connected Redis client or None if unavailable."""
+    """Return a cached, pooled Redis client (or None if unavailable).
+
+    Previously this opened a fresh connection and ping()'d on every call —
+    once per event, so a new TCP connection per event under load. redis-py's
+    client is thread-safe and pools connections internally, so we cache it and
+    only reconnect on failure (with a short cooldown to avoid hammering)."""
+    global _redis_client, _redis_failed_at
+    if _redis_client is not None:
+        return _redis_client
+    if time.time() - _redis_failed_at < 5:
+        return None  # recently failed — don't retry-storm
     try:
         import redis as _redis_lib
         from backend.config import settings
-        r = _redis_lib.from_url(settings.redis_url, decode_responses=True, socket_connect_timeout=1)
+        r = _redis_lib.from_url(
+            settings.redis_url, decode_responses=True,
+            socket_connect_timeout=2, socket_timeout=5,
+            health_check_interval=30, max_connections=64,
+        )
         r.ping()
+        _redis_client = r
         return r
     except Exception:
+        _redis_failed_at = time.time()
         return None
+
+
+def _redis_reset() -> None:
+    global _redis_client
+    _redis_client = None
 
 
 def _redis_append(session_id: str, event_id: int, event: dict) -> None:
@@ -50,7 +75,7 @@ def _redis_append(session_id: str, event_id: int, event: dict) -> None:
         r.rpush(key, json.dumps({"id": event_id, "event": event}))
         r.expire(key, _REDIS_TTL)
     except Exception:
-        pass
+        _redis_reset()
 
 
 def _redis_load(session_id: str) -> list[tuple[int, dict]] | None:
