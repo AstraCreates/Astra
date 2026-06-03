@@ -645,8 +645,9 @@ def _sanitize_package_json(repo_dir: str) -> None:
 
 
 def _missing_mvp_files(local: str, required: list[str]) -> list[str]:
-    existing = set(_staged_files(local))
-    return [f for f in required if f not in existing]
+    # Check disk (works whether or not files are git-staged / pushed).
+    base = Path(local)
+    return [f for f in required if not (base / f).exists()]
 
 
 def _file_prompt(rel_path: str, goal: str, context: str, local: str) -> str:
@@ -725,27 +726,38 @@ def run_mvp_loop(
         if is_github:
             _pull(local)
 
-        # Pass 1: write each required file that's missing — one fresh openclaude call per file
-        missing = _missing_mvp_files(local, required_files)
-        logger.info("Pass 1: %d files to write", len(missing))
-        # Complex files (backend) need more time — simple files (config) need less
-        _LARGE_FILES = {"backend/main.py", "backend/routers/api.py", "frontend/app/page.tsx",
-                        "frontend/app/dashboard/page.tsx"}
-        for rel_path in missing:
-            file_timeout = 600 if rel_path in _LARGE_FILES else 300
-            prompt = _file_prompt(rel_path, goal, context, local)
-            logger.info("  writing %s (timeout=%ds)...", rel_path, file_timeout)
-            _run_claude(local, prompt, session_id=None, timeout=file_timeout, founder_id=founder_id, app_session_id=session_id)
-            # Verify file appeared
-            if Path(local, rel_path).exists():
-                logger.info("  ✓ %s written", rel_path)
-            else:
-                logger.warning("  ✗ %s NOT written — retry", rel_path)
-                retry_prompt = (
-                    f"Use your Write tool RIGHT NOW to create the file `{rel_path}` in the current directory. "
-                    f"Project: {goal}. Write real, complete code. No explanations."
-                )
-                _run_claude(local, retry_prompt, session_id=None, timeout=file_timeout, founder_id=founder_id, app_session_id=session_id)
+        # Pass 1: ONE autonomous build of the whole MVP in a persistent openclaude
+        # session (it loops internally — writes every file, runs/tests, fixes),
+        # then iterate until all required files exist. Not one-shot-per-file.
+        build_sid = str(uuid.uuid4())
+        manifest = "\n".join(f"- {f}" for f in required_files)
+        build_prompt = (
+            f"Build a COMPLETE, working MVP for this product:\n{goal}\n\n"
+            + (f"Context:\n{context}\n\n" if context else "")
+            + "Create real, production-ready code for ALL of these files (and any others needed to run):\n"
+            + manifest + "\n\n"
+            + "Rules: no stubs, no TODOs, no placeholders — every function, route, and component fully "
+              "implemented and runnable. Build the ENTIRE app now, file by file, using your Write/Edit/Bash "
+              "tools. Keep working until the whole MVP is complete; do not stop after one file."
+        )
+        logger.info("Pass 1: holistic MVP build (%d target files)", len(required_files))
+        _run_claude(local, build_prompt, session_id=build_sid, timeout=1800,
+                    founder_id=founder_id, app_session_id=session_id)
+
+        # Completion loop: keep going until required files exist (up to 3 rounds).
+        for _round in range(3):
+            _stage_all(local)
+            missing = _missing_mvp_files(local, required_files)
+            if not missing:
+                break
+            logger.info("Completion round %d: %d still missing", _round + 1, len(missing))
+            fix_prompt = (
+                "These required files are still missing or incomplete: " + ", ".join(missing)
+                + ". Create and fully implement them NOW with your Write tool — real, complete code. "
+                + f"Project: {goal}."
+            )
+            _run_claude(local, fix_prompt, session_id=build_sid, timeout=900,
+                        founder_id=founder_id, app_session_id=session_id)
 
         _sanitize_package_json(local)
         if is_github:
