@@ -419,15 +419,20 @@ async def session_images(session_id: str, request: Request):
     seen: set[str] = set()
 
     def _add_image(b64, prompt="", style=""):
-        if not isinstance(b64, str) or len(b64) < 100:
+        # Skip placeholders ("[base64:N]") and truncated copies — real images are
+        # ~1MB; the design agent_done result stores a truncated ~1KB copy.
+        if not isinstance(b64, str) or len(b64) < 5000:
             return
-        key = b64[:64]
-        if key in seen:
-            return
-        seen.add(key)
         if style in ("wordmark", "icon"):
-            logos[style] = b64
+            # Keep the longest (full) image per logo slot — same PNG header would
+            # otherwise let a truncated copy win on a prefix-based dedup.
+            if style not in logos or len(b64) > len(logos[style]):
+                logos[style] = b64
         else:
+            key = b64[:200] + str(len(b64))
+            if key in seen:
+                return
+            seen.add(key)
             brand_images.append({"base64": b64, "prompt": str(prompt or "")[:300]})
 
     def _scan(obj):
