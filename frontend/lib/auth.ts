@@ -14,6 +14,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  basePath: "/api/auth",
   providers,
   callbacks: {
     session({ session, token }) {
@@ -25,6 +26,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     jwt({ token }) {
       return token;
     },
+  },
+  pages: {
+    signIn: "/",
+    error: "/",
   },
   secret: process.env.NEXTAUTH_SECRET ?? "astra-dev-secret-change-in-prod",
   trustHost: true,
