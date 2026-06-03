@@ -329,7 +329,10 @@ async def stream_goal(session_id: str, request: Request):
 async def list_sessions(request: Request, founder_id: str = "", limit: int = 50):
     """List all sessions for a founder, newest first."""
     from backend.core.session_store import list_sessions as _ls
-    return {"sessions": _ls(founder_id=founder_id or None, limit=limit)}
+    # Offload the blocking index.json read so it doesn't stall the event loop
+    # (single worker serves all sessions — sync file I/O here serializes them).
+    sessions = await asyncio.to_thread(_ls, founder_id or None, limit)
+    return {"sessions": sessions}
 
 
 @router.delete("/sessions/{session_id}")
