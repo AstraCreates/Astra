@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     agent_model_name: str = "deepseek-ai/DeepSeek-V4-Flash"
     # OpenRouter — NOT overridden by Coolify (new field names)
     openrouter_api_key: str = ""
+    openrouter_api_key_2: str = ""
+    openrouter_api_key_3: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     or_planner_model: str = "tencent/hy3-preview"
     or_highoutput_model: str = "tencent/hy3-preview"

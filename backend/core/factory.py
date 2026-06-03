@@ -44,7 +44,9 @@ def get_orchestrator() -> Orchestrator:
     global _orchestrator
     if _orchestrator is None:
         # Use OR-prefixed fields — Coolify doesn't override these (new names)
-        _or_key = settings.openrouter_api_key or settings.agent_model_api_key
+        # get_openrouter_key() rotates across all configured keys round-robin
+        from backend.core.key_rotator import get_openrouter_key
+        _or_key = get_openrouter_key() or settings.agent_model_api_key
         _or_base = settings.openrouter_base_url  # always https://openrouter.ai/api/v1
         _coder_kwargs = dict(
             model=settings.or_planner_model,    # hy3-preview
