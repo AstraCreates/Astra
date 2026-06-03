@@ -1,13 +1,20 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
-  providers: [
+const providers = [];
+
+// Only add Google if credentials are configured
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  providers.push(
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    }),
-  ],
+    })
+  );
+}
+
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  providers,
   callbacks: {
     session({ session, token }) {
       if (session.user && token.sub) {
