@@ -2657,13 +2657,33 @@ async def import_contacts_csv(founder_id: str, body: dict, request: Request):
         for k, v in raw.items():
             if k is None or v is None:
                 continue
-            mapped = field_map.get(k.strip().lower())
+            key = k.strip().lower()
+            mapped = field_map.get(key)
+            if not mapped:
+                # Fallback patterns — handles Google Contacts CSV export columns
+                # like "E-mail 1 - Value", "Organization Name", "Organization Title".
+                if "e-mail" in key and "value" in key:
+                    mapped = "email"
+                elif key.startswith("email") and "value" not in key:
+                    mapped = "email"
+                elif "organization" in key and "title" in key:
+                    mapped = "title"
+                elif "organization" in key and "name" in key:
+                    mapped = "company_name"
+                elif "organization" in key and "department" in key:
+                    continue
             if not mapped:
                 continue
             val = v.strip()
+            if not val:
+                continue
             if mapped == "_full_name":
-                full_name = val
-            else:
+                full_name = full_name or val
+            elif mapped == "email":
+                # Keep the first email found (E-mail 1 before E-mail 2).
+                if not rec.get("email"):
+                    rec["email"] = val
+            elif not rec.get(mapped):
                 rec[mapped] = val
         if not rec.get("first_name") and full_name:
             parts = full_name.split()

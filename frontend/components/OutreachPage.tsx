@@ -757,7 +757,7 @@ export default function OutreachPage() {
           <div style={{ ...glass({ padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }) }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>Bring your own contacts</div>
-              <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>Import from your Google account (saved + emailed contacts), or upload a CSV — columns like email, name, title, company are matched automatically.</div>
+              <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>Export your Gmail contacts at <span style={{ color: "var(--fg)" }}>contacts.google.com → Export → Google CSV</span> and upload here — Google's column format is recognized automatically. Or upload any CSV with email/name/title/company columns.</div>
               {gmailResult && (
                 <div style={{ fontSize: 12, marginTop: 6, color: gmailResult.error ? "#f87171" : "#4ade80" }}>
                   {gmailResult.error ? gmailResult.error : (gmailResult.note || `Imported ${gmailResult.imported} contact${gmailResult.imported === 1 ? "" : "s"} from Gmail.`)}
