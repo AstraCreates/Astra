@@ -6,14 +6,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID || "",
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      // Only non-sensitive scopes so sign-in needs no Google verification.
+      // Gmail contact import uses CSV export instead; re-add contacts scopes
+      // here (behind incremental auth) if the app is ever HTTPS-verified.
       authorization: {
         params: {
-          scope:
-            "openid email profile " +
-            "https://www.googleapis.com/auth/contacts.readonly " +
-            "https://www.googleapis.com/auth/contacts.other.readonly",
-          access_type: "offline",
-          prompt: "consent",
+          scope: "openid email profile",
         },
       },
     }),
