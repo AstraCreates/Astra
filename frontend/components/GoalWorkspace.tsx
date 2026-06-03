@@ -3063,33 +3063,170 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
 
 // ── Launch Checklist ─────────────────────────────────────────────────────────
 
+interface CLItem { id: string; label: string; autoAgent?: string; }
+interface CLCategory { id: string; label: string; icon: string; items: CLItem[]; }
+
+const CHECKLIST_CATEGORIES: CLCategory[] = [
+  {
+    id: "legal", label: "Legal & Entity", icon: "⚖️",
+    items: [
+      { id: "form_entity",       label: "Form LLC or Delaware C-Corp",          autoAgent: "legal" },
+      { id: "founders_agmt",     label: "Draft founders' agreement",            autoAgent: "legal" },
+      { id: "vesting",           label: "Set founder vesting schedules (4yr/1yr)" },
+      { id: "ip_assign",         label: "Assign all IP to the company",         autoAgent: "legal" },
+      { id: "ein",               label: "Get an EIN from the IRS" },
+      { id: "trademark",         label: "Register trademark for brand name" },
+      { id: "nda",               label: "Draft NDA template",                   autoAgent: "legal" },
+      { id: "privacy_tos",       label: "Publish Privacy Policy & Terms of Service", autoAgent: "legal" },
+      { id: "contractor_agmt",   label: "Create contractor agreement templates", autoAgent: "legal" },
+      { id: "business_bank",     label: "Open dedicated business bank account" },
+    ],
+  },
+  {
+    id: "technical", label: "Technical / Product", icon: "🛠️",
+    items: [
+      { id: "mvp_scope",         label: "Define and scope MVP features",        autoAgent: "research" },
+      { id: "github_setup",      label: "Set up GitHub repo & version control", autoAgent: "technical" },
+      { id: "mvp_deploy",        label: "Deploy MVP to staging",                autoAgent: "web" },
+      { id: "beta_testing",      label: "Run beta user testing & fix bugs" },
+      { id: "error_monitoring",  label: "Configure error monitoring (Sentry)",  autoAgent: "technical" },
+      { id: "ci_cd",             label: "Set up automated CI/CD pipeline",      autoAgent: "technical" },
+      { id: "api_docs",          label: "Document API and core architecture",   autoAgent: "technical" },
+      { id: "onboarding_flow",   label: "Implement user onboarding flow",       autoAgent: "web" },
+      { id: "transactional_email", label: "Set up transactional email (SendGrid)" },
+    ],
+  },
+  {
+    id: "infra", label: "Domain & Infrastructure", icon: "🌐",
+    items: [
+      { id: "domain_primary",    label: "Purchase primary domain name" },
+      { id: "domain_variants",   label: "Buy brand-protecting domain variants" },
+      { id: "ssl",               label: "Configure SSL certificate (HTTPS)",    autoAgent: "web" },
+      { id: "dns_records",       label: "Set SPF, DKIM, and DMARC DNS records" },
+      { id: "cloud_hosting",     label: "Configure cloud hosting provider",     autoAgent: "technical" },
+      { id: "staging_prod",      label: "Set up staging vs. production envs",   autoAgent: "technical" },
+      { id: "backups",           label: "Configure automated backups" },
+    ],
+  },
+  {
+    id: "marketing", label: "Marketing & Brand", icon: "📢",
+    items: [
+      { id: "icp",               label: "Define ICP (ideal customer profile)",  autoAgent: "research" },
+      { id: "brand_identity",    label: "Create brand identity (logo, colors)", autoAgent: "design" },
+      { id: "brand_voice",       label: "Write brand voice & messaging guide",  autoAgent: "marketing" },
+      { id: "marketing_site",    label: "Launch marketing website with CTA",    autoAgent: "web" },
+      { id: "waitlist",          label: "Build pre-launch waitlist / email list", autoAgent: "marketing" },
+      { id: "blog_post",         label: "Write and publish first blog post",    autoAgent: "marketing" },
+      { id: "product_hunt",      label: "Create Product Hunt launch page" },
+      { id: "press_kit",         label: "Draft press kit and founder bio",      autoAgent: "marketing" },
+    ],
+  },
+  {
+    id: "social", label: "Social Media", icon: "📱",
+    items: [
+      { id: "claim_handles",     label: "Claim handles on all major platforms" },
+      { id: "focus_channels",    label: "Choose 2–3 primary channels to focus on" },
+      { id: "linkedin_page",     label: "Set up LinkedIn company page" },
+      { id: "content_calendar",  label: "Create 30-day pre-launch content calendar", autoAgent: "marketing" },
+      { id: "community_engage",  label: "Engage in niche communities (Reddit, X, Slack)" },
+      { id: "founder_story",     label: "Post founder story / build-in-public content" },
+    ],
+  },
+  {
+    id: "finance", label: "Finance & Payments", icon: "💳",
+    items: [
+      { id: "accounting",        label: "Set up accounting software (QuickBooks/Xero)" },
+      { id: "stripe_setup",      label: "Integrate Stripe or payment processor" },
+      { id: "pricing_model",     label: "Define pricing model and tiers",       autoAgent: "research" },
+      { id: "financial_model",   label: "Build 18-month financial model",       autoAgent: "research" },
+      { id: "burn_rate",         label: "Track burn rate and runway monthly" },
+      { id: "biz_credit_card",   label: "Apply for a business credit card" },
+    ],
+  },
+  {
+    id: "sales", label: "Sales & CRM", icon: "🤝",
+    items: [
+      { id: "crm_setup",         label: "Set up CRM (HubSpot / Pipedrive)",     autoAgent: "sales" },
+      { id: "sales_pipeline",    label: "Define sales pipeline stages",         autoAgent: "sales" },
+      { id: "cold_outreach",     label: "Write cold outreach email templates",  autoAgent: "sales" },
+      { id: "design_partners",   label: "Close first 5–10 design partner customers" },
+      { id: "testimonials",      label: "Collect and publish first testimonials" },
+      { id: "lead_capture",      label: "Build lead capture form on website",   autoAgent: "web" },
+    ],
+  },
+  {
+    id: "analytics", label: "Growth & Analytics", icon: "📈",
+    items: [
+      { id: "product_analytics", label: "Install product analytics (PostHog / Mixpanel)" },
+      { id: "web_analytics",     label: "Set up Google Analytics or Plausible" },
+      { id: "north_star",        label: "Define north-star metric and weekly KPIs", autoAgent: "research" },
+      { id: "funnel_tracking",   label: "Configure funnel and conversion tracking" },
+      { id: "ab_testing",        label: "Set up A/B testing framework" },
+      { id: "metrics_dashboard", label: "Create weekly metrics dashboard" },
+    ],
+  },
+  {
+    id: "ops", label: "Team & Operations", icon: "🧭",
+    items: [
+      { id: "gsuite",            label: "Set up G Suite / Microsoft 365",       autoAgent: "ops" },
+      { id: "slack_setup",       label: "Set up Slack or team comms tool" },
+      { id: "wiki_docs",         label: "Document core processes in a wiki",    autoAgent: "ops" },
+      { id: "esop",              label: "Create employee option pool (ESOP)" },
+      { id: "valuation_409a",    label: "Get 409A independent valuation" },
+      { id: "payroll",           label: "Set up payroll (Rippling / Gusto)" },
+    ],
+  },
+  {
+    id: "fundraising", label: "Investor / Fundraising", icon: "🚀",
+    items: [
+      { id: "pitch_deck",        label: "Build 10–12 slide pitch deck",         autoAgent: "research" },
+      { id: "cap_table",         label: "Create a clean cap table" },
+      { id: "data_room",         label: "Set up a fundraising data room" },
+      { id: "investor_list",     label: "Build target investor list (CRM)" },
+      { id: "warm_intros",       label: "Get warm intros to seed investors" },
+      { id: "safe_docs",         label: "Prepare SAFE or convertible note docs", autoAgent: "legal" },
+    ],
+  },
+];
+
 function LaunchChecklist({ sessionId, done, agents, agentList, selectedStack }: {
   sessionId: string; done: boolean;
   agents: Record<string, AgentState>;
   agentList: string[];
   selectedStack: AgentStackTemplate | null;
 }) {
-  const [open, setOpen] = useState(true);
+  const storageKey = `astra_checklist_${sessionId || "default"}`;
+  const [manual, setManual] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem(storageKey) ?? "{}"); } catch { return {}; }
+  });
+  const [openCats, setOpenCats] = useState<Record<string, boolean>>({ legal: true, technical: true });
+  const [listOpen, setListOpen] = useState(true);
+
+  useEffect(() => {
+    try { localStorage.setItem(storageKey, JSON.stringify(manual)); } catch {}
+  }, [manual, storageKey]);
+
   const agentDone = (name: string) => agents[name]?.status === "done";
-  const has = (name: string) => agentList.includes(name);
 
-  const items = [
-    { id: "goal",      label: "Goal launched",          done: !!sessionId },
-    { id: "stack",     label: "Stack selected",         done: !!selectedStack },
-    ...(has("research")  ? [{ id: "research",  label: "Research complete",       done: agentDone("research") }]  : []),
-    ...(has("web")       ? [{ id: "web",       label: "Website built",           done: agentDone("web") }]       : []),
-    ...(has("technical") ? [{ id: "technical", label: "Technical scaffold done", done: agentDone("technical") }] : []),
-    ...(has("legal")     ? [{ id: "legal",     label: "Legal docs drafted",      done: agentDone("legal") }]     : []),
-    ...(has("marketing") ? [{ id: "marketing", label: "Marketing assets ready",  done: agentDone("marketing") }] : []),
-    ...(has("sales")     ? [{ id: "sales",     label: "Sales pipeline built",    done: agentDone("sales") }]     : []),
-    { id: "complete",  label: "Run complete",           done },
+  const isChecked = (item: CLItem) =>
+    manual[item.id] ?? (item.autoAgent ? agentDone(item.autoAgent) : false);
+
+  const toggle = (id: string, current: boolean) =>
+    setManual(m => ({ ...m, [id]: !current }));
+
+  const allItems = CHECKLIST_CATEGORIES.flatMap(c => c.items);
+  const totalDone = allItems.filter(isChecked).length;
+  const total = allItems.length;
+  const pct = Math.round((totalDone / total) * 100);
+  const allDone = totalDone === total;
+
+  // Add astra-run items on top
+  const runItems = [
+    { id: "_goal",    label: "Goal launched",     done: !!sessionId },
+    { id: "_stack",   label: "Stack selected",    done: !!selectedStack },
+    { id: "_run",     label: "Agent run complete", done },
   ];
-
-  const doneCount = items.filter(i => i.done).length;
-  const pct = items.length > 0 ? Math.round((doneCount / items.length) * 100) : 0;
-  const allDone = pct === 100;
-
-  useEffect(() => { if (done) setOpen(false); }, [done]);
+  const runDone = runItems.filter(i => i.done).length;
 
   return (
     <div data-tour="launch-checklist" style={{
@@ -3098,41 +3235,101 @@ function LaunchChecklist({ sessionId, done, agents, agentList, selectedStack }: 
       background: allDone ? "rgba(16,185,129,0.05)" : "var(--bg)",
       boxShadow: "var(--shadow-sm)",
     }}>
-      <button onClick={() => setOpen(o => !o)} style={{
+      {/* Master header */}
+      <button onClick={() => setListOpen(o => !o)} style={{
         width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "11px 16px", background: "none", border: "none", cursor: "pointer", gap: 12, textAlign: "left",
+        padding: "13px 18px", background: "none", border: "none", cursor: "pointer", gap: 12,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>Launch checklist</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.01em" }}>Launch checklist</span>
           <span style={{
-            fontSize: 11, padding: "1px 8px", borderRadius: 999, fontWeight: 600,
+            fontSize: 11, padding: "2px 9px", borderRadius: 999, fontWeight: 600,
             background: allDone ? "rgba(61,158,95,0.12)" : "rgba(37,99,235,0.10)",
             color: allDone ? "#3D9E5F" : "#2563EB",
-          }}>{doneCount}/{items.length}</span>
+          }}>{totalDone + runDone}/{total + runItems.length}</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 64, height: 3, borderRadius: 999, background: "var(--line-2)", overflow: "hidden" }}>
-            <div style={{ height: "100%", borderRadius: 999, width: `${pct}%`, background: allDone ? "#3D9E5F" : "#2563EB", transition: "width 0.5s" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 80, height: 4, borderRadius: 999, background: "var(--line-2)", overflow: "hidden" }}>
+            <div style={{ height: "100%", borderRadius: 999, transition: "width 0.5s", width: `${Math.round(((totalDone + runDone) / (total + runItems.length)) * 100)}%`, background: allDone ? "#3D9E5F" : "#2563EB" }} />
           </div>
-          <span style={{ fontSize: 10, color: "var(--fg-mute)" }}>{open ? "▲" : "▼"}</span>
+          <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{Math.round(((totalDone + runDone) / (total + runItems.length)) * 100)}%</span>
+          <span style={{ fontSize: 10, color: "var(--fg-mute)" }}>{listOpen ? "▲" : "▼"}</span>
         </div>
       </button>
-      {open && (
-        <div style={{ borderTop: "1px solid var(--border)", padding: "10px 16px 14px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: "6px 16px" }}>
-          {items.map(item => (
-            <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{
-                width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                background: item.done ? "rgba(61,158,95,0.15)" : "transparent",
-                border: `1.5px solid ${item.done ? "#10B981" : "var(--border-strong)"}`,
-                transition: "all 0.2s",
-              }}>
-                {item.done && <span style={{ fontSize: 8, color: "#3D9E5F", fontWeight: 800, lineHeight: 1 }}>✓</span>}
+
+      {listOpen && (
+        <div style={{ borderTop: "1px solid var(--border)" }}>
+          {/* Astra run status row */}
+          <div style={{ padding: "10px 18px 6px", display: "flex", gap: 16, flexWrap: "wrap" }}>
+            {runItems.map(item => (
+              <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{
+                  width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: item.done ? "rgba(16,185,129,0.15)" : "transparent",
+                  border: `1.5px solid ${item.done ? "#10B981" : "var(--border-strong)"}`,
+                }}>
+                  {item.done && <span style={{ fontSize: 7, color: "#10B981", fontWeight: 800 }}>✓</span>}
+                </div>
+                <span style={{ fontSize: 11, color: item.done ? "var(--fg)" : "var(--text-3)" }}>{item.label}</span>
               </div>
-              <span style={{ fontSize: 12, color: item.done ? "var(--fg)" : "var(--fg-mute)" }}>{item.label}</span>
-            </div>
-          ))}
+            ))}
+          </div>
+
+          {/* Categories */}
+          {CHECKLIST_CATEGORIES.map(cat => {
+            const catDone = cat.items.filter(isChecked).length;
+            const catOpen = openCats[cat.id] ?? false;
+            const catAllDone = catDone === cat.items.length;
+            return (
+              <div key={cat.id} style={{ borderTop: "1px solid var(--line-2)" }}>
+                <button onClick={() => setOpenCats(o => ({ ...o, [cat.id]: !catOpen }))} style={{
+                  width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "9px 18px", background: "none", border: "none", cursor: "pointer", gap: 10,
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 13 }}>{cat.icon}</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: catAllDone ? "#3D9E5F" : "var(--fg)" }}>{cat.label}</span>
+                    <span style={{ fontSize: 10, color: catAllDone ? "#3D9E5F" : "var(--fg-mute)" }}>{catDone}/{cat.items.length}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 40, height: 3, borderRadius: 999, background: "var(--line-2)", overflow: "hidden" }}>
+                      <div style={{ height: "100%", borderRadius: 999, width: `${Math.round((catDone / cat.items.length) * 100)}%`, background: catAllDone ? "#3D9E5F" : "#2563EB", transition: "width 0.4s" }} />
+                    </div>
+                    <span style={{ fontSize: 9, color: "var(--fg-mute)" }}>{catOpen ? "▲" : "▼"}</span>
+                  </div>
+                </button>
+                {catOpen && (
+                  <div style={{ padding: "4px 18px 12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px" }}>
+                    {cat.items.map(item => {
+                      const checked = isChecked(item);
+                      const isAuto = item.autoAgent ? agentDone(item.autoAgent) : false;
+                      return (
+                        <button key={item.id} onClick={() => !isAuto && toggle(item.id, checked)} style={{
+                          display: "flex", alignItems: "center", gap: 7, background: "none", border: "none",
+                          cursor: isAuto ? "default" : "pointer", padding: "2px 0", textAlign: "left",
+                        }}>
+                          <div style={{
+                            width: 15, height: 15, borderRadius: 4, flexShrink: 0,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            background: checked ? (isAuto ? "rgba(37,99,235,0.15)" : "rgba(61,158,95,0.15)") : "transparent",
+                            border: `1.5px solid ${checked ? (isAuto ? "#2563EB" : "#3D9E5F") : "rgba(255,255,255,0.18)"}`,
+                            transition: "all 0.15s",
+                          }}>
+                            {checked && <span style={{ fontSize: 7, color: isAuto ? "#2563EB" : "#3D9E5F", fontWeight: 800 }}>✓</span>}
+                          </div>
+                          <span style={{ fontSize: 11, color: checked ? "var(--fg)" : "var(--fg-mute)", lineHeight: 1.35, textDecoration: checked && !isAuto ? "line-through" : "none", opacity: checked && !isAuto ? 0.6 : 1 }}>
+                            {item.label}
+                          </span>
+                          {isAuto && <span style={{ fontSize: 9, color: "#2563EB", flexShrink: 0 }}>auto</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
