@@ -319,6 +319,21 @@ async def list_sessions(request: Request, founder_id: str = "", limit: int = 50)
     return {"sessions": _ls(founder_id=founder_id or None, limit=limit)}
 
 
+@router.delete("/sessions/{session_id}")
+async def delete_session_route(session_id: str, request: Request):
+    """Permanently delete a session. Only the owning founder (or an authorized org member) may delete."""
+    from backend.core.session_store import get_session_meta, delete_session as _del
+    meta = get_session_meta(session_id)
+    if not meta:
+        # Nothing to delete server-side; treat as success so the client can drop it locally.
+        return {"ok": True, "deleted": False}
+    owner = str(meta.get("founder_id") or "")
+    if owner:
+        require_founder_access(request, owner, min_role="operator")
+    removed = _del(session_id)
+    return {"ok": True, "deleted": removed}
+
+
 @router.get("/sessions/{session_id}/meta")
 async def session_meta(session_id: str, request: Request):
     """Full session metadata from durable store."""

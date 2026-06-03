@@ -6,11 +6,11 @@ import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useDevUser } from "@/lib/use-dev-user";
-import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions } from "@/lib/api";
+import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote } from "@/lib/api";
 import type { DeploymentRecord } from "@/lib/api";
 import type { AgentCatalogEntry } from "@/lib/api";
 import type { AgentDepartmentManifest, AgentStackTemplate, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
-import { saveSession, getSessionSnapshot, subscribeSessions, deleteSession, clearAllSessions, setServerSessions } from "@/lib/history";
+import { saveSession, getSessionSnapshot, subscribeSessions, deleteSession, clearAllSessions, setServerSessions, removeServerSession } from "@/lib/history";
 import type { SessionRecord } from "@/lib/history";
 import LiquidGlass from "@/components/LiquidGlass";
 import CompanyChat from "@/components/CompanyChat";
@@ -3522,7 +3522,13 @@ function SessionHistory({ currentSessionId }: { currentSessionId: string }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px" }}>
         <span style={{ fontSize: 10, color: "var(--fg-mute)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Recent</span>
         <button
-          onClick={() => { if (confirm("Clear all sessions?")) { clearAllSessions(); router.push("/"); } }}
+          onClick={() => {
+            if (!confirm("Clear all sessions?")) return;
+            if (isSignedIn) sessions.forEach(s => deleteSessionRemote(s.sessionId));
+            clearAllSessions();
+            setServerSessions([]);
+            router.push("/");
+          }}
           style={{ fontSize: 10, color: "var(--fg-mute)", background: "none", border: "none", cursor: "pointer", padding: "2px 6px", borderRadius: 4 }}
         >Clear all</button>
       </div>
@@ -3533,7 +3539,13 @@ function SessionHistory({ currentSessionId }: { currentSessionId: string }) {
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: statusDot(s.status), flexShrink: 0 }} />
             <span style={{ flex: 1, fontSize: 11, color: "var(--fg-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{s.companyName || s.instruction.slice(0, 30)}</span>
             <button
-              onClick={e => { e.stopPropagation(); deleteSession(s.sessionId); if (s.sessionId === currentSessionId) router.push("/"); }}
+              onClick={e => {
+                e.stopPropagation();
+                deleteSession(s.sessionId);
+                removeServerSession(s.sessionId);
+                if (isSignedIn) deleteSessionRemote(s.sessionId);
+                if (s.sessionId === currentSessionId) router.push("/");
+              }}
               style={{ fontSize: 11, color: "var(--fg-mute)", background: "none", border: "none", cursor: "pointer", padding: "0 2px", lineHeight: 1, flexShrink: 0 }}
               title="Delete session"
             >✕</button>

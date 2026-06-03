@@ -68,6 +68,14 @@ export function setServerSessions(records: SessionRecord[]): void {
   emitSessionsChange();
 }
 
+/** Drop a single server-synced session from the in-memory list (after a remote delete). */
+export function removeServerSession(sessionId: string): void {
+  if (!serverSessions.some(s => s.sessionId === sessionId)) return;
+  serverSessions = serverSessions.filter(s => s.sessionId !== sessionId);
+  serverVersion += 1;
+  emitSessionsChange();
+}
+
 export function getSessionSnapshot(): SessionRecord[] {
   return computeMerged();
 }

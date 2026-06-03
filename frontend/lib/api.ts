@@ -1039,6 +1039,16 @@ export async function listSessions(founderId: string, limit = 50): Promise<Sessi
   return Array.isArray(data?.sessions) ? data.sessions : [];
 }
 
+/** Permanently delete a session server-side so the removal syncs across devices. */
+export async function deleteSessionRemote(sessionId: string): Promise<boolean> {
+  try {
+    const res = await apiFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function getSessionDigest(sessionId: string): Promise<SessionDigest> {
   const res = await apiFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/digest`);
   if (!res.ok) throw new Error(await res.text());

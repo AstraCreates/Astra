@@ -191,6 +191,26 @@ def list_sessions(founder_id: str | None = None, limit: int = 100) -> list[dict]
     return sessions[:limit]
 
 
+def delete_session(session_id: str) -> bool:
+    """Permanently remove a session's directory and index entry. Returns True if anything was removed."""
+    import shutil
+    removed = False
+    with _lock:
+        d = _vault() / "sessions" / session_id
+        if d.exists():
+            try:
+                shutil.rmtree(d)
+                removed = True
+            except Exception as exc:
+                logger.warning("session_store.delete_session rmtree failed for %s: %s", session_id, exc)
+        index = _load_index()
+        if session_id in index:
+            del index[session_id]
+            _save_index(index)
+            removed = True
+    return removed
+
+
 def get_session_meta(session_id: str) -> dict | None:
     p = meta_path(session_id)
     if not p.exists():
