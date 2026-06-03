@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, useRef, useSyncExternalStore } from "
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { SignInButton, useUser } from "@clerk/nextjs";
+import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment } from "@/lib/api";
 import type { DeploymentRecord } from "@/lib/api";
 import type { AgentCatalogEntry } from "@/lib/api";
@@ -2475,7 +2475,7 @@ function ContinuePanel({ sessionId, founderId, company }: { sessionId: string; f
 
 function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
-  const { user, isSignedIn } = useUser();
+  const { userId: devUserId } = useDevUser();
   const [companyName, setCompanyName] = useState("");
   const [domain, setDomain] = useState("");
   const [instruction, setInstruction] = useState("");
@@ -2537,12 +2537,12 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
   useEffect(() => {
     if (!open || !selectedStackId) return;
     let cancelled = false;
-    const founderId = user?.id ?? "anon";
+    const founderId = devUserId === "anon" ? "founder_001" : devUserId;
     getStackReadiness(founderId, selectedStackId)
       .then(readiness => { if (!cancelled) setStackReadiness(readiness); })
       .catch(() => { if (!cancelled) setStackReadiness(null); });
     return () => { cancelled = true; };
-  }, [open, selectedStackId, user?.id]);
+  }, [open, selectedStackId, devUserId]);
 
   const selectedStack = stackTemplates.find(stack => stack.stack_id === selectedStackId);
 
@@ -2562,7 +2562,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
       showStack && `Tech stack: Frontend=${techStack.frontend}, Backend=${techStack.backend}, Database=${techStack.database}, Auth=${techStack.auth}.`,
     ].filter(Boolean);
     const full = parts.length ? `${parts.join(" ")}\n\n${instruction}` : instruction;
-    const founderId = user?.id ?? "anon";
+    const founderId = devUserId === "anon" ? "founder_001" : devUserId;
     try {
       const constraints: Record<string, unknown> = (selectedStackId === "custom" || selectedStackId === "full_stack") ? { agents: customAgents } : {};
       const result = await submitGoal(founderId, full, constraints, selectedStackId);
@@ -2879,15 +2879,9 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 4 }}>
-            {isSignedIn ? (
-              <button type="submit" disabled={loading || !instruction.trim()} className="site-btn site-btn-primary" style={{ padding: "0 24px", fontSize: 14 }}>
-                {loading ? "Launching..." : "Launch Astra ->"}
-              </button>
-            ) : (
-              <SignInButton mode="modal">
-                <button type="button" className="site-btn site-btn-primary" style={{ padding: "0 24px", fontSize: 14 }}>Sign in to launch -&gt;</button>
-              </SignInButton>
-            )}
+            <button type="submit" disabled={loading || !instruction.trim()} className="site-btn site-btn-primary" style={{ padding: "0 24px", fontSize: 14 }}>
+              {loading ? "Launching..." : "Launch Astra ->"}
+            </button>
           </div>
 
           {error && <p style={{ borderRadius: 24, border: "1px solid rgba(220,38,38,0.4)", background: "rgba(127,29,29,0.2)", padding: "10px 14px", fontSize: 13, color: "#fca5a5", margin: 0 }}>{error}</p>}

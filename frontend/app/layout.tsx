@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { ClerkProvider } from "@clerk/nextjs";
 import { Geist, JetBrains_Mono } from "next/font/google";
 import ApiAuthBridge from "@/components/ApiAuthBridge";
 import CookieNotice from "@/components/CookieNotice";
@@ -19,12 +18,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${geist.variable} ${jetBrainsMono.variable} antialiased`} data-theme="dark" suppressHydrationWarning>
       <head />
       <body suppressHydrationWarning>
-        <ClerkProvider>
-          <ApiAuthBridge />
-          <SiteNav />
-          <main>{children}</main>
-          <CookieNotice />
-        </ClerkProvider>
+        <ApiAuthBridge />
+        <SiteNav />
+        <main>{children}</main>
+        <CookieNotice />
       </body>
     </html>
   );

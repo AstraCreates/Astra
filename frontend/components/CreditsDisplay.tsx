@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useDevUser } from "@/lib/use-dev-user";
 import { getCredits, purchaseCredits, CreditBalance } from "@/lib/api";
 
 // ── Pack definitions ──────────────────────────────────────────────────────────
@@ -247,7 +247,7 @@ function PackCard({
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function CreditsDisplay() {
-  const { user, isLoaded } = useUser();
+  const { userId } = useDevUser();
   const [open, setOpen] = useState(false);
   const [balance, setBalance] = useState<CreditBalance | null>(null);
   const [loadingBalance, setLoadingBalance] = useState(false);
@@ -256,7 +256,7 @@ export default function CreditsDisplay() {
   const modalRef = useRef<HTMLDivElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const founderId = user?.id ?? "";
+  const founderId = userId === "anon" ? "" : userId;
 
   const fetchBalance = useCallback(async () => {
     if (!founderId) return;
@@ -273,10 +273,10 @@ export default function CreditsDisplay() {
 
   // Initial load when user resolves
   useEffect(() => {
-    if (isLoaded && founderId) {
+    if (founderId) {
       fetchBalance();
     }
-  }, [isLoaded, founderId, fetchBalance]);
+  }, [founderId, fetchBalance]);
 
   // Poll every 30 s when modal is open
   useEffect(() => {
@@ -332,7 +332,7 @@ export default function CreditsDisplay() {
     }
   }
 
-  if (!isLoaded || !user) return null;
+  if (!founderId) return null;
 
   const isLow = balance !== null && balance.balance < 10;
   const recent = balance?.transactions.slice(0, 10) ?? [];

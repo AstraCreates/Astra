@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useDevUser } from "@/lib/use-dev-user";
 import Link from "next/link";
 import { apiFetch, saveServiceCredential, getComposioOAuthUrls, getSetupStatus, SetupStatus } from "@/lib/api";
 
@@ -894,9 +894,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export default function SetupPage() {
-  const { user, isLoaded } = useUser();
-  const founderId = user?.id ?? "founder_001";
-  const email = user?.primaryEmailAddress?.emailAddress ?? "";
+  const { userId } = useDevUser();
+  const founderId = userId === "anon" ? "founder_001" : userId;
+  const email = "";
 
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [composioKey, setComposioKey] = useState("");
@@ -931,12 +931,12 @@ export default function SetupPage() {
   }, [founderId]);
 
   useEffect(() => {
-    if (!isLoaded || !user) return;
+    if (!founderId) return;
     queueMicrotask(() => {
       loadStatus();
       loadComposioUrls();
     });
-  }, [isLoaded, user, loadStatus, loadComposioUrls]);
+  }, [founderId, loadStatus, loadComposioUrls]);
 
   async function saveComposioKey() {
     const key = composioKey.trim();
@@ -1020,7 +1020,7 @@ export default function SetupPage() {
       </div>
 
       {/* Founder ID chip */}
-      {isLoaded && (
+      {founderId && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderRadius: 8, background: c.surface, border: `1px solid ${c.border}`, width: "fit-content" }}>
           <span style={{ fontSize: 11, color: c.textMuted, fontWeight: 500 }}>Founder ID</span>
           <span style={{ fontSize: 11, fontFamily: "var(--font-geist-mono, monospace)", color: c.grey }}>{founderId}</span>

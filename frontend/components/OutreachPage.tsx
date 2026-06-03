@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -278,8 +278,8 @@ function CampaignCard({ campaign, stats, onClick }: {
 type Tab = "search" | "contacts" | "campaigns" | "lists";
 
 export default function OutreachPage() {
-  const { user } = useUser();
-  const founderId = user?.id ?? "founder_001";
+  const { userId } = useDevUser();
+  const founderId = userId === "anon" ? "founder_001" : userId;
 
   const [tab, setTab] = useState<Tab>("search");
 

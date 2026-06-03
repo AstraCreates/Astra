@@ -3,23 +3,23 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Show, SignInButton, SignUpButton, UserButton, useUser } from "@clerk/nextjs";
+import { useDevUser } from "@/lib/use-dev-user";
 import CreditsDisplay from "@/components/CreditsDisplay";
 
 function TeamBadge() {
-  const { user, isLoaded } = useUser();
+  const { userId } = useDevUser();
   const [teamName, setTeamName] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isLoaded || !user) return;
+    if (!userId || userId === "anon") return;
     const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
-    fetch(`${apiBase}/api/teams/me?founder_id=${encodeURIComponent(user.id)}`)
+    fetch(`${apiBase}/api/teams/me?founder_id=${encodeURIComponent(userId)}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.teams?.[0]?.name) setTeamName(data.teams[0].name);
       })
       .catch(() => {});
-  }, [isLoaded, user]);
+  }, [userId]);
 
   if (!teamName) return null;
   return (
@@ -43,6 +43,8 @@ function TeamBadge() {
 
 export default function SiteNav() {
   const pathname = usePathname();
+  const { userId } = useDevUser();
+
   if (
     pathname === "/" ||
     pathname === "/onboarding" ||
@@ -118,100 +120,45 @@ export default function SiteNav() {
           About
         </a>
 
-        <Show when="signed-in">
-          <TeamBadge />
-          <CreditsDisplay />
-          <Link
-            href="/?new=1"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              textDecoration: "none",
-              background: "#2563EB",
-              color: "#FFFFFF",
-              fontSize: 13,
-              fontWeight: 500,
-              padding: "6px 16px",
-              borderRadius: 9999,
-              border: "none",
-              cursor: "pointer",
-              transition: "background 0.15s",
-              lineHeight: 1,
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLAnchorElement).style.background = "#1D4ED8";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLAnchorElement).style.background = "#2563EB";
-            }}
-          >
-            New goal <span aria-hidden="true">→</span>
-          </Link>
-          <UserButton
-            appearance={{
-              elements: { avatarBox: "w-8 h-8 rounded-full" },
-            }}
-          />
-        </Show>
-
-        <Show when="signed-out">
-          <SignInButton mode="modal">
-            <button
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                background: "#FFFFFF",
-                color: "#374151",
-                fontSize: 13,
-                fontWeight: 500,
-                padding: "6px 16px",
-                borderRadius: 9999,
-                border: "1px solid #E5E7EB",
-                cursor: "pointer",
-                transition: "border-color 0.15s, color 0.15s",
-                lineHeight: 1,
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.borderColor = "#D1D5DB";
-                (e.currentTarget as HTMLButtonElement).style.color = "#111827";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.borderColor = "#E5E7EB";
-                (e.currentTarget as HTMLButtonElement).style.color = "#374151";
-              }}
-            >
-              Sign in
-            </button>
-          </SignInButton>
-          <SignUpButton mode="modal">
-            <button
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 4,
-                background: "#2563EB",
-                color: "#FFFFFF",
-                fontSize: 13,
-                fontWeight: 500,
-                padding: "6px 16px",
-                borderRadius: 9999,
-                border: "none",
-                cursor: "pointer",
-                transition: "background 0.15s",
-                lineHeight: 1,
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = "#1D4ED8";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = "#2563EB";
-              }}
-            >
-              Get started <span aria-hidden="true">→</span>
-            </button>
-          </SignUpButton>
-        </Show>
+        <TeamBadge />
+        <CreditsDisplay />
+        <Link
+          href="/?new=1"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            textDecoration: "none",
+            background: "#2563EB",
+            color: "#FFFFFF",
+            fontSize: 13,
+            fontWeight: 500,
+            padding: "6px 16px",
+            borderRadius: 9999,
+            border: "none",
+            cursor: "pointer",
+            transition: "background 0.15s",
+            lineHeight: 1,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = "#1D4ED8";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLAnchorElement).style.background = "#2563EB";
+          }}
+        >
+          New goal <span aria-hidden="true">→</span>
+        </Link>
+        <span
+          style={{
+            fontSize: 12,
+            color: "#6B7280",
+            fontFamily: "var(--font-jetbrains-mono), monospace",
+          }}
+          title={userId}
+        >
+          Dev: {userId === "anon" ? "…" : userId.slice(0, 12)}
+        </span>
       </nav>
     </header>
   );

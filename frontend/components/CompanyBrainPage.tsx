@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useDevUser } from "@/lib/use-dev-user";
 import Link from "next/link";
 import {
   addCompanyBrainRecord,
@@ -206,8 +206,8 @@ function ProposalCard({
 }
 
 export default function CompanyBrainPage() {
-  const { user, isLoaded } = useUser();
-  const founderId = user?.id ?? "founder_001";
+  const { userId } = useDevUser();
+  const founderId = userId === "anon" ? "founder_001" : userId;
   const [brain, setBrain] = useState<CompanyBrain | null>(null);
   const [selectedSources, setSelectedSources] = useState<string[]>(["github", "notion", "linear", "gmail", "google_drive", "slack", "discord"]);
   const [query, setQuery] = useState(DEFAULT_QUERY);
@@ -249,9 +249,8 @@ export default function CompanyBrainPage() {
   }, [founderId]);
 
   useEffect(() => {
-    if (!isLoaded) return;
     loadBrain();
-  }, [isLoaded, loadBrain]);
+  }, [loadBrain]);
 
   const sources = useMemo(() => {
     const values = Object.values(brain?.sources ?? {});

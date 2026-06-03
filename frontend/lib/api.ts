@@ -9,16 +9,20 @@ export function setApiAuthProvider(provider: ApiAuthProvider | null) {
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
-  if (!apiAuthProvider) return {};
   try {
-    const auth = await apiAuthProvider();
-    const headers: Record<string, string> = {};
-    if (auth?.token) headers.Authorization = `Bearer ${auth.token}`;
-    if (auth?.userId) headers["x-astra-user-id"] = auth.userId;
-    return headers;
+    if (apiAuthProvider) {
+      const auth = await apiAuthProvider();
+      if (auth?.userId) return { "x-astra-user-id": auth.userId };
+    }
+    // Fallback: read directly from localStorage
+    if (typeof window !== "undefined") {
+      const userId = localStorage.getItem("astra_dev_user_id");
+      if (userId) return { "x-astra-user-id": userId };
+    }
   } catch {
-    return {};
+    // ignore
   }
+  return {};
 }
 
 export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {

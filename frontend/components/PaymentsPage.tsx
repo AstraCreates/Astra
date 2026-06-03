@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { useUser } from "@clerk/nextjs";
+import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch } from "@/lib/api";
 import {
   AreaChart, Area, BarChart, Bar,
@@ -518,9 +518,9 @@ function EINUpgradeSection({ upgraded, businessName }: { upgraded: boolean; busi
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function PaymentsPage() {
-  const { user } = useUser();
-  const founderId = user?.id ?? "founder_001";
-  const email = user?.primaryEmailAddress?.emailAddress ?? "";
+  const { userId } = useDevUser();
+  const founderId = userId === "anon" ? "founder_001" : userId;
+  const email = "";
 
   const [status, setStatus] = useState<StripeStatus | null>(null);
   const [data, setData] = useState<StripeData | null>(null);

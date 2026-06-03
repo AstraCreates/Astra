@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { UserButton, useUser } from "@clerk/nextjs";
+import { useDevUser } from "@/lib/use-dev-user";
 import ThemeToggle from "@/components/ThemeToggle";
 import {
   getDeployEvidence,
@@ -437,8 +437,8 @@ const statusHexColor = (status: string, ok?: boolean) => {
 };
 
 export default function SettingsPage() {
-  const { user, isLoaded } = useUser();
-  const founderId = user?.id ?? "founder_001";
+  const { userId } = useDevUser();
+  const founderId = userId === "anon" ? "founder_001" : userId;
   const [platform, setPlatform] = useState<PlatformStatus | null>(null);
   const [org, setOrg] = useState<OrganizationAccount | null>(null);
   const [baseUrl, setBaseUrl] = useState("https://api.astracreates.com");
@@ -472,7 +472,6 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    if (!isLoaded) return;
     let cancelled = false;
     Promise.allSettled([
       getPlatformStatus(),
@@ -495,7 +494,7 @@ export default function SettingsPage() {
       if (launchProofResult.status === "fulfilled") setLatestLaunchProof(launchProofResult.value);
     });
     return () => { cancelled = true; };
-  }, [founderId, isLoaded, stackId, baseUrl]);
+  }, [founderId, stackId, baseUrl]);
 
   const runFinalVerification = async () => {
     setVerificationBusy(true);
@@ -565,8 +564,8 @@ export default function SettingsPage() {
       <Section title="Account">
         <Row
           label="Profile"
-          desc={user?.primaryEmailAddress?.emailAddress ?? "Manage your Clerk account"}
-          action={<UserButton />}
+          desc={`Dev User (${founderId.slice(0, 16)})`}
+          action={null}
         />
         <Row
           label="Plan"

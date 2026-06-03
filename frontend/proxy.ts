@@ -1,7 +1,10 @@
-import { clerkMiddleware } from '@clerk/nextjs/server';
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-// Pass-through — no server-side auth enforcement, Clerk is UI-only
-export default clerkMiddleware();
+// No-op middleware — Clerk removed, no server-side auth enforcement
+export default function middleware(_req: NextRequest) {
+  return NextResponse.next();
+}
 
 export const config = {
   matcher: ['/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)'],

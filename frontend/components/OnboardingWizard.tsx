@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useUser } from "@clerk/nextjs";
+import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch, getStacks, getAgentCatalog, recommendStack, getStackReadiness, saveServiceCredential, getComposioOAuthUrls } from "@/lib/api";
 import type { AgentStackTemplate, AgentCatalogEntry, StackReadiness } from "@/lib/api";
 
@@ -808,9 +808,9 @@ function StepDone({ name, company, stackName, onLaunch }: {
 
 export default function OnboardingWizard() {
   const router = useRouter();
-  const { user, isLoaded } = useUser();
-  const founderId = user?.id ?? "founder_001";
-  const userEmail = user?.primaryEmailAddress?.emailAddress ?? "";
+  const { userId } = useDevUser();
+  const founderId = userId === "anon" ? "founder_001" : userId;
+  const userEmail = "";
 
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
@@ -843,15 +843,14 @@ export default function OnboardingWizard() {
   }, [goal, manualOverride]);
 
   useEffect(() => {
-    if (!isLoaded || selectedStackId === "custom") { setReadiness(null); return; }
+    if (selectedStackId === "custom") { setReadiness(null); return; }
     getStackReadiness(founderId, selectedStackId).then(setReadiness).catch(() => setReadiness(null));
-  }, [founderId, selectedStackId, isLoaded]);
+  }, [founderId, selectedStackId]);
 
   const selectedStack = stacks.find(s => s.stack_id === selectedStackId);
   const stackName = selectedStackId === "custom" ? "Custom Stack" : (selectedStack?.name ?? "Idea to Revenue Stack");
 
   async function handleLaunch() {
-    try { await user?.update({ unsafeMetadata: { onboarding_done: true } }); } catch {}
     localStorage.setItem("astra_show_tour", "1");
     if (goal.trim()) localStorage.setItem("astra_onboarding_goal", goal.trim());
     if (company.trim()) localStorage.setItem("astra_onboarding_company", company.trim());
@@ -865,19 +864,8 @@ export default function OnboardingWizard() {
   }
 
   async function handleSkip() {
-    try { await user?.update({ unsafeMetadata: { onboarding_done: true } }); } catch {}
     router.push("/?from_onboarding=1");
   }
-
-  if (!isLoaded) return (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "center",
-      minHeight: "100vh", color: T.textMuted, fontSize: 13,
-      background: T.white, fontFamily: "var(--font-geist-sans)",
-    }}>
-      Loading…
-    </div>
-  );
 
   return (
     <div style={{

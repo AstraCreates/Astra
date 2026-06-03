@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useDevUser } from "@/lib/use-dev-user";
 import {
   createMission,
   deleteMission,
@@ -750,8 +750,8 @@ function CreateMissionModal({ founderId, onClose, onCreated }: CreateMissionModa
 
 // ── MissionsPanel ──────────────────────────────────────────────────────────────
 export default function MissionsPanel() {
-  const { user, isLoaded } = useUser();
-  const founderId = user?.id ?? "";
+  const { userId } = useDevUser();
+  const founderId = userId === "anon" ? "" : userId;
 
   const [missions, setMissions] = useState<Mission[]>([]);
   const [loading, setLoading] = useState(true);
@@ -773,10 +773,10 @@ export default function MissionsPanel() {
   }, [founderId]);
 
   useEffect(() => {
-    if (isLoaded && founderId) {
+    if (founderId) {
       load();
     }
-  }, [isLoaded, founderId, load]);
+  }, [founderId, load]);
 
   const handleCreated = useCallback(() => {
     setShowCreate(false);
@@ -895,7 +895,7 @@ export default function MissionsPanel() {
       )}
 
       {/* Loading / error states */}
-      {!isLoaded || loading ? (
+      {loading ? (
         <div
           style={{
             padding: "60px 0",
