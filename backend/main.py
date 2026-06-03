@@ -68,35 +68,55 @@ async def _resume_interrupted_sessions() -> None:
     Uses JSONL session store as primary (no TTL, no cap), Redis as fallback.
     """
     import asyncio as _asyncio
+    import calendar as _cal
+    import time as _time
     await _asyncio.sleep(3)  # wait for orchestrator singleton to init
-    _MAX_RESUME = 5
+    _MAX_RESUME = 8
+    _RECENT_SECONDS = 2 * 3600  # only resume runs interrupted within the last 2h
     try:
-        from backend.core.session_store import scan_interrupted as _ss_interrupted
-        from backend.core.events import _redis_active_sessions, _restore_session, _event_log
+        from backend.core.session_store import (
+            scan_interrupted as _ss_interrupted,
+            get_session_meta as _ss_meta,
+            update_session_status as _ss_status,
+        )
+        from backend.core.events import _restore_session, _event_log, _completed
         from backend.core.factory import get_orchestrator
-        # JSONL store is the only source — Redis fallback removed to prevent
-        # old sessions with huge contexts from blocking the thread pool on startup
+
         interrupted = await _asyncio.to_thread(_ss_interrupted)
         if not interrupted:
             return
-        # Limit to most recent sessions to prevent startup crash loop
-        if len(interrupted) > _MAX_RESUME:
-            logger.warning(
-                "Skipping session resume: %d interrupted sessions found (limit=%d). "
-                "Too many to safely resume on startup — mark all as expired.",
-                len(interrupted), _MAX_RESUME,
-            )
-            from backend.core.events import _completed
-            for sid in interrupted:
-                _completed.add(sid)
-            return
-        logger.info("Resuming %d interrupted session(s): %s", len(interrupted), interrupted)
-        orch = get_orchestrator()
-        for session_id in interrupted:
+
+        def _age(sid: str) -> float:
+            meta = _ss_meta(sid) or {}
+            ts = meta.get("created_at", "")
             try:
-                await _asyncio.to_thread(_restore_session, session_id)  # returns (bool, bool) — just restore
-                events = _event_log.get(session_id, [])
-                event_dicts = [e for _, e in events]
+                return _time.time() - _cal.timegm(_time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ"))
+            except Exception:
+                return 1e12  # unknown timestamp → treat as very old
+
+        # Youngest first; resume only recent ones, expire the stale pile so they
+        # never get falsely marked "done with work" or block the thread pool.
+        interrupted.sort(key=_age)
+        recent = [s for s in interrupted if _age(s) < _RECENT_SECONDS][:_MAX_RESUME]
+        stale = [s for s in interrupted if s not in set(recent)]
+
+        for sid in stale:
+            try:
+                await _asyncio.to_thread(_ss_status, sid, "error")  # expired, NOT done
+            except Exception:
+                pass
+            _completed.add(sid)
+        if stale:
+            logger.info("Marked %d stale interrupted session(s) as expired", len(stale))
+        if not recent:
+            return
+
+        logger.info("Resuming %d recent interrupted session(s): %s", len(recent), recent)
+        orch = get_orchestrator()
+        for session_id in recent:
+            try:
+                await _asyncio.to_thread(_restore_session, session_id)
+                event_dicts = [e for _, e in _event_log.get(session_id, [])]
 
                 goal_start = next((e for e in event_dicts if e.get("type") == "goal_start"), None)
                 if not goal_start:
@@ -106,24 +126,19 @@ async def _resume_interrupted_sessions() -> None:
                 if not goal or not founder_id:
                     continue
 
-                # Collect planned agents from all plan_done events
                 planned: set[str] = set()
                 for e in event_dicts:
                     if e.get("type") == "plan_done":
                         for t in e.get("tasks", []):
                             planned.add(t["agent"])
 
-                completed_agents: set[str] = {e["agent"] for e in event_dicts if e.get("type") == "agent_done"}
-                _RESEARCH = {
-                    "research", "research_2", "research_3", "research_4",
-                    "research_competitors", "research_competitors_2", "research_competitors_3", "research_competitors_4",
-                    "research_execution", "research_execution_2", "research_execution_3", "research_execution_4",
-                }
-                remaining = list(planned - completed_agents - _RESEARCH)
+                completed_agents = {e["agent"] for e in event_dicts if e.get("type") == "agent_done"}
+                # Resume ALL incomplete agents, including research — an interrupted
+                # research agent should finish its work, not be silently dropped.
+                remaining = list(planned - completed_agents)
 
                 if not remaining:
-                    logger.info("Session %s: all agents done, marking complete", session_id)
-                    from backend.core.events import _completed
+                    logger.info("Session %s: all planned agents done", session_id)
                     _completed.add(session_id)
                     continue
 
