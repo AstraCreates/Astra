@@ -283,34 +283,28 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
     ]
     if session_id:
         oc_args += ["--session-id", session_id]
-    # Prepend the autonomy instruction to the prompt (goes through the existing,
-    # working prompt-escaping path — avoids fragile nested shell quoting on a
-    # separate --append-system-prompt flag).
+    # Autonomy preamble + the task as the final prompt argument.
     full_prompt = autonomy + "\n\n---\n\n" + prompt
-    escaped_prompt = full_prompt.replace("'", "'\\''")
-    oc_args_str = " ".join(oc_args)
 
-    # openclaude blocks --dangerously-skip-permissions when run as root.
-    # Must cd into the target dir first, then sudo to astra user passing env vars explicitly.
+    # Pass args as a LIST (no shell) so prompts with parentheses, quotes, etc.
+    # can never break shell parsing. openclaude blocks --dangerously-skip-permissions
+    # as root, so drop to the astra user via sudo + env for the credentials.
     openai_key = env.get("OPENAI_API_KEY", "")
     openai_base = env.get("OPENAI_BASE_URL", "https://api.deepinfra.com/v1/openai")
     openai_model = env.get("OPENAI_MODEL", model)
     if os.getuid() == 0:
-        shell_cmd = (
-            f"cd {local!r} && "
-            f"sudo -u astra sh -c '"
-            f"cd {local!r} && "
-            f"OPENAI_API_KEY={openai_key} "
-            f"OPENAI_BASE_URL={openai_base} "
-            f"OPENAI_MODEL={openai_model} "
-            f"HOME=/home/astra "
-            f"{oc_args_str} {escaped_prompt!r}'"
-        )
+        cmd = [
+            "sudo", "-u", "astra", "env",
+            f"OPENAI_API_KEY={openai_key}",
+            f"OPENAI_BASE_URL={openai_base}",
+            f"OPENAI_MODEL={openai_model}",
+            "HOME=/home/astra",
+        ] + oc_args + [full_prompt]
     else:
-        shell_cmd = f"cd {local!r} && {oc_args_str} '{escaped_prompt}'"
+        cmd = oc_args + [full_prompt]
 
     with _build_semaphore:
-        r = subprocess.run(shell_cmd, shell=True, capture_output=True, text=True, timeout=timeout, env=env)
+        r = subprocess.run(cmd, cwd=local, capture_output=True, text=True, timeout=timeout, env=env)
     if r.returncode not in (0, 1):
         logger.warning("openclaude exited %d: %s", r.returncode, r.stderr[:200])
     out = (r.stdout or "").strip()
