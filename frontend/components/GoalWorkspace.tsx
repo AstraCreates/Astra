@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useRef, useSyncExternalStore } from "react";
 import { signIn, signOut } from "next-auth/react";
+import { Attachment, readAttachment, buildAttachmentBlock } from "@/lib/attachments";
 import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -2254,6 +2255,7 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
   const [loading, setLoading] = useState(false);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQ, setMentionQ] = useState("");
+  const [chatAttachments, setChatAttachments] = useState<Attachment[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { try { localStorage.setItem(storageKey, JSON.stringify(msgs)); } catch {} }, [msgs, storageKey]);
@@ -2278,10 +2280,13 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
 
   const send = async () => {
     const q = input.trim();
-    if (!q || loading) return;
+    if ((!q && !chatAttachments.length) || loading) return;
+    const block = buildAttachmentBlock(chatAttachments);
     setInput(""); setMentionOpen(false);
-    const userMsg: UChatMsg = { id: Date.now().toString(), role: "user", text: q };
+    const fileNote = chatAttachments.filter(a => !a.error).length ? ` 📎 ${chatAttachments.filter(a => !a.error).length} file(s)` : "";
+    const userMsg: UChatMsg = { id: Date.now().toString(), role: "user", text: (q || "(attached files)") + fileNote };
     setMsgs(m => [...m, userMsg]);
+    setChatAttachments([]);
     setLoading(true);
     try {
       const mentionMatch = q.match(/^@([\w_-]+)\s+([\s\S]+)$/);
@@ -2289,20 +2294,20 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
         const [, agent, question] = mentionMatch;
         const res = await apiFetch(`${BASE}/chat/${agent}`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ target_agent: agent, question, founder_id: founderId, session_id: sessionId, company_name: company, goal }),
+          body: JSON.stringify({ target_agent: agent, question: question + block, founder_id: founderId, session_id: sessionId, company_name: company, goal }),
         });
         const data = await res.json();
         setMsgs(m => [...m, { id: Date.now().toString(), role: "agent", agent, text: data.response ?? JSON.stringify(data) }]);
       } else if (!done && connected) {
         await apiFetch(`${BASE}/steer/${sessionId}`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: q }),
+          body: JSON.stringify({ message: q + block }),
         });
         setMsgs(m => [...m, { id: Date.now().toString(), role: "system", text: "↑ Sent to all running agents" }]);
       } else {
         const res = await apiFetch(`${BASE}/sessions/${sessionId}/ask`, {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ question: q, founder_id: founderId }),
+          body: JSON.stringify({ question: q + block, founder_id: founderId }),
         });
         const data = await res.json().catch(() => ({}));
         setMsgs(m => [...m, { id: Date.now().toString(), role: "agent", agent: "astra", text: data.answer ?? data.response ?? "No response" }]);
@@ -2366,6 +2371,9 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
             ))}
           </div>
         )}
+        <div style={{ marginBottom: 8 }}>
+          <AttachBar attachments={chatAttachments} setAttachments={setChatAttachments} disabled={loading} compact />
+        </div>
         <div style={{ display: "flex", gap: 8 }}>
           <input
             value={input} onChange={e => handleChange(e.target.value)}
@@ -2373,8 +2381,8 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
             placeholder={placeholder}
             style={{ flex: 1, padding: "10px 16px", fontSize: 13, borderRadius: 999, border: "1px solid #E5E7EB", background: "#F8F9FA", color: "#111827", outline: "none" }}
           />
-          <button onClick={send} disabled={loading || !input.trim()}
-            style={{ padding: "0 20px", borderRadius: 999, fontSize: 13, background: loading || !input.trim() ? "#E5E7EB" : "#2563EB", color: loading || !input.trim() ? "#9CA3AF" : "#fff", border: "none", cursor: loading || !input.trim() ? "default" : "pointer", fontWeight: 600 }}>
+          <button onClick={send} disabled={loading || (!input.trim() && !chatAttachments.length)}
+            style={{ padding: "0 20px", borderRadius: 999, fontSize: 13, background: loading || (!input.trim() && !chatAttachments.length) ? "#E5E7EB" : "#2563EB", color: loading || (!input.trim() && !chatAttachments.length) ? "#9CA3AF" : "#fff", border: "none", cursor: loading || (!input.trim() && !chatAttachments.length) ? "default" : "pointer", fontWeight: 600 }}>
             {loading ? "…" : "↑"}
           </button>
         </div>
@@ -2583,6 +2591,7 @@ function AskPanel({ sessionId, founderId }: { sessionId: string; founderId: stri
 function ContinuePanel({ sessionId, founderId, company }: { sessionId: string; founderId: string; company: string }) {
   const router = useRouter();
   const [instruction, setInstruction] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -2601,7 +2610,7 @@ function ContinuePanel({ sessionId, founderId, company }: { sessionId: string; f
     setLoading(true);
     setError(null);
     try {
-      const result = await continueSession(founderId, sessionId, instruction);
+      const result = await continueSession(founderId, sessionId, instruction + buildAttachmentBlock(attachments));
       router.push(`/?session=${encodeURIComponent(result.session_id)}&instruction=${encodeURIComponent(instruction)}&founder=${encodeURIComponent(founderId)}&company=${encodeURIComponent(company)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to continue");
@@ -2625,6 +2634,7 @@ function ContinuePanel({ sessionId, founderId, company }: { sessionId: string; f
           style={{ padding: "12px 14px", fontSize: 14, lineHeight: 1.6, resize: "none" }}
           disabled={loading}
         />
+        <AttachBar attachments={attachments} setAttachments={setAttachments} disabled={loading} />
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button type="submit" disabled={loading || !instruction.trim()} className="site-btn site-btn-primary" style={{ padding: "0 22px" }}>
             {loading ? "Launching…" : "Run agents"} <span aria-hidden>→</span>
@@ -2650,6 +2660,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
   const [companyName, setCompanyName] = useState("");
   const [domain, setDomain] = useState("");
   const [instruction, setInstruction] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [showStack, setShowStack] = useState(false);
   const [techStack, setTechStack] = useState({ frontend: "Next.js", backend: "FastAPI", database: "Supabase (Postgres)", auth: "Clerk" });
   const [stackTemplates, setStackTemplates] = useState<AgentStackTemplate[]>([]);
@@ -2732,7 +2743,8 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
       selectedStack && `Agent stack: ${selectedStack.name}. Outcome: ${selectedStack.primary_outcome}.`,
       showStack && `Tech stack: Frontend=${techStack.frontend}, Backend=${techStack.backend}, Database=${techStack.database}, Auth=${techStack.auth}.`,
     ].filter(Boolean);
-    const full = parts.length ? `${parts.join(" ")}\n\n${instruction}` : instruction;
+    const base = parts.length ? `${parts.join(" ")}\n\n${instruction}` : instruction;
+    const full = base + buildAttachmentBlock(attachments);
     const founderId = devUserId === "anon" ? "founder_001" : devUserId;
     try {
       const constraints: Record<string, unknown> = (selectedStackId === "custom" || selectedStackId === "full_stack") ? { agents: customAgents } : {};
@@ -3019,6 +3031,9 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
               className="site-textarea"
               style={{ padding: "13px 14px", fontSize: 14, lineHeight: 1.65, resize: "none" }}
             />
+            <div style={{ marginTop: 8 }}>
+              <AttachBar attachments={attachments} setAttachments={setAttachments} disabled={loading} />
+            </div>
           </div>
 
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -3423,6 +3438,41 @@ function LaunchChecklist({ sessionId, done, agents, agentList, selectedStack }: 
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function AttachBar({ attachments, setAttachments, disabled, compact }: {
+  attachments: Attachment[];
+  setAttachments: (updater: (prev: Attachment[]) => Attachment[]) => void;
+  disabled?: boolean;
+  compact?: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const onPick = async (files: FileList | null) => {
+    if (!files) return;
+    const read = await Promise.all(Array.from(files).map(readAttachment));
+    setAttachments(prev => [...prev, ...read]);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+      <input ref={inputRef} type="file" multiple style={{ display: "none" }}
+        accept=".txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xml,.html,.htm,.css,.scss,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.c,.cpp,.h,.sh,.sql,.env,.ini,.toml,.log,text/*,application/json"
+        onChange={e => onPick(e.target.files)} />
+      <button type="button" onClick={() => inputRef.current?.click()} disabled={disabled}
+        title="Attach text, CSV, or code files"
+        style={{ display: "flex", alignItems: "center", gap: 5, fontSize: compact ? 12 : 12, color: "var(--fg-mute)", background: "none", border: "1px dashed var(--border)", borderRadius: 8, padding: compact ? "4px 8px" : "5px 10px", cursor: disabled ? "default" : "pointer" }}>
+        <span aria-hidden style={{ fontSize: 13 }}>📎</span>{attachments.length ? "Add file" : "Attach files"}
+      </button>
+      {attachments.map((a, i) => (
+        <span key={i} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, padding: "3px 8px", borderRadius: 999, border: `1px solid ${a.error ? "rgba(248,113,113,0.4)" : "var(--border)"}`, background: a.error ? "rgba(248,113,113,0.08)" : "rgba(255,255,255,0.03)", color: a.error ? "#f87171" : "var(--fg-dim)" }}
+          title={a.error || (a.truncated ? "Truncated to 20k chars" : a.name)}>
+          {a.name}{a.truncated ? " ·trimmed" : ""}{a.error ? " ·error" : ""}
+          <button type="button" onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
+            style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0, lineHeight: 1, fontSize: 12 }}>✕</button>
+        </span>
+      ))}
     </div>
   );
 }
