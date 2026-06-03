@@ -40,7 +40,20 @@ app.include_router(credits_router, prefix="/api")
 async def startup_background_jobs():
     # Store main event loop so publish_sync works from threads
     from backend.core.events import set_main_loop
-    set_main_loop(asyncio.get_running_loop())
+    loop = asyncio.get_running_loop()
+    set_main_loop(loop)
+
+    # Enlarge the default thread pool used by asyncio.to_thread. Agent LLM calls,
+    # tools, and long blocking subprocesses (e.g. the technical agent running
+    # Claude Code / deploys for up to 10 min) all run here. The default pool is
+    # only min(32, cpu+4) = 8 on this box, so a few long technical jobs starve
+    # every other agent/session. These threads are I/O/subprocess-bound (GIL
+    # released while waiting), so a large pool is safe and keeps everyone moving.
+    import os as _os
+    from concurrent.futures import ThreadPoolExecutor
+    _pool_size = int(_os.environ.get("ASTRA_THREAD_POOL", "128"))
+    loop.set_default_executor(ThreadPoolExecutor(max_workers=_pool_size, thread_name_prefix="astra"))
+    logger.info("Thread pool sized to %d workers", _pool_size)
     from backend.tools.company_brain_scheduler import start_company_brain_scheduler
     start_company_brain_scheduler(interval_seconds=60)
     from backend.missions.scheduler import start_missions_scheduler
