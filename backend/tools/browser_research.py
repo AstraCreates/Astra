@@ -268,7 +268,7 @@ def fetch_and_read(url: str) -> dict:
         return {"url": url, "skipped": str(e)[:80], "content": ""}
 
 
-def search_and_fetch(query: str, max_results: int = 12) -> dict:
+def search_and_fetch(query: str, max_results: int = 16) -> dict:
     """
     Search DuckDuckGo for the query, then fetch and read the actual content
     of each result page. Returns rich page content, not just snippets.
@@ -295,7 +295,9 @@ def search_and_fetch(query: str, max_results: int = 12) -> dict:
         seen_urls.add(url)
         host = _domain(url)
         seen_domains[host] = seen_domains.get(host, 0) + 1
-        if seen_domains[host] > 2:
+        # One result per domain → maximize source diversity (no more two-of-the-
+        # same-site pairs). Extra hits from the same domain are dropped.
+        if seen_domains[host] > 1:
             continue
         snippets[url] = r.get("body", "")
         titles[url] = r.get("title", "")

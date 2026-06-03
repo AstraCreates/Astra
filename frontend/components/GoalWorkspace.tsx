@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useRef, useSyncExternalStore, Component } from "react";
+import type { ReactNode } from "react";
 import { signIn, signOut } from "next-auth/react";
 import { Attachment, readAttachment, buildAttachmentBlock } from "@/lib/attachments";
 import type { CSSProperties } from "react";
@@ -556,6 +557,22 @@ function TechnicalPreview({ state }: { state: AgentState }) {
   );
 }
 
+class PreviewErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode }) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(err: unknown) { console.error("Agent preview render error:", err); }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: "18px 16px", fontSize: 13, color: "var(--fg-mute)", textAlign: "center", border: "1px solid var(--line)", borderRadius: 12 }}>
+          This preview couldn’t render, but the agent’s work is saved. Try the Log or Obsidian tab, or reload.
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function DesignPreview({ state }: { state: AgentState }) {
   const result = state.result ?? {};
 
@@ -565,7 +582,8 @@ function DesignPreview({ state }: { state: AgentState }) {
 
   // Brand images — photos only, exclude logos (which live in logoWordmark/logoIcon)
   const logoBase64Set = new Set([logoWordmark?.base64, logoIcon?.base64].filter(Boolean));
-  const brandImagesRaw = (result.brand_images ?? result.brand_image ?? []) as Array<Record<string, unknown>>;
+  const _bi = result.brand_images ?? result.brand_image;
+  const brandImagesRaw = (Array.isArray(_bi) ? _bi : []) as Array<Record<string, unknown>>;
   const brandImages = [
     ...brandImagesRaw.map(img => ({ base64: img.base64 as string | undefined, url: img.url as string | undefined, prompt: img.prompt as string | undefined })),
     ...(state.adImages ?? []),
@@ -1706,7 +1724,7 @@ function AgentDetail({
 
       {/* Tab content */}
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
-        {tab === "preview" && <AgentPreview state={state} founderId={founderId} company={company} sessionId={sessionId} />}
+        {tab === "preview" && <PreviewErrorBoundary><AgentPreview state={state} founderId={founderId} company={company} sessionId={sessionId} /></PreviewErrorBoundary>}
 
         {tab === "plan" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
