@@ -291,10 +291,31 @@ function extractAdImagesFromResult(obj: unknown, seen = new Set<string>()): Arra
 // ── Agent-specific preview panels ──────────────────────────────────────────
 
 function ResearchPreview({ state }: { state: AgentState }) {
-  const urls = extractUrls(state.log);
+  // Use the full source list (visitedUrls now includes every source the pipeline
+  // fetched), falling back to URLs parsed from the log.
+  const urls = [...new Set([...(state.visitedUrls ?? []), ...extractUrls(state.log)])];
   const current = state.currentUrl ?? urls[urls.length - 1];
+  const domainOf = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
+  const domainCounts: Record<string, number> = {};
+  for (const u of urls) { const d = domainOf(u); if (d) domainCounts[d] = (domainCounts[d] ?? 0) + 1; }
+  const domains = Object.entries(domainCounts).sort((a, b) => b[1] - a[1]);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%" }}>
+      {domains.length > 0 && (
+        <div style={{ ...PREVIEW_CARD, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
+          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)" }}>
+            {urls.length} sources · {domains.length} domains
+          </span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {domains.slice(0, 40).map(([d, n]) => (
+              <span key={d} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, padding: "3px 8px", borderRadius: 999, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", color: "var(--fg-dim)" }}>
+                {faviconUrl("https://" + d) && <img src={faviconUrl("https://" + d)!} width={11} height={11} onError={e => (e.currentTarget.style.display = "none")} />}
+                {d}{n > 1 ? ` ·${n}` : ""}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
       {current && (
         <div style={{ borderRadius: 28, overflow: "hidden", border: "1px solid rgba(0,0,0,0.09)", background: "#FFFFFF" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid rgba(0,0,0,0.07)", background: "rgba(180,205,228,0.10)" }}>
