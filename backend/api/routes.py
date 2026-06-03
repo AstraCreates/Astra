@@ -67,7 +67,7 @@ def _write_env_key(key: str, value: str) -> None:
 import asyncio
 from fastapi.responses import StreamingResponse
 
-from backend.db.client import get_supabase, update_task_status
+from backend.db.client import get_supabase, get_outreach_db, update_task_status
 from backend.core.factory import get_orchestrator
 from backend.core.events import stream_events, publish
 from backend.tenant_auth import actor_or_body, require_founder_access, require_org_access
@@ -2096,7 +2096,7 @@ async def outreach_search_people(
     from backend.tools.contact_seeder import seed_contact_database, is_seeding, GLOBAL_FOUNDER_ID
     if not is_seeding(founder_id):
         try:
-            db = get_supabase()
+            db = get_outreach_db()
             global_count = db.table("outreach_contacts").select("id", count="exact").eq(
                 "founder_id", GLOBAL_FOUNDER_ID
             ).limit(1).execute()
@@ -2156,8 +2156,8 @@ async def outreach_search_people(
 def _store_contacts_background(founder_id: str, contacts: list[dict]) -> None:
     """Fire-and-forget: cache contacts in local DB."""
     try:
-        from backend.db.client import get_supabase
-        db = get_supabase()
+        from backend.db.client import get_outreach_db
+        db = get_outreach_db()
         rows = [{
             "founder_id": founder_id,
             "email": c.get("email", ""),
@@ -2352,11 +2352,35 @@ async def find_contacts_for_audience(founder_id: str, body: dict, request: Reque
                         seen.add(d)
                         domains.append(d)
 
-        if not domains:
+        from backend.config import settings as _settings
+
+        # Free path: no Hunter key, or no curated-domain match → scrape free sources.
+        def _free_discovery() -> dict:
+            from backend.tools.contact_scraper import bulk_discover_and_store
+            # Derive rough title/industry hints from the audience text.
+            words = [w for w in audience_lower.replace(",", " ").split() if len(w) > 2]
+            titles = [t for t in ("founder", "ceo", "owner", "cto", "head", "director", "vp", "manager") if t in audience_lower] or ["founder", "owner"]
+            disc = bulk_discover_and_store(
+                founder_id=founder_id,
+                titles=titles,
+                industries=[target_audience],
+                domains=domains[:limit] if domains else None,
+                hn_keyword=" ".join(words[:3]),
+                limit_per_source=max(limit * 3, 30),
+            )
             return {
-                "contacts_found": 0, "contacts_stored": 0, "domains_searched": [],
-                "error": f"No matching companies found for '{target_audience}'. Try terms like: restaurant owners, SaaS CTOs, e-commerce founders, healthcare startups, real estate agents.",
+                "contacts_found": disc.get("usable", 0),
+                "contacts_stored": disc.get("stored", 0),
+                "domains_searched": domains[:limit],
+                "source": "free_discovery",
+                "sources": disc.get("sources", {}),
             }
+
+        if not _settings.hunter_api_key:
+            return _free_discovery()
+
+        if not domains:
+            return _free_discovery()
 
         result = hunter_search_by_domains(
             founder_id=founder_id,
@@ -2365,6 +2389,9 @@ async def find_contacts_for_audience(founder_id: str, body: dict, request: Reque
             department="",
         )
         result["domains_searched"] = domains[:limit]
+        # If Hunter produced nothing, fall back to free scraping.
+        if not result.get("contacts_found") and not result.get("contacts_stored"):
+            return _free_discovery()
         return result
 
     result = await asyncio.to_thread(_run)
@@ -2493,7 +2520,7 @@ async def save_outreach_contacts(founder_id: str, body: dict, request: Request):
     if not contacts:
         raise HTTPException(status_code=400, detail="No contacts provided")
 
-    db = get_supabase()
+    db = get_outreach_db()
     rows = []
     for c in contacts:
         rows.append({
@@ -2532,7 +2559,7 @@ async def get_outreach_contacts(
 ):
     """List saved contacts. Auto-seeds the DB on first visit (0 contacts)."""
     require_founder_access(request, founder_id, min_role="viewer")
-    db = get_supabase()
+    db = get_outreach_db()
     query = db.table("outreach_contacts").select("*").eq("founder_id", founder_id)
     if status:
         query = query.eq("status", status)
@@ -2571,10 +2598,77 @@ async def get_outreach_contacts(
 async def update_outreach_contact(founder_id: str, contact_id: str, body: dict, request: Request):
     """Update a contact's status or tags."""
     require_founder_access(request, founder_id, min_role="operator")
-    db = get_supabase()
+    db = get_outreach_db()
     allowed = {k: v for k, v in body.items() if k in ("status", "tags", "title", "company_name")}
     result = db.table("outreach_contacts").update(allowed).eq("id", contact_id).eq("founder_id", founder_id).execute()
     return result.data[0] if result.data else {}
+
+
+@router.post("/outreach/import-csv/{founder_id}")
+async def import_contacts_csv(founder_id: str, body: dict, request: Request):
+    """Import contacts from raw CSV text. Header names are matched flexibly
+    (email/e-mail, first/first_name, company/company_name, etc.)."""
+    require_founder_access(request, founder_id, min_role="operator")
+    import csv as _csv
+    import io as _io
+
+    text = (body.get("csv") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="csv text is required")
+
+    # Flexible header → field mapping.
+    field_map = {
+        "email": "email", "e-mail": "email", "email address": "email",
+        "first": "first_name", "first name": "first_name", "firstname": "first_name", "fname": "first_name",
+        "last": "last_name", "last name": "last_name", "lastname": "last_name", "lname": "last_name",
+        "name": "_full_name", "full name": "_full_name",
+        "title": "title", "job title": "title", "role": "title", "position": "title",
+        "company": "company_name", "company name": "company_name", "organization": "company_name", "org": "company_name",
+        "domain": "company_domain", "website": "company_domain", "company domain": "company_domain",
+        "linkedin": "linkedin_url", "linkedin url": "linkedin_url",
+        "city": "city", "state": "state", "country": "country",
+        "industry": "industry", "company size": "company_size", "size": "company_size",
+        "seniority": "seniority",
+    }
+
+    reader = _csv.DictReader(_io.StringIO(text))
+    rows: list[dict] = []
+    skipped = 0
+    for raw in reader:
+        rec: dict = {"founder_id": founder_id, "source": "csv_import"}
+        full_name = ""
+        for k, v in raw.items():
+            if k is None or v is None:
+                continue
+            mapped = field_map.get(k.strip().lower())
+            if not mapped:
+                continue
+            val = v.strip()
+            if mapped == "_full_name":
+                full_name = val
+            else:
+                rec[mapped] = val
+        if not rec.get("first_name") and full_name:
+            parts = full_name.split()
+            rec["first_name"] = parts[0]
+            if len(parts) > 1:
+                rec["last_name"] = " ".join(parts[1:])
+        email = (rec.get("email") or "").strip().lower()
+        if not email or "@" not in email:
+            skipped += 1
+            continue
+        rec["email"] = email
+        rows.append(rec)
+
+    if not rows:
+        return {"imported": 0, "skipped": skipped, "error": "No rows with a valid email column were found."}
+
+    db = get_outreach_db()
+    for i in range(0, len(rows), 100):
+        db.table("outreach_contacts").upsert(
+            rows[i:i + 100], on_conflict="founder_id,email", ignore_duplicates=False
+        ).execute()
+    return {"imported": len(rows), "skipped": skipped, "founder_id": founder_id}
 
 
 # ── Outreach lists ────────────────────────────────────────────────────────────
@@ -2583,7 +2677,7 @@ async def update_outreach_contact(founder_id: str, contact_id: str, body: dict, 
 async def get_outreach_lists(founder_id: str, request: Request):
     """List all saved contact lists."""
     require_founder_access(request, founder_id, min_role="viewer")
-    db = get_supabase()
+    db = get_outreach_db()
     result = db.table("outreach_lists").select("*").eq("founder_id", founder_id).order("created_at", desc=True).execute()
     return {"lists": result.data}
 
@@ -2592,7 +2686,7 @@ async def get_outreach_lists(founder_id: str, request: Request):
 async def create_outreach_list(founder_id: str, body: dict, request: Request):
     """Create a contact list and optionally add contacts to it."""
     require_founder_access(request, founder_id, min_role="operator")
-    db = get_supabase()
+    db = get_outreach_db()
     contact_ids = body.pop("contact_ids", [])
 
     row = {
@@ -2616,7 +2710,7 @@ async def create_outreach_list(founder_id: str, body: dict, request: Request):
 async def get_list_contacts(founder_id: str, list_id: str, request: Request):
     """Get all contacts in a list."""
     require_founder_access(request, founder_id, min_role="viewer")
-    db = get_supabase()
+    db = get_outreach_db()
     members = db.table("outreach_list_members").select("contact_id").eq("list_id", list_id).execute()
     contact_ids = [m["contact_id"] for m in members.data]
     if not contact_ids:
@@ -2630,7 +2724,7 @@ async def get_list_contacts(founder_id: str, list_id: str, request: Request):
 @router.get("/outreach/campaigns/{founder_id}")
 async def get_campaigns(founder_id: str, request: Request):
     require_founder_access(request, founder_id, min_role="viewer")
-    db = get_supabase()
+    db = get_outreach_db()
     result = db.table("outreach_campaigns").select("*").eq("founder_id", founder_id).order("created_at", desc=True).execute()
     return {"campaigns": result.data}
 
@@ -2638,7 +2732,7 @@ async def get_campaigns(founder_id: str, request: Request):
 @router.post("/outreach/campaigns/{founder_id}")
 async def create_campaign(founder_id: str, body: dict, request: Request):
     require_founder_access(request, founder_id, min_role="operator")
-    db = get_supabase()
+    db = get_outreach_db()
     row = {
         "founder_id": founder_id,
         "name": body.get("name", "New Campaign"),
@@ -2658,7 +2752,7 @@ async def create_campaign(founder_id: str, body: dict, request: Request):
 @router.patch("/outreach/campaigns/{founder_id}/{campaign_id}")
 async def update_campaign(founder_id: str, campaign_id: str, body: dict, request: Request):
     require_founder_access(request, founder_id, min_role="operator")
-    db = get_supabase()
+    db = get_outreach_db()
     allowed = {k: v for k, v in body.items() if k in (
         "name", "status", "from_name", "from_email", "reply_to",
         "steps", "product_name", "value_prop", "daily_limit", "send_provider"
@@ -2671,7 +2765,7 @@ async def update_campaign(founder_id: str, campaign_id: str, body: dict, request
 async def add_contacts_to_campaign(founder_id: str, campaign_id: str, body: dict, request: Request):
     """Enroll contacts from a list (or explicit IDs) into a campaign."""
     require_founder_access(request, founder_id, min_role="operator")
-    db = get_supabase()
+    db = get_outreach_db()
 
     contact_ids: list[str] = body.get("contact_ids", [])
     list_id = body.get("list_id")
@@ -2702,7 +2796,7 @@ async def add_contacts_to_campaign(founder_id: str, campaign_id: str, body: dict
 @router.get("/outreach/campaigns/{founder_id}/{campaign_id}/contacts")
 async def get_campaign_contacts(founder_id: str, campaign_id: str, request: Request):
     require_founder_access(request, founder_id, min_role="viewer")
-    db = get_supabase()
+    db = get_outreach_db()
     result = db.table("outreach_campaign_contacts").select(
         "*, outreach_contacts(first_name, last_name, email, company_name, title)"
     ).eq("campaign_id", campaign_id).execute()
@@ -2712,7 +2806,7 @@ async def get_campaign_contacts(founder_id: str, campaign_id: str, request: Requ
 @router.get("/outreach/campaigns/{founder_id}/{campaign_id}/stats")
 async def get_campaign_stats(founder_id: str, campaign_id: str, request: Request):
     require_founder_access(request, founder_id, min_role="viewer")
-    db = get_supabase()
+    db = get_outreach_db()
     events = db.table("outreach_email_events").select("event_type").eq("campaign_id", campaign_id).execute()
     counts: dict[str, int] = {}
     for e in events.data:
@@ -2736,7 +2830,7 @@ async def get_campaign_stats(founder_id: str, campaign_id: str, request: Request
 async def generate_campaign_steps(founder_id: str, campaign_id: str, request: Request):
     """Generate LLM email sequence steps for a campaign."""
     require_founder_access(request, founder_id, min_role="operator")
-    db = get_supabase()
+    db = get_outreach_db()
     campaigns = db.table("outreach_campaigns").select("*").eq("id", campaign_id).eq("founder_id", founder_id).execute()
     if not campaigns.data:
         raise HTTPException(status_code=404, detail="Campaign not found")
@@ -2764,7 +2858,7 @@ async def send_campaign_batch(founder_id: str, campaign_id: str, request: Reques
     founder's connected Gmail (Composio). Respects daily_limit.
     """
     require_founder_access(request, founder_id, min_role="operator")
-    db = get_supabase()
+    db = get_outreach_db()
 
     # Load campaign + steps
     camp_res = db.table("outreach_campaigns").select("*").eq("id", campaign_id).eq("founder_id", founder_id).execute()
@@ -2868,7 +2962,7 @@ async def track_open(founder_id: str, campaign_id: str, cc_id: str, step_index: 
     """Record email open event. Returns 1x1 transparent GIF."""
     from fastapi.responses import Response
     try:
-        db = get_supabase()
+        db = get_outreach_db()
         # Get contact_id from campaign_contact
         cc = db.table("outreach_campaign_contacts").select("contact_id").eq("id", cc_id).execute()
         contact_id = cc.data[0]["contact_id"] if cc.data else None
@@ -2894,7 +2988,7 @@ async def track_click(founder_id: str, campaign_id: str, cc_id: str, step_index:
     from fastapi.responses import RedirectResponse
     from urllib.parse import unquote
     try:
-        db = get_supabase()
+        db = get_outreach_db()
         cc = db.table("outreach_campaign_contacts").select("contact_id").eq("id", cc_id).execute()
         contact_id = cc.data[0]["contact_id"] if cc.data else None
         db.table("outreach_email_events").insert({

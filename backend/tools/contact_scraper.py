@@ -479,8 +479,8 @@ def bulk_discover_and_store(
     stored = 0
     if usable and founder_id:
         try:
-            from backend.db.client import get_supabase
-            db = get_supabase()
+            from backend.db.client import get_outreach_db
+            db = get_outreach_db()
             rows = [{**c, "founder_id": founder_id} for c in usable]
             # Upsert in batches of 50
             for i in range(0, len(rows), 50):
@@ -529,8 +529,8 @@ def search_local_contacts(
     founder_ids = list({founder_id, GLOBAL_FOUNDER_ID})
 
     try:
-        from backend.db.client import get_supabase
-        db = get_supabase()
+        from backend.db.client import get_outreach_db
+        db = get_outreach_db()
         query = db.table("outreach_contacts").select("*").in_("founder_id", founder_ids)
 
         if industries:

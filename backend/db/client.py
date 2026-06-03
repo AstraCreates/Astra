@@ -28,6 +28,18 @@ def get_supabase() -> Client:
     return _client
 
 
+def get_outreach_db():
+    """Storage backend for the outreach subsystem.
+
+    Uses Supabase when configured, otherwise a free file-backed store so the
+    Outreach tab works with no paid services. Both expose the same query API.
+    """
+    if settings.supabase_url and settings.supabase_key:
+        return get_supabase()
+    from backend.outreach.local_store import get_local_store
+    return get_local_store()
+
+
 async def get_ready_tasks(goal_id: str) -> list[dict]:
     def _query():
         return get_supabase().table("tasks").select("*").eq("goal_id", goal_id).execute().data

@@ -287,6 +287,9 @@ export default function OutreachPage() {
   const [targetAudience, setTargetAudience] = useState("");
   const [findingContacts, setFindingContacts] = useState(false);
   const [findResult, setFindResult] = useState<{ contacts_found: number; contacts_stored: number; domains_searched: string[]; error?: string } | null>(null);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvResult, setCsvResult] = useState<{ imported: number; skipped: number; error?: string } | null>(null);
+  const csvInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Search / filter state ─────────────────────────────────────────────────
   const [searchTitles, setSearchTitles] = useState("");
@@ -433,6 +436,30 @@ export default function OutreachPage() {
       setSearchError(e instanceof Error ? e.message : "Failed to find contacts");
     } finally {
       setFindingContacts(false);
+    }
+  };
+
+  const importCsv = async (file: File) => {
+    setCsvImporting(true);
+    setCsvResult(null);
+    try {
+      const text = await file.text();
+      const res = await apiFetch(`${BASE}/outreach/import-csv/${founderId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: text }),
+      });
+      const data = await res.json();
+      setCsvResult(data);
+      if (data.imported > 0) {
+        setTab("contacts");
+        loadContacts();
+      }
+    } catch (e) {
+      setCsvResult({ imported: 0, skipped: 0, error: e instanceof Error ? e.message : "Import failed" });
+    } finally {
+      setCsvImporting(false);
+      if (csvInputRef.current) csvInputRef.current.value = "";
     }
   };
 
@@ -615,7 +642,7 @@ export default function OutreachPage() {
           <div style={{ ...glass({ padding: "20px", display: "flex", flexDirection: "column", gap: 12 }) }}>
             <div>
               <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)", marginBottom: 4 }}>Who are you trying to reach?</div>
-              <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>Describe your target audience and we'll find verified contacts from our database</div>
+              <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>Describe your target audience and our agents will scrape the web (sites, GitHub, Hacker News) for real contacts — no paid data provider needed.</div>
             </div>
             <div style={{ display: "flex", gap: 10 }}>
               <input
@@ -643,7 +670,7 @@ export default function OutreachPage() {
 
             {findingContacts && (
               <p style={{ fontSize: 12, color: "var(--fg-mute)", margin: 0 }}>
-                Searching our contact database — this takes ~30s
+                Scraping the web for matching contacts — this takes ~30s
               </p>
             )}
 
@@ -672,6 +699,25 @@ export default function OutreachPage() {
             {searchError && (
               <p style={{ fontSize: 12, color: "#f87171", margin: 0 }}>{searchError}</p>
             )}
+          </div>
+
+          {/* CSV import — bring your own contact list */}
+          <div style={{ ...glass({ padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }) }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>Import a CSV</div>
+              <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>Bring your own list — columns like email, first name, last name, title, company are matched automatically.</div>
+              {csvResult && (
+                <div style={{ fontSize: 12, marginTop: 6, color: csvResult.error ? "#f87171" : "#4ade80" }}>
+                  {csvResult.error ? csvResult.error : `Imported ${csvResult.imported} contact${csvResult.imported === 1 ? "" : "s"}${csvResult.skipped ? ` · skipped ${csvResult.skipped} without a valid email` : ""}.`}
+                </div>
+              )}
+            </div>
+            <input ref={csvInputRef} type="file" accept=".csv,text/csv" style={{ display: "none" }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) importCsv(f); }} />
+            <button onClick={() => csvInputRef.current?.click()} disabled={csvImporting}
+              className="site-btn site-btn-ghost" style={{ padding: "0 20px", height: 36, fontSize: 13, whiteSpace: "nowrap" }}>
+              {csvImporting ? "Importing…" : "Upload CSV"}
+            </button>
           </div>
 
           {/* Filter + results — shown once contacts exist */}
