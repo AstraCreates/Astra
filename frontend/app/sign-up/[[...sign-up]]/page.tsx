@@ -1,9 +1,8 @@
-import { SignUp } from "@clerk/nextjs";
-
+"use client";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 export default function SignUpPage() {
-  return (
-    <div className="flex min-h-[60vh] items-center justify-center">
-      <SignUp />
-    </div>
-  );
+  const router = useRouter();
+  useEffect(() => { router.replace("/"); }, [router]);
+  return null;
 }
