@@ -3070,95 +3070,135 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
 
 // ── Launch Checklist ─────────────────────────────────────────────────────────
 
-interface CLItem { id: string; label: string; autoAgent?: string; }
+interface CLItem { id: string; label: string; autoAgent?: string; detail?: string; }
 interface CLCategory { id: string; label: string; icon: string; items: CLItem[]; }
 
 const CHECKLIST_CATEGORIES: CLCategory[] = [
   {
+    id: "validation", label: "Customer Validation", icon: "🔎",
+    items: [
+      { id: "problem_interviews", label: "Run 10+ customer discovery interviews", autoAgent: "research", detail: "Talk to real buyers before building — validate the pain, not the solution." },
+      { id: "competitor_teardown", label: "Map competitors & differentiation", autoAgent: "research_competitors", detail: "Feature, pricing, and positioning teardown of the top 5 alternatives." },
+      { id: "market_sizing",      label: "Size the market (TAM / SAM / SOM)", autoAgent: "research", detail: "Bottom-up estimate you can defend to investors." },
+      { id: "value_prop",         label: "Write a one-line value proposition", autoAgent: "marketing", detail: "Who it's for, the pain it kills, and why you're 10x better." },
+      { id: "landing_smoke_test", label: "Smoke-test demand with a landing page", autoAgent: "web", detail: "Measure real sign-up conversion before writing production code." },
+      { id: "pricing_willingness", label: "Test willingness-to-pay", detail: "Van Westendorp or direct pre-sale to confirm price points." },
+    ],
+  },
+  {
     id: "legal", label: "Legal & Entity", icon: "⚖️",
     items: [
-      { id: "form_entity",       label: "Form LLC or Delaware C-Corp",          autoAgent: "legal" },
-      { id: "founders_agmt",     label: "Draft founders' agreement",            autoAgent: "legal" },
-      { id: "vesting",           label: "Set founder vesting schedules (4yr/1yr)" },
-      { id: "ip_assign",         label: "Assign all IP to the company",         autoAgent: "legal" },
-      { id: "ein",               label: "Get an EIN from the IRS" },
-      { id: "trademark",         label: "Register trademark for brand name" },
+      { id: "form_entity",       label: "Form LLC or Delaware C-Corp",          autoAgent: "legal", detail: "C-Corp if you'll raise venture capital; LLC for bootstrapped." },
+      { id: "founders_agmt",     label: "Draft founders' agreement",            autoAgent: "legal", detail: "Equity split, roles, decision rights, and exit terms in writing." },
+      { id: "vesting",           label: "Set founder vesting schedules (4yr/1yr)", detail: "Protects the company if a co-founder leaves early." },
+      { id: "ip_assign",         label: "Assign all IP to the company",         autoAgent: "legal", detail: "Every founder and contractor signs an IP assignment." },
+      { id: "ein",               label: "Get an EIN from the IRS", detail: "Free, takes minutes online — needed for banking and payroll." },
+      { id: "83b",               label: "File 83(b) election within 30 days", detail: "Hard deadline — missing it creates a large future tax bill." },
+      { id: "trademark",         label: "Register trademark for brand name", detail: "Clear the name first; file once you commit to it." },
       { id: "nda",               label: "Draft NDA template",                   autoAgent: "legal" },
-      { id: "privacy_tos",       label: "Publish Privacy Policy & Terms of Service", autoAgent: "legal" },
+      { id: "privacy_tos",       label: "Publish Privacy Policy & Terms of Service", autoAgent: "legal", detail: "Required before collecting any user data or payments." },
       { id: "contractor_agmt",   label: "Create contractor agreement templates", autoAgent: "legal" },
-      { id: "business_bank",     label: "Open dedicated business bank account" },
+      { id: "business_bank",     label: "Open dedicated business bank account", detail: "Never commingle personal and company funds." },
+      { id: "business_insurance", label: "Get business liability / E&O insurance", detail: "Often required by enterprise customers and investors." },
     ],
   },
   {
     id: "technical", label: "Technical / Product", icon: "🛠️",
     items: [
-      { id: "mvp_scope",         label: "Define and scope MVP features",        autoAgent: "research" },
-      { id: "github_setup",      label: "Set up GitHub repo & version control", autoAgent: "technical" },
+      { id: "mvp_scope",         label: "Define and scope MVP features",        autoAgent: "research", detail: "Cut to the single workflow that delivers the core value." },
+      { id: "github_setup",      label: "Set up GitHub repo & version control", autoAgent: "technical", detail: "Branch protection, PR reviews, and a clear README." },
       { id: "mvp_deploy",        label: "Deploy MVP to staging",                autoAgent: "web" },
-      { id: "beta_testing",      label: "Run beta user testing & fix bugs" },
-      { id: "error_monitoring",  label: "Configure error monitoring (Sentry)",  autoAgent: "technical" },
-      { id: "ci_cd",             label: "Set up automated CI/CD pipeline",      autoAgent: "technical" },
+      { id: "beta_testing",      label: "Run beta user testing & fix bugs", detail: "Ship to 10–20 friendly users and instrument everything." },
+      { id: "error_monitoring",  label: "Configure error monitoring (Sentry)",  autoAgent: "technical", detail: "Catch production exceptions before users report them." },
+      { id: "ci_cd",             label: "Set up automated CI/CD pipeline",      autoAgent: "technical", detail: "Tests + lint on every PR, one-click deploy to prod." },
+      { id: "automated_tests",   label: "Write tests for critical paths", autoAgent: "technical", detail: "Cover auth, payments, and data-loss-risk flows first." },
       { id: "api_docs",          label: "Document API and core architecture",   autoAgent: "technical" },
-      { id: "onboarding_flow",   label: "Implement user onboarding flow",       autoAgent: "web" },
+      { id: "onboarding_flow",   label: "Implement user onboarding flow",       autoAgent: "web", detail: "Time-to-first-value is the metric that drives retention." },
+      { id: "feature_flags",     label: "Add feature flags / gradual rollout", detail: "Ship dark, ramp safely, kill instantly if something breaks." },
       { id: "transactional_email", label: "Set up transactional email (SendGrid)" },
+      { id: "rate_limiting",     label: "Add rate limiting & abuse protection", autoAgent: "technical" },
     ],
   },
   {
     id: "infra", label: "Domain & Infrastructure", icon: "🌐",
     items: [
       { id: "domain_primary",    label: "Purchase primary domain name" },
-      { id: "domain_variants",   label: "Buy brand-protecting domain variants" },
+      { id: "domain_variants",   label: "Buy brand-protecting domain variants", detail: "Common misspellings and .com/.io/.ai to prevent squatting." },
       { id: "ssl",               label: "Configure SSL certificate (HTTPS)",    autoAgent: "web" },
-      { id: "dns_records",       label: "Set SPF, DKIM, and DMARC DNS records" },
+      { id: "dns_records",       label: "Set SPF, DKIM, and DMARC DNS records", detail: "Stops your launch emails from landing in spam." },
       { id: "cloud_hosting",     label: "Configure cloud hosting provider",     autoAgent: "technical" },
+      { id: "cdn_setup",         label: "Put a CDN in front of static assets", detail: "Faster global loads and DDoS absorption." },
       { id: "staging_prod",      label: "Set up staging vs. production envs",   autoAgent: "technical" },
-      { id: "backups",           label: "Configure automated backups" },
+      { id: "backups",           label: "Configure automated backups", detail: "Test a restore — an untested backup is not a backup." },
+      { id: "uptime_monitoring", label: "Add uptime monitoring & status page", detail: "Alerting (e.g. BetterStack) so you know before customers do." },
+    ],
+  },
+  {
+    id: "security", label: "Security & Data", icon: "🔐",
+    items: [
+      { id: "secrets_mgmt",      label: "Move secrets out of code into a vault", detail: "No API keys in the repo; rotate anything ever committed." },
+      { id: "mfa_admin",         label: "Enforce MFA on all admin accounts" },
+      { id: "data_encryption",   label: "Encrypt data at rest and in transit" },
+      { id: "access_control",    label: "Set least-privilege access (roles)", detail: "Scope every key and team member to what they actually need." },
+      { id: "gdpr_ccpa",         label: "Map GDPR / CCPA data obligations", autoAgent: "legal", detail: "Required if you serve EU or California users." },
+      { id: "vuln_scan",         label: "Run a dependency / vulnerability scan", autoAgent: "technical" },
+      { id: "incident_plan",     label: "Write a security incident response plan" },
     ],
   },
   {
     id: "marketing", label: "Marketing & Brand", icon: "📢",
     items: [
-      { id: "icp",               label: "Define ICP (ideal customer profile)",  autoAgent: "research" },
+      { id: "icp",               label: "Define ICP (ideal customer profile)",  autoAgent: "research", detail: "Be specific enough to name 50 real target accounts." },
       { id: "brand_identity",    label: "Create brand identity (logo, colors)", autoAgent: "design" },
       { id: "brand_voice",       label: "Write brand voice & messaging guide",  autoAgent: "marketing" },
+      { id: "positioning",       label: "Lock category & positioning statement", autoAgent: "marketing", detail: "The frame customers use to understand what you are." },
       { id: "marketing_site",    label: "Launch marketing website with CTA",    autoAgent: "web" },
-      { id: "waitlist",          label: "Build pre-launch waitlist / email list", autoAgent: "marketing" },
+      { id: "seo_foundation",    label: "Set up SEO foundations (meta, sitemap)", autoAgent: "marketing" },
+      { id: "waitlist",          label: "Build pre-launch waitlist / email list", autoAgent: "marketing", detail: "Warm audience to convert on day one." },
       { id: "blog_post",         label: "Write and publish first blog post",    autoAgent: "marketing" },
-      { id: "product_hunt",      label: "Create Product Hunt launch page" },
+      { id: "product_hunt",      label: "Create Product Hunt launch page", detail: "Line up hunters and supporters a week ahead." },
       { id: "press_kit",         label: "Draft press kit and founder bio",      autoAgent: "marketing" },
+      { id: "demo_video",        label: "Record a 60–90s product demo video", detail: "Single highest-converting asset on most landing pages." },
     ],
   },
   {
     id: "social", label: "Social Media", icon: "📱",
     items: [
       { id: "claim_handles",     label: "Claim handles on all major platforms" },
-      { id: "focus_channels",    label: "Choose 2–3 primary channels to focus on" },
+      { id: "focus_channels",    label: "Choose 2–3 primary channels to focus on", detail: "Go deep where your ICP actually hangs out." },
       { id: "linkedin_page",     label: "Set up LinkedIn company page" },
       { id: "content_calendar",  label: "Create 30-day pre-launch content calendar", autoAgent: "marketing" },
       { id: "community_engage",  label: "Engage in niche communities (Reddit, X, Slack)" },
       { id: "founder_story",     label: "Post founder story / build-in-public content" },
+      { id: "lead_magnet",       label: "Publish a lead magnet (template, guide)", autoAgent: "marketing", detail: "Trade real value for email addresses." },
     ],
   },
   {
     id: "finance", label: "Finance & Payments", icon: "💳",
     items: [
       { id: "accounting",        label: "Set up accounting software (QuickBooks/Xero)" },
-      { id: "stripe_setup",      label: "Integrate Stripe or payment processor" },
+      { id: "stripe_setup",      label: "Integrate Stripe or payment processor", detail: "Test mode end-to-end before going live." },
+      { id: "billing_tax",       label: "Configure sales tax / VAT collection", detail: "Stripe Tax or Anrok handles multi-jurisdiction automatically." },
       { id: "pricing_model",     label: "Define pricing model and tiers",       autoAgent: "research" },
-      { id: "financial_model",   label: "Build 18-month financial model",       autoAgent: "research" },
+      { id: "financial_model",   label: "Build 18-month financial model",       autoAgent: "research", detail: "Revenue, hiring, and runway under base/best/worst cases." },
       { id: "burn_rate",         label: "Track burn rate and runway monthly" },
+      { id: "unit_economics",    label: "Calculate CAC, LTV, and payback", autoAgent: "research", detail: "Know what a customer costs vs. what they're worth." },
       { id: "biz_credit_card",   label: "Apply for a business credit card" },
+      { id: "bookkeeper",        label: "Hire a bookkeeper or fractional CFO" },
     ],
   },
   {
     id: "sales", label: "Sales & CRM", icon: "🤝",
     items: [
       { id: "crm_setup",         label: "Set up CRM (HubSpot / Pipedrive)",     autoAgent: "sales" },
-      { id: "sales_pipeline",    label: "Define sales pipeline stages",         autoAgent: "sales" },
+      { id: "sales_pipeline",    label: "Define sales pipeline stages",         autoAgent: "sales_pipeline" },
+      { id: "icp_target_list",   label: "Build a list of 50 target accounts", autoAgent: "sales", detail: "Named companies and buyers, not a vague segment." },
       { id: "cold_outreach",     label: "Write cold outreach email templates",  autoAgent: "sales" },
-      { id: "design_partners",   label: "Close first 5–10 design partner customers" },
+      { id: "sales_deck",        label: "Create a sales deck & demo script", autoAgent: "sales_enablement" },
+      { id: "design_partners",   label: "Close first 5–10 design partner customers", detail: "Discounted access in exchange for feedback and a logo." },
       { id: "testimonials",      label: "Collect and publish first testimonials" },
       { id: "lead_capture",      label: "Build lead capture form on website",   autoAgent: "web" },
+      { id: "follow_up_cadence", label: "Set up a follow-up cadence / sequence", autoAgent: "sales" },
     ],
   },
   {
@@ -3166,10 +3206,23 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
     items: [
       { id: "product_analytics", label: "Install product analytics (PostHog / Mixpanel)" },
       { id: "web_analytics",     label: "Set up Google Analytics or Plausible" },
-      { id: "north_star",        label: "Define north-star metric and weekly KPIs", autoAgent: "research" },
-      { id: "funnel_tracking",   label: "Configure funnel and conversion tracking" },
+      { id: "north_star",        label: "Define north-star metric and weekly KPIs", autoAgent: "research", detail: "One metric that captures delivered customer value." },
+      { id: "funnel_tracking",   label: "Configure funnel and conversion tracking", detail: "Instrument every step from visit to activation to paid." },
+      { id: "activation_metric", label: "Define your activation ('aha') event", detail: "The action correlated with users who stick around." },
       { id: "ab_testing",        label: "Set up A/B testing framework" },
+      { id: "cohort_retention",  label: "Build a cohort retention report", detail: "Retention is the truest signal of product-market fit." },
       { id: "metrics_dashboard", label: "Create weekly metrics dashboard" },
+    ],
+  },
+  {
+    id: "support", label: "Customer Support & Success", icon: "💬",
+    items: [
+      { id: "support_inbox",     label: "Set up a support inbox / help desk", detail: "Intercom, Help Scout, or a shared inbox to start." },
+      { id: "help_docs",         label: "Write a starter help center / FAQ", autoAgent: "technical" },
+      { id: "feedback_loop",     label: "Create a customer feedback channel", detail: "Make it trivial for users to tell you what's broken." },
+      { id: "sla_response",      label: "Set a first-response time target" },
+      { id: "onboarding_emails", label: "Build a lifecycle onboarding email series", autoAgent: "marketing" },
+      { id: "churn_survey",      label: "Add a cancellation / churn survey", detail: "Capture why people leave the moment they do." },
     ],
   },
   {
@@ -3178,20 +3231,46 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
       { id: "gsuite",            label: "Set up G Suite / Microsoft 365",       autoAgent: "ops" },
       { id: "slack_setup",       label: "Set up Slack or team comms tool" },
       { id: "wiki_docs",         label: "Document core processes in a wiki",    autoAgent: "ops" },
+      { id: "password_manager",  label: "Roll out a team password manager", detail: "1Password / Bitwarden — kill shared-credentials risk." },
       { id: "esop",              label: "Create employee option pool (ESOP)" },
-      { id: "valuation_409a",    label: "Get 409A independent valuation" },
+      { id: "hiring_plan",       label: "Draft a 12-month hiring plan", autoAgent: "ops" },
+      { id: "valuation_409a",    label: "Get 409A independent valuation", detail: "Required before granting priced stock options." },
       { id: "payroll",           label: "Set up payroll (Rippling / Gusto)" },
+    ],
+  },
+  {
+    id: "launch_day", label: "Launch Day", icon: "🎬",
+    items: [
+      { id: "launch_checklist_qa", label: "Final QA pass across core flows", detail: "Sign-up, payment, and onboarding on mobile and desktop." },
+      { id: "launch_assets",     label: "Stage launch assets & copy", autoAgent: "marketing", detail: "PH post, tweets, email, and screenshots ready to fire." },
+      { id: "warm_list_email",   label: "Email your waitlist on launch morning", autoAgent: "marketing" },
+      { id: "monitoring_watch",  label: "Watch error & uptime dashboards live" },
+      { id: "support_standby",   label: "Put the team on support standby" },
+      { id: "rollback_plan",     label: "Have a rollback / hotfix plan ready", autoAgent: "technical" },
+    ],
+  },
+  {
+    id: "post_launch", label: "Post-Launch Growth", icon: "🌱",
+    items: [
+      { id: "weekly_review",     label: "Run a weekly metrics & growth review", detail: "Same metrics, same time, every week — compounding clarity." },
+      { id: "referral_loop",     label: "Add a referral / invite loop", autoAgent: "marketing" },
+      { id: "case_studies",      label: "Publish first customer case studies", autoAgent: "marketing" },
+      { id: "roadmap_public",    label: "Share a public roadmap & changelog" },
+      { id: "pricing_revisit",   label: "Revisit pricing with real usage data", autoAgent: "research" },
+      { id: "channel_double_down", label: "Double down on the best acquisition channel", detail: "Find the one channel that works, then go deep." },
     ],
   },
   {
     id: "fundraising", label: "Investor / Fundraising", icon: "🚀",
     items: [
       { id: "pitch_deck",        label: "Build 10–12 slide pitch deck",         autoAgent: "research" },
+      { id: "narrative",         label: "Craft the fundraising narrative", autoAgent: "marketing", detail: "Why now, why this, why you — in one tight story." },
       { id: "cap_table",         label: "Create a clean cap table" },
-      { id: "data_room",         label: "Set up a fundraising data room" },
+      { id: "data_room",         label: "Set up a fundraising data room", detail: "Metrics, legal, financials, and product in one shareable place." },
       { id: "investor_list",     label: "Build target investor list (CRM)" },
-      { id: "warm_intros",       label: "Get warm intros to seed investors" },
+      { id: "warm_intros",       label: "Get warm intros to seed investors", detail: "Warm intros convert far better than cold outreach." },
       { id: "safe_docs",         label: "Prepare SAFE or convertible note docs", autoAgent: "legal" },
+      { id: "diligence_prep",    label: "Pre-empt due-diligence questions", autoAgent: "research" },
     ],
   },
 ];
@@ -3313,11 +3392,11 @@ function LaunchChecklist({ sessionId, done, agents, agentList, selectedStack }: 
                       const isAuto = item.autoAgent ? agentDone(item.autoAgent) : false;
                       return (
                         <button key={item.id} onClick={() => !isAuto && toggle(item.id, checked)} style={{
-                          display: "flex", alignItems: "center", gap: 7, background: "none", border: "none",
+                          display: "flex", alignItems: item.detail ? "flex-start" : "center", gap: 7, background: "none", border: "none",
                           cursor: isAuto ? "default" : "pointer", padding: "2px 0", textAlign: "left",
                         }}>
                           <div style={{
-                            width: 15, height: 15, borderRadius: 4, flexShrink: 0,
+                            width: 15, height: 15, borderRadius: 4, flexShrink: 0, marginTop: item.detail ? 2 : 0,
                             display: "flex", alignItems: "center", justifyContent: "center",
                             background: checked ? (isAuto ? "rgba(37,99,235,0.15)" : "rgba(61,158,95,0.15)") : "transparent",
                             border: `1.5px solid ${checked ? (isAuto ? "#2563EB" : "#3D9E5F") : "rgba(255,255,255,0.18)"}`,
@@ -3325,10 +3404,15 @@ function LaunchChecklist({ sessionId, done, agents, agentList, selectedStack }: 
                           }}>
                             {checked && <span style={{ fontSize: 7, color: isAuto ? "#2563EB" : "#3D9E5F", fontWeight: 800 }}>✓</span>}
                           </div>
-                          <span style={{ fontSize: 11, color: checked ? "var(--fg)" : "var(--fg-mute)", lineHeight: 1.35, textDecoration: checked && !isAuto ? "line-through" : "none", opacity: checked && !isAuto ? 0.6 : 1 }}>
-                            {item.label}
+                          <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontSize: 11, color: checked ? "var(--fg)" : "var(--fg-mute)", lineHeight: 1.35, textDecoration: checked && !isAuto ? "line-through" : "none", opacity: checked && !isAuto ? 0.6 : 1 }}>
+                                {item.label}
+                              </span>
+                              {isAuto && <span style={{ fontSize: 9, color: "#2563EB", flexShrink: 0 }}>auto</span>}
+                            </span>
+                            {item.detail && <span style={{ fontSize: 9.5, color: "var(--text-3)", lineHeight: 1.3, opacity: checked ? 0.5 : 0.85 }}>{item.detail}</span>}
                           </span>
-                          {isAuto && <span style={{ fontSize: 9, color: "#2563EB", flexShrink: 0 }}>auto</span>}
                         </button>
                       );
                     })}
