@@ -2736,6 +2736,7 @@ async def create_campaign(founder_id: str, body: dict, request: Request):
     row = {
         "founder_id": founder_id,
         "name": body.get("name", "New Campaign"),
+        "status": body.get("status", "draft"),
         "from_name": body.get("from_name", ""),
         "from_email": body.get("from_email", ""),
         "reply_to": body.get("reply_to", ""),
