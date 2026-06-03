@@ -18,7 +18,7 @@ from typing import Any
 PLANS: dict[str, dict[str, Any]] = {
     "beta": {
         "name": "Beta",
-        "monthly_runs": 999,
+        "monthly_runs": 99999,
         "team_seats": 5,
         "connector_syncs_per_day": 999,
         "approval_workflows": True,
