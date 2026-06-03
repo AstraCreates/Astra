@@ -4321,6 +4321,7 @@ export function GoalWorkspace({
           const ok = !event.result?.error;
           let text: string;
           let newUrl: string | undefined;
+          let srcUrls: string[] = [];
           if (!ok) {
             text = `✗ ${event.tool}: ${event.result?.error ?? "failed"}`;
           } else if (event.tool === "generate_landing_page_html" && typeof event.result === "string") {
@@ -4328,14 +4329,31 @@ export function GoalWorkspace({
               ? "⚠ generate_landing_page_html used fallback template"
               : "✓ generate_landing_page_html produced custom HTML";
           } else if (SEARCH_TOOLS.has(event.tool)) {
-            const resultStr = typeof event.result === "string" ? event.result : JSON.stringify(event.result ?? "");
-            const urlMatch = resultStr.match(/https?:\/\/[^\s"')\]]+/);
-            newUrl = urlMatch?.[0]?.replace(/[.,;]+$/, "");
-            text = newUrl ? `✓ Read ${newUrl.slice(0, 70)}…` : `✓ ${resultStr.slice(0, 80).replace(/\n/g, " ")}`;
+            // Pull ALL source URLs — run_research_pipeline/batch_search/search_and_fetch
+            // fetch dozens of sources internally and return a `sources`/`results` array.
+            const res = event.result as Record<string, unknown> | string | undefined;
+            const pickUrls = (arr: unknown): string[] =>
+              Array.isArray(arr) ? arr.map(s => (typeof s === "string" ? s : (s as Record<string, unknown>)?.url)).filter((u): u is string => typeof u === "string" && u.startsWith("http")) : [];
+            if (res && typeof res === "object") {
+              srcUrls = pickUrls((res as Record<string, unknown>).sources);
+              if (!srcUrls.length) srcUrls = pickUrls((res as Record<string, unknown>).results);
+            }
+            const resultStr = typeof res === "string" ? res : JSON.stringify(res ?? "");
+            if (!srcUrls.length) {
+              const m = resultStr.match(/https?:\/\/[^\s"')\]]+/);
+              if (m) srcUrls = [m[0].replace(/[.,;]+$/, "")];
+            }
+            srcUrls = [...new Set(srcUrls)];
+            newUrl = srcUrls[0];
+            text = srcUrls.length > 1
+              ? `✓ ${(event.tool ?? "search").replace(/_/g, " ")}: ${srcUrls.length} sources`
+              : (newUrl ? `✓ Read ${newUrl.slice(0, 70)}…` : `✓ ${resultStr.slice(0, 80).replace(/\n/g, " ")}`);
           } else {
             text = `✓ ${TOOL_DESCRIPTIONS[event.tool] ?? event.tool ?? "Done"}`;
           }
-          const newVisited = newUrl ? [...(cur.visitedUrls ?? []), newUrl] : cur.visitedUrls;
+          const newVisited = (srcUrls.length || newUrl)
+            ? [...new Set([...(cur.visitedUrls ?? []), ...(srcUrls.length ? srcUrls : newUrl ? [newUrl] : [])])]
+            : cur.visitedUrls;
           const newCommit = event.result?.commit ?? event.result?.commits;
           const newCommits = newCommit
             ? [...(cur.commits ?? []), ...(Array.isArray(newCommit) ? newCommit : [String(newCommit)])]
