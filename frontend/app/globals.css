@@ -590,7 +590,7 @@ p { margin: 0; }
   gap: 8px;
   min-height: 38px;
   padding: 0 var(--sp-2);
-  border-radius: 0;
+  border-radius: var(--r);
   border: 1px solid var(--border);
   background: #FFFFFF;
   color: var(--text-2);
@@ -678,7 +678,7 @@ p { margin: 0; }
 .site-input,
 .site-textarea {
   width: 100%;
-  border-radius: 0;
+  border-radius: var(--r);
   border: 1px solid rgba(5,5,5,0.28);
   background: #FFFFFF;
   color: var(--text);

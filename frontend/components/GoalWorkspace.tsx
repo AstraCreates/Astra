@@ -3563,7 +3563,7 @@ function WorkspaceSidebar({
             <span aria-hidden="true">＋</span>
             New goal
           </button>
-          <GoogleSignInButton />
+          <span style={{ fontSize: 11, color: "var(--text-3)", padding: "0 2px" }}>Sign in below to start a goal.</span>
         </div>
       )}
 
