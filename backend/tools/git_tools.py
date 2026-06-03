@@ -455,7 +455,9 @@ def _pm_respond(agent_output: str, goal: str, context: str, missing: list[str]) 
     env = _make_env()
     api_key = env.get("OPENAI_API_KEY", "")
     base_url = env.get("OPENAI_BASE_URL", "https://api.deepinfra.com/v1/openai")
-    model = settings.planner_model_name or "deepseek-ai/DeepSeek-V4-Flash"
+    # These review calls run against the DeepInfra endpoint, so use a model valid
+    # there (planner_model_name may be an OpenRouter-only slug -> 404).
+    model = getattr(settings, "mvp_build_model", "") or "moonshotai/Kimi-K2.5"
 
     client = openai.OpenAI(base_url=base_url, api_key=api_key)
     missing_str = ", ".join(missing) if missing else "none — MVP may be complete"
@@ -505,7 +507,9 @@ def _planner_review(local: str, goal: str, files: list[str]) -> dict:
     """Independent planner LLM review of the built codebase. Returns {pass, issues, fix_instructions}."""
     env = _make_env()
     client = openai.OpenAI(base_url=env["OPENAI_BASE_URL"], api_key=env["OPENAI_API_KEY"])
-    model = settings.planner_model_name or "deepseek-ai/DeepSeek-V4-Flash"
+    # These review calls run against the DeepInfra endpoint, so use a model valid
+    # there (planner_model_name may be an OpenRouter-only slug -> 404).
+    model = getattr(settings, "mvp_build_model", "") or "moonshotai/Kimi-K2.5"
 
     # Sample key files — read enough that truncation false-positives don't trigger
     samples = []
