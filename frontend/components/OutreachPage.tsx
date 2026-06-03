@@ -451,9 +451,24 @@ export default function OutreachPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ csv: text }),
       });
-      const data = await res.json();
-      setCsvResult(data);
-      if (data.imported > 0) {
+      const raw = await res.text();
+      let data: { imported?: number; skipped?: number; error?: string; detail?: string };
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        if (res.status === 413) {
+          setCsvResult({ imported: 0, skipped: 0, error: "That file is too large to upload. Split it into smaller CSVs and try again." });
+        } else {
+          setCsvResult({ imported: 0, skipped: 0, error: `Upload failed (HTTP ${res.status}). Please try again.` });
+        }
+        return;
+      }
+      if (!res.ok) {
+        setCsvResult({ imported: 0, skipped: 0, error: data.detail || data.error || `Upload failed (HTTP ${res.status}).` });
+        return;
+      }
+      setCsvResult({ imported: data.imported ?? 0, skipped: data.skipped ?? 0, error: data.error });
+      if ((data.imported ?? 0) > 0) {
         setTab("contacts");
         loadContacts();
       }
