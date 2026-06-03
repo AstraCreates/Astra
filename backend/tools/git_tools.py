@@ -175,6 +175,46 @@ def _ensure_clone(repo_url: str, session_id: str = "default") -> str:
     return str(workspace)
 
 
+def _get_workspace(repo_url: str, session_id: str) -> tuple[str, bool]:
+    """Return (local_path, is_github). Clones from GitHub when a repo + token are
+    available, otherwise builds in a fresh local git workspace so MVPs can be
+    built and previewed with NO GitHub required."""
+    if repo_url and settings.github_token:
+        return _ensure_clone(repo_url, session_id), True
+    ws = WORKSPACE_ROOT / session_id / "mvp"
+    ws.mkdir(parents=True, exist_ok=True)
+    if not (ws / ".git").exists():
+        try:
+            _sh(["git", "init"], cwd=str(ws))
+            _sh(["git", "config", "user.email", "astra-agent@astra.ai"], cwd=str(ws))
+            _sh(["git", "config", "user.name", "Astra Agent"], cwd=str(ws))
+        except Exception:
+            pass
+    if os.getuid() == 0:
+        subprocess.run(["chmod", "-R", "777", str(ws)], capture_output=True)
+    return str(ws), False
+
+
+def _list_built_files(local: str) -> list[str]:
+    """All files in the workspace (works without git tracking), excluding noise."""
+    out = []
+    for root, dirs, fs in os.walk(local):
+        dirs[:] = [d for d in dirs if d not in (".git", "node_modules", ".next", "__pycache__")]
+        for f in fs:
+            rel = os.path.relpath(os.path.join(root, f), local)
+            if not rel.startswith(".oc_session"):
+                out.append(rel)
+    return sorted(out)
+
+
+def _stage_all(local: str) -> None:
+    """Stage all files (no commit) so disk contents are tracked in local mode."""
+    try:
+        _sh(["git", "add", "-A"], cwd=local)
+    except Exception:
+        pass
+
+
 def _pull(local: str) -> None:
     try:
         _sh(["git", "pull", "--rebase"], cwd=local, timeout=30)
@@ -252,10 +292,82 @@ def _record_build_usage(result_obj: dict, founder_id: str = "", session_id: str 
         logger.warning("MVP build billing failed: %s", e)
 
 
-def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 480, model: str = None, founder_id: str = "") -> str:
+def _stream_build_events(cmd: list, cwd: str, timeout: int, env: dict,
+                         founder_id: str, app_session_id: str, oc_session_id: str) -> str:
+    """Run openclaude with stream-json output, publishing each step (assistant
+    text, tool calls, and every file as it's written) live to the session so the
+    technical-agent preview shows the build happening — no GitHub needed."""
+    import time as _t
+    import threading as _th
+    from backend.core.events import publish_sync
+
+    files: dict[str, str] = {}
+    result_obj = None
+
+    def pub(ev: dict) -> None:
+        try:
+            publish_sync(app_session_id, {"type": "agent_build", "agent": "technical", **ev})
+        except Exception:
+            pass
+
+    with _build_semaphore:
+        proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, env=env, bufsize=1)
+        watchdog = _th.Timer(timeout, proc.kill)
+        watchdog.daemon = True
+        watchdog.start()
+        try:
+            for line in proc.stdout:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except Exception:
+                    continue
+                etype = ev.get("type")
+                if etype == "system":
+                    pub({"kind": "start", "tools": ev.get("tools", [])})
+                elif etype == "assistant":
+                    for block in (ev.get("message", {}).get("content") or []):
+                        bt = block.get("type")
+                        if bt == "text" and (block.get("text") or "").strip():
+                            pub({"kind": "log", "text": block["text"][:2000]})
+                        elif bt == "tool_use":
+                            name = block.get("name") or ""
+                            inp = block.get("input") or {}
+                            if name in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
+                                path = inp.get("file_path") or inp.get("path") or inp.get("notebook_path") or ""
+                                content = inp.get("content") or inp.get("new_string") or ""
+                                if path:
+                                    files[path] = content
+                                    pub({"kind": "file", "path": path, "content": content[:20000], "size": len(content)})
+                            elif name == "Bash":
+                                pub({"kind": "command", "command": (inp.get("command") or "")[:500]})
+                            elif name in ("Read", "Glob", "Grep"):
+                                pub({"kind": "tool", "tool": name, "target": str(inp.get("file_path") or inp.get("pattern") or "")[:120]})
+                elif etype == "result":
+                    result_obj = ev
+        finally:
+            watchdog.cancel()
+            try:
+                proc.wait(timeout=10)
+            except Exception:
+                proc.kill()
+
+    if isinstance(result_obj, dict):
+        _record_build_usage(result_obj, founder_id, oc_session_id)
+        pub({"kind": "done", "files": list(files.keys())})
+        return (result_obj.get("result") or "").strip()
+    pub({"kind": "done", "files": list(files.keys())})
+    return ""
+
+
+def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 480, model: str = None,
+                founder_id: str = "", app_session_id: str = "") -> str:
     """
-    Send one message to openclaude. Session persists via --session-id so
-    each call is a new message in the same conversation — like typing to a TUI.
+    Send one message to openclaude. When app_session_id is set, the build streams
+    live to that session (transcript + files). Otherwise returns the final result.
     """
     if not os.path.exists(OPENCLAUDE_BIN):
         raise RuntimeError(f"openclaude not found at {OPENCLAUDE_BIN}")
@@ -276,11 +388,15 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
         "Write/Edit/Bash tools to create real, complete, runnable code (not stubs or "
         "scaffolding). Finish the task fully before stopping."
     )
+    stream = bool(app_session_id)
     oc_args = [
-        OPENCLAUDE_BIN, "--print", "--output-format", "json",
+        OPENCLAUDE_BIN, "--print",
+        "--output-format", ("stream-json" if stream else "json"),
         "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions",
         "--provider", "openai", "--model", model,
     ]
+    if stream:
+        oc_args += ["--verbose"]  # stream-json needs verbose to emit step events
     if session_id:
         oc_args += ["--session-id", session_id]
     # Autonomy preamble + the task as the final prompt argument.
@@ -302,6 +418,9 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
         ] + oc_args + [full_prompt]
     else:
         cmd = oc_args + [full_prompt]
+
+    if stream:
+        return _stream_build_events(cmd, local, timeout, env, founder_id, app_session_id, session_id)
 
     with _build_semaphore:
         r = subprocess.run(cmd, cwd=local, capture_output=True, text=True, timeout=timeout, env=env)
@@ -584,20 +703,27 @@ def run_mvp_loop(
     Build MVP by calling openclaude once per missing file (no session-id — fresh context each call).
     Avoids session state pollution that caused the PM loop to spin forever.
     """
-    if not settings.github_token:
-        return {"error": "GITHUB_TOKEN not set"}
-
     if required_files is None:
         required_files = MVP_REQUIRED
 
     try:
-        local = _ensure_clone(repo_url, session_id)
+        # GitHub-optional: clone if a repo+token exist, else build in a local
+        # workspace and stream files to the preview (no GitHub required).
+        local, is_github = _get_workspace(repo_url, session_id)
         oc_session_id = str(uuid.uuid4())
         Path(local, ".oc_session_id").write_text(oc_session_id)
         commits = []
 
-        logger.info("MVP build start for %s", repo_url)
-        _pull(local)
+        try:
+            from backend.core.events import publish_sync
+            publish_sync(session_id, {"type": "agent_build", "agent": "technical",
+                                      "kind": "build_start", "goal": goal[:160], "github": is_github})
+        except Exception:
+            pass
+
+        logger.info("MVP build start (github=%s) for %s", is_github, repo_url or "(local)")
+        if is_github:
+            _pull(local)
 
         # Pass 1: write each required file that's missing — one fresh openclaude call per file
         missing = _missing_mvp_files(local, required_files)
@@ -609,7 +735,7 @@ def run_mvp_loop(
             file_timeout = 600 if rel_path in _LARGE_FILES else 300
             prompt = _file_prompt(rel_path, goal, context, local)
             logger.info("  writing %s (timeout=%ds)...", rel_path, file_timeout)
-            _run_claude(local, prompt, session_id=None, timeout=file_timeout, founder_id=founder_id)
+            _run_claude(local, prompt, session_id=None, timeout=file_timeout, founder_id=founder_id, app_session_id=session_id)
             # Verify file appeared
             if Path(local, rel_path).exists():
                 logger.info("  ✓ %s written", rel_path)
@@ -619,41 +745,52 @@ def run_mvp_loop(
                     f"Use your Write tool RIGHT NOW to create the file `{rel_path}` in the current directory. "
                     f"Project: {goal}. Write real, complete code. No explanations."
                 )
-                _run_claude(local, retry_prompt, session_id=None, timeout=file_timeout, founder_id=founder_id)
+                _run_claude(local, retry_prompt, session_id=None, timeout=file_timeout, founder_id=founder_id, app_session_id=session_id)
 
         _sanitize_package_json(local)
-        sha = _commit_and_push(local, f"feat: mvp build — {goal[:50]}")
-        if sha:
-            commits.append(sha)
+        if is_github:
+            sha = _commit_and_push(local, f"feat: mvp build — {goal[:50]}")
+            if sha:
+                commits.append(sha)
+        else:
+            _stage_all(local)
 
         # Pass 2: openclaude self-test + fix (fresh session, reads actual files on disk)
         fix_session = str(uuid.uuid4())
         logger.info("Pass 2: openclaude fix pass")
-        _run_claude(local, _OC_TEST_PROMPT, session_id=None, timeout=600, founder_id=founder_id)
+        _run_claude(local, _OC_TEST_PROMPT, session_id=None, timeout=600, founder_id=founder_id, app_session_id=session_id)
         _sanitize_package_json(local)
-        sha2 = _commit_and_push(local, f"fix: verification pass — {goal[:45]}")
-        if sha2:
-            commits.append(sha2)
+        if is_github:
+            sha2 = _commit_and_push(local, f"fix: verification pass — {goal[:45]}")
+            if sha2:
+                commits.append(sha2)
+        else:
+            _stage_all(local)
 
         # Pass 3: planner review → fix any remaining issues
         current_files = _staged_files(local)
         review = _planner_review(local, goal, current_files)
         logger.info("Planner review: pass=%s issues=%s", review["pass"], review["issues"])
         if not review["pass"] and review["fix_instructions"]:
-            _run_claude(local, review["fix_instructions"], session_id=None, timeout=600, founder_id=founder_id)
+            _run_claude(local, review["fix_instructions"], session_id=None, timeout=600, founder_id=founder_id, app_session_id=session_id)
             _sanitize_package_json(local)
-            sha3 = _commit_and_push(local, f"fix: planner fixes — {goal[:45]}")
-            if sha3:
-                commits.append(sha3)
+            if is_github:
+                sha3 = _commit_and_push(local, f"fix: planner fixes — {goal[:45]}")
+                if sha3:
+                    commits.append(sha3)
+            else:
+                _stage_all(local)
 
-        all_files = _staged_files(local)
+        _stage_all(local)
+        all_files = _list_built_files(local)
         return {
             "success": True,
             "repo_url": repo_url,
-            "github_url": f"{repo_url}/tree/main",
+            "github_url": f"{repo_url}/tree/main" if is_github else "",
+            "local_only": not is_github,
             "commits": commits,
             "files_in_repo": len(all_files),
-            "files_preview": all_files[:20],
+            "files_preview": all_files[:30],
             "missing": _missing_mvp_files(local, required_files),
         }
 

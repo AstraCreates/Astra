@@ -385,8 +385,63 @@ function WebPreview({ state, sessionId, founderId }: { state: AgentState; sessio
   );
 }
 
+interface BuildEvent {
+  kind: string;
+  path?: string; content?: string; size?: number;
+  command?: string; text?: string; tool?: string; target?: string;
+  goal?: string; files?: string[];
+}
+
+function BuildStream({ events, files }: { events: BuildEvent[]; files: Record<string, { content: string; size: number }> }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const fileList = Object.keys(files).sort();
+  const icon = (k: string) => k === "file" ? "📝" : k === "command" ? "▶" : k === "build_start" ? "🔨" : k === "done" ? "✅" : k === "tool" ? "⚙" : "·";
+  const lineText = (e: BuildEvent) =>
+    e.kind === "file" ? `wrote ${e.path} (${e.size ?? 0}b)` :
+    e.kind === "command" ? `$ ${e.command}` :
+    e.kind === "build_start" ? `Building MVP: ${e.goal ?? ""}` :
+    e.kind === "done" ? `Build step complete — ${(e.files?.length ?? 0)} files` :
+    e.kind === "tool" ? `${e.tool ?? "tool"} ${e.target ?? ""}` :
+    (e.text ?? "");
+  if (!events.length && !fileList.length) return null;
+  return (
+    <div style={{ display: "grid", gap: 10 }}>
+      <div style={{ ...PREVIEW_CARD, padding: 0, overflow: "hidden" }}>
+        <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#2563EB", padding: "8px 10px", borderBottom: "1px solid var(--line)" }}>openclaude build · live</div>
+        <div style={{ maxHeight: 200, overflowY: "auto", padding: "6px 10px", fontFamily: "var(--font-jetbrains-mono)", fontSize: 11, lineHeight: 1.5 }}>
+          {events.slice(-120).map((e, i) => (
+            <div key={i} style={{ color: e.kind === "file" ? "#3D9E5F" : e.kind === "command" ? "#2563EB" : "var(--fg-dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <span style={{ opacity: 0.7 }}>{icon(e.kind)}</span> {lineText(e).slice(0, 160)}
+            </div>
+          ))}
+        </div>
+      </div>
+      {fileList.length > 0 && (
+        <div style={{ ...PREVIEW_CARD, padding: 0, overflow: "hidden" }}>
+          <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)", padding: "8px 10px", borderBottom: "1px solid var(--line)" }}>Files ({fileList.length})</div>
+          <div style={{ maxHeight: 320, overflowY: "auto" }}>
+            {fileList.map((p) => (
+              <div key={p} style={{ borderBottom: "1px solid var(--line-2)" }}>
+                <button onClick={() => setOpen(open === p ? null : p)} style={{ width: "100%", textAlign: "left", display: "flex", justifyContent: "space-between", gap: 8, padding: "6px 10px", background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--fg-dim)", fontFamily: "var(--font-jetbrains-mono)" }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{open === p ? "▾" : "▸"} {p}</span>
+                  <span style={{ color: "var(--fg-mute)", flexShrink: 0 }}>{files[p].size}b</span>
+                </button>
+                {open === p && (
+                  <pre style={{ margin: 0, padding: "8px 12px", background: "rgba(0,0,0,0.03)", fontSize: 10.5, lineHeight: 1.45, overflowX: "auto", maxHeight: 280, color: "var(--fg)" }}>{files[p].content || "(streaming…)"}</pre>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TechnicalPreview({ state }: { state: AgentState }) {
   const r = state.result ?? {};
+  const buildEvents = ((state as unknown as Record<string, unknown>).buildEvents as BuildEvent[]) ?? [];
+  const buildFiles = ((state as unknown as Record<string, unknown>).buildFiles as Record<string, { content: string; size: number }>) ?? {};
   // LLM role says return deploy_url; also check other key variants
   const deploy = (r.deploy_url ?? r.deployment_url ?? r.project_url ?? r.url) as string | undefined;
   const repo = (r.repo_url ?? r.github_url) as string | undefined;
@@ -417,6 +472,8 @@ function TechnicalPreview({ state }: { state: AgentState }) {
           )}
         </div>
       )}
+      {/* Live openclaude build stream + files (no GitHub required) */}
+      <BuildStream events={buildEvents} files={buildFiles} />
       {/* Live site iframe */}
       {deploy && (
         <div style={{ borderRadius: 20, overflow: "hidden", border: "1px solid rgba(37,99,235,0.18)" }}>
@@ -4179,6 +4236,18 @@ export function GoalWorkspace({
         return;
       }
       if (event.type === "session_expired") { setDone(true); es.close(); return; }
+
+      // Live MVP build stream — accumulate onto the technical agent's state.
+      if (event.type === "agent_build") {
+        setAgents((prev) => {
+          const t = (prev["technical"] ?? { agent: "technical", status: "running", log: [], tokens: 0 }) as unknown as Record<string, unknown>;
+          const be = [...((t.buildEvents as unknown[]) ?? []), event].slice(-400);
+          const bf = { ...((t.buildFiles as Record<string, unknown>) ?? {}) } as Record<string, { content: string; size: number }>;
+          if (event.kind === "file" && event.path) bf[event.path] = { content: event.content ?? "", size: event.size ?? 0 };
+          return { ...prev, technical: { ...t, buildEvents: be, buildFiles: bf } } as unknown as Record<string, AgentState>;
+        });
+        return;
+      }
 
       setAgents((prev) => {
         const next = { ...prev };
