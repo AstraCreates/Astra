@@ -38,3 +38,5 @@ export function buildAttachmentBlock(atts: Attachment[]): string {
   const parts = valid.map(a => `--- Attached file: ${a.name} ---\n${a.content}`);
   return `\n\nAttached files for context:\n${parts.join("\n\n")}`;
 }
+
+// deploy-pipeline check: frontend auto-deploy via autopull
