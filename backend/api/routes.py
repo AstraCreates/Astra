@@ -272,6 +272,7 @@ async def submit_goal(body: GoalRequest, request: Request):
     _pre_queue(session_id)
 
     async def _run():
+        from backend.core import cancellation
         try:
             await orch.run(
                 goal=body.instruction,
@@ -279,14 +280,26 @@ async def submit_goal(body: GoalRequest, request: Request):
                 constraints=constraints,
                 session_id=session_id,
             )
+        except asyncio.CancelledError:
+            logger.info("goal run killed session=%s", session_id)
+            try:
+                from backend.core.session_store import update_session_status
+                update_session_status(session_id, "killed")
+                await publish(session_id, {"type": "goal_error", "error": "Run stopped by user.", "killed": True})
+            except Exception:
+                pass
         except Exception as e:
             logger.error("goal run error session=%s: %s", session_id, e, exc_info=True)
             try:
                 await publish(session_id, {"type": "goal_error", "error": str(e)})
             except Exception:
                 pass
+        finally:
+            cancellation.clear(session_id)
 
-    asyncio.create_task(_run())
+    _task = asyncio.create_task(_run())
+    from backend.core import cancellation
+    cancellation.register_task(session_id, _task)
     return {"session_id": session_id, "status": "running"}
 
 
@@ -332,6 +345,28 @@ async def delete_session_route(session_id: str, request: Request):
         require_founder_access(request, owner, min_role="operator")
     removed = _del(session_id)
     return {"ok": True, "deleted": removed}
+
+
+@router.post("/sessions/{session_id}/kill")
+async def kill_session(session_id: str, request: Request):
+    """Immediately stop a running session — cancels the in-flight task and
+    flags it killed so the orchestrator won't continue. Only the owner may kill."""
+    from backend.core.session_store import get_session_meta, update_session_status
+    meta = get_session_meta(session_id)
+    owner = str((meta or {}).get("founder_id") or "")
+    if owner:
+        require_founder_access(request, owner, min_role="operator")
+    from backend.core import cancellation
+    cancelled = cancellation.request_kill(session_id)
+    try:
+        update_session_status(session_id, "killed")
+    except Exception:
+        pass
+    try:
+        await publish(session_id, {"type": "goal_error", "error": "Run stopped by user.", "killed": True})
+    except Exception:
+        pass
+    return {"ok": True, "killed": cancelled, "session_id": session_id}
 
 
 @router.get("/sessions/{session_id}/meta")

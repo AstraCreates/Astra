@@ -1039,6 +1039,16 @@ export async function listSessions(founderId: string, limit = 50): Promise<Sessi
   return Array.isArray(data?.sessions) ? data.sessions : [];
 }
 
+/** Immediately stop a running session (kill switch). */
+export async function killSession(sessionId: string): Promise<boolean> {
+  try {
+    const res = await apiFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/kill`, { method: "POST" });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 /** Permanently delete a session server-side so the removal syncs across devices. */
 export async function deleteSessionRemote(sessionId: string): Promise<boolean> {
   try {

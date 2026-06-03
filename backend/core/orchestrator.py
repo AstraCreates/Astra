@@ -645,6 +645,10 @@ class Orchestrator:
             async def _run_task(task: dict) -> None:  # noqa: F811
                 tid = task["id"]
                 agent_name = task["agent"]
+                from backend.core import cancellation
+                if cancellation.is_killed(session_id):
+                    completed[tid] = {"error": "killed"}
+                    return
                 agent = self.specialists.get(agent_name)
                 stack_lane = stack_lane_by_agent.get(agent_name, {})
                 lane_id = stack_lane.get("id") or task.get("id")
@@ -1026,7 +1030,11 @@ class Orchestrator:
         # Run remaining agents in parallel (research is done, deps resolve)
         logger.info("Starting non-research agents: %s", [t["agent"] for t in remaining])
         in_flight: set[str] = set()
+        from backend.core import cancellation
         while remaining or in_flight:
+            if cancellation.is_killed(session_id):
+                logger.info("Orchestrator: session %s killed — halting scheduling", session_id)
+                break
             ready = [
                 t for t in remaining
                 if all(dep in completed for dep in t.get("depends_on", []))

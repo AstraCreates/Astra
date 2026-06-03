@@ -6,7 +6,7 @@ import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useDevUser } from "@/lib/use-dev-user";
-import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote } from "@/lib/api";
+import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote, killSession } from "@/lib/api";
 import type { DeploymentRecord } from "@/lib/api";
 import type { AgentCatalogEntry } from "@/lib/api";
 import type { AgentDepartmentManifest, AgentStackTemplate, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
@@ -3892,6 +3892,7 @@ export function GoalWorkspace({
   const [expandedGoal, setExpandedGoal] = useState<string>("");
   const [autoCompanyName, setAutoCompanyName] = useState<string>("");
   const [done, setDone] = useState(false);
+  const [killing, setKilling] = useState(false);
   const [sessionCost, setSessionCost] = useState<{total_tokens: number; total_cost_usd: number; cached_tokens: number} | null>(null);
   const [inputRequest, setInputRequest] = useState<InputRequest | null>(null);
   const [selectedStack, setSelectedStack] = useState<AgentStackTemplate | null>(null);
@@ -4463,6 +4464,27 @@ export function GoalWorkspace({
             {statusText}
           </span>
           {sessionId && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.78)", fontFamily: "var(--font-jetbrains-mono)" }}>{sessionId}</span>}
+          {sessionId && !done && !error && (
+            <button
+              onClick={async () => {
+                if (killing) return;
+                if (!confirm("Stop this run immediately? Agents in progress will be halted.")) return;
+                setKilling(true);
+                const ok = await killSession(sessionId);
+                if (ok) { setError("Run stopped by user."); setDone(true); }
+                setKilling(false);
+              }}
+              title="Immediately stop all agents in this run"
+              style={{
+                fontSize: 11, letterSpacing: "0.08em", padding: "4px 12px", borderRadius: 999,
+                color: "#fff", background: "rgba(220,38,38,0.92)", border: "1px solid rgba(255,255,255,0.35)",
+                textTransform: "uppercase", fontFamily: "var(--font-jetbrains-mono)", cursor: killing ? "wait" : "pointer",
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: "#fff", display: "inline-block" }} />
+              {killing ? "Stopping…" : "Kill run"}
+            </button>
+          )}
         </div>
         {selectedStack && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
