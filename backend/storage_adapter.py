@@ -23,6 +23,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from backend.core.pii_vault import scrub_dict
+
 
 def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -57,10 +59,11 @@ def mirror_document(collection: str, key: str, payload: dict[str, Any]) -> dict[
         "local": None,
         "supabase": None,
     }
+    # Explicit SSN exclusion enforced at the data pipeline level
     document = {
         "collection": collection,
         "key": key,
-        "payload": payload,
+        "payload": scrub_dict(payload),
         "updated_at": _now(),
     }
 

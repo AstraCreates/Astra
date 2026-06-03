@@ -47,6 +47,7 @@ async def startup_background_jobs():
     start_missions_scheduler(interval_seconds=3600)
     asyncio.create_task(_resume_interrupted_sessions())
     asyncio.create_task(_platform_alert_loop())
+    asyncio.create_task(_pii_purge_loop())
 
 
 async def _resume_interrupted_sessions() -> None:
@@ -125,6 +126,20 @@ async def _resume_interrupted_sessions() -> None:
                 logger.warning("Could not resume session %s: %s", session_id, _se)
     except Exception as e:
         logger.warning("Session resume startup failed: %s", e)
+
+
+async def _pii_purge_loop() -> None:
+    """Run the 30-day SSN deletion pipeline once every 24 hours."""
+    await asyncio.sleep(60)  # give startup a moment to settle
+    while True:
+        try:
+            from backend.core.pii_vault import purge_expired
+            purge_expired()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("PII purge failed: %s", exc)
+        await asyncio.sleep(86_400)  # 24 hours
 
 
 async def _platform_alert_loop() -> None:

@@ -1895,7 +1895,11 @@ async def llc_stream(websocket: WebSocket, founder_id: str, company_name: str = 
             try:
                 msg = json.loads(msg_text)
                 if msg.get("type") == "founder_input":
-                    input_q.put(msg.get("data", {}))
+                    data = msg.get("data", {})
+                    if data.get("ssn"):
+                        from backend.core.pii_vault import record_ssn_receipt
+                        record_ssn_receipt(founder_id, session_id=None)
+                    input_q.put(data)
                 elif msg.get("type") == "cancel":
                     stop_event.set()
                     break

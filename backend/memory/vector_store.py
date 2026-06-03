@@ -6,6 +6,7 @@ from vertexai.language_models import TextEmbeddingModel
 
 from backend.config import settings
 from backend.db.client import store_memory_document
+from backend.core.pii_vault import scrub
 
 
 class VectorStore:
@@ -41,7 +42,10 @@ class VectorStore:
     ):
         if not settings.vertex_project:
             return
-        embedding = await self.embed(summary)
+        # Explicit SSN exclusion — must be enforced at the data pipeline level
+        clean_content = scrub(content)
+        clean_summary = scrub(summary)
+        embedding = await self.embed(clean_summary)
         doc = {
             "id": doc_id or str(uuid.uuid4()),
             "founder_id": founder_id,
@@ -49,8 +53,8 @@ class VectorStore:
             "agent": agent,
             "task_id": task_id,
             "doc_type": doc_type,
-            "content": content,
-            "summary": summary,
+            "content": clean_content,
+            "summary": clean_summary,
             "metadata": {**(metadata or {}), "embedding": embedding},
         }
         await store_memory_document(doc)
