@@ -266,6 +266,16 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
     # --output-format json gives a clean, parseable result object (and reliably
     # runs the agentic tool loop). Keep the prompt as the LAST arg with no
     # variadic flag before it, or openclaude swallows it as a flag value.
+    # Force autonomous execution: weaker open models otherwise reply "what would
+    # you like me to build?" instead of using their tools. This system prompt
+    # makes them act non-interactively regardless of how the per-call prompt is worded.
+    autonomy = (
+        "You are an autonomous coding agent running non-interactively in a sandbox. "
+        "There is NO human to answer questions. NEVER ask what to build or for "
+        "clarification — make reasonable assumptions and proceed immediately. Use your "
+        "Write/Edit/Bash tools to create real, complete, runnable code (not stubs or "
+        "scaffolding). Finish the task fully before stopping."
+    )
     oc_args = [
         OPENCLAUDE_BIN, "--print", "--output-format", "json",
         "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions",
@@ -273,8 +283,9 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
     ]
     if session_id:
         oc_args += ["--session-id", session_id]
-    # Escape prompt for shell embedding
+    # Escape prompt + system prompt for shell embedding (same style as prompt).
     escaped_prompt = prompt.replace("'", "'\\''")
+    escaped_autonomy = autonomy.replace("'", "'\\''")
     oc_args_str = " ".join(oc_args)
 
     # openclaude blocks --dangerously-skip-permissions when run as root.
@@ -291,10 +302,10 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
             f"OPENAI_BASE_URL={openai_base} "
             f"OPENAI_MODEL={openai_model} "
             f"HOME=/home/astra "
-            f"{oc_args_str} {escaped_prompt!r}'"
+            f"{oc_args_str} --append-system-prompt {escaped_autonomy!r} {escaped_prompt!r}'"
         )
     else:
-        shell_cmd = f"cd {local!r} && {oc_args_str} '{escaped_prompt}'"
+        shell_cmd = f"cd {local!r} && {oc_args_str} --append-system-prompt {escaped_autonomy!r} '{escaped_prompt}'"
 
     with _build_semaphore:
         r = subprocess.run(shell_cmd, shell=True, capture_output=True, text=True, timeout=timeout, env=env)
