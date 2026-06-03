@@ -296,25 +296,30 @@ def generate_logo(
     style: 'wordmark' (name + icon side by side) or 'icon' (symbol only).
     Returns {base64, prompt, style, brand_name}.
     """
+    # Extract a dark primary and bright accent from the color string for explicit contrast
+    import re as _recol
+    hexes = _recol.findall(r'#[0-9A-Fa-f]{6}', colors or '')
+    primary_col = hexes[0] if hexes else '#0f172a'
+    accent_col = hexes[1] if len(hexes) > 1 else '#2563eb'
+
     if style == "wordmark":
         prompt = (
             f"Design a professional wordmark logo for '{brand_name}'. "
-            f"Layout: a small bold geometric symbol on the LEFT, then the brand name '{brand_name}' in clean bold sans-serif on the RIGHT. "
-            f"The geometric symbol should be a simple abstract shape (e.g. interlocking arcs, angular bracket, bold dot with ring) — NOT a letter. "
-            f"Colors: symbol and text in {colors or 'deep navy and electric blue'}, on a transparent or very light grey (#f8f8f8) background. "
-            f"Typography: bold weight, tight tracking, modern. "
-            f"Style: {vibe or 'modern tech startup'}. No gradients, no shadows, no decorative elements. "
-            f"The result must look like a real startup's logo — clean, scalable, professional. "
-            f"Horizontal layout, logo centered in frame with generous padding."
+            f"CRITICAL: The symbol and text MUST be in {primary_col} (dark) and {accent_col} (accent) — NOT white, NOT light. "
+            f"Background: light grey #f8f8f8. "
+            f"Layout: small bold geometric icon on the LEFT in {accent_col}, brand name '{brand_name}' in bold sans-serif on the RIGHT in {primary_col}. "
+            f"The icon is a simple abstract shape (angular bracket, interlocking rings, bold geometric mark) — not a letter. "
+            f"Style: {vibe or 'modern tech startup'}. Clean, no gradients, no shadows. "
+            f"The text '{brand_name}' must be dark and clearly legible. Professional startup logo."
         )
     else:
         prompt = (
-            f"Design a standalone icon logo for '{brand_name}'. "
-            f"The icon must use the EXACT SAME geometric motif as in the wordmark — just the symbol alone, no text, no brand name. "
-            f"A simple bold abstract shape (e.g. interlocking arcs, angular bracket, bold dot with ring). "
-            f"Colors: {colors or 'deep navy and electric blue'} on transparent or very light grey (#f8f8f8) background. "
-            f"Style: {vibe or 'modern tech startup'}. Flat vector, no gradients, no shadows. "
-            f"Centered in a square frame with generous padding. Must look great at 32x32px."
+            f"Design a standalone icon/symbol for '{brand_name}'. "
+            f"CRITICAL: The symbol MUST be in {accent_col} or {primary_col} — NOT white, NOT light colored. "
+            f"Background: light grey #f8f8f8. "
+            f"ONE bold abstract geometric shape — same visual motif as the wordmark icon. No text, no letters. "
+            f"Style: {vibe or 'modern tech startup'}. Flat, no gradients, no shadows. "
+            f"Large, centered, with generous padding. Must be clearly visible and dark against the background."
         )
 
     logger.info("Gemini logo (%s): %s", style, prompt[:120])
