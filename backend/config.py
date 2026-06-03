@@ -4,6 +4,9 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_key: str = ""
+    # When false, the outreach subsystem uses the free file-backed store instead
+    # of Supabase. Set OUTREACH_USE_SUPABASE=true only with a reachable project.
+    outreach_use_supabase: bool = False
     redis_url: str = "redis://localhost:6379"
     gemini_api_key: str = ""
     agent_model_base_url: str = "https://api.deepinfra.com/v1/openai"
