@@ -47,6 +47,55 @@ AGENT_CATALOG: list[dict[str, Any]] = [
         "depends_on": [],
     },
     {
+        "id": "research_competitors",
+        "name": "Competitor Intel",
+        "description": (
+            "Deep competitor intelligence: named competitors, pricing pages, "
+            "funding and review mining, and market maps. Produces a competitor "
+            "table with strengths, weaknesses, and whitespace opportunities."
+        ),
+        "tools": [
+            "run_research_pipeline",
+            "batch_search",
+            "fetch_and_read",
+            "patent_search",
+            "youtube_research",
+            "obsidian_log",
+            "obsidian_read",
+            "obsidian_append",
+        ],
+        "produces": [
+            "competitor_table",
+            "whitespace_opportunities",
+            "competitor_analysis",
+        ],
+        "depends_on": [],
+    },
+    {
+        "id": "research_execution",
+        "name": "Execution Strategy",
+        "description": (
+            "Execution-focused research: GTM strategy, revenue model, recommended "
+            "tech stack, unit economics, and a first-90-days plan grounded in "
+            "founder case studies and customer evidence."
+        ),
+        "tools": [
+            "run_research_pipeline",
+            "batch_search",
+            "fetch_and_read",
+            "youtube_research",
+            "obsidian_log",
+            "obsidian_read",
+            "obsidian_append",
+        ],
+        "produces": [
+            "execution_strategy",
+            "gtm_strategy",
+            "recommended_tech_stack",
+        ],
+        "depends_on": [],
+    },
+    {
         "id": "legal",
         "name": "Legal",
         "description": (
@@ -293,6 +342,32 @@ AGENT_CATALOG: list[dict[str, Any]] = [
         "description": "Google/Meta campaign strategy, budget allocation, creative briefs, audience targeting PDF.",
         "tools": ["search_and_fetch", "generate_pdf", "generate_meta_ad", "obsidian_log"],
         "produces": ["paid_strategy_pdf", "campaign_briefs", "budget_plan"],
+        "depends_on": ["research"],
+    },
+    {
+        "id": "sales",
+        "name": "Sales & Outreach",
+        "description": (
+            "Lead discovery via web search and Hunter.io enrichment, personalized "
+            "multi-step outreach sequences, and CRM contact records. Finds real "
+            "prospects matching the ICP and builds ready-to-send email cadences."
+        ),
+        "tools": [
+            "find_leads",
+            "enrich_lead",
+            "build_outreach_sequence",
+            "build_crm_contact",
+            "hunter_domain_search",
+            "hunter_find_email",
+            "obsidian_log",
+            "obsidian_read",
+            "obsidian_append",
+        ],
+        "produces": [
+            "leads",
+            "outreach_sequences",
+            "crm_contacts",
+        ],
         "depends_on": ["research"],
     },
     {
