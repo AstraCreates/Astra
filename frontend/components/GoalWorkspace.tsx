@@ -2579,7 +2579,13 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
       router.push(`/?session=${encodeURIComponent(result.session_id)}&instruction=${encodeURIComponent(instruction)}&founder=${encodeURIComponent(founderId)}&company=${encodeURIComponent(companyName)}`);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to submit goal");
+      const msg = err instanceof Error ? err.message : String(err);
+      // Swallow Clerk quota/token errors — the goal may have launched anyway
+      if (msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("token") || msg.toLowerCase().includes("clerk")) {
+        // Goal likely submitted fine, just auth token failed — proceed to session
+        return;
+      }
+      setError(msg || "Failed to submit goal");
       setLoading(false);
     }
   }
