@@ -341,12 +341,12 @@ button { cursor: pointer; }
 
 .astra-dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
   grid-template-areas:
     "progress plan"
     "outputs outputs";
-  gap: 18px;
-  align-items: start;
+  gap: 20px;
+  align-items: stretch;
 }
 
 .astra-dashboard-grid > :nth-child(1) { grid-area: progress; }
@@ -355,6 +355,7 @@ button { cursor: pointer; }
 
 .astra-dashboard-grid > .site-card {
   min-width: 0;
+  height: 100%;
 }
 
 .astra-dashboard-grid > .site-card:nth-child(3) {
@@ -490,6 +491,7 @@ p { margin: 0; }
 .site-shell {
   position: relative;
   z-index: 2;
+  width: min(100%, 1880px);
   max-width: var(--max);
   margin: 0 auto;
   padding: var(--sp-8) var(--gutter);
@@ -498,6 +500,7 @@ p { margin: 0; }
 .astra-workspace-sidebar {
   position: sticky;
   top: 48px;
+  align-self: start;
 }
 
 .site-footer {
@@ -1016,6 +1019,8 @@ p { margin: 0; }
   border: 1px solid rgba(255,255,255,0.16) !important;
   background: rgba(255,255,255,0.07) !important;
   color: inherit !important;
+  min-height: 72px;
+  align-content: start;
 }
 
 .astra-line-row {

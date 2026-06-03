@@ -4252,7 +4252,7 @@ export function GoalWorkspace({
   };
 
   return (
-    <div className="astra-app-layout astra-brand-stage" style={{ width: "100%", maxWidth: 1900, margin: "0 auto", display: "grid", gridTemplateColumns: "minmax(190px, 220px) minmax(0, 1fr)", gap: 24, alignItems: "stretch" }}>
+    <div className="astra-app-layout astra-brand-stage" style={{ width: "100%", maxWidth: 1880, margin: "0 auto", display: "grid", gridTemplateColumns: "minmax(208px, 240px) minmax(0, 1fr)", gap: 28, alignItems: "start" }}>
       {showTour && <WorkspaceTour onDone={() => setShowTour(false)} />}
       <NewGoalOverlay open={newGoalOpen} onClose={() => setNewGoalOpen(false)} />
       <PlanOverlay open={planOpen} onClose={() => setPlanOpen(false)} title={title} planTasks={planTasks} detailedNodes={detailedNodes} agents={agents} />
@@ -4265,8 +4265,8 @@ export function GoalWorkspace({
         minHeight: "calc(100vh - clamp(72px, 10vw, 168px))",
         display: "flex",
         flexDirection: "column",
-        gap: 24,
-        justifyContent: "center",
+        gap: 20,
+        justifyContent: "flex-start",
       }}>
       {/* Header */}
       <div className="astra-run-header" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -4366,7 +4366,7 @@ export function GoalWorkspace({
 
       {agentList.length > 0 && (
         <div className="astra-dashboard-grid">
-          <div className="site-card" style={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 18, height: 420, minHeight: 420 }}>
+          <div className="site-card" style={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 18, minHeight: 420 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <span className="site-label">Progress</span>
               <h3 style={{ fontSize: 18, margin: 0 }}>Session health</h3>
@@ -4617,7 +4617,7 @@ export function GoalWorkspace({
             </div>
           </div>
 
-          <div className="site-card astra-panel-white" style={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 18, minHeight: 360 }}>
+          <div className="site-card astra-panel-white" style={{ padding: "26px 28px", display: "flex", flexDirection: "column", gap: 18, minHeight: 380 }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 <span className="site-label">Outputs</span>

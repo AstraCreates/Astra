@@ -28,7 +28,7 @@ export default function AppHome() {
   const activeCompany = forceNewGoal ? "" : searchParams.get("company") ?? latestSession?.companyName ?? "";
 
   return (
-    <div className="site-shell" style={{ paddingTop: 48, paddingBottom: 88 }}>
+    <div className="site-shell" style={{ paddingTop: 48, paddingBottom: 88, maxWidth: 1920 }}>
       <GoalWorkspace
         key={activeSessionId || "new"}
         sessionId={activeSessionId}
