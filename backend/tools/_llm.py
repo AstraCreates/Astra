@@ -298,24 +298,23 @@ def generate_logo(
     """
     if style == "wordmark":
         prompt = (
-            f"Design a professional wordmark logo for '{brand_name}' on a pure white background. "
-            f"Layout: a small bold geometric symbol on the LEFT, then the brand name '{brand_name}' in clean sans-serif on the RIGHT. "
+            f"Design a professional wordmark logo for '{brand_name}'. "
+            f"Layout: a small bold geometric symbol on the LEFT, then the brand name '{brand_name}' in clean bold sans-serif on the RIGHT. "
             f"The geometric symbol should be a simple abstract shape (e.g. interlocking arcs, angular bracket, bold dot with ring) — NOT a letter. "
-            f"Colors: {colors or 'deep navy and electric blue'}. "
+            f"Colors: symbol and text in {colors or 'deep navy and electric blue'}, on a transparent or very light grey (#f8f8f8) background. "
             f"Typography: bold weight, tight tracking, modern. "
             f"Style: {vibe or 'modern tech startup'}. No gradients, no shadows, no decorative elements. "
             f"The result must look like a real startup's logo — clean, scalable, professional. "
-            f"Pure white background. Horizontal layout. Logo should be centered in the frame."
+            f"Horizontal layout, logo centered in frame with generous padding."
         )
     else:
         prompt = (
-            f"Design a standalone icon logo for '{brand_name}' on a pure white background. "
-            f"The icon must use the EXACT SAME geometric motif as would appear in the wordmark — just the symbol alone, no text. "
+            f"Design a standalone icon logo for '{brand_name}'. "
+            f"The icon must use the EXACT SAME geometric motif as in the wordmark — just the symbol alone, no text, no brand name. "
             f"A simple bold abstract shape (e.g. interlocking arcs, angular bracket, bold dot with ring). "
-            f"Colors: {colors or 'deep navy and electric blue'}. "
+            f"Colors: {colors or 'deep navy and electric blue'} on transparent or very light grey (#f8f8f8) background. "
             f"Style: {vibe or 'modern tech startup'}. Flat vector, no gradients, no shadows. "
-            f"Centered in a square frame. Must look great at 32x32px. "
-            f"Pure white background. No text, no letters, no brand name."
+            f"Centered in a square frame with generous padding. Must look great at 32x32px."
         )
 
     logger.info("Gemini logo (%s): %s", style, prompt[:120])
