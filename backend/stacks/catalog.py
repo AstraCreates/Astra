@@ -94,6 +94,30 @@ AGENT_CATALOG: list[dict[str, Any]] = [
         "depends_on": ["research"],
     },
     {
+        "id": "design",
+        "name": "Design & Brand",
+        "description": (
+            "Visual identity, logo and wordmark generation, brand color systems, "
+            "wireframes, and a complete design spec. Produces launch-ready brand "
+            "and UI direction grounded in research and positioning."
+        ),
+        "tools": [
+            "generate_design_spec",
+            "generate_wireframe",
+            "generate_logo",
+            "generate_brand_board",
+            "obsidian_log",
+            "obsidian_read",
+            "obsidian_append",
+        ],
+        "produces": [
+            "design_spec",
+            "brand_direction",
+            "logo",
+        ],
+        "depends_on": ["research"],
+    },
+    {
         "id": "marketing",
         "name": "Marketing",
         "description": (

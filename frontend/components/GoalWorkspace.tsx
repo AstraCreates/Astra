@@ -6,11 +6,11 @@ import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useDevUser } from "@/lib/use-dev-user";
-import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment } from "@/lib/api";
+import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions } from "@/lib/api";
 import type { DeploymentRecord } from "@/lib/api";
 import type { AgentCatalogEntry } from "@/lib/api";
 import type { AgentDepartmentManifest, AgentStackTemplate, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
-import { saveSession, getSessionSnapshot, subscribeSessions, deleteSession, clearAllSessions } from "@/lib/history";
+import { saveSession, getSessionSnapshot, subscribeSessions, deleteSession, clearAllSessions, setServerSessions } from "@/lib/history";
 import type { SessionRecord } from "@/lib/history";
 import LiquidGlass from "@/components/LiquidGlass";
 import CompanyChat from "@/components/CompanyChat";
@@ -3484,8 +3484,35 @@ function WorkspaceSidebar({
 function SessionHistory({ currentSessionId }: { currentSessionId: string }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
+  const { userId, isSignedIn } = useDevUser();
   const sessions = useSyncExternalStore(subscribeSessions, getSessionSnapshot, getSessionSnapshot);
   const router = useRouter();
+
+  // Cross-device sync: hydrate the sidebar from server-persisted sessions for signed-in users.
+  useEffect(() => {
+    if (!isSignedIn || !userId || userId === "anon") return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const rows = await listSessions(userId);
+        if (cancelled) return;
+        setServerSessions(rows.map(r => ({
+          sessionId: r.session_id,
+          founderId: r.founder_id,
+          companyName: (r.goal || "").slice(0, 40),
+          instruction: r.goal || "",
+          startedAt: Date.parse(r.created_at) || 0,
+          status: r.status === "error" ? "error" : r.status === "done" ? "done" : "running",
+          artifacts: [],
+        })));
+      } catch {
+        // ignore — fall back to local history
+      }
+    };
+    load();
+    const interval = setInterval(load, 20000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [isSignedIn, userId]);
   if (!mounted || sessions.length === 0) return null;
   const statusDot = (s: SessionRecord["status"]) =>
     s === "done" ? "#3D9E5F" : s === "running" ? "#2563EB" : "#C0392B";

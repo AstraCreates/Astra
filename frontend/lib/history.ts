@@ -40,8 +40,36 @@ export function getSessions(): SessionRecord[] {
   return readSessionsSnapshot();
 }
 
+// ── Server-synced sessions (cross-device, for signed-in accounts) ──────────────
+// Populated by setServerSessions() from the backend /sessions index. Merged with
+// the local localStorage list so the sidebar shows the same history on any device.
+let serverSessions: SessionRecord[] = EMPTY_SESSIONS;
+let serverVersion = 0;
+let mergedCache: SessionRecord[] = EMPTY_SESSIONS;
+let mergedKey = "";
+
+function computeMerged(): SessionRecord[] {
+  const local = readSessionsSnapshot();
+  const key = `${cachedRaw}|${serverVersion}`;
+  if (key === mergedKey) return mergedCache;
+  const byId = new Map<string, SessionRecord>();
+  // Server first; local overrides because it carries richer data (artifacts, company name).
+  for (const s of serverSessions) byId.set(s.sessionId, s);
+  for (const s of local) byId.set(s.sessionId, { ...byId.get(s.sessionId), ...s });
+  mergedCache = Array.from(byId.values()).sort((a, b) => b.startedAt - a.startedAt);
+  mergedKey = key;
+  return mergedCache;
+}
+
+/** Replace the server-synced session list and notify subscribers. */
+export function setServerSessions(records: SessionRecord[]): void {
+  serverSessions = records;
+  serverVersion += 1;
+  emitSessionsChange();
+}
+
 export function getSessionSnapshot(): SessionRecord[] {
-  return readSessionsSnapshot();
+  return computeMerged();
 }
 
 export function subscribeSessions(callback: () => void): () => void {

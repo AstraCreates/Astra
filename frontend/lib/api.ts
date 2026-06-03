@@ -1021,6 +1021,24 @@ export function streamGoal(sessionId: string): EventSource {
   return new EventSource(`${BASE}/stream/${sessionId}`);
 }
 
+export interface SessionIndexEntry {
+  session_id: string;
+  founder_id: string;
+  goal: string;
+  stack_id: string;
+  status: string;
+  created_at: string;
+  completed_at: string | null;
+}
+
+/** List a founder's sessions persisted server-side (for cross-device sync). */
+export async function listSessions(founderId: string, limit = 50): Promise<SessionIndexEntry[]> {
+  const res = await apiFetch(`${BASE}/sessions?founder_id=${encodeURIComponent(founderId)}&limit=${limit}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data?.sessions) ? data.sessions : [];
+}
+
 export async function getSessionDigest(sessionId: string): Promise<SessionDigest> {
   const res = await apiFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/digest`);
   if (!res.ok) throw new Error(await res.text());
