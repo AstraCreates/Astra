@@ -2671,7 +2671,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
       .then(stacks => {
         if (cancelled) return;
         setStackTemplates(stacks);
-        if (stacks.length && selectedStackId !== "custom" && !stacks.some(stack => stack.stack_id === selectedStackId)) {
+        if (stacks.length && selectedStackId !== "custom" && selectedStackId !== "full_stack" && !stacks.some(stack => stack.stack_id === selectedStackId)) {
           setSelectedStackId(stacks[0].stack_id);
         }
       })
