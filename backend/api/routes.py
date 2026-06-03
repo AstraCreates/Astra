@@ -2701,9 +2701,9 @@ async def import_contacts_csv(founder_id: str, body: dict, request: Request):
         return {"imported": 0, "skipped": skipped, "error": "No rows with a valid email column were found."}
 
     db = get_outreach_db()
-    for i in range(0, len(rows), 100):
+    for i in range(0, len(rows), 1000):
         db.table("outreach_contacts").upsert(
-            rows[i:i + 100], on_conflict="founder_id,email", ignore_duplicates=False
+            rows[i:i + 1000], on_conflict="founder_id,email", ignore_duplicates=False
         ).execute()
     return {"imported": len(rows), "skipped": skipped, "founder_id": founder_id}
 
@@ -2805,9 +2805,9 @@ async def import_contacts_gmail(founder_id: str, body: dict, request: Request):
         return {"imported": 0, "founder_id": founder_id, "note": "No contacts with email addresses were found in this Google account."}
 
     db = get_outreach_db()
-    for i in range(0, len(rows), 100):
+    for i in range(0, len(rows), 1000):
         db.table("outreach_contacts").upsert(
-            rows[i:i + 100], on_conflict="founder_id,email", ignore_duplicates=False
+            rows[i:i + 1000], on_conflict="founder_id,email", ignore_duplicates=False
         ).execute()
     return {"imported": len(rows), "founder_id": founder_id}
 

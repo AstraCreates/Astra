@@ -159,18 +159,25 @@ class _Query:
             if self._op in ("insert", "upsert"):
                 payload = self._payload if isinstance(self._payload, list) else [self._payload]
                 out: list[dict] = []
+                # Build a one-time index of existing rows by conflict key (O(n)),
+                # so a bulk upsert stays O(n) instead of O(n^2).
+                index: dict[tuple, dict] = {}
+                if self._op == "upsert" and self._on_conflict:
+                    for r in rows:
+                        index[tuple(r.get(c) for c in self._on_conflict)] = r
                 for raw in payload:
                     row = dict(raw)
                     row.setdefault("id", str(uuid.uuid4()))
                     row.setdefault("created_at", _now())
                     if self._op == "upsert" and self._on_conflict:
                         key = self._conflict_key(row)
-                        existing = next((r for r in rows if tuple(r.get(c) for c in self._on_conflict) == key), None)
+                        existing = index.get(key)
                         if existing is not None:
                             if not self._ignore_dupes:
                                 existing.update({k: v for k, v in row.items() if k not in ("id", "created_at")})
                             out.append(dict(existing))
                             continue
+                        index[key] = row
                     rows.append(row)
                     out.append(dict(row))
                 _save(data)
