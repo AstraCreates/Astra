@@ -7,7 +7,7 @@ import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useDevUser } from "@/lib/use-dev-user";
-import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote, killSession } from "@/lib/api";
+import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote, killSession, ingestAttachment } from "@/lib/api";
 import type { DeploymentRecord } from "@/lib/api";
 import type { AgentCatalogEntry } from "@/lib/api";
 import type { AgentDepartmentManifest, AgentStackTemplate, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
@@ -2372,7 +2372,7 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
           </div>
         )}
         <div style={{ marginBottom: 8 }}>
-          <AttachBar attachments={chatAttachments} setAttachments={setChatAttachments} disabled={loading} compact />
+          <AttachBar attachments={chatAttachments} setAttachments={setChatAttachments} disabled={loading} compact founderId={founderId} />
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <input
@@ -2634,7 +2634,7 @@ function ContinuePanel({ sessionId, founderId, company }: { sessionId: string; f
           style={{ padding: "12px 14px", fontSize: 14, lineHeight: 1.6, resize: "none" }}
           disabled={loading}
         />
-        <AttachBar attachments={attachments} setAttachments={setAttachments} disabled={loading} />
+        <AttachBar attachments={attachments} setAttachments={setAttachments} disabled={loading} founderId={founderId} />
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button type="submit" disabled={loading || !instruction.trim()} className="site-btn site-btn-primary" style={{ padding: "0 22px" }}>
             {loading ? "Launching…" : "Run agents"} <span aria-hidden>→</span>
@@ -3032,7 +3032,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
               style={{ padding: "13px 14px", fontSize: 14, lineHeight: 1.65, resize: "none" }}
             />
             <div style={{ marginTop: 8 }}>
-              <AttachBar attachments={attachments} setAttachments={setAttachments} disabled={loading} />
+              <AttachBar attachments={attachments} setAttachments={setAttachments} disabled={loading} founderId={devUserId === "anon" ? "founder_001" : devUserId} />
             </div>
           </div>
 
@@ -3442,28 +3442,40 @@ function LaunchChecklist({ sessionId, done, agents, agentList, selectedStack }: 
   );
 }
 
-function AttachBar({ attachments, setAttachments, disabled, compact }: {
+function AttachBar({ attachments, setAttachments, disabled, compact, founderId }: {
   attachments: Attachment[];
   setAttachments: (updater: (prev: Attachment[]) => Attachment[]) => void;
   disabled?: boolean;
   compact?: boolean;
+  founderId?: string;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [busy, setBusy] = useState(false);
   const onPick = async (files: FileList | null) => {
     if (!files) return;
-    const read = await Promise.all(Array.from(files).map(readAttachment));
+    setBusy(true);
+    const read = await Promise.all(Array.from(files).map(async (f): Promise<Attachment> => {
+      // Use the backend for PDFs/images (extraction + vision) and to persist to
+      // the Library; fall back to client-side text read when no founder.
+      if (founderId) {
+        const r = await ingestAttachment(founderId, f).catch(() => null);
+        if (r) return { name: r.filename, content: r.content, truncated: r.truncated, error: r.error };
+      }
+      return readAttachment(f);
+    }));
     setAttachments(prev => [...prev, ...read]);
+    setBusy(false);
     if (inputRef.current) inputRef.current.value = "";
   };
   return (
     <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
       <input ref={inputRef} type="file" multiple style={{ display: "none" }}
-        accept=".txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xml,.html,.htm,.css,.scss,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.c,.cpp,.h,.sh,.sql,.env,.ini,.toml,.log,text/*,application/json"
+        accept=".txt,.md,.markdown,.csv,.tsv,.json,.yaml,.yml,.xml,.html,.htm,.css,.scss,.js,.jsx,.ts,.tsx,.py,.rb,.go,.rs,.java,.c,.cpp,.h,.sh,.sql,.env,.ini,.toml,.log,.pdf,.png,.jpg,.jpeg,.webp,.gif,text/*,application/json,application/pdf,image/*"
         onChange={e => onPick(e.target.files)} />
-      <button type="button" onClick={() => inputRef.current?.click()} disabled={disabled}
-        title="Attach text, CSV, or code files"
-        style={{ display: "flex", alignItems: "center", gap: 5, fontSize: compact ? 12 : 12, color: "var(--fg-mute)", background: "none", border: "1px dashed var(--border)", borderRadius: 8, padding: compact ? "4px 8px" : "5px 10px", cursor: disabled ? "default" : "pointer" }}>
-        <span aria-hidden style={{ fontSize: 13 }}>📎</span>{attachments.length ? "Add file" : "Attach files"}
+      <button type="button" onClick={() => inputRef.current?.click()} disabled={disabled || busy}
+        title="Attach text, CSV, code, PDF, or image files"
+        style={{ display: "flex", alignItems: "center", gap: 5, fontSize: compact ? 12 : 12, color: "var(--fg-mute)", background: "none", border: "1px dashed var(--border)", borderRadius: 8, padding: compact ? "4px 8px" : "5px 10px", cursor: (disabled || busy) ? "default" : "pointer" }}>
+        <span aria-hidden style={{ fontSize: 13 }}>📎</span>{busy ? "Reading…" : attachments.length ? "Add file" : "Attach files"}
       </button>
       {attachments.map((a, i) => (
         <span key={i} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, padding: "3px 8px", borderRadius: 999, border: `1px solid ${a.error ? "rgba(248,113,113,0.4)" : "var(--border)"}`, background: a.error ? "rgba(248,113,113,0.08)" : "rgba(255,255,255,0.03)", color: a.error ? "#f87171" : "var(--fg-dim)" }}

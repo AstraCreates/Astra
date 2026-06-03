@@ -1039,6 +1039,32 @@ export async function listSessions(founderId: string, limit = 50): Promise<Sessi
   return Array.isArray(data?.sessions) ? data.sessions : [];
 }
 
+/** Upload a file (text/PDF/image) to be converted into agent-readable text and
+ *  optionally persisted in the founder's Library. */
+export async function ingestAttachment(
+  founderId: string,
+  file: File,
+  persist = true,
+): Promise<{ filename: string; content: string; truncated: boolean; kind: string; error?: string; library_id?: string }> {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < buf.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, Array.from(buf.subarray(i, i + CHUNK)));
+  }
+  const b64 = btoa(binary);
+  const res = await apiFetch(`${BASE}/attachments/ingest/${encodeURIComponent(founderId)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename: file.name, mime: file.type, data_base64: b64, persist }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    return { filename: file.name, content: "", truncated: false, kind: "error", error: t || `Upload failed (HTTP ${res.status})` };
+  }
+  return res.json();
+}
+
 /** Immediately stop a running session (kill switch). */
 export async function killSession(sessionId: string): Promise<boolean> {
   try {

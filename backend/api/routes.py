@@ -347,6 +347,41 @@ async def delete_session_route(session_id: str, request: Request):
     return {"ok": True, "deleted": removed}
 
 
+@router.post("/attachments/ingest/{founder_id}")
+async def ingest_attachment_route(founder_id: str, body: dict, request: Request):
+    """Convert an uploaded file (text/PDF/image) into agent-readable text and,
+    when persist=true, save it to the founder's Library for reuse."""
+    require_founder_access(request, founder_id, min_role="operator")
+    import base64
+    filename = (body.get("filename") or "file").strip()
+    mime = (body.get("mime") or "").strip()
+    data_b64 = body.get("data_base64") or ""
+    if not data_b64:
+        raise HTTPException(status_code=400, detail="data_base64 is required")
+    try:
+        data = base64.b64decode(data_b64)
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid base64 data")
+    if len(data) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 15MB).")
+
+    from backend.tools.attachment_ingest import ingest_attachment
+    result = await asyncio.to_thread(ingest_attachment, filename, mime, data)
+
+    library_id = None
+    if body.get("persist") and result.get("content") and not result.get("error"):
+        try:
+            from backend.library.store import create_file
+            rec = await asyncio.to_thread(
+                create_file, founder_id, "uploads", filename, result["content"], False
+            )
+            library_id = rec.get("id")
+        except Exception as e:
+            logger.warning("attachment persist failed: %s", e)
+
+    return {"filename": filename, **result, "library_id": library_id}
+
+
 @router.post("/sessions/{session_id}/kill")
 async def kill_session(session_id: str, request: Request):
     """Immediately stop a running session — cancels the in-flight task and
