@@ -283,9 +283,11 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
     ]
     if session_id:
         oc_args += ["--session-id", session_id]
-    # Escape prompt + system prompt for shell embedding (same style as prompt).
-    escaped_prompt = prompt.replace("'", "'\\''")
-    escaped_autonomy = autonomy.replace("'", "'\\''")
+    # Prepend the autonomy instruction to the prompt (goes through the existing,
+    # working prompt-escaping path — avoids fragile nested shell quoting on a
+    # separate --append-system-prompt flag).
+    full_prompt = autonomy + "\n\n---\n\n" + prompt
+    escaped_prompt = full_prompt.replace("'", "'\\''")
     oc_args_str = " ".join(oc_args)
 
     # openclaude blocks --dangerously-skip-permissions when run as root.
@@ -302,10 +304,10 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
             f"OPENAI_BASE_URL={openai_base} "
             f"OPENAI_MODEL={openai_model} "
             f"HOME=/home/astra "
-            f"{oc_args_str} --append-system-prompt {escaped_autonomy!r} {escaped_prompt!r}'"
+            f"{oc_args_str} {escaped_prompt!r}'"
         )
     else:
-        shell_cmd = f"cd {local!r} && {oc_args_str} --append-system-prompt {escaped_autonomy!r} '{escaped_prompt}'"
+        shell_cmd = f"cd {local!r} && {oc_args_str} '{escaped_prompt}'"
 
     with _build_semaphore:
         r = subprocess.run(shell_cmd, shell=True, capture_output=True, text=True, timeout=timeout, env=env)
