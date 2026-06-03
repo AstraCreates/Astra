@@ -7,6 +7,12 @@ class Settings(BaseSettings):
     # When false, the outreach subsystem uses the free file-backed store instead
     # of Supabase. Set OUTREACH_USE_SUPABASE=true only with a reachable project.
     outreach_use_supabase: bool = False
+    # Model that drives openclaude for technical-agent MVP builds. Must be a
+    # strong agentic/tool-use model (DeepSeek-V4-Flash chats instead of building).
+    mvp_build_model: str = "moonshotai/Kimi-K2.5"
+    # MVP builds (openclaude tool-use) are billed as separate, higher-rate
+    # credits — this multiplier is applied to the build's token-based credit cost.
+    mvp_credit_multiplier: float = 2.0
     redis_url: str = "redis://localhost:6379"
     gemini_api_key: str = ""
     agent_model_base_url: str = "https://api.deepinfra.com/v1/openai"

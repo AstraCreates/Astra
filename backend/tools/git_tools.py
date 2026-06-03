@@ -219,11 +219,40 @@ def _make_env() -> dict:
     env = os.environ.copy()
     env["OPENAI_BASE_URL"] = "https://api.deepinfra.com/v1/openai"
     env["OPENAI_API_KEY"] = deepinfra_key
-    env["OPENAI_MODEL"] = "deepseek-ai/DeepSeek-V4-Flash"
+    env["OPENAI_MODEL"] = getattr(settings, "mvp_build_model", "") or "moonshotai/Kimi-K2.5"
     return env
 
 
-def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 480, model: str = None) -> str:
+def _record_build_usage(result_obj: dict, founder_id: str = "", session_id: str = "") -> None:
+    """Bill an openclaude build as separate, higher-rate 'MVP credits'.
+
+    MVP tool-use work costs more than normal agent tokens (mvp_credit_multiplier),
+    and is logged under an 'MVP build' reason so it shows up distinctly.
+    """
+    try:
+        if not founder_id:
+            return
+        usage = result_obj.get("usage") or {}
+        total_t = sum(int(usage.get(k, 0) or 0) for k in (
+            "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+        turns = int(result_obj.get("num_turns", 0) or 0)
+        if total_t <= 0:
+            return
+        from backend.credits.gold_price import tokens_to_credits
+        from backend.credits.store import deduct_credits
+        mult = float(getattr(settings, "mvp_credit_multiplier", 2.0) or 2.0)
+        credits = max(1, round(tokens_to_credits(total_t) * mult))
+        deduct_credits(
+            founder_id, credits,
+            f"MVP build — {turns} tool rounds, {total_t:,} tokens (x{mult} MVP rate)",
+            session_id or None,
+        )
+        logger.info("MVP build billed founder=%s credits=%s tokens=%s turns=%s", founder_id, credits, total_t, turns)
+    except Exception as e:
+        logger.warning("MVP build billing failed: %s", e)
+
+
+def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 480, model: str = None, founder_id: str = "") -> str:
     """
     Send one message to openclaude. Session persists via --session-id so
     each call is a new message in the same conversation — like typing to a TUI.
@@ -232,10 +261,14 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
         raise RuntimeError(f"openclaude not found at {OPENCLAUDE_BIN}")
 
     env = _make_env()
-    model = model or env.get("OPENAI_MODEL", "deepseek-ai/DeepSeek-V4-Flash")
-    # Build args list (excluding cwd — handled by shell cd)
+    model = model or env.get("OPENAI_MODEL", "moonshotai/Kimi-K2.5")
+    # Build args list (excluding cwd — handled by shell cd).
+    # --output-format json gives a clean, parseable result object (and reliably
+    # runs the agentic tool loop). Keep the prompt as the LAST arg with no
+    # variadic flag before it, or openclaude swallows it as a flag value.
     oc_args = [
-        OPENCLAUDE_BIN, "--print", "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions",
+        OPENCLAUDE_BIN, "--print", "--output-format", "json",
+        "--allow-dangerously-skip-permissions", "--dangerously-skip-permissions",
         "--provider", "openai", "--model", model,
     ]
     if session_id:
@@ -267,7 +300,17 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
         r = subprocess.run(shell_cmd, shell=True, capture_output=True, text=True, timeout=timeout, env=env)
     if r.returncode not in (0, 1):
         logger.warning("openclaude exited %d: %s", r.returncode, r.stderr[:200])
-    return r.stdout.strip()
+    out = (r.stdout or "").strip()
+    # --output-format json returns a single result object; extract the final
+    # text + record build usage for MVP credit billing. Fall back to raw text.
+    try:
+        obj = json.loads(out)
+        if isinstance(obj, dict):
+            _record_build_usage(obj, founder_id, session_id)
+            return (obj.get("result") or "").strip() or out
+    except Exception:
+        pass
+    return out
 
 
 _PM_SYSTEM = """You are a product manager driving an MVP build with an AI coding agent.
@@ -528,6 +571,7 @@ def run_mvp_loop(
     context: str = "",
     required_files: list[str] = None,
     max_rounds: int = None,  # kept for API compat, ignored
+    founder_id: str = "",
 ) -> dict:
     """
     Build MVP by calling openclaude once per missing file (no session-id — fresh context each call).
@@ -558,7 +602,7 @@ def run_mvp_loop(
             file_timeout = 600 if rel_path in _LARGE_FILES else 300
             prompt = _file_prompt(rel_path, goal, context, local)
             logger.info("  writing %s (timeout=%ds)...", rel_path, file_timeout)
-            _run_claude(local, prompt, session_id=None, timeout=file_timeout)
+            _run_claude(local, prompt, session_id=None, timeout=file_timeout, founder_id=founder_id)
             # Verify file appeared
             if Path(local, rel_path).exists():
                 logger.info("  ✓ %s written", rel_path)
@@ -568,7 +612,7 @@ def run_mvp_loop(
                     f"Use your Write tool RIGHT NOW to create the file `{rel_path}` in the current directory. "
                     f"Project: {goal}. Write real, complete code. No explanations."
                 )
-                _run_claude(local, retry_prompt, session_id=None, timeout=file_timeout)
+                _run_claude(local, retry_prompt, session_id=None, timeout=file_timeout, founder_id=founder_id)
 
         _sanitize_package_json(local)
         sha = _commit_and_push(local, f"feat: mvp build — {goal[:50]}")
@@ -578,7 +622,7 @@ def run_mvp_loop(
         # Pass 2: openclaude self-test + fix (fresh session, reads actual files on disk)
         fix_session = str(uuid.uuid4())
         logger.info("Pass 2: openclaude fix pass")
-        _run_claude(local, _OC_TEST_PROMPT, session_id=None, timeout=600)
+        _run_claude(local, _OC_TEST_PROMPT, session_id=None, timeout=600, founder_id=founder_id)
         _sanitize_package_json(local)
         sha2 = _commit_and_push(local, f"fix: verification pass — {goal[:45]}")
         if sha2:
@@ -589,7 +633,7 @@ def run_mvp_loop(
         review = _planner_review(local, goal, current_files)
         logger.info("Planner review: pass=%s issues=%s", review["pass"], review["issues"])
         if not review["pass"] and review["fix_instructions"]:
-            _run_claude(local, review["fix_instructions"], session_id=None, timeout=600)
+            _run_claude(local, review["fix_instructions"], session_id=None, timeout=600, founder_id=founder_id)
             _sanitize_package_json(local)
             sha3 = _commit_and_push(local, f"fix: planner fixes — {goal[:45]}")
             if sha3:
@@ -616,6 +660,7 @@ def run_claude_in_repo(
     task: str,
     session_id: str = "default",
     context: str = "",
+    founder_id: str = "",
 ) -> dict:
     """
     Single Claude Code pass inside a repo. Commits + pushes whatever it writes.
@@ -637,7 +682,7 @@ def run_claude_in_repo(
         # Resume the session from the MVP build (stored in .oc_session_id)
         sid_file = Path(local) / ".oc_session_id"
         oc_session_id = sid_file.read_text().strip() if sid_file.exists() else str(uuid.uuid4())
-        _run_claude(local, prompt, session_id=oc_session_id, timeout=3600)
+        _run_claude(local, prompt, session_id=oc_session_id, timeout=3600, founder_id=founder_id)
         sha = _commit_and_push(local, f"feat: {task[:72]}")
         files = _staged_files(local)
         return {
