@@ -54,10 +54,12 @@ _RISKY_TOOLS: dict[str, dict[str, str]] = {
         "reason": "Creates or prepares a CRM/customer record.",
     },
     "github_create_repo": {
-        "risk_level": "medium",
+        # Low risk: creates a (private) repo to build in — NOT a public deploy.
+        # Audit-only so it never blocks the build waiting on approval.
+        "risk_level": "low",
         "category": "code_change",
         "approval_gate": "public_deploy",
-        "reason": "Creates source-control infrastructure.",
+        "reason": "Creates a private source-control repo to build in.",
     },
     "composio_github_create_pr": {
         "risk_level": "medium",

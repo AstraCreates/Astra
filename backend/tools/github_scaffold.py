@@ -15,7 +15,7 @@ def github_create_repo(
     description: str = "",
     stack: dict = None,
     mvp_features: list[dict] = None,
-    private: bool = False,
+    private: bool = True,
     name: str = "",
     founder_id: str = "",
     **kwargs,

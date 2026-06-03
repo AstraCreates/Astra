@@ -180,7 +180,11 @@ def _get_workspace(repo_url: str, session_id: str) -> tuple[str, bool]:
     available, otherwise builds in a fresh local git workspace so MVPs can be
     built and previewed with NO GitHub required."""
     if repo_url and settings.github_token:
-        return _ensure_clone(repo_url, session_id), True
+        try:
+            return _ensure_clone(repo_url, session_id), True
+        except Exception as e:
+            # Repo creation blocked/failed → don't let the build die; build locally.
+            logger.warning("clone failed (%s) — building in a local workspace instead", str(e)[:160])
     ws = WORKSPACE_ROOT / session_id / "mvp"
     ws.mkdir(parents=True, exist_ok=True)
     if not (ws / ".git").exists():

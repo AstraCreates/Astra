@@ -481,19 +481,30 @@ function TechnicalPreview({ state }: { state: AgentState }) {
           {state.status === "done" ? "Complete" : state.status === "running" ? "Running" : "Queued"}
         </span>
       </div>
-      {(isBuilding || state.currentTool) && (
-        <div style={{ borderRadius: 12, border: "1px solid rgba(37,99,235,0.2)", background: "rgba(37,99,235,0.08)", padding: "8px 10px", display: "grid", gap: 4 }}>
-          <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#2563EB" }}>Live build status</div>
-          <div style={{ fontSize: 12, color: "var(--fg-dim)" }}>
-            {state.currentTool ? `Running ${state.currentTool.replace(/_/g, " ")}` : "Preparing build pipeline"}
-          </div>
-          {state.log.length > 0 && (
-            <div style={{ fontSize: 10, color: "var(--fg-mute)" }}>
-              {state.log.slice(-1)[0]?.text?.slice(0, 140)}
+      {(isBuilding || state.currentTool) && (() => {
+        // Friendly current step — prefer the latest live build event, else the tool.
+        const last = buildEvents.length ? buildEvents[buildEvents.length - 1] : null;
+        const fileCount = Object.keys(buildFiles).length;
+        const stepText = last
+          ? (last.kind === "file" ? `Writing ${last.path}`
+            : last.kind === "command" ? `Running ${last.command}`
+            : last.kind === "build_start" ? "Building the MVP…"
+            : last.kind === "done" ? "Finishing up…"
+            : last.text ? last.text.slice(0, 120) : "Building…")
+          : state.currentTool === "run_mvp_loop" ? "Building the MVP with openclaude…"
+          : state.currentTool === "github_create_repo" ? "Setting up the code repo…"
+          : state.currentTool ? `Running ${state.currentTool.replace(/_/g, " ")}…`
+          : "Preparing build pipeline…";
+        return (
+          <div style={{ borderRadius: 12, border: "1px solid rgba(37,99,235,0.2)", background: "rgba(37,99,235,0.08)", padding: "8px 10px", display: "grid", gap: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2563EB" }} className="animate-pulse" />
+              <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#2563EB" }}>Live build · {fileCount} file{fileCount === 1 ? "" : "s"}</span>
             </div>
-          )}
-        </div>
-      )}
+            <div style={{ fontSize: 12, color: "var(--fg-dim)", fontFamily: "var(--font-jetbrains-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stepText}</div>
+          </div>
+        );
+      })()}
       {/* Live openclaude build stream + files (no GitHub required) */}
       <BuildStream events={buildEvents} files={buildFiles} />
       {/* Live site iframe */}
@@ -1099,7 +1110,7 @@ function SalesPreview({ state }: { state: AgentState }) {
   const crmContacts = (r?.crm_contacts ?? r?.contacts ?? []) as Array<Record<string, unknown>>;
   const sequences = (r?.sequences ?? []) as Array<Record<string, unknown>>;
   if (!r || !lead) {
-    return state.status === "done" ? <ResultDump result={state.result} /> : <BuildingIndicator label="Building outreach…" />;
+    return state.status === "done" ? <ResultDump result={state.result} /> : <BuildingIndicator label="Finding leads & building outreach…" tool={state.currentTool ?? undefined} />;
   }
   const steps: unknown[] = Array.isArray(seq) ? seq : typeof seq === "string" ? (() => { try { return JSON.parse(seq); } catch { return []; } })() : [];
   return (
