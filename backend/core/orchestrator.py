@@ -11,6 +11,80 @@ from backend.core.bus import AgentBus
 
 logger = logging.getLogger(__name__)
 
+# Keys whose values are raw fetched page bodies / large blobs that must NOT be
+# replayed into every downstream agent's SHARED CONTEXT (they overflow the model's
+# context window — hy3-preview caps at 262144 tokens).
+_RAW_BLOB_KEYS = {"sources", "results", "raw", "pages", "html", "content",
+                  "fetched", "documents", "search_results", "images", "logos",
+                  "image", "logo", "b64", "base64", "screenshot"}
+_SHARED_FIELD_CAP = 2500       # max chars per string field kept in shared
+_SHARED_RESULT_CAP = 6000      # max chars of any single agent result kept in shared
+
+
+def _is_base64ish(s: str) -> bool:
+    if len(s) < 4000:
+        return False
+    head = s[:200]
+    if head.startswith("data:") and "base64" in head:
+        return True
+    sample = s[:500]
+    import re as _re
+    return bool(_re.fullmatch(r"[A-Za-z0-9+/=\s]+", sample))
+
+
+def _shared_safe(agent_name: str, result: Any) -> Any:
+    """Produce a compact, context-safe copy of an agent result for SHARED CONTEXT.
+
+    Full result is kept elsewhere (completed[] + Obsidian). For research agents we
+    keep the synthesized findings text but drop raw fetched source bodies; for all
+    agents we strip base64 blobs and cap oversized string fields so the accumulated
+    shared context never overflows the model window.
+    """
+    if not isinstance(result, dict):
+        if isinstance(result, str) and len(result) > _SHARED_RESULT_CAP:
+            return result[:_SHARED_RESULT_CAP] + " …[truncated]"
+        return result
+    out: dict[str, Any] = {}
+    for k, v in result.items():
+        kl = str(k).lower()
+        if kl in _RAW_BLOB_KEYS:
+            # Replace raw blob with a lightweight marker (count if it's a list).
+            if isinstance(v, list):
+                out[k] = f"[{len(v)} item(s) omitted — see Obsidian/completed]"
+            else:
+                out[k] = "[omitted from shared context]"
+            continue
+        if isinstance(v, str):
+            if _is_base64ish(v):
+                out[k] = "[binary/base64 omitted]"
+            elif len(v) > _SHARED_FIELD_CAP:
+                out[k] = v[:_SHARED_FIELD_CAP] + " …[truncated]"
+            else:
+                out[k] = v
+        elif isinstance(v, (int, float, bool)) or v is None:
+            out[k] = v
+        else:
+            # nested dict/list — serialize, strip blobs, cap.
+            try:
+                import json as _json
+                blob = _json.dumps(v, default=str)
+            except Exception:
+                blob = str(v)
+            out[k] = blob[:_SHARED_FIELD_CAP] + (" …[truncated]" if len(blob) > _SHARED_FIELD_CAP else "")
+    # Final hard cap on the whole result.
+    try:
+        import json as _json
+        if len(_json.dumps(out, default=str)) > _SHARED_RESULT_CAP:
+            # Keep only the most useful summary-ish fields.
+            keep = {kk: out[kk] for kk in out
+                    if str(kk).lower() in ("summary", "findings", "output", "output_summary",
+                                            "repo_url", "deploy_url", "company_name", "result",
+                                            "key_findings", "recommendations", "agent")}
+            out = keep or out
+    except Exception:
+        pass
+    return out
+
 
 class Orchestrator:
     def __init__(self, planner: Agent, specialists: dict[str, Agent]):
@@ -865,8 +939,9 @@ class Orchestrator:
             if isinstance(result, dict) and "agent" not in result:
                 result["agent"] = agent_name
             completed[tid] = result
-            shared[f"result_{tid}"] = result
-            shared[f"result_{agent_name}"] = result  # also keyed by agent name for downstream context
+            _safe = _shared_safe(agent_name, result)
+            shared[f"result_{tid}"] = _safe
+            shared[f"result_{agent_name}"] = _safe  # also keyed by agent name for downstream context
             try:
                 from backend.stacks import verify_task_artifacts
                 artifact_verification = verify_task_artifacts(
@@ -926,7 +1001,14 @@ class Orchestrator:
             notes: list[str] = []
             seen: set[str] = set()
             for rt in parallel_research_tasks:
-                result.update(completed.get(rt["id"], {}))
+                track = completed.get(rt["id"], {}) or {}
+                # Namespace each track so same-named keys across market/competitors/
+                # execution can't clobber each other (competitor findings were being
+                # overwritten by the execution track when flat-merged).
+                result[rt["agent"]] = track
+                # Keep a flat merge too for legacy consumers, but don't let it drop tracks.
+                for k, v in track.items():
+                    result.setdefault(k, v)
                 try:
                     base = _re2.sub(r"_\d+$", "", rt["agent"])
                     nf = _note_path(base, session_id, founder_id)
@@ -1210,7 +1292,7 @@ class Orchestrator:
             except Exception:
                 pass
             completed[tid] = result
-            shared[f"result_{agent_name}"] = result
+            shared[f"result_{agent_name}"] = _shared_safe(agent_name, result)
             await self._publish_outcomes(session_id, task, result)
             logger.info("Continue task %s (%s) done", tid, agent_name)
 

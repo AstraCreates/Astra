@@ -16,10 +16,10 @@ logger = logging.getLogger(__name__)
 
 _FAST_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
 _LARGE_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
-_INSTRUCT_MODEL = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
+_INSTRUCT_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
 _NEMOTRON_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
 _IMAGE_MODEL = "black-forest-labs/FLUX-2-pro"
-_PROMPT_MODEL = "meta-llama/Llama-4-Scout-17B-16E-Instruct"
+_PROMPT_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
 _DI_BASE = "https://api.deepinfra.com/v1/openai"
 
 
