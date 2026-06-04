@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useSession } from "next-auth/react";
 
 function generateId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -18,41 +19,33 @@ export function getOrCreateUserId(): string {
 }
 
 export function useDevUser() {
-  const [userId, setUserId] = useState<string>("anon");
-  const [name, setName] = useState<string>("Dev User");
-  const [image, setImage] = useState<string | null>(null);
-  const [isSignedIn, setIsSignedIn] = useState(false);
+  const { data: session, status } = useSession();
 
+  const isLoading = status === "loading";
+  const isSignedIn = status === "authenticated" && !!session?.user?.email;
+
+  const userId = isSignedIn && session.user.email
+    ? "google_" + session.user.email.replace(/[^a-z0-9]/g, "_")
+    : isLoading
+      ? "anon"
+      : getOrCreateUserId();
+
+  // Keep localStorage in sync so ApiAuthBridge always sends the right founder ID.
   useEffect(() => {
-    // Try NextAuth session first
-    fetch("/api/auth/session")
-      .then(r => r.json())
-      .then(session => {
-        if (session?.user?.email) {
-          // Signed in via Google
-          const uid = "google_" + session.user.email.replace(/[^a-z0-9]/g, "_");
-          localStorage.setItem("astra_dev_user_id", uid);
-          setUserId(uid);
-          setName(session.user.name ?? session.user.email);
-          setImage(session.user.image ?? null);
-          setIsSignedIn(true);
-        } else {
-          // Not signed in — use localStorage identity
-          const uid = getOrCreateUserId();
-          setUserId(uid);
-          setIsSignedIn(false);
-        }
-      })
-      .catch(() => {
-        const uid = getOrCreateUserId();
-        setUserId(uid);
-        setIsSignedIn(false);
-      });
-  }, []);
+    if (isSignedIn && session?.user?.email) {
+      const uid = "google_" + session.user.email.replace(/[^a-z0-9]/g, "_");
+      localStorage.setItem("astra_dev_user_id", uid);
+    }
+  }, [isSignedIn, session?.user?.email]);
 
   return {
     userId,
     isSignedIn,
-    user: { id: userId, fullName: name, imageUrl: image },
+    isLoading,
+    user: {
+      id: userId,
+      fullName: session?.user?.name ?? session?.user?.email ?? "Dev User",
+      imageUrl: session?.user?.image ?? null,
+    },
   };
 }

@@ -44,7 +44,7 @@ function TeamBadge() {
 
 export default function SiteNav() {
   const pathname = usePathname();
-  const { userId, isSignedIn, user } = useDevUser();
+  const { userId, isSignedIn, isLoading, user } = useDevUser();
 
   if (
     pathname === "/" ||
@@ -150,7 +150,7 @@ export default function SiteNav() {
         >
           New goal <span aria-hidden="true">→</span>
         </Link>
-        {isSignedIn ? (
+        {isLoading ? null : isSignedIn ? (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {user.imageUrl && (
               <img src={user.imageUrl} alt={user.fullName} style={{ width: 28, height: 28, borderRadius: "50%", objectFit: "cover" }} />

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, JetBrains_Mono } from "next/font/google";
 import ApiAuthBridge from "@/components/ApiAuthBridge";
 import CookieNotice from "@/components/CookieNotice";
+import SessionWrapper from "@/components/SessionWrapper";
 import SiteNav from "./site-nav";
 import "./globals.css";
 
@@ -18,10 +19,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${geist.variable} ${jetBrainsMono.variable} antialiased`} data-theme="dark" suppressHydrationWarning>
       <head />
       <body suppressHydrationWarning>
-        <ApiAuthBridge />
-        <SiteNav />
-        <main>{children}</main>
-        <CookieNotice />
+        <SessionWrapper>
+          <ApiAuthBridge />
+          <SiteNav />
+          <main>{children}</main>
+          <CookieNotice />
+        </SessionWrapper>
       </body>
     </html>
   );
