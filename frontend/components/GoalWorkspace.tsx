@@ -411,18 +411,20 @@ interface BuildEvent {
   kind: string;
   path?: string; content?: string; size?: number;
   command?: string; text?: string; tool?: string; target?: string;
-  goal?: string; files?: string[];
+  goal?: string; files?: string[]; url?: string;
 }
 
 function BuildStream({ events, files }: { events: BuildEvent[]; files: Record<string, { content: string; size: number }> }) {
   const [open, setOpen] = useState<string | null>(null);
   const fileList = Object.keys(files).sort();
-  const icon = (k: string) => k === "file" ? "📝" : k === "command" ? "▶" : k === "build_start" ? "🔨" : k === "done" ? "✅" : k === "tool" ? "⚙" : "·";
+  const icon = (k: string) => k === "file" ? "📝" : k === "command" ? "▶" : k === "build_start" ? "🔨" : k === "done" ? "✅" : k === "deploy" ? "🚀" : k === "deploy_start" ? "☁️" : k === "tool" ? "⚙" : "·";
   const lineText = (e: BuildEvent) =>
     e.kind === "file" ? `wrote ${e.path} (${e.size ?? 0}b)` :
     e.kind === "command" ? `$ ${e.command}` :
     e.kind === "build_start" ? `Building MVP: ${e.goal ?? ""}` :
     e.kind === "done" ? `Build step complete — ${(e.files?.length ?? 0)} files` :
+    e.kind === "deploy_start" ? "Deploying to Vercel…" :
+    e.kind === "deploy" ? `Deployed → ${e.url ?? ""}` :
     e.kind === "tool" ? `${e.tool ?? "tool"} ${e.target ?? ""}` :
     (e.text ?? "");
   if (!events.length && !fileList.length) return null;

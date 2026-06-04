@@ -211,6 +211,46 @@ def _list_built_files(local: str) -> list[str]:
     return sorted(out)
 
 
+def _dummy_env_value(key: str) -> str:
+    ku = key.upper()
+    if "URL" in ku:
+        return "https://placeholder.supabase.co" if "SUPABASE" in ku else "https://placeholder.example.com"
+    if any(w in ku for w in ("KEY", "SECRET", "TOKEN", "PASSWORD", "DSN")):
+        return "placeholder_" + "x" * 32
+    return "placeholder"
+
+
+def _placeholder_env(local: str) -> dict:
+    """Dummy env values (from .env.example) so the build/deploy succeeds without
+    real credentials — the preview renders even before the founder adds keys."""
+    env: dict[str, str] = {}
+    for fname in (".env.example", ".env.local.example", ".env.sample", ".env.template"):
+        p = Path(local) / fname
+        if p.exists():
+            try:
+                for line in p.read_text().splitlines():
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    k = line.split("=", 1)[0].strip()
+                    if k and k.isidentifier():
+                        env[k] = _dummy_env_value(k)
+            except Exception:
+                pass
+            break
+    return env
+
+
+def _vercel_root_dir(local: str) -> str:
+    """Vercel root_directory: '' if the app is at repo root, else the subdir."""
+    if (Path(local) / "package.json").exists():
+        return ""
+    for sub in ("frontend", "web", "app", "client"):
+        if (Path(local) / sub / "package.json").exists():
+            return sub
+    return ""
+
+
 def _stage_all(local: str) -> None:
     """Stage all files (no commit) so disk contents are tracked in local mode."""
     try:
@@ -769,6 +809,14 @@ def run_mvp_loop(
             _run_claude(local, fix_prompt, session_id=build_sid, timeout=900,
                         founder_id=founder_id, app_session_id=session_id)
 
+        # Placeholder env so the verification build + deploy work without real keys.
+        try:
+            ph = _placeholder_env(local)
+            if ph:
+                (Path(local) / ".env.local").write_text("\n".join(f"{k}={v}" for k, v in ph.items()) + "\n")
+        except Exception:
+            pass
+
         _sanitize_package_json(local)
         if is_github:
             sha = _commit_and_push(local, f"feat: mvp build — {goal[:50]}")
@@ -805,10 +853,39 @@ def run_mvp_loop(
 
         _stage_all(local)
         all_files = _list_built_files(local)
+
+        # Auto-deploy to Vercel so there's a live preview URL (uses placeholder env
+        # vars so it builds without real keys). Only when pushed to GitHub.
+        deploy_url = None
+        if is_github and repo_url and getattr(settings, "vercel_token", ""):
+            try:
+                from backend.core.events import publish_sync
+                publish_sync(session_id, {"type": "agent_build", "agent": "technical", "kind": "deploy_start"})
+            except Exception:
+                pass
+            try:
+                from backend.tools.vercel_deploy import vercel_deploy_from_github
+                dep = vercel_deploy_from_github(
+                    repo_url,
+                    project_name=Path(local).name[:60],
+                    env_vars=_placeholder_env(local),
+                    root_directory=_vercel_root_dir(local),
+                )
+                deploy_url = dep.get("deploy_url") or dep.get("url") or dep.get("deployment_url")
+                if deploy_url:
+                    try:
+                        from backend.core.events import publish_sync
+                        publish_sync(session_id, {"type": "agent_build", "agent": "technical", "kind": "deploy", "url": deploy_url})
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.warning("auto vercel deploy failed: %s", e)
+
         return {
             "success": True,
             "repo_url": repo_url,
             "github_url": f"{repo_url}/tree/main" if is_github else "",
+            "deploy_url": deploy_url,
             "local_only": not is_github,
             "commits": commits,
             "files_in_repo": len(all_files),
