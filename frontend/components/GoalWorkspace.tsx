@@ -179,16 +179,28 @@ const STACK_OPTIONS = {
 
 const STARTER_PROMPTS = [
   {
-    title: "Waitlist SaaS",
-    prompt: "Build a waitlist SaaS for creators — landing page, Next.js app, Supabase DB, Clerk auth, Vercel deploy.",
+    title: "AI meeting notetaker",
+    prompt: "Build 'ClearNotes', an AI meeting notetaker that joins calls, transcribes, and emails action items. Research the market and competitors, design the brand, build the full Next.js app with auth and a dashboard, deploy it live, and draft a launch plan with the first 3 outreach emails.",
   },
   {
-    title: "Invoice tool",
-    prompt: "Launch a B2B invoice automation tool — repo, database, auth, landing page, three investor emails.",
+    title: "Local services marketplace",
+    prompt: "Launch 'HandyHub', a two-sided marketplace connecting homeowners with vetted local handymen. Validate the market, build a Next.js app with provider profiles, search, and booking, deploy a live MVP, and create a go-to-market plan for the first 100 providers.",
   },
   {
-    title: "Matching platform",
-    prompt: "Build a real-time co-founder matching platform with live URL, auth, and a pitch deck PDF.",
+    title: "Restaurant inventory SaaS",
+    prompt: "Build 'StockPlate', a vertical SaaS that helps independent restaurants track inventory and cut food waste. Research the ICP and pricing, build the full app with auth, inventory tracking, and a low-stock dashboard, deploy it, and write a cold-outreach sequence for restaurant owners.",
+  },
+  {
+    title: "Indie dev API monitor",
+    prompt: "Create 'PingPanel', a developer tool that monitors API uptime and alerts on Slack. Research competitors and pricing, design a clean brand, build a Next.js app with auth, monitors, and an incident dashboard, deploy it live, and produce a Product Hunt launch kit.",
+  },
+  {
+    title: "Creator membership platform",
+    prompt: "Build 'Tribe', a Patreon-style membership platform for niche creators with tiers and members-only posts. Research the market, build the full Next.js app with auth, payments scaffolding, and a creator dashboard, deploy it, and draft a 30-day growth plan.",
+  },
+  {
+    title: "Habit-tracking social app",
+    prompt: "Launch 'Streaks', a social habit-tracking app where friends keep each other accountable. Research the space, design a fun brand and logo, build the Next.js app with auth, habit tracking, and a friend feed, deploy a live URL, and create a viral launch plan.",
   },
 ];
 
@@ -2731,12 +2743,14 @@ function ContinuePanel({ sessionId, founderId, company }: { sessionId: string; f
   const [error, setError] = useState<string | null>(null);
 
   const SUGGESTIONS = [
-    "Update the landing page copy and add a pricing section",
-    "Write 5 LinkedIn posts for launch week",
-    "Add a blog to the site and write the first post",
-    "Build an admin dashboard with user analytics",
-    "Create investor outreach emails for 10 seed funds",
-    "Add Stripe payments and a subscription tier page",
+    "Add Stripe subscriptions with 3 pricing tiers and a billing page",
+    "Build an onboarding flow that gets users to their first 'aha' moment",
+    "Add a referral system so users can invite friends for rewards",
+    "Write a 30-day content calendar and the first 3 blog posts (SEO-optimized)",
+    "Create a cold outreach sequence and a list of 25 target customers",
+    "Add an admin analytics dashboard with signups, activation, and churn",
+    "Design and add an in-app notification + lifecycle email system",
+    "Draft a seed pitch deck and a target list of 15 relevant investors",
   ];
 
   async function handleSubmit(e: React.FormEvent) {
