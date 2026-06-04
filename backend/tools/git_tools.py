@@ -881,11 +881,31 @@ def run_mvp_loop(
             except Exception as e:
                 logger.warning("auto vercel deploy failed: %s", e)
 
+        # Fallback: if Vercel didn't produce a URL (error, no token, or local-only
+        # build), run the MVP on the server itself on a free port for a live preview.
+        local_preview = False
+        if not deploy_url:
+            try:
+                from backend.tools.local_preview import start_local_preview
+                url = start_local_preview(local, session_id)
+                if url:
+                    deploy_url = url
+                    local_preview = True
+                    try:
+                        from backend.core.events import publish_sync
+                        publish_sync(session_id, {"type": "agent_build", "agent": "technical",
+                                                  "kind": "deploy", "url": url, "local": True})
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.warning("local preview failed: %s", e)
+
         return {
             "success": True,
             "repo_url": repo_url,
             "github_url": f"{repo_url}/tree/main" if is_github else "",
             "deploy_url": deploy_url,
+            "local_preview": local_preview,
             "local_only": not is_github,
             "commits": commits,
             "files_in_repo": len(all_files),

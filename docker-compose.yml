@@ -20,6 +20,7 @@ services:
       - redis
     ports:
       - "8000:8000"
+      - "4000-4009:4000-4009"  # local MVP preview servers (Vercel fallback)
     volumes:
       - ./backend:/app/backend  # live code mount — SCP + restart, no rebuild needed
       - astra_docs_data:/data/astra_docs
