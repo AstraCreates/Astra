@@ -3273,29 +3273,57 @@ async def track_click(founder_id: str, campaign_id: str, cc_id: str, step_index:
 
 # ── Web Navigator sandbox ──────────────────────────────────────────────────────
 
-@router.post("/web-navigator/run")
-async def web_navigator_run(body: dict, request: Request):
-    """
-    Run the web navigator agent on a URL with a goal.
-    Used by the Settings sandbox for direct testing.
-    Body: {founder_id, url, goal, credentials?: {email, password, ...}, max_steps?: int}
-    """
-    founder_id = body.get("founder_id", "")
+@router.post("/web-navigator/start")
+async def web_navigator_start(body: dict, request: Request):
+    """Start a web navigator session. Returns session_id for streaming."""
+    import uuid
     url = body.get("url", "").strip()
     goal = body.get("goal", "").strip()
-    credentials = body.get("credentials") or {}
-    max_steps = min(int(body.get("max_steps", 25)), 40)
-
     if not url or not goal:
         raise HTTPException(status_code=400, detail="url and goal are required")
 
-    from backend.tools.web_navigator_tools import vision_browse
-    result = await vision_browse(
-        url=url,
-        goal=goal,
-        credentials=credentials,
-        max_steps=max_steps,
-        founder_id=founder_id,
-        session_id=f"sandbox-{founder_id[:8]}",
-    )
-    return result
+    from backend.tools.web_navigator_tools import create_nav_session, vision_browse_streaming
+    session_id = str(uuid.uuid4())
+    create_nav_session(session_id)
+    asyncio.create_task(vision_browse_streaming(session_id, url, goal, max_steps=30))
+    return {"session_id": session_id}
+
+
+@router.get("/web-navigator/stream/{session_id}")
+async def web_navigator_stream(session_id: str, request: Request):
+    """SSE stream of events for a running web navigator session."""
+    from fastapi.responses import StreamingResponse
+    from backend.tools.web_navigator_tools import get_nav_session
+
+    session = get_nav_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    async def _gen():
+        queue: asyncio.Queue = session["event_queue"]
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=30)
+            except asyncio.TimeoutError:
+                yield "event: ping\ndata: {}\n\n"
+                continue
+            if event is None:
+                break
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(_gen(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    })
+
+
+@router.post("/web-navigator/respond/{session_id}")
+async def web_navigator_respond(session_id: str, body: dict, request: Request):
+    """Provide user input to a paused web navigator session."""
+    from backend.tools.web_navigator_tools import resume_nav_session
+    ok = resume_nav_session(session_id, body.get("fields", {}))
+    if not ok:
+        raise HTTPException(status_code=404, detail="Session not found or not waiting for input")
+    return {"ok": True}

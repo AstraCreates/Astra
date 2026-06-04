@@ -458,10 +458,12 @@ export default function SettingsPage() {
   // Web Navigator sandbox
   const [navUrl, setNavUrl] = useState("https://");
   const [navGoal, setNavGoal] = useState("");
-  const [navEmail, setNavEmail] = useState("");
-  const [navPassword, setNavPassword] = useState("");
   const [navRunning, setNavRunning] = useState(false);
+  const [navStatus, setNavStatus] = useState("");
+  const [navStep, setNavStep] = useState(0);
   const [navResult, setNavResult] = useState<Record<string, unknown> | null>(null);
+  const [navObstacle, setNavObstacle] = useState<{ prompt: string; fields: { key: string; label: string; type: string }[]; sessionId: string } | null>(null);
+  const [navObstacleValues, setNavObstacleValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -1005,118 +1007,186 @@ export default function SettingsPage() {
       <Section title="Web Navigator Sandbox (Dev Only)">
         <div style={{ padding: "16px 20px", display: "grid", gap: 14 }}>
           <div style={{ padding: "8px 12px", borderRadius: 8, background: c.amberTint, border: `1px solid ${c.amberBorder}` }}>
-            <span style={{ fontSize: 12, color: c.amber, fontWeight: 500 }}>Dev tool — runs a real headless browser on the server. Not shown to end users.</span>
+            <span style={{ fontSize: 12, color: c.amber, fontWeight: 500 }}>Dev tool — runs a real headless browser on the server.</span>
           </div>
-          <div style={{ display: "grid", gap: 8 }}>
-            <label style={{ display: "grid", gap: 5 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Start URL</span>
-              <input
-                value={navUrl}
-                onChange={e => setNavUrl(e.target.value)}
-                placeholder="https://platform.openai.com/api-keys"
-                style={inputStyle()}
-                onFocus={e => (e.target.style.borderColor = c.blue)}
-                onBlur={e => (e.target.style.borderColor = c.border)}
-              />
-            </label>
-            <label style={{ display: "grid", gap: 5 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Goal</span>
-              <textarea
-                value={navGoal}
-                onChange={e => setNavGoal(e.target.value)}
-                placeholder="Sign in and copy the API key"
-                rows={2}
-                style={{ ...inputStyle(), resize: "vertical", padding: "10px 14px", lineHeight: 1.5 }}
-                onFocus={e => (e.target.style.borderColor = c.blue)}
-                onBlur={e => (e.target.style.borderColor = c.border)}
-              />
-            </label>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+
+          {/* Inputs — only shown when not running */}
+          {!navRunning && !navResult && (
+            <div style={{ display: "grid", gap: 8 }}>
               <label style={{ display: "grid", gap: 5 }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Email (optional)</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Starting URL</span>
                 <input
-                  value={navEmail}
-                  onChange={e => setNavEmail(e.target.value)}
-                  placeholder="you@example.com"
+                  value={navUrl}
+                  onChange={e => setNavUrl(e.target.value)}
+                  placeholder="https://platform.openai.com/api-keys"
                   style={inputStyle()}
                   onFocus={e => (e.target.style.borderColor = c.blue)}
                   onBlur={e => (e.target.style.borderColor = c.border)}
                 />
               </label>
               <label style={{ display: "grid", gap: 5 }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Password (optional)</span>
-                <input
-                  type="password"
-                  value={navPassword}
-                  onChange={e => setNavPassword(e.target.value)}
-                  placeholder="••••••••"
-                  style={inputStyle()}
+                <span style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Goal</span>
+                <textarea
+                  value={navGoal}
+                  onChange={e => setNavGoal(e.target.value)}
+                  placeholder="Navigate to the API keys page and copy the key"
+                  rows={2}
+                  style={{ ...inputStyle(), resize: "vertical", padding: "10px 14px", lineHeight: 1.5 }}
                   onFocus={e => (e.target.style.borderColor = c.blue)}
                   onBlur={e => (e.target.style.borderColor = c.border)}
                 />
               </label>
             </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          )}
+
+          {/* Run button */}
+          {!navRunning && !navResult && (
             <button
-              disabled={navRunning || !navUrl || !navGoal}
+              disabled={!navUrl || !navGoal}
               onClick={async () => {
                 setNavRunning(true);
                 setNavResult(null);
+                setNavObstacle(null);
+                setNavStatus("Starting browser…");
+                setNavStep(0);
                 const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
                 try {
-                  const credentials: Record<string, string> = {};
-                  if (navEmail) credentials.email = navEmail;
-                  if (navPassword) credentials.password = navPassword;
-                  const res = await fetch(`${apiBase}/api/web-navigator/run`, {
+                  const res = await fetch(`${apiBase}/api/web-navigator/start`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ founder_id: founderId, url: navUrl, goal: navGoal, credentials }),
+                    body: JSON.stringify({ url: navUrl, goal: navGoal }),
                   });
-                  const data = await res.json();
-                  setNavResult(data);
+                  const { session_id } = await res.json();
+
+                  const es = new EventSource(`${apiBase}/api/web-navigator/stream/${session_id}`);
+                  es.onmessage = (e) => {
+                    const event = JSON.parse(e.data);
+                    if (event.type === "status") {
+                      setNavStatus(event.message ?? "");
+                      if (event.step) setNavStep(event.step);
+                    } else if (event.type === "need_input") {
+                      setNavObstacle({ prompt: event.prompt, fields: event.fields, sessionId: session_id });
+                      setNavObstacleValues({});
+                      setNavStatus("Waiting for your input…");
+                    } else if (event.type === "done") {
+                      es.close();
+                      setNavRunning(false);
+                      setNavObstacle(null);
+                      setNavResult(event);
+                    } else if (event.type === "error") {
+                      es.close();
+                      setNavRunning(false);
+                      setNavObstacle(null);
+                      setNavResult({ success: false, message: event.message });
+                    }
+                  };
+                  es.onerror = () => {
+                    es.close();
+                    setNavRunning(false);
+                    setNavResult({ success: false, message: "Connection to browser lost." });
+                  };
                 } catch (err) {
-                  setNavResult({ success: false, message: String(err) });
-                } finally {
                   setNavRunning(false);
+                  setNavResult({ success: false, message: String(err) });
                 }
               }}
               style={{
-                fontSize: 13, padding: "7px 18px", borderRadius: 8, fontWeight: 600,
-                background: navRunning || !navUrl || !navGoal ? c.border : c.blue,
-                color: navRunning || !navUrl || !navGoal ? c.textMuted : "#fff",
-                border: "none", cursor: navRunning || !navUrl || !navGoal ? "not-allowed" : "pointer",
+                fontSize: 13, padding: "7px 18px", borderRadius: 8, fontWeight: 600, alignSelf: "start",
+                background: !navUrl || !navGoal ? c.border : c.blue,
+                color: !navUrl || !navGoal ? c.textMuted : "#fff",
+                border: "none", cursor: !navUrl || !navGoal ? "not-allowed" : "pointer",
               }}
             >
-              {navRunning ? "Running…" : "Run Navigator"}
+              Run Navigator
             </button>
-            {navRunning && (
-              <span style={{ fontSize: 12, color: c.grey }}>Browser running — may take up to 60s</span>
-            )}
-          </div>
-          {navResult && (
-            <div style={{ borderRadius: 10, border: `1px solid ${navResult.success ? c.greenBorder : c.redBorder}`, background: navResult.success ? c.greenTint : c.redTint, padding: "14px 16px", display: "grid", gap: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Badge color={navResult.success ? "green" : "red"}>{navResult.success ? "Success" : "Failed"}</Badge>
-                <span style={{ fontSize: 13, color: c.text, fontWeight: 500 }}>{String(navResult.message ?? "")}</span>
+          )}
+
+          {/* Live status while running */}
+          {navRunning && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 8, background: c.blueTint, border: `1px solid #BFDBFE` }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: c.blue, flexShrink: 0, animation: "pulse 1.5s ease-in-out infinite" }} />
+              <div>
+                <span style={{ fontSize: 13, color: c.blue, fontWeight: 500 }}>{navStatus || "Running…"}</span>
+                {navStep > 0 && <span style={{ fontSize: 11, color: c.textMuted, marginLeft: 8 }}>step {navStep}</span>}
               </div>
-              {navResult.url && (
-                <p style={{ margin: 0, fontSize: 12, color: c.grey }}>
-                  Final URL: <a href={String(navResult.url)} target="_blank" rel="noreferrer" style={{ color: c.blue }}>{String(navResult.url)}</a>
-                  {" · "}{String(navResult.steps ?? 0)} steps
-                </p>
-              )}
-              {navResult.extracted && Object.keys(navResult.extracted as object).length > 0 && (
-                <div style={{ display: "grid", gap: 6 }}>
-                  <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Extracted</p>
-                  {Object.entries(navResult.extracted as Record<string, string>).map(([k, v]) => (
-                    <div key={k} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                      <span style={{ fontSize: 11, color: c.grey, minWidth: 140, flexShrink: 0 }}>{k}</span>
-                      <code style={{ fontSize: 11, color: c.text, background: c.surface, padding: "2px 8px", borderRadius: 5, border: `1px solid ${c.border}`, wordBreak: "break-all" }}>{v}</code>
-                    </div>
-                  ))}
+            </div>
+          )}
+
+          {/* Obstacle prompt — inline, appears mid-run */}
+          {navObstacle && (
+            <div style={{ borderRadius: 10, border: `1px solid ${c.amberBorder}`, background: c.amberTint, padding: "14px 16px", display: "grid", gap: 10 }}>
+              <div>
+                <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 600, color: c.text }}>Agent needs your help</p>
+                <p style={{ margin: 0, fontSize: 13, color: c.textSecondary }}>{navObstacle.prompt}</p>
+              </div>
+              <div style={{ display: "grid", gap: 8 }}>
+                {navObstacle.fields.map(field => (
+                  <label key={field.key} style={{ display: "grid", gap: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{field.label}</span>
+                    <input
+                      type={field.type === "password" ? "password" : field.type === "number" ? "number" : "text"}
+                      value={navObstacleValues[field.key] ?? ""}
+                      onChange={e => setNavObstacleValues(v => ({ ...v, [field.key]: e.target.value }))}
+                      style={inputStyle()}
+                      onFocus={e => (e.target.style.borderColor = c.blue)}
+                      onBlur={e => (e.target.style.borderColor = c.border)}
+                    />
+                  </label>
+                ))}
+              </div>
+              <button
+                onClick={async () => {
+                  const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+                  await fetch(`${apiBase}/api/web-navigator/respond/${navObstacle!.sessionId}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ fields: navObstacleValues }),
+                  });
+                  setNavObstacle(null);
+                  setNavStatus("Resuming…");
+                }}
+                style={{
+                  fontSize: 13, padding: "7px 16px", borderRadius: 8, fontWeight: 600, alignSelf: "start",
+                  background: c.blue, color: "#fff", border: "none", cursor: "pointer",
+                }}
+              >
+                Continue →
+              </button>
+            </div>
+          )}
+
+          {/* Result */}
+          {navResult && (
+            <div style={{ display: "grid", gap: 10 }}>
+              <div style={{ borderRadius: 10, border: `1px solid ${navResult.success ? c.greenBorder : c.redBorder}`, background: navResult.success ? c.greenTint : c.redTint, padding: "14px 16px", display: "grid", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Badge color={navResult.success ? "green" : "red"}>{navResult.success ? "Success" : "Failed"}</Badge>
+                  <span style={{ fontSize: 13, color: c.text, fontWeight: 500 }}>{String(navResult.message ?? "")}</span>
                 </div>
-              )}
+                {navResult.url && (
+                  <p style={{ margin: 0, fontSize: 12, color: c.grey }}>
+                    <a href={String(navResult.url)} target="_blank" rel="noreferrer" style={{ color: c.blue }}>{String(navResult.url)}</a>
+                    {" · "}{String(navResult.steps ?? 0)} steps
+                  </p>
+                )}
+                {navResult.extracted && Object.keys(navResult.extracted as object).length > 0 && (
+                  <div style={{ display: "grid", gap: 5, marginTop: 4 }}>
+                    <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Extracted</p>
+                    {Object.entries(navResult.extracted as Record<string, string>).map(([k, v]) => (
+                      <div key={k} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                        <span style={{ fontSize: 11, color: c.grey, minWidth: 130, flexShrink: 0 }}>{k}</span>
+                        <code style={{ fontSize: 11, color: c.text, background: "#fff", padding: "2px 8px", borderRadius: 5, border: `1px solid ${c.border}`, wordBreak: "break-all" }}>{v}</code>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => { setNavResult(null); setNavStatus(""); setNavStep(0); }}
+                style={{ fontSize: 12, padding: "5px 12px", borderRadius: 8, alignSelf: "start", background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer" }}
+              >
+                Run again
+              </button>
             </div>
           )}
         </div>
