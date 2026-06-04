@@ -455,6 +455,13 @@ export default function SettingsPage() {
   const [verificationError, setVerificationError] = useState("");
   const [backendStatus, setBackendStatus] = useState<"checking" | "online" | "offline">("checking");
   const [backendLatency, setBackendLatency] = useState<number | null>(null);
+  // Web Navigator sandbox
+  const [navUrl, setNavUrl] = useState("https://");
+  const [navGoal, setNavGoal] = useState("");
+  const [navEmail, setNavEmail] = useState("");
+  const [navPassword, setNavPassword] = useState("");
+  const [navRunning, setNavRunning] = useState(false);
+  const [navResult, setNavResult] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -992,6 +999,127 @@ export default function SettingsPage() {
             </button>
           }
         />
+      </Section>
+
+      {/* Web Navigator Sandbox — DEV ONLY */}
+      <Section title="Web Navigator Sandbox (Dev Only)">
+        <div style={{ padding: "16px 20px", display: "grid", gap: 14 }}>
+          <div style={{ padding: "8px 12px", borderRadius: 8, background: c.amberTint, border: `1px solid ${c.amberBorder}` }}>
+            <span style={{ fontSize: 12, color: c.amber, fontWeight: 500 }}>Dev tool — runs a real headless browser on the server. Not shown to end users.</span>
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            <label style={{ display: "grid", gap: 5 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Start URL</span>
+              <input
+                value={navUrl}
+                onChange={e => setNavUrl(e.target.value)}
+                placeholder="https://platform.openai.com/api-keys"
+                style={inputStyle()}
+                onFocus={e => (e.target.style.borderColor = c.blue)}
+                onBlur={e => (e.target.style.borderColor = c.border)}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 5 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Goal</span>
+              <textarea
+                value={navGoal}
+                onChange={e => setNavGoal(e.target.value)}
+                placeholder="Sign in and copy the API key"
+                rows={2}
+                style={{ ...inputStyle(), resize: "vertical", padding: "10px 14px", lineHeight: 1.5 }}
+                onFocus={e => (e.target.style.borderColor = c.blue)}
+                onBlur={e => (e.target.style.borderColor = c.border)}
+              />
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Email (optional)</span>
+                <input
+                  value={navEmail}
+                  onChange={e => setNavEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  style={inputStyle()}
+                  onFocus={e => (e.target.style.borderColor = c.blue)}
+                  onBlur={e => (e.target.style.borderColor = c.border)}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 5 }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Password (optional)</span>
+                <input
+                  type="password"
+                  value={navPassword}
+                  onChange={e => setNavPassword(e.target.value)}
+                  placeholder="••••••••"
+                  style={inputStyle()}
+                  onFocus={e => (e.target.style.borderColor = c.blue)}
+                  onBlur={e => (e.target.style.borderColor = c.border)}
+                />
+              </label>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button
+              disabled={navRunning || !navUrl || !navGoal}
+              onClick={async () => {
+                setNavRunning(true);
+                setNavResult(null);
+                const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+                try {
+                  const credentials: Record<string, string> = {};
+                  if (navEmail) credentials.email = navEmail;
+                  if (navPassword) credentials.password = navPassword;
+                  const res = await fetch(`${apiBase}/api/web-navigator/run`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ founder_id: founderId, url: navUrl, goal: navGoal, credentials }),
+                  });
+                  const data = await res.json();
+                  setNavResult(data);
+                } catch (err) {
+                  setNavResult({ success: false, message: String(err) });
+                } finally {
+                  setNavRunning(false);
+                }
+              }}
+              style={{
+                fontSize: 13, padding: "7px 18px", borderRadius: 8, fontWeight: 600,
+                background: navRunning || !navUrl || !navGoal ? c.border : c.blue,
+                color: navRunning || !navUrl || !navGoal ? c.textMuted : "#fff",
+                border: "none", cursor: navRunning || !navUrl || !navGoal ? "not-allowed" : "pointer",
+              }}
+            >
+              {navRunning ? "Running…" : "Run Navigator"}
+            </button>
+            {navRunning && (
+              <span style={{ fontSize: 12, color: c.grey }}>Browser running — may take up to 60s</span>
+            )}
+          </div>
+          {navResult && (
+            <div style={{ borderRadius: 10, border: `1px solid ${navResult.success ? c.greenBorder : c.redBorder}`, background: navResult.success ? c.greenTint : c.redTint, padding: "14px 16px", display: "grid", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Badge color={navResult.success ? "green" : "red"}>{navResult.success ? "Success" : "Failed"}</Badge>
+                <span style={{ fontSize: 13, color: c.text, fontWeight: 500 }}>{String(navResult.message ?? "")}</span>
+              </div>
+              {navResult.url && (
+                <p style={{ margin: 0, fontSize: 12, color: c.grey }}>
+                  Final URL: <a href={String(navResult.url)} target="_blank" rel="noreferrer" style={{ color: c.blue }}>{String(navResult.url)}</a>
+                  {" · "}{String(navResult.steps ?? 0)} steps
+                </p>
+              )}
+              {navResult.extracted && Object.keys(navResult.extracted as object).length > 0 && (
+                <div style={{ display: "grid", gap: 6 }}>
+                  <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Extracted</p>
+                  {Object.entries(navResult.extracted as Record<string, string>).map(([k, v]) => (
+                    <div key={k} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                      <span style={{ fontSize: 11, color: c.grey, minWidth: 140, flexShrink: 0 }}>{k}</span>
+                      <code style={{ fontSize: 11, color: c.text, background: c.surface, padding: "2px 8px", borderRadius: 5, border: `1px solid ${c.border}`, wordBreak: "break-all" }}>{v}</code>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </Section>
     </div>
   );

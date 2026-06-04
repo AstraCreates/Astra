@@ -3269,3 +3269,33 @@ async def track_click(founder_id: str, campaign_id: str, cc_id: str, step_index:
     except Exception as e:
         logger.warning("Track click failed: %s", e)
     return RedirectResponse(url=unquote(url) or "/", status_code=302)
+
+
+# ── Web Navigator sandbox ──────────────────────────────────────────────────────
+
+@router.post("/web-navigator/run")
+async def web_navigator_run(body: dict, request: Request):
+    """
+    Run the web navigator agent on a URL with a goal.
+    Used by the Settings sandbox for direct testing.
+    Body: {founder_id, url, goal, credentials?: {email, password, ...}, max_steps?: int}
+    """
+    founder_id = body.get("founder_id", "")
+    url = body.get("url", "").strip()
+    goal = body.get("goal", "").strip()
+    credentials = body.get("credentials") or {}
+    max_steps = min(int(body.get("max_steps", 25)), 40)
+
+    if not url or not goal:
+        raise HTTPException(status_code=400, detail="url and goal are required")
+
+    from backend.tools.web_navigator_tools import vision_browse
+    result = await vision_browse(
+        url=url,
+        goal=goal,
+        credentials=credentials,
+        max_steps=max_steps,
+        founder_id=founder_id,
+        session_id=f"sandbox-{founder_id[:8]}",
+    )
+    return result
