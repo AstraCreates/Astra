@@ -560,16 +560,18 @@ def _planner_review(local: str, goal: str, files: list[str]) -> dict:
         return {"pass": True, "issues": [], "fix_instructions": ""}  # don't block on error
 
 
-_OC_TEST_PROMPT = """Run the following checks on the codebase and fix any issues you find:
+_OC_TEST_PROMPT = """Verify the project you just built in THIS directory and fix any issues.
+FIRST detect the actual stack — do not assume a frontend/ or backend/ folder; the
+files may live at the repo root (e.g. a root-level Next.js app) or in subfolders.
 
-1. bash -c "find frontend -name '*.tsx' -o -name '*.ts' | head -20 && echo '---' && find backend -name '*.py' | head -10"
-2. bash -c "python3 -c 'import ast, sys; [ast.parse(open(f).read()) for f in __import__(\"glob\").glob(\"backend/**/*.py\", recursive=True)]' && echo 'Python syntax OK'"
-3. Check frontend/package.json — remove any packages that don't exist on npm (e.g. @radix-ui/react-badge, @radix-ui/react-layout)
-4. Check for any file containing only "TODO", placeholder text, or fewer than 5 lines of real code — rewrite those files properly
-5. Ensure all TypeScript imports in frontend files reference files that actually exist
+1. `ls -la` and read package.json / requirements.txt / pyproject.toml to identify the stack.
+2. If it's a Node/TypeScript project (package.json present): run `npx tsc --noEmit` if TypeScript is used, and verify every dependency in package.json actually exists on npm — remove any invented packages (e.g. @radix-ui/react-badge).
+3. If it's a Python project (.py files / requirements.txt): run a syntax check on the real .py files only (skip folders that don't exist).
+4. Find any file that is empty, contains only TODO/placeholder text, or has fewer than 5 lines of real code — rewrite it properly.
+5. Ensure every import references a file/module that actually exists in this project.
 
-Fix any issues found, then run: bash -c "git add -A && git commit -m 'fix: verification pass'"
-If everything looks good, just say OK."""
+Fix everything you find, then run: `git add -A && git commit -m "fix: verification pass"`.
+If everything is already correct, just say OK."""
 
 
 def _openclaude_test_pass(local: str, oc_session_id: str) -> str:
