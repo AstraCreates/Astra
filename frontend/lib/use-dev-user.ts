@@ -24,19 +24,19 @@ export function useDevUser() {
   const isLoading = status === "loading";
   const isSignedIn = status === "authenticated" && !!session?.user?.email;
 
-  const userId = isSignedIn && session.user.email
-    ? "google_" + session.user.email.replace(/[^a-z0-9]/g, "_")
+  const googleEmail = session?.user?.email ?? null;
+  const userId = isSignedIn && googleEmail
+    ? "google_" + googleEmail.replace(/[^a-z0-9]/g, "_")
     : isLoading
       ? "anon"
       : getOrCreateUserId();
 
   // Keep localStorage in sync so ApiAuthBridge always sends the right founder ID.
   useEffect(() => {
-    if (isSignedIn && session?.user?.email) {
-      const uid = "google_" + session.user.email.replace(/[^a-z0-9]/g, "_");
-      localStorage.setItem("astra_dev_user_id", uid);
+    if (isSignedIn && googleEmail) {
+      localStorage.setItem("astra_dev_user_id", "google_" + googleEmail.replace(/[^a-z0-9]/g, "_"));
     }
-  }, [isSignedIn, session?.user?.email]);
+  }, [isSignedIn, googleEmail]);
 
   return {
     userId,
@@ -44,7 +44,7 @@ export function useDevUser() {
     isLoading,
     user: {
       id: userId,
-      fullName: session?.user?.name ?? session?.user?.email ?? "Dev User",
+      fullName: session?.user?.name ?? googleEmail ?? "Dev User",
       imageUrl: session?.user?.image ?? null,
     },
   };
