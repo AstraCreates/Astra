@@ -83,7 +83,8 @@ def _vision_next_action(screenshot_b64: str, goal: str, history: list[dict], cre
         "- Security question\n\n"
         "field types: text, email, password, tel, number\n"
         "Do NOT use need_input for things you can figure out yourself.\n"
-        "If goal is done or impossible, use 'done'. Include extracted keys/tokens in done.result.extracted."
+        "When using 'done', only put things in extracted that the goal explicitly asked for "
+        "(e.g. if goal says 'get the API key', include the key; if goal just says 'sign up', extracted should be empty)."
     )
 
     try:
@@ -160,7 +161,6 @@ async def vision_browse_streaming(
 
     page = browser._page
     history: list[dict] = []
-    all_extracted: dict[str, str] = {}
 
     await emit("status", {"message": f"Navigating to {url}…", "step": 0})
 
@@ -190,15 +190,6 @@ async def vision_browse_streaming(
             await emit("error", {"message": f"Screenshot failed: {e}"})
             break
 
-        # Scan page for keys
-        try:
-            page_text = await page.inner_text("body")
-            found = _scan_for_keys(page_text)
-            if found:
-                all_extracted.update(found)
-        except Exception:
-            pass
-
         await emit("status", {"message": f"Analysing page…", "step": step, "url": page.url})
 
         # Ask vision model
@@ -211,17 +202,13 @@ async def vision_browse_streaming(
 
         if act == "done":
             result = action.get("result", {})
-            all_extracted.update(result.get("extracted", {}))
-            try:
-                page_text = await page.inner_text("body")
-                all_extracted.update(_scan_for_keys(page_text))
-            except Exception:
-                pass
+            # Only include what the vision model explicitly extracted for this goal
+            extracted = result.get("extracted", {})
             await emit("done", {
                 "success": result.get("success", True),
                 "message": result.get("message", "Task complete"),
                 "url": page.url,
-                "extracted": all_extracted,
+                "extracted": extracted,
                 "steps": step,
             })
             session["status"] = "done"
@@ -301,18 +288,11 @@ async def vision_browse_streaming(
             logger.warning("Action %s failed at step %d: %s", act, step, e)
             await asyncio.sleep(0.5)
 
-    # Max steps
-    try:
-        page_text = await page.inner_text("body")
-        all_extracted.update(_scan_for_keys(page_text))
-    except Exception:
-        pass
-
     await emit("done", {
-        "success": len(all_extracted) > 0,
-        "message": f"Reached max steps ({max_steps}).",
+        "success": False,
+        "message": f"Reached max steps ({max_steps}) without completing the goal.",
         "url": page.url,
-        "extracted": all_extracted,
+        "extracted": {},
         "steps": step,
     })
     session["status"] = "done"
