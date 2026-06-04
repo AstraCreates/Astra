@@ -38,4 +38,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   secret: process.env.NEXTAUTH_SECRET ?? "astra-dev-secret-change-in-prod",
   trustHost: true,
+  // The app is served over HTTP (no TLS yet). NextAuth otherwise sets `Secure`
+  // / `__Secure-`-prefixed cookies behind a proxy, which mobile browsers refuse
+  // to store on an insecure origin — so sign-in "just refreshes" and never
+  // establishes a session. Force non-secure cookies so HTTP sign-in persists.
+  useSecureCookies: false,
 });
