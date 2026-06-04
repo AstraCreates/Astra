@@ -30,6 +30,7 @@ from backend.specialists.technical_infra import build_technical_infra_agent
 from backend.specialists.technical_data import build_technical_data_agent
 from backend.specialists.finance_model import build_finance_model_agent
 from backend.specialists.finance_fundraise import build_finance_fundraise_agent
+from backend.specialists.web_navigator import build_web_navigator_agent
 
 _orchestrator: Orchestrator | None = None
 
@@ -103,6 +104,9 @@ def get_orchestrator() -> Orchestrator:
             # Simple task agents — Llama-4-Scout (fast, cheap)
             "sales": build_sales_agent(use_computer=False, max_iterations=15, **_small_kwargs),
             "sales_pipeline": build_sales_pipeline_agent(use_computer=False, **_small_kwargs),
+            # Web Navigator — vision-driven autonomous browser agent
+            # Uses Gemini Flash vision via OpenRouter for screenshot → action loop
+            "web_navigator": build_web_navigator_agent(use_computer=True, **_highoutput_kwargs),
         }
         from backend.tools.company_brain import (
             add_company_brain_record,

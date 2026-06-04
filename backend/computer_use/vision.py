@@ -12,13 +12,15 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-_VISION_MODEL = "llava"  # any local vision model via OpenAI-compat endpoint
+_VISION_MODEL = "google/gemini-2.5-flash"  # multimodal via OpenRouter
 
 
 def get_vision_client() -> openai.OpenAI:
+    from backend.core.key_rotator import get_openrouter_key
+    key = get_openrouter_key() or settings.openrouter_api_key
     return openai.OpenAI(
-        base_url=settings.agent_model_base_url,
-        api_key=settings.agent_model_api_key,
+        base_url=settings.openrouter_base_url,
+        api_key=key,
     )
 
 
