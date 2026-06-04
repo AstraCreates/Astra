@@ -17,7 +17,59 @@ from backend.config import settings
 logger = logging.getLogger(__name__)
 
 
+# Hard cap on any single tool result appended to an agent's conversation. Even
+# "formatted" search results / full page text must be bounded, or a research-heavy
+# agent (design, marketing) accumulates 40 iterations of multi-KB results and
+# overflows the model window (observed: 489385 tokens vs 262144 limit).
+_TOOL_RESULT_CHAR_CAP = 6000
+
+
+# Cumulative conversation budget per agent loop. ~600K chars ≈ 150K tokens, well
+# under hy3-preview's 262144-token window with room for the system prompt + reply.
+_HISTORY_CHAR_BUDGET = 600_000
+
+
+def _trim_message_history(messages: list[dict]) -> list[dict]:
+    """Bound an agent's conversation so long tool-heavy loops can't overflow the
+    model window. Always keep the system prompt (messages[0]) and the initial goal
+    (messages[1]); drop the OLDEST middle turns first, inserting a marker so the
+    model knows context was elided. Recent turns (the live working set) are kept."""
+    try:
+        total = sum(len(m.get("content", "")) for m in messages)
+        if total <= _HISTORY_CHAR_BUDGET or len(messages) <= 4:
+            return messages
+        head = messages[:2]
+        tail = messages[2:]
+        # Drop from the front of `tail` until under budget, keeping the most recent.
+        head_chars = sum(len(m.get("content", "")) for m in head)
+        budget = _HISTORY_CHAR_BUDGET - head_chars
+        kept: list[dict] = []
+        running = 0
+        for m in reversed(tail):
+            c = len(m.get("content", ""))
+            if running + c > budget and kept:
+                break
+            kept.append(m)
+            running += c
+        kept.reverse()
+        dropped = len(tail) - len(kept)
+        if dropped <= 0:
+            return messages
+        marker = {"role": "user", "content": f"[... {dropped} earlier turn(s) elided to fit context; "
+                                              f"key findings are recorded in Obsidian and shared context ...]"}
+        return head + [marker] + kept
+    except Exception:
+        return messages
+
+
 def _format_tool_result(tool_name: str, result: Any) -> str:
+    text = _format_tool_result_raw(tool_name, result)
+    if isinstance(text, str) and len(text) > _TOOL_RESULT_CHAR_CAP:
+        return text[:_TOOL_RESULT_CHAR_CAP] + f"\n... (truncated, {len(text):,} chars total)"
+    return text
+
+
+def _format_tool_result_raw(tool_name: str, result: Any) -> str:
     """
     Format tool results as readable text for LLM context.
     Raw JSON is hard for the LLM to parse — structured text is much better.
@@ -450,6 +502,7 @@ class Agent:
                     logger.info("%s received founder directive: %s", self.name, directive[:80])
             except Exception:
                 pass
+            messages = _trim_message_history(messages)
             raw = await asyncio.to_thread(self._call_llm, messages, ctx)
             parsed = self._parse_json(raw)
 
