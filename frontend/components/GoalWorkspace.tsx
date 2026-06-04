@@ -353,7 +353,9 @@ function ResearchPreview({ state }: { state: AgentState }) {
 }
 
 function WebPreview({ state, sessionId, founderId }: { state: AgentState; sessionId?: string; founderId?: string }) {
-  const url = state.previewUrl ?? (state.result?.url ?? state.result?.deployment_url ?? state.result?.project_url) as string | undefined;
+  const url = state.previewUrl ?? (state.result?.url ?? state.result?.deploy_url ?? state.result?.deployment_url ?? state.result?.project_url) as string | undefined;
+  const buildEvents = ((state as unknown as Record<string, unknown>).buildEvents as BuildEvent[]) ?? [];
+  const buildFiles = ((state as unknown as Record<string, unknown>).buildFiles as Record<string, { content: string; size: number }>) ?? {};
   const commits = state.commits ?? [];
   const usedFallback = state.log.some(l => l.text.includes("fallback template"));
   const qualityError = state.webQualityError ?? (state.result?.web_quality_error as string | undefined);
@@ -390,6 +392,9 @@ function WebPreview({ state, sessionId, founderId }: { state: AgentState; sessio
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {(buildEvents.length > 0 || Object.keys(buildFiles).length > 0) && (
+        <BuildStream events={buildEvents} files={buildFiles} />
+      )}
       {commits.length > 0 ? (
         <>
           <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)" }}>Recent commits</span>
@@ -400,8 +405,8 @@ function WebPreview({ state, sessionId, founderId }: { state: AgentState; sessio
             </div>
           ))}
         </>
-      ) : (
-        <BuildingIndicator label="Building site…" />
+      ) : buildEvents.length === 0 && (
+        <BuildingIndicator label="Building Next.js landing…" />
       )}
     </div>
   );
@@ -4313,12 +4318,13 @@ export function GoalWorkspace({
 
       // Live MVP build stream — accumulate onto the technical agent's state.
       if (event.type === "agent_build") {
+        const buildAgent = (event.agent as string) || "technical";
         setAgents((prev) => {
-          const t = (prev["technical"] ?? { agent: "technical", status: "running", log: [], tokens: 0 }) as unknown as Record<string, unknown>;
+          const t = (prev[buildAgent] ?? { agent: buildAgent, status: "running", log: [], tokens: 0 }) as unknown as Record<string, unknown>;
           const be = [...((t.buildEvents as unknown[]) ?? []), event].slice(-400);
           const bf = { ...((t.buildFiles as Record<string, unknown>) ?? {}) } as Record<string, { content: string; size: number }>;
           if (event.kind === "file" && event.path) bf[event.path] = { content: event.content ?? "", size: event.size ?? 0 };
-          return { ...prev, technical: { ...t, buildEvents: be, buildFiles: bf } } as unknown as Record<string, AgentState>;
+          return { ...prev, [buildAgent]: { ...t, buildEvents: be, buildFiles: bf } } as unknown as Record<string, AgentState>;
         });
         return;
       }

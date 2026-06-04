@@ -337,7 +337,7 @@ def _record_build_usage(result_obj: dict, founder_id: str = "", session_id: str 
 
 
 def _stream_build_events(cmd: list, cwd: str, timeout: int, env: dict,
-                         founder_id: str, app_session_id: str, oc_session_id: str) -> str:
+                         founder_id: str, app_session_id: str, oc_session_id: str, agent: str = "technical") -> str:
     """Run openclaude with stream-json output, publishing each step (assistant
     text, tool calls, and every file as it's written) live to the session so the
     technical-agent preview shows the build happening — no GitHub needed."""
@@ -350,7 +350,7 @@ def _stream_build_events(cmd: list, cwd: str, timeout: int, env: dict,
 
     def pub(ev: dict) -> None:
         try:
-            publish_sync(app_session_id, {"type": "agent_build", "agent": "technical", **ev})
+            publish_sync(app_session_id, {"type": "agent_build", "agent": agent, **ev})
         except Exception:
             pass
 
@@ -408,7 +408,7 @@ def _stream_build_events(cmd: list, cwd: str, timeout: int, env: dict,
 
 
 def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 480, model: str = None,
-                founder_id: str = "", app_session_id: str = "") -> str:
+                founder_id: str = "", app_session_id: str = "", agent: str = "technical") -> str:
     """
     Send one message to openclaude. When app_session_id is set, the build streams
     live to that session (transcript + files). Otherwise returns the final result.
@@ -464,7 +464,7 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
         cmd = oc_args + [full_prompt]
 
     if stream:
-        return _stream_build_events(cmd, local, timeout, env, founder_id, app_session_id, session_id)
+        return _stream_build_events(cmd, local, timeout, env, founder_id, app_session_id, session_id, agent)
 
     with _build_semaphore:
         r = subprocess.run(cmd, cwd=local, capture_output=True, text=True, timeout=timeout, env=env)
@@ -749,6 +749,7 @@ def run_mvp_loop(
     required_files: list[str] = None,
     max_rounds: int = None,  # kept for API compat, ignored
     founder_id: str = "",
+    agent: str = "technical",
 ) -> dict:
     """
     Build MVP by calling openclaude once per missing file (no session-id — fresh context each call).
@@ -767,7 +768,7 @@ def run_mvp_loop(
 
         try:
             from backend.core.events import publish_sync
-            publish_sync(session_id, {"type": "agent_build", "agent": "technical",
+            publish_sync(session_id, {"type": "agent_build", "agent": agent,
                                       "kind": "build_start", "goal": goal[:160], "github": is_github})
         except Exception:
             pass
@@ -792,7 +793,7 @@ def run_mvp_loop(
         )
         logger.info("Pass 1: holistic MVP build (%d target files)", len(required_files))
         _run_claude(local, build_prompt, session_id=build_sid, timeout=1800,
-                    founder_id=founder_id, app_session_id=session_id)
+                    founder_id=founder_id, app_session_id=session_id, agent=agent)
 
         # Completion loop: keep going until required files exist (up to 3 rounds).
         for _round in range(3):
@@ -807,7 +808,7 @@ def run_mvp_loop(
                 + f"Project: {goal}."
             )
             _run_claude(local, fix_prompt, session_id=build_sid, timeout=900,
-                        founder_id=founder_id, app_session_id=session_id)
+                        founder_id=founder_id, app_session_id=session_id, agent=agent)
 
         # Placeholder env so the verification build + deploy work without real keys.
         try:
@@ -828,7 +829,7 @@ def run_mvp_loop(
         # Pass 2: openclaude self-test + fix (fresh session, reads actual files on disk)
         fix_session = str(uuid.uuid4())
         logger.info("Pass 2: openclaude fix pass")
-        _run_claude(local, _OC_TEST_PROMPT, session_id=None, timeout=600, founder_id=founder_id, app_session_id=session_id)
+        _run_claude(local, _OC_TEST_PROMPT, session_id=None, timeout=600, founder_id=founder_id, app_session_id=session_id, agent=agent)
         _sanitize_package_json(local)
         if is_github:
             sha2 = _commit_and_push(local, f"fix: verification pass — {goal[:45]}")
@@ -842,7 +843,7 @@ def run_mvp_loop(
         review = _planner_review(local, goal, current_files)
         logger.info("Planner review: pass=%s issues=%s", review["pass"], review["issues"])
         if not review["pass"] and review["fix_instructions"]:
-            _run_claude(local, review["fix_instructions"], session_id=None, timeout=600, founder_id=founder_id, app_session_id=session_id)
+            _run_claude(local, review["fix_instructions"], session_id=None, timeout=600, founder_id=founder_id, app_session_id=session_id, agent=agent)
             _sanitize_package_json(local)
             if is_github:
                 sha3 = _commit_and_push(local, f"fix: planner fixes — {goal[:45]}")
@@ -860,7 +861,7 @@ def run_mvp_loop(
         if is_github and repo_url and getattr(settings, "vercel_token", ""):
             try:
                 from backend.core.events import publish_sync
-                publish_sync(session_id, {"type": "agent_build", "agent": "technical", "kind": "deploy_start"})
+                publish_sync(session_id, {"type": "agent_build", "agent": agent, "kind": "deploy_start"})
             except Exception:
                 pass
             try:
@@ -875,7 +876,7 @@ def run_mvp_loop(
                 if deploy_url:
                     try:
                         from backend.core.events import publish_sync
-                        publish_sync(session_id, {"type": "agent_build", "agent": "technical", "kind": "deploy", "url": deploy_url})
+                        publish_sync(session_id, {"type": "agent_build", "agent": agent, "kind": "deploy", "url": deploy_url})
                     except Exception:
                         pass
             except Exception as e:
@@ -893,7 +894,7 @@ def run_mvp_loop(
                     local_preview = True
                     try:
                         from backend.core.events import publish_sync
-                        publish_sync(session_id, {"type": "agent_build", "agent": "technical",
+                        publish_sync(session_id, {"type": "agent_build", "agent": agent,
                                                   "kind": "deploy", "url": url, "local": True})
                     except Exception:
                         pass

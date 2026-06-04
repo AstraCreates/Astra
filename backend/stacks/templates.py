@@ -136,13 +136,14 @@ IDEA_TO_REVENUE_STACK = AgentStackTemplate(
         StackTaskTemplate(
             id="t_technical",
             agent="technical",
-            title="Product roadmap",
+            title="Product build",
             instruction=(
-                "Define the MVP product architecture and build path. Produce a practical "
-                "technical roadmap with core entities, auth/data needs, repo structure, and "
-                "first usable product scope."
+                "Build the full product on top of the web agent's Next.js repo: add sign-up/auth, "
+                "a dashboard, and the core product features. Use the web agent's existing repo_url — "
+                "do NOT create a new repo. Keep the marketing landing the web agent built."
             ),
-            depends_on=["t_research"],
+            # Runs AFTER the web agent so it extends the same Next.js repo.
+            depends_on=["t_research", "t_web"],
             artifacts=["mvp_roadmap", "technical_plan"],
         ),
         StackTaskTemplate(
