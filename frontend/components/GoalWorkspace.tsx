@@ -3882,7 +3882,8 @@ function PlanTreeNode({
               />
             ) : (
               <span
-                style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}
+                style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", cursor: "text" }}
+                onClick={e => e.stopPropagation()}
                 onDoubleClick={e => { e.stopPropagation(); setEditingTitle(true); }}
               >{node.title}</span>
             )}
@@ -3908,7 +3909,7 @@ function PlanTreeNode({
                 onBlur={e => { onEdit(node.id, "description", e.target.value); setEditingDesc(false); }}
               />
             ) : (
-              <p style={{ margin: 0, fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.55, cursor: "text" }} onDoubleClick={() => setEditingDesc(true)}>{node.description}</p>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.55, cursor: "text" }} onClick={e => e.stopPropagation()} onDoubleClick={e => { e.stopPropagation(); setEditingDesc(true); }}>{node.description}</p>
             )}
 
             {/* Steps */}
@@ -3932,7 +3933,7 @@ function PlanTreeNode({
                       onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                     />
                   ) : (
-                    <span style={{ fontSize: 11, color: i < completedSteps ? "var(--fg-mute)" : "var(--fg-dim)", lineHeight: 1.5, textDecoration: i < completedSteps ? "line-through" : "none", cursor: "text" }} onDoubleClick={() => setEditingStep(i)}>{step}</span>
+                    <span style={{ fontSize: 11, color: i < completedSteps ? "var(--fg-mute)" : "var(--fg-dim)", lineHeight: 1.5, textDecoration: i < completedSteps ? "line-through" : "none", cursor: "text" }} onClick={e => e.stopPropagation()} onDoubleClick={e => { e.stopPropagation(); setEditingStep(i); }}>{step}</span>
                   )}
                 </div>
               ))}
