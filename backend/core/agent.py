@@ -257,9 +257,6 @@ class Agent:
             temperature=0.1,
             timeout=300.0,
         )
-        # MiMo has a 131k output cap — constrain to 16k per call (ample for any JSON action)
-        if "mimo" in self.model.lower():
-            kwargs["max_tokens"] = 16384
         if extra:
             kwargs["extra_body"] = extra
         # json_object not supported by OpenRouter models
