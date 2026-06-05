@@ -233,25 +233,33 @@ class Agent:
         # hy3-preview defaults to reasoning mode — disable for fast JSON output
         if "hy3" in self.model:
             extra["reasoning"] = {"effort": "none"}
-        # Inject per-message cache_control on the system prompt for OpenRouter models
-        # that support prompt caching (e.g. MiMo $0.14→$0.0028/M on cache hit).
-        # Convert the system message content to an array with a cache_control marker
-        # so OpenRouter knows to cache that prefix across loop iterations.
+        # Inject cache_control on stable message prefixes for OpenRouter models.
+        # OpenRouter uses Anthropic-style per-block markers; models that don't support
+        # caching ignore it. We mark two breakpoints:
+        #   [0] system prompt  — never changes within a run (or across runs for same agent)
+        #   [1] initial user   — goal + shared context, stable for the entire agent loop
+        # MiMo: $0.14→$0.0028/M on cache hit (50x cheaper). hy3/ling also benefit.
         if is_openrouter and messages:
             messages = list(messages)  # shallow copy — don't mutate caller's list
-            sys_msg = messages[0]
-            if sys_msg.get("role") == "system" and isinstance(sys_msg.get("content"), str):
-                messages[0] = {
-                    "role": "system",
-                    "content": [{"type": "text", "text": sys_msg["content"],
-                                 "cache_control": {"type": "ephemeral"}}],
-                }
+            for idx in (0, 1):
+                if idx >= len(messages):
+                    break
+                msg = messages[idx]
+                if isinstance(msg.get("content"), str):
+                    messages[idx] = {
+                        "role": msg["role"],
+                        "content": [{"type": "text", "text": msg["content"],
+                                     "cache_control": {"type": "ephemeral"}}],
+                    }
         kwargs: dict = dict(
             model=self.model,
             messages=messages,
             temperature=0.1,
             timeout=300.0,
         )
+        # MiMo has a 131k output cap — constrain to 16k per call (ample for any JSON action)
+        if "mimo" in self.model.lower():
+            kwargs["max_tokens"] = 16384
         if extra:
             kwargs["extra_body"] = extra
         # json_object not supported by OpenRouter models
