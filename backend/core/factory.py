@@ -72,20 +72,20 @@ def get_orchestrator() -> Orchestrator:
         )
         _large_ctx_kwargs = _deepseek_kwargs
         specialists = {
-            # Research cluster — each owns a distinct intelligence domain
-            "research": build_research_agent(agent_name="research", use_computer=True),
-            "research_competitors": build_research_agent(agent_name="research_competitors", use_computer=True),
-            "customer_discovery": build_customer_discovery_agent(use_computer=True),
+            # Research cluster — 1M context (DeepSeek) for heavy web-fetch workloads
+            "research": build_research_agent(agent_name="research", use_computer=True, **_large_ctx_kwargs),
+            "research_competitors": build_research_agent(agent_name="research_competitors", use_computer=True, **_large_ctx_kwargs),
+            "customer_discovery": build_customer_discovery_agent(use_computer=True, **_large_ctx_kwargs),
             "research_financial": build_research_financial_agent(use_computer=True, **_large_ctx_kwargs),
             "research_regulatory": build_research_regulatory_agent(use_computer=True, **_large_ctx_kwargs),
             # Strategy
             "product_strategy": build_product_strategy_agent(use_computer=True, **_coder_kwargs),
-            # Web & Technical cluster — each owns a distinct build layer
+            # Web & Technical cluster — 1M context for large codebases + shared context
             "web": build_web_agent(use_computer=True, **_coder_kwargs),
-            "technical": build_technical_agent(use_computer=True, **_highoutput_kwargs),
-            "technical_api": build_technical_api_agent(use_computer=True, **_highoutput_kwargs),
-            "technical_infra": build_technical_infra_agent(use_computer=True, **_highoutput_kwargs),
-            "technical_data": build_technical_data_agent(use_computer=True, **_highoutput_kwargs),
+            "technical": build_technical_agent(use_computer=True, **_large_ctx_kwargs),
+            "technical_api": build_technical_api_agent(use_computer=True, **_large_ctx_kwargs),
+            "technical_infra": build_technical_infra_agent(use_computer=True, **_large_ctx_kwargs),
+            "technical_data": build_technical_data_agent(use_computer=True, **_large_ctx_kwargs),
             # Design
             "design": build_design_agent(use_computer=False, **_highoutput_kwargs),
             # Legal cluster — formation, contracts, IP, compliance (no overlap)
@@ -103,9 +103,9 @@ def get_orchestrator() -> Orchestrator:
             "lead_generation": build_lead_generation_agent(use_computer=False, **_small_kwargs),
             "sales_pipeline": build_sales_pipeline_agent(use_computer=False, **_small_kwargs),
             "sales_enablement": build_sales_enablement_agent(use_computer=False, **_highoutput_kwargs),
-            # Finance & Revenue cluster
-            "finance_model": build_finance_model_agent(use_computer=True, **_highoutput_kwargs),
-            "finance_fundraise": build_finance_fundraise_agent(use_computer=True, **_highoutput_kwargs),
+            # Finance & Revenue cluster — 1M context for large models + investor research
+            "finance_model": build_finance_model_agent(use_computer=True, **_large_ctx_kwargs),
+            "finance_fundraise": build_finance_fundraise_agent(use_computer=True, **_large_ctx_kwargs),
             "revenue_ops": build_revenue_ops_agent(use_computer=True, **_coder_kwargs),
             # Web automation — autonomous browser agent for any web task
             "web_automator": build_web_automator_agent(use_computer=True, **_coder_kwargs),
@@ -168,9 +168,9 @@ def get_orchestrator() -> Orchestrator:
             ),
             tools={},
             sub_agents=list(specialists.values()),
-            model=settings.or_planner_model,
-            model_base_url=_or_base,
-            model_api_key=_or_key,
+            model=_large_ctx_kwargs["model"],
+            model_base_url=_large_ctx_kwargs["model_base_url"],
+            model_api_key=_large_ctx_kwargs["model_api_key"],
         )
         _orchestrator = Orchestrator(planner=planner, specialists=specialists)
     return _orchestrator
