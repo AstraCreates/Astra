@@ -71,43 +71,48 @@ def get_orchestrator() -> Orchestrator:
             model_api_key=_or_key,
         )
         _large_ctx_kwargs = _deepseek_kwargs
+        _mimo_kwargs = dict(
+            model="xiaomi/mimo-v2.5",  # $0.14/M input, $0.28/M output, 1M context
+            model_base_url=_or_base,
+            model_api_key=_or_key,
+        )
         specialists = {
-            # Research cluster — 1M context (DeepSeek) for heavy web-fetch workloads
-            "research": build_research_agent(agent_name="research", use_computer=True, **_large_ctx_kwargs),
-            "research_competitors": build_research_agent(agent_name="research_competitors", use_computer=True, **_large_ctx_kwargs),
-            "customer_discovery": build_customer_discovery_agent(use_computer=True, **_large_ctx_kwargs),
+            # Research cluster — hy3 for general research; DeepSeek 1M for heavy financial/regulatory docs
+            "research": build_research_agent(agent_name="research", use_computer=True, **_highoutput_kwargs),
+            "research_competitors": build_research_agent(agent_name="research_competitors", use_computer=True, **_highoutput_kwargs),
+            "customer_discovery": build_customer_discovery_agent(use_computer=True, **_highoutput_kwargs),
             "research_financial": build_research_financial_agent(use_computer=True, **_large_ctx_kwargs),
             "research_regulatory": build_research_regulatory_agent(use_computer=True, **_large_ctx_kwargs),
             # Strategy
             "product_strategy": build_product_strategy_agent(use_computer=True, **_coder_kwargs),
-            # Web & Technical cluster — 1M context for large codebases + shared context
+            # Web & Technical cluster
             "web": build_web_agent(use_computer=True, **_coder_kwargs),
-            "technical": build_technical_agent(use_computer=True, **_large_ctx_kwargs),
-            "technical_api": build_technical_api_agent(use_computer=True, **_large_ctx_kwargs),
-            "technical_infra": build_technical_infra_agent(use_computer=True, **_large_ctx_kwargs),
-            "technical_data": build_technical_data_agent(use_computer=True, **_large_ctx_kwargs),
-            # Design
-            "design": build_design_agent(use_computer=False, **_highoutput_kwargs),
-            # Legal cluster — formation, contracts, IP, compliance (no overlap)
-            "legal_entity": build_legal_entity_agent(use_computer=True, **_highoutput_kwargs),
-            "legal_contracts": build_legal_contracts_agent(use_computer=True, **_highoutput_kwargs),
-            "legal_ip": build_legal_ip_agent(use_computer=True, **_highoutput_kwargs),
-            "legal_compliance": build_legal_compliance_agent(use_computer=True, **_highoutput_kwargs),
-            # Marketing cluster — positioning, content, SEO, paid, growth (no overlap)
-            "brand_marketing": build_brand_marketing_agent(use_computer=True, **_highoutput_kwargs),
-            "content_engine": build_content_engine_agent(use_computer=True, **_highoutput_kwargs),
-            "marketing_seo": build_marketing_seo_agent(use_computer=True, max_tool_calls={"search_and_fetch": 3, "web_search": 5}, **_highoutput_kwargs),
-            "marketing_paid": build_marketing_paid_agent(use_computer=True, max_tool_calls={"search_and_fetch": 4, "web_search": 6}, **_highoutput_kwargs),
-            "growth_hacking": build_growth_hacking_agent(use_computer=True, **_highoutput_kwargs),
-            # Sales cluster — sourcing, pipeline, enablement (no overlap)
+            "technical": build_technical_agent(use_computer=True, **_highoutput_kwargs),
+            "technical_api": build_technical_api_agent(use_computer=True, **_highoutput_kwargs),
+            "technical_infra": build_technical_infra_agent(use_computer=True, **_highoutput_kwargs),
+            "technical_data": build_technical_data_agent(use_computer=True, **_highoutput_kwargs),
+            # Design — MiMo (1M context, multimodal)
+            "design": build_design_agent(use_computer=False, **_mimo_kwargs),
+            # Legal cluster — MiMo
+            "legal_entity": build_legal_entity_agent(use_computer=True, **_mimo_kwargs),
+            "legal_contracts": build_legal_contracts_agent(use_computer=True, **_mimo_kwargs),
+            "legal_ip": build_legal_ip_agent(use_computer=True, **_mimo_kwargs),
+            "legal_compliance": build_legal_compliance_agent(use_computer=True, **_mimo_kwargs),
+            # Marketing cluster — MiMo
+            "brand_marketing": build_brand_marketing_agent(use_computer=True, **_mimo_kwargs),
+            "content_engine": build_content_engine_agent(use_computer=True, **_mimo_kwargs),
+            "marketing_seo": build_marketing_seo_agent(use_computer=True, max_tool_calls={"search_and_fetch": 3, "web_search": 5}, **_mimo_kwargs),
+            "marketing_paid": build_marketing_paid_agent(use_computer=True, max_tool_calls={"search_and_fetch": 4, "web_search": 6}, **_mimo_kwargs),
+            "growth_hacking": build_growth_hacking_agent(use_computer=True, **_mimo_kwargs),
+            # Sales cluster
             "lead_generation": build_lead_generation_agent(use_computer=False, **_small_kwargs),
             "sales_pipeline": build_sales_pipeline_agent(use_computer=False, **_small_kwargs),
-            "sales_enablement": build_sales_enablement_agent(use_computer=False, **_highoutput_kwargs),
-            # Finance & Revenue cluster — 1M context for large models + investor research
-            "finance_model": build_finance_model_agent(use_computer=True, **_large_ctx_kwargs),
-            "finance_fundraise": build_finance_fundraise_agent(use_computer=True, **_large_ctx_kwargs),
+            "sales_enablement": build_sales_enablement_agent(use_computer=False, **_mimo_kwargs),
+            # Finance & Revenue cluster — hy3
+            "finance_model": build_finance_model_agent(use_computer=True, **_highoutput_kwargs),
+            "finance_fundraise": build_finance_fundraise_agent(use_computer=True, **_highoutput_kwargs),
             "revenue_ops": build_revenue_ops_agent(use_computer=True, **_coder_kwargs),
-            # Web automation — autonomous browser agent for any web task
+            # Web automation
             "web_automator": build_web_automator_agent(use_computer=True, **_coder_kwargs),
         }
         from backend.tools.company_brain import (
