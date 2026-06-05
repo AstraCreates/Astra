@@ -18,7 +18,7 @@ _RAW_BLOB_KEYS = {"sources", "results", "raw", "pages", "html", "content",
                   "fetched", "documents", "search_results", "images", "logos",
                   "image", "logo", "b64", "base64", "screenshot"}
 _SHARED_FIELD_CAP = 2500       # max chars per string field kept in shared
-_SHARED_RESULT_CAP = 6000      # max chars of any single agent result kept in shared
+_SHARED_RESULT_CAP = 2500      # max chars of any single agent result kept in shared
 
 
 def _is_base64ish(s: str) -> bool:
@@ -940,8 +940,7 @@ class Orchestrator:
                 result["agent"] = agent_name
             completed[tid] = result
             _safe = _shared_safe(agent_name, result)
-            shared[f"result_{tid}"] = _safe
-            shared[f"result_{agent_name}"] = _safe  # also keyed by agent name for downstream context
+            shared[f"result_{agent_name}"] = _safe
             try:
                 from backend.stacks import verify_task_artifacts
                 artifact_verification = verify_task_artifacts(
@@ -1112,6 +1111,24 @@ class Orchestrator:
         # Run remaining agents in parallel (research is done, deps resolve)
         logger.info("Starting non-research agents: %s", [t["agent"] for t in remaining])
         in_flight: set[str] = set()
+        _AGENT_TIMEOUT = 3600  # 1 hour max per agent — prevents hung agents blocking downstream
+
+        async def _run_task_guarded(t: dict) -> None:
+            """Run a task with a hard timeout so a hung agent never blocks the wave."""
+            try:
+                await asyncio.wait_for(_run_task(t), timeout=_AGENT_TIMEOUT)
+            except asyncio.TimeoutError:
+                logger.error("Agent %s timed out after %ds — marking done to unblock downstream", t["agent"], _AGENT_TIMEOUT)
+                completed[t["id"]] = {"error": f"timed_out_after_{_AGENT_TIMEOUT}s", "agent": t["agent"], "timed_out": True}
+                await publish(session_id, {
+                    "type": "agent_error", "agent": t["agent"],
+                    "task_id": t["id"], "error": f"agent timed out after {_AGENT_TIMEOUT}s",
+                })
+            except Exception as _te:
+                logger.error("Agent %s raised unhandled exception: %s", t["agent"], _te)
+                if t["id"] not in completed:
+                    completed[t["id"]] = {"error": str(_te), "agent": t["agent"]}
+
         from backend.core import cancellation
         while remaining or in_flight:
             if cancellation.is_killed(session_id):
@@ -1134,7 +1151,7 @@ class Orchestrator:
                 await asyncio.sleep(0)
                 continue
 
-            await asyncio.gather(*[_run_task(t) for t in ready])
+            await asyncio.gather(*[_run_task_guarded(t) for t in ready])
             for t in ready:
                 in_flight.discard(t["id"])
 

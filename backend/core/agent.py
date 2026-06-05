@@ -16,6 +16,50 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
+_SHARED_PROMPT_SKIP = frozenset({
+    "stack_template", "stack_execution_blueprint", "stack_execution_contract",
+    "stack_manifest", "stack_operating_plan", "approval_queue", "company_genome",
+    "proprietary_context",
+})
+_RESULT_FIELD_CHAR_LIMIT = 2000
+_SHARED_CONTEXT_TOTAL_LIMIT = 40_000  # ~10k tokens
+
+
+def _slim_shared_for_prompt(shared: dict) -> str:
+    """Serialize shared context into a prompt-safe string, dropping large/redundant fields."""
+    slim: dict = {}
+    for k, v in shared.items():
+        if k in _SHARED_PROMPT_SKIP:
+            continue
+        if k.startswith("result_"):
+            try:
+                blob = json.dumps(v, default=str)
+                slim[k] = (blob[:_RESULT_FIELD_CHAR_LIMIT] + " …[truncated]") if len(blob) > _RESULT_FIELD_CHAR_LIMIT else v
+            except Exception:
+                slim[k] = str(v)[:_RESULT_FIELD_CHAR_LIMIT]
+        elif isinstance(v, str) and len(v) > 3000 and k not in ("company_brain_context", "prior_vault_notes"):
+            slim[k] = v[:3000] + " …[truncated]"
+        else:
+            slim[k] = v
+
+    try:
+        blob = json.dumps(slim, indent=2, default=str)
+        if len(blob) > _SHARED_CONTEXT_TOTAL_LIMIT:
+            slim.pop("company_vault_context", None)
+            blob = json.dumps(slim, indent=2, default=str)
+        if len(blob) > _SHARED_CONTEXT_TOTAL_LIMIT:
+            slim = {k: v for k, v in slim.items() if
+                    k in ("company_name", "creative_brief") or
+                    k.startswith("result_research") or
+                    k.startswith("enriched_instruction_") or
+                    k == "prior_vault_notes"}
+            blob = json.dumps(slim, indent=2, default=str)
+        if len(blob) > _SHARED_CONTEXT_TOTAL_LIMIT:
+            blob = blob[:_SHARED_CONTEXT_TOTAL_LIMIT] + "\n…[shared context truncated]"
+        return blob
+    except Exception:
+        return "{}"
+
 
 # Hard cap on any single tool result appended to an agent's conversation. Even
 # "formatted" search results / full page text must be bounded, or a research-heavy
@@ -394,20 +438,31 @@ class Agent:
             "\nTo control the browser:\n"
             '{"action": "computer_use", "action_detail": {"action": "<cmd>", ...params}, "reasoning": "..."}\n'
             "Commands:\n"
-            "  navigate      {url}  → go to URL\n"
-            "  read_page     {}     → extract clean readable content from current page (preferred over get_text)\n"
-            "  find_elements {}     → list interactive elements (buttons, inputs, links)\n"
-            "  click         {selector} or {x, y}\n"
-            "  type          {selector, text}\n"
-            "  key           {key}  e.g. Enter, Tab\n"
-            "  scroll        {delta_y}\n"
-            "  scroll_to     {text} or {selector}  → scroll until element is visible\n"
-            "  extract_table {}     → extract table data from page\n"
-            "  get_text      {selector}  → read specific element text\n"
-            "  wait          {ms}\n"
-            "After each action you receive: result + current URL + clean page content.\n"
-            "PREFER read_page over get_text — it returns clean article content without ads/nav.\n"
-            "Use find_elements to discover selectors before clicking.\n"
+            "  navigate       {url}                          → go to URL\n"
+            "  read_page      {}                             → clean readable content (use after every navigate)\n"
+            "  find_elements  {}                             → list all buttons/inputs/links with selectors\n"
+            "  click          {selector} or {x, y}          → click element\n"
+            "  type           {selector, text}               → fill input field\n"
+            "  clear          {selector}                     → clear input before re-typing\n"
+            "  key            {key}                          → e.g. Enter, Tab, Escape\n"
+            "  scroll         {delta_y}                      → scroll page\n"
+            "  scroll_to      {text} or {selector}           → scroll element into view\n"
+            "  hover          {selector} or {x, y}           → hover (reveals dropdown menus)\n"
+            "  select_option  {selector, value} or {label}   → pick from <select> dropdown\n"
+            "  check          {selector, checked: true/false} → tick/untick checkbox\n"
+            "  get_text       {selector}                     → read element text\n"
+            "  get_attribute  {selector, attribute}          → get HTML attribute (e.g. value, href, data-*)\n"
+            "  extract_table  {}                             → extract table data\n"
+            "  eval_js        {script}                       → run JS and return result (powerful for hidden values)\n"
+            "  wait           {ms}                           → sleep N milliseconds\n"
+            "  wait_for_text  {text, timeout_ms}             → wait until text appears on page\n"
+            "  wait_for_url   {contains, timeout_ms}         → wait until URL contains substring\n"
+            "  screenshot     {}                             → capture screenshot (use when text parsing fails)\n"
+            "  new_tab        {url}                          → open new tab\n"
+            "After each action: result + current URL + page body text.\n"
+            "STANDARD LOOP: navigate → read_page → find_elements → act → read_page to verify.\n"
+            "Use find_elements before clicking — never guess selectors.\n"
+            "Use eval_js to extract values that aren't in visible text (e.g. masked API keys).\n"
         ) if self.use_computer else ""
 
         # Build library context block if canonical files are present
@@ -458,7 +513,7 @@ class Agent:
                 f"GOAL: {ctx.goal}\n"
                 f"FOUNDER_ID: {ctx.founder_id}\n"
                 f"SESSION: {ctx.session_id}\n"
-                f"SHARED CONTEXT: {json.dumps(ctx.shared, indent=2)}"
+                f"SHARED CONTEXT: {_slim_shared_for_prompt(ctx.shared)}"
             )},
         ]
 
@@ -491,6 +546,7 @@ class Agent:
         _attempted_tools: set[str] = set()  # includes failed attempts
         _tool_attempt_counts: dict[str, int] = {}  # total attempts per tool (success + failure)
         _tool_results: list[tuple[str, dict[str, Any]]] = []
+        _consecutive_unknown = 0  # consecutive "unknown action" responses
 
         while i < MAX_ITERATIONS:
             i += 1
@@ -527,6 +583,8 @@ class Agent:
             tool_hint = parsed.get("tool", "")
             logger.info("[%s] iter=%d  action=%-12s  %s", self.name, i, action, (tool_hint or reasoning)[:80])
             messages.append({"role": "assistant", "content": raw})
+            if action in ("done", "tool", "delegate", "computer_use"):
+                _consecutive_unknown = 0
 
             if action == "done":
                 required_by_agent = {
@@ -723,7 +781,18 @@ class Agent:
             else:
                 logger.warning("[%s] iter=%d unknown action=%r parsed_keys=%s raw=%r", self.name, i, action, list(parsed.keys()), raw[:200])
                 await self._emit(ctx, "agent_unknown_action", action=action, parsed_keys=list(parsed.keys()), raw_snippet=raw[:120])
-                messages.append({"role": "user", "content": f"Unknown action '{action}'. Valid actions: tool, delegate, computer_use, done. Respond with a valid JSON action now."})
+                _consecutive_unknown += 1
+                if _consecutive_unknown >= 3:
+                    # Break narrative loop — force done
+                    logger.error("[%s] %d consecutive unknown actions — forcing done", self.name, _consecutive_unknown)
+                    break
+                messages.append({"role": "user", "content": (
+                    f"INVALID RESPONSE. You must output ONLY valid JSON with an 'action' key.\n"
+                    f"Unknown action: {action!r}\n"
+                    "Valid actions: tool, delegate, computer_use, done.\n"
+                    'Example: {"action": "tool", "tool": "web_search", "input": {"query": "..."}}\n'
+                    "Do NOT write prose. Respond with JSON only."
+                )})
 
         logger.warning("%s hit MAX_ITERATIONS (%d) — forcing synthesis from gathered data", self.name, MAX_ITERATIONS)
         # Force one final synthesis call using everything gathered so far
