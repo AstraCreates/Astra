@@ -314,17 +314,30 @@ function ResearchPreview({ state }: { state: AgentState }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, height: "100%" }}>
       {domains.length > 0 && (
-        <div style={{ ...PREVIEW_CARD, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)" }}>
-            {urls.length} sources · {domains.length} domains
-          </span>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-            {domains.slice(0, 40).map(([d, n]) => (
-              <span key={d} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, padding: "3px 8px", borderRadius: 999, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", color: "var(--fg-dim)" }}>
-                {faviconUrl("https://" + d) && <img src={faviconUrl("https://" + d)!} width={11} height={11} onError={e => (e.currentTarget.style.display = "none")} />}
-                {d}{n > 1 ? ` ·${n}` : ""}
-              </span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {/* Stats row */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            {[
+              { label: "Sources", value: urls.length, color: "#60A5FA", bg: "rgba(96,165,250,0.08)", border: "rgba(96,165,250,0.2)" },
+              { label: "Domains", value: domains.length, color: "#A78BFA", bg: "rgba(167,139,250,0.08)", border: "rgba(167,139,250,0.2)" },
+            ].map(({ label, value, color, bg, border }) => (
+              <div key={label} style={{ padding: "10px 14px", borderRadius: 12, background: bg, border: `1px solid ${border}` }}>
+                <div style={{ fontSize: 22, fontWeight: 700, fontFamily: "var(--font-jetbrains-mono)", color, lineHeight: 1.1 }}>{value}</div>
+                <div style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color, opacity: 0.7, marginTop: 3 }}>{label}</div>
+              </div>
             ))}
+          </div>
+          {/* Domain chips */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+            {domains.slice(0, 40).map(([d, n], i) => {
+              const hue = (d.charCodeAt(0) * 37 + d.charCodeAt(Math.min(2, d.length - 1)) * 13) % 360;
+              return (
+                <span key={d} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, padding: "3px 9px", borderRadius: 999, border: `1px solid hsla(${hue},60%,55%,0.25)`, background: `hsla(${hue},60%,55%,0.07)`, color: `hsla(${hue},60%,75%,0.9)` }}>
+                  {faviconUrl("https://" + d) && <img src={faviconUrl("https://" + d)!} width={11} height={11} onError={e => (e.currentTarget.style.display = "none")} />}
+                  {d}{n > 1 ? <span style={{ opacity: 0.6, fontSize: 9, marginLeft: 2 }}>×{n}</span> : null}
+                </span>
+              );
+            })}
           </div>
         </div>
       )}
@@ -355,9 +368,7 @@ function ResearchPreview({ state }: { state: AgentState }) {
           </a>
         ))}
         {urls.length === 0 && state.status === "running" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--fg-mute)" }}>
-            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#2563EB" }} className="animate-pulse" /> Searching…
-          </div>
+          <LiveRunningLog state={state} label="Searching…" />
         )}
       </div>
     </div>
@@ -418,7 +429,7 @@ function WebPreview({ state, sessionId, founderId }: { state: AgentState; sessio
           ))}
         </>
       ) : buildEvents.length === 0 && (
-        <BuildingIndicator label="Building Next.js landing…" />
+        <LiveRunningLog state={state} label="Building Next.js landing…" />
       )}
     </div>
   );
@@ -542,15 +553,15 @@ function TechnicalPreview({ state }: { state: AgentState }) {
 
       {/* Stats row */}
       {(repo || filesCount || roundsRun || commits.length > 0) && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
           {[
-            ["Commits", commits.length || "—"],
-            ["Files", filesCount ?? "—"],
-            ["Rounds", roundsRun ?? "—"],
-          ].map(([label, val]) => (
-            <div key={label as string} style={{ padding: "8px 10px", borderRadius: 12, background: "rgba(180,205,228,0.08)", border: "1px solid rgba(180,205,228,0.14)", textAlign: "center" }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--fg)", fontFamily: "var(--font-jetbrains-mono)" }}>{val}</div>
-              <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--fg-mute)", marginTop: 2 }}>{label}</div>
+            { label: "Commits", val: commits.length || "—", color: "#4ADE80", bg: "rgba(74,222,128,0.08)", border: "rgba(74,222,128,0.2)" },
+            { label: "Files", val: filesCount ?? "—", color: "#60A5FA", bg: "rgba(96,165,250,0.08)", border: "rgba(96,165,250,0.2)" },
+            { label: "Rounds", val: roundsRun ?? "—", color: "#A78BFA", bg: "rgba(167,139,250,0.08)", border: "rgba(167,139,250,0.2)" },
+          ].map(({ label, val, color, bg, border }) => (
+            <div key={label} style={{ padding: "10px 12px", borderRadius: 12, background: val !== "—" ? bg : "rgba(255,255,255,0.02)", border: `1px solid ${val !== "—" ? border : "rgba(255,255,255,0.06)"}`, textAlign: "center" as const }}>
+              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "var(--font-jetbrains-mono)", color: val !== "—" ? color : "var(--fg-mute)", lineHeight: 1.1 }}>{val}</div>
+              <div style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: val !== "—" ? color : "var(--fg-mute)", opacity: val !== "—" ? 0.7 : 0.4, marginTop: 3 }}>{label}</div>
             </div>
           ))}
         </div>
@@ -602,8 +613,8 @@ function TechnicalPreview({ state }: { state: AgentState }) {
         </div>
       )}
 
-      {!repo && !deploy && !isBuilding && <ResultDump result={state.result} />}
-      {!repo && !deploy && isBuilding && <BuildingIndicator label="Building MVP with openclaude…" />}
+      {!repo && !deploy && !isBuilding && <GenericResultOutput result={state.result} />}
+      {!repo && !deploy && isBuilding && <LiveRunningLog state={state} label="Building MVP with openclaude…" />}
     </div>
   );
 }
@@ -803,8 +814,8 @@ function DesignPreview({ state, sessionId }: { state: AgentState; sessionId?: st
           </div>
         </div>
       )}
-      {allColors.length === 0 && !spec && !brandImages.length && !logoWordmark && !logoIcon && isDone && <ResultDump result={state.result} />}
-      {allColors.length === 0 && !spec && !brandImages.length && !logoWordmark && !logoIcon && !isDone && <BuildingIndicator label="Building design system…" tool={state.currentTool ?? undefined} />}
+      {allColors.length === 0 && !spec && !brandImages.length && !logoWordmark && !logoIcon && isDone && <GenericResultOutput result={state.result} />}
+      {allColors.length === 0 && !spec && !brandImages.length && !logoWordmark && !logoIcon && !isDone && <LiveRunningLog state={state} label="Building design system…" />}
     </div>
   );
 }
@@ -844,7 +855,7 @@ function MarketingPreview({ state }: { state: AgentState }) {
   const isDone = state.status === "done";
 
   if (!hasContent) {
-    return isDone ? <ResultDump result={state.result} /> : <BuildingIndicator label="Creating campaigns…" tool={state.currentTool ?? undefined} />;
+    return isDone ? <GenericResultOutput result={state.result} /> : <LiveRunningLog state={state} label="Creating campaigns…" />;
   }
 
   const SocialCard = ({ platform, icon, color, gradient, lines }: { platform: string; icon: string; color: string; gradient: string; lines: [string, string][] }) => (
@@ -880,20 +891,16 @@ function MarketingPreview({ state }: { state: AgentState }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ ...PREVIEW_CARD, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px" }}>
-        <span style={PREVIEW_HEADER}>Campaign Output</span>
-        <span style={{ fontSize: 11, color: "var(--fg-dim)" }}>{hasContent ? "Assets ready" : "Generating"}</span>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 5 }}>
         {[
-          ["Reels", reelScript ? "1+" : "0"],
-          ["TikTok", tiktokScript ? "1+" : "0"],
-          ["Ads", adHeadline || adBody ? "1+" : "0"],
-          ["Images", String(adImages.length)],
-        ].map(([label, value]) => (
-          <div key={label} style={{ borderRadius: 8, border: "1px solid rgba(0,0,0,0.08)", background: "rgba(255,255,255,0.03)", padding: "6px 8px" }}>
-            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)" }}>{label}</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--fg)" }}>{value}</div>
+          { label: "Reels", active: !!reelScript, icon: "📸", color: "#F472B6", bg: "rgba(244,114,182,0.08)", border: "rgba(244,114,182,0.2)" },
+          { label: "TikTok", active: !!tiktokScript, icon: "🎵", color: "#22D3EE", bg: "rgba(34,211,238,0.08)", border: "rgba(34,211,238,0.2)" },
+          { label: "Meta Ad", active: !!(adHeadline || adBody), icon: "📣", color: "#60A5FA", bg: "rgba(96,165,250,0.08)", border: "rgba(96,165,250,0.2)" },
+          { label: "Images", active: adImages.length > 0, icon: "🖼", color: "#A78BFA", bg: "rgba(167,139,250,0.08)", border: "rgba(167,139,250,0.2)" },
+        ].map(({ label, active, icon, color, bg, border }) => (
+          <div key={label} style={{ padding: "8px 10px", borderRadius: 12, background: active ? bg : "rgba(255,255,255,0.02)", border: `1px solid ${active ? border : "rgba(255,255,255,0.06)"}`, textAlign: "center" as const, transition: "all 0.3s ease" }}>
+            <div style={{ fontSize: 16, marginBottom: 3, opacity: active ? 1 : 0.25 }}>{icon}</div>
+            <div style={{ fontSize: 8.5, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: active ? color : "var(--fg-mute)" }}>{label}</div>
           </div>
         ))}
       </div>
@@ -1083,7 +1090,7 @@ function LegalPreview({ state, founderId, company }: { state: AgentState; founde
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {LLCCard}
-        {state.status === "done" ? <ResultDump result={state.result} /> : <BuildingIndicator label="Drafting documents…" />}
+        {state.status === "done" ? <GenericResultOutput result={state.result} /> : <LiveRunningLog state={state} label="Drafting documents…" />}
       </div>
     );
   }
@@ -1129,58 +1136,63 @@ function SalesPreview({ state }: { state: AgentState }) {
   const crmContacts = (r?.crm_contacts ?? r?.contacts ?? []) as Array<Record<string, unknown>>;
   const sequences = (r?.sequences ?? []) as Array<Record<string, unknown>>;
   if (!r || !lead) {
-    return state.status === "done" ? <ResultDump result={state.result} /> : <BuildingIndicator label="Finding leads & building outreach…" tool={state.currentTool ?? undefined} />;
+    return state.status === "done" ? <GenericResultOutput result={state.result} /> : <LiveRunningLog state={state} label="Finding leads & building outreach…" />;
   }
   const steps: unknown[] = Array.isArray(seq) ? seq : typeof seq === "string" ? (() => { try { return JSON.parse(seq); } catch { return []; } })() : [];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ ...PREVIEW_CARD, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px" }}>
-        <span style={PREVIEW_HEADER}>Sales Pipeline</span>
-        <span style={{ fontSize: 11, color: "var(--fg-dim)" }}>{Array.isArray(leadsArr) ? leadsArr.length : lead ? 1 : 0} lead(s)</span>
-      </div>
+      {/* Pipeline stats */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
         {[
-          ["Leads", String(Array.isArray(leadsArr) ? leadsArr.length : (lead ? 1 : 0))],
-          ["Sequence", String(steps.length)],
-          ["CRM", String(Array.isArray(crmContacts) ? crmContacts.length : 0)],
-        ].map(([label, value]) => (
-          <div key={label} style={{ borderRadius: 8, border: "1px solid rgba(0,0,0,0.08)", background: "rgba(255,255,255,0.03)", padding: "6px 8px" }}>
-            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)" }}>{label}</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--fg)" }}>{value}</div>
+          { label: "Leads", value: Array.isArray(leadsArr) ? leadsArr.length : (lead ? 1 : 0), color: "#60A5FA", bg: "rgba(96,165,250,0.08)", border: "rgba(96,165,250,0.2)" },
+          { label: "Emails", value: steps.length, color: "#A78BFA", bg: "rgba(167,139,250,0.08)", border: "rgba(167,139,250,0.2)" },
+          { label: "CRM", value: Array.isArray(crmContacts) ? crmContacts.length : 0, color: "#34D399", bg: "rgba(52,211,153,0.08)", border: "rgba(52,211,153,0.2)" },
+        ].map(({ label, value, color, bg, border }) => (
+          <div key={label} style={{ padding: "10px 12px", borderRadius: 12, background: bg, border: `1px solid ${border}` }}>
+            <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "var(--font-jetbrains-mono)", color, lineHeight: 1.1 }}>{value}</div>
+            <div style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color, opacity: 0.7, marginTop: 3 }}>{label}</div>
           </div>
         ))}
       </div>
-      <div style={{ padding: "8px 12px", borderRadius: 24, background: "rgba(180,205,228,0.10)", border: "1px solid rgba(180,205,228,0.22)" }}>
-        <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)", marginBottom: 3 }}>Target Lead</div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>{lead}</div>
+      {/* Target lead hero card */}
+      <div style={{ padding: "12px 16px", borderRadius: 14, background: "linear-gradient(135deg,rgba(96,165,250,0.08),rgba(167,139,250,0.06))", border: "1px solid rgba(96,165,250,0.2)" }}>
+        <div style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "#60A5FA", marginBottom: 4 }}>Target Lead</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "var(--fg)" }}>{lead}</div>
       </div>
       {Array.isArray(leadsArr) && leadsArr.length > 1 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)" }}>All leads ({leadsArr.length})</span>
+          <span style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "var(--fg-mute)" }}>All leads ({leadsArr.length})</span>
           {leadsArr.slice(0, 5).map((l, i) => (
-            <div key={i} style={{ ...PREVIEW_CARD, padding: "6px 10px", fontSize: 11, color: "var(--fg-dim)" }}>
-              {String(l.company ?? l.name ?? l.title ?? l.url ?? JSON.stringify(l)).slice(0, 80)}
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 12px", borderRadius: 10, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: `hsl(${(String(l.company ?? l.name ?? "A").charCodeAt(0) * 47) % 360},50%,35%)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>{String(l.company ?? l.name ?? "?")[0].toUpperCase()}</span>
+              </div>
+              <span style={{ fontSize: 11, color: "var(--fg-dim)", flex: 1 }}>
+                {String(l.company ?? l.name ?? l.title ?? l.url ?? JSON.stringify(l)).slice(0, 60)}
+              </span>
             </div>
           ))}
         </div>
       )}
       {steps.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)" }}>Email Sequence ({steps.length} steps)</span>
+          <span style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "var(--fg-mute)" }}>Email Sequence — {steps.length} touch{steps.length !== 1 ? "es" : ""}</span>
           {(steps as Record<string, unknown>[]).slice(0, 4).map((s, i) => (
-            <div key={i} style={{ ...PREVIEW_CARD, padding: "8px 10px", background: "rgba(180,205,228,0.10)", border: "1px solid rgba(180,205,228,0.22)" }}>
-              <div style={{ fontSize: 10, color: "#2563EB", marginBottom: 3 }}>Day {String(s.send_day ?? i + 1)}</div>
-              <div style={{ fontSize: 11, fontWeight: 500, color: "var(--fg)" }}>{String(s.subject ?? "").slice(0, 60)}</div>
-              <div style={{ fontSize: 10, color: "var(--fg-mute)", marginTop: 2 }}>{String(s.body ?? "").slice(0, 80)}…</div>
+            <div key={i} style={{ padding: "10px 14px", borderRadius: 12, background: "rgba(167,139,250,0.05)", border: "1px solid rgba(167,139,250,0.15)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: "rgba(167,139,250,0.15)", color: "#A78BFA", letterSpacing: "0.08em" }}>Day {String(s.send_day ?? i + 1)}</span>
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fg)" }}>{String(s.subject ?? "").slice(0, 60)}</div>
+              {!!s.body && <div style={{ fontSize: 10, color: "var(--fg-mute)", marginTop: 3, lineHeight: 1.5 }}>{String(s.body).slice(0, 100)}…</div>}
             </div>
           ))}
         </div>
       )}
       {Array.isArray(sequences) && sequences.length > 1 && (
         <div style={{ display: "grid", gap: 4 }}>
-          <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)" }}>Additional sequences ({sequences.length - 1})</span>
+          <span style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "var(--fg-mute)" }}>Additional sequences ({sequences.length - 1})</span>
           {sequences.slice(1, 4).map((seqObj, i) => (
-            <div key={i} style={{ ...PREVIEW_CARD, padding: "6px 8px", fontSize: 11, color: "var(--fg-dim)" }}>
+            <div key={i} style={{ ...PREVIEW_CARD, padding: "6px 10px", fontSize: 11, color: "var(--fg-dim)" }}>
               {String((seqObj.lead as Record<string, unknown> | undefined)?.company ?? (seqObj.lead as Record<string, unknown> | undefined)?.name ?? `Lead ${i + 2}`)}
             </div>
           ))}
@@ -1188,9 +1200,9 @@ function SalesPreview({ state }: { state: AgentState }) {
       )}
       {Array.isArray(crmContacts) && crmContacts.length > 0 && (
         <div style={{ display: "grid", gap: 4 }}>
-          <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)" }}>CRM contacts ({crmContacts.length})</span>
+          <span style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "var(--fg-mute)" }}>CRM contacts ({crmContacts.length})</span>
           {crmContacts.slice(0, 4).map((c, i) => (
-            <div key={i} style={{ ...PREVIEW_CARD, padding: "6px 8px", fontSize: 11, color: "var(--fg-dim)" }}>
+            <div key={i} style={{ ...PREVIEW_CARD, padding: "7px 10px", fontSize: 11, color: "var(--fg-dim)" }}>
               {String(c.name ?? c.company ?? c.email ?? JSON.stringify(c)).slice(0, 100)}
             </div>
           ))}
@@ -1216,7 +1228,7 @@ function OpsPreview({ state }: { state: AgentState }) {
   }
 
   if (!r || (allPaths.length === 0 && !sop)) {
-    return state.status === "done" ? <ResultDump result={state.result} /> : <BuildingIndicator label="Handling operations…" />;
+    return state.status === "done" ? <GenericResultOutput result={state.result} /> : <LiveRunningLog state={state} label="Handling operations…" />;
   }
 
   return (
@@ -1455,6 +1467,61 @@ function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId
   );
 }
 
+function renderResultValue(v: unknown): React.ReactNode {
+  if (typeof v === "string") {
+    if (v.startsWith("http")) return <a href={v} target="_blank" rel="noreferrer" style={{ color: "#2563EB", fontSize: 11, textDecoration: "none", wordBreak: "break-all" as const }}>{v.slice(0, 70)}</a>;
+    if (v.length > 160) return <div style={{ ...PREVIEW_CARD, fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.6, whiteSpace: "pre-wrap" as const }}>{v.slice(0, 420)}…</div>;
+    return <span style={{ fontSize: 11, color: "var(--fg-dim)" }}>{v}</span>;
+  }
+  if (Array.isArray(v)) return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+      {(v as unknown[]).slice(0, 6).map((item, i) => (
+        <div key={i} style={{ ...PREVIEW_CARD, padding: "4px 8px", fontSize: 10, color: "var(--fg-mute)" }}>
+          {typeof item === "string" ? item.slice(0, 120) : JSON.stringify(item).slice(0, 100)}
+        </div>
+      ))}
+    </div>
+  );
+  if (typeof v === "object" && v !== null) return <span style={{ fontSize: 10, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)" }}>{JSON.stringify(v).slice(0, 100)}</span>;
+  return <span style={{ fontSize: 11, color: "var(--fg-dim)" }}>{String(v)}</span>;
+}
+
+function GenericResultOutput({ result }: { result: Record<string, unknown> | null }) {
+  if (!result) return null;
+  const rows = Object.entries(result).filter(([k, v]) => k !== "agent" && v !== null && v !== undefined && v !== "").slice(0, 12);
+  if (rows.length === 0) return null;
+  // Separate URL fields for prominent display
+  const urlRows = rows.filter(([, v]) => typeof v === "string" && (v as string).startsWith("http"));
+  const dataRows = rows.filter(([, v]) => !(typeof v === "string" && (v as string).startsWith("http")));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* URL outputs — prominent link cards */}
+      {urlRows.map(([k, v]) => (
+        <a key={k} href={v as string} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 12, background: "linear-gradient(135deg,rgba(37,99,235,0.08),rgba(124,58,237,0.06))", border: "1px solid rgba(37,99,235,0.2)", textDecoration: "none" }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(37,99,235,0.12)", border: "1px solid rgba(37,99,235,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <span style={{ fontSize: 12 }}>↗</span>
+          </div>
+          <div style={{ flex: 1, overflow: "hidden" }}>
+            <div style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "#2563EB", marginBottom: 2 }}>{k.replace(/_/g, " ")}</div>
+            <div style={{ fontSize: 11, color: "#60A5FA", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(v as string).replace(/^https?:\/\//, "")}</div>
+          </div>
+        </a>
+      ))}
+      {/* Data fields */}
+      {dataRows.length > 0 && (
+        <div style={{ display: "grid", gap: 6 }}>
+          {dataRows.map(([k, v]) => (
+            <div key={k} style={{ ...PREVIEW_CARD, padding: "8px 12px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ fontSize: 8.5, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "var(--fg-mute)", marginBottom: 4 }}>{k.replace(/_/g, " ")}</div>
+              <div style={{ fontSize: 11, color: "var(--fg-dim)", wordBreak: "break-word" as const, lineHeight: 1.6 }}>{renderResultValue(v)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BuildingIndicator({ label, tool }: { label: string; tool?: string | null }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "18px 0" }}>
@@ -1471,20 +1538,187 @@ function BuildingIndicator({ label, tool }: { label: string; tool?: string | nul
   );
 }
 
+function LiveRunningLog({ state, label }: { state: AgentState; label: string }) {
+  const logRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [state.log.length]);
+  const isRunning = state.status === "running";
+  const isError = state.status === "error";
+  const log = state.log.slice(-16);
+  const stepLabel = state.currentTool
+    ? state.currentTool.replace(/_/g, " ")
+    : state.currentAction ?? label;
+
+  const lineColor = (entry: LogEntry): string => {
+    if (entry.type === "error" || entry.text.startsWith("✗")) return "#F87171";
+    if (entry.type === "result" || entry.text.startsWith("✓")) return "#4ADE80";
+    if (entry.text.startsWith("Thinking")) return "#94A3B8";
+    if (entry.text.includes("https://")) return "#38BDF8";
+    if (entry.text.toLowerCase().startsWith("search")) return "#60A5FA";
+    if (entry.text === "Started") return "#A78BFA";
+    return "#CBD5E1";
+  };
+  const linePrefix = (entry: LogEntry): string => {
+    if (entry.type === "error" || entry.text.startsWith("✗")) return "✗";
+    if (entry.type === "result" || entry.text.startsWith("✓")) return "✓";
+    if (entry.text.startsWith("Thinking")) return "◈";
+    if (entry.text === "Started") return "▶";
+    return "·";
+  };
+  const lineText = (entry: LogEntry) => entry.text.replace(/^[✓✗] /, "").slice(0, 160);
+
+  return (
+    <div style={{ borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.07)", background: "rgba(9,11,17,0.96)" }}>
+      {/* macOS-style title bar */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(255,255,255,0.03)" }}>
+        <div style={{ display: "flex", gap: 5 }}>
+          {(["#FF5F57","#FEBC2E","#28C840"] as const).map(c => (
+            <div key={c} style={{ width: 10, height: 10, borderRadius: "50%", background: isRunning ? c : "rgba(255,255,255,0.12)" }} />
+          ))}
+        </div>
+        <span style={{ flex: 1, fontSize: 10.5, fontFamily: "var(--font-jetbrains-mono)", color: "#64748B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          astra — {stepLabel}
+        </span>
+        {isRunning && (
+          <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.14em", color: "#4ADE80", background: "rgba(74,222,128,0.10)", border: "1px solid rgba(74,222,128,0.22)", borderRadius: 4, padding: "2px 7px" }}>
+            LIVE
+          </span>
+        )}
+        {isError && (
+          <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.14em", color: "#F87171", background: "rgba(248,113,113,0.10)", border: "1px solid rgba(248,113,113,0.22)", borderRadius: 4, padding: "2px 7px" }}>
+            ERROR
+          </span>
+        )}
+        {!isRunning && !isError && log.length > 0 && (
+          <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.14em", color: "#94A3B8", background: "rgba(148,163,184,0.08)", border: "1px solid rgba(148,163,184,0.15)", borderRadius: 4, padding: "2px 7px" }}>
+            DONE
+          </span>
+        )}
+      </div>
+      {/* Log body */}
+      <div ref={logRef} style={{ maxHeight: 230, overflowY: "auto", padding: "10px 14px 12px", display: "flex", flexDirection: "column", gap: 1 }}>
+        {log.length === 0 && isRunning && (
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <span style={{ color: "#A78BFA", fontSize: 10, fontFamily: "var(--font-jetbrains-mono)" }}>▶</span>
+            <span style={{ color: "#64748B", fontSize: 10, fontFamily: "var(--font-jetbrains-mono)" }}>initializing…</span>
+          </div>
+        )}
+        {log.map((entry, i) => {
+          const color = lineColor(entry);
+          const prefix = linePrefix(entry);
+          const text = lineText(entry);
+          const isLast = i === log.length - 1;
+          return (
+            <div key={i} style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+              <span style={{ color, fontSize: 10, fontFamily: "var(--font-jetbrains-mono)", flexShrink: 0, opacity: 0.65, minWidth: 10 }}>{prefix}</span>
+              <span style={{ color, fontSize: 10, fontFamily: "var(--font-jetbrains-mono)", flex: 1, lineHeight: 1.65, wordBreak: "break-word" as const }}>
+                {text}
+                {isLast && isRunning && (
+                  <span style={{ display: "inline-block", width: 6, height: 11, background: "#94A3B8", marginLeft: 2, verticalAlign: "middle", borderRadius: 1, animation: "termBlink 1.1s step-end infinite" }} />
+                )}
+              </span>
+              <span style={{ color: "rgba(100,116,139,0.45)", fontSize: 8.5, fontFamily: "var(--font-jetbrains-mono)", flexShrink: 0 }}>
+                {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      {/* Animated progress line */}
+      {isRunning && (
+        <div style={{ height: 2, background: "rgba(0,0,0,0.4)" }}>
+          <div style={{ height: "100%", background: "linear-gradient(90deg,#2563EB,#7C3AED,#4ADE80,#2563EB)", backgroundSize: "300% 100%", animation: "termShimmer 2.4s linear infinite" }} />
+        </div>
+      )}
+      <style>{`
+        @keyframes termShimmer { 0%{background-position:300% 0} 100%{background-position:-300% 0} }
+        @keyframes termBlink { 0%,100%{opacity:1} 50%{opacity:0} }
+      `}</style>
+    </div>
+  );
+}
+
+function GenericAgentPreview({ state }: { state: AgentState }) {
+  const isDone = state.status === "done";
+  const toolCount = state.log.filter(l => l.type === "result" || l.type === "action").length;
+  const elapsed = state.log.length > 1
+    ? Math.round((state.log[state.log.length - 1].ts - state.log[0].ts) / 1000)
+    : null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {state.status !== "done" && state.status !== "waiting" && (
+        <LiveRunningLog state={state} label="Working…" />
+      )}
+      {isDone && (
+        <>
+          {/* Completion banner */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 12, background: "linear-gradient(135deg,rgba(74,222,128,0.08),rgba(37,99,235,0.06))", border: "1px solid rgba(74,222,128,0.18)" }}>
+            <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(74,222,128,0.15)", border: "1px solid rgba(74,222,128,0.3)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <span style={{ fontSize: 13 }}>✓</span>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)" }}>Complete</div>
+              <div style={{ fontSize: 10, color: "var(--fg-mute)", marginTop: 1 }}>
+                {toolCount} tool{toolCount !== 1 ? "s" : ""} used{elapsed !== null ? ` · ${elapsed < 60 ? elapsed + "s" : Math.round(elapsed / 60) + "m"}` : ""}
+              </div>
+            </div>
+          </div>
+          <GenericResultOutput result={state.result} />
+        </>
+      )}
+      {state.status === "waiting" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px", borderRadius: 12, border: "1px solid var(--line)", background: "rgba(255,255,255,0.02)" }}>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "rgba(148,163,184,0.4)" }} />
+          <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>Waiting for upstream agents…</span>
+        </div>
+      )}
+      {state.status === "error" && !!state.result?.error && (
+        <div style={{ ...PREVIEW_CARD, fontSize: 11, color: "#EF4444", border: "1px solid rgba(239,68,68,0.25)", background: "rgba(239,68,68,0.04)" }}>{String(state.result?.error).slice(0, 300)}</div>
+      )}
+    </div>
+  );
+}
+
 function AgentPreview({ state, founderId, company, sessionId }: { state: AgentState; founderId?: string; company?: string; sessionId?: string }) {
   switch (state.agent) {
     case "research":
     case "research_competitors":
     case "research_execution":
+    case "research_financial":
+    case "research_market":
+    case "research_regulatory":
       return <ResearchPreview state={state} />;
-    case "web": return <WebPreview state={state} sessionId={sessionId} founderId={founderId} />;
-    case "technical": return <TechnicalPreview state={state} />;
-    case "design": return <DesignPreview state={state} sessionId={sessionId} />;
-    case "marketing": return <MarketingPreview state={state} />;
-    case "legal": return <LegalPreview state={state} founderId={founderId} company={company} />;
-    case "sales": return <SalesPreview state={state} />;
-    case "ops": return <OpsPreview state={state} />;
-    default: return <BuildingIndicator label="Working…" />;
+    case "web":
+      return <WebPreview state={state} sessionId={sessionId} founderId={founderId} />;
+    case "technical":
+    case "technical_data":
+    case "technical_infra":
+    case "technical_scaffold":
+      return <TechnicalPreview state={state} />;
+    case "design":
+      return <DesignPreview state={state} sessionId={sessionId} />;
+    case "marketing":
+    case "marketing_content":
+    case "marketing_outreach":
+    case "marketing_paid":
+    case "marketing_seo":
+      return <MarketingPreview state={state} />;
+    case "legal":
+    case "legal_docs":
+    case "legal_entity":
+    case "legal_ip":
+      return <LegalPreview state={state} founderId={founderId} company={company} />;
+    case "sales":
+    case "sales_enablement":
+    case "sales_pipeline":
+      return <SalesPreview state={state} />;
+    case "ops":
+    case "finance_fundraise":
+    case "finance_model":
+      return <OpsPreview state={state} />;
+    default:
+      return <GenericAgentPreview state={state} />;
   }
 }
 
@@ -1889,7 +2123,7 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect, onRerun }: {
 }) {
   const now = useNow(1000);
   return (
-    <div data-tour="agent-tabs" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+    <div data-tour="agent-tabs" className="astra-agent-cloud" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
       {agentList.map(name => {
         const state = agents[name];
         const status = state?.status ?? "waiting";
@@ -1910,15 +2144,16 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect, onRerun }: {
         return (
           <button key={name} onClick={() => onSelect(name)} style={{
             display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3,
-            padding: "5px 10px 5px 8px",
-            borderRadius: 999,
+            padding: "6px 10px 6px 8px",
+            minHeight: 52,
+            borderRadius: 14,
             border: `1px solid ${isActive ? "#2563EB" : isRunning ? "rgba(37,99,235,0.35)" : "var(--line)"}`,
-            background: isActive ? "#EFF6FF" : isRunning ? "rgba(37,99,235,0.05)" : "rgba(255,255,255,0.03)",
+            background: isActive ? "rgba(37,99,235,0.10)" : isRunning ? "rgba(37,99,235,0.05)" : "rgba(255,255,255,0.03)",
             cursor: "pointer", transition: "background 0.15s, border-color 0.15s",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 14 }}>{AGENT_ICONS[name] ?? "🤖"}</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: isActive ? "#2563EB" : isRunning ? "#374151" : "var(--fg-mute)", whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: 13 }}>{AGENT_ICONS[name] ?? "🤖"}</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: isActive ? "#2563EB" : isRunning ? "var(--fg)" : "var(--fg-mute)", whiteSpace: "nowrap" }}>
                 {AGENT_LABELS[name] ?? name}
               </span>
               <span style={{
@@ -1935,19 +2170,20 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect, onRerun }: {
                 >↺</span>
               )}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 4, paddingLeft: 20 }}>
-              {modelShort && (
+            {/* Second row always rendered for uniform height */}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, paddingLeft: 19, minHeight: 13 }}>
+              {modelShort ? (
                 <span style={{ fontSize: 9, color: "#2563EB", whiteSpace: "nowrap", fontFamily: "var(--font-jetbrains-mono)", opacity: 0.8 }}>
                   {modelShort}
                 </span>
-              )}
-              {isRunning && tks !== null && (
+              ) : <span style={{ minWidth: 1 }} />}
+              {tks !== null && (
                 <span style={{ fontSize: 9, color: "#22C55E", whiteSpace: "nowrap", fontFamily: "var(--font-jetbrains-mono)" }}>
                   {tks}t/s
                 </span>
               )}
               {isRunning && toolLabel && (
-                <span style={{ fontSize: 9, color: "#6B7280", whiteSpace: "nowrap", maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis" }}>
+                <span style={{ fontSize: 9, color: "#6B7280", whiteSpace: "nowrap", maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis" }}>
                   · {toolLabel}{agoLabel ? ` ${agoLabel}` : ""}
                 </span>
               )}
@@ -2933,7 +3169,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ border: "1px solid var(--line)", borderRadius: 28, padding: "14px 16px", display: "grid", gap: 12, background: "rgba(255,255,255,0.03)" }}>
+          <div className="astra-agent-orbit-panel" style={{ border: "1px solid var(--line)", borderRadius: 28, padding: "14px 16px", display: "grid", gap: 12, background: "rgba(255,255,255,0.03)" }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
               <div style={{ display: "grid", gap: 5 }}>
                 <span className="site-label">Agent stack</span>
@@ -2948,7 +3184,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
                 {selectedStackId === "full_stack" || selectedStackId === "custom" ? `${customAgents.length} agents` : `${selectedStack?.artifacts.length ?? 18} outputs`}
               </span>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8 }}>
+            <div className="astra-agent-stack-orbit" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, alignItems: "stretch" }}>
               {(stackTemplates.length ? stackTemplates : [{
                 stack_id: "idea_to_revenue",
                 name: "Idea to Revenue Stack",
@@ -2975,6 +3211,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
                     disabled={loading}
                     style={{
                       display: "grid",
+                      alignContent: "start",
                       gap: 5,
                       textAlign: "left",
                       borderRadius: 20,
@@ -3006,7 +3243,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
                     }}
                     disabled={loading}
                     style={{
-                      display: "grid", gap: 5, textAlign: "left", borderRadius: 20,
+                      display: "grid", alignContent: "start", gap: 5, textAlign: "left", borderRadius: 20,
                       border: `1px solid ${active ? "rgba(168,85,247,0.45)" : "var(--line)"}`,
                       background: active ? "rgba(168,85,247,0.10)" : "rgba(255,255,255,0.025)",
                       color: "var(--fg)", padding: "10px 11px", cursor: "pointer",
@@ -3028,7 +3265,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
                     onClick={() => { setManualStackOverride(true); setSelectedStackId("custom"); setCustomPickerOpen(true); }}
                     disabled={loading}
                     style={{
-                      display: "grid", gap: 5, textAlign: "left", borderRadius: 20,
+                      display: "grid", alignContent: "start", gap: 5, textAlign: "left", borderRadius: 20,
                       border: `1px solid ${active ? "rgba(99,102,241,0.45)" : "var(--line)"}`,
                       background: active ? "rgba(99,102,241,0.10)" : "rgba(255,255,255,0.025)",
                       color: "var(--fg)", padding: "10px 11px", cursor: "pointer",
@@ -3158,7 +3395,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
             )}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 12 }}>
+          <div className="astra-field-orbit" style={{ display: "grid", gridTemplateColumns: "1.1fr 0.9fr", gap: 12 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <label className="site-label">Company</label>
               <input value={companyName} onChange={e => setCompanyName(e.target.value)} className="site-input" style={{ padding: "10px 13px", fontSize: 14 }} placeholder="Astra" disabled={loading} />
@@ -3177,7 +3414,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
               placeholder="Build a SaaS for indie hackers to track MRR — landing page, GitHub repo, Supabase backend, Clerk auth, Vercel deploy."
               rows={5}
               disabled={loading}
-              className="site-textarea"
+              className="site-textarea astra-goal-textarea"
               style={{ padding: "13px 14px", fontSize: 14, lineHeight: 1.65, resize: "none" }}
             />
             <div style={{ marginTop: 8 }}>
@@ -3185,7 +3422,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
             </div>
           </div>
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          <div className="astra-starter-orbit" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {STARTER_PROMPTS.map((item) => (
               <button key={item.title} type="button" onClick={() => setInstruction(item.prompt)} disabled={loading}
                 style={{ borderRadius: 999, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", color: "var(--fg-dim)", padding: "7px 12px", fontSize: 12, cursor: "pointer" }}>
@@ -3479,7 +3716,7 @@ function LaunchChecklist({ sessionId, done, agents, agentList, selectedStack }: 
   const runDone = runItems.filter(i => i.done).length;
 
   return (
-    <div data-tour="launch-checklist" style={{
+    <div data-tour="launch-checklist" className="astra-launch-orbit" style={{
       borderRadius: "var(--r)", overflow: "hidden", transition: "border-color 0.3s, background 0.3s",
       border: `1px solid ${allDone ? "rgba(16,185,129,0.30)" : "var(--border)"}`,
       background: allDone ? "rgba(16,185,129,0.05)" : "var(--bg)",
@@ -3510,7 +3747,7 @@ function LaunchChecklist({ sessionId, done, agents, agentList, selectedStack }: 
       {listOpen && (
         <div style={{ borderTop: "1px solid var(--border)" }}>
           {/* Astra run status row */}
-          <div style={{ padding: "10px 18px 6px", display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <div className="astra-launch-run-orbit" style={{ padding: "10px 18px 6px", display: "flex", gap: 16, flexWrap: "wrap" }}>
             {runItems.map(item => (
               <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div style={{
@@ -3532,7 +3769,7 @@ function LaunchChecklist({ sessionId, done, agents, agentList, selectedStack }: 
             const catOpen = openCats[cat.id] ?? false;
             const catAllDone = catDone === cat.items.length;
             return (
-              <div key={cat.id} style={{ borderTop: "1px solid var(--line-2)" }}>
+              <div key={cat.id} className="astra-checklist-constellation" style={{ borderTop: "1px solid var(--line-2)" }}>
                 <button onClick={() => setOpenCats(o => ({ ...o, [cat.id]: !catOpen }))} style={{
                   width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
                   padding: "9px 18px", background: "none", border: "none", cursor: "pointer", gap: 10,
@@ -3550,12 +3787,12 @@ function LaunchChecklist({ sessionId, done, agents, agentList, selectedStack }: 
                   </div>
                 </button>
                 {catOpen && (
-                  <div style={{ padding: "4px 18px 12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px" }}>
+                  <div className="astra-checklist-items" style={{ padding: "4px 18px 12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "5px 12px" }}>
                     {cat.items.map(item => {
                       const checked = isChecked(item);
                       const isAuto = item.autoAgent ? agentDone(item.autoAgent) : false;
                       return (
-                        <button key={item.id} onClick={() => !isAuto && toggle(item.id, checked)} style={{
+                        <button key={item.id} className="astra-checklist-item" onClick={() => !isAuto && toggle(item.id, checked)} style={{
                           display: "flex", alignItems: item.detail ? "flex-start" : "center", gap: 7, background: "none", border: "none",
                           cursor: isAuto ? "default" : "pointer", padding: "2px 0", textAlign: "left",
                         }}>
@@ -4105,7 +4342,7 @@ export function GoalWorkspace({
   const [autoCompanyName, setAutoCompanyName] = useState<string>("");
   const [done, setDone] = useState(false);
   const [killing, setKilling] = useState(false);
-  const [sessionCost, setSessionCost] = useState<{total_tokens: number; total_cost_usd: number; cached_tokens: number} | null>(null);
+  const [sessionCost, setSessionCost] = useState<{total_tokens: number; total_cost_usd: number; cached_tokens: number; total_credits_used?: number} | null>(null);
   const [inputRequest, setInputRequest] = useState<InputRequest | null>(null);
   const [selectedStack, setSelectedStack] = useState<AgentStackTemplate | null>(null);
   const [runArtifacts, setRunArtifacts] = useState<RunArtifactState[]>([]);
@@ -4482,6 +4719,26 @@ export function GoalWorkspace({
             }
             else if (tool === "generate_design_spec") liveResult = { ...liveResult, design_spec: r };
             else if (tool === "find_leads") liveResult = { ...liveResult, leads: r };
+            else if (tool === "build_outreach_sequence") {
+              // Merge each sequence into a flat sequences[] list + expose lead for SalesPreview
+              const seqs = (liveResult.sequences as unknown[]) ?? [];
+              liveResult = { ...liveResult, outreach_sequence: r, sequences: [...seqs, r] };
+              if (r.lead && typeof r.lead === "object") {
+                const existingLeads = (liveResult.leads as unknown[]) ?? [];
+                liveResult = { ...liveResult, lead: (r.lead as Record<string, unknown>).company ?? (r.lead as Record<string, unknown>).name, leads: [...existingLeads, r.lead] };
+              }
+            }
+            else if (tool === "enrich_lead") {
+              // Each enriched lead — update the leads list if present
+              if (r.company ?? r.name) {
+                const existingLeads = (liveResult.leads as unknown[]) ?? [];
+                liveResult = { ...liveResult, lead: r.company ?? r.name, leads: [...existingLeads, r] };
+              }
+            }
+            else if (tool === "run_research_pipeline" && r.sources) {
+              // Expose research summary so ResearchPreview can show sources immediately
+              liveResult = { ...liveResult, research_sources: r.sources, research_summary: r.combined_formatted };
+            }
             else if (tool === "generate_logo_brief") liveResult = { ...liveResult, logo_brief: r };
           }
           next[agent] = { ...cur, result: liveResult, log: addLog(ok ? "result" : "error", text), visitedUrls: newVisited, currentUrl: newUrl ?? cur.currentUrl, commits: newCommits, filesPreview: newFiles, filesCount: newFilesCount, adImages: newAdImages };
@@ -4816,7 +5073,7 @@ export function GoalWorkspace({
               <h3 style={{ fontSize: 18, margin: 0 }}>Session health</h3>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 18, flex: 1, minHeight: 0, overflowY: "auto", paddingRight: 4 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+              <div className="astra-health-orbit" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
                 {[
                   ["Done", doneCount],
                   ["Running", runningCount],
@@ -4832,7 +5089,7 @@ export function GoalWorkspace({
               {sessionCost && (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                   {[
-                    ["Tokens", sessionCost.total_tokens?.toLocaleString() ?? "—"],
+                    ["Credits", sessionCost.total_credits_used?.toLocaleString() ?? sessionCost.total_tokens != null ? Math.floor(sessionCost.total_tokens / 10).toLocaleString() : "—"],
                     ["Cost", sessionCost.total_cost_usd != null ? `$${sessionCost.total_cost_usd.toFixed(4)}` : "—"],
                     ["Cached", sessionCost.cached_tokens != null && sessionCost.total_tokens > 0
                       ? `${Math.round(sessionCost.cached_tokens / sessionCost.total_tokens * 100)}%`
@@ -4855,11 +5112,11 @@ export function GoalWorkspace({
                 </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                <div className="astra-mini-slab" style={{ padding: "12px 13px", borderRadius: 0, display: "grid", gap: 3 }}>
+                <div className="astra-mini-slab astra-mini-slab-wide" style={{ padding: "12px 13px", borderRadius: 0, display: "grid", gap: 3 }}>
                   <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Active lanes</span>
                   <span style={{ fontSize: 13, color: "var(--fg)", lineHeight: 1.45 }}>{activeAgents.length ? activeAgents.map(a => AGENT_LABELS[a] ?? a).join(" · ") : "No agents running"}</span>
                 </div>
-                <div className="astra-mini-slab" style={{ padding: "12px 13px", borderRadius: 0, display: "grid", gap: 3 }}>
+                <div className="astra-mini-slab astra-mini-slab-wide" style={{ padding: "12px 13px", borderRadius: 0, display: "grid", gap: 3 }}>
                   <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Captured activity</span>
                   <span style={{ fontSize: 13, color: "var(--fg)", lineHeight: 1.45 }}>{totalVisitedUrls} sites visited · {totalCommits} commits · {outcomes.length} outcomes</span>
                 </div>

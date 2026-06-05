@@ -172,7 +172,7 @@ def build_research_queries(topic: str, focus: str = "market", limit: int = 7) ->
     }
 
 
-def _http_get(url: str, timeout: float = 20.0) -> str:
+def _http_get(url: str, timeout: float = 8.0) -> str:
     """Fetch URL via browser-harness http_get (handles bot detection + gzip)."""
     import urllib.request, urllib.error, gzip
     headers = {
@@ -243,7 +243,7 @@ def fetch_and_read(url: str) -> dict:
         from urllib.parse import quote
         url = quote(url, safe=":/?#[]@!$&'()*+,;=%")
     try:
-        html = _http_get(url, timeout=25.0)
+        html = _http_get(url, timeout=8.0)
         if not html:
             return {"url": url, "skipped": "empty response", "content": ""}
 
@@ -310,9 +310,9 @@ def search_and_fetch(query: str, max_results: int = 16) -> dict:
             fetch_urls.append(url)
     fetch_urls = fetch_urls[:max_results + 4]
 
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with ThreadPoolExecutor(max_workers=16) as ex:
         futures = {ex.submit(fetch_and_read, url): url for url in fetch_urls}
-        for fut in as_completed(futures, timeout=60):
+        for fut in as_completed(futures, timeout=25):
             url = futures[fut]
             try:
                 page = fut.result()
@@ -372,9 +372,9 @@ def batch_search(queries: list, max_results_each: int = 8) -> dict:
     queries = queries[:8]  # cap to prevent abuse
     results_by_query: dict = {}
 
-    with ThreadPoolExecutor(max_workers=min(len(queries), 6)) as ex:
+    with ThreadPoolExecutor(max_workers=min(len(queries), 8)) as ex:
         futures = {ex.submit(search_and_fetch, q, max_results_each): q for q in queries}
-        for fut in as_completed(futures, timeout=120):
+        for fut in as_completed(futures, timeout=50):
             q = futures[fut]
             try:
                 results_by_query[q] = fut.result()

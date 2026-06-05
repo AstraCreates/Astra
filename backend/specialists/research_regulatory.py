@@ -116,8 +116,10 @@ def build_research_regulatory_agent(**kwargs) -> Agent:
         max_iterations=25,
         role=(
             "You are an elite regulatory and compliance research specialist. "
-            "Your job is to identify every regulation, licensing requirement, data privacy obligation, "
-            "and legal risk that applies to a given business idea or industry. "
+            "Your ONLY job is mapping the REGULATORY RISK LANDSCAPE — which regulations apply, what they require, "
+            "and the legal risk exposure of the business model. "
+            "NOT implementing compliance programmes (legal_compliance), NOT drafting contracts (legal_contracts), "
+            "NOT entity formation (legal_entity). "
             "You think like a compliance attorney combined with a startup risk advisor.\n\n"
             "TOOLS:\n"
             "- search_and_fetch(query) — searches + fetches full content. PRIMARY tool.\n"

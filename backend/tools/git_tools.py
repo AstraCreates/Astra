@@ -613,6 +613,21 @@ files may live at the repo root (e.g. a root-level Next.js app) or in subfolders
 Fix everything you find, then run: `git add -A && git commit -m "fix: verification pass"`.
 If everything is already correct, just say OK."""
 
+_BUILD_CHECK_PROMPT = """Run the Next.js production build and fix every error until it passes.
+
+1. Find package.json: check `ls frontend/package.json` first, then root `package.json`.
+2. cd into that directory and run: npm install --legacy-peer-deps && npm run build 2>&1 | tail -150
+3. If the build PASSES (exit 0), say OK and stop.
+4. If it FAILS, read every error carefully and fix all of them. Common patterns to fix:
+   - Any @clerk/* import → remove it; replace auth with NextAuth.js (next-auth@beta) or Supabase Auth
+   - `export const dynamic = "error"` on a page that uses headers()/cookies() → change to `dynamic = "force-dynamic"` or remove the export
+   - Missing package → install it (npm install <pkg>) or remove the import if the package doesn't exist
+   - TypeScript type errors → fix the types
+   - `Cannot find module` → fix the import path or create the missing file
+   - Outdated Next.js 14 API → update to Next.js 15 App Router pattern
+5. After fixing, run npm run build again. Repeat until it passes.
+6. Commit: `git add -A && git commit -m "fix: build errors resolved"`"""
+
 
 def _openclaude_test_pass(local: str, oc_session_id: str) -> str:
     """Ask openclaude to self-test and fix the codebase. Returns its output."""
@@ -660,16 +675,18 @@ def _sanitize_package_json(repo_dir: str) -> None:
     try:
         data = json.loads(pkg_path.read_text())
         changed = False
-        # Correct next version — pin to 14.2.21 (latest stable 14.x)
-        _NEXT_VERSION = "14.2.21"
+        # Correct next version — pin to 15.3.3 (latest stable 15.x; 14.x is outdated)
+        _NEXT_VERSION = "15.3.3"
         for section in ("dependencies", "devDependencies", "peerDependencies"):
             if section not in data:
                 continue
             before = set(data[section])
-            data[section] = {k: v for k, v in data[section].items() if k not in _FAKE_PACKAGES}
+            # Remove fake packages AND Clerk (causes runtime errors in App Router)
+            _BANNED = _FAKE_PACKAGES | {"@clerk/nextjs", "@clerk/clerk-sdk-node", "@clerk/backend"}
+            data[section] = {k: v for k, v in data[section].items() if k not in _BANNED}
             removed = before - set(data[section])
             if removed:
-                logger.warning("Removed fake npm packages: %s", removed)
+                logger.warning("Removed fake/banned npm packages: %s", removed)
                 changed = True
             # Fix @next/* packages to match the actual next version
             if "next" in data[section]:
@@ -678,16 +695,16 @@ def _sanitize_package_json(repo_dir: str) -> None:
                     if pkg.startswith("@next/"):
                         data[section][pkg] = actual_next
                         changed = True
-                # If next version itself looks wrong (e.g. 14.2.23 doesn't exist), pin it
+                # Upgrade any 14.x → 15.x
                 import re as _re
                 ver = actual_next
-                if _re.match(r"14\.\d+\.\d+", ver) and ver > "14.2.21":
+                if _re.match(r"1[0-4]\.", ver):
                     data[section]["next"] = _NEXT_VERSION
                     for pkg in list(data[section]):
                         if pkg.startswith("@next/"):
                             data[section][pkg] = _NEXT_VERSION
                     changed = True
-                    logger.warning("Pinned next + @next/* to %s (was %s)", _NEXT_VERSION, ver)
+                    logger.warning("Upgraded next + @next/* to %s (was %s)", _NEXT_VERSION, ver)
         if changed:
             pkg_path.write_text(json.dumps(data, indent=2))
     except Exception as e:
@@ -717,13 +734,13 @@ def _file_prompt(rel_path: str, goal: str, context: str, local: str) -> str:
     # File-specific guidance
     hints = {
         "frontend/package.json": (
-            "Use ONLY these real packages: next@14.2.21, react, react-dom, typescript, tailwindcss, "
-            "@tailwindcss/forms, clsx, lucide-react, @clerk/nextjs, @supabase/supabase-js, "
+            "Use ONLY these real packages: next@15.3.3, react@19, react-dom@19, typescript, tailwindcss, "
+            "@tailwindcss/forms, clsx, lucide-react, next-auth@beta, @supabase/supabase-js, @supabase/ssr, "
             "framer-motion, zod, react-hook-form. "
-            "NEVER use @next/font (use next/font/google). NEVER use @radix-ui/react-badge."
+            "NEVER use @clerk/nextjs or any @clerk/* package. NEVER use @next/font (use next/font/google). NEVER use @radix-ui/react-badge."
         ),
         "frontend/next.config.js": "Use .js extension ONLY. Never next.config.ts or .mjs.",
-        "frontend/middleware.ts": "Use @clerk/nextjs/server. Protect /dashboard/* routes.",
+        "frontend/middleware.ts": "Use next-auth (NOT Clerk). Protect /dashboard/* routes with NextAuth middleware.",
         "backend/requirements.txt": "Include: fastapi, uvicorn[standard], pydantic, python-dotenv, sqlalchemy, psycopg2-binary, python-jose[cryptography], passlib[bcrypt], httpx",
     }
     hint = hints.get(rel_path, "")
@@ -835,6 +852,17 @@ def run_mvp_loop(
             sha2 = _commit_and_push(local, f"fix: verification pass — {goal[:45]}")
             if sha2:
                 commits.append(sha2)
+        else:
+            _stage_all(local)
+
+        # Pass 2b: build-error self-healing — run `npm run build`, fix any errors, repeat
+        logger.info("Pass 2b: build-error self-healing pass")
+        _run_claude(local, _BUILD_CHECK_PROMPT, session_id=None, timeout=900, founder_id=founder_id, app_session_id=session_id, agent=agent)
+        _sanitize_package_json(local)
+        if is_github:
+            sha2b = _commit_and_push(local, f"fix: build errors — {goal[:45]}")
+            if sha2b:
+                commits.append(sha2b)
         else:
             _stage_all(local)
 

@@ -10,7 +10,11 @@ def build_technical_infra_agent(**kwargs) -> Agent:
     return Agent(
         name="technical_infra",
         role=(
-            "You are a technical infrastructure specialist. Your job is to design a complete, "
+            "You are a technical infrastructure specialist. Your ONLY domain is infrastructure, DevOps, CI/CD, Docker, "
+            "hosting selection, and monitoring setup. "
+            "NOT product application code (technical), NOT database schema design (technical_data), "
+            "NOT API endpoint design (technical_api).\n\n"
+            "Your job is to design a complete, "
             "production-ready infrastructure stack for the product described in SHARED CONTEXT.\n\n"
             "COMPANY_NAME and the product description are in SHARED CONTEXT — use them everywhere.\n\n"
             "MANDATORY WORKFLOW — never skip any step:\n\n"

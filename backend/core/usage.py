@@ -51,6 +51,11 @@ def _cost_usd(model: str, prompt_tokens: int, completion_tokens: int, cached_tok
     return (uncached * in_price + cached_tokens * cache_price + completion_tokens * out_price) / 1_000_000
 
 
+def _tokens_to_credits(tokens: int) -> int:
+    """Flat rate: 10 tokens = 1 credit."""
+    return max(0, tokens // 10)
+
+
 def get_session_cost(session_id: str) -> dict[str, Any]:
     with _lock:
         models = dict(_store.get(session_id, {}))
@@ -73,19 +78,22 @@ def get_session_cost(session_id: str) -> dict[str, Any]:
             "cached_tokens": ca,
             "cache_hit_pct": cache_pct,
             "total_tokens": p + c,
+            "credits_used": _tokens_to_credits(p + c),
             "calls": data["calls"],
             "cost_usd": round(cost, 6),
         })
 
     breakdown.sort(key=lambda x: x["cost_usd"], reverse=True)
 
+    total_tokens = int(total_prompt + total_completion)
     return {
         "session_id": session_id,
         "total_prompt_tokens": int(total_prompt),
         "total_completion_tokens": int(total_completion),
         "total_cached_tokens": int(total_cached),
         "cache_hit_pct": round(total_cached / total_prompt * 100, 1) if total_prompt else 0,
-        "total_tokens": int(total_prompt + total_completion),
+        "total_tokens": total_tokens,
+        "total_credits_used": _tokens_to_credits(total_tokens),
         "total_cost_usd": round(total_cost, 6),
         "breakdown": breakdown,
     }

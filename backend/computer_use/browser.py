@@ -217,7 +217,6 @@ class BrowserSession:
                     return {"ok": True}
 
             elif act == "extract_table":
-                # Extract table data from page as list of row dicts
                 tables = await p.evaluate("""() => {
                     return Array.from(document.querySelectorAll('table')).slice(0, 3).map(table => {
                         const headers = Array.from(table.querySelectorAll('th')).map(th => th.innerText.trim());
@@ -229,8 +228,112 @@ class BrowserSession:
                 }""")
                 return {"tables": tables}
 
+            elif act == "select_option":
+                # Select a dropdown option by value or label
+                selector = action.get("selector", "select")
+                value = action.get("value")
+                label = action.get("label")
+                if value is not None:
+                    await p.select_option(selector, value=value, timeout=8_000)
+                elif label is not None:
+                    await p.select_option(selector, label=label, timeout=8_000)
+                else:
+                    return {"error": "select_option requires 'value' or 'label'"}
+                return {"ok": True}
+
+            elif act == "hover":
+                # Hover over element to reveal dropdown menus
+                selector = action.get("selector")
+                if selector:
+                    await p.hover(selector, timeout=8_000)
+                else:
+                    await p.mouse.move(action.get("x", 0), action.get("y", 0))
+                await asyncio.sleep(0.4)
+                return {"ok": True}
+
+            elif act == "clear":
+                # Clear an input field before typing
+                selector = action.get("selector", "input:focus")
+                await p.fill(selector, "", timeout=8_000)
+                return {"ok": True}
+
+            elif act == "get_attribute":
+                # Get an HTML attribute from an element (useful for hidden values, hrefs, data-*)
+                selector = action.get("selector")
+                attr = action.get("attribute", "value")
+                if not selector:
+                    return {"error": "get_attribute requires 'selector'"}
+                el = await p.query_selector(selector)
+                if not el:
+                    return {"error": f"No element found: {selector}"}
+                val = await el.get_attribute(attr) or await el.inner_text()
+                return {"value": val.strip() if val else ""}
+
+            elif act == "eval_js":
+                # Execute arbitrary JS and return the result — for complex extractions
+                script = action.get("script", "")
+                if not script:
+                    return {"error": "eval_js requires 'script'"}
+                result = await p.evaluate(script)
+                return {"result": result}
+
+            elif act == "wait_for_text":
+                # Wait until specific text appears on the page
+                text = action.get("text", "")
+                timeout_ms = action.get("timeout_ms", 15_000)
+                try:
+                    await p.wait_for_selector(f"text={text}", timeout=timeout_ms)
+                    return {"ok": True, "found": text}
+                except Exception:
+                    return {"ok": False, "error": f"Text not found within {timeout_ms}ms: {text}"}
+
+            elif act == "wait_for_url":
+                # Wait until URL contains a substring — useful for OAuth redirects
+                contains = action.get("contains", "")
+                timeout_ms = action.get("timeout_ms", 30_000)
+                try:
+                    await p.wait_for_url(f"**{contains}**", timeout=timeout_ms)
+                    return {"ok": True, "url": p.url}
+                except Exception:
+                    return {"ok": False, "current_url": p.url, "error": f"URL never contained '{contains}'"}
+
+            elif act == "upload_file":
+                # Set a file input to a local path
+                selector = action.get("selector", "input[type=file]")
+                file_path = action.get("file_path", "")
+                await p.set_input_files(selector, file_path, timeout=8_000)
+                return {"ok": True}
+
+            elif act == "check":
+                # Check or uncheck a checkbox/radio
+                selector = action.get("selector")
+                checked = action.get("checked", True)
+                if not selector:
+                    return {"error": "check requires 'selector'"}
+                if checked:
+                    await p.check(selector, timeout=8_000)
+                else:
+                    await p.uncheck(selector, timeout=8_000)
+                return {"ok": True}
+
+            elif act == "new_tab":
+                # Open a new tab and navigate to a URL
+                new_page = await p._browser.new_page()  # type: ignore[attr-defined]
+                self._page = new_page
+                if _STEALTH_AVAILABLE:
+                    await _stealth(new_page)
+                url = action.get("url")
+                if url:
+                    await new_page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+                return {"ok": True, "url": new_page.url}
+
             else:
-                return {"error": f"unknown action: {act}. Valid: navigate, click, type, scroll, key, wait, get_text, screenshot, find_elements, read_page, scroll_to, extract_table"}
+                return {"error": (
+                    f"unknown action: {act}. Valid: navigate, click, type, scroll, key, wait, "
+                    "get_text, screenshot, find_elements, read_page, scroll_to, extract_table, "
+                    "select_option, hover, clear, get_attribute, eval_js, wait_for_text, "
+                    "wait_for_url, upload_file, check, new_tab"
+                )}
 
         except Exception as e:
             return {"error": str(e)}

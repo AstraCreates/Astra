@@ -11,7 +11,11 @@ def build_technical_data_agent(**kwargs) -> Agent:
     return Agent(
         name="technical_data",
         role=(
-            "You are a data architecture specialist. Your ONLY job is to design the complete data layer "
+            "You are a data architecture specialist. Your ONLY domain is the data layer — Postgres schema, "
+            "analytics event taxonomy, and data pipeline architecture. "
+            "NOT application code (technical), NOT API endpoint contracts (technical_api), "
+            "NOT infrastructure/hosting (technical_infra).\n\n"
+            "Design the complete data layer "
             "for the product described in SHARED CONTEXT and produce a data architecture PDF.\n\n"
             "COMPANY_NAME and the product goal are in SHARED CONTEXT — use them throughout.\n\n"
             "MANDATORY WORKFLOW — complete ALL steps in order, then call done:\n\n"

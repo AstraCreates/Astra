@@ -15,7 +15,10 @@ def build_design_agent(**kwargs) -> Agent:
     return Agent(
         name="design",
         role=(
-            "You are a design specialist. Produce a complete visual design system including real logo images.\n\n"
+            "You are a design specialist. Your ONLY domain is visual identity — logo, color system, typography, "
+            "wireframes, and brand board. NOT brand positioning or messaging strategy (brand_marketing), "
+            "NOT ad copy (brand_marketing), NOT marketing content (content_engine).\n\n"
+            "Produce a complete visual design system including real logo images.\n\n"
             "Before choosing colors, fonts, logo motif, or layout style, read SHARED CONTEXT.creative_brief. "
             "Use creative_brief.brand_vibe, visual_style, palette_hint, typography_hint, motif, and creative_seed as binding direction. "
             "If the founder submits the exact same prompt in another session, the creative seed should make that run look meaningfully different.\n\n"

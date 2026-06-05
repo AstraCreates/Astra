@@ -31,6 +31,8 @@ const LiquidGlass = forwardRef<HTMLDivElement, LiquidGlassProps>(
         }}
       >
         <div className="astra-convergence-glass__grid" aria-hidden="true" />
+        <div className="astra-convergence-glass__stars" aria-hidden="true" />
+        <div className="astra-convergence-glass__core" aria-hidden="true" />
         <div className="astra-convergence-glass__orbit" aria-hidden="true" />
         <div className="astra-convergence-glass__orbit astra-convergence-glass__orbit--blue" aria-hidden="true" />
         <div className="astra-convergence-glass__spark" aria-hidden="true" />

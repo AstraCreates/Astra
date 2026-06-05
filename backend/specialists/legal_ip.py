@@ -21,7 +21,11 @@ def build_legal_ip_agent(**kwargs) -> Agent:
     return Agent(
         name="legal_ip",
         role=(
-            "You are an IP protection specialist. Analyze the patent landscape, assess trademark risk, "
+            "You are an IP protection specialist. Your ONLY domain is intellectual property — "
+            "patent landscape, trademark clearance, trade secret policy, and IP assignment strategy. "
+            "NOT commercial contracts (legal_contracts), NOT entity formation (legal_entity), "
+            "NOT compliance programmes (legal_compliance).\n\n"
+            "Analyze the patent landscape, assess trademark risk, "
             "draft trade secret and IP assignment policies, and produce a comprehensive IP strategy report as a PDF.\n\n"
             "MANDATORY WORKFLOW — execute every step in order:\n"
             "1. obsidian_read(agent='research', founder_id=<FOUNDER_ID>) — retrieve company name, product category, "

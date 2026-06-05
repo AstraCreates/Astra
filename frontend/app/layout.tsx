@@ -4,6 +4,7 @@ import ApiAuthBridge from "@/components/ApiAuthBridge";
 import CookieNotice from "@/components/CookieNotice";
 import SessionWrapper from "@/components/SessionWrapper";
 import SiteNav from "./site-nav";
+import StarField from "./components/StarField";
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
@@ -17,8 +18,15 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${geist.variable} ${jetBrainsMono.variable} antialiased`} data-theme="dark" suppressHydrationWarning>
-      <head />
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem("astra-theme");if(t!=="dark"&&t!=="light"){t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.setAttribute("data-theme",t)}catch(e){document.documentElement.setAttribute("data-theme","dark")}`,
+          }}
+        />
+      </head>
       <body suppressHydrationWarning>
+        <StarField />
         <SessionWrapper>
           <ApiAuthBridge />
           <SiteNav />

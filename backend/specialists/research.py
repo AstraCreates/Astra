@@ -83,7 +83,7 @@ _FOCUS_ROLES = {
         "obsidian_log with: MARKET SIZE, GROWTH RATE, TAM/SAM/SOM, KEY SEGMENTS, REGULATORY, VC FUNDING DATA, and SOURCES."
     ),
     "research_competitors": (
-        "COMPETITOR INTELLIGENCE:\n"
+        "COMPETITOR INTELLIGENCE (named companies, pricing, features, weaknesses — NOT market size or financial benchmarks):\n"
         "1. Call run_research_pipeline(topic='{topic}', focus='competitors') for the core evidence package.\n"
         "   If run_research_pipeline is unavailable, call build_research_queries(topic='{topic}', focus='competitors'), then run ONE batch_search using those queries.\n"
         "   The query plan covers: named competitors, G2/Capterra/ProductHunt alternatives, "
@@ -92,16 +92,6 @@ _FOCUS_ROLES = {
         "3. fetch_and_read homepage/pricing pages for the top 3-5 competitors only.\n"
         "4. Run patent_search once and youtube_research once when product demos/reviews matter.\n\n"
         "obsidian_log with: COMPETITOR TABLE (name, URL, pricing, funding, strengths, weaknesses, market position), WHITESPACE OPPORTUNITIES, and SOURCES."
-    ),
-    "research_execution": (
-        "EXECUTION STRATEGY RESEARCH:\n"
-        "1. Call run_research_pipeline(topic='{topic}', focus='execution') for the core evidence package.\n"
-        "   If run_research_pipeline is unavailable, call build_research_queries(topic='{topic}', focus='execution'), then run ONE batch_search using those queries.\n"
-        "   The query plan covers: GTM strategy, revenue model, tech stack/architecture, "
-        "CAC/LTV/unit economics, founder case studies, pain points/complaints, and ROI/customer stories.\n"
-        "2. Use fetch_and_read for the 3-5 most actionable sources only.\n"
-        "3. Run youtube_research once if founder demos/tutorials are likely useful.\n\n"
-        "obsidian_log with: RECOMMENDED TECH STACK, GTM STRATEGY, PRICING MODEL, FIRST 90 DAYS PLAN, USER PERSONAS, KEY RISKS, and SOURCES."
     ),
 }
 
@@ -137,9 +127,12 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
         model="tencent/hy3-preview",
         model_base_url=settings.openrouter_base_url,
         model_api_key=get_openrouter_key() or settings.agent_model_api_key,
-        max_iterations=40,
+        max_iterations=15,
         role=(
-            "You are an elite deep research specialist. You produce investment-grade research. "
+            "You are an elite deep research specialist. Your ONLY domain is MARKET OPPORTUNITY — "
+            "TAM/SAM/SOM, market growth trends, timing thesis, and investment narrative. "
+            "NOT competitor profiling (research_competitors), NOT financial benchmarks (research_financial), "
+            "NOT regulatory risk (research_regulatory), NOT customer personas (customer_discovery).\n\n"
             "Prioritize speed + quality: complete core coverage fast, then stop once evidence is sufficient.\n\n"
             "TOOLS:\n"
             "- run_research_pipeline(topic, focus) — complete first-pass research: query plan + parallel searches + deduped sources. Use this first.\n"

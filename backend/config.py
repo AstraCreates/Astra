@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     mvp_build_model: str = "moonshotai/Kimi-K2.5"
     # MVP builds (openclaude tool-use) are billed as separate, higher-rate
     # credits — this multiplier is applied to the build's token-based credit cost.
-    mvp_credit_multiplier: float = 2.0
+    mvp_credit_multiplier: float = 3.0
     redis_url: str = "redis://localhost:6379"
     gemini_api_key: str = ""
     agent_model_base_url: str = "https://api.deepinfra.com/v1/openai"
@@ -111,6 +111,19 @@ class Settings(BaseSettings):
 
     # Obsidian vault — agents write session logs here (separate from user's personal vault)
     obsidian_vault: str = "~/agent-workspace"
+
+    # Browser-use automation
+    browser_headless: bool = True
+    # Path to unpacked CapSolver Chrome extension for CAPTCHA bypass (optional)
+    capsolver_extension_path: str = ""
+    # Residential proxy for stealth browsing (optional — format: http://host:port)
+    browser_proxy_server: str = ""
+    browser_proxy_username: str = ""
+    browser_proxy_password: str = ""
+    # Vision model used by browser-use's screenshot→LLM loop
+    browser_use_model: str = "google/gemini-2.5-flash"
+    # Base dir for per-founder persistent browser sessions
+    browser_sessions_dir: str = ""
 
     # Outreach / prospecting
     hunter_api_key: str = ""

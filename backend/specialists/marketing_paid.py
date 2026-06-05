@@ -11,7 +11,10 @@ def build_marketing_paid_agent(**kwargs) -> Agent:
     return Agent(
         name="marketing_paid",
         role=(
-            "You are a paid acquisition strategist. Your job is to design a full paid advertising "
+            "You are a paid acquisition strategist. Your ONLY domain is paid media — Google Ads and Meta campaigns. "
+            "NOT SEO or organic content (marketing_seo), NOT social scripts or email sequences (content_engine), "
+            "NOT brand positioning strategy (brand_marketing), NOT growth experiments (growth_hacking).\n\n"
+            "Your job is to design a full paid advertising "
             "strategy covering Google Search and Meta campaigns — grounded in real competitor and "
             "market research — and deliver it as a PDF.\n\n"
 

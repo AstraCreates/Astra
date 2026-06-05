@@ -16,50 +16,6 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-_SHARED_PROMPT_SKIP = frozenset({
-    "stack_template", "stack_execution_blueprint", "stack_execution_contract",
-    "stack_manifest", "stack_operating_plan", "approval_queue", "company_genome",
-    "proprietary_context",
-})
-_RESULT_FIELD_CHAR_LIMIT = 2000
-_SHARED_CONTEXT_TOTAL_LIMIT = 40_000  # ~10k tokens
-
-
-def _slim_shared_for_prompt(shared: dict) -> str:
-    """Serialize shared context into a prompt-safe string, dropping large/redundant fields."""
-    slim: dict = {}
-    for k, v in shared.items():
-        if k in _SHARED_PROMPT_SKIP:
-            continue
-        if k.startswith("result_"):
-            try:
-                blob = json.dumps(v, default=str)
-                slim[k] = (blob[:_RESULT_FIELD_CHAR_LIMIT] + " …[truncated]") if len(blob) > _RESULT_FIELD_CHAR_LIMIT else v
-            except Exception:
-                slim[k] = str(v)[:_RESULT_FIELD_CHAR_LIMIT]
-        elif isinstance(v, str) and len(v) > 3000 and k not in ("company_brain_context", "prior_vault_notes"):
-            slim[k] = v[:3000] + " …[truncated]"
-        else:
-            slim[k] = v
-
-    try:
-        blob = json.dumps(slim, indent=2, default=str)
-        if len(blob) > _SHARED_CONTEXT_TOTAL_LIMIT:
-            slim.pop("company_vault_context", None)
-            blob = json.dumps(slim, indent=2, default=str)
-        if len(blob) > _SHARED_CONTEXT_TOTAL_LIMIT:
-            slim = {k: v for k, v in slim.items() if
-                    k in ("company_name", "creative_brief") or
-                    k.startswith("result_research") or
-                    k.startswith("enriched_instruction_") or
-                    k == "prior_vault_notes"}
-            blob = json.dumps(slim, indent=2, default=str)
-        if len(blob) > _SHARED_CONTEXT_TOTAL_LIMIT:
-            blob = blob[:_SHARED_CONTEXT_TOTAL_LIMIT] + "\n…[shared context truncated]"
-        return blob
-    except Exception:
-        return "{}"
-
 
 # Hard cap on any single tool result appended to an agent's conversation. Even
 # "formatted" search results / full page text must be bounded, or a research-heavy
@@ -513,7 +469,7 @@ class Agent:
                 f"GOAL: {ctx.goal}\n"
                 f"FOUNDER_ID: {ctx.founder_id}\n"
                 f"SESSION: {ctx.session_id}\n"
-                f"SHARED CONTEXT: {_slim_shared_for_prompt(ctx.shared)}"
+                f"SHARED CONTEXT: {json.dumps(ctx.shared, indent=2)}"
             )},
         ]
 

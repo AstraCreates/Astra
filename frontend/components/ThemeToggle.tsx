@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 type Theme = "dark" | "light";
 
@@ -39,13 +39,17 @@ export default function ThemeToggle() {
   const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, () => "dark");
   const dark = theme === "dark";
 
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
+
   return (
     <button
       onClick={() => setTheme(dark ? "light" : "dark")}
       aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
       title={dark ? "Light mode" : "Dark mode"}
       style={{
-        background: "linear-gradient(135deg, rgba(255,255,255,0.05), rgba(120,124,130,0.08)), var(--glass-lo)",
+        background: "var(--bg-surface)",
         border: "1px solid var(--line)",
         cursor: "pointer",
         display: "inline-flex",
@@ -60,8 +64,8 @@ export default function ThemeToggle() {
         lineHeight: 1,
         transition: "color 0.15s, background 0.15s, border-color 0.15s, transform 0.15s",
       }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--glass-hi)"; (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "linear-gradient(135deg, rgba(255,255,255,0.05), rgba(120,124,130,0.08)), var(--glass-lo)"; (e.currentTarget as HTMLElement).style.color = "var(--text-2)"; }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--bg-sunken)"; (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "var(--bg-surface)"; (e.currentTarget as HTMLElement).style.color = "var(--text-2)"; }}
     >
       <span aria-hidden="true" style={{ fontSize: 13 }}>{dark ? "☾" : "☼"}</span>
       <span>{dark ? "Dark" : "Light"}</span>

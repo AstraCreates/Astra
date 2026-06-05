@@ -71,12 +71,5 @@ def get_gold_price() -> float:
 
 
 def tokens_to_credits(tokens: int) -> int:
-    """Convert token count to credits using live gold price.
-
-    Formula: credits = tokens / (gold_price / 1000)
-    At $3000/oz: 1000 tokens = 333 credits
-    At $2000/oz: 1000 tokens = 500 credits
-    """
-    gold = get_gold_price()
-    divisor = gold / 1000.0
-    return max(1, round(tokens / divisor))
+    """Convert token count to credits. Flat rate: 10 tokens = 1 credit."""
+    return max(1, tokens // 10)

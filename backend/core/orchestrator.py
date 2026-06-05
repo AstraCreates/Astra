@@ -18,7 +18,7 @@ _RAW_BLOB_KEYS = {"sources", "results", "raw", "pages", "html", "content",
                   "fetched", "documents", "search_results", "images", "logos",
                   "image", "logo", "b64", "base64", "screenshot"}
 _SHARED_FIELD_CAP = 2500       # max chars per string field kept in shared
-_SHARED_RESULT_CAP = 2500      # max chars of any single agent result kept in shared
+_SHARED_RESULT_CAP = 6000      # max chars of any single agent result kept in shared
 
 
 def _is_base64ish(s: str) -> bool:
@@ -940,7 +940,8 @@ class Orchestrator:
                 result["agent"] = agent_name
             completed[tid] = result
             _safe = _shared_safe(agent_name, result)
-            shared[f"result_{agent_name}"] = _safe
+            shared[f"result_{tid}"] = _safe
+            shared[f"result_{agent_name}"] = _safe  # also keyed by agent name for downstream context
             try:
                 from backend.stacks import verify_task_artifacts
                 artifact_verification = verify_task_artifacts(
