@@ -142,11 +142,23 @@ async def vision_browse_streaming(
         return
 
     queue: asyncio.Queue = session["event_queue"]
-    credentials: dict = session.get("credentials", {})
 
     async def emit(event_type: str, data: dict):
         await queue.put({"type": event_type, **data})
 
+    try:
+        await _vision_browse_inner(session_id, url, goal, max_steps, session, emit, queue)
+    except Exception as e:
+        logger.exception("vision_browse_streaming crashed: %s", e)
+        try:
+            await emit("error", {"message": f"Agent crashed: {e}"})
+        except Exception:
+            pass
+        session["status"] = "done"
+        await queue.put(None)
+
+
+async def _vision_browse_inner(session_id, url, goal, max_steps, session, emit, queue):
     from backend.computer_use.browser import BrowserSession
     browser = BrowserSession(headless=True)
     session["browser"] = browser
@@ -154,9 +166,9 @@ async def vision_browse_streaming(
     try:
         await browser.start()
     except Exception as e:
-        await emit("error", {"message": f"Browser failed to start: {e}"})
+        await emit("error", {"message": f"Browser failed to start: {e}. Make sure 'playwright install chromium' has been run."})
         session["status"] = "done"
-        await queue.put(None)  # sentinel
+        await queue.put(None)
         return
 
     page = browser._page
