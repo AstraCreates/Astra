@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 _RAW_BLOB_KEYS = {"sources", "results", "raw", "pages", "html", "content",
                   "fetched", "documents", "search_results", "images", "logos",
                   "image", "logo", "b64", "base64", "screenshot"}
-_SHARED_FIELD_CAP = 2500       # max chars per string field kept in shared
-_SHARED_RESULT_CAP = 6000      # max chars of any single agent result kept in shared
+_SHARED_FIELD_CAP = 50_000     # max chars per string field kept in shared
+_SHARED_RESULT_CAP = 100_000   # max chars of any single agent result kept in shared
 
 
 def _is_base64ish(s: str) -> bool:

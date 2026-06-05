@@ -21,12 +21,11 @@ logger = logging.getLogger(__name__)
 # "formatted" search results / full page text must be bounded, or a research-heavy
 # agent (design, marketing) accumulates 40 iterations of multi-KB results and
 # overflows the model window (observed: 489385 tokens vs 262144 limit).
-_TOOL_RESULT_CHAR_CAP = 6000
+_TOOL_RESULT_CHAR_CAP = 80_000
 
 
-# Cumulative conversation budget per agent loop. ~600K chars ≈ 150K tokens, well
-# under hy3-preview's 262144-token window with room for the system prompt + reply.
-_HISTORY_CHAR_BUDGET = 600_000
+# Cumulative conversation budget per agent loop.
+_HISTORY_CHAR_BUDGET = 4_000_000
 
 
 def _trim_message_history(messages: list[dict]) -> list[dict]:
@@ -94,7 +93,7 @@ def _format_tool_result_raw(tool_name: str, result: Any) -> str:
                 lines.append(f"URL: {r.get('url', '')}")
                 content = r.get("page_content") or r.get("snippet", "")
                 if content:
-                    lines.append(content[:1500])
+                    lines.append(content)
                 lines.append("")
             return "\n".join(lines)
         # fetch_page
@@ -133,18 +132,14 @@ def _format_tool_result_raw(tool_name: str, result: Any) -> str:
             lines = [f"{len(notes)} prior session(s) found:\n"]
             for n in notes:
                 lines.append(f"--- {n.get('file', '')} ---")
-                lines.append(n.get("content", "")[:500])
+                lines.append(n.get("content", ""))
             return "\n".join(lines)
         return json.dumps(result)
 
-    # Default: compact JSON — hard cap at 1000 chars to limit context bloat
     try:
-        text = json.dumps(result, indent=2)
-        if len(text) > 1000:
-            return text[:1000] + "\n... (truncated)"
-        return text
+        return json.dumps(result, indent=2)
     except Exception:
-        return str(result)[:1000]
+        return str(result)
 
 
 
@@ -430,8 +425,8 @@ class Agent:
                 fname = f.get("filename", "untitled")
                 dept = f.get("department", "")
                 content = f.get("content", "")
-                if len(content) > 2000:
-                    content = content[:2000] + "\n... [truncated]"
+                if len(content) > 20_000:
+                    content = content[:20_000] + "\n... [truncated]"
                 parts.append(f"\n--- {fname} [{dept}] ---\n{content}")
             library_section = "\n".join(parts)
 
@@ -754,14 +749,14 @@ class Agent:
         # Force one final synthesis call using everything gathered so far
         try:
             gathered = "\n\n".join(
-                f"[{name}]: {json.dumps(res)[:1500]}" for name, res in _tool_results
+                f"[{name}]: {json.dumps(res)}" for name, res in _tool_results
             ) or "No tool results gathered."
             # Send ONLY system prompt + gathered data — NOT full history (avoids token explosion)
             synthesis_messages = [
                 messages[0],  # system prompt
                 {"role": "user", "content": (
                     f"GOAL: {ctx.goal}\n\n"
-                    f"Research data gathered:\n{gathered[:8000]}\n\n"
+                    f"Research data gathered:\n{gathered}\n\n"
                     "Synthesize into a final structured response. "
                     "Respond with JSON: {\"action\": \"done\", \"output\": {\"summary\": \"...\", \"findings\": [...], \"sources\": [...]}}"
                 )},
