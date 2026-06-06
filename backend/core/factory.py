@@ -7,31 +7,30 @@ from backend.core.orchestrator import Orchestrator
 from backend.config import settings
 from backend.specialists.research import build_research_agent
 from backend.specialists.web import build_web_agent
-from backend.specialists.brand_marketing import build_brand_marketing_agent
+from backend.specialists.marketing import build_marketing_agent
 from backend.specialists.technical import build_technical_agent
-from backend.specialists.legal_compliance import build_legal_compliance_agent
-from backend.specialists.revenue_ops import build_revenue_ops_agent
-from backend.specialists.lead_generation import build_lead_generation_agent
+from backend.specialists.legal import build_legal_agent
+from backend.specialists.ops import build_ops_agent
+from backend.specialists.sales import build_sales_agent
 from backend.specialists.design import build_design_agent
-from backend.specialists.customer_discovery import build_customer_discovery_agent
-from backend.specialists.product_strategy import build_product_strategy_agent
+from backend.specialists.research_market import build_research_market_agent
 from backend.specialists.research_financial import build_research_financial_agent
 from backend.specialists.research_regulatory import build_research_regulatory_agent
-from backend.specialists.legal_contracts import build_legal_contracts_agent
+from backend.specialists.legal_docs import build_legal_docs_agent
 from backend.specialists.legal_entity import build_legal_entity_agent
 from backend.specialists.legal_ip import build_legal_ip_agent
-from backend.specialists.content_engine import build_content_engine_agent
-from backend.specialists.growth_hacking import build_growth_hacking_agent
+from backend.specialists.marketing_content import build_marketing_content_agent
+from backend.specialists.marketing_outreach import build_marketing_outreach_agent
 from backend.specialists.marketing_seo import build_marketing_seo_agent
 from backend.specialists.marketing_paid import build_marketing_paid_agent
 from backend.specialists.sales_pipeline import build_sales_pipeline_agent
 from backend.specialists.sales_enablement import build_sales_enablement_agent
-from backend.specialists.technical_api import build_technical_api_agent
+from backend.specialists.technical_scaffold import build_technical_scaffold_agent
 from backend.specialists.technical_infra import build_technical_infra_agent
 from backend.specialists.technical_data import build_technical_data_agent
 from backend.specialists.finance_model import build_finance_model_agent
 from backend.specialists.finance_fundraise import build_finance_fundraise_agent
-from backend.specialists.web_automator import build_web_automator_agent
+from backend.specialists.web_navigator import build_web_navigator_agent
 
 _orchestrator: Orchestrator | None = None
 
@@ -71,49 +70,43 @@ def get_orchestrator() -> Orchestrator:
             model_api_key=_or_key,
         )
         _large_ctx_kwargs = _deepseek_kwargs
-        _mimo_kwargs = dict(
-            model="xiaomi/mimo-v2.5",  # $0.14/M input, $0.28/M output, 1M context
-            model_base_url=_or_base,
-            model_api_key=_or_key,
-        )
         specialists = {
-            # Research cluster — hy3 for general research; DeepSeek 1M for heavy financial/regulatory docs
-            "research": build_research_agent(agent_name="research", use_computer=True, **_highoutput_kwargs),
-            "research_competitors": build_research_agent(agent_name="research_competitors", use_computer=True, **_highoutput_kwargs),
-            "customer_discovery": build_customer_discovery_agent(use_computer=True, **_highoutput_kwargs),
+            # Research — Llama-4-Scout (fast, 320k ctx, good synthesis)
+            "research": build_research_agent(agent_name="research", use_computer=True),
+            "research_competitors": build_research_agent(agent_name="research_competitors", use_computer=True),
+            "research_execution": build_research_agent(agent_name="research_execution", use_computer=True),
+            "research_market": build_research_market_agent(use_computer=True),
+            # Financial/regulatory research needs 1M ctx for large data dumps
             "research_financial": build_research_financial_agent(use_computer=True, **_large_ctx_kwargs),
             "research_regulatory": build_research_regulatory_agent(use_computer=True, **_large_ctx_kwargs),
-            # Strategy
-            "product_strategy": build_product_strategy_agent(use_computer=True, **_coder_kwargs),
-            # Web & Technical cluster
+            # Web — hy3-preview (best tool calling for deploy/HTML gen)
             "web": build_web_agent(use_computer=True, **_coder_kwargs),
+            # Technical — kimi-k2.6:free (built for long-horizon coding)
             "technical": build_technical_agent(use_computer=True, **_highoutput_kwargs),
-            "technical_api": build_technical_api_agent(use_computer=True, **_highoutput_kwargs),
+            "technical_scaffold": build_technical_scaffold_agent(use_computer=True, **_highoutput_kwargs),
             "technical_infra": build_technical_infra_agent(use_computer=True, **_highoutput_kwargs),
             "technical_data": build_technical_data_agent(use_computer=True, **_highoutput_kwargs),
-            # Design — MiMo (1M context, multimodal)
-            "design": build_design_agent(use_computer=False, **_mimo_kwargs),
-            # Legal cluster — MiMo
-            "legal_entity": build_legal_entity_agent(use_computer=True, **_mimo_kwargs),
-            "legal_contracts": build_legal_contracts_agent(use_computer=True, **_mimo_kwargs),
-            "legal_ip": build_legal_ip_agent(use_computer=True, **_mimo_kwargs),
-            "legal_compliance": build_legal_compliance_agent(use_computer=True, **_mimo_kwargs),
-            # Marketing cluster — MiMo
-            "brand_marketing": build_brand_marketing_agent(use_computer=True, **_mimo_kwargs),
-            "content_engine": build_content_engine_agent(use_computer=True, **_mimo_kwargs),
-            "marketing_seo": build_marketing_seo_agent(use_computer=True, max_tool_calls={"search_and_fetch": 3, "web_search": 5}, **_mimo_kwargs),
-            "marketing_paid": build_marketing_paid_agent(use_computer=True, max_tool_calls={"search_and_fetch": 4, "web_search": 6}, **_mimo_kwargs),
-            "growth_hacking": build_growth_hacking_agent(use_computer=True, **_mimo_kwargs),
-            # Sales cluster
-            "lead_generation": build_lead_generation_agent(use_computer=False, **_small_kwargs),
-            "sales_pipeline": build_sales_pipeline_agent(use_computer=False, **_small_kwargs),
-            "sales_enablement": build_sales_enablement_agent(use_computer=False, **_mimo_kwargs),
-            # Finance & Revenue cluster — hy3
+            # Writing agents — Mistral-Small-3.2 ($0.075/$0.20, 125k ctx, great long-form)
+            "marketing": build_marketing_agent(use_computer=True, **_highoutput_kwargs),
+            "legal": build_legal_agent(use_computer=True, **_highoutput_kwargs),
+            "ops": build_ops_agent(use_computer=True, **_coder_kwargs),
+            "design": build_design_agent(use_computer=False, **_highoutput_kwargs),
+            "legal_docs": build_legal_docs_agent(use_computer=True, **_highoutput_kwargs),
+            "legal_entity": build_legal_entity_agent(use_computer=True, **_highoutput_kwargs),
+            "legal_ip": build_legal_ip_agent(use_computer=True, **_highoutput_kwargs),
+            "marketing_content": build_marketing_content_agent(use_computer=True, **_highoutput_kwargs),
+            "marketing_outreach": build_marketing_outreach_agent(use_computer=True, **_highoutput_kwargs),
+            "marketing_seo": build_marketing_seo_agent(use_computer=True, max_tool_calls={"search_and_fetch": 3, "web_search": 5}, **_highoutput_kwargs),
+            "marketing_paid": build_marketing_paid_agent(use_computer=True, max_tool_calls={"search_and_fetch": 4, "web_search": 6}, **_highoutput_kwargs),
+            "sales_enablement": build_sales_enablement_agent(use_computer=False, **_highoutput_kwargs),
             "finance_model": build_finance_model_agent(use_computer=True, **_highoutput_kwargs),
             "finance_fundraise": build_finance_fundraise_agent(use_computer=True, **_highoutput_kwargs),
-            "revenue_ops": build_revenue_ops_agent(use_computer=True, **_coder_kwargs),
-            # Web automation
-            "web_automator": build_web_automator_agent(use_computer=True, **_coder_kwargs),
+            # Simple task agents — Llama-4-Scout (fast, cheap)
+            "sales": build_sales_agent(use_computer=False, max_iterations=15, **_small_kwargs),
+            "sales_pipeline": build_sales_pipeline_agent(use_computer=False, **_small_kwargs),
+            # Web Navigator — vision-driven autonomous browser agent
+            # Uses Gemini Flash vision via OpenRouter for screenshot → action loop
+            "web_navigator": build_web_navigator_agent(use_computer=True, **_highoutput_kwargs),
         }
         from backend.tools.company_brain import (
             add_company_brain_record,
@@ -148,34 +141,12 @@ def get_orchestrator() -> Orchestrator:
             agent.tools.setdefault("company_brain_import_sources", import_company_brain_sources)
         planner = Agent(
             name="planner",
-            role=(
-                "You are the planning coordinator. Decompose founder goals into specialist tasks. "
-                "Each specialist owns a DISTINCT, non-overlapping domain — never assign the same work to two agents.\n\n"
-                "AGENT ROSTER:\n"
-                "Research: research (market opportunity/TAM), research_competitors (named competitors/pricing), "
-                "customer_discovery (ICP/JTBD/personas), research_financial (unit economics benchmarks), "
-                "research_regulatory (regulatory risk map)\n"
-                "Strategy: product_strategy (MVP scope, RICE prioritization, north star metric)\n"
-                "Build: web (marketing landing page + shared repo), technical (product MVP/auth/dashboard), "
-                "technical_api (API design/OpenAPI spec), technical_infra (DevOps/CI-CD/hosting), "
-                "technical_data (Postgres schema/analytics events)\n"
-                "Design: design (logo/colors/typography/wireframes)\n"
-                "Legal: legal_entity (company formation/cap table), legal_contracts (MSA/DPA/NDAs), "
-                "legal_ip (patents/trademarks/trade secrets), legal_compliance (GDPR/SOC2/privacy-by-design)\n"
-                "Marketing: brand_marketing (positioning/messaging/ad creatives), content_engine (social scripts/email/blog), "
-                "marketing_seo (keyword strategy/content SEO), marketing_paid (Google+Meta campaigns), "
-                "growth_hacking (viral loops/referral programs/PLG hooks)\n"
-                "Sales: lead_generation (prospect sourcing/ICP scoring/enrichment), "
-                "sales_pipeline (CRM stages/deal qualification), sales_enablement (pitch deck/battlecards)\n"
-                "Finance: finance_model (12-month P&L/unit economics), finance_fundraise (investor research/SAFE/one-pager), "
-                "revenue_ops (Stripe setup/pricing/billing/churn recovery), "
-                "web_automator (autonomous browser — sign in/up, API key extraction, form fill, purchases on ANY website)"
-            ),
+            role="planning coordinator. Decompose founder goals into specialist tasks scoped to each agent's actual capabilities.",
             tools={},
             sub_agents=list(specialists.values()),
-            model=_large_ctx_kwargs["model"],
-            model_base_url=_large_ctx_kwargs["model_base_url"],
-            model_api_key=_large_ctx_kwargs["model_api_key"],
+            model=settings.or_planner_model,
+            model_base_url=_or_base,
+            model_api_key=_or_key,
         )
         _orchestrator = Orchestrator(planner=planner, specialists=specialists)
     return _orchestrator
