@@ -5,9 +5,12 @@ import Link from "next/link";
 import { useDevUser } from "@/lib/use-dev-user";
 import ThemeToggle from "@/components/ThemeToggle";
 import {
+  createOrganizationBillingPortal,
+  createOrganizationCheckout,
   getDeployEvidence,
   getLaunchReadiness,
   getOrganization,
+  getOrganizationBilling,
   getPlatformStatus,
   getProductionLaunchProof,
   getProductionRequirements,
@@ -16,6 +19,7 @@ import {
   productionVerificationMarkdownUrl,
   runProductionLaunch,
   verifyProductionVerificationManifest,
+  type BillingConfigStatus,
   type DeployEvidenceReport,
   type LaunchReadiness,
   type OrganizationAccount,
@@ -455,15 +459,9 @@ export default function SettingsPage() {
   const [verificationError, setVerificationError] = useState("");
   const [backendStatus, setBackendStatus] = useState<"checking" | "online" | "offline">("checking");
   const [backendLatency, setBackendLatency] = useState<number | null>(null);
-  // Web Navigator sandbox
-  const [navUrl, setNavUrl] = useState("https://");
-  const [navGoal, setNavGoal] = useState("");
-  const [navRunning, setNavRunning] = useState(false);
-  const [navStatus, setNavStatus] = useState("");
-  const [navStep, setNavStep] = useState(0);
-  const [navResult, setNavResult] = useState<Record<string, unknown> | null>(null);
-  const [navObstacle, setNavObstacle] = useState<{ prompt: string; fields: { key: string; label: string; type: string }[]; sessionId: string } | null>(null);
-  const [navObstacleValues, setNavObstacleValues] = useState<Record<string, string>>({});
+  const [billingConfig, setBillingConfig] = useState<BillingConfigStatus | null>(null);
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [billingError, setBillingError] = useState("");
 
   useEffect(() => {
     const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -491,7 +489,8 @@ export default function SettingsPage() {
       verifyProductionVerificationManifest("latest"),
       getLaunchReadiness(founderId, stackId, baseUrl, "latest"),
       getProductionLaunchProof("latest"),
-    ]).then(([platformResult, orgResult, verificationResult, evidenceResult, requirementsResult, manifestResult, readinessResult, launchProofResult]) => {
+      getOrganizationBilling(founderId),
+    ]).then(([platformResult, orgResult, verificationResult, evidenceResult, requirementsResult, manifestResult, readinessResult, launchProofResult, billingResult]) => {
       if (cancelled) return;
       if (platformResult.status === "fulfilled") setPlatform(platformResult.value);
       if (orgResult.status === "fulfilled") setOrg(orgResult.value);
@@ -501,6 +500,7 @@ export default function SettingsPage() {
       if (manifestResult.status === "fulfilled") setManifestVerification(manifestResult.value);
       if (readinessResult.status === "fulfilled") setLaunchReadiness(readinessResult.value);
       if (launchProofResult.status === "fulfilled") setLatestLaunchProof(launchProofResult.value);
+      if (billingResult.status === "fulfilled") { setOrg(billingResult.value.org); setBillingConfig(billingResult.value.billing); }
     });
     return () => { cancelled = true; };
   }, [founderId, stackId, baseUrl]);
@@ -1003,194 +1003,194 @@ export default function SettingsPage() {
         />
       </Section>
 
-      {/* Web Navigator Sandbox — DEV ONLY */}
-      <Section title="Web Navigator Sandbox (Dev Only)">
-        <div style={{ padding: "16px 20px", display: "grid", gap: 14 }}>
-          <div style={{ padding: "8px 12px", borderRadius: 8, background: c.amberTint, border: `1px solid ${c.amberBorder}` }}>
-            <span style={{ fontSize: 12, color: c.amber, fontWeight: 500 }}>Dev tool — runs a real headless browser on the server.</span>
-          </div>
-
-          {/* Inputs — only shown when not running */}
-          {!navRunning && !navResult && (
-            <div style={{ display: "grid", gap: 8 }}>
-              <label style={{ display: "grid", gap: 5 }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Starting URL</span>
-                <input
-                  value={navUrl}
-                  onChange={e => setNavUrl(e.target.value)}
-                  placeholder="https://platform.openai.com/api-keys"
-                  style={inputStyle()}
-                  onFocus={e => (e.target.style.borderColor = c.blue)}
-                  onBlur={e => (e.target.style.borderColor = c.border)}
-                />
-              </label>
-              <label style={{ display: "grid", gap: 5 }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Goal</span>
-                <textarea
-                  value={navGoal}
-                  onChange={e => setNavGoal(e.target.value)}
-                  placeholder="Navigate to the API keys page and copy the key"
-                  rows={2}
-                  style={{ ...inputStyle(), resize: "vertical", padding: "10px 14px", lineHeight: 1.5 }}
-                  onFocus={e => (e.target.style.borderColor = c.blue)}
-                  onBlur={e => (e.target.style.borderColor = c.border)}
-                />
-              </label>
-            </div>
-          )}
-
-          {/* Run button */}
-          {!navRunning && !navResult && (
-            <button
-              disabled={!navUrl || !navGoal}
-              onClick={async () => {
-                setNavRunning(true);
-                setNavResult(null);
-                setNavObstacle(null);
-                setNavStatus("Starting browser…");
-                setNavStep(0);
-                const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
-                try {
-                  const res = await fetch(`${apiBase}/api/web-navigator/start`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ url: navUrl, goal: navGoal }),
-                  });
-                  const { session_id } = await res.json();
-
-                  const es = new EventSource(`${apiBase}/api/web-navigator/stream/${session_id}`);
-                  es.onmessage = (e) => {
-                    const event = JSON.parse(e.data);
-                    if (event.type === "status") {
-                      setNavStatus(event.message ?? "");
-                      if (event.step) setNavStep(event.step);
-                    } else if (event.type === "need_input") {
-                      setNavObstacle({ prompt: event.prompt, fields: event.fields, sessionId: session_id });
-                      setNavObstacleValues({});
-                      setNavStatus("Waiting for your input…");
-                    } else if (event.type === "done") {
-                      es.close();
-                      setNavRunning(false);
-                      setNavObstacle(null);
-                      setNavResult(event);
-                    } else if (event.type === "error") {
-                      es.close();
-                      setNavRunning(false);
-                      setNavObstacle(null);
-                      setNavResult({ success: false, message: event.message });
-                    }
-                  };
-                  es.onerror = () => {
-                    es.close();
-                    setNavRunning(false);
-                    setNavResult({ success: false, message: "Connection to browser lost." });
-                  };
-                } catch (err) {
-                  setNavRunning(false);
-                  setNavResult({ success: false, message: String(err) });
-                }
-              }}
-              style={{
-                fontSize: 13, padding: "7px 18px", borderRadius: 8, fontWeight: 600, alignSelf: "start",
-                background: !navUrl || !navGoal ? c.border : c.blue,
-                color: !navUrl || !navGoal ? c.textMuted : "#fff",
-                border: "none", cursor: !navUrl || !navGoal ? "not-allowed" : "pointer",
-              }}
-            >
-              Run Navigator
-            </button>
-          )}
-
-          {/* Live status while running */}
-          {navRunning && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 8, background: c.blueTint, border: `1px solid #BFDBFE` }}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: c.blue, flexShrink: 0, animation: "pulse 1.5s ease-in-out infinite" }} />
-              <div>
-                <span style={{ fontSize: 13, color: c.blue, fontWeight: 500 }}>{navStatus || "Running…"}</span>
-                {navStep > 0 && <span style={{ fontSize: 11, color: c.textMuted, marginLeft: 8 }}>step {navStep}</span>}
+      {/* Billing */}
+      <Section title="Billing">
+        <div style={{ padding: "16px 20px", display: "grid", gap: 16 }}>
+          {/* Current plan card */}
+          {org && (
+            <div style={{
+              display: "grid", gap: 0,
+              borderRadius: 12, border: `1px solid ${c.border}`,
+              overflow: "hidden",
+            }}>
+              {/* Plan header */}
+              <div style={{
+                padding: "14px 18px",
+                background: `linear-gradient(135deg, ${c.blue} 0%, #1D4ED8 100%)`,
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+              }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.7)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Current Plan</p>
+                  <p style={{ margin: "3px 0 0", fontSize: 20, fontWeight: 700, color: "#fff" }}>
+                    {org.entitlements?.name ?? org.subscription?.plan ?? "Beta"}
+                  </p>
+                </div>
+                <span style={{
+                  fontSize: 11, padding: "4px 12px", borderRadius: 999, fontWeight: 600,
+                  background: org.subscription?.status === "active" ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.1)",
+                  color: "#fff", border: "1px solid rgba(255,255,255,0.3)",
+                  textTransform: "capitalize",
+                }}>
+                  {org.subscription?.status ?? "active"}
+                </span>
               </div>
-            </div>
-          )}
 
-          {/* Obstacle prompt — inline, appears mid-run */}
-          {navObstacle && (
-            <div style={{ borderRadius: 10, border: `1px solid ${c.amberBorder}`, background: c.amberTint, padding: "14px 16px", display: "grid", gap: 10 }}>
-              <div>
-                <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 600, color: c.text }}>Agent needs your help</p>
-                <p style={{ margin: 0, fontSize: 13, color: c.textSecondary }}>{navObstacle.prompt}</p>
-              </div>
-              <div style={{ display: "grid", gap: 8 }}>
-                {navObstacle.fields.map(field => (
-                  <label key={field.key} style={{ display: "grid", gap: 4 }}>
-                    <span style={{ fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>{field.label}</span>
-                    <input
-                      type={field.type === "password" ? "password" : field.type === "number" ? "number" : "text"}
-                      value={navObstacleValues[field.key] ?? ""}
-                      onChange={e => setNavObstacleValues(v => ({ ...v, [field.key]: e.target.value }))}
-                      style={inputStyle()}
-                      onFocus={e => (e.target.style.borderColor = c.blue)}
-                      onBlur={e => (e.target.style.borderColor = c.border)}
-                    />
-                  </label>
+              {/* Plan details grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", borderTop: `1px solid ${c.border}` }}>
+                {[
+                  {
+                    label: "Monthly Runs",
+                    value: org.entitlements?.monthly_runs != null
+                      ? `${org.usage?.runs ?? 0} / ${org.entitlements.monthly_runs === -1 ? "∞" : org.entitlements.monthly_runs}`
+                      : "—",
+                  },
+                  {
+                    label: "Team Seats",
+                    value: org.entitlements?.team_seats != null
+                      ? `${Object.keys(org.members ?? {}).length} / ${org.entitlements.team_seats === -1 ? "∞" : org.entitlements.team_seats}`
+                      : "—",
+                  },
+                  {
+                    label: "Connector Syncs / Day",
+                    value: org.entitlements?.connector_syncs_per_day != null
+                      ? (org.entitlements.connector_syncs_per_day === -1 ? "Unlimited" : String(org.entitlements.connector_syncs_per_day))
+                      : "—",
+                  },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{
+                    padding: "14px 18px",
+                    borderRight: `1px solid ${c.border}`,
+                  }}>
+                    <p style={{ margin: 0, fontSize: 11, color: c.textMuted, fontWeight: 500 }}>{label}</p>
+                    <p style={{ margin: "4px 0 0", fontSize: 15, fontWeight: 600, color: c.text }}>{value}</p>
+                  </div>
                 ))}
               </div>
-              <button
-                onClick={async () => {
-                  const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
-                  await fetch(`${apiBase}/api/web-navigator/respond/${navObstacle!.sessionId}`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ fields: navObstacleValues }),
-                  });
-                  setNavObstacle(null);
-                  setNavStatus("Resuming…");
-                }}
-                style={{
-                  fontSize: 13, padding: "7px 16px", borderRadius: 8, fontWeight: 600, alignSelf: "start",
-                  background: c.blue, color: "#fff", border: "none", cursor: "pointer",
-                }}
-              >
-                Continue →
-              </button>
+
+              {/* Billing period */}
+              {org.subscription?.current_period_end && (
+                <div style={{ padding: "12px 18px", borderTop: `1px solid ${c.border}`, background: c.surface, display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, color: c.textMuted }}>Next billing date:</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: c.textSecondary }}>
+                    {new Date(org.subscription.current_period_end).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+                  </span>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Result */}
-          {navResult && (
-            <div style={{ display: "grid", gap: 10 }}>
-              <div style={{ borderRadius: 10, border: `1px solid ${navResult.success ? c.greenBorder : c.redBorder}`, background: navResult.success ? c.greenTint : c.redTint, padding: "14px 16px", display: "grid", gap: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <Badge color={navResult.success ? "green" : "red"}>{navResult.success ? "Success" : "Failed"}</Badge>
-                  <span style={{ fontSize: 13, color: c.text, fontWeight: 500 }}>{String(navResult.message ?? "")}</span>
+          {/* Feature flags */}
+          {org?.entitlements && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {[
+                { label: "Approval Workflows", enabled: org.entitlements.approval_workflows },
+                { label: "Company Brain", enabled: org.entitlements.company_brain },
+              ].map(({ label, enabled }) => (
+                <div key={label} style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "10px 14px", borderRadius: 10,
+                  background: enabled ? c.greenTint : c.surface,
+                  border: `1px solid ${enabled ? c.greenBorder : c.border}`,
+                }}>
+                  <span style={{ fontSize: 13, color: c.textSecondary, fontWeight: 500 }}>{label}</span>
+                  <Badge color={enabled ? "green" : "grey"}>{enabled ? "Included" : "Upgrade"}</Badge>
                 </div>
-                {!!navResult.url && (
-                  <p style={{ margin: 0, fontSize: 12, color: c.grey }}>
-                    <a href={String(navResult.url)} target="_blank" rel="noreferrer" style={{ color: c.blue }}>{String(navResult.url)}</a>
-                    {" · "}{String(navResult.steps ?? 0)} steps
-                  </p>
-                )}
-                {!!navResult.extracted && Object.keys(navResult.extracted as object).length > 0 && (
-                  <div style={{ display: "grid", gap: 5, marginTop: 4 }}>
-                    <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Extracted</p>
-                    {Object.entries(navResult.extracted as Record<string, string>).map(([k, v]) => (
-                      <div key={k} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                        <span style={{ fontSize: 11, color: c.grey, minWidth: 130, flexShrink: 0 }}>{k}</span>
-                        <code style={{ fontSize: 11, color: c.text, background: "#fff", padding: "2px 8px", borderRadius: 5, border: `1px solid ${c.border}`, wordBreak: "break-all" }}>{v}</code>
+              ))}
+            </div>
+          )}
+
+          {/* Available plans */}
+          {billingConfig?.plans && Object.keys(billingConfig.plans).length > 0 && (
+            <div style={{ display: "grid", gap: 8 }}>
+              <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Available Plans</p>
+              <div style={{ display: "grid", gap: 6 }}>
+                {Object.entries(billingConfig.plans).map(([planId, plan]) => {
+                  const isCurrent = (org?.entitlements?.plan_id ?? org?.subscription?.plan) === planId;
+                  return (
+                    <div key={planId} style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "12px 16px", borderRadius: 10,
+                      border: `1px solid ${isCurrent ? c.blue : c.border}`,
+                      background: isCurrent ? c.blueTint : c.bg,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div>
+                          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: c.text }}>{plan.name}</p>
+                          <p style={{ margin: "2px 0 0", fontSize: 11, color: c.textMuted }}>
+                            {plan.monthly_runs === -1 ? "Unlimited" : plan.monthly_runs} runs · {plan.team_seats === -1 ? "Unlimited" : plan.team_seats} seats
+                          </p>
+                        </div>
+                        {isCurrent && <Badge color="blue">Current</Badge>}
                       </div>
-                    ))}
-                  </div>
-                )}
+                      {!isCurrent && plan.self_serve && billingConfig.checkout_available && (
+                        <button
+                          disabled={billingBusy}
+                          onClick={async () => {
+                            setBillingBusy(true);
+                            setBillingError("");
+                            try {
+                              const result = await createOrganizationCheckout(founderId, { plan: planId });
+                              if (result.url) window.location.href = result.url;
+                              else setBillingError(result.error ?? "Failed to start checkout.");
+                            } catch (e) {
+                              setBillingError(e instanceof Error ? e.message : "Failed to start checkout.");
+                            } finally {
+                              setBillingBusy(false);
+                            }
+                          }}
+                          style={{
+                            fontSize: 12, padding: "6px 14px", borderRadius: 8, cursor: "pointer",
+                            background: c.blue, color: "#fff", border: "none", fontWeight: 600,
+                            opacity: billingBusy ? 0.6 : 1,
+                          }}
+                        >
+                          Upgrade
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
+            </div>
+          )}
+
+          {billingError && (
+            <p style={{ margin: 0, fontSize: 12, color: c.red, background: c.redTint, border: `1px solid ${c.redBorder}`, borderRadius: 8, padding: "8px 12px" }}>
+              {billingError}
+            </p>
+          )}
+
+          {/* Manage billing portal */}
+          {billingConfig?.portal_available && (
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <button
-                onClick={() => { setNavResult(null); setNavStatus(""); setNavStep(0); }}
-                style={{ fontSize: 12, padding: "5px 12px", borderRadius: 8, alignSelf: "start", background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer" }}
+                disabled={billingBusy}
+                onClick={async () => {
+                  setBillingBusy(true);
+                  setBillingError("");
+                  try {
+                    const result = await createOrganizationBillingPortal(founderId);
+                    if (result.url) window.location.href = result.url;
+                    else setBillingError(result.error ?? "Failed to open billing portal.");
+                  } catch (e) {
+                    setBillingError(e instanceof Error ? e.message : "Failed to open billing portal.");
+                  } finally {
+                    setBillingBusy(false);
+                  }
+                }}
+                style={{
+                  fontSize: 13, padding: "7px 16px", borderRadius: 8, cursor: "pointer",
+                  background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, fontWeight: 500,
+                  opacity: billingBusy ? 0.6 : 1,
+                }}
               >
-                Run again
+                Manage billing →
               </button>
             </div>
           )}
         </div>
       </Section>
+
     </div>
   );
 }
