@@ -25,7 +25,48 @@ _STEALTH_ARGS = [
     "--disable-blink-features=AutomationControlled",
     "--disable-infobars",
     "--disable-dev-shm-usage",
+    "--disable-setuid-sandbox",
+    "--disable-web-security",
+    "--disable-features=IsolateOrigins,site-per-process",
+    "--flag-switches-begin",
+    "--disable-site-isolation-trials",
+    "--flag-switches-end",
+    "--window-size=1366,768",
 ]
+
+# JS injected before every page load to patch automation fingerprints
+_STEALTH_JS = """
+// Remove webdriver flag
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+
+// Restore chrome runtime object that headless strips
+window.chrome = { runtime: {}, loadTimes: function(){}, csi: function(){}, app: {} };
+
+// Realistic plugins list
+Object.defineProperty(navigator, 'plugins', {
+  get: () => {
+    const arr = [
+      { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+      { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '' },
+      { name: 'Native Client', filename: 'internal-nacl-plugin', description: '' },
+    ];
+    arr.__proto__ = PluginArray.prototype;
+    return arr;
+  }
+});
+
+// Realistic languages
+Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+
+// Hide automation in permissions
+const originalQuery = window.navigator.permissions ? window.navigator.permissions.query : null;
+if (originalQuery) {
+  window.navigator.permissions.query = (parameters) =>
+    parameters.name === 'notifications'
+      ? Promise.resolve({ state: Notification.permission })
+      : originalQuery(parameters);
+}
+"""
 
 
 def _launch_options() -> dict:
@@ -34,6 +75,7 @@ def _launch_options() -> dict:
     args = list(_STEALTH_ARGS)
     headless = settings.browser_headless
     ext = (settings.capsolver_extension_path or "").strip()
+    # Extension works in non-headless; in headless we use the CapSolver API instead
     if ext and Path(ext).exists() and not headless:
         args.extend([
             f"--disable-extensions-except={ext}",
@@ -52,6 +94,114 @@ def _launch_options() -> dict:
     return options
 
 
+def _new_stealth_context(browser, user_agent: str | None = None):
+    """Create a browser context with stealth patches applied to every page."""
+    ctx = browser.new_context(
+        user_agent=user_agent or (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        viewport={"width": 1366, "height": 768},
+        locale="en-US",
+        timezone_id="America/New_York",
+        java_script_enabled=True,
+    )
+    ctx.add_init_script(_STEALTH_JS)
+    return ctx
+
+
+def _human_delay(page, lo: float = 0.8, hi: float = 2.4) -> None:
+    """Random human-like pause — avoids the fixed-2000ms bot timing fingerprint."""
+    import random
+    ms = int(random.uniform(lo, hi) * 1000)
+    page.wait_for_timeout(ms)
+
+
+def _solve_turnstile(page, site_key: str | None = None, site_url: str | None = None) -> bool:
+    """
+    Attempt to solve a Cloudflare Turnstile using the CapSolver API.
+    Returns True if a token was injected, False if unavailable or failed.
+    """
+    from backend.config import settings
+    api_key = (settings.capsolver_api_key or "").strip()
+    if not api_key:
+        return False
+    try:
+        import requests as _req
+        url = site_url or page.url
+        # Auto-detect the site key from the page if not provided
+        if not site_key:
+            try:
+                el = page.locator("[data-sitekey]").first
+                if el.count() > 0:
+                    site_key = el.get_attribute("data-sitekey")
+            except Exception:
+                pass
+        if not site_key:
+            try:
+                content = page.content()
+                import re
+                m = re.search(r'sitekey["\s:=]+["\']([0-9a-f\-]{20,})["\']', content, re.I)
+                if m:
+                    site_key = m.group(1)
+            except Exception:
+                pass
+        if not site_key:
+            logger.warning("Turnstile: could not find site key on %s", url)
+            return False
+
+        # Create task
+        resp = _req.post(
+            "https://api.capsolver.com/createTask",
+            json={
+                "clientKey": api_key,
+                "task": {
+                    "type": "AntiTurnstileTaskProxyLess",
+                    "websiteURL": url,
+                    "websiteKey": site_key,
+                },
+            },
+            timeout=15,
+        )
+        task_id = resp.json().get("taskId")
+        if not task_id:
+            logger.warning("CapSolver: no taskId returned: %s", resp.text[:200])
+            return False
+
+        # Poll for result (up to 90s)
+        for _ in range(30):
+            time.sleep(3)
+            r = _req.post(
+                "https://api.capsolver.com/getTaskResult",
+                json={"clientKey": api_key, "taskId": task_id},
+                timeout=10,
+            )
+            data = r.json()
+            if data.get("status") == "ready":
+                token = data.get("solution", {}).get("token")
+                if token:
+                    # Inject into the page
+                    page.evaluate(f"""
+                        (() => {{
+                            const resp = document.querySelector('[name="cf-turnstile-response"]');
+                            if (resp) resp.value = {token!r};
+                            const cb = window.__cfTurnstileCallback || window.turnstileCallback;
+                            if (cb) cb({token!r});
+                        }})()
+                    """)
+                    logger.info("Turnstile solved via CapSolver API")
+                    return True
+                break
+            if data.get("status") == "failed":
+                logger.warning("CapSolver task failed: %s", data.get("errorDescription"))
+                break
+
+    except Exception as exc:
+        logger.warning("CapSolver Turnstile solve error: %s", exc)
+    return False
+
+
 def provision_github(email: str, password: str, username: str = None, imap_password: str = None) -> dict:
     """
     Create GitHub account + personal access token.
@@ -63,51 +213,55 @@ def provision_github(email: str, password: str, username: str = None, imap_passw
 
     with sync_playwright() as p:
         browser = p.chromium.launch(**_launch_options())
-        ctx = browser.new_context(
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-        )
+        ctx = _new_stealth_context(browser)
         page = ctx.new_page()
 
         try:
             # --- Attempt login first (account may already exist) ---
             page.goto("https://github.com/login", timeout=30000)
+            _human_delay(page, 0.5, 1.2)
             page.fill("input#login_field", email)
+            _human_delay(page, 0.3, 0.7)
             page.fill("input#password", password)
+            _human_delay(page, 0.4, 0.9)
             page.click("input[type=submit]")
-            page.wait_for_timeout(3000)
+            _human_delay(page, 2.0, 4.0)
 
             logged_in = "github.com" in page.url and "login" not in page.url and "session" not in page.url
 
             if not logged_in:
                 # --- Sign up flow (GitHub stepped form) ---
                 page.goto("https://github.com/signup", timeout=30000)
-                page.wait_for_timeout(2000)
+                _human_delay(page, 1.5, 3.0)
 
                 # Step 1: email
                 email_input = page.locator("input[name='user[email]'], input#email, input[type=email]").first
                 email_input.wait_for(timeout=10000)
                 email_input.fill(email)
                 page.keyboard.press("Tab")
-                page.wait_for_timeout(500)
+                _human_delay(page, 0.4, 1.0)
 
                 # Step 2: password (may be on same page or next step)
                 pwd_input = page.locator("input[name='user[password]'], input#password, input[type=password]").first
                 if pwd_input.count() > 0:
                     pwd_input.fill(password)
                     page.keyboard.press("Tab")
-                    page.wait_for_timeout(500)
+                    _human_delay(page, 0.4, 1.0)
 
                 # Step 3: username
                 uname_input = page.locator("input[name='user[login]'], input#login, input[autocomplete=username]").first
                 if uname_input.count() > 0:
                     uname_input.fill(username)
                     page.keyboard.press("Tab")
-                    page.wait_for_timeout(500)
+                    _human_delay(page, 0.4, 1.0)
+
+                # Handle any Turnstile/captcha before submitting
+                _try_solve_turnstile(page)
 
                 # Submit
                 submit = page.locator("button[type=submit]").first
                 submit.click()
-                page.wait_for_timeout(3000)
+                _human_delay(page, 2.5, 4.5)
 
                 # GitHub requires email verification before anything else
                 needs_verify = (
@@ -130,7 +284,7 @@ def provision_github(email: str, password: str, username: str = None, imap_passw
                             if code:
                                 otp_input.fill(code)
                                 page.keyboard.press("Enter")
-                                page.wait_for_timeout(3000)
+                                _human_delay(page, 2.0, 3.5)
                             else:
                                 browser.close()
                                 return {
@@ -143,7 +297,7 @@ def provision_github(email: str, password: str, username: str = None, imap_passw
                             verify_url = wait_for_verification_url(email, imap_password, "github", timeout=300)
                             if verify_url:
                                 page.goto(verify_url, timeout=30000)
-                                page.wait_for_timeout(3000)
+                                _human_delay(page, 2.0, 3.5)
                             else:
                                 browser.close()
                                 return {
@@ -163,10 +317,13 @@ def provision_github(email: str, password: str, username: str = None, imap_passw
 
                 # Re-attempt login after signup
                 page.goto("https://github.com/login", timeout=30000)
+                _human_delay(page, 0.8, 1.5)
                 page.fill("input#login_field", email)
+                _human_delay(page, 0.3, 0.6)
                 page.fill("input#password", password)
+                _human_delay(page, 0.3, 0.6)
                 page.click("input[type=submit]")
-                page.wait_for_timeout(3000)
+                _human_delay(page, 2.0, 3.5)
                 logged_in = "login" not in page.url
 
             if not logged_in:
@@ -182,7 +339,7 @@ def provision_github(email: str, password: str, username: str = None, imap_passw
 
             # --- Create fine-grained personal access token ---
             page.goto("https://github.com/settings/personal-access-tokens/new", timeout=30000)
-            page.wait_for_timeout(2000)
+            _human_delay(page, 1.5, 2.8)
 
             name_field = page.locator("input#token_nickname, input[name='token[nickname]']").first
             if name_field.count() > 0:
@@ -198,7 +355,7 @@ def provision_github(email: str, password: str, username: str = None, imap_passw
                     exp.select_option(index=0)  # first option = no expiry or longest
 
             page.locator("button[type=submit]").last.click()
-            page.wait_for_timeout(2000)
+            _human_delay(page, 1.5, 2.8)
 
             # Extract token
             token_el = page.locator("code#new-oauth-token, [data-value], input.js-token-value").first
@@ -235,38 +392,43 @@ def provision_vercel(email: str, password: str, github_token: str = None, imap_p
 
     with sync_playwright() as p:
         browser = p.chromium.launch(**_launch_options())
-        ctx = browser.new_context()
+        ctx = _new_stealth_context(browser)
         page = ctx.new_page()
 
         try:
             page.goto("https://vercel.com/login", timeout=30000)
+            _human_delay(page, 1.0, 2.0)
 
             if github_token:
                 # Continue with GitHub
                 page.click("button:has-text('Continue with GitHub')")
-                page.wait_for_timeout(3000)
+                _human_delay(page, 2.0, 3.5)
                 # GitHub OAuth redirect
                 if "github.com" in page.url:
                     page.fill("input#login_field", email)
+                    _human_delay(page, 0.3, 0.7)
                     page.fill("input#password", password)
+                    _human_delay(page, 0.3, 0.6)
                     page.click("input[type=submit]")
-                    page.wait_for_timeout(2000)
+                    _human_delay(page, 2.0, 3.0)
                     # Authorize if prompted
                     auth_btn = page.locator("button:has-text('Authorize')")
                     if auth_btn.count() > 0:
                         auth_btn.click()
-                        page.wait_for_timeout(2000)
+                        _human_delay(page, 1.5, 2.5)
             else:
                 page.click("button:has-text('Continue with Email')")
+                _human_delay(page, 0.5, 1.0)
                 page.fill("input[type=email]", email)
+                _human_delay(page, 0.3, 0.6)
                 page.click("button[type=submit]")
-                page.wait_for_timeout(2000)
+                _human_delay(page, 1.5, 2.5)
                 if imap_password:
                     from backend.testing.email_reader import wait_for_verification_url
                     magic_url = wait_for_verification_url(email, imap_password, "vercel", timeout=300)
                     if magic_url:
                         page.goto(magic_url, timeout=30000)
-                        page.wait_for_timeout(4000)
+                        _human_delay(page, 3.0, 5.0)
                     else:
                         browser.close()
                         return {
@@ -284,16 +446,17 @@ def provision_vercel(email: str, password: str, github_token: str = None, imap_p
 
             # Extract token from account settings
             page.goto("https://vercel.com/account/tokens", timeout=30000)
-            page.wait_for_timeout(2000)
+            _human_delay(page, 1.5, 2.5)
 
             # Click create token
             create_btn = page.locator("button:has-text('Create')")
             if create_btn.count() > 0:
                 create_btn.click()
-                page.wait_for_timeout(1000)
+                _human_delay(page, 0.8, 1.5)
                 page.fill("input[placeholder*='Token Name']", "Astra Deploy Token")
+                _human_delay(page, 0.3, 0.6)
                 page.click("button:has-text('Create Token')")
-                page.wait_for_timeout(1000)
+                _human_delay(page, 1.0, 2.0)
                 token_el = page.locator("input[readonly]").first
                 token = token_el.input_value() if token_el.count() > 0 else None
             else:
@@ -328,21 +491,26 @@ def provision_sendgrid(email: str, password: str, imap_password: str = None) -> 
 
     with sync_playwright() as p:
         browser = p.chromium.launch(**_launch_options())
-        ctx = browser.new_context()
+        ctx = _new_stealth_context(browser)
         page = ctx.new_page()
 
         try:
             page.goto("https://signup.sendgrid.com/", timeout=30000)
+            _human_delay(page, 1.5, 3.0)
             page.fill("input[name='email']", email)
+            _human_delay(page, 0.3, 0.7)
             page.fill("input[name='password']", password)
+            _human_delay(page, 0.3, 0.6)
 
             # Fill required fields
             username_field = page.locator("input[name='username']")
             if username_field.count() > 0:
                 username_field.fill(_slug(email))
+                _human_delay(page, 0.3, 0.6)
 
+            _try_solve_turnstile(page)
             page.click("button[type=submit]")
-            page.wait_for_timeout(3000)
+            _human_delay(page, 2.5, 4.0)
 
             if "app.sendgrid.com" not in page.url:
                 if imap_password:
@@ -350,7 +518,7 @@ def provision_sendgrid(email: str, password: str, imap_password: str = None) -> 
                     verify_url = wait_for_verification_url(email, imap_password, "sendgrid", timeout=300)
                     if verify_url:
                         page.goto(verify_url, timeout=30000)
-                        page.wait_for_timeout(4000)
+                        _human_delay(page, 3.0, 5.0)
                         # If still not on dashboard, bail
                         if "app.sendgrid.com" not in page.url:
                             browser.close()
@@ -375,14 +543,14 @@ def provision_sendgrid(email: str, password: str, imap_password: str = None) -> 
 
             # Create API key
             page.goto("https://app.sendgrid.com/settings/api_keys", timeout=30000)
-            page.wait_for_timeout(2000)
+            _human_delay(page, 1.5, 2.8)
             page.click("button:has-text('Create API Key')")
-            page.wait_for_timeout(1000)
+            _human_delay(page, 0.7, 1.4)
             page.fill("input[name='name']", "Astra Marketing Key")
             # Full access
             page.click("label:has-text('Full Access')")
             page.click("button:has-text('Create & View')")
-            page.wait_for_timeout(2000)
+            _human_delay(page, 1.5, 2.8)
 
             key_el = page.locator(".api-key-text, code, input[readonly]").first
             api_key = key_el.text_content() or key_el.input_value() if key_el.count() > 0 else None
@@ -411,14 +579,12 @@ def provision_composio(email: str, password: str) -> dict:
 
     with sync_playwright() as p:
         browser = p.chromium.launch(**_launch_options())
-        ctx = browser.new_context(
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-        )
+        ctx = _new_stealth_context(browser)
         page = ctx.new_page()
 
         try:
             page.goto("https://app.composio.dev/login", timeout=30000)
-            page.wait_for_timeout(2000)
+            _human_delay(page, 1.5, 2.5)
 
             # Click "Continue with GitHub"
             github_btn = page.locator(
@@ -427,28 +593,30 @@ def provision_composio(email: str, password: str) -> dict:
             ).first
             if github_btn.count() > 0:
                 github_btn.click()
-                page.wait_for_timeout(4000)
+                _human_delay(page, 2.5, 4.0)
             else:
                 # Try direct GitHub OAuth URL pattern used by many SaaS
                 page.goto("https://app.composio.dev/auth/github", timeout=30000)
-                page.wait_for_timeout(3000)
+                _human_delay(page, 2.0, 3.5)
 
             # GitHub OAuth consent screen
             if "github.com" in page.url:
                 login_field = page.locator("input#login_field, input[name='login']").first
                 if login_field.count() > 0:
                     login_field.fill(email)
+                    _human_delay(page, 0.3, 0.6)
                 pwd_field = page.locator("input#password, input[name='password']").first
                 if pwd_field.count() > 0:
                     pwd_field.fill(password)
+                    _human_delay(page, 0.3, 0.6)
                 page.locator("input[type=submit], button[type=submit]").first.click()
-                page.wait_for_timeout(3000)
+                _human_delay(page, 2.0, 3.5)
 
                 # Authorize Composio app if consent screen appears
                 authorize_btn = page.locator("button:has-text('Authorize'), input[value='Authorize']").first
                 if authorize_btn.count() > 0:
                     authorize_btn.click()
-                    page.wait_for_timeout(4000)
+                    _human_delay(page, 2.5, 4.0)
 
             # Wait for redirect back to Composio dashboard
             try:
@@ -471,7 +639,7 @@ def provision_composio(email: str, password: str) -> dict:
                 "https://app.composio.dev/settings/api-keys",
             ]:
                 page.goto(settings_url, timeout=15000)
-                page.wait_for_timeout(2000)
+                _human_delay(page, 1.5, 2.8)
 
                 # Look for existing key or generate new one
                 api_key = _extract_composio_key(page)
@@ -483,7 +651,7 @@ def provision_composio(email: str, password: str) -> dict:
                     btn = page.locator(f"button:has-text('{label}')").first
                     if btn.count() > 0:
                         btn.click()
-                        page.wait_for_timeout(2000)
+                        _human_delay(page, 1.5, 2.8)
                         api_key = _extract_composio_key(page)
                         if api_key:
                             break
@@ -560,9 +728,7 @@ def provision_composio_oauth_apps(
 
     with sync_playwright() as p:
         browser = p.chromium.launch(**_launch_options())
-        ctx = browser.new_context(
-            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-        )
+        ctx = _new_stealth_context(browser)
         page = ctx.new_page()
         try:
             for app, url in oauth_urls.items():
@@ -605,7 +771,7 @@ def _complete_composio_oauth_app(
         page.goto("https://linear.app/signup", timeout=30000)
     else:
         page.goto(url, timeout=30000)
-    page.wait_for_timeout(1500)
+    _human_delay(page, 1.0, 2.0)
 
     while time.time() < deadline:
         page = _latest_page(page)
@@ -619,21 +785,25 @@ def _complete_composio_oauth_app(
         page_text = _page_text(page)
 
         if app == "linear" and _has_turnstile_challenge(page):
-            return _interaction_required_result(
-                app=app,
-                provider="linear",
-                category="anti_bot",
-                detail="Linear signup/login is blocked by a Cloudflare Turnstile challenge.",
-                url=current,
-                state=page_text,
-                next_step="Complete the verification challenge in-browser, then resume the integration flow.",
-            )
+            solved = _try_solve_turnstile(page)
+            if not solved:
+                return _interaction_required_result(
+                    app=app,
+                    provider="linear",
+                    category="anti_bot",
+                    detail="Linear signup/login is blocked by a Cloudflare Turnstile challenge that could not be solved automatically.",
+                    url=current,
+                    state=page_text,
+                    next_step="Add CAPSOLVER_API_KEY to env for automatic solving, or complete the challenge in-browser then resume.",
+                )
+            # Solved — click through any remaining submit buttons
+            _click_generic_oauth_buttons(page)
 
         if "accounts.google.com" in host:
             _handle_google_login(page, email, password)
             if app == "linear" and _is_google_rejected(page):
                 page.goto("https://linear.app/signup", timeout=30000)
-                page.wait_for_timeout(1500)
+                _human_delay(page, 1.0, 2.0)
         elif "linkedin.com" in host:
             _handle_linkedin_login(page, email, password)
         elif "notion" in host:
@@ -656,7 +826,7 @@ def _complete_composio_oauth_app(
             email_password=password,
         )
         _click_generic_oauth_buttons(page)
-        page.wait_for_timeout(2500)
+        _human_delay(page, 2.0, 3.5)
 
     status = get_status(founder_id)
     if status.get(app):
@@ -713,7 +883,7 @@ def _click_first(page, selectors: list[str]) -> bool:
             el = page.locator(selector).first
             if el.count() > 0 and el.is_visible():
                 el.click(timeout=4000)
-                page.wait_for_timeout(800)
+                _human_delay(page, 0.5, 1.1)
                 return True
         except Exception:
             continue
@@ -733,7 +903,7 @@ def _fill_first(page, selectors: list[str], value: str) -> bool:
             el = page.locator(selector).first
             if el.count() > 0 and el.is_visible():
                 el.fill(value, timeout=4000)
-                page.wait_for_timeout(500)
+                _human_delay(page, 0.3, 0.7)
                 return True
         except Exception:
             continue
@@ -779,12 +949,23 @@ def _click_generic_oauth_buttons(page) -> bool:
 
 def _has_turnstile_challenge(page) -> bool:
     page_text = _page_text(page)
-    if "verifying it’s you" in page_text or "verifying it's you" in page_text or "turnstile" in page_text:
+    if "verifying it’s you" in page_text or "turnstile" in page_text or "cf-challenge" in page_text:
         return True
     try:
-        return page.locator("input[name='cf-turnstile-response']").count() > 0
+        return page.locator("input[name=’cf-turnstile-response’], iframe[src*=’challenges.cloudflare.com’]").count() > 0
     except Exception:
         return False
+
+
+def _try_solve_turnstile(page) -> bool:
+    """Detect and attempt to solve Turnstile; return True if solved or not present."""
+    if not _has_turnstile_challenge(page):
+        return True
+    logger.info("Turnstile detected on %s — attempting CapSolver API solve", page.url)
+    solved = _solve_turnstile(page)
+    if solved:
+        _human_delay(page, 1.0, 2.0)
+    return solved
 
 
 def _is_google_rejected(page) -> bool:
@@ -854,7 +1035,7 @@ def _maybe_handle_email_challenge(
         link = None
     if link:
         page.goto(link, timeout=30000)
-        page.wait_for_timeout(1500)
+        _human_delay(page, 1.0, 2.0)
         return True
     return _maybe_handle_webmail_fallback(page, mailbox_email, mailbox_password, service, state, last_imap_error)
 
@@ -885,16 +1066,16 @@ def _open_gmail_for_verification(page, email: str, password: str, service: str) 
     try:
         inbox = page.context.new_page()
         inbox.goto("https://mail.google.com", timeout=30000)
-        inbox.wait_for_timeout(1500)
+        _human_delay(inbox, 1.0, 2.0)
         if "accounts.google.com" in (inbox.url or ""):
             _handle_google_login(inbox, email, password)
-            inbox.wait_for_timeout(3000)
+            _human_delay(inbox, 2.0, 3.5)
         if "mail.google.com" not in (inbox.url or ""):
             return False
         query = _gmail_service_query(service)
         try:
             inbox.goto(f"https://mail.google.com/mail/u/0/#search/{query}", timeout=30000)
-            inbox.wait_for_timeout(3000)
+            _human_delay(inbox, 2.0, 3.5)
         except Exception:
             pass
         return True
@@ -962,7 +1143,7 @@ def _handle_notion_login(page, email: str, password: str, imap_password: str | N
     page_text = _page_text(page)
     if "new user? sign up" in page_text or page.url.rstrip("/").endswith("/login"):
         _click_text(page, ["Sign up"])
-        page.wait_for_timeout(1000)
+        _human_delay(page, 0.7, 1.4)
         page_text = _page_text(page)
     if "log in" in page_text or "sign in" in page_text:
         _click_text(page, ["Log in", "Sign in"])

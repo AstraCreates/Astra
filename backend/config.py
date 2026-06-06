@@ -117,6 +117,8 @@ class Settings(BaseSettings):
     browser_headless: bool = True
     # Path to unpacked CapSolver Chrome extension for CAPTCHA bypass (optional)
     capsolver_extension_path: str = ""
+    # CapSolver API key — used for headless Turnstile/hCaptcha solving (no extension needed)
+    capsolver_api_key: str = ""
     # Residential proxy for stealth browsing (optional — format: http://host:port)
     browser_proxy_server: str = ""
     browser_proxy_username: str = ""
