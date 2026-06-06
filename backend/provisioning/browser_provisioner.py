@@ -571,6 +571,7 @@ def _complete_composio_oauth_app(
     page.wait_for_timeout(1500)
 
     while time.time() < deadline:
+        page = _latest_page(page)
         status = get_status(founder_id)
         if status.get(app):
             _persist_connected_composio_app(founder_id, app)
@@ -589,24 +590,25 @@ def _complete_composio_oauth_app(
             _handle_linear_login(page, email, password, imap_password)
         elif "github.com" in host:
             _handle_github_login(page, email, password)
+        elif "app.composio.dev" in host:
+            _handle_composio_return(page)
 
-        _click_first(page, [
-            "button:has-text('Allow access')",
-            "button:has-text('Allow')",
-            "button:has-text('Authorize')",
-            "button:has-text('Accept')",
-            "button:has-text('Continue')",
-            "button:has-text('Grant access')",
-            "button:has-text('Approve')",
-            "input[type='submit']",
-        ])
+        service = app if app in {"notion", "linear", "github"} else ("google" if "google" in app or app == "gmail" else app)
+        _maybe_handle_email_challenge(page, email, imap_password, service)
+        _click_generic_oauth_buttons(page)
         page.wait_for_timeout(2500)
 
     status = get_status(founder_id)
     if status.get(app):
         _persist_connected_composio_app(founder_id, app)
         return {"connected": True, "app": app}
-    return {"connected": False, "app": app, "error": f"Timed out completing OAuth for {app}"}
+    return {
+        "connected": False,
+        "app": app,
+        "error": f"Timed out completing OAuth for {app}",
+        "last_url": getattr(page, "url", ""),
+        "last_state": _page_text(page)[:240],
+    }
 
 
 def _persist_connected_composio_app(founder_id: str, app: str) -> None:
@@ -633,6 +635,13 @@ def _click_first(page, selectors: list[str]) -> bool:
     return False
 
 
+def _click_text(page, labels: list[str]) -> bool:
+    selectors = [f"button:has-text('{label}')" for label in labels]
+    selectors += [f"a:has-text('{label}')" for label in labels]
+    selectors += [f"text={label}" for label in labels]
+    return _click_first(page, selectors)
+
+
 def _fill_first(page, selectors: list[str], value: str) -> bool:
     for selector in selectors:
         try:
@@ -646,59 +655,131 @@ def _fill_first(page, selectors: list[str], value: str) -> bool:
     return False
 
 
+def _latest_page(page):
+    try:
+        pages = list(page.context.pages)
+    except Exception:
+        return page
+    return pages[-1] if pages else page
+
+
+def _page_text(page) -> str:
+    try:
+        return (page.content() or "").lower()
+    except Exception:
+        return ""
+
+
+def _click_generic_oauth_buttons(page) -> bool:
+    return _click_first(page, [
+        "button:has-text('Allow access')",
+        "button:has-text('Allow')",
+        "button:has-text('Authorize')",
+        "button:has-text('Accept')",
+        "button:has-text('Continue')",
+        "button:has-text('Grant access')",
+        "button:has-text('Approve')",
+        "button:has-text('Confirm')",
+        "button:has-text('Open app')",
+        "button:has-text('Use this account')",
+        "button:has-text('Select')",
+        "button:has-text('Connect')",
+        "button:has-text('Sign in')",
+        "button:has-text('Log in')",
+        "button:has-text('Next')",
+        "button:has-text('Done')",
+        "input[type='submit']",
+    ])
+
+
+def _maybe_handle_email_challenge(page, email: str, imap_password: str | None, service: str) -> bool:
+    page_text = _page_text(page)
+    if not imap_password:
+        return False
+    if not any(marker in page_text for marker in (
+        "check your email",
+        "verification code",
+        "enter code",
+        "one-time code",
+        "magic link",
+        "confirm your email",
+    )):
+        return False
+    from backend.testing.email_reader import wait_for_verification_code, wait_for_verification_url
+
+    code = wait_for_verification_code(email, imap_password, service, timeout=90)
+    if code:
+        filled = _fill_first(page, [
+            "input[autocomplete='one-time-code']",
+            "input[inputmode='numeric']",
+            "input[name='code']",
+            "input[name='otp']",
+            "input[type='text']",
+        ], code)
+        if filled:
+            _click_text(page, ["Continue", "Verify", "Submit", "Next"])
+            return True
+    link = wait_for_verification_url(email, imap_password, service, timeout=90)
+    if link:
+        page.goto(link, timeout=30000)
+        page.wait_for_timeout(1500)
+        return True
+    return False
+
+
 def _handle_google_login(page, email: str, password: str) -> None:
+    page_text = _page_text(page)
+    if "@gmail.com" in email or "@googlemail.com" in email:
+        _click_text(page, [email, "Use another account"])
     _fill_first(page, ["input[type='email']", "input[name='identifier']"], email)
     _click_first(page, ["#identifierNext", "button:has-text('Next')"])
     _fill_first(page, ["input[type='password']", "input[name='Passwd']"], password)
     _click_first(page, ["#passwordNext", "button:has-text('Next')"])
-    _click_first(page, ["button:has-text('Continue')", "button:has-text('Allow')", "button:has-text('Accept')"])
+    if "choose an account" in page_text or "select an account" in page_text:
+        _click_text(page, [email, "Use another account"])
+    _click_text(page, ["Continue", "Allow", "Accept", "Continue as", "Grant access"])
 
 
 def _handle_linkedin_login(page, email: str, password: str) -> None:
     _fill_first(page, ["input#username", "input[name='session_key']", "input[type='email']"], email)
     _fill_first(page, ["input#password", "input[name='session_password']", "input[type='password']"], password)
     _click_first(page, ["button[type='submit']", "button:has-text('Sign in')", "button:has-text('Continue')"])
-    _click_first(page, ["button:has-text('Allow')", "button:has-text('Continue')"])
+    _click_text(page, ["Allow", "Continue", "Approve", "Accept"])
 
 
 def _handle_notion_login(page, email: str, password: str, imap_password: str | None) -> None:
+    page_text = _page_text(page)
+    if "log in" in page_text or "sign in" in page_text:
+        _click_text(page, ["Log in", "Sign in"])
     _fill_first(page, ["input[type='email']", "input[name='email']"], email)
-    _click_first(page, ["button:has-text('Continue with email')", "button:has-text('Continue')"])
+    _click_text(page, ["Continue with email", "Continue", "Email me a code"])
     _fill_first(page, ["input[type='password']", "input[name='password']"], password)
-    _click_first(page, ["button:has-text('Continue')", "button:has-text('Sign in')"])
-    if imap_password and ("check your email" in page.content().lower() or "verification code" in page.content().lower()):
-        from backend.testing.email_reader import wait_for_verification_code, wait_for_verification_url
-        code = wait_for_verification_code(email, imap_password, "notion", timeout=90)
-        if code:
-            _fill_first(page, ["input[autocomplete='one-time-code']", "input[inputmode='numeric']", "input[type='text']"], code)
-            _click_first(page, ["button:has-text('Continue')", "button:has-text('Verify')"])
-        else:
-            link = wait_for_verification_url(email, imap_password, "notion", timeout=90)
-            if link:
-                page.goto(link, timeout=30000)
+    _click_text(page, ["Continue", "Sign in", "Open Notion"])
+    _maybe_handle_email_challenge(page, email, imap_password, "notion")
+    _click_text(page, ["Select pages", "Allow access", "Allow", "Continue", "Authorize"])
 
 
 def _handle_linear_login(page, email: str, password: str, imap_password: str | None) -> None:
+    page_text = _page_text(page)
+    if "log in" in page_text or "sign in" in page_text:
+        _click_text(page, ["Log in", "Sign in"])
     _fill_first(page, ["input[type='email']", "input[name='email']"], email)
-    _click_first(page, ["button:has-text('Continue')", "button[type='submit']"])
+    _click_text(page, ["Continue", "Continue with email", "Next"])
     _fill_first(page, ["input[type='password']", "input[name='password']"], password)
-    _click_first(page, ["button:has-text('Sign in')", "button:has-text('Continue')"])
-    if imap_password and ("check your email" in page.content().lower() or "verification code" in page.content().lower()):
-        from backend.testing.email_reader import wait_for_verification_code, wait_for_verification_url
-        code = wait_for_verification_code(email, imap_password, "linear", timeout=90)
-        if code:
-            _fill_first(page, ["input[inputmode='numeric']", "input[autocomplete='one-time-code']", "input[type='text']"], code)
-            _click_first(page, ["button:has-text('Continue')", "button:has-text('Verify')"])
-        else:
-            link = wait_for_verification_url(email, imap_password, "linear", timeout=90)
-            if link:
-                page.goto(link, timeout=30000)
+    _click_text(page, ["Sign in", "Continue", "Open Linear"])
+    _maybe_handle_email_challenge(page, email, imap_password, "linear")
+    _click_text(page, ["Allow access", "Allow", "Authorize", "Approve", "Continue"])
 
 
 def _handle_github_login(page, email: str, password: str) -> None:
     _fill_first(page, ["input#login_field", "input[name='login']", "input[type='email']"], email)
     _fill_first(page, ["input#password", "input[name='password']", "input[type='password']"], password)
     _click_first(page, ["input[type='submit']", "button[type='submit']", "button:has-text('Sign in')"])
+    _click_text(page, ["Authorize", "Authorize Composio", "Continue", "Approve"])
+
+
+def _handle_composio_return(page) -> None:
+    _click_text(page, ["Continue", "Open app", "Back to app", "Done"])
 
 
 def _slug(email: str) -> str:
