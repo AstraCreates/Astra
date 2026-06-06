@@ -46,6 +46,8 @@ def wait_for_verification_url(
             if url:
                 logger.info("Found %s verification URL: %s", service, url[:80])
                 return url
+        except RuntimeError:
+            raise
         except Exception as e:
             logger.debug("IMAP poll error: %s", e)
         time.sleep(poll_interval)
@@ -77,6 +79,8 @@ def wait_for_verification_code(
             if code:
                 logger.info("Found %s OTP code: %s", service, code)
                 return code
+        except RuntimeError:
+            raise
         except Exception as e:
             logger.debug("IMAP poll error: %s", e)
         time.sleep(poll_interval)
@@ -88,7 +92,10 @@ def wait_for_verification_code(
 def _check_inbox(email_address: str, password: str, senders: list[str]) -> str | None:
     mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
     try:
-        mail.login(email_address, password)
+        try:
+            mail.login(email_address, password)
+        except imaplib.IMAP4.error as exc:
+            raise RuntimeError("IMAP authentication failed for the configured test inbox") from exc
 
         result = None
         # Search both inbox and spam — Gmail may filter automated emails
@@ -135,7 +142,10 @@ def _check_inbox(email_address: str, password: str, senders: list[str]) -> str |
 def _check_inbox_for_code(email_address: str, password: str, senders: list[str]) -> str | None:
     mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT)
     try:
-        mail.login(email_address, password)
+        try:
+            mail.login(email_address, password)
+        except imaplib.IMAP4.error as exc:
+            raise RuntimeError("IMAP authentication failed for the configured test inbox") from exc
 
         for folder in ["INBOX", "[Gmail]/Spam", "[Gmail]/All Mail"]:
             try:
