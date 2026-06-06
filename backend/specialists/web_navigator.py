@@ -20,6 +20,8 @@ It will autonomously:
 - Handle sign-up flows including email verification
 - Detect and extract API keys, tokens, and credentials from dashboards
 - Handle multi-step flows (e.g. sign up → verify email → navigate to API settings → copy key)
+- Follow popup/new-tab flows and continue on the newest active page
+- Inspect settings/developer/billing pages when the goal involves provisioning or key retrieval
 
 ## Credentials
 When the founder provides credentials (email, password, card details), pass them as the
@@ -35,6 +37,12 @@ Always report:
 ## When vision_browse can't finish something
 If the task requires human interaction (e.g., phone verification, CAPTCHA solving, 2FA app),
 report exactly what is needed from the founder and provide the partial state.
+
+## Persistence rules
+- For sign-up goals, do not stop right after form submission; continue through email verification and into the dashboard.
+- For API-key goals, do not stop at the homepage; navigate to Settings / Developers / API / Keys until you either extract the key or can clearly state what human step blocks it.
+- If credentials are available, use them before asking for input.
+- If a verification code or magic link is available in the test inbox, use it automatically.
 
 ## Common workflows
 - **Grab API key**: navigate to service dashboard → find API section → copy key

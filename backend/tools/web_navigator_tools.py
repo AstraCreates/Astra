@@ -42,6 +42,143 @@ def _scan_for_keys(text: str) -> dict[str, str]:
     return found
 
 
+def _goal_requests_secret(goal: str) -> bool:
+    goal_l = (goal or "").lower()
+    markers = (
+        "api key", "token", "secret", "credentials", "access key", "webhook",
+        "copy key", "grab key", "get key", "auth key",
+    )
+    return any(marker in goal_l for marker in markers)
+
+
+def _looks_like_email_verification(text: str) -> bool:
+    t = (text or "").lower()
+    hints = (
+        "check your email", "verification code", "verify your email",
+        "enter the code", "magic link", "confirmation code", "one-time code",
+    )
+    return any(hint in t for hint in hints)
+
+
+def _service_name_from_url(url: str) -> str:
+    m = re.search(r"https?://(?:www\.)?([^./]+)", url or "", re.IGNORECASE)
+    return (m.group(1) if m else "").strip()
+
+
+async def _capture_page_context(page: Any) -> dict[str, Any]:
+    title = ""
+    body_text = ""
+    forms: list[dict[str, str]] = []
+    elements: list[dict[str, str]] = []
+    try:
+        title = await page.title()
+    except Exception:
+        pass
+    try:
+        body_text = await page.inner_text("body")
+    except Exception:
+        pass
+    try:
+        forms = await page.evaluate("""() => {
+            const candidates = Array.from(document.querySelectorAll('input, textarea, select')).slice(0, 20);
+            return candidates.map((el) => ({
+                tag: el.tagName.toLowerCase(),
+                type: (el.getAttribute('type') || '').toLowerCase(),
+                name: el.getAttribute('name') || '',
+                id: el.id || '',
+                placeholder: el.getAttribute('placeholder') || '',
+                label: el.getAttribute('aria-label') || el.getAttribute('autocomplete') || ''
+            }));
+        }""")
+    except Exception:
+        forms = []
+    try:
+        elements = await page.evaluate("""() => {
+            const els = Array.from(document.querySelectorAll('a, button, [role="button"], input[type="submit"], input[type="button"]')).slice(0, 40);
+            return els.map((el) => ({
+                tag: el.tagName.toLowerCase(),
+                text: (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().slice(0, 80),
+                id: el.id || '',
+                href: el.href || ''
+            })).filter((el) => el.text || el.id || el.href);
+        }""")
+    except Exception:
+        elements = []
+    return {
+        "url": getattr(page, "url", ""),
+        "title": title,
+        "body_text": body_text[:4000],
+        "forms": forms[:12],
+        "elements": elements[:20],
+    }
+
+
+async def _maybe_switch_to_latest_page(browser: Any, page: Any) -> Any:
+    try:
+        pages = list(page.context.pages)
+    except Exception:
+        return page
+    if not pages:
+        return page
+    latest = pages[-1]
+    if latest is not page:
+        try:
+            await latest.wait_for_load_state("domcontentloaded", timeout=5000)
+        except Exception:
+            pass
+        return latest
+    return page
+
+
+async def _extract_goal_artifacts(page: Any, goal: str) -> dict[str, Any]:
+    page_text = ""
+    try:
+        page_text = await page.inner_text("body")
+    except Exception:
+        page_text = ""
+    extracted = _scan_for_keys(page_text)
+    if _goal_requests_secret(goal) and extracted:
+        return {
+            "done": True,
+            "payload": {
+                "success": True,
+                "message": "Found requested credentials on the page.",
+                "url": page.url,
+                "extracted": extracted,
+            },
+        }
+    return {"done": False, "page_text": page_text, "extracted": extracted}
+
+
+async def _maybe_handle_email_verification(page: Any, goal: str, session: dict) -> dict | None:
+    ctx = await _capture_page_context(page)
+    page_text = ctx.get("body_text", "")
+    if not _looks_like_email_verification(page_text):
+        return None
+    verification = await check_email_for_verification(_service_name_from_url(page.url), timeout_seconds=45)
+    code = verification.get("code", "")
+    link = verification.get("link", "")
+    if link:
+        try:
+            await page.goto(link, wait_until="domcontentloaded", timeout=30000)
+            return {"ok": True, "message": "Opened email verification link automatically."}
+        except Exception as e:
+            return {"ok": False, "message": f"Found verification link but navigation failed: {e}"}
+    if code:
+        session.setdefault("credentials", {})["verification_code"] = code
+        try:
+            code_input = page.locator("input").filter(has_text=None).first
+            if await code_input.count():
+                await code_input.fill(code)
+            else:
+                await page.keyboard.type(code)
+            await page.keyboard.press("Enter")
+            return {"ok": True, "message": "Filled verification code automatically."}
+        except Exception:
+            return {"ok": True, "message": "Captured verification code and added it to available credentials."}
+    return None
+
+
 def _get_vision_client():
     import openai
     from backend.config import settings
@@ -50,7 +187,13 @@ def _get_vision_client():
     return openai.OpenAI(base_url=settings.openrouter_base_url, api_key=key)
 
 
-def _vision_next_action(screenshot_b64: str, goal: str, history: list[dict], credentials: dict) -> dict:
+def _vision_next_action(
+    screenshot_b64: str,
+    goal: str,
+    history: list[dict],
+    credentials: dict,
+    page_context: dict | None = None,
+) -> dict:
     """Ask Gemini Flash what to do next. Can return need_input when hitting an obstacle."""
     cred_hint = ""
     if credentials:
@@ -63,6 +206,7 @@ def _vision_next_action(screenshot_b64: str, goal: str, history: list[dict], cre
     client = _get_vision_client()
     prompt = (
         f"GOAL: {goal}{cred_hint}\n\n"
+        f"PAGE CONTEXT: {json.dumps(page_context or {}, ensure_ascii=True)}\n\n"
         f"HISTORY (last 5): {json.dumps(history[-5:]) if history else '[]'}\n\n"
         "Look at this browser screenshot. Decide the single best next action.\n\n"
         "Respond with ONLY a JSON object. Actions:\n"
@@ -70,6 +214,7 @@ def _vision_next_action(screenshot_b64: str, goal: str, history: list[dict], cre
         '{"action": "click", "selector": "css-selector"}\n'
         '{"action": "click_text", "text": "visible text"}\n'
         '{"action": "type", "selector": "css-selector", "text": "value"}\n'
+        '{"action": "type_credential", "selector": "css-selector", "credential_key": "email|password|verification_code|card_number|name|zip"}\n'
         '{"action": "key", "key": "Enter|Tab|Escape"}\n'
         '{"action": "scroll", "delta_y": 300}\n'
         '{"action": "wait", "ms": 2000}\n'
@@ -82,6 +227,9 @@ def _vision_next_action(screenshot_b64: str, goal: str, history: list[dict], cre
         "- CAPTCHA or phone verification\n"
         "- Security question\n\n"
         "field types: text, email, password, tel, number\n"
+        "Prefer click_text when there is visible text in PAGE CONTEXT. Prefer type_credential when filling known secrets.\n"
+        "If the page is an API/dashboard page, prioritize navigating to Billing / Settings / API / Developers / Keys.\n"
+        "If the goal is sign-up, prioritize email verification completion before declaring done.\n"
         "Do NOT use need_input for things you can figure out yourself.\n"
         "When using 'done', only put things in extracted that the goal explicitly asked for "
         "(e.g. if goal says 'get the API key', include the key; if goal just says 'sign up', extracted should be empty)."
@@ -125,6 +273,23 @@ async def _click_by_text(page: Any, text: str) -> dict:
             return {"ok": True}
         except Exception:
             return {"error": str(e)}
+
+
+async def _fill_best_effort(page: Any, selector: str, text_val: str) -> None:
+    try:
+        await page.fill(selector, text_val, timeout=8000)
+        return
+    except Exception:
+        pass
+    try:
+        await page.click(selector, timeout=8000)
+        await page.keyboard.press("Meta+A")
+        await page.keyboard.press("Backspace")
+        await page.keyboard.type(text_val)
+        return
+    except Exception:
+        pass
+    await page.keyboard.type(text_val)
 
 
 async def vision_browse_streaming(
@@ -192,6 +357,11 @@ async def _vision_browse_inner(session_id, url, goal, max_steps, session, emit, 
     step = 0
     while step < max_steps:
         step += 1
+        page = await _maybe_switch_to_latest_page(browser, page)
+
+        verification_result = await _maybe_handle_email_verification(page, goal, session)
+        if verification_result:
+            await emit("status", {"message": verification_result["message"], "step": step, "url": page.url})
 
         # Take screenshot
         try:
@@ -202,11 +372,23 @@ async def _vision_browse_inner(session_id, url, goal, max_steps, session, emit, 
             await emit("error", {"message": f"Screenshot failed: {e}"})
             break
 
+        extraction_check = await _extract_goal_artifacts(page, goal)
+        if extraction_check.get("done"):
+            await emit("done", {
+                **extraction_check["payload"],
+                "steps": step,
+            })
+            session["status"] = "done"
+            await queue.put(None)
+            await browser.stop()
+            return
+
         await emit("status", {"message": f"Analysing page…", "step": step, "url": page.url})
+        page_context = await _capture_page_context(page)
 
         # Ask vision model
         action = await asyncio.to_thread(
-            _vision_next_action, screenshot_b64, goal, history, session.get("credentials", {})
+            _vision_next_action, screenshot_b64, goal, history, session.get("credentials", {}), page_context
         )
 
         act = action.get("action", "")
@@ -263,6 +445,7 @@ async def _vision_browse_inner(session_id, url, goal, max_steps, session, emit, 
             elif act == "click":
                 await emit("status", {"message": f"Clicking {action.get('selector', '')}", "step": step})
                 await page.click(action["selector"], timeout=10000)
+                page = await _maybe_switch_to_latest_page(browser, page)
                 try:
                     await page.wait_for_load_state("domcontentloaded", timeout=5000)
                 except Exception:
@@ -271,19 +454,29 @@ async def _vision_browse_inner(session_id, url, goal, max_steps, session, emit, 
             elif act == "click_text":
                 await emit("status", {"message": f"Clicking '{action.get('text', '')}'", "step": step})
                 await _click_by_text(page, action["text"])
+                page = await _maybe_switch_to_latest_page(browser, page)
 
             elif act == "type":
                 text_val = action.get("text", "")
                 for cred_key, cred_val in session.get("credentials", {}).items():
-                    text_val = text_val.replace(f"{{{cred_key}}}", cred_val)
+                    text_val = text_val.replace(f"{{{cred_key}}}", str(cred_val))
                 await emit("status", {"message": f"Typing into {action.get('selector', 'field')}", "step": step})
                 if action.get("selector"):
-                    await page.fill(action["selector"], text_val)
+                    await _fill_best_effort(page, action["selector"], text_val)
                 else:
                     await page.keyboard.type(text_val)
 
+            elif act == "type_credential":
+                cred_key = action.get("credential_key", "")
+                text_val = str(session.get("credentials", {}).get(cred_key, ""))
+                if not text_val:
+                    raise RuntimeError(f"Missing credential: {cred_key}")
+                await emit("status", {"message": f"Filling {cred_key}", "step": step})
+                await _fill_best_effort(page, action.get("selector", "input"), text_val)
+
             elif act == "key":
                 await page.keyboard.press(action.get("key", "Enter"))
+                page = await _maybe_switch_to_latest_page(browser, page)
                 try:
                     await page.wait_for_load_state("domcontentloaded", timeout=5000)
                 except Exception:
