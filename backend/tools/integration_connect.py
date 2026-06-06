@@ -15,7 +15,6 @@ Interface:
 import asyncio
 import logging
 import queue as _queue
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -217,30 +216,10 @@ async def _wait_for_login(page, service_domain: str, login_path: str, timeout: f
 
 # ── Credential persistence ────────────────────────────────────────────────────
 
-def _save_and_persist(founder_id: str, service: str, creds: dict, env_map: dict) -> None:
+def _save_founder_credentials(founder_id: str, service: str, creds: dict) -> None:
     from backend.provisioning.credentials_store import store_credentials
-    from backend.config import settings
+
     store_credentials(founder_id, service, creds)
-    env_path = Path(".env")
-    try:
-        lines = env_path.read_text().splitlines(keepends=True) if env_path.exists() else []
-        for env_key, value in env_map.items():
-            if not value:
-                continue
-            updated = False
-            for i, line in enumerate(lines):
-                if line.startswith(f"{env_key}="):
-                    lines[i] = f"{env_key}={value}\n"
-                    updated = True
-                    break
-            if not updated:
-                lines.append(f"{env_key}={value}\n")
-            attr = env_key.lower()
-            if hasattr(settings, attr):
-                setattr(settings, attr, value)
-        env_path.write_text("".join(lines))
-    except Exception as e:
-        logger.warning("Could not persist env keys: %s", e)
 
 
 # ── GitHub ────────────────────────────────────────────────────────────────────
@@ -332,7 +311,7 @@ async def connect_github_live(
                 await send_message({"type": "error", "message": "Could not extract GitHub token — try the manual key option."})
                 return {"error": "token_extraction_failed"}
 
-            _save_and_persist(founder_id, "github", {"token": token}, {"GITHUB_TOKEN": token})
+            _save_founder_credentials(founder_id, "github", {"token": token})
             result = {"status": "connected", "token_prefix": token[:8] + "…"}
             await send_message({"type": "done", **result})
 
@@ -441,7 +420,7 @@ async def connect_vercel_live(
                 await send_message({"type": "error", "message": "Could not extract Vercel token."})
                 return {"error": "token_extraction_failed"}
 
-            _save_and_persist(founder_id, "vercel", {"token": token}, {"VERCEL_TOKEN": token})
+            _save_founder_credentials(founder_id, "vercel", {"token": token})
             result = {"status": "connected", "token_prefix": token[:8] + "…"}
             await send_message({"type": "done", **result})
 
@@ -553,7 +532,7 @@ async def connect_sendgrid_live(
                 await send_message({"type": "error", "message": "Could not extract SendGrid API key."})
                 return {"error": "key_extraction_failed"}
 
-            _save_and_persist(founder_id, "sendgrid", {"api_key": api_key}, {"SENDGRID_API_KEY": api_key})
+            _save_founder_credentials(founder_id, "sendgrid", {"api_key": api_key})
             result = {"status": "connected", "key_prefix": api_key[:12] + "…"}
             await send_message({"type": "done", **result})
 

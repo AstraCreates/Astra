@@ -1560,7 +1560,6 @@ async def github_callback(code: str = "", state: str = "", error: str = ""):
         return RedirectResponse(url=f"{fe_base}/integrations?github_error=exchange_failed")
 
     store_credentials(founder_id, "github", {"token": token})
-    settings.github_token = token
     logger.info("GitHub OAuth connected for founder %s", founder_id)
 
     return RedirectResponse(url=f"{fe_base}/integrations?github_connected=1")
