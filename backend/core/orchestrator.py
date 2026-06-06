@@ -3,6 +3,7 @@ Hierarchical orchestrator. Receives a goal, plans task graph, dispatches special
 Specialists run in dependency order; results flow back into shared context.
 """
 import asyncio
+import json
 import logging
 from typing import Any
 
@@ -1246,8 +1247,29 @@ class Orchestrator:
                     "next_actor": "founder",
                 })
 
+        # Prune dependencies on agents that aren't actually in this run's task set
+        # (custom stacks, agent-filtered runs, or any plan where an upstream agent was
+        # dropped). An unsatisfiable dep would otherwise leave the task permanently
+        # un-ready and abort its lane as a false "dependency cycle". Research deps are
+        # already in `completed`; everything else must exist in `remaining`.
+        _known_ids = set(completed.keys()) | {t["id"] for t in remaining}
+        for t in remaining:
+            deps = t.get("depends_on", [])
+            pruned = [d for d in deps if d in _known_ids]
+            if len(pruned) != len(deps):
+                logger.info("Pruned unsatisfiable deps for %s: %s -> %s", t["agent"], deps, pruned)
+                t["depends_on"] = pruned
+
         from backend.core import cancellation
-        while remaining or in_flight:
+        # Dependency-driven scheduler: launch each task the instant ITS deps are met
+        # and wake on the first completion — never wait for a whole "wave" to finish.
+        # The old gather-per-wave barrier serialized the pipeline: web (deps: design)
+        # could not start until design AND every other research-only agent in the same
+        # wave finished, and technical (deps: web) waited behind that — so the two build
+        # agents started very late. This launches dependents the moment they unblock.
+        running: set[asyncio.Task] = set()
+        task_for: dict[asyncio.Task, dict] = {}
+        while remaining or running:
             if cancellation.is_killed(session_id):
                 logger.info("Orchestrator: session %s killed — halting scheduling", session_id)
                 break
@@ -1255,22 +1277,27 @@ class Orchestrator:
                 t for t in remaining
                 if all(dep in completed for dep in t.get("depends_on", []))
             ]
-            logger.info("Ready tasks: %s, remaining: %s, in_flight: %s", [t["agent"] for t in ready], [t["agent"] for t in remaining], in_flight)
             for t in ready:
                 remaining.remove(t)
                 in_flight.add(t["id"])
+                at = asyncio.create_task(_run_task_guarded(t))
+                running.add(at)
+                task_for[at] = t
+            if ready:
+                logger.info("Launched: %s, remaining: %s, in_flight: %s", [t["agent"] for t in ready], [t["agent"] for t in remaining], in_flight)
 
-            if not ready and not in_flight:
-                logger.error("Dependency cycle or missing dep — aborting. remaining=%s, completed=%s", [(t["agent"], t.get("depends_on", [])) for t in remaining], list(completed.keys()))
+            if not running:
+                if remaining:
+                    logger.error("Dependency cycle or missing dep — aborting. remaining=%s, completed=%s", [(t["agent"], t.get("depends_on", [])) for t in remaining], list(completed.keys()))
                 break
 
-            if not ready:
-                await asyncio.sleep(0)
-                continue
-
-            await asyncio.gather(*[_run_task_guarded(t) for t in ready])
-            for t in ready:
-                in_flight.discard(t["id"])
+            # Wake as soon as ANY task finishes so newly-unblocked tasks start immediately.
+            done, _ = await asyncio.wait(running, return_when=asyncio.FIRST_COMPLETED)
+            for at in done:
+                running.discard(at)
+                finished = task_for.pop(at, None)
+                if finished:
+                    in_flight.discard(finished["id"])
 
         completion_failures = _completion_failures(tasks, completed, task_verifications)
         if completion_failures:
@@ -1282,7 +1309,12 @@ class Orchestrator:
             })
         else:
             await publish(session_id, {"type": "goal_done", "results": completed})
-            asyncio.create_task(self._bootstrap_operating_after_run(session_id, founder_id, goal))
+        # Transition into continuous operation on BOTH paths. A partially-successful
+        # run (some agents failed) is exactly when the founder needs the system to keep
+        # working the open tasks — gating this on a zero-failure run means it almost
+        # never fires in practice. The bootstrap is idempotent and best-effort, so it is
+        # safe to run after goal_error too.
+        asyncio.create_task(self._bootstrap_operating_after_run(session_id, founder_id, goal))
         async def _graph_sync_after_session() -> None:
             try:
                 from backend.tools.graph_rag_ingest import run_graph_rag_sync

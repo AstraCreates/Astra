@@ -11,7 +11,7 @@ from backend.core.orchestrator import Orchestrator
 async def test_legal_agent_done_blocked_until_required_tools_called(mocker):
     calls = {"llm": 0}
 
-    def fake_llm(_messages):
+    def fake_llm(_messages, _ctx=None):
         calls["llm"] += 1
         if calls["llm"] == 1:
             return json.dumps({"action": "done", "output": {"note": "premature"}})
@@ -41,7 +41,7 @@ async def test_legal_agent_done_blocked_until_required_tools_called(mocker):
 async def test_sales_agent_done_blocked_until_required_output_present(mocker):
     calls = {"llm": 0}
 
-    def fake_llm(_messages):
+    def fake_llm(_messages, _ctx=None):
         calls["llm"] += 1
         if calls["llm"] == 1:
             return json.dumps({"action": "tool", "tool": "find_leads", "args": {"industry": "dental", "location": "phoenix"}})
@@ -73,7 +73,7 @@ async def test_sales_agent_done_blocked_until_required_output_present(mocker):
 async def test_sales_agent_done_blocked_until_crm_tool_called(mocker):
     calls = {"llm": 0}
 
-    def fake_llm(_messages):
+    def fake_llm(_messages, _ctx=None):
         calls["llm"] += 1
         if calls["llm"] == 1:
             return json.dumps({"action": "tool", "tool": "find_leads", "args": {"industry": "dental", "location": "phoenix"}})
@@ -105,7 +105,7 @@ async def test_sales_agent_done_blocked_until_crm_tool_called(mocker):
 async def test_design_agent_done_blocked_until_logo_brief_tool_called(mocker):
     calls = {"llm": 0}
 
-    def fake_llm(_messages):
+    def fake_llm(_messages, _ctx=None):
         calls["llm"] += 1
         if calls["llm"] == 1:
             return json.dumps({"action": "tool", "tool": "generate_design_spec", "args": {"product_name": "Acme", "product_type": "saas", "target_audience": "founders"}})
@@ -137,7 +137,7 @@ async def test_design_agent_done_blocked_until_logo_brief_tool_called(mocker):
 async def test_marketing_agent_done_blocked_until_required_output_present(mocker):
     calls = {"llm": 0}
 
-    def fake_llm(_messages):
+    def fake_llm(_messages, _ctx=None):
         calls["llm"] += 1
         if calls["llm"] == 1:
             return json.dumps({"action": "tool", "tool": "generate_reel_package", "args": {"company_name": "Acme", "headline": "h", "value_prop": "v", "target_audience": "founders"}})
@@ -172,7 +172,7 @@ class _FakePlanner:
     name = "planner"
     model = "test"
 
-    def _call_llm(self, _messages):
+    def _call_llm(self, _messages, _ctx=None):
         return '{"tasks":[]}'
 
 
@@ -379,8 +379,11 @@ async def test_orchestrator_emits_preview_rich_outputs_for_non_research_agents(m
 
     await orch.run(goal="g", founder_id="f", session_id="s")
 
-    goal_done = next(e for e in published if e.get("type") == "goal_done")
-    results = goal_done["results"]
+    # The run emits a terminal event carrying results — goal_done on a clean run, or
+    # goal_error (still with results) when some agents are marked incomplete. Either way
+    # the agent outputs must flow into results.
+    terminal = next(e for e in published if e.get("type") in ("goal_done", "goal_error"))
+    results = terminal["results"]
     flat = [v for v in results.values() if isinstance(v, dict)]
     assert any(item.get("url", "").startswith("https://") for item in flat)
     assert any((item.get("ad_images") or [{}])[0].get("url", "").startswith("https://") for item in flat if "ad_images" in item)
