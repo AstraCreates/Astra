@@ -108,6 +108,7 @@ class Settings(BaseSettings):
     # Test email — dedicated Gmail for E2E provisioning tests
     test_email_base: str = ""
     test_email_imap_password: str = ""
+    test_email_web_password: str = ""
 
     # Obsidian vault — agents write session logs here (separate from user's personal vault)
     obsidian_vault: str = "~/agent-workspace"

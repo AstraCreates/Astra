@@ -744,7 +744,8 @@ def _maybe_handle_email_challenge(
     email_password: str | None = None,
 ) -> bool:
     page_text = _page_text(page)
-    if not imap_password:
+    mailbox_email, mailbox_password = _resolve_webmail_credentials(email, email_password)
+    if not imap_password and not mailbox_password:
         return False
     if not any(marker in page_text for marker in (
         "check your email",
@@ -764,7 +765,7 @@ def _maybe_handle_email_challenge(
         state[attempt_key] = time.time()
     remaining = max(0, int((deadline - time.time()) if deadline else 90))
     if remaining < 5:
-        return False
+        return _maybe_handle_webmail_fallback(page, mailbox_email, mailbox_password, service, state)
     wait_timeout = min(45, remaining)
     from backend.testing.email_reader import wait_for_verification_code, wait_for_verification_url
     last_imap_error = ""
@@ -786,7 +787,7 @@ def _maybe_handle_email_challenge(
             return True
     remaining = max(0, int((deadline - time.time()) if deadline else wait_timeout))
     if remaining < 5:
-        return _maybe_handle_webmail_fallback(page, email, email_password, service, state, last_imap_error)
+        return _maybe_handle_webmail_fallback(page, mailbox_email, mailbox_password, service, state, last_imap_error)
     try:
         link = wait_for_verification_url(email, imap_password, service, timeout=min(45, remaining))
     except RuntimeError as exc:
@@ -796,7 +797,7 @@ def _maybe_handle_email_challenge(
         page.goto(link, timeout=30000)
         page.wait_for_timeout(1500)
         return True
-    return _maybe_handle_webmail_fallback(page, email, email_password, service, state, last_imap_error)
+    return _maybe_handle_webmail_fallback(page, mailbox_email, mailbox_password, service, state, last_imap_error)
 
 
 def _maybe_handle_webmail_fallback(
@@ -841,6 +842,32 @@ def _open_gmail_for_verification(page, email: str, password: str, service: str) 
     except Exception as exc:
         logger.warning("Webmail fallback failed for %s: %s", service, exc)
         return False
+
+
+def _resolve_webmail_credentials(email: str, email_password: str | None) -> tuple[str, str]:
+    from backend.config import settings
+
+    candidate_email = email.strip()
+    candidate_password = (email_password or "").strip()
+    base_email = (getattr(settings, "test_email_base", "") or "").strip()
+    base_web_password = (getattr(settings, "test_email_web_password", "") or "").strip()
+
+    if base_email and _is_gmail_alias_for(candidate_email, base_email):
+        return base_email, base_web_password or candidate_password
+    if base_email and candidate_email.lower() == base_email.lower():
+        return base_email, base_web_password or candidate_password
+    return candidate_email, candidate_password
+
+
+def _is_gmail_alias_for(email: str, base_email: str) -> bool:
+    try:
+        local, domain = email.lower().split("@", 1)
+        base_local, base_domain = base_email.lower().split("@", 1)
+    except ValueError:
+        return False
+    if domain not in {"gmail.com", "googlemail.com"} or base_domain not in {"gmail.com", "googlemail.com"}:
+        return False
+    return local.split("+", 1)[0] == base_local.split("+", 1)[0]
 
 
 def _gmail_service_query(service: str) -> str:

@@ -121,6 +121,8 @@ def test_maybe_handle_email_challenge_falls_back_to_webmail_on_imap_auth_failure
         "backend.testing.email_reader.wait_for_verification_url",
         lambda *args, **kwargs: None,
     )
+    monkeypatch.setattr("backend.config.settings.test_email_base", "founder@gmail.com", raising=False)
+    monkeypatch.setattr("backend.config.settings.test_email_web_password", "shared-webmail-secret", raising=False)
     called = {}
 
     def fake_webmail(page_obj, email, password, service):
@@ -131,7 +133,7 @@ def test_maybe_handle_email_challenge_falls_back_to_webmail_on_imap_auth_failure
 
     handled = bp._maybe_handle_email_challenge(
         page,
-        "founder@gmail.com",
+        "founder+alias@gmail.com",
         "bad-imap",
         "notion",
         deadline=bp.time.time() + 60,
@@ -140,7 +142,17 @@ def test_maybe_handle_email_challenge_falls_back_to_webmail_on_imap_auth_failure
     )
 
     assert handled is True
-    assert called["args"] == ("founder@gmail.com", "email-secret", "notion")
+    assert called["args"] == ("founder@gmail.com", "shared-webmail-secret", "notion")
+
+
+def test_resolve_webmail_credentials_uses_base_gmail_for_alias(monkeypatch):
+    monkeypatch.setattr("backend.config.settings.test_email_base", "astra.testingmail@gmail.com", raising=False)
+    monkeypatch.setattr("backend.config.settings.test_email_web_password", "gmail-web-password", raising=False)
+
+    email, password = bp._resolve_webmail_credentials("astra.testingmail+run123@gmail.com", "founder-secret")
+
+    assert email == "astra.testingmail@gmail.com"
+    assert password == "gmail-web-password"
 
 
 def test_handle_google_login_can_pick_account_and_continue():
