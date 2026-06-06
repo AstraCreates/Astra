@@ -86,6 +86,34 @@ def _shared_safe(agent_name: str, result: Any) -> Any:
     return out
 
 
+def _completion_failures(tasks: list[dict[str, Any]], completed: dict[str, dict], verifications: dict[str, dict]) -> list[str]:
+    failures: list[str] = []
+    for task in tasks:
+        task_id = str(task.get("id") or "")
+        agent_name = str(task.get("agent") or task_id)
+        if not task_id:
+            continue
+        if task_id not in completed:
+            failures.append(f"{agent_name} did not emit a final result")
+            continue
+        result = completed.get(task_id)
+        if isinstance(result, dict):
+            if result.get("error"):
+                failures.append(f"{agent_name}: {str(result.get('error'))[:220]}")
+            if result.get("timed_out"):
+                failures.append(f"{agent_name} timed out")
+            if result.get("web_quality_error"):
+                failures.append(f"{agent_name}: {result.get('web_quality_error')}")
+        verification = verifications.get(task_id) or {}
+        if verification.get("status") == "blocked":
+            missing = verification.get("required_missing") or []
+            suffix = f" ({', '.join(map(str, missing[:4]))})" if missing else ""
+            failures.append(f"{agent_name} missing required artifacts{suffix}")
+        elif verification.get("required_weak"):
+            failures.append(f"{agent_name} has weak required artifacts")
+    return failures
+
+
 class Orchestrator:
     def __init__(self, planner: Agent, specialists: dict[str, Agent]):
         self.planner = planner
@@ -788,6 +816,7 @@ class Orchestrator:
 
         # Step 2: execute tasks in dependency order
         completed: dict[str, dict] = {}
+        task_verifications: dict[str, dict] = {}
         tasks = initial_tasks  # will be replaced after research
         stack_lane_by_agent = {
             lane.get("agent"): lane
@@ -959,6 +988,7 @@ class Orchestrator:
                     "summary": f"Artifact verification failed: {_verify_exc}",
                     "artifacts": [],
                 }
+            task_verifications[tid] = artifact_verification
             await self._publish_stack_artifacts(session_id, task, result, stack_template)
             await publish(session_id, {
                 "type": "stack_artifact_verification",
@@ -1125,10 +1155,36 @@ class Orchestrator:
                     "type": "agent_error", "agent": t["agent"],
                     "task_id": t["id"], "error": f"agent timed out after {_AGENT_TIMEOUT}s",
                 })
+                await publish(session_id, {
+                    "type": "stack_lane_status",
+                    "lane_id": t.get("id"),
+                    "agent": t["agent"],
+                    "task_id": t["id"],
+                    "status": "blocked",
+                    "title": t.get("stack_task_title") or t["agent"],
+                    "blockers": [f"agent timed out after {_AGENT_TIMEOUT}s"],
+                    "next_actor": "founder",
+                })
             except Exception as _te:
                 logger.error("Agent %s raised unhandled exception: %s", t["agent"], _te)
                 if t["id"] not in completed:
                     completed[t["id"]] = {"error": str(_te), "agent": t["agent"]}
+                await publish(session_id, {
+                    "type": "agent_error",
+                    "agent": t["agent"],
+                    "task_id": t["id"],
+                    "error": str(_te)[:400],
+                })
+                await publish(session_id, {
+                    "type": "stack_lane_status",
+                    "lane_id": t.get("id"),
+                    "agent": t["agent"],
+                    "task_id": t["id"],
+                    "status": "blocked",
+                    "title": t.get("stack_task_title") or t["agent"],
+                    "blockers": [str(_te)[:220]],
+                    "next_actor": "founder",
+                })
 
         from backend.core import cancellation
         while remaining or in_flight:
@@ -1156,7 +1212,16 @@ class Orchestrator:
             for t in ready:
                 in_flight.discard(t["id"])
 
-        await publish(session_id, {"type": "goal_done", "results": completed})
+        completion_failures = _completion_failures(tasks, completed, task_verifications)
+        if completion_failures:
+            await publish(session_id, {
+                "type": "goal_error",
+                "error": "Run ended incomplete: " + "; ".join(completion_failures[:8]),
+                "results": completed,
+                "incomplete_tasks": completion_failures,
+            })
+        else:
+            await publish(session_id, {"type": "goal_done", "results": completed})
         async def _graph_sync_after_session() -> None:
             try:
                 from backend.tools.graph_rag_ingest import run_graph_rag_sync

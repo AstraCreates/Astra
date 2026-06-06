@@ -239,8 +239,8 @@ async def test_orchestrator_flags_web_error_when_fallback_persists(mocker):
 
     await orch.run(goal="g", founder_id="f", session_id="s")
 
-    goal_done = next(e for e in published if e.get("type") == "goal_done")
-    results = goal_done["results"]
+    goal_error = next(e for e in published if e.get("type") == "goal_error")
+    results = goal_error["results"]
     web_result = next(v for v in results.values() if isinstance(v, dict) and "html" in v)
     assert web_result.get("web_quality_error") == "fallback_template_persisted_after_retries"
     assert any(

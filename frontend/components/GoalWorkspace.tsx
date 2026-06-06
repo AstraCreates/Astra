@@ -12,7 +12,7 @@ import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentC
 import type { DeploymentRecord } from "@/lib/api";
 import type { AgentCatalogEntry } from "@/lib/api";
 import type { AgentDepartmentManifest, AgentStackTemplate, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
-import { saveSession, getSessionSnapshot, subscribeSessions, deleteSession, clearAllSessions, setServerSessions, removeServerSession } from "@/lib/history";
+import { saveSession, updateSession, getSessionSnapshot, subscribeSessions, deleteSession, clearAllSessions, setServerSessions, removeServerSession } from "@/lib/history";
 import type { SessionRecord } from "@/lib/history";
 import LiquidGlass from "@/components/LiquidGlass";
 import CompanyChat from "@/components/CompanyChat";
@@ -277,6 +277,17 @@ function summarizeResult(state: AgentState | undefined): string {
   if (state.commits?.length) return `${state.commits.length} code rounds committed so far.`;
   if (Object.keys(result).length) return `${Object.keys(result).length} output fields captured in this lane.`;
   return state.currentAction ? `Currently ${state.currentAction}.` : "This lane is in progress.";
+}
+
+function hasStructuredOutput(result: Record<string, unknown> | null | undefined): boolean {
+  if (!result) return false;
+  return Object.entries(result).some(([key, value]) => {
+    if (key === "agent") return false;
+    if (value === null || value === undefined || value === "") return false;
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
+    return true;
+  });
 }
 
 function extractAdImagesFromResult(obj: unknown, seen = new Set<string>()): Array<{ url?: string; base64?: string; prompt?: string }> {
@@ -1487,9 +1498,21 @@ function renderResultValue(v: unknown): React.ReactNode {
 }
 
 function GenericResultOutput({ result }: { result: Record<string, unknown> | null }) {
-  if (!result) return null;
+  if (!result) {
+    return (
+      <div style={{ ...PREVIEW_CARD, fontSize: 11, color: "var(--fg-mute)", border: "1px solid rgba(197,139,55,0.22)", background: "rgba(197,139,55,0.06)" }}>
+        No structured output was captured for this lane.
+      </div>
+    );
+  }
   const rows = Object.entries(result).filter(([k, v]) => k !== "agent" && v !== null && v !== undefined && v !== "").slice(0, 12);
-  if (rows.length === 0) return null;
+  if (rows.length === 0) {
+    return (
+      <div style={{ ...PREVIEW_CARD, fontSize: 11, color: "var(--fg-mute)", border: "1px solid rgba(197,139,55,0.22)", background: "rgba(197,139,55,0.06)" }}>
+        This lane finished without visible preview fields.
+      </div>
+    );
+  }
   // Separate URL fields for prominent display
   const urlRows = rows.filter(([, v]) => typeof v === "string" && (v as string).startsWith("http"));
   const dataRows = rows.filter(([, v]) => !(typeof v === "string" && (v as string).startsWith("http")));
@@ -1681,6 +1704,7 @@ function GenericAgentPreview({ state }: { state: AgentState }) {
 }
 
 function AgentPreview({ state, founderId, company, sessionId }: { state: AgentState; founderId?: string; company?: string; sessionId?: string }) {
+  if (state.status === "error") return <GenericAgentPreview state={state} />;
   switch (state.agent) {
     case "research":
     case "research_competitors":
@@ -4038,7 +4062,7 @@ function SessionHistory({ currentSessionId }: { currentSessionId: string }) {
           companyName: (r.goal || "").slice(0, 40),
           instruction: r.goal || "",
           startedAt: Date.parse(r.created_at) || 0,
-          status: r.status === "error" ? "error" : r.status === "done" ? "done" : "running",
+          status: r.status === "error" || r.status === "stalled" ? "error" : r.status === "done" ? "done" : "running",
           artifacts: [],
         })));
       } catch {
@@ -4468,6 +4492,28 @@ export function GoalWorkspace({
           if (workboardResult.status === "fulfilled") setSessionWorkboard(workboardResult.value);
           if (stateResult.status === "fulfilled") {
             setSessionState(stateResult.value);
+            if (stateResult.value.status === "done") {
+              setDone(true);
+              updateSession(sessionId, { status: "done" });
+            } else if (stateResult.value.status === "error" || stateResult.value.status === "stalled") {
+              setError(stateResult.value.status === "stalled" ? "Run stalled before completion. Some lanes may need a rerun." : "Run ended with an error.");
+              updateSession(sessionId, { status: "error" });
+              setAgents(prev => {
+                const next = { ...prev };
+                for (const [agentName, state] of Object.entries(next)) {
+                  if (state.status === "running") {
+                    next[agentName] = {
+                      ...state,
+                      status: "error",
+                      currentAction: null,
+                      currentTool: null,
+                      log: [...state.log, { ts: Date.now(), type: "error", text: "Run stopped before this lane emitted a final output." }],
+                    };
+                  }
+                }
+                return next;
+              });
+            }
             if (digestResult.status !== "fulfilled" && stateResult.value.digest) setSessionDigest(stateResult.value.digest);
             if (workboardResult.status !== "fulfilled" && stateResult.value.workboard) setSessionWorkboard(stateResult.value.workboard);
             if (!selectedStack && stateResult.value.stack) setSelectedStack(stateResult.value.stack);
@@ -4752,6 +4798,7 @@ export function GoalWorkspace({
           next[agent] = { ...cur, log: addLog("info", `Thinking… (step ${event.iteration})`) };
         } else if (event.type === "agent_done") {
           const result = event.result ?? {};
+          const hasOutput = hasStructuredOutput(result);
           const previewUrl = (result.url ?? result.deployment_url ?? result.project_url ?? result.github_url) as string | undefined;
           // Extract any ad images embedded in the final result (in case tool_result events were missed)
           const doneAdImages = extractAdImagesFromResult(result);
@@ -4761,14 +4808,14 @@ export function GoalWorkspace({
             : cur.adImages;
           next[agent] = {
             ...cur,
-            status: "done",
+            status: hasOutput ? "done" : "error",
             currentAction: null,
             currentTool: null,
-            result,
+            result: hasOutput ? result : { error: "Agent finished without emitting a structured output." },
             previewUrl,
             adImages: mergedAdImages,
             webQualityError: (result.web_quality_error as string | undefined) ?? cur.webQualityError,
-            log: addLog("result", "Complete"),
+            log: addLog(hasOutput ? "result" : "error", hasOutput ? "Complete" : "No structured output emitted"),
           };
         } else if (event.type === "agent_error") {
           const qualityError = typeof event.error === "string" && event.error.toLowerCase().includes("fallback template")
@@ -4819,6 +4866,20 @@ export function GoalWorkspace({
                 adImages: doneAdImages.length ? doneAdImages : curState.adImages,
                 filesPreview: Array.isArray(resultObj.files_preview) ? (resultObj.files_preview as string[]) : curState.filesPreview,
                 filesCount: (resultObj.files_in_repo as number | undefined) ?? curState.filesCount,
+              };
+            }
+            for (const [agentName, curState] of Object.entries(next)) {
+              if (curState.status !== "running" && curState.status !== "waiting") continue;
+              next[agentName] = {
+                ...curState,
+                status: "error",
+                currentAction: null,
+                currentTool: null,
+                result: curState.result ?? { error: "Run completed before this lane emitted a final output." },
+                log: [
+                  ...(curState.log ?? []),
+                  { ts: Date.now(), type: "error", text: "No final output was emitted before goal_done." },
+                ],
               };
             }
           }
@@ -4914,6 +4975,12 @@ export function GoalWorkspace({
   const artifactProgress = stackArtifacts.length
     ? Math.round((stackArtifacts.filter(a => runArtifactByKey.get(a.key)?.status === "ready" || visibleAgents[a.owner_agent]?.status === "done").length / stackArtifacts.length) * 100)
     : 0;
+  const completionAudit = sessionState?.completion_audit;
+  const laneAudit = ((completionAudit?.failed ?? [])
+    .flatMap(check => {
+      const details = check.details as { lanes?: Array<Record<string, unknown>> } | undefined;
+      return Array.isArray(details?.lanes) ? details.lanes : [];
+    }));
   const statusText = !sessionId ? "ready" : done ? "complete" : error ? "error" : reconnecting ? "reconnecting..." : connected ? "running" : "connecting";
   const handleApprovalDecision = async (gateKey: string, decision: "approved" | "skipped") => {
     setApprovalQueue(prev => prev.map(item => item.key === gateKey ? { ...item, status: decision } : item));
@@ -5115,6 +5182,41 @@ export function GoalWorkspace({
                   <div style={{ width: `${total ? (doneCount / total) * 100 : 0}%`, height: "100%", borderRadius: 999, background: done ? "#3D9E5F" : "#2563EB", transition: "width 0.4s ease" }} />
                 </div>
               </div>
+              {completionAudit && (
+                <div style={{ display: "grid", gap: 9, borderTop: "1px solid rgba(176,180,186,0.10)", paddingTop: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <span className="site-label">Completion audit</span>
+                    <span style={{ fontSize: 11, color: completionAudit.ok ? "#3D9E5F" : "#C0392B", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                      {completionAudit.status}
+                    </span>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(112px, 1fr))", gap: 7 }}>
+                    {(laneAudit.length ? laneAudit : agentList.map(agent => ({ agent, status: visibleAgents[agent]?.status, ok: visibleAgents[agent]?.status === "done" }))).slice(0, 12).map((lane, index) => {
+                      const laneRecord = lane as Record<string, unknown>;
+                      const agent = String(laneRecord.agent || laneRecord.lane_id || `lane_${index}`);
+                      const laneStatus = String(laneRecord.status || "missing");
+                      const ok = laneRecord.ok === true || laneStatus === "done";
+                      const color = ok ? "#3D9E5F" : laneStatus === "running" ? "#2563EB" : "#C0392B";
+                      return (
+                        <button
+                          key={`${agent}-${index}`}
+                          type="button"
+                          onClick={() => agent && setActiveAgent(agent)}
+                          style={{ minHeight: 58, padding: "9px 10px", borderRadius: 14, background: ok ? "rgba(61,158,95,0.07)" : "rgba(192,57,43,0.06)", border: `1px solid ${ok ? "rgba(61,158,95,0.18)" : "rgba(192,57,43,0.16)"}`, display: "grid", gap: 4, textAlign: "left" }}
+                        >
+                          <span style={{ fontSize: 11, color: "var(--fg)", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{AGENT_LABELS[agent] ?? agent}</span>
+                          <span style={{ fontSize: 10, color, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                            {ok ? "ready" : laneStatus.replaceAll("_", " ")}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {!completionAudit.ok && (
+                    <span style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.45 }}>{completionAudit.summary}</span>
+                  )}
+                </div>
+              )}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div className="astra-mini-slab astra-mini-slab-wide" style={{ padding: "12px 13px", borderRadius: 0, display: "grid", gap: 3 }}>
                   <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Active lanes</span>

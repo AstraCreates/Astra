@@ -434,7 +434,7 @@ export interface SessionWorkboard {
 
 export interface SessionStateSnapshot {
   session_id: string;
-  status: "running" | "done" | "error";
+  status: "running" | "done" | "error" | "stalled";
   event_count: number;
   last_event_id: number;
   stack?: AgentStackTemplate | null;
@@ -453,6 +453,13 @@ export interface SessionStateSnapshot {
   artifacts: Array<Record<string, unknown>>;
   outcomes: Array<Record<string, unknown>>;
   saferun_actions: Array<Record<string, unknown>>;
+  completion_audit?: {
+    ok: boolean;
+    status: string;
+    summary: string;
+    failed?: Array<Record<string, unknown> & { details?: Record<string, unknown> }>;
+  };
+  run_ledger?: Record<string, unknown> | null;
 }
 
 export interface SetupStatus {
@@ -1063,7 +1070,7 @@ export interface SessionIndexEntry {
   founder_id: string;
   goal: string;
   stack_id: string;
-  status: string;
+  status: "running" | "done" | "error" | "stalled" | string;
   created_at: string;
   completed_at: string | null;
 }

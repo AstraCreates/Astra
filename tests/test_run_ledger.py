@@ -1,8 +1,9 @@
-from backend.run_ledger import get_run, ledger_metrics, list_runs, record_run_event
+from backend.run_ledger import get_run, ledger_metrics, list_runs, normalize_run_row, record_run_event
 
 
 def test_run_ledger_tracks_run_lifecycle(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("backend.run_ledger._root", lambda: tmp_path / ".astra" / "run_ledger")
     session_id = "ledger_session"
 
     record_run_event(session_id, 1, {
@@ -61,6 +62,7 @@ def test_run_ledger_tracks_run_lifecycle(tmp_path, monkeypatch):
 
 def test_run_ledger_tracks_errors_and_filters(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("backend.run_ledger._root", lambda: tmp_path / ".astra" / "run_ledger")
     record_run_event("ok_run", 1, {"type": "goal_start", "founder_id": "f1", "goal": "ok", "ts_iso": "2026-05-01T00:00:00Z"})
     record_run_event("error_run", 1, {"type": "goal_start", "founder_id": "f2", "goal": "bad", "ts_iso": "2026-05-01T00:00:00Z"})
     record_run_event("error_run", 2, {"type": "agent_error", "agent": "web", "error": "deploy failed", "ts_iso": "2026-05-01T00:00:01Z"})
@@ -74,3 +76,54 @@ def test_run_ledger_tracks_errors_and_filters(tmp_path, monkeypatch):
     assert len(filtered) == 1
     assert filtered[0]["session_id"] == "error_run"
     assert filtered[0]["errors"][0]["message"] == "run failed"
+
+
+def test_run_ledger_normalizes_terminal_agent_without_goal_done_as_stalled():
+    row = {
+        "session_id": "s",
+        "status": "running",
+        "last_event_type": "agent_done",
+        "agents": {
+            "research": {"agent": "research", "status": "done"},
+        },
+        "running_agents": 0,
+    }
+
+    normalized = normalize_run_row(row)
+
+    assert normalized["status"] == "stalled"
+    assert "never emitted goal_done" in normalized["stalled_reason"]
+
+
+def test_run_ledger_keeps_active_running_session_running():
+    row = {
+        "session_id": "s",
+        "status": "running",
+        "last_event_type": "agent_action",
+        "agents": {
+            "research": {"agent": "research", "status": "running"},
+        },
+        "running_agents": 1,
+    }
+
+    normalized = normalize_run_row(row)
+
+    assert normalized["status"] == "running"
+
+
+def test_run_ledger_normalizes_done_session_with_running_agents_as_stalled():
+    row = {
+        "session_id": "s",
+        "status": "done",
+        "last_event_type": "goal_done",
+        "agents": {
+            "research": {"agent": "research", "status": "done"},
+            "design": {"agent": "design", "status": "running"},
+        },
+        "running_agents": 1,
+    }
+
+    normalized = normalize_run_row(row)
+
+    assert normalized["status"] == "stalled"
+    assert "goal_done" in normalized["stalled_reason"]

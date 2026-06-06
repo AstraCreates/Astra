@@ -156,11 +156,12 @@ def _record_run_event_locked(session_id: str, event_id: int, event: dict[str, An
 
 
 def get_run(session_id: str) -> dict[str, Any] | None:
-    return _load().get("sessions", {}).get(session_id)
+    row = _load().get("sessions", {}).get(session_id)
+    return normalize_run_row(row) if row else None
 
 
 def list_runs(limit: int = 50, founder_id: str = "", status: str = "") -> list[dict[str, Any]]:
-    rows = list((_load().get("sessions") or {}).values())
+    rows = [normalize_run_row(row) for row in list((_load().get("sessions") or {}).values())]
     if founder_id:
         rows = [row for row in rows if row.get("founder_id") == founder_id]
     if status:
@@ -169,11 +170,54 @@ def list_runs(limit: int = 50, founder_id: str = "", status: str = "") -> list[d
     return rows[: max(1, min(limit, 500))]
 
 
+def normalize_run_row(row: dict[str, Any] | None) -> dict[str, Any]:
+    """Return an operator-safe run row with stale/incomplete runs de-spun.
+
+    Older ledgers can be left as status=running when the last persisted event is
+    an agent terminal event and no agents are actually active. That state is
+    operationally different from a live run, so expose it as stalled.
+    """
+    if not isinstance(row, dict):
+        return {}
+    normalized = dict(row)
+    agents = normalized.get("agents") or {}
+    statuses = [
+        agent.get("status")
+        for agent in agents.values()
+        if isinstance(agent, dict)
+    ]
+    running_agents = statuses.count("running")
+    if (
+        normalized.get("status") == "running"
+        and statuses
+        and running_agents == 0
+        and normalized.get("last_event_type") in {"agent_done", "agent_error", "stack_artifact_verification", "stack_lane_status"}
+    ):
+        normalized["status"] = "stalled"
+        normalized["stalled_reason"] = "No agents are running, but the run never emitted goal_done or goal_error."
+    elif (
+        normalized.get("status") == "done"
+        and statuses
+        and running_agents > 0
+    ):
+        normalized["status"] = "stalled"
+        normalized["stalled_reason"] = "Run emitted goal_done while agents were still marked running."
+    elif (
+        normalized.get("status") == "done"
+        and statuses
+        and statuses.count("error") > 0
+    ):
+        normalized["status"] = "stalled"
+        normalized["stalled_reason"] = "Run emitted goal_done even though one or more agents errored."
+    return normalized
+
+
 def ledger_metrics() -> dict[str, Any]:
-    rows = list((_load().get("sessions") or {}).values())
+    rows = [normalize_run_row(row) for row in list((_load().get("sessions") or {}).values())]
     return {
         "runs_total": len(rows),
         "runs_running": sum(1 for row in rows if row.get("status") == "running"),
+        "runs_stalled": sum(1 for row in rows if row.get("status") == "stalled"),
         "runs_done": sum(1 for row in rows if row.get("status") == "done"),
         "runs_error": sum(1 for row in rows if row.get("status") == "error"),
         "artifact_count": sum(int(row.get("artifact_count") or 0) for row in rows),

@@ -55,6 +55,7 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
     outcomes: list[dict[str, Any]] = []
     saferun: dict[str, dict[str, Any]] = {}
     final_status = "running"
+    agent_status: dict[str, str] = {}
 
     for event in event_dicts:
         event_type = event.get("type")
@@ -85,10 +86,25 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
         elif event_type == "saferun_result":
             action_id = event.get("action_id", "")
             saferun[action_id] = {**saferun.get(action_id, {"id": action_id}), **event}
+        elif event_type == "agent_start" and event.get("agent"):
+            agent_status[str(event.get("agent"))] = "running"
+        elif event_type == "agent_done" and event.get("agent"):
+            agent_status[str(event.get("agent"))] = "done"
+        elif event_type == "agent_error" and event.get("agent"):
+            agent_status[str(event.get("agent"))] = "error"
         elif event_type == "goal_done":
             final_status = "done"
         elif event_type == "goal_error":
             final_status = "error"
+
+    if final_status == "running":
+        ledger = _run_ledger_snapshot(session_id)
+        if isinstance(ledger, dict) and ledger.get("status") == "stalled":
+            final_status = "stalled"
+        elif agent_status and "running" not in set(agent_status.values()):
+            last_type = event_dicts[-1].get("type") if event_dicts else ""
+            if last_type in {"agent_done", "agent_error", "stack_artifact_verification", "stack_lane_status"}:
+                final_status = "stalled"
 
     for request in approval_workflow.get("requests", []) if isinstance(approval_workflow, dict) else []:
         item = _approval_request_state(request)
@@ -121,6 +137,8 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
     try:
         from backend.run_completion_audit import build_run_completion_audit
         state["completion_audit"] = build_run_completion_audit(session_id, state)
+        if state["status"] == "done" and state["completion_audit"].get("ok") is False:
+            state["status"] = "stalled"
     except Exception as exc:
         state["completion_audit"] = {"ok": False, "status": "error", "summary": str(exc), "checks": [], "failed": []}
     return state

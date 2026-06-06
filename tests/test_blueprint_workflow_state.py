@@ -39,6 +39,35 @@ def test_workflow_state_persists_execution_blueprint_and_lane_status():
     assert state["workboard"]["items"][0]["phase"] == "diagnose"
 
 
+def test_workflow_state_marks_terminal_agent_without_goal_done_as_stalled():
+    events = [
+        (1, {"type": "goal_start", "goal": "Build", "founder_id": "founder_1"}),
+        (2, {"type": "agent_start", "agent": "research", "task_id": "t1"}),
+        (3, {"type": "agent_done", "agent": "research", "result": {"summary": "done"}}),
+    ]
+
+    state = build_session_state("session_stalled", events)
+
+    assert state["status"] == "stalled"
+
+
+def test_workflow_state_marks_done_with_failed_completion_audit_as_stalled():
+    stack = get_stack_template("idea_to_revenue")
+    blueprint = build_stack_execution_blueprint(stack, "Build a waitlist SaaS", "Astra")
+    events = [
+        (1, {"type": "goal_start", "goal": "Build a waitlist SaaS", "founder_id": "founder_1"}),
+        (2, {"type": "stack_selected", "stack": stack.to_public_dict()}),
+        (3, {"type": "stack_execution_blueprint", "execution_blueprint": blueprint}),
+        (4, {"type": "agent_start", "agent": "design", "task_id": "t_design"}),
+        (5, {"type": "goal_done", "results": {}}),
+    ]
+
+    state = build_session_state("session_done_but_incomplete", events)
+
+    assert state["status"] == "stalled"
+    assert state["completion_audit"]["ok"] is False
+
+
 def test_workboard_uses_blueprint_lane_packets_without_operating_plan():
     stack = get_stack_template("sales")
     blueprint = build_stack_execution_blueprint(stack, "Build outbound pipeline", "Astra")

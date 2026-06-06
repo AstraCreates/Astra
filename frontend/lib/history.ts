@@ -6,7 +6,7 @@ export interface SessionRecord {
   companyName: string;
   instruction: string;
   startedAt: number;
-  status: "running" | "done" | "error";
+  status: "running" | "done" | "error" | "stalled";
   artifacts: { label: string; value: string; href?: string; icon: string }[];
 }
 
