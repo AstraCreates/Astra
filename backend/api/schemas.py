@@ -62,6 +62,10 @@ class SetupRequest(BaseModel):
     email: str
     password: str
     base_url: Optional[str] = "http://localhost:8000"
+    stack_id: Optional[str] = ""
+    required_only: bool = False
+    include_foundation: bool = True
+    preview_only: bool = False
 
 
 class SaveCredentialRequest(BaseModel):

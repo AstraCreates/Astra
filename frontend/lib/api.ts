@@ -479,6 +479,18 @@ export interface SetupResult {
   services: Record<string, unknown>;
   summary: string[];
   composio_oauth_urls?: Record<string, string>;
+  stack_id?: string;
+  required_only?: boolean;
+  provision_plan?: {
+    stack_id: string;
+    services: string[];
+    connectors: Array<{ key: string; label: string; required: boolean }>;
+    composio_apps: string[];
+    manual_connectors: string[];
+    include_foundation: boolean;
+    required_only: boolean;
+  };
+  pending_manual_connectors?: string[];
 }
 
 export interface BrainSource {
@@ -1221,12 +1233,21 @@ export async function decideStackApproval(
 export async function setupAccounts(
   founderId: string,
   email: string,
-  password: string
+  password: string,
+  stackId = "",
+  requiredOnly = true
 ): Promise<SetupResult> {
   const res = await apiFetch(`${BASE}/setup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ founder_id: founderId, email, password }),
+    body: JSON.stringify({
+      founder_id: founderId,
+      email,
+      password,
+      stack_id: stackId,
+      required_only: requiredOnly,
+      include_foundation: true,
+    }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();

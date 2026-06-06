@@ -15,10 +15,34 @@ from backend.provisioning.browser_provisioner import (
 )
 from backend.provisioning.supabase_provisioner import provision_supabase_project
 from backend.provisioning.credentials_store import load_all_credentials, store_credentials
+from backend.stacks.templates import get_stack_template
 
 logger = logging.getLogger(__name__)
 
 _EXECUTOR = ThreadPoolExecutor(max_workers=4)
+
+_FOUNDATION_SERVICES = {"github", "vercel", "sendgrid", "supabase", "composio"}
+_CONNECTOR_SERVICE_MAP: dict[str, set[str]] = {
+    "github": {"github"},
+    "vercel": {"vercel"},
+    "supabase": {"supabase"},
+    "gmail": {"composio"},
+    "google_drive": {"composio"},
+    "google_sheets": {"composio"},
+    "google_calendar": {"composio"},
+    "notion": {"composio"},
+    "linear": {"composio"},
+    "linkedin": {"composio"},
+}
+_CONNECTOR_COMPOSIO_APP_MAP: dict[str, str] = {
+    "gmail": "gmail",
+    "google_drive": "google_drive",
+    "google_sheets": "google_sheets",
+    "google_calendar": "googlecalendar",
+    "notion": "notion",
+    "linear": "linear",
+    "linkedin": "linkedin",
+}
 
 OAUTH_URLS = {
     "instagram": (
@@ -43,6 +67,9 @@ async def provision_all(
     email: str,
     password: str,
     base_url: str = "http://localhost:8000",
+    stack_id: str = "",
+    required_only: bool = False,
+    include_foundation: bool = True,
 ) -> dict:
     """
     Provision GitHub, Vercel, SendGrid concurrently.
@@ -51,18 +78,27 @@ async def provision_all(
     """
     loop = asyncio.get_event_loop()
 
-    # Run all browser automations concurrently
+    plan = build_provision_plan(stack_id=stack_id, include_foundation=include_foundation, required_only=required_only)
+
+    # Run selected browser automations concurrently
     from backend.tools.composio_tools import connect_founder_tools, _reset_toolset
 
     from backend.config import settings
     imap_pw = settings.test_email_imap_password or None
 
-    github_fut = loop.run_in_executor(_EXECUTOR, provision_github, email, password, None, imap_pw)
-    sendgrid_fut = loop.run_in_executor(_EXECUTOR, provision_sendgrid, email, password, imap_pw)
-    composio_provision_fut = loop.run_in_executor(_EXECUTOR, provision_composio, email, password)
-
     results = {}
-    for service, fut in [("github", github_fut), ("sendgrid", sendgrid_fut)]:
+    startup_futures: list[tuple[str, Any]] = []
+    if "github" in plan["services"]:
+        startup_futures.append(("github", loop.run_in_executor(_EXECUTOR, provision_github, email, password, None, imap_pw)))
+    if "sendgrid" in plan["services"]:
+        startup_futures.append(("sendgrid", loop.run_in_executor(_EXECUTOR, provision_sendgrid, email, password, imap_pw)))
+    composio_provision_fut = (
+        loop.run_in_executor(_EXECUTOR, provision_composio, email, password)
+        if "composio" in plan["services"]
+        else None
+    )
+
+    for service, fut in startup_futures:
         try:
             results[service] = await fut
         except Exception as e:
@@ -71,40 +107,45 @@ async def provision_all(
 
     # Vercel uses GitHub token — provision after GitHub
     github_token = results.get("github", {}).get("token")
-    try:
-        results["vercel"] = await loop.run_in_executor(
-            _EXECUTOR, provision_vercel, email, password, github_token, imap_pw
-        )
-    except Exception as e:
-        results["vercel"] = {"created": False, "error": str(e)}
+    if "vercel" in plan["services"]:
+        try:
+            results["vercel"] = await loop.run_in_executor(
+                _EXECUTOR, provision_vercel, email, password, github_token, imap_pw
+            )
+        except Exception as e:
+            results["vercel"] = {"created": False, "error": str(e)}
 
     # Supabase — database + auth + storage (matches Cofounder 2 auto-infra)
     project_name = email.split("@")[0].replace(".", "-").replace("_", "-")[:20]
-    try:
-        results["supabase"] = await loop.run_in_executor(
-            _EXECUTOR, provision_supabase_project, founder_id, project_name
-        )
-    except Exception as e:
-        results["supabase"] = {"created": False, "error": str(e)}
+    if "supabase" in plan["services"]:
+        try:
+            results["supabase"] = await loop.run_in_executor(
+                _EXECUTOR, provision_supabase_project, founder_id, project_name
+            )
+        except Exception as e:
+            results["supabase"] = {"created": False, "error": str(e)}
 
     # Composio account — inject API key into settings + .env if obtained
-    try:
-        composio_result = await composio_provision_fut
-    except Exception as e:
-        composio_result = {"api_key": None, "created": False, "error": str(e)}
-
-    results["composio"] = composio_result
-    if composio_result.get("api_key"):
-        _inject_composio_key(composio_result["api_key"])
-        _reset_toolset()
+    composio_result = {}
+    if composio_provision_fut is not None:
+        try:
+            composio_result = await composio_provision_fut
+        except Exception as e:
+            composio_result = {"api_key": None, "created": False, "error": str(e)}
+        results["composio"] = composio_result
+        if composio_result.get("api_key"):
+            _inject_composio_key(composio_result["api_key"])
+            _reset_toolset()
 
     # Now generate per-founder OAuth URLs (uses freshly injected key if available)
-    try:
-        composio_urls = await loop.run_in_executor(
-            _EXECUTOR, connect_founder_tools, founder_id, None
-        )
-    except Exception as e:
-        composio_urls = {"error": str(e)}
+    composio_urls = {}
+    if plan["composio_apps"]:
+        try:
+            composio_urls = await loop.run_in_executor(
+                _EXECUTOR, connect_founder_tools, founder_id, plan["composio_apps"]
+            )
+        except Exception as e:
+            composio_urls = {"error": str(e)}
 
     # Store credentials that were successfully obtained
     _store_service_creds(founder_id, results)
@@ -122,6 +163,53 @@ async def provision_all(
         "services": results,
         "summary": _summarize(results),
         "composio_oauth_urls": composio_urls,
+        "stack_id": stack_id,
+        "required_only": required_only,
+        "provision_plan": plan,
+        "pending_manual_connectors": plan["manual_connectors"],
+    }
+
+
+def build_provision_plan(
+    stack_id: str = "",
+    *,
+    include_foundation: bool = True,
+    required_only: bool = False,
+) -> dict:
+    services: set[str] = set(_FOUNDATION_SERVICES if include_foundation else set())
+    composio_apps: set[str] = set()
+    connectors: list[dict[str, object]] = []
+    manual_connectors: list[str] = []
+
+    if stack_id:
+        stack = get_stack_template(stack_id)
+        selected_connectors = [
+            connector for connector in stack.connector_requirements
+            if not required_only or connector.required
+        ]
+        for connector in selected_connectors:
+            connectors.append({
+                "key": connector.key,
+                "label": connector.label,
+                "required": connector.required,
+            })
+            mapped = _CONNECTOR_SERVICE_MAP.get(connector.key, set())
+            if mapped:
+                services.update(mapped)
+            else:
+                manual_connectors.append(connector.key)
+            app = _CONNECTOR_COMPOSIO_APP_MAP.get(connector.key)
+            if app:
+                composio_apps.add(app)
+
+    return {
+        "stack_id": stack_id or "",
+        "services": sorted(services),
+        "connectors": connectors,
+        "composio_apps": sorted(composio_apps),
+        "manual_connectors": sorted(set(manual_connectors)),
+        "include_foundation": include_foundation,
+        "required_only": required_only,
     }
 
 

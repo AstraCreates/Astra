@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useDevUser } from "@/lib/use-dev-user";
-import { apiFetch, getStacks, getAgentCatalog, recommendStack, getStackReadiness, saveServiceCredential, getComposioOAuthUrls } from "@/lib/api";
+import { apiFetch, getStacks, getAgentCatalog, recommendStack, getStackReadiness, saveServiceCredential, getComposioOAuthUrls, setupAccounts } from "@/lib/api";
 import type { AgentStackTemplate, AgentCatalogEntry, StackReadiness } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -275,6 +275,10 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
   const [saving, setSaving] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [composioOAuthUrls, setComposioOAuthUrls] = useState<Record<string, string>>({});
+  const [autoEmail, setAutoEmail] = useState(userEmail || "");
+  const [autoPassword, setAutoPassword] = useState("");
+  const [autoProvisioning, setAutoProvisioning] = useState(false);
+  const [autoSummary, setAutoSummary] = useState<string[]>([]);
   const composioConnected = !!connected["__composio__"];
 
   useEffect(() => {
@@ -385,6 +389,35 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
       window.open("https://app.composio.dev/settings", "composio", "width=1060,height=720,scrollbars=yes");
     }
     setExpandedKey(prev => prev === key ? null : key);
+  }
+
+  async function runAutoProvision() {
+    if (!autoEmail.trim() || !autoPassword.trim()) return;
+    setAutoProvisioning(true);
+    setAutoSummary([]);
+    try {
+      const result = await setupAccounts(founderId, autoEmail.trim(), autoPassword, readiness?.stack_id ?? "", true);
+      const serviceCreated = (key: string) => Boolean((result.services?.[key] as { created?: boolean } | undefined)?.created);
+      setConnected(prev => ({
+        ...prev,
+        github: prev.github || serviceCreated("github"),
+        vercel: prev.vercel || serviceCreated("vercel"),
+        sendgrid: prev.sendgrid || serviceCreated("sendgrid"),
+        supabase: prev.supabase || serviceCreated("supabase"),
+        __composio__: prev.__composio__ || serviceCreated("composio"),
+      }));
+      if (result.composio_oauth_urls) setComposioOAuthUrls(result.composio_oauth_urls);
+      setAutoSummary([
+        ...(result.summary ?? []),
+        ...(result.pending_manual_connectors?.length
+          ? [`Manual follow-up still needed: ${result.pending_manual_connectors.join(", ")}`]
+          : []),
+      ]);
+    } catch (e) {
+      setAutoSummary([e instanceof Error ? e.message : "Auto-connect failed"]);
+    } finally {
+      setAutoProvisioning(false);
+    }
   }
 
   function card(key: string, icon: string, label: string, purpose: string, isRequired: boolean) {
@@ -554,6 +587,54 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
         <p style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>
           Based on <strong style={{ color: T.textPrimary }}>{stackName}</strong>. Everything connects right here.
         </p>
+      </div>
+
+      <div style={{
+        border: `1px solid ${T.border}`,
+        borderRadius: 14,
+        background: T.blueTint,
+        padding: "14px 16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary }}>Auto-connect required accounts</div>
+            <div style={{ fontSize: 11, color: T.textMuted, lineHeight: 1.5 }}>
+              For testing, Astra will try to sign up or log in and fetch the keys for the required stack accounts automatically.
+            </div>
+          </div>
+          <button
+            style={{ ...cardBtnStyle, opacity: autoProvisioning || !autoEmail.trim() || !autoPassword.trim() ? 0.55 : 1 }}
+            onClick={runAutoProvision}
+            disabled={autoProvisioning || !autoEmail.trim() || !autoPassword.trim()}
+          >
+            {autoProvisioning ? "Connecting…" : "Auto-connect now"}
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input
+            value={autoEmail}
+            onChange={e => setAutoEmail(e.target.value)}
+            placeholder="Email"
+            style={{ ...pasteInputStyle, minWidth: 220, fontFamily: "var(--font-geist-sans)" }}
+          />
+          <input
+            type="password"
+            value={autoPassword}
+            onChange={e => setAutoPassword(e.target.value)}
+            placeholder="Password"
+            style={{ ...pasteInputStyle, minWidth: 220, fontFamily: "var(--font-geist-sans)" }}
+          />
+        </div>
+        {autoSummary.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {autoSummary.map((line, idx) => (
+              <div key={idx} style={{ fontSize: 11, color: T.textSecondary }}>{line}</div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

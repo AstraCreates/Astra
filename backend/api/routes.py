@@ -1076,12 +1076,27 @@ async def setup_accounts(body: SetupRequest, request: Request):
     Returns status per service + OAuth URLs for Instagram/TikTok/Meta.
     """
     require_founder_access(request, body.founder_id, min_role="admin")
-    from backend.provisioning.account_provisioner import provision_all
+    from backend.provisioning.account_provisioner import build_provision_plan, provision_all
+    if body.preview_only:
+        return {
+            "founder_id": body.founder_id,
+            "email": body.email,
+            "stack_id": body.stack_id or "",
+            "preview_only": True,
+            "provision_plan": build_provision_plan(
+                stack_id=body.stack_id or "",
+                include_foundation=body.include_foundation,
+                required_only=body.required_only,
+            ),
+        }
     result = await provision_all(
         founder_id=body.founder_id,
         email=body.email,
         password=body.password,
         base_url=body.base_url,
+        stack_id=body.stack_id or "",
+        required_only=body.required_only,
+        include_foundation=body.include_foundation,
     )
     return result
 
