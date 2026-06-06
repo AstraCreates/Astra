@@ -612,7 +612,15 @@ def _complete_composio_oauth_app(
             _handle_composio_return(page)
 
         service = app if app in {"notion", "linear", "github"} else ("google" if "google" in app or app == "gmail" else app)
-        _maybe_handle_email_challenge(page, email, imap_password, service, deadline=deadline, state=oauth_state)
+        _maybe_handle_email_challenge(
+            page,
+            email,
+            imap_password,
+            service,
+            deadline=deadline,
+            state=oauth_state,
+            email_password=password,
+        )
         _click_generic_oauth_buttons(page)
         page.wait_for_timeout(2500)
 
@@ -733,6 +741,7 @@ def _maybe_handle_email_challenge(
     *,
     deadline: float | None = None,
     state: dict[str, float] | None = None,
+    email_password: str | None = None,
 ) -> bool:
     page_text = _page_text(page)
     if not imap_password:
@@ -758,8 +767,12 @@ def _maybe_handle_email_challenge(
         return False
     wait_timeout = min(45, remaining)
     from backend.testing.email_reader import wait_for_verification_code, wait_for_verification_url
-
-    code = wait_for_verification_code(email, imap_password, service, timeout=wait_timeout)
+    last_imap_error = ""
+    try:
+        code = wait_for_verification_code(email, imap_password, service, timeout=wait_timeout)
+    except RuntimeError as exc:
+        last_imap_error = str(exc)
+        code = None
     if code:
         filled = _fill_first(page, [
             "input[autocomplete='one-time-code']",
@@ -773,13 +786,70 @@ def _maybe_handle_email_challenge(
             return True
     remaining = max(0, int((deadline - time.time()) if deadline else wait_timeout))
     if remaining < 5:
-        return False
-    link = wait_for_verification_url(email, imap_password, service, timeout=min(45, remaining))
+        return _maybe_handle_webmail_fallback(page, email, email_password, service, state, last_imap_error)
+    try:
+        link = wait_for_verification_url(email, imap_password, service, timeout=min(45, remaining))
+    except RuntimeError as exc:
+        last_imap_error = str(exc)
+        link = None
     if link:
         page.goto(link, timeout=30000)
         page.wait_for_timeout(1500)
         return True
+    return _maybe_handle_webmail_fallback(page, email, email_password, service, state, last_imap_error)
+
+
+def _maybe_handle_webmail_fallback(
+    page,
+    email: str,
+    email_password: str | None,
+    service: str,
+    state: dict[str, float] | None,
+    imap_error: str = "",
+) -> bool:
+    if not email_password:
+        return False
+    domain = email.split("@")[-1].lower()
+    fallback_key = f"webmail:{service}:{domain}"
+    if state is not None and state.get(fallback_key):
+        return False
+    if state is not None:
+        state[fallback_key] = time.time()
+    logger.info("Falling back to in-browser mailbox verification for %s (%s)", service, imap_error or "no IMAP result")
+    if domain in {"gmail.com", "googlemail.com"}:
+        return _open_gmail_for_verification(page, email, email_password, service)
     return False
+
+
+def _open_gmail_for_verification(page, email: str, password: str, service: str) -> bool:
+    try:
+        inbox = page.context.new_page()
+        inbox.goto("https://mail.google.com", timeout=30000)
+        inbox.wait_for_timeout(1500)
+        if "accounts.google.com" in (inbox.url or ""):
+            _handle_google_login(inbox, email, password)
+            inbox.wait_for_timeout(3000)
+        if "mail.google.com" not in (inbox.url or ""):
+            return False
+        query = _gmail_service_query(service)
+        try:
+            inbox.goto(f"https://mail.google.com/mail/u/0/#search/{query}", timeout=30000)
+            inbox.wait_for_timeout(3000)
+        except Exception:
+            pass
+        return True
+    except Exception as exc:
+        logger.warning("Webmail fallback failed for %s: %s", service, exc)
+        return False
+
+
+def _gmail_service_query(service: str) -> str:
+    service = (service or "").lower()
+    if service == "notion":
+        return "from:(notion.so OR notion.com OR mail.notion.so) newer_than:1d"
+    if service == "linear":
+        return "from:(linear.app OR linear.com) newer_than:1d"
+    return f"from:{service} newer_than:1d"
 
 
 def _handle_google_login(page, email: str, password: str) -> None:
@@ -814,7 +884,7 @@ def _handle_notion_login(page, email: str, password: str, imap_password: str | N
     _click_text(page, ["Continue with email", "Continue", "Email me a code"])
     _fill_first(page, ["input[type='password']", "input[name='password']"], password)
     _click_text(page, ["Continue", "Sign in", "Open Notion"])
-    _maybe_handle_email_challenge(page, email, imap_password, "notion")
+    _maybe_handle_email_challenge(page, email, imap_password, "notion", email_password=password)
     _click_text(page, ["Select pages", "Allow access", "Allow", "Continue", "Authorize"])
 
 
@@ -831,7 +901,7 @@ def _handle_linear_login(page, email: str, password: str, imap_password: str | N
     _click_text(page, ["Continue", "Continue with email", "Next"])
     _fill_first(page, ["input[type='password']", "input[name='password']"], password)
     _click_text(page, ["Sign in", "Continue", "Open Linear"])
-    _maybe_handle_email_challenge(page, email, imap_password, "linear")
+    _maybe_handle_email_challenge(page, email, imap_password, "linear", email_password=password)
     _click_text(page, ["Allow access", "Allow", "Authorize", "Approve", "Continue"])
 
 

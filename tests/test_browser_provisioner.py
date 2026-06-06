@@ -107,6 +107,42 @@ def test_maybe_handle_email_challenge_throttles_repeat_attempts(monkeypatch):
     assert calls == {"code": 1, "link": 1}
 
 
+def test_maybe_handle_email_challenge_falls_back_to_webmail_on_imap_auth_failure(monkeypatch):
+    page = FakePage(
+        url="https://app.notion.com/login",
+        content="Check your email for a verification code",
+        available={"input[autocomplete='one-time-code']"},
+    )
+    monkeypatch.setattr(
+        "backend.testing.email_reader.wait_for_verification_code",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("IMAP authentication failed")),
+    )
+    monkeypatch.setattr(
+        "backend.testing.email_reader.wait_for_verification_url",
+        lambda *args, **kwargs: None,
+    )
+    called = {}
+
+    def fake_webmail(page_obj, email, password, service):
+        called["args"] = (email, password, service)
+        return True
+
+    monkeypatch.setattr(bp, "_open_gmail_for_verification", fake_webmail)
+
+    handled = bp._maybe_handle_email_challenge(
+        page,
+        "founder@gmail.com",
+        "bad-imap",
+        "notion",
+        deadline=bp.time.time() + 60,
+        state={},
+        email_password="email-secret",
+    )
+
+    assert handled is True
+    assert called["args"] == ("founder@gmail.com", "email-secret", "notion")
+
+
 def test_handle_google_login_can_pick_account_and_continue():
     page = FakePage(
         content="Choose an account",
