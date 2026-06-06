@@ -1,4 +1,6 @@
-from backend.provisioning.account_provisioner import build_provision_plan, _summarize
+import asyncio
+
+from backend.provisioning.account_provisioner import build_provision_plan, get_founder_setup_status, _summarize
 
 
 def test_build_provision_plan_for_idea_to_revenue_required_connectors():
@@ -48,3 +50,27 @@ def test_summarize_reports_oauth_app_results():
 def test_google_sheets_uses_google_drive_oauth_app():
     plan = build_provision_plan("sales", required_only=False, include_foundation=False)
     assert "google_drive" in plan["composio_apps"]
+
+
+def test_get_founder_setup_status_surfaces_saved_and_live_composio_apps(monkeypatch):
+    monkeypatch.setattr(
+        "backend.provisioning.account_provisioner.load_all_credentials",
+        lambda founder_id: {
+            "composio": {"api_key": "cmp_live"},
+            "notion": {"connected": True, "connected_via": "composio_oauth", "composio_app": "notion"},
+        },
+    )
+    monkeypatch.setattr(
+        "backend.tools.integration_connect.get_composio_app_status",
+        lambda founder_id: {"linear": True, "googlecalendar": True, "google_drive": True},
+    )
+
+    status = asyncio.run(get_founder_setup_status("founder-1"))
+
+    assert status["composio"] is True
+    assert status["apps"]["notion"] is True
+    assert status["apps"]["linear"] is True
+    assert status["apps"]["product_tracker"] is True
+    assert status["apps"]["google_calendar"] is True
+    assert status["apps"]["google_drive"] is True
+    assert status["apps"]["google_sheets"] is True

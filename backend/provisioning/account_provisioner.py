@@ -6,6 +6,7 @@ stores credentials encrypted per-founder.
 import asyncio
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Any
 
 from backend.provisioning.browser_provisioner import (
     provision_composio,
@@ -325,6 +326,28 @@ async def get_founder_setup_status(founder_id: str) -> dict:
     except Exception:
         creds = {}
 
+    apps = _connected_composio_services(creds)
+    try:
+        from backend.tools.integration_connect import get_composio_app_status
+        live_apps = await asyncio.to_thread(get_composio_app_status, founder_id)
+    except Exception:
+        live_apps = {}
+
+    if live_apps.get("gmail"):
+        apps["gmail"] = True
+    if live_apps.get("linkedin"):
+        apps["linkedin"] = True
+    if live_apps.get("notion"):
+        apps["notion"] = True
+    if live_apps.get("linear"):
+        apps["linear"] = True
+        apps["product_tracker"] = True
+    if live_apps.get("google_drive"):
+        apps["google_drive"] = True
+        apps["google_sheets"] = True
+    if live_apps.get("googlecalendar"):
+        apps["google_calendar"] = True
+
     return {
         "github": bool(creds.get("github", {}).get("token")),
         "vercel": bool(creds.get("vercel", {}).get("token")),
@@ -333,4 +356,28 @@ async def get_founder_setup_status(founder_id: str) -> dict:
         "instagram": bool(creds.get("instagram", {}).get("access_token")),
         "tiktok": bool(creds.get("tiktok", {}).get("access_token")),
         "meta_ads": bool(creds.get("meta_ads", {}).get("access_token")),
+        "composio": bool(creds.get("composio", {}).get("api_key")),
+        "apps": apps,
     }
+
+
+def _connected_composio_services(creds: dict[str, Any]) -> dict[str, bool]:
+    apps: dict[str, bool] = {}
+    for service, saved in creds.items():
+        if not isinstance(saved, dict):
+            continue
+        if saved.get("connected_via") != "composio_oauth":
+            continue
+        app = str(saved.get("composio_app") or "").strip()
+        if not app:
+            continue
+        apps[service] = True
+        if app == "google_drive":
+            apps["google_drive"] = True
+            apps["google_sheets"] = True
+        elif app == "googlecalendar":
+            apps["google_calendar"] = True
+        elif app == "linear":
+            apps["linear"] = True
+            apps["product_tracker"] = True
+    return apps

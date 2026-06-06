@@ -2189,8 +2189,21 @@ async def composio_connected(founder_id: str, request: Request):
     """Return per-app Composio connection status for the founder."""
     require_founder_access(request, founder_id, min_role="viewer")
     import asyncio
+    from backend.provisioning.credentials_store import load_all_credentials
     from backend.tools.integration_connect import get_composio_app_status
     status = await asyncio.to_thread(get_composio_app_status, founder_id)
+    try:
+        creds = load_all_credentials(founder_id)
+    except Exception:
+        creds = {}
+    for saved in creds.values():
+        if not isinstance(saved, dict):
+            continue
+        if saved.get("connected_via") != "composio_oauth":
+            continue
+        app = str(saved.get("composio_app") or "").strip()
+        if app and not status.get(app):
+            status[app] = True
     return {"founder_id": founder_id, "apps": status}
 
 

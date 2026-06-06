@@ -471,6 +471,8 @@ export interface SetupStatus {
   instagram: boolean;
   tiktok: boolean;
   meta_ads: boolean;
+  composio?: boolean;
+  apps?: Record<string, boolean>;
 }
 
 export interface SetupResult {

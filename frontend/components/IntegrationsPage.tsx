@@ -909,6 +909,11 @@ export default function SetupPage() {
   const [autoPassword, setAutoPassword] = useState("");
   const [autoResult, setAutoResult] = useState<string[] | null>(null);
   const [showAutoProvision, setShowAutoProvision] = useState(false);
+  const coreConnected: Partial<Record<(typeof SERVICES)[number]["key"], boolean>> = {
+    github: !!status?.github,
+    vercel: !!status?.vercel,
+    sendgrid: !!status?.sendgrid,
+  };
 
   const loadStatus = useCallback(async () => {
     try {
@@ -1035,7 +1040,7 @@ export default function SetupPage() {
             <ServiceCard
               key={svc.key}
               svc={svc}
-              connected={status?.[svc.key as keyof SetupStatus] ?? false}
+              connected={coreConnected[svc.key] ?? false}
               founderId={founderId}
               onSaved={loadStatus}
             />

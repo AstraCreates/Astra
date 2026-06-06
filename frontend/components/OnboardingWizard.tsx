@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useDevUser } from "@/lib/use-dev-user";
-import { apiFetch, getStacks, getAgentCatalog, recommendStack, getStackReadiness, saveServiceCredential, getComposioOAuthUrls, setupAccounts } from "@/lib/api";
+import { apiFetch, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getSetupStatus, saveServiceCredential, getComposioOAuthUrls, setupAccounts } from "@/lib/api";
 import type { AgentStackTemplate, AgentCatalogEntry, StackReadiness } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -304,6 +304,40 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
     if (p.get("stripe_connected") === "1") { updates["stripe"] = true; window.history.replaceState({}, "", window.location.pathname); }
     if (Object.keys(updates).length) setConnected(prev => ({ ...prev, ...updates }));
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const nextConnected: Record<string, boolean> = {};
+    for (const connector of readiness?.connectors ?? []) {
+      if (connector.connected) nextConnected[connector.key] = true;
+    }
+
+    getSetupStatus(founderId)
+      .then((status) => {
+        if (cancelled) return;
+        const appStatus = status.apps ?? {};
+        setConnected((prev) => ({
+          ...prev,
+          ...nextConnected,
+          github: prev.github || status.github,
+          vercel: prev.vercel || status.vercel,
+          sendgrid: prev.sendgrid || status.sendgrid,
+          supabase: prev.supabase || status.supabase,
+          __composio__: prev.__composio__ || !!status.composio,
+          ...Object.fromEntries(Object.entries(appStatus).filter(([, value]) => value)),
+        }));
+      })
+      .catch(() => {
+        if (!cancelled && Object.keys(nextConnected).length) {
+          setConnected((prev) => ({ ...prev, ...nextConnected }));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [founderId, readiness]);
 
   const required = readiness?.connectors.filter(c => c.required) ?? [];
   const optional = readiness?.connectors.filter(c => !c.required) ?? [];
