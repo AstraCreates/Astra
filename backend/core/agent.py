@@ -25,56 +25,11 @@ logger = logging.getLogger(__name__)
 _TOOL_RESULT_CHAR_CAP = 80_000
 
 
-# Cumulative conversation budget per agent loop. The model window is 262144 tokens
-# (~970k chars at ~3.7 chars/token); keep well under it so tool schemas + the model's
-# own response still fit. The previous 4_000_000 was ~4x the window, so this safety
-# net never fired before an overflow 400.
-_HISTORY_CHAR_BUDGET = 700_000
-
-# The first user message (goal + SHARED CONTEXT) is NEVER trimmed by
-# _trim_message_history, so it must be bounded at construction or a large shared dict
-# (3 research lanes + design + stack blueprints + brain/genome) overflows the window
-# on the very first call — observed: marketing requested 276256 tokens vs 262144.
-_SHARED_CONTEXT_CHAR_CAP = 160_000
-_SHARED_VALUE_CHAR_CAP = 32_000
-
-
-def _bounded_shared_context(shared: Any) -> str:
-    """Serialize shared context with a hard size budget. Priority keys (the actual
-    working context an agent needs) are emitted first; lower-value/oversized blobs are
-    truncated or dropped so the initial prompt cannot blow the model window."""
-    if not isinstance(shared, dict):
-        return str(shared)[:_SHARED_CONTEXT_CHAR_CAP]
-    _priority = ("company_name", "creative_brief", "company_brain_context",
-                 "company_genome", "prior_results", "prior_vault_notes")
-
-    def _rank(k: str) -> int:
-        if k in _priority:
-            return 0
-        if k.startswith("enriched_instruction_") or k.startswith("result_"):
-            return 1
-        return 2
-
-    ordered = sorted(shared.keys(), key=lambda k: (_rank(str(k)), str(k)))
-    parts: list[str] = []
-    used = 0
-    omitted: list[str] = []
-    for k in ordered:
-        try:
-            s = json.dumps(shared[k], indent=2, default=str)
-        except Exception:
-            s = str(shared[k])
-        if len(s) > _SHARED_VALUE_CHAR_CAP:
-            s = s[:_SHARED_VALUE_CHAR_CAP] + " …[truncated]"
-        if used + len(s) > _SHARED_CONTEXT_CHAR_CAP:
-            omitted.append(str(k))
-            continue
-        parts.append(f'  "{k}": {s}')
-        used += len(s)
-    body = "{\n" + ",\n".join(parts) + "\n}"
-    if omitted:
-        body += f"\n[shared keys omitted to fit context budget: {', '.join(omitted)}]"
-    return body
+# Cumulative conversation budget per agent loop. Must stay under the model window:
+# 262,144 tokens ≈ ~940k chars, so 4_000_000 (the old value) was ~4x over and let
+# long tool-heavy loops (design/technical, 40+ iters) overflow. Kept comfortably
+# below the limit to leave room for the system prompt and the response.
+_HISTORY_CHAR_BUDGET = 800_000
 
 
 def _trim_message_history(messages: list[dict]) -> list[dict]:
@@ -115,6 +70,45 @@ def _format_tool_result(tool_name: str, result: Any) -> str:
     if isinstance(text, str) and len(text) > _TOOL_RESULT_CHAR_CAP:
         return text[:_TOOL_RESULT_CHAR_CAP] + f"\n... (truncated, {len(text):,} chars total)"
     return text
+
+
+# Hard cap on the serialized SHARED CONTEXT injected into an agent's initial user
+# message. That message (messages[1]) is never trimmed by _trim_message_history — the
+# head is always preserved — so if shared context alone exceeds the model window the
+# very FIRST LLM call fails before any trimming can help (observed: marketing at
+# 276,256 tokens vs the 262,144 limit, with 3 research results + brain + genome +
+# manifests accumulated in shared). Bound it here, keeping every key visible.
+_SHARED_CONTEXT_CHAR_CAP = 350_000
+_SHARED_VALUE_CHAR_CAP = 50_000
+
+
+def _render_shared_context(shared: dict, max_chars: int = _SHARED_CONTEXT_CHAR_CAP) -> str:
+    """Serialize shared context for the prompt, bounded so it cannot overflow the
+    model window. Under budget → full pretty JSON. Over budget → per-key rendering
+    with oversized values truncated and a hard total ceiling, so every key stays
+    visible to the agent while the request stays within limits."""
+    try:
+        full = json.dumps(shared, indent=2, default=str)
+    except Exception:
+        return str(shared)[:max_chars]
+    if len(full) <= max_chars:
+        return full
+    parts: list[str] = []
+    budget = max_chars
+    for k, v in shared.items():
+        try:
+            vs = json.dumps(v, default=str)
+        except Exception:
+            vs = str(v)
+        if len(vs) > _SHARED_VALUE_CHAR_CAP:
+            vs = vs[:_SHARED_VALUE_CHAR_CAP] + f"  ... [truncated, {len(vs):,} chars total]"
+        entry = f'  "{k}": {vs}'
+        if len(entry) > budget:
+            parts.append(f'  "{k}": "[omitted — shared-context budget exhausted]"')
+            break
+        budget -= len(entry)
+        parts.append(entry)
+    return "{\n" + ",\n".join(parts) + "\n}"
 
 
 def _format_tool_result_raw(tool_name: str, result: Any) -> str:
@@ -519,7 +513,7 @@ class Agent:
                 f"GOAL: {ctx.goal}\n"
                 f"FOUNDER_ID: {ctx.founder_id}\n"
                 f"SESSION: {ctx.session_id}\n"
-                f"SHARED CONTEXT: {_bounded_shared_context(ctx.shared)}"
+                f"SHARED CONTEXT: {_render_shared_context(ctx.shared)}"
             )},
         ]
 
