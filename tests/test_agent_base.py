@@ -51,7 +51,7 @@ async def test_agent_run_with_tool_call(mocker):
 
     call_count = 0
 
-    def fake_llm(messages):
+    def fake_llm(messages, _ctx=None):
         nonlocal call_count
         call_count += 1
         return tool_call if call_count == 1 else done_call

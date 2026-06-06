@@ -25,8 +25,56 @@ logger = logging.getLogger(__name__)
 _TOOL_RESULT_CHAR_CAP = 80_000
 
 
-# Cumulative conversation budget per agent loop.
-_HISTORY_CHAR_BUDGET = 4_000_000
+# Cumulative conversation budget per agent loop. The model window is 262144 tokens
+# (~970k chars at ~3.7 chars/token); keep well under it so tool schemas + the model's
+# own response still fit. The previous 4_000_000 was ~4x the window, so this safety
+# net never fired before an overflow 400.
+_HISTORY_CHAR_BUDGET = 700_000
+
+# The first user message (goal + SHARED CONTEXT) is NEVER trimmed by
+# _trim_message_history, so it must be bounded at construction or a large shared dict
+# (3 research lanes + design + stack blueprints + brain/genome) overflows the window
+# on the very first call — observed: marketing requested 276256 tokens vs 262144.
+_SHARED_CONTEXT_CHAR_CAP = 160_000
+_SHARED_VALUE_CHAR_CAP = 32_000
+
+
+def _bounded_shared_context(shared: Any) -> str:
+    """Serialize shared context with a hard size budget. Priority keys (the actual
+    working context an agent needs) are emitted first; lower-value/oversized blobs are
+    truncated or dropped so the initial prompt cannot blow the model window."""
+    if not isinstance(shared, dict):
+        return str(shared)[:_SHARED_CONTEXT_CHAR_CAP]
+    _priority = ("company_name", "creative_brief", "company_brain_context",
+                 "company_genome", "prior_results", "prior_vault_notes")
+
+    def _rank(k: str) -> int:
+        if k in _priority:
+            return 0
+        if k.startswith("enriched_instruction_") or k.startswith("result_"):
+            return 1
+        return 2
+
+    ordered = sorted(shared.keys(), key=lambda k: (_rank(str(k)), str(k)))
+    parts: list[str] = []
+    used = 0
+    omitted: list[str] = []
+    for k in ordered:
+        try:
+            s = json.dumps(shared[k], indent=2, default=str)
+        except Exception:
+            s = str(shared[k])
+        if len(s) > _SHARED_VALUE_CHAR_CAP:
+            s = s[:_SHARED_VALUE_CHAR_CAP] + " …[truncated]"
+        if used + len(s) > _SHARED_CONTEXT_CHAR_CAP:
+            omitted.append(str(k))
+            continue
+        parts.append(f'  "{k}": {s}')
+        used += len(s)
+    body = "{\n" + ",\n".join(parts) + "\n}"
+    if omitted:
+        body += f"\n[shared keys omitted to fit context budget: {', '.join(omitted)}]"
+    return body
 
 
 def _trim_message_history(messages: list[dict]) -> list[dict]:
@@ -471,7 +519,7 @@ class Agent:
                 f"GOAL: {ctx.goal}\n"
                 f"FOUNDER_ID: {ctx.founder_id}\n"
                 f"SESSION: {ctx.session_id}\n"
-                f"SHARED CONTEXT: {json.dumps(ctx.shared, indent=2)}"
+                f"SHARED CONTEXT: {_bounded_shared_context(ctx.shared)}"
             )},
         ]
 
