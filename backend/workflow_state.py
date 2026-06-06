@@ -31,6 +31,13 @@ def _state_path(session_id: str) -> Path:
 def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict[str, Any]:
     event_dicts = [event for _, event in events]
     founder_id = next((str(event.get("founder_id")) for event in event_dicts if event.get("founder_id")), "")
+    company_goal = None
+    if founder_id:
+        try:
+            from backend.missions.company_goal import get_company_goal
+            company_goal = get_company_goal(founder_id)
+        except Exception:
+            company_goal = None
     stack = next((event.get("stack") for event in event_dicts if event.get("type") == "stack_selected"), None)
     operating_plan = next(
         (event.get("operating_plan") for event in reversed(event_dicts) if event.get("type") == "stack_operating_plan"),
@@ -126,6 +133,7 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
         "session_id": session_id,
         "founder_id": founder_id,
         "status": final_status,
+        "company_goal": company_goal,
         "event_count": len(events),
         "last_event_id": events[-1][0] if events else 0,
         "stack": stack,

@@ -27,6 +27,7 @@ _lock = threading.Lock()
 DepartmentType = Literal["research", "marketing", "sales", "technical", "legal", "ops", "finance"]
 StatusType = Literal["active", "paused", "completed"]
 ApprovalPolicyType = Literal["auto", "require_approval"]
+TaskStatusType = Literal["pending", "in_progress", "done", "blocked"]
 
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -157,6 +158,10 @@ def create_mission(
         "run_count": 0,
         "total_cost_usd": 0.0,
         "progress_notes": [],
+        "tasks": [],
+        "company_goal_id": None,
+        "notion_page_id": None,
+        "notion_page_url": None,
     }
     with _lock:
         _save_mission_file(mission)
@@ -209,6 +214,14 @@ def list_missions(founder_id: str) -> list[dict]:
     return missions
 
 
+def find_mission(founder_id: str, department: str, name: str) -> dict | None:
+    normalized_name = (name or "").strip().lower()
+    for mission in list_missions(founder_id):
+        if mission.get("department") == department and str(mission.get("name", "")).strip().lower() == normalized_name:
+            return mission
+    return None
+
+
 def update_mission(mission_id: str, **fields: Any) -> dict:
     """Update arbitrary top-level fields on a mission.
 
@@ -241,6 +254,87 @@ def update_mission(mission_id: str, **fields: Any) -> dict:
         index[mission_id] = _index_entry(mission)
         _save_index(index)
     return mission
+
+
+def _task_now() -> str:
+    return _now_iso()
+
+
+def _normalize_task(task: dict[str, Any], mission: dict[str, Any], now: str | None = None) -> dict[str, Any]:
+    timestamp = now or _task_now()
+    task_id = str(task.get("id") or uuid.uuid4())
+    return {
+        "id": task_id,
+        "title": str(task.get("title") or task_id),
+        "status": str(task.get("status") or "pending"),
+        "parent_id": task.get("parent_id"),
+        "notes": str(task.get("notes") or ""),
+        "owner_agent": str(task.get("owner_agent") or mission.get("department") or ""),
+        "created_at": str(task.get("created_at") or timestamp),
+        "updated_at": str(task.get("updated_at") or timestamp),
+        "last_run_id": task.get("last_run_id"),
+        "notion_page_id": task.get("notion_page_id"),
+        "notion_page_url": task.get("notion_page_url"),
+    }
+
+
+def list_tasks(mission_id: str) -> list[dict[str, Any]]:
+    mission = get_mission(mission_id)
+    if mission is None:
+        raise KeyError(f"Mission not found: {mission_id}")
+    tasks = mission.get("tasks") or []
+    return [dict(task) for task in tasks]
+
+
+def bulk_upsert_tasks(mission_id: str, tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    with _lock:
+        index = _load_index()
+        entry = index.get(mission_id)
+        if not entry:
+            raise KeyError(f"Mission not found: {mission_id}")
+        mission = _load_mission_file(entry["founder_id"], mission_id)
+        if mission is None:
+            raise KeyError(f"Mission file missing for: {mission_id}")
+        existing = {str(task.get("id")): dict(task) for task in mission.get("tasks") or [] if task.get("id")}
+        now = _task_now()
+        for task in tasks:
+            task_id = str(task.get("id") or uuid.uuid4())
+            merged = {**existing.get(task_id, {}), **task, "id": task_id}
+            if "created_at" not in merged:
+                merged["created_at"] = now
+            merged["updated_at"] = now
+            existing[task_id] = _normalize_task(merged, mission, now)
+        mission["tasks"] = list(existing.values())
+        _save_mission_file(mission)
+        return [dict(task) for task in mission["tasks"]]
+
+
+def add_task(mission_id: str, task: dict[str, Any]) -> dict[str, Any]:
+    created = bulk_upsert_tasks(mission_id, [task])
+    target_id = str(task.get("id") or created[-1].get("id"))
+    return next(item for item in created if str(item.get("id")) == target_id)
+
+
+def update_task(mission_id: str, task_id: str, **fields: Any) -> dict[str, Any]:
+    with _lock:
+        index = _load_index()
+        entry = index.get(mission_id)
+        if not entry:
+            raise KeyError(f"Mission not found: {mission_id}")
+        mission = _load_mission_file(entry["founder_id"], mission_id)
+        if mission is None:
+            raise KeyError(f"Mission file missing for: {mission_id}")
+        tasks = list(mission.get("tasks") or [])
+        now = _task_now()
+        for idx, task in enumerate(tasks):
+            if str(task.get("id")) != str(task_id):
+                continue
+            merged = {**task, **fields, "id": str(task_id), "updated_at": now}
+            tasks[idx] = _normalize_task(merged, mission, now)
+            mission["tasks"] = tasks
+            _save_mission_file(mission)
+            return dict(tasks[idx])
+        raise KeyError(f"Task not found: {task_id}")
 
 
 def delete_mission(mission_id: str) -> bool:

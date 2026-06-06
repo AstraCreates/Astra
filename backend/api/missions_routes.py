@@ -51,6 +51,16 @@ class PatchMissionRequest(BaseModel):
     approval_policy: Optional[str] = None
 
 
+class PatchTaskRequest(BaseModel):
+    title: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SyncNotionRequest(BaseModel):
+    founder_id: str
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -98,6 +108,16 @@ async def list_missions(founder_id: str = ""):
         raise HTTPException(status_code=400, detail="founder_id query param required")
     missions = store_list(founder_id=founder_id)
     return {"missions": missions}
+
+
+@router.get("/missions/company-goal")
+async def get_company_goal(founder_id: str = ""):
+    from backend.missions.company_goal import get_company_goal as load_company_goal
+
+    if not founder_id:
+        raise HTTPException(status_code=400, detail="founder_id query param required")
+    goal = load_company_goal(founder_id)
+    return {"company_goal": goal}
 
 
 @router.get("/missions/{mission_id}")
@@ -148,7 +168,7 @@ async def update_mission(mission_id: str, body: PatchMissionRequest):
     if not updates:
         return mission
 
-    updated = store_update(mission_id=mission_id, updates=updates)
+    updated = store_update(mission_id=mission_id, **updates)
     logger.info("Mission updated: %s fields=%s", mission_id, list(updates.keys()))
     return updated
 
@@ -162,9 +182,50 @@ async def delete_mission(mission_id: str):
     if mission is None:
         raise HTTPException(status_code=404, detail="Mission not found")
 
-    store_delete(mission_id=mission_id, founder_id=mission["founder_id"])
+    store_delete(mission_id=mission_id)
     logger.info("Mission deleted: %s", mission_id)
     return {"ok": True}
+
+
+@router.patch("/missions/{mission_id}/tasks/{task_id}")
+async def patch_task(mission_id: str, task_id: str, body: PatchTaskRequest):
+    from backend.missions.store import get_mission as store_get, update_task as store_update_task
+
+    mission = store_get(mission_id=mission_id)
+    if mission is None:
+        raise HTTPException(status_code=404, detail="Mission not found")
+
+    updates: dict[str, Any] = {}
+    if body.title is not None:
+        updates["title"] = body.title
+    if body.notes is not None:
+        updates["notes"] = body.notes
+    if body.status is not None:
+        valid_statuses = {"pending", "in_progress", "done", "blocked"}
+        if body.status not in valid_statuses:
+            raise HTTPException(status_code=400, detail=f"status must be one of: {', '.join(sorted(valid_statuses))}")
+        updates["status"] = body.status
+    if not updates:
+        tasks = mission.get("tasks") or []
+        for task in tasks:
+            if str(task.get("id")) == str(task_id):
+                return {"task": task}
+        raise HTTPException(status_code=404, detail="Task not found")
+    try:
+        task = store_update_task(mission_id, task_id, **updates)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"task": task}
+
+
+@router.post("/missions/sync-notion")
+async def sync_missions_notion(body: SyncNotionRequest):
+    from backend.tools.notion_sync import sync_founder_operating_system
+
+    if not body.founder_id:
+        raise HTTPException(status_code=400, detail="founder_id is required")
+    result = sync_founder_operating_system(body.founder_id)
+    return result
 
 
 @router.post("/missions/{mission_id}/run")

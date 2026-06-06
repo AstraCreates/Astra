@@ -53,6 +53,31 @@ def _build_context(mission: dict) -> str:
         obj_lines = "\n".join(f"  {i + 1}. {obj}" for i, obj in enumerate(objectives))
         parts.append(f"\nOBJECTIVES:\n{obj_lines}")
 
+    company_goal = mission.get("company_goal") or {}
+    if company_goal:
+        if company_goal.get("company_goal"):
+            parts.append(f"\nCOMPANY GOAL:\n{company_goal['company_goal']}")
+        if company_goal.get("north_star"):
+            parts.append(f"\nNORTH STAR:\n{company_goal['north_star']}")
+        if company_goal.get("kpis"):
+            kpi_lines = "\n".join(
+                f"  - {item.get('label') or item.get('key')}: {item.get('target', '')}"
+                for item in company_goal.get("kpis") or []
+            )
+            if kpi_lines.strip():
+                parts.append(f"\nKEY KPIS:\n{kpi_lines}")
+
+    tasks: list[dict] = mission.get("tasks") or []
+    open_tasks = [task for task in tasks if task.get("status") not in {"done"}]
+    if open_tasks:
+        task_lines = "\n".join(
+            f"  - [{task.get('status', 'pending')}] {task.get('title')} :: {task.get('notes', '')}".strip()
+            for task in open_tasks[:12]
+        )
+        parts.append(f"\nOPEN TASKS AND SUBTASKS:\n{task_lines}")
+    else:
+        parts.append("\nOPEN TASKS AND SUBTASKS:\n  - No open tasks yet. Derive the next operating tasks from the mission and current context.")
+
     notes: list[dict] = mission.get("progress_notes") or []
     recent = notes[-5:]  # last 5 notes
     if recent:
@@ -72,6 +97,59 @@ def _build_context(mission: dict) -> str:
     )
 
     return "\n".join(parts)
+
+
+def _reconcile_tasks(mission: dict, result: Any, session_id: str) -> list[dict[str, Any]]:
+    existing = list(mission.get("tasks") or [])
+    by_id = {str(task.get("id")): dict(task) for task in existing if task.get("id")}
+    open_ids = [str(task.get("id")) for task in existing if task.get("status") not in {"done"} and task.get("id")]
+
+    completed_ids = [str(item) for item in (result.get("completed_tasks") or [])] if isinstance(result, dict) else []
+    blocked_map = result.get("blocked_tasks") or {} if isinstance(result, dict) else {}
+    new_tasks = result.get("next_tasks") or [] if isinstance(result, dict) else []
+    summary = _extract_summary(result, mission.get("department", "mission"))
+
+    if completed_ids:
+        for task_id in completed_ids:
+            if task_id in by_id:
+                by_id[task_id]["status"] = "done"
+                by_id[task_id]["updated_at"] = mission.get("last_run_at") or ""
+                by_id[task_id]["last_run_id"] = session_id
+    elif open_ids:
+        first = open_ids[0]
+        by_id[first]["status"] = "done"
+        by_id[first]["notes"] = (by_id[first].get("notes", "") + f"\nCompleted in run {session_id}: {summary}").strip()
+        by_id[first]["last_run_id"] = session_id
+
+    if isinstance(blocked_map, dict):
+        for task_id, note in blocked_map.items():
+            if str(task_id) in by_id:
+                by_id[str(task_id)]["status"] = "blocked"
+                by_id[str(task_id)]["notes"] = str(note)
+                by_id[str(task_id)]["last_run_id"] = session_id
+
+    if not isinstance(new_tasks, list):
+        new_tasks = []
+    if not new_tasks and summary:
+        new_tasks = [{"title": f"Follow up on latest run: {summary[:120]}", "notes": summary, "status": "pending"}]
+
+    for idx, task in enumerate(new_tasks[:5]):
+        if not isinstance(task, dict):
+            task = {"title": str(task)}
+        task_id = str(task.get("id") or f"{mission['id']}:next:{session_id}:{idx}")
+        by_id[task_id] = {
+            **task,
+            "id": task_id,
+            "title": str(task.get("title") or f"Follow-up task {idx + 1}"),
+            "status": str(task.get("status") or "pending"),
+            "parent_id": task.get("parent_id"),
+            "notes": str(task.get("notes") or ""),
+            "owner_agent": str(task.get("owner_agent") or mission.get("department") or ""),
+            "created_at": task.get("created_at") or mission.get("last_run_at"),
+            "updated_at": task.get("updated_at") or mission.get("last_run_at"),
+            "last_run_id": session_id,
+        }
+    return list(by_id.values())
 
 
 def _extract_summary(result: Any, agent_name: str) -> str:
@@ -123,11 +201,16 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
             cost_usd  (float) — Estimated USD cost of this run.
     """
     # ── 1. Load mission ────────────────────────────────────────────────────────
-    from backend.missions.store import (
-        append_progress_note,
-        get_mission,
-        increment_run_count,
-    )
+    import importlib
+
+    mission_store = importlib.import_module("backend.missions.store")
+    from backend.missions.company_goal import get_company_goal
+
+    append_progress_note = mission_store.append_progress_note
+    get_mission = mission_store.get_mission
+    increment_run_count = mission_store.increment_run_count
+    bulk_upsert_tasks = getattr(mission_store, "bulk_upsert_tasks", None)
+    update_mission = getattr(mission_store, "update_mission", None)
 
     session_id = session_id or new_session_id()
 
@@ -144,6 +227,8 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
     founder_id: str = mission["founder_id"]
     department: str = mission["department"]
     mission_name: str = mission.get("name", mission_id)
+    company_goal = get_company_goal(founder_id)
+    mission["company_goal"] = company_goal or {}
 
     logger.info(
         "run_mission: START mission=%s name=%r department=%s founder=%s session=%s",
@@ -242,6 +327,14 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
     if success:
         summary = _extract_summary(result, agent_name)
         cost_usd = _estimate_cost(result)
+        try:
+            reconciled = _reconcile_tasks(mission, result, session_id)
+            if callable(bulk_upsert_tasks):
+                bulk_upsert_tasks(mission_id, reconciled)
+            if callable(update_mission):
+                update_mission(mission_id, status="active")
+        except Exception as exc:
+            logger.warning("run_mission: failed to reconcile tasks for %s: %s", mission_id, exc)
 
     # ── 8. Write progress note back to the store ───────────────────────────────
     try:
@@ -258,6 +351,12 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
         increment_run_count(mission_id=mission_id, cost_usd=cost_usd)
     except Exception as exc:
         logger.warning("run_mission: failed to increment run count for %s: %s", mission_id, exc)
+
+    try:
+        from backend.tools.notion_sync import sync_founder_operating_system
+        await asyncio.to_thread(sync_founder_operating_system, founder_id)
+    except Exception as exc:
+        logger.warning("run_mission: notion sync skipped for founder=%s: %s", founder_id, exc)
 
     logger.info(
         "run_mission: END mission=%s session=%s success=%s cost_usd=%.4f summary=%r",

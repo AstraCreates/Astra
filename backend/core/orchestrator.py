@@ -164,6 +164,36 @@ class Orchestrator:
         )
         return any(marker in h for marker in fallback_markers)
 
+    async def _bootstrap_operating_after_run(self, session_id: str, founder_id: str, goal: str) -> None:
+        try:
+            from backend.core.events import _event_log, publish
+            from backend.workflow_state import build_session_state, save_session_state
+            from backend.missions.bootstrap import bootstrap_company_operating_system
+
+            events = _event_log.get(session_id, [])
+            state = build_session_state(session_id, events)
+            result = await asyncio.to_thread(
+                bootstrap_company_operating_system,
+                session_id,
+                founder_id,
+                goal=goal,
+                state=state,
+            )
+            await publish(
+                session_id,
+                {
+                    "type": "company_operating",
+                    "company_goal": result.get("company_goal"),
+                    "summary": result.get("summary", ""),
+                    "mission_count": result.get("mission_count", 0),
+                    "missions": result.get("missions", []),
+                    "notion": result.get("notion", {}),
+                },
+            )
+            save_session_state(session_id, _event_log.get(session_id, []))
+        except Exception as exc:
+            logger.warning("Operating bootstrap failed for session %s: %s", session_id, exc)
+
     async def _parse_tasks(self, raw: str) -> list[dict]:
         import json, re
         for pattern in [raw, raw[raw.find("{"):raw.rfind("}")+1]]:
@@ -813,6 +843,7 @@ class Orchestrator:
 
             await asyncio.gather(*[_run_task(t) for t in bypass_tasks])
             await publish(session_id, {"type": "goal_done", "session_id": session_id})
+            asyncio.create_task(self._bootstrap_operating_after_run(session_id, founder_id, goal))
             if _original_models:
                 for _name, _orig in _original_models.items():
                     self.specialists[_name].model = _orig
@@ -1251,6 +1282,7 @@ class Orchestrator:
             })
         else:
             await publish(session_id, {"type": "goal_done", "results": completed})
+            asyncio.create_task(self._bootstrap_operating_after_run(session_id, founder_id, goal))
         async def _graph_sync_after_session() -> None:
             try:
                 from backend.tools.graph_rag_ingest import run_graph_rag_sync
@@ -1417,6 +1449,7 @@ class Orchestrator:
 
         await asyncio.gather(*[_run_task(t) for t in tasks])
         await publish(session_id, {"type": "goal_done", "results": completed})
+        asyncio.create_task(self._bootstrap_operating_after_run(session_id, founder_id, instruction))
         try:
             from backend.tools.obsidian_logger import obsidian_backend_log
             from backend.core.events import _event_log

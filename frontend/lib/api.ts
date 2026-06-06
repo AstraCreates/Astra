@@ -435,6 +435,7 @@ export interface SessionWorkboard {
 export interface SessionStateSnapshot {
   session_id: string;
   status: "running" | "done" | "error" | "stalled";
+  company_goal?: CompanyGoal | null;
   event_count: number;
   last_event_id: number;
   stack?: AgentStackTemplate | null;
@@ -1919,6 +1920,32 @@ export function sortAgentNamesByOrder(agentNames: string[]): string[] {
 
 // ── Missions ───────────────────────────────────────────────────────────────────
 
+export interface MissionTask {
+  id: string;
+  title: string;
+  status: "pending" | "in_progress" | "done" | "blocked";
+  parent_id: string | null;
+  notes: string;
+  owner_agent: string;
+  created_at: string;
+  updated_at: string;
+  last_run_id?: string | null;
+  notion_page_id?: string | null;
+  notion_page_url?: string | null;
+}
+
+export interface CompanyGoal {
+  founder_id: string;
+  north_star: string;
+  company_goal: string;
+  source_session_id: string;
+  status: "operating" | "blocked" | "paused";
+  kpis: Array<{ key?: string; label?: string; target?: string }>;
+  updated_at: string;
+  notion_database_id?: string | null;
+  notion_url?: string | null;
+}
+
 export interface Mission {
   id: string;
   founder_id: string;
@@ -1935,6 +1962,10 @@ export interface Mission {
   run_count: number;
   total_cost_usd: number;
   progress_notes: Array<{ timestamp: string; note: string; run_id: string }>;
+  tasks: MissionTask[];
+  company_goal_id?: string | null;
+  notion_page_id?: string | null;
+  notion_page_url?: string | null;
 }
 
 export async function getMissions(founderId: string): Promise<Mission[]> {
@@ -1945,7 +1976,7 @@ export async function getMissions(founderId: string): Promise<Mission[]> {
 }
 
 export async function createMission(
-  data: Omit<Mission, "id" | "created_at" | "last_run_at" | "run_count" | "total_cost_usd" | "progress_notes">
+  data: Omit<Mission, "id" | "created_at" | "last_run_at" | "run_count" | "total_cost_usd" | "progress_notes" | "tasks" | "company_goal_id" | "notion_page_id" | "notion_page_url">
 ): Promise<Mission> {
   const res = await apiFetch(`${BASE}/api/missions`, {
     method: "POST",
@@ -1979,6 +2010,38 @@ export async function runMission(id: string): Promise<{ ok: boolean; session_id:
   const res = await apiFetch(`${BASE}/api/missions/${encodeURIComponent(id)}/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getCompanyGoal(founderId: string): Promise<CompanyGoal | null> {
+  const res = await apiFetch(`${BASE}/api/missions/company-goal?founder_id=${encodeURIComponent(founderId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  const data = await res.json();
+  return data.company_goal ?? null;
+}
+
+export async function updateMissionTask(
+  missionId: string,
+  taskId: string,
+  data: Partial<Pick<MissionTask, "title" | "status" | "notes">>
+): Promise<MissionTask> {
+  const res = await apiFetch(`${BASE}/api/missions/${encodeURIComponent(missionId)}/tasks/${encodeURIComponent(taskId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const result = await res.json();
+  return result.task ?? result;
+}
+
+export async function syncMissionNotion(founderId: string): Promise<Record<string, unknown>> {
+  const res = await apiFetch(`${BASE}/api/missions/sync-notion`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: founderId }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();

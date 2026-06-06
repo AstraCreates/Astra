@@ -8,10 +8,10 @@ import type { CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useDevUser } from "@/lib/use-dev-user";
-import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote, killSession, ingestAttachment } from "@/lib/api";
+import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, getCompanyGoal, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote, killSession, ingestAttachment } from "@/lib/api";
 import type { DeploymentRecord } from "@/lib/api";
 import type { AgentCatalogEntry } from "@/lib/api";
-import type { AgentDepartmentManifest, AgentStackTemplate, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
+import type { AgentDepartmentManifest, AgentStackTemplate, CompanyGoal, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
 import { saveSession, updateSession, getSessionSnapshot, subscribeSessions, deleteSession, clearAllSessions, setServerSessions, removeServerSession } from "@/lib/history";
 import type { SessionRecord } from "@/lib/history";
 import LiquidGlass from "@/components/LiquidGlass";
@@ -3737,8 +3737,8 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
   },
 ];
 
-function LaunchChecklist({ sessionId, done, agents, agentList, selectedStack }: {
-  sessionId: string; done: boolean;
+function LaunchChecklist({ sessionId, done, operating, agents, agentList, selectedStack }: {
+  sessionId: string; done: boolean; operating: boolean;
   agents: Record<string, AgentState>;
   agentList: string[];
   selectedStack: AgentStackTemplate | null;
@@ -3772,7 +3772,7 @@ function LaunchChecklist({ sessionId, done, agents, agentList, selectedStack }: 
   const runItems = [
     { id: "_goal",    label: "Goal launched",     done: !!sessionId },
     { id: "_stack",   label: "Stack selected",    done: !!selectedStack },
-    { id: "_run",     label: "Agent run complete", done },
+    { id: "_run",     label: operating ? "Company operating" : "Agent run complete", done: operating || done },
   ];
   const runDone = runItems.filter(i => i.done).length;
 
@@ -4393,9 +4393,9 @@ export function GoalWorkspace({
   // ── Persistent session cache ──────────────────────────────────────────────
   const CACHE_KEY = `astra_session_${sessionId}`;
 
-  const saveCache = useCallback((a: Record<string, AgentState>, p: AgentTask[], d: boolean, cn?: string, stack?: AgentStackTemplate | null, artifacts?: RunArtifactState[], saferun?: SafeRunActionState[], outcomeEvents?: OutcomeLedgerEvent[], genome?: CompanyGenomeState | null, approvals?: ApprovalQueueItemState[], operatingPlan?: StackOperatingPlan | null, manifest?: AgentDepartmentManifest | null) => {
+  const saveCache = useCallback((a: Record<string, AgentState>, p: AgentTask[], d: boolean, cn?: string, stack?: AgentStackTemplate | null, artifacts?: RunArtifactState[], saferun?: SafeRunActionState[], outcomeEvents?: OutcomeLedgerEvent[], genome?: CompanyGenomeState | null, approvals?: ApprovalQueueItemState[], operatingPlan?: StackOperatingPlan | null, manifest?: AgentDepartmentManifest | null, goalState?: CompanyGoal | null) => {
     if (!sessionId) return;
-    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ agents: a, planTasks: p, done: d, autoCompanyName: cn, selectedStack: stack, runArtifacts: artifacts ?? [], safeRunActions: saferun ?? [], outcomes: outcomeEvents ?? [], companyGenome: genome ?? null, approvalQueue: approvals ?? [], stackOperatingPlan: operatingPlan ?? null, stackManifest: manifest ?? null })); } catch {}
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ agents: a, planTasks: p, done: d, autoCompanyName: cn, selectedStack: stack, runArtifacts: artifacts ?? [], safeRunActions: saferun ?? [], outcomes: outcomeEvents ?? [], companyGenome: genome ?? null, approvalQueue: approvals ?? [], stackOperatingPlan: operatingPlan ?? null, stackManifest: manifest ?? null, companyGoal: goalState ?? null })); } catch {}
   }, [CACHE_KEY, sessionId]);
 
   // Always start with empty state to avoid SSR/client hydration mismatch;
@@ -4424,10 +4424,21 @@ export function GoalWorkspace({
   const [subteamReport, setSubteamReport] = useState<SubteamReport | null>(null);
   const [sessionWorkboard, setSessionWorkboard] = useState<SessionWorkboard | null>(null);
   const [sessionState, setSessionState] = useState<SessionStateSnapshot | null>(null);
+  const [companyGoal, setCompanyGoal] = useState<CompanyGoal | null>(null);
   const [selectedSubteam, setSelectedSubteam] = useState("engineering");
   const [sessionQuestion, setSessionQuestion] = useState("What did the engineering subteam do?");
   const [sessionAnswer, setSessionAnswer] = useState<SessionAnswer | null>(null);
   const [askingSession, setAskingSession] = useState(false);
+
+  const refreshCompanyGoal = useCallback(() => {
+    if (!founderId) return Promise.resolve(null);
+    return getCompanyGoal(founderId)
+      .then((value) => {
+        setCompanyGoal(value);
+        return value;
+      })
+      .catch(() => null);
+  }, [founderId]);
 
   // Restore from cache after first render (client-only)
   useEffect(() => {
@@ -4435,7 +4446,7 @@ export function GoalWorkspace({
     try {
       const raw = localStorage.getItem(CACHE_KEY);
       if (!raw) return;
-      const cached = JSON.parse(raw) as { agents: Record<string, AgentState>; planTasks: AgentTask[]; done: boolean; autoCompanyName?: string; selectedStack?: AgentStackTemplate; runArtifacts?: RunArtifactState[]; safeRunActions?: SafeRunActionState[]; outcomes?: OutcomeLedgerEvent[]; companyGenome?: CompanyGenomeState; approvalQueue?: ApprovalQueueItemState[]; stackOperatingPlan?: StackOperatingPlan; stackManifest?: AgentDepartmentManifest };
+      const cached = JSON.parse(raw) as { agents: Record<string, AgentState>; planTasks: AgentTask[]; done: boolean; autoCompanyName?: string; selectedStack?: AgentStackTemplate; runArtifacts?: RunArtifactState[]; safeRunActions?: SafeRunActionState[]; outcomes?: OutcomeLedgerEvent[]; companyGenome?: CompanyGenomeState; approvalQueue?: ApprovalQueueItemState[]; stackOperatingPlan?: StackOperatingPlan; stackManifest?: AgentDepartmentManifest; companyGoal?: CompanyGoal | null };
       const firstAgent = cached.planTasks?.[0]?.agent ?? Object.keys(cached.agents ?? {})[0] ?? "";
       queueMicrotask(() => {
         if (cached.agents && Object.keys(cached.agents).length > 0) {
@@ -4457,6 +4468,7 @@ export function GoalWorkspace({
         if (cached.approvalQueue?.length) setApprovalQueue(cached.approvalQueue);
         if (cached.stackOperatingPlan) setStackOperatingPlan(cached.stackOperatingPlan);
         if (cached.stackManifest) setStackManifest(cached.stackManifest);
+        if (cached.companyGoal) setCompanyGoal(cached.companyGoal);
         if (firstAgent) setActiveAgent(firstAgent);
       });
     } catch {}
@@ -4494,7 +4506,7 @@ export function GoalWorkspace({
   const errorCount = useRef(0);
 
   // Persist to localStorage whenever state changes
-  useEffect(() => { saveCache(agents, planTasks, done, autoCompanyName, selectedStack, runArtifacts, safeRunActions, outcomes, companyGenome, approvalQueue, stackOperatingPlan, stackManifest); }, [agents, planTasks, done, autoCompanyName, selectedStack, runArtifacts, safeRunActions, outcomes, companyGenome, approvalQueue, stackOperatingPlan, stackManifest, saveCache]);
+  useEffect(() => { saveCache(agents, planTasks, done, autoCompanyName, selectedStack, runArtifacts, safeRunActions, outcomes, companyGenome, approvalQueue, stackOperatingPlan, stackManifest, companyGoal); }, [agents, planTasks, done, autoCompanyName, selectedStack, runArtifacts, safeRunActions, outcomes, companyGenome, approvalQueue, stackOperatingPlan, stackManifest, companyGoal, saveCache]);
 
   useEffect(() => {
     if (!selectedStack?.stack_id || !founderId) return;
@@ -4571,6 +4583,7 @@ export function GoalWorkspace({
             if (!stackOperatingPlan && stateResult.value.operating_plan) setStackOperatingPlan(stateResult.value.operating_plan);
             if (!stackManifest && stateResult.value.manifest) setStackManifest(stateResult.value.manifest);
             if (stateResult.value.approvals?.length) setApprovalQueue(stateResult.value.approvals as unknown as ApprovalQueueItemState[]);
+            if (stateResult.value.company_goal) setCompanyGoal(stateResult.value.company_goal);
           }
         });
     };
@@ -4581,6 +4594,22 @@ export function GoalWorkspace({
       window.clearInterval(timer);
     };
   }, [done, selectedStack, selectedSubteam, sessionId, stackManifest, stackOperatingPlan]);
+
+  useEffect(() => {
+    if (!founderId) return;
+    let cancelled = false;
+    const load = () => {
+      refreshCompanyGoal()
+        .then((value) => { if (!cancelled && value) setCompanyGoal(value); })
+        .catch(() => {});
+    };
+    load();
+    const timer = window.setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [founderId, refreshCompanyGoal]);
 
   useEffect(() => {
     if (!sessionId || sessionId === "undefined" || done) return;
@@ -4935,6 +4964,12 @@ export function GoalWorkspace({
             }
           }
           setDone(true);
+          window.setTimeout(() => { void refreshCompanyGoal(); }, 350);
+          window.setTimeout(() => { void refreshCompanyGoal(); }, 1500);
+        } else if (event.type === "company_operating") {
+          if (event.company_goal && typeof event.company_goal === "object") {
+            setCompanyGoal(event.company_goal as CompanyGoal);
+          }
         }
         else if (event.type === "goal_error") { setError(event.error ?? "Unknown error"); setDone(true); }
 
@@ -4942,15 +4977,15 @@ export function GoalWorkspace({
       });
     };
     return () => es.close();
-  }, [sessionId, done]);
+  }, [done, refreshCompanyGoal, sessionId]);
 
   useEffect(() => {
     if (!done || notified.current) return;
     notified.current = true;
     if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-      new Notification("Astra — goal complete", { body: "Your company is live.", icon: "/favicon.ico" });
+      new Notification("Astra — launch run complete", { body: companyGoal ? "The company is now operating." : "Your company is live.", icon: "/favicon.ico" });
     }
-  }, [done, sessionId]);
+  }, [companyGoal, done, sessionId]);
 
   // Poll session token/cost stats
   useEffect(() => {
@@ -5136,6 +5171,16 @@ export function GoalWorkspace({
           </div>
         )}
         {error && <p style={{ borderRadius: 8, border: "1px solid rgba(192,57,43,0.25)", background: "rgba(192,57,43,0.06)", padding: "8px 14px", fontSize: 12, color: "#C0392B", margin: 0 }}>{error}</p>}
+        {companyGoal && (
+          <div style={{ borderRadius: 10, border: "1px solid rgba(37,99,235,0.18)", background: "rgba(37,99,235,0.07)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2563EB" }}>Operating</span>
+              <span style={{ fontSize: 12, color: "var(--fg-dim)" }}>{companyGoal.status}</span>
+            </div>
+            <div style={{ fontSize: 14, color: "var(--fg)", fontWeight: 600 }}>{companyGoal.company_goal}</div>
+            <div style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.5 }}>North star: {companyGoal.north_star}</div>
+          </div>
+        )}
       </div>
 
       {/* Launch checklist */}
@@ -5143,6 +5188,7 @@ export function GoalWorkspace({
         <LaunchChecklist
           sessionId={sessionId}
           done={done}
+          operating={!!companyGoal}
           agents={visibleAgents}
           agentList={agentList}
           selectedStack={selectedStack}
