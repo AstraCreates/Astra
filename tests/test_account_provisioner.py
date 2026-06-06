@@ -43,3 +43,8 @@ def test_summarize_reports_oauth_app_results():
 
     assert any("notion" in line and "connected via browser OAuth" in line for line in lines)
     assert any("linear" in line and "Timed out completing OAuth" in line for line in lines)
+
+
+def test_google_sheets_uses_google_drive_oauth_app():
+    plan = build_provision_plan("sales", required_only=False, include_foundation=False)
+    assert "google_drive" in plan["composio_apps"]

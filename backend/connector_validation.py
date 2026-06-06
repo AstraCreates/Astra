@@ -15,6 +15,7 @@ import requests
 from backend.provisioning.credentials_store import load_all_credentials
 from backend.stacks.readiness import _CONNECTOR_SERVICE_ALIASES
 from backend.stacks.templates import get_stack_template
+from backend.tools.integration_connect import get_composio_app_status
 
 
 DEFAULT_TIMEOUT = 8
@@ -45,6 +46,16 @@ _FIELD_SPECS: dict[str, list[dict[str, Any]]] = {
 }
 
 _WEBHOOK_CAPABLE = {"github", "slack", "discord", "notion", "google_drive", "linear", "crm", "helpdesk", "product_tracker"}
+_COMPOSIO_CONNECTOR_APPS = {
+    "gmail": "gmail",
+    "google_drive": "google_drive",
+    "google_sheets": "google_drive",
+    "google_calendar": "googlecalendar",
+    "notion": "notion",
+    "linear": "linear",
+    "linkedin": "linkedin",
+    "product_tracker": "linear",
+}
 
 
 def validate_stack_connectors(founder_id: str, stack_id: str | None = None, *, live: bool = False) -> dict[str, Any]:
@@ -94,19 +105,31 @@ def validate_connector(
     connected_alias = next((alias for alias in aliases if isinstance(credentials.get(alias), dict) and credentials.get(alias)), None)
     saved = credentials.get(connected_alias or connector_key) or {}
     fields = _FIELD_SPECS.get(connector_key, [{"key": "token", "required": True}])
+    composio_app = _COMPOSIO_CONNECTOR_APPS.get(connector_key, "")
+    composio_marker = bool(saved.get("connected_via") == "composio_oauth" and composio_app)
     missing_fields = [
         field["key"]
         for field in fields
         if field.get("required") and not _field_present(saved, field["key"])
     ]
-    credential_status = "missing" if missing_fields or not connected_alias else "valid_shape"
+    credential_status = (
+        "valid_shape" if composio_marker else
+        "missing" if missing_fields or not connected_alias else
+        "valid_shape"
+    )
     webhook_secret = bool(saved.get("webhook_secret") or saved.get("signing_secret") or saved.get("secret"))
     webhook_status = (
         "not_supported" if connector_key not in _WEBHOOK_CAPABLE else
         "secured" if webhook_secret else
         "missing_secret"
     )
-    provider = _provider_check(connector_key, saved, live=live) if credential_status == "valid_shape" else {"status": "not_checked", "ok": False, "detail": "Missing required credential fields."}
+    provider = (
+        _composio_provider_check(founder_id, composio_app, live=live)
+        if composio_marker else
+        _provider_check(connector_key, saved, live=live)
+        if credential_status == "valid_shape" else
+        {"status": "not_checked", "ok": False, "detail": "Missing required credential fields."}
+    )
     status = (
         "missing_credentials" if credential_status == "missing" else
         "provider_error" if provider["status"] == "error" else
@@ -150,6 +173,18 @@ def _provider_check(connector_key: str, saved: dict[str, Any], *, live: bool) ->
         return _sanitize_provider_result(checker(saved), saved)
     except Exception as exc:
         return _sanitize_provider_result({"status": "error", "ok": False, "detail": str(exc)}, saved)
+
+
+def _composio_provider_check(founder_id: str, composio_app: str, *, live: bool) -> dict[str, Any]:
+    if not live:
+        return {"status": "not_checked", "ok": True, "detail": "Composio OAuth marker present; live provider check not requested."}
+    try:
+        status = get_composio_app_status(founder_id)
+        if status.get(composio_app):
+            return {"status": "ok", "ok": True, "detail": f"Composio app {composio_app} is active."}
+        return {"status": "error", "ok": False, "detail": f"Composio app {composio_app} is not active."}
+    except Exception as exc:
+        return {"status": "error", "ok": False, "detail": str(exc)}
 
 
 def _bearer_get(url: str, token: str, extra_headers: dict[str, str] | None = None) -> dict[str, Any]:

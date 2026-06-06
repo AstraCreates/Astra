@@ -10,6 +10,15 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
+_COMPOSIO_APP_SERVICE_MAP: dict[str, tuple[str, ...]] = {
+    "gmail": ("gmail",),
+    "google_drive": ("google_drive", "google_sheets"),
+    "googlecalendar": ("google_calendar",),
+    "notion": ("notion",),
+    "linear": ("linear", "product_tracker"),
+    "linkedin": ("linkedin",),
+}
+
 
 def provision_github(email: str, password: str, username: str = None, imap_password: str = None) -> dict:
     """
@@ -564,6 +573,7 @@ def _complete_composio_oauth_app(
     while time.time() < deadline:
         status = get_status(founder_id)
         if status.get(app):
+            _persist_connected_composio_app(founder_id, app)
             return {"connected": True, "app": app}
 
         current = page.url or ""
@@ -594,8 +604,20 @@ def _complete_composio_oauth_app(
 
     status = get_status(founder_id)
     if status.get(app):
+        _persist_connected_composio_app(founder_id, app)
         return {"connected": True, "app": app}
     return {"connected": False, "app": app, "error": f"Timed out completing OAuth for {app}"}
+
+
+def _persist_connected_composio_app(founder_id: str, app: str) -> None:
+    from backend.provisioning.credentials_store import store_credentials
+
+    for service in _COMPOSIO_APP_SERVICE_MAP.get(app, (app,)):
+        store_credentials(founder_id, service, {
+            "connected": True,
+            "connected_via": "composio_oauth",
+            "composio_app": app,
+        })
 
 
 def _click_first(page, selectors: list[str]) -> bool:

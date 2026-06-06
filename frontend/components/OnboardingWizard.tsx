@@ -32,7 +32,23 @@ const TOKEN_CONFIG: Record<string, { service: string; credKey: string; createUrl
   linear:           { service: "linear",   credKey: "api_key",          createUrl: "https://linear.app/settings/api",               placeholder: "lin_api_..." },
 };
 
-const COMPOSIO_APPS = new Set(["gmail", "linkedin", "google_calendar", "googlecalendar"]);
+const COMPOSIO_APPS = new Set([
+  "gmail",
+  "linkedin",
+  "google_calendar",
+  "googlecalendar",
+  "google_drive",
+  "google_sheets",
+  "notion",
+  "linear",
+  "product_tracker",
+]);
+
+const COMPOSIO_APP_KEYS: Record<string, string> = {
+  google_calendar: "googlecalendar",
+  google_sheets: "google_drive",
+  product_tracker: "linear",
+};
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
@@ -377,7 +393,8 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
   }
 
   function connectComposioApp(key: string) {
-    const url = composioOAuthUrls[key] ?? composioOAuthUrls[key.replace("google_", "google")];
+    const appKey = COMPOSIO_APP_KEYS[key] ?? key;
+    const url = composioOAuthUrls[appKey] ?? composioOAuthUrls[key];
     if (url) { window.open(url, "_blank", "width=860,height=640"); setConnected(prev => ({ ...prev, [key]: true })); }
   }
 

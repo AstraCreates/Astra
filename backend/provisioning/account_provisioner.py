@@ -38,7 +38,7 @@ _CONNECTOR_SERVICE_MAP: dict[str, set[str]] = {
 _CONNECTOR_COMPOSIO_APP_MAP: dict[str, str] = {
     "gmail": "gmail",
     "google_drive": "google_drive",
-    "google_sheets": "google_sheets",
+    "google_sheets": "google_drive",
     "google_calendar": "googlecalendar",
     "notion": "notion",
     "linear": "linear",
@@ -161,6 +161,10 @@ async def provision_all(
             )
         except Exception as e:
             oauth_app_results = {"error": str(e)}
+    failed_oauth_apps = [
+        app for app, row in oauth_app_results.items()
+        if app != "error" and isinstance(row, dict) and not row.get("connected")
+    ]
     if oauth_app_results:
         results["composio_oauth_apps"] = oauth_app_results
 
@@ -183,7 +187,7 @@ async def provision_all(
         "stack_id": stack_id,
         "required_only": required_only,
         "provision_plan": plan,
-        "pending_manual_connectors": plan["manual_connectors"],
+        "pending_manual_connectors": sorted(set(plan["manual_connectors"] + failed_oauth_apps)),
     }
 
 

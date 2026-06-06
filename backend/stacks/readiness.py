@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.provisioning.credentials_store import load_all_credentials, load_credentials
+from backend.provisioning.credentials_store import load_all_credentials
 from backend.stacks.templates import AgentStackTemplate, get_stack_template
 
 
@@ -43,9 +43,6 @@ def _is_connected(founder_credentials: dict[str, Any], connector_key: str) -> tu
         creds = founder_credentials.get(service)
         if isinstance(creds, dict) and creds:
             return True, service
-    platform_composio = load_credentials("__platform__", "composio")
-    if "composio" in aliases and platform_composio:
-        return True, "platform:composio"
     return False, None
 
 
