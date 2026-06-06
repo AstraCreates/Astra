@@ -549,9 +549,22 @@ class Agent:
                     "legal": {"format_legal_document", "generate_pdf"},
                     "legal_docs": {"format_legal_document", "generate_pdf"},
                     "legal_ip": {"format_legal_document", "generate_pdf", "patent_search"},
-                    "sales": {"find_leads", "build_outreach_sequence", "build_crm_contact"},
+                    "legal_entity": {"file_llc_live", "format_legal_document", "generate_pdf", "obsidian_log"},
+                    "sales": {"find_leads", "bulk_discover_and_store", "build_outreach_sequence", "build_crm_contact"},
+                    "sales_pipeline": {"web_search", "generate_pdf", "obsidian_log"},
                     "design": {"generate_design_spec", "generate_wireframe", "generate_logo", "generate_brand_board"},
                     "sales_enablement": {"generate_pdf", "obsidian_log"},
+                    "marketing_content": {"generate_reel_package", "generate_tiktok_package", "generate_meta_ad", "generate_pdf", "obsidian_log"},
+                    "marketing_outreach": {"search_and_fetch", "build_outreach_sequence", "obsidian_log"},
+                    "marketing_seo": {"web_search", "generate_pdf", "obsidian_log"},
+                    "marketing_paid": {"web_search", "search_and_fetch", "generate_meta_ad", "generate_pdf", "obsidian_log"},
+                    "web": {"github_create_repo", "run_mvp_loop", "obsidian_log"},
+                    "technical": {"run_mvp_loop", "obsidian_log"},
+                    "technical_infra": {"web_search", "generate_pdf", "obsidian_log"},
+                    "technical_data": {"generate_pdf", "obsidian_log"},
+                    "finance_model": {"generate_pdf", "obsidian_log"},
+                    "finance_fundraise": {"search_and_fetch", "format_legal_document", "generate_pdf", "obsidian_log"},
+                    "ops": {"generate_pdf", "create_product_with_payment_link", "composio_linear_create_issue", "composio_notion_create_page", "obsidian_log"},
                 }
                 missing = sorted(required_by_agent.get(self.name, set()) - _called_tools)
                 if missing:
@@ -815,6 +828,36 @@ class Agent:
             if not isinstance(output.get("crm_contacts"), list) or not output.get("crm_contacts"):
                 missing.append("crm_contacts[]")
             return missing
+        if self.name == "marketing_content":
+            missing: list[str] = []
+            reel_scripts = output.get("reel_scripts")
+            tiktok_packages = output.get("tiktok_packages")
+            meta_ads = output.get("meta_ads")
+            content_calendar_pdf = output.get("content_calendar_pdf")
+            if not isinstance(reel_scripts, list) or len(reel_scripts) < 3:
+                missing.append("reel_scripts[3]")
+            if not isinstance(tiktok_packages, list) or len(tiktok_packages) < 2:
+                missing.append("tiktok_packages[2]")
+            if not isinstance(meta_ads, dict) or not all(meta_ads.get(key) for key in ("awareness", "consideration", "conversion")):
+                missing.append("meta_ads.awareness|consideration|conversion")
+            if not content_calendar_pdf:
+                missing.append("content_calendar_pdf")
+            return missing
+        if self.name == "marketing_outreach":
+            missing: list[str] = []
+            if not isinstance(output.get("domains_searched"), list) or not output.get("domains_searched"):
+                missing.append("domains_searched[]")
+            if not isinstance(output.get("sequences"), list) or not output.get("sequences"):
+                missing.append("sequences[]")
+            if not isinstance(output.get("sequence"), list) or not output.get("sequence"):
+                missing.append("sequence[]")
+            leads = output.get("leads")
+            contacts_found = output.get("contacts_found")
+            if not isinstance(leads, list) or not leads:
+                missing.append("leads[]")
+            if not isinstance(contacts_found, int):
+                missing.append("contacts_found")
+            return missing
         if self.name == "design":
             missing: list[str] = []
             if not output.get("design_spec"):
@@ -852,6 +895,92 @@ class Agent:
             if not isinstance(ad_images, list) or not ad_images:
                 if not image_attempted:
                     missing.append("ad_images[]")
+            return missing
+        if self.name == "marketing_paid":
+            missing: list[str] = []
+            if not output.get("pdf_path"):
+                missing.append("pdf_path")
+            if not isinstance(output.get("meta_ads"), list) or len(output.get("meta_ads", [])) < 2:
+                missing.append("meta_ads[2+]")
+            if output.get("total_budget_usd") is None:
+                missing.append("total_budget_usd")
+            if not output.get("channel_split"):
+                missing.append("channel_split")
+            return missing
+        if self.name == "marketing_seo":
+            return [] if (output.get("pdf_path") or output.get("pdf_url")) else ["pdf_path|pdf_url"]
+        if self.name == "web":
+            missing: list[str] = []
+            if not output.get("repo_url"):
+                missing.append("repo_url")
+            if not (output.get("deploy_url") or output.get("url")):
+                missing.append("deploy_url")
+            return missing
+        if self.name == "technical":
+            missing: list[str] = []
+            if not output.get("repo_url"):
+                missing.append("repo_url")
+            if not (output.get("deploy_url") or output.get("url")):
+                missing.append("deploy_url")
+            if not isinstance(output.get("files_in_repo"), int):
+                missing.append("files_in_repo")
+            return missing
+        if self.name == "technical_infra":
+            missing: list[str] = []
+            if not output.get("pdf_path"):
+                missing.append("pdf_path")
+            if not output.get("hosting_choice"):
+                missing.append("hosting_choice")
+            if not output.get("github_actions_yaml"):
+                missing.append("github_actions_yaml")
+            return missing
+        if self.name == "technical_data":
+            missing: list[str] = []
+            for key in ("er_diagram", "schema_sql", "analytics_events", "pdf_path"):
+                if not output.get(key):
+                    missing.append(key)
+            return missing
+        if self.name == "legal_entity":
+            missing: list[str] = []
+            if not output.get("entity_type"):
+                missing.append("entity_type")
+            docs = output.get("documents")
+            if not isinstance(docs, list) or len(docs) < 3:
+                missing.append("documents[3]")
+            return missing
+        if self.name == "legal_ip":
+            missing: list[str] = []
+            docs = output.get("documents")
+            if not isinstance(docs, list) or len(docs) < 3:
+                missing.append("documents[3]")
+            if not output.get("recommended_filings"):
+                missing.append("recommended_filings")
+            return missing
+        if self.name == "sales_pipeline":
+            missing: list[str] = []
+            if not isinstance(output.get("pipeline_stages"), list) or len(output.get("pipeline_stages", [])) < 5:
+                missing.append("pipeline_stages[5+]")
+            if not output.get("playbook_pdf"):
+                missing.append("playbook_pdf")
+            return missing
+        if self.name == "finance_model":
+            missing: list[str] = []
+            if not output.get("pdf_path"):
+                missing.append("pdf_path")
+            if not output.get("key_assumptions"):
+                missing.append("key_assumptions")
+            return missing
+        if self.name == "finance_fundraise":
+            missing: list[str] = []
+            for key in ("raise_amount", "instrument", "investor_list", "safe_terms_path", "pdf_path"):
+                if not output.get(key):
+                    missing.append(key)
+            return missing
+        if self.name == "ops":
+            missing: list[str] = []
+            for key in ("pdf_path", "payment_setup", "linear_issue", "notion_page"):
+                if not output.get(key):
+                    missing.append(key)
             return missing
         return []
 
@@ -1075,6 +1204,171 @@ class Agent:
                     current_doc = None
             if docs:
                 out["documents"] = docs
+        elif self.name == "marketing_content":
+            reel_scripts = out.get("reel_scripts") if isinstance(out.get("reel_scripts"), list) else []
+            tiktok_packages = out.get("tiktok_packages") if isinstance(out.get("tiktok_packages"), list) else []
+            meta_ads = out.get("meta_ads") if isinstance(out.get("meta_ads"), dict) else {}
+            pdf_result = out.get("content_calendar_pdf")
+            meta_slots = ["awareness", "consideration", "conversion"]
+            meta_index = 0
+            for tool_name, result in tool_results:
+                if tool_name == "generate_reel_package":
+                    reel_scripts.append(result)
+                elif tool_name == "generate_tiktok_package":
+                    tiktok_packages.append(result)
+                elif tool_name == "generate_meta_ad" and meta_index < len(meta_slots):
+                    meta_ads.setdefault(meta_slots[meta_index], result)
+                    meta_index += 1
+                elif tool_name == "generate_pdf" and not pdf_result:
+                    pdf_result = result
+            if reel_scripts:
+                out["reel_scripts"] = reel_scripts
+            if tiktok_packages:
+                out["tiktok_packages"] = tiktok_packages
+            if meta_ads:
+                out["meta_ads"] = meta_ads
+            if pdf_result:
+                out["content_calendar_pdf"] = pdf_result.get("path") if isinstance(pdf_result, dict) else pdf_result
+        elif self.name == "marketing_outreach":
+            sequences = out.get("sequences") if isinstance(out.get("sequences"), list) else []
+            leads = out.get("leads") if isinstance(out.get("leads"), list) else []
+            domains = out.get("domains_searched") if isinstance(out.get("domains_searched"), list) else []
+            for tool_name, result in tool_results:
+                if tool_name == "search_and_fetch":
+                    for item in result.get("results", []):
+                        url = item.get("url", "")
+                        if isinstance(url, str) and url:
+                            domain = url.split("/")[2] if "://" in url else url
+                            if domain and domain not in domains:
+                                domains.append(domain)
+                elif tool_name == "hunter_search_by_domains":
+                    for contact in result.get("contacts", []) or result.get("results", []) or []:
+                        if contact not in leads:
+                            leads.append(contact)
+                elif tool_name == "build_outreach_sequence" and isinstance(result.get("sequence"), list):
+                    lead = result.get("lead") if isinstance(result.get("lead"), dict) else {}
+                    if lead and lead not in leads:
+                        leads.append(lead)
+                    sequences.append({"lead": lead, "steps": result["sequence"]})
+            if domains:
+                out["domains_searched"] = domains
+            if leads:
+                out["leads"] = leads
+                out.setdefault("contacts_found", len(leads))
+            if sequences:
+                out["sequences"] = sequences
+                out.setdefault("sequence", sequences[0].get("steps", []))
+            out.setdefault("emails_sent", 0)
+        elif self.name == "marketing_paid":
+            meta_ads = out.get("meta_ads") if isinstance(out.get("meta_ads"), list) else []
+            pdf_path = out.get("pdf_path")
+            for tool_name, result in tool_results:
+                if tool_name == "generate_meta_ad":
+                    meta_ads.append(result)
+                elif tool_name == "generate_pdf" and not pdf_path:
+                    pdf_path = result.get("path") or result.get("filename")
+            if meta_ads:
+                out["meta_ads"] = meta_ads
+            if pdf_path:
+                out["pdf_path"] = pdf_path
+            if "channel_split" not in out and out.get("google_budget_usd") is not None and out.get("meta_budget_usd") is not None:
+                out["channel_split"] = {
+                    "google_usd": out.get("google_budget_usd"),
+                    "meta_usd": out.get("meta_budget_usd"),
+                }
+        elif self.name in ("web", "technical"):
+            for tool_name, result in tool_results:
+                if tool_name == "github_create_repo" and result.get("repo_url") and not out.get("repo_url"):
+                    out["repo_url"] = result.get("repo_url")
+                elif tool_name == "run_mvp_loop":
+                    out.setdefault("repo_url", result.get("repo_url"))
+                    out.setdefault("deploy_url", result.get("deploy_url"))
+                    out.setdefault("url", result.get("deploy_url"))
+                    out.setdefault("files_in_repo", result.get("files_in_repo"))
+                    if result.get("files_preview"):
+                        out.setdefault("files_preview", result.get("files_preview"))
+        elif self.name == "technical_infra":
+            for tool_name, result in tool_results:
+                if tool_name == "generate_pdf":
+                    out.setdefault("pdf_path", result.get("path") or result.get("filename"))
+        elif self.name == "technical_data":
+            for tool_name, result in tool_results:
+                if tool_name == "generate_pdf":
+                    out.setdefault("pdf_path", result.get("path") or result.get("filename"))
+        elif self.name == "legal_entity":
+            filing = next((result for tool_name, result in tool_results if tool_name == "file_llc_live"), None)
+            docs = out.get("documents") if isinstance(out.get("documents"), list) else []
+            current_doc: dict[str, Any] | None = None
+            for tool_name, result in tool_results:
+                if tool_name == "format_legal_document":
+                    current_doc = {
+                        "doc_type": result.get("doc_type"),
+                        "title": result.get("doc_type", "document"),
+                        "text": result.get("formatted_text", ""),
+                    }
+                elif tool_name == "generate_pdf":
+                    if current_doc is None:
+                        current_doc = {"doc_type": "document", "title": "document"}
+                    current_doc["path"] = result.get("path") or result.get("filename")
+                    docs.append(current_doc)
+                    current_doc = None
+            if filing:
+                out.setdefault("entity_type", filing.get("entity_type"))
+                out.setdefault("filing_confirmation", filing.get("confirmation_number"))
+            if docs:
+                out["documents"] = docs
+        elif self.name == "legal_ip":
+            docs = out.get("documents") if isinstance(out.get("documents"), list) else []
+            current_doc: dict[str, Any] | None = None
+            patent_summaries = []
+            for tool_name, result in tool_results:
+                if tool_name == "patent_search":
+                    patent_summaries.append(result)
+                elif tool_name == "format_legal_document":
+                    current_doc = {
+                        "doc_type": result.get("doc_type"),
+                        "title": result.get("doc_type", "document"),
+                        "text": result.get("formatted_text", ""),
+                    }
+                elif tool_name == "generate_pdf":
+                    if current_doc is None:
+                        current_doc = {"doc_type": "document", "title": "document"}
+                    current_doc["path"] = result.get("path") or result.get("filename")
+                    docs.append(current_doc)
+                    current_doc = None
+            if docs:
+                out["documents"] = docs
+            if patent_summaries and "recommended_filings" not in out:
+                out["recommended_filings"] = ["Review patent search results and pursue highest-signal filings"]
+        elif self.name == "sales_pipeline":
+            for tool_name, result in tool_results:
+                if tool_name == "generate_pdf":
+                    out.setdefault("playbook_pdf", result.get("path") or result.get("filename"))
+        elif self.name == "marketing_seo":
+            for tool_name, result in tool_results:
+                if tool_name == "generate_pdf":
+                    out.setdefault("pdf_path", result.get("path") or result.get("filename"))
+        elif self.name == "finance_model":
+            for tool_name, result in tool_results:
+                if tool_name == "generate_pdf":
+                    out.setdefault("pdf_path", result.get("path") or result.get("filename"))
+            out.setdefault("key_assumptions", out.get("assumptions") or out.get("inputs") or {})
+        elif self.name == "finance_fundraise":
+            for tool_name, result in tool_results:
+                if tool_name == "format_legal_document":
+                    out.setdefault("safe_terms_path", result.get("path") or result.get("filename") or result.get("doc_type"))
+                elif tool_name == "generate_pdf":
+                    out.setdefault("pdf_path", result.get("path") or result.get("filename"))
+        elif self.name == "ops":
+            for tool_name, result in tool_results:
+                if tool_name == "generate_pdf":
+                    out.setdefault("pdf_path", result.get("path") or result.get("filename"))
+                elif tool_name == "create_product_with_payment_link":
+                    out.setdefault("payment_setup", result)
+                elif tool_name == "composio_linear_create_issue":
+                    out.setdefault("linear_issue", result)
+                elif tool_name == "composio_notion_create_page":
+                    out.setdefault("notion_page", result)
         return out
 
     async def _delegate(self, agent_name: str, task: str, ctx: AgentContext) -> Any:

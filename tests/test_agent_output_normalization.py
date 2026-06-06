@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from backend.core.agent import Agent
 from backend.tools import vercel_deploy
 
@@ -47,11 +49,73 @@ def test_legal_normalizes_documents_from_tool_sequence():
     assert normalized["documents"][0]["path"] == "/tmp/privacy_policy.pdf"
 
 
-def test_generate_landing_page_html_accepts_html_without_doctype(mocker):
-    mocker.patch(
-        "backend.tools._llm.generate",
-        return_value="<html><head><title>X</title></head><body><h1>Custom</h1></body></html>",
-    )
+def test_marketing_content_normalizes_content_packages():
+    agent = Agent(name="marketing_content", role="mc", tools={})
+    normalized = agent._normalize_done_output({}, [
+        ("generate_reel_package", {"script": "reel-1"}),
+        ("generate_reel_package", {"script": "reel-2"}),
+        ("generate_reel_package", {"script": "reel-3"}),
+        ("generate_tiktok_package", {"script": "tt-1"}),
+        ("generate_tiktok_package", {"script": "tt-2"}),
+        ("generate_meta_ad", {"headline": "aware"}),
+        ("generate_meta_ad", {"headline": "consider"}),
+        ("generate_meta_ad", {"headline": "convert"}),
+        ("generate_pdf", {"path": "/tmp/content_calendar.pdf"}),
+    ])
+    assert len(normalized["reel_scripts"]) == 3
+    assert len(normalized["tiktok_packages"]) == 2
+    assert normalized["meta_ads"]["awareness"]["headline"] == "aware"
+    assert normalized["meta_ads"]["conversion"]["headline"] == "convert"
+    assert normalized["content_calendar_pdf"] == "/tmp/content_calendar.pdf"
+
+
+def test_web_normalizes_repo_and_deploy_from_tool_results():
+    agent = Agent(name="web", role="w", tools={})
+    normalized = agent._normalize_done_output({}, [
+        ("github_create_repo", {"repo_url": "https://github.com/acme/site"}),
+        ("run_mvp_loop", {
+            "repo_url": "https://github.com/acme/site",
+            "deploy_url": "https://acme.vercel.app",
+            "files_in_repo": 18,
+            "files_preview": ["app/page.tsx"],
+        }),
+    ])
+    assert normalized["repo_url"] == "https://github.com/acme/site"
+    assert normalized["deploy_url"] == "https://acme.vercel.app"
+    assert normalized["files_in_repo"] == 18
+
+
+def test_ops_normalizes_action_outputs():
+    agent = Agent(name="ops", role="o", tools={})
+    normalized = agent._normalize_done_output({}, [
+        ("generate_pdf", {"path": "/tmp/ops.pdf"}),
+        ("create_product_with_payment_link", {"payment_link_url": "https://buy.stripe.com/x"}),
+        ("composio_linear_create_issue", {"ok": True, "title": "Launch checklist"}),
+        ("composio_notion_create_page", {"ok": True, "title": "Ops SOP"}),
+    ])
+    assert normalized["pdf_path"] == "/tmp/ops.pdf"
+    assert normalized["payment_setup"]["payment_link_url"] == "https://buy.stripe.com/x"
+    assert normalized["linear_issue"]["title"] == "Launch checklist"
+    assert normalized["notion_page"]["title"] == "Ops SOP"
+
+
+def test_marketing_paid_requires_real_outputs():
+    agent = Agent(name="marketing_paid", role="mp", tools={})
+    missing = agent._missing_required_output({"pdf_path": "/tmp/paid.pdf", "meta_ads": [], "channel_split": None})
+    assert "meta_ads[2+]" in missing
+    assert "total_budget_usd" in missing
+    assert "channel_split" in missing
+
+
+def test_generate_landing_page_html_accepts_html_without_doctype(monkeypatch):
+    def fake_run_claude(tmpdir, *_args, **_kwargs):
+        Path(tmpdir, "index.html").write_text(
+            "<html><head><title>X</title></head><body><h1>Custom</h1></body></html>",
+            encoding="utf-8",
+        )
+        return ""
+
+    monkeypatch.setattr("backend.tools.git_tools._run_claude", fake_run_claude)
     html = vercel_deploy.generate_landing_page_html(
         page_title="Acme",
         headline="Build faster",
@@ -66,16 +130,15 @@ def test_generate_landing_page_html_accepts_html_without_doctype(mocker):
     assert "astra-fallback-template" not in html
 
 
-def test_generate_landing_page_html_rejects_fallback_style_signatures(mocker):
-    calls = {"n": 0}
+def test_generate_landing_page_html_accepts_written_doctype_html(monkeypatch):
+    def fake_run_claude(tmpdir, *_args, **_kwargs):
+        Path(tmpdir, "index.html").write_text(
+            "<!DOCTYPE html><html><body><h1>Custom page</h1></body></html>",
+            encoding="utf-8",
+        )
+        return ""
 
-    def fake_generate(_prompt: str, model: str = "fast"):
-        calls["n"] += 1
-        if calls["n"] == 1:
-            return "<!DOCTYPE html><html><head><style>:root{--bg: #06080f; --bg2: #0d1117;}</style></head><body>Define your goal</body></html>"
-        return "<!DOCTYPE html><html><body><h1>Custom page</h1></body></html>"
-
-    mocker.patch("backend.tools._llm.generate", side_effect=fake_generate)
+    monkeypatch.setattr("backend.tools.git_tools._run_claude", fake_run_claude)
     html = vercel_deploy.generate_landing_page_html(
         page_title="Acme",
         headline="Build faster",
@@ -86,6 +149,4 @@ def test_generate_landing_page_html_rejects_fallback_style_signatures(mocker):
         company_name="Acme",
         business_context="Use #112233 and #f5f5f5",
     )
-    assert calls["n"] >= 2
     assert "custom page" in html.lower()
-    assert "--bg: #06080f" not in html.lower()
