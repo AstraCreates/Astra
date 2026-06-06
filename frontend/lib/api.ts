@@ -473,6 +473,24 @@ export interface SetupStatus {
   meta_ads: boolean;
   composio?: boolean;
   apps?: Record<string, boolean>;
+  zero_touch?: {
+    ready: boolean;
+    shared_inbox: {
+      email: string;
+      imap_configured: boolean;
+      imap_auth_ok: boolean;
+      imap_detail: string;
+      web_password_configured: boolean;
+    };
+    composio_api_key_configured: boolean;
+    browser_runtime: {
+      headless: boolean;
+      proxy_configured: boolean;
+      capsolver_configured: boolean;
+      anti_bot_ready: boolean;
+    };
+    blockers: string[];
+  };
 }
 
 export interface SetupResult {

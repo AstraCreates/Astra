@@ -4,6 +4,7 @@ Runs all browser automations concurrently (separate threads) and
 stores credentials encrypted per-founder.
 """
 import asyncio
+import imaplib
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
@@ -358,6 +359,7 @@ async def get_founder_setup_status(founder_id: str) -> dict:
         "meta_ads": bool(creds.get("meta_ads", {}).get("access_token")),
         "composio": bool(creds.get("composio", {}).get("api_key")),
         "apps": apps,
+        "zero_touch": await asyncio.to_thread(get_zero_touch_readiness),
     }
 
 
@@ -381,3 +383,70 @@ def _connected_composio_services(creds: dict[str, Any]) -> dict[str, bool]:
             apps["linear"] = True
             apps["product_tracker"] = True
     return apps
+
+
+def get_zero_touch_readiness() -> dict[str, Any]:
+    from backend.config import settings
+
+    test_email = (settings.test_email_base or "").strip()
+    imap_password = (settings.test_email_imap_password or "").strip()
+    web_password = (settings.test_email_web_password or "").strip()
+    capsolver_path = (settings.capsolver_extension_path or "").strip()
+    proxy_server = (settings.browser_proxy_server or "").strip()
+
+    imap = _check_test_inbox_auth(test_email, imap_password)
+    anti_bot_ready = bool(capsolver_path or proxy_server)
+    blockers: list[str] = []
+    if not settings.composio_api_key:
+        blockers.append("COMPOSIO_API_KEY is not configured.")
+    if not test_email:
+        blockers.append("TEST_EMAIL_BASE is not configured.")
+    elif not imap_password:
+        blockers.append("TEST_EMAIL_IMAP_PASSWORD is not configured.")
+    elif not imap["ok"]:
+        blockers.append(imap["detail"])
+    if test_email and not web_password:
+        blockers.append("TEST_EMAIL_WEB_PASSWORD is not configured.")
+    if not anti_bot_ready:
+        blockers.append("No anti-bot bypass is configured (browser proxy or CapSolver extension).")
+
+    return {
+        "ready": not blockers,
+        "shared_inbox": {
+            "email": test_email,
+            "imap_configured": bool(imap_password),
+            "imap_auth_ok": imap["ok"],
+            "imap_detail": imap["detail"],
+            "web_password_configured": bool(web_password),
+        },
+        "composio_api_key_configured": bool(settings.composio_api_key),
+        "browser_runtime": {
+            "headless": settings.browser_headless,
+            "proxy_configured": bool(proxy_server),
+            "capsolver_configured": bool(capsolver_path),
+            "anti_bot_ready": anti_bot_ready,
+        },
+        "blockers": blockers,
+    }
+
+
+def _check_test_inbox_auth(email_address: str, imap_password: str) -> dict[str, Any]:
+    if not email_address:
+        return {"ok": False, "detail": "Shared test inbox email is missing."}
+    if not imap_password:
+        return {"ok": False, "detail": "Shared test inbox IMAP password is missing."}
+    mail = None
+    try:
+        mail = imaplib.IMAP4_SSL("imap.gmail.com", 993)
+        mail.login(email_address, imap_password.replace(" ", ""))
+        return {"ok": True, "detail": "IMAP authentication succeeded."}
+    except imaplib.IMAP4.error:
+        return {"ok": False, "detail": "Shared test inbox IMAP authentication failed."}
+    except Exception as exc:
+        return {"ok": False, "detail": f"Shared test inbox IMAP check failed: {exc}"}
+    finally:
+        try:
+            if mail is not None:
+                mail.logout()
+        except Exception:
+            pass
