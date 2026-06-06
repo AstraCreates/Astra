@@ -1163,13 +1163,13 @@ export default function SettingsPage() {
                   <Badge color={navResult.success ? "green" : "red"}>{navResult.success ? "Success" : "Failed"}</Badge>
                   <span style={{ fontSize: 13, color: c.text, fontWeight: 500 }}>{String(navResult.message ?? "")}</span>
                 </div>
-                {navResult.url && (
+                {!!navResult.url && (
                   <p style={{ margin: 0, fontSize: 12, color: c.grey }}>
                     <a href={String(navResult.url)} target="_blank" rel="noreferrer" style={{ color: c.blue }}>{String(navResult.url)}</a>
                     {" · "}{String(navResult.steps ?? 0)} steps
                   </p>
                 )}
-                {navResult.extracted && Object.keys(navResult.extracted as object).length > 0 && (
+                {!!navResult.extracted && Object.keys(navResult.extracted as object).length > 0 && (
                   <div style={{ display: "grid", gap: 5, marginTop: 4 }}>
                     <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: c.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>Extracted</p>
                     {Object.entries(navResult.extracted as Record<string, string>).map(([k, v]) => (
