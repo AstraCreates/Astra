@@ -619,13 +619,15 @@ def _complete_composio_oauth_app(
         page_text = _page_text(page)
 
         if app == "linear" and _has_turnstile_challenge(page):
-            return {
-                "connected": False,
-                "app": app,
-                "error": "Linear signup/login is blocked by a Cloudflare Turnstile challenge.",
-                "last_url": current,
-                "last_state": page_text[:240],
-            }
+            return _interaction_required_result(
+                app=app,
+                provider="linear",
+                category="anti_bot",
+                detail="Linear signup/login is blocked by a Cloudflare Turnstile challenge.",
+                url=current,
+                state=page_text,
+                next_step="Complete the verification challenge in-browser, then resume the integration flow.",
+            )
 
         if "accounts.google.com" in host:
             _handle_google_login(page, email, password)
@@ -678,6 +680,31 @@ def _persist_connected_composio_app(founder_id: str, app: str) -> None:
             "connected_via": "composio_oauth",
             "composio_app": app,
         })
+
+
+def _interaction_required_result(
+    *,
+    app: str,
+    provider: str,
+    category: str,
+    detail: str,
+    url: str,
+    state: str,
+    next_step: str,
+) -> dict:
+    return {
+        "connected": False,
+        "app": app,
+        "provider": provider,
+        "status": "interaction_required",
+        "requires_human": True,
+        "category": category,
+        "error": detail,
+        "last_url": url,
+        "last_state": state[:240],
+        "next_step": next_step,
+        "resume_supported": True,
+    }
 
 
 def _click_first(page, selectors: list[str]) -> bool:

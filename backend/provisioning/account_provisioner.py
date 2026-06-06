@@ -167,6 +167,11 @@ async def provision_all(
         app for app, row in oauth_app_results.items()
         if app != "error" and isinstance(row, dict) and not row.get("connected")
     ]
+    interaction_required = {
+        app: row
+        for app, row in oauth_app_results.items()
+        if app != "error" and isinstance(row, dict) and row.get("requires_human")
+    }
     if oauth_app_results:
         results["composio_oauth_apps"] = oauth_app_results
 
@@ -190,6 +195,7 @@ async def provision_all(
         "required_only": required_only,
         "provision_plan": plan,
         "pending_manual_connectors": sorted(set(plan["manual_connectors"] + failed_oauth_apps)),
+        "interaction_required": interaction_required,
     }
 
 
@@ -313,6 +319,8 @@ def _summarize(results: dict) -> list[str]:
                 continue
             if isinstance(row, dict) and row.get("connected"):
                 lines.append(f"✓ {app} — connected via browser OAuth")
+            elif isinstance(row, dict) and row.get("requires_human"):
+                lines.append(f"⚠ {app} — human step required: {row.get('next_step', row.get('error', 'interaction required'))}")
             elif isinstance(row, dict):
                 lines.append(f"⚠ {app} — {row.get('error', 'OAuth not completed')}")
     lines.append("→ Remaining OAuth-required apps can still be finished from the Integrations step if browser automation did not complete them.")

@@ -511,6 +511,19 @@ export interface SetupResult {
     required_only: boolean;
   };
   pending_manual_connectors?: string[];
+  interaction_required?: Record<string, {
+    connected: false;
+    app: string;
+    provider: string;
+    status: "interaction_required";
+    requires_human: true;
+    category: string;
+    error: string;
+    last_url?: string;
+    last_state?: string;
+    next_step?: string;
+    resume_supported?: boolean;
+  }>;
 }
 
 export interface BrainSource {

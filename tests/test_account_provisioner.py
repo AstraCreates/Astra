@@ -48,6 +48,25 @@ def test_summarize_reports_oauth_app_results():
     assert any("linear" in line and "Timed out completing OAuth" in line for line in lines)
 
 
+def test_summarize_reports_human_step_required():
+    lines = _summarize({
+        "github": {"created": True},
+        "vercel": {"created": True},
+        "sendgrid": {"created": True},
+        "supabase": {"created": True},
+        "composio": {"created": True},
+        "composio_oauth_apps": {
+            "linear": {
+                "connected": False,
+                "requires_human": True,
+                "next_step": "Complete the verification challenge in-browser, then resume the integration flow.",
+            },
+        },
+    })
+
+    assert any("linear" in line and "human step required" in line for line in lines)
+
+
 def test_google_sheets_uses_google_drive_oauth_app():
     plan = build_provision_plan("sales", required_only=False, include_foundation=False)
     assert "google_drive" in plan["composio_apps"]
