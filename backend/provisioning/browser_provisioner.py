@@ -567,6 +567,7 @@ def _complete_composio_oauth_app(
     get_status,
 ) -> dict:
     deadline = time.time() + timeout_seconds
+    oauth_state: dict[str, float] = {}
     page.goto(url, timeout=30000)
     page.wait_for_timeout(1500)
 
@@ -594,7 +595,7 @@ def _complete_composio_oauth_app(
             _handle_composio_return(page)
 
         service = app if app in {"notion", "linear", "github"} else ("google" if "google" in app or app == "gmail" else app)
-        _maybe_handle_email_challenge(page, email, imap_password, service)
+        _maybe_handle_email_challenge(page, email, imap_password, service, deadline=deadline, state=oauth_state)
         _click_generic_oauth_buttons(page)
         page.wait_for_timeout(2500)
 
@@ -692,7 +693,15 @@ def _click_generic_oauth_buttons(page) -> bool:
     ])
 
 
-def _maybe_handle_email_challenge(page, email: str, imap_password: str | None, service: str) -> bool:
+def _maybe_handle_email_challenge(
+    page,
+    email: str,
+    imap_password: str | None,
+    service: str,
+    *,
+    deadline: float | None = None,
+    state: dict[str, float] | None = None,
+) -> bool:
     page_text = _page_text(page)
     if not imap_password:
         return False
@@ -705,9 +714,20 @@ def _maybe_handle_email_challenge(page, email: str, imap_password: str | None, s
         "confirm your email",
     )):
         return False
+    attempt_key = f"{service}:{urlparse(getattr(page, 'url', '') or '').path}:{'otp' if 'code' in page_text else 'link'}"
+    if state is not None:
+        last_attempt = state.get(attempt_key, 0.0)
+        # Avoid re-polling IMAP for the exact same challenge every loop.
+        if time.time() - last_attempt < 45:
+            return False
+        state[attempt_key] = time.time()
+    remaining = max(0, int((deadline - time.time()) if deadline else 90))
+    if remaining < 5:
+        return False
+    wait_timeout = min(45, remaining)
     from backend.testing.email_reader import wait_for_verification_code, wait_for_verification_url
 
-    code = wait_for_verification_code(email, imap_password, service, timeout=90)
+    code = wait_for_verification_code(email, imap_password, service, timeout=wait_timeout)
     if code:
         filled = _fill_first(page, [
             "input[autocomplete='one-time-code']",
@@ -719,7 +739,10 @@ def _maybe_handle_email_challenge(page, email: str, imap_password: str | None, s
         if filled:
             _click_text(page, ["Continue", "Verify", "Submit", "Next"])
             return True
-    link = wait_for_verification_url(email, imap_password, service, timeout=90)
+    remaining = max(0, int((deadline - time.time()) if deadline else wait_timeout))
+    if remaining < 5:
+        return False
+    link = wait_for_verification_url(email, imap_password, service, timeout=min(45, remaining))
     if link:
         page.goto(link, timeout=30000)
         page.wait_for_timeout(1500)

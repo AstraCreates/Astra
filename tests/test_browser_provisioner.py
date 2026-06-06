@@ -79,6 +79,34 @@ def test_maybe_handle_email_challenge_fills_code(monkeypatch):
     assert "button:has-text('Continue')" in page.clicked
 
 
+def test_maybe_handle_email_challenge_throttles_repeat_attempts(monkeypatch):
+    page = FakePage(
+        url="https://www.notion.so/login",
+        content="Check your email for a verification code",
+        available={"input[autocomplete='one-time-code']"},
+    )
+    calls = {"code": 0, "link": 0}
+
+    def fake_code(*args, **kwargs):
+        calls["code"] += 1
+        return None
+
+    def fake_link(*args, **kwargs):
+        calls["link"] += 1
+        return None
+
+    monkeypatch.setattr("backend.testing.email_reader.wait_for_verification_code", fake_code)
+    monkeypatch.setattr("backend.testing.email_reader.wait_for_verification_url", fake_link)
+
+    state = {}
+    first = bp._maybe_handle_email_challenge(page, "test@example.com", "pw", "notion", deadline=bp.time.time() + 60, state=state)
+    second = bp._maybe_handle_email_challenge(page, "test@example.com", "pw", "notion", deadline=bp.time.time() + 60, state=state)
+
+    assert first is False
+    assert second is False
+    assert calls == {"code": 1, "link": 1}
+
+
 def test_handle_google_login_can_pick_account_and_continue():
     page = FakePage(
         content="Choose an account",
