@@ -1023,6 +1023,14 @@ def resolve_company_brain_proposal(founder_id: str, proposal_id: str, status: st
 
 def search_company_brain(founder_id: str, query: str, limit: int = 8, viewer_id: str | None = None) -> dict[str, Any]:
     """Search the company brain for human and agent context retrieval."""
+    try:
+        from backend.tools.graph_rag_v2 import graph_exists, graph_rag_search
+        if graph_exists(founder_id):
+            graph_result = graph_rag_search(founder_id, query, limit=limit)
+            if graph_result.get("ok") and graph_result.get("count", 0) > 0:
+                return {**graph_result, "retrieval": "graph_rag_v2"}
+    except Exception:
+        pass
     data = _load(founder_id)
     terms = [t for t in re.findall(r"[a-zA-Z0-9_-]+", query.lower()) if len(t) > 2]
     scored: list[tuple[float, dict[str, Any]]] = []
@@ -1048,6 +1056,7 @@ def search_company_brain(founder_id: str, query: str, limit: int = 8, viewer_id:
         "count": len(results),
         "results": results,
         "formatted": format_company_brain_context(results),
+        "retrieval": "keyword",
     }
 
 
@@ -1067,6 +1076,20 @@ def company_brain_agent_context(founder_id: str, query: str, limit: int = 8, vie
     """Return compact graph context for IDEs, MCP bridges, and external agents."""
     data = _load(founder_id)
     search = search_company_brain(founder_id, query, limit=limit, viewer_id=viewer_id)
+    if search.get("retrieval") == "graph_rag_v2":
+        return {
+            "ok": True,
+            "founder_id": founder_id,
+            "query": query,
+            "context": search.get("formatted", ""),
+            "records": search.get("results", []),
+            "relationships": search.get("relationships", []),
+            "canonical_sources": [],
+            "open_proposals": [],
+            "maintenance": data.get("maintenance", {}),
+            "sync": data.get("sync", {}),
+            "retrieval": "graph_rag_v2",
+        }
     matched_ids = {record["id"] for record in search["results"]}
     readable_records = _filter_readable_records(data, viewer_id)
     relationships = [
@@ -1105,6 +1128,13 @@ def company_brain_agent_context(founder_id: str, query: str, limit: int = 8, vie
 
 def company_brain_context(founder_id: str, query: str, limit: int = 6, viewer_id: str | None = None) -> str:
     """Compact helper for orchestrator context injection."""
+    try:
+        from backend.tools.graph_rag_v2 import read_context_snapshot
+        snapshot = read_context_snapshot(founder_id)
+        if snapshot:
+            return snapshot
+    except Exception:
+        pass
     return search_company_brain(founder_id, query, limit=limit, viewer_id=viewer_id)["formatted"]
 
 

@@ -9,12 +9,14 @@ import {
   configureCompanyBrainSync,
   getCompanyBrain,
   getCompanyBrainSchedulerStatus,
+  getGraphRagVisualization,
   importCompanyBrainSources,
   maintainCompanyBrain,
   runCompanyBrainSync,
   saveServiceCredential,
   searchCompanyBrain,
   syncCompanyBrain,
+  syncGraphRag,
   updateBrainProposal,
   type BrainProposal,
   type BrainRecord,
@@ -22,6 +24,7 @@ import {
   type BrainSchedulerState,
   type BrainSource,
   type CompanyBrain,
+  type GraphRagVisualization,
 } from "@/lib/api";
 import LiquidGlass from "@/components/LiquidGlass";
 
@@ -205,6 +208,160 @@ function ProposalCard({
   );
 }
 
+const GRAPH_COLORS = ["#2563EB", "#3D9E5F", "#C58B37", "#B45EA4", "#0F766E", "#DC2626", "#7C3AED", "#64748B"];
+
+function GraphRagPanel({
+  graph,
+  loading,
+  rebuilding,
+  onReload,
+  onRebuild,
+}: {
+  graph: GraphRagVisualization | null;
+  loading: boolean;
+  rebuilding: boolean;
+  onReload: () => void;
+  onRebuild: () => void;
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const nodes = useMemo(() => graph?.nodes ?? [], [graph]);
+  const edges = useMemo(() => graph?.edges ?? [], [graph]);
+  const visibleNodes = useMemo(() => nodes.slice(0, 80), [nodes]);
+  const visibleIds = useMemo(() => new Set(visibleNodes.map(node => node.id)), [visibleNodes]);
+  const visibleEdges = useMemo(
+    () => edges.filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target)).slice(0, 180),
+    [edges, visibleIds]
+  );
+  const selected = visibleNodes.find(node => node.id === selectedId) ?? visibleNodes[0] ?? null;
+  const layout = useMemo(() => {
+    const width = 720;
+    const height = 360;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const communities = Array.from(new Set(visibleNodes.map(node => node.community_id || "unassigned")));
+    const positions = new Map<string, { x: number; y: number; color: string; radius: number }>();
+    visibleNodes.forEach((node, index) => {
+      const communityIndex = Math.max(0, communities.indexOf(node.community_id || "unassigned"));
+      const bandAngle = (communityIndex / Math.max(1, communities.length)) * Math.PI * 2;
+      const localAngle = bandAngle + ((index % 13) - 6) * 0.105 + (Math.floor(index / 13) * 0.035);
+      const ring = 78 + (communityIndex % 3) * 54 + (index % 5) * 10;
+      const importance = Number(node.importance || 1);
+      positions.set(node.id, {
+        x: centerX + Math.cos(localAngle) * ring,
+        y: centerY + Math.sin(localAngle) * ring * 0.72,
+        color: GRAPH_COLORS[communityIndex % GRAPH_COLORS.length],
+        radius: Math.max(5, Math.min(15, 5 + importance * 1.4)),
+      });
+    });
+    return { width, height, positions };
+  }, [visibleNodes]);
+  const topEntities = useMemo(
+    () => [...nodes].sort((a, b) => Number(b.importance || 0) - Number(a.importance || 0)).slice(0, 8),
+    [nodes]
+  );
+
+  return (
+    <LiquidGlass contentStyle={{ padding: 18, display: "grid", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 650, color: "var(--fg)" }}>GraphRAG v2 map</div>
+          <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>
+            {nodes.length} entities, {edges.length} SQL relationships, {new Set(nodes.map(node => node.community_id || "unassigned")).size} communities
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" onClick={onReload} disabled={loading || rebuilding} className="site-btn site-btn-ghost" style={{ minHeight: 34, fontSize: 12 }}>
+            {loading ? "Loading..." : "Refresh"}
+          </button>
+          <button type="button" onClick={onRebuild} disabled={rebuilding} className="site-btn site-btn-primary" style={{ minHeight: 34, fontSize: 12 }}>
+            {rebuilding ? "Rebuilding..." : "Rebuild graph"}
+          </button>
+        </div>
+      </div>
+
+      <div style={{ borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", overflow: "hidden" }}>
+        {visibleNodes.length === 0 ? (
+          <div style={{ minHeight: 310, display: "grid", placeItems: "center", padding: 18, color: "var(--fg-mute)", fontSize: 12, textAlign: "center" }}>
+            Add records, then rebuild the graph to create the SQLite entity map.
+          </div>
+        ) : (
+          <svg viewBox={`0 0 ${layout.width} ${layout.height}`} role="img" aria-label="GraphRAG entity relationship map" style={{ width: "100%", height: 360, display: "block" }}>
+            <rect width={layout.width} height={layout.height} fill="rgba(11,18,32,0.18)" />
+            {visibleEdges.map(edge => {
+              const source = layout.positions.get(edge.source);
+              const target = layout.positions.get(edge.target);
+              if (!source || !target) return null;
+              const active = selectedId === edge.source || selectedId === edge.target;
+              return (
+                <line
+                  key={edge.id}
+                  x1={source.x}
+                  y1={source.y}
+                  x2={target.x}
+                  y2={target.y}
+                  stroke={active ? "rgba(255,255,255,0.74)" : "rgba(180,205,228,0.20)"}
+                  strokeWidth={active ? Math.min(4, 1.2 + Number(edge.weight || 1)) : Math.min(2.8, 0.6 + Number(edge.weight || 1) * 0.35)}
+                />
+              );
+            })}
+            {visibleNodes.map(node => {
+              const pos = layout.positions.get(node.id);
+              if (!pos) return null;
+              const active = selected?.id === node.id;
+              return (
+                <g key={node.id} transform={`translate(${pos.x} ${pos.y})`} onClick={() => setSelectedId(node.id)} style={{ cursor: "pointer" }}>
+                  <circle r={pos.radius + (active ? 6 : 2)} fill={active ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.06)"} />
+                  <circle r={pos.radius} fill={pos.color} stroke={active ? "#FFFFFF" : "rgba(255,255,255,0.55)"} strokeWidth={active ? 2 : 1} />
+                  {(active || Number(node.importance || 0) >= 3) && (
+                    <text x={pos.radius + 6} y={4} fill="var(--fg)" fontSize="10" fontFamily="var(--font-jetbrains-mono)">
+                      {node.name.slice(0, 24)}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+        )}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div style={{ borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", padding: "11px 12px", minHeight: 94 }}>
+          <div style={{ color: "var(--fg-mute)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7 }}>Selected entity</div>
+          {selected ? (
+            <div style={{ display: "grid", gap: 5 }}>
+              <div style={{ color: "var(--fg)", fontSize: 13, fontWeight: 650 }}>{selected.name}</div>
+              <div style={{ color: "var(--fg-dim)", fontSize: 12, lineHeight: 1.45 }}>{selected.description || selected.type}</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <span className="site-pill" style={{ letterSpacing: 0 }}>{selected.type}</span>
+                <span className="site-pill" style={{ letterSpacing: 0 }}>importance {Math.round(Number(selected.importance || 0))}</span>
+              </div>
+            </div>
+          ) : (
+            <div style={{ color: "var(--fg-mute)", fontSize: 12 }}>No entity selected.</div>
+          )}
+        </div>
+        <div style={{ borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", padding: "11px 12px" }}>
+          <div style={{ color: "var(--fg-mute)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Top entities</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {topEntities.length === 0 && <span style={{ color: "var(--fg-mute)", fontSize: 12 }}>None yet.</span>}
+            {topEntities.map(node => (
+              <button
+                type="button"
+                key={node.id}
+                onClick={() => setSelectedId(node.id)}
+                className="site-pill"
+                style={{ letterSpacing: 0, cursor: "pointer", borderColor: selected?.id === node.id ? "rgba(255,255,255,0.42)" : undefined }}
+              >
+                {node.name.slice(0, 26)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </LiquidGlass>
+  );
+}
+
 export default function CompanyBrainPage() {
   const { userId } = useDevUser();
   const founderId = userId === "anon" ? "founder_001" : userId;
@@ -227,6 +384,9 @@ export default function CompanyBrainPage() {
   const [importSummary, setImportSummary] = useState<string | null>(null);
   const [syncInterval, setSyncInterval] = useState(60);
   const [scheduler, setScheduler] = useState<BrainSchedulerState | null>(null);
+  const [graph, setGraph] = useState<GraphRagVisualization | null>(null);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphRebuilding, setGraphRebuilding] = useState(false);
   const [draft, setDraft] = useState({ source: "manual", title: "", content: "", canonical: true });
   const [focusedSourceKey, setFocusedSourceKey] = useState("github");
   const [credentialValues, setCredentialValues] = useState<Record<string, Record<string, string>>>({});
@@ -248,9 +408,31 @@ export default function CompanyBrainPage() {
     }
   }, [founderId]);
 
+  const loadGraph = useCallback(async () => {
+    setGraphLoading(true);
+    try {
+      const data = await getGraphRagVisualization(founderId);
+      setGraph(data);
+    } catch {
+      setGraph(null);
+    } finally {
+      setGraphLoading(false);
+    }
+  }, [founderId]);
+
   useEffect(() => {
-    loadBrain();
+    const timer = window.setTimeout(() => {
+      void loadBrain();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [loadBrain]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadGraph();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadGraph]);
 
   const sources = useMemo(() => {
     const values = Object.values(brain?.sources ?? {});
@@ -261,19 +443,10 @@ export default function CompanyBrainPage() {
     });
   }, [brain]);
 
-  const records = brain?.records ?? [];
+  const records = useMemo(() => brain?.records ?? [], [brain]);
   const focusedSource = sources.find(source => source.key === focusedSourceKey) ?? sources[0] ?? null;
   const recordsById = useMemo(() => new Map(records.map(record => [record.id, record])), [records]);
   const openProposals = useMemo(() => (brain?.proposals ?? []).filter(p => p.status === "open"), [brain]);
-  const relationshipRecords = useMemo(() => {
-    const byId = new Map(records.map(r => [r.id, r]));
-    return (brain?.relationships ?? []).slice(0, 10).map(rel => ({
-      rel,
-      from: byId.get(rel.from),
-      to: byId.get(rel.to),
-    })).filter(item => item.from && item.to);
-  }, [brain, records]);
-
   async function sync() {
     setSyncing(true);
     setError(null);
@@ -297,6 +470,7 @@ export default function CompanyBrainPage() {
       const failed = result.failed_sources.length ? ` Failed: ${result.failed_sources.join(", ")}.` : "";
       setImportSummary(`Imported: ${imported}.${failed}`);
       await loadBrain();
+      await loadGraph();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import failed.");
     } finally {
@@ -415,6 +589,19 @@ export default function CompanyBrainPage() {
       setError(err instanceof Error ? err.message : "Maintenance scan failed.");
     } finally {
       setMaintaining(false);
+    }
+  }
+
+  async function rebuildGraph() {
+    setGraphRebuilding(true);
+    setError(null);
+    try {
+      await syncGraphRag(founderId);
+      await loadGraph();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Graph rebuild failed.");
+    } finally {
+      setGraphRebuilding(false);
     }
   }
 
@@ -611,31 +798,13 @@ export default function CompanyBrainPage() {
           </div>
         </LiquidGlass>
 
-        <LiquidGlass contentStyle={{ padding: 18, display: "grid", gap: 14 }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 650, color: "var(--fg)" }}>Knowledge graph</div>
-            <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>Relationships are inferred from shared entities and keywords across sources.</div>
-          </div>
-          <div style={{ display: "grid", gap: 10 }}>
-            {relationshipRecords.length === 0 && <p style={{ color: "var(--fg-mute)", fontSize: 12 }}>No cross-source links yet. Add or sync more records.</p>}
-            {relationshipRecords.map(({ rel, from, to }) => (
-              <div key={`${rel.from}-${rel.to}`} style={{ borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", padding: "11px 12px", display: "grid", gap: 7 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--fg)", fontSize: 12 }}>
-                  <span className="site-pill" style={{ letterSpacing: 0 }}>{from?.source}</span>
-                  <span style={{ color: "var(--fg-mute)" }}>links to</span>
-                  <span className="site-pill" style={{ letterSpacing: 0 }}>{to?.source}</span>
-                  <span style={{ marginLeft: "auto", fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", fontSize: 10 }}>{Math.round(rel.strength * 100)}%</span>
-                </div>
-                <div style={{ color: "var(--fg-dim)", fontSize: 12, lineHeight: 1.5 }}>
-                  {from?.title} {"->"} {to?.title}
-                </div>
-                <div style={{ color: "var(--fg-mute)", fontSize: 11 }}>
-                  {rel.evidence.join(", ")}
-                </div>
-              </div>
-            ))}
-          </div>
-        </LiquidGlass>
+        <GraphRagPanel
+          graph={graph}
+          loading={graphLoading}
+          rebuilding={graphRebuilding}
+          onReload={loadGraph}
+          onRebuild={rebuildGraph}
+        />
       </div>
 
       <LiquidGlass contentStyle={{ padding: 18, display: "grid", gap: 12 }}>

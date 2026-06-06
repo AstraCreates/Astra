@@ -520,6 +520,43 @@ export interface BrainRelationship {
   evidence: string[];
 }
 
+export interface GraphRagNode {
+  id: string;
+  founder_id: string;
+  name: string;
+  type: string;
+  description: string;
+  importance: number;
+  community_id?: string | null;
+}
+
+export interface GraphRagEdge {
+  id: string;
+  founder_id: string;
+  source: string;
+  target: string;
+  relation: string;
+  weight: number;
+}
+
+export interface GraphRagVisualization {
+  ok: boolean;
+  founder_id: string;
+  nodes: GraphRagNode[];
+  edges: GraphRagEdge[];
+}
+
+export interface GraphRagSyncResult {
+  ok: boolean;
+  founder_id: string;
+  record_count: number;
+  inserted_chunks: number;
+  node_count: number;
+  edge_count: number;
+  community_count: number;
+  snapshot_path: string;
+}
+
 export interface BrainProposal {
   id: string;
   kind: string;
@@ -1247,6 +1284,25 @@ export async function importCompanyBrainSources(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sources, limit }),
   });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function syncGraphRag(
+  founderId: string
+): Promise<GraphRagSyncResult> {
+  const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/graph-sync`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getGraphRagVisualization(
+  founderId: string
+): Promise<GraphRagVisualization> {
+  const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/graph-rag`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

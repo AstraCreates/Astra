@@ -1157,6 +1157,14 @@ class Orchestrator:
                 in_flight.discard(t["id"])
 
         await publish(session_id, {"type": "goal_done", "results": completed})
+        async def _graph_sync_after_session() -> None:
+            try:
+                from backend.tools.graph_rag_ingest import run_graph_rag_sync
+                await asyncio.to_thread(run_graph_rag_sync, founder_id)
+            except Exception as _graph_err:
+                logger.warning("GraphRAG v2 session-end sync skipped: %s", _graph_err)
+
+        asyncio.create_task(_graph_sync_after_session())
         try:
             from backend.core.events import _event_log
             from backend.session_digest import build_session_digest
@@ -1244,7 +1252,6 @@ class Orchestrator:
 
         try:
             from backend.tools.company_brain import company_brain_context, sync_company_brain
-            await asyncio.to_thread(sync_company_brain, founder_id, None)
             shared["company_brain_context"] = await asyncio.to_thread(
                 company_brain_context, founder_id, instruction, 10
             )

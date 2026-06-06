@@ -2,6 +2,7 @@ from backend.tools.company_brain import (
     add_company_brain_record,
     ask_company_brain,
     company_brain_agent_context,
+    company_brain_context,
     configure_company_brain_sync,
     get_company_brain,
     ingest_company_brain_records,
@@ -13,6 +14,8 @@ from backend.tools.company_brain import (
     sync_company_brain,
 )
 from backend.tools.company_brain_connectors import import_company_brain_sources
+from backend.tools.graph_rag_ingest import run_graph_rag_sync
+from backend.tools.graph_rag_v2 import export_graph_visualization
 
 
 def test_company_brain_sync_add_and_search(tmp_path, monkeypatch):
@@ -43,6 +46,42 @@ def test_company_brain_sync_add_and_search(tmp_path, monkeypatch):
     assert brain["sources"]["github"]["credential_fields"] == ["token"]
     assert brain["sources"]["slack"]["credential_fields"] == ["bot_token"]
     assert brain["sources"]["granola"]["importer"] is False
+
+
+def test_graph_rag_v2_sync_search_and_snapshot(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    founder_id = "founder_graph_v2"
+
+    add_company_brain_record(
+        founder_id=founder_id,
+        source="manual",
+        title="Enterprise pricing source",
+        content="Astra should package enterprise pricing with SSO, audit logs, and founder onboarding.",
+        canonical=True,
+        stale_risk="low",
+    )
+    before = search_company_brain(founder_id, "enterprise pricing", 5)
+    assert before["retrieval"] == "keyword"
+
+    synced = run_graph_rag_sync(founder_id)
+    assert synced["ok"] is True
+    assert synced["inserted_chunks"] >= 1
+
+    after = search_company_brain(founder_id, "enterprise pricing", 5)
+    assert after["retrieval"] == "graph_rag_v2"
+    assert after["count"] >= 1
+    assert "Enterprise pricing source" in after["formatted"]
+
+    context = company_brain_agent_context(founder_id, "enterprise pricing", 5)
+    assert context["retrieval"] == "graph_rag_v2"
+    assert context["relationships"] is not None
+
+    snapshot = company_brain_context(founder_id, "anything", 5)
+    assert "Company graph snapshot:" in snapshot
+
+    graph = export_graph_visualization(founder_id)
+    assert graph["ok"] is True
+    assert graph["nodes"]
 
 
 def test_company_brain_ingest_detects_conflicts_and_resolves_proposals(tmp_path, monkeypatch):

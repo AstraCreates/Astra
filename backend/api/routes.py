@@ -1124,6 +1124,22 @@ async def sync_brain(founder_id: str, body: BrainSyncRequest, request: Request):
     return result
 
 
+@router.post("/brain/{founder_id}/graph-sync")
+async def graph_sync_brain(founder_id: str, request: Request):
+    """Queue an offline GraphRAG v2 SQLite rebuild for the founder."""
+    require_founder_access(request, founder_id, min_role="operator")
+    from backend.tools.graph_rag_ingest import run_graph_rag_sync
+    return await asyncio.to_thread(run_graph_rag_sync, founder_id)
+
+
+@router.get("/brain/{founder_id}/graph-rag")
+async def graph_rag_visualization(founder_id: str, request: Request):
+    """Return GraphRAG v2 nodes and edges for visualization."""
+    require_founder_access(request, founder_id, min_role="viewer")
+    from backend.tools.graph_rag_v2 import export_graph_visualization
+    return await asyncio.to_thread(export_graph_visualization, founder_id)
+
+
 @router.get("/brain/{founder_id}/search")
 async def search_brain(founder_id: str, request: Request, q: str, limit: int = 8, viewer_id: str = ""):
     """Search company brain records for human UI and agent context."""
