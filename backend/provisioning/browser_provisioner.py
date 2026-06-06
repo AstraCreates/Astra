@@ -568,7 +568,11 @@ def _complete_composio_oauth_app(
 ) -> dict:
     deadline = time.time() + timeout_seconds
     oauth_state: dict[str, float] = {}
-    page.goto(url, timeout=30000)
+    if app == "linear":
+        oauth_state["linear_oauth_url"] = url
+        page.goto("https://linear.app/signup", timeout=30000)
+    else:
+        page.goto(url, timeout=30000)
     page.wait_for_timeout(1500)
 
     while time.time() < deadline:
@@ -598,7 +602,7 @@ def _complete_composio_oauth_app(
                 page.wait_for_timeout(1500)
         elif "linkedin.com" in host:
             _handle_linkedin_login(page, email, password)
-        elif "notion.so" in host:
+        elif "notion" in host:
             _handle_notion_login(page, email, password, imap_password)
         elif "linear.app" in host:
             _handle_linear_login(page, email, password, imap_password)
