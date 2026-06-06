@@ -369,7 +369,7 @@ def batch_search(queries: list, max_results_each: int = 8) -> dict:
     queries: list of search query strings (max 8 for speed).
     Returns: {results_by_query: {query: {results, formatted}}, combined_formatted: str}
     """
-    queries = queries[:8]  # cap to prevent abuse
+    queries = queries[:12]  # cap to prevent abuse
     results_by_query: dict = {}
 
     with ThreadPoolExecutor(max_workers=min(len(queries), 8)) as ex:
@@ -443,14 +443,14 @@ def _research_coverage(focus: str, queries: list[str], search: dict) -> dict:
     }
 
 
-def run_research_pipeline(topic: str, focus: str = "market", max_results_each: int = 6) -> dict:
+def run_research_pipeline(topic: str, focus: str = "market", max_results_each: int = 8) -> dict:
     """Plan and run a complete source-diverse research pass.
 
     Agents should use this when they need reliable first-pass evidence quickly:
     it plans lane-specific queries, executes them in parallel, dedupes sources,
     and returns a compact evidence package for synthesis.
     """
-    plan = build_research_queries(topic, focus=focus, limit=7)
+    plan = build_research_queries(topic, focus=focus, limit=10)
     queries = plan.get("queries", [])
     if not queries:
         return {

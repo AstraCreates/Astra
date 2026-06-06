@@ -74,23 +74,23 @@ _FOCUS_ROLES = {
     "research": (
         "MARKET INTELLIGENCE:\n"
         "1. Call run_research_pipeline(topic='{topic}', focus='market') for the core evidence package.\n"
-        "   If run_research_pipeline is unavailable, call build_research_queries(topic='{topic}', focus='market'), then run ONE batch_search using those queries.\n"
+        "   Then call build_research_queries(topic='{topic}', focus='market') and run 2-4 batch_search rounds using those queries.\n"
         "   The query plan covers: market size/TAM, CAGR/growth forecasts, "
         "customer segments/ICP, pricing benchmarks, regulation, funding/news, and analyst reports.\n"
-        "2. Run news_search once for latest 2025/2026 developments.\n"
-        "3. Run research_papers once only if academic/user-behavior evidence is relevant.\n"
-        "4. Use fetch_and_read only for the 3-5 highest-value URLs from batch_search, prioritizing primary/analyst/competitor sources.\n\n"
+        "2. Run news_search for latest 2025/2026 developments.\n"
+        "3. Run research_papers when academic/user-behavior evidence is relevant.\n"
+        "4. fetch_and_read the 8-15 highest-value URLs from the searches, prioritizing primary/analyst/competitor sources.\n\n"
         "obsidian_log with: MARKET SIZE, GROWTH RATE, TAM/SAM/SOM, KEY SEGMENTS, REGULATORY, VC FUNDING DATA, and SOURCES."
     ),
     "research_competitors": (
         "COMPETITOR INTELLIGENCE (named companies, pricing, features, weaknesses — NOT market size or financial benchmarks):\n"
         "1. Call run_research_pipeline(topic='{topic}', focus='competitors') for the core evidence package.\n"
-        "   If run_research_pipeline is unavailable, call build_research_queries(topic='{topic}', focus='competitors'), then run ONE batch_search using those queries.\n"
+        "   Then call build_research_queries(topic='{topic}', focus='competitors') and run 2-4 batch_search rounds using those queries.\n"
         "   The query plan covers: named competitors, G2/Capterra/ProductHunt alternatives, "
         "Crunchbase/funding, pricing pages, reviews/complaints, YC/a16z/VC-backed startups, and market maps.\n"
-        "2. Extract at least 5 named competitors. If fewer than 5 are found, run ONE additional targeted batch_search with narrower terms.\n"
-        "3. fetch_and_read homepage/pricing pages for the top 3-5 competitors only.\n"
-        "4. Run patent_search once and youtube_research once when product demos/reviews matter.\n\n"
+        "2. Extract at least 8 named competitors. Run additional targeted batch_search rounds with narrower terms until you have 8+.\n"
+        "3. fetch_and_read homepage/pricing pages for 8-12 competitors.\n"
+        "4. Run patent_search and youtube_research when product demos/reviews matter.\n\n"
         "obsidian_log with: COMPETITOR TABLE (name, URL, pricing, funding, strengths, weaknesses, market position), WHITESPACE OPPORTUNITIES, and SOURCES."
     ),
 }
@@ -126,13 +126,14 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
         model=model,
         model_base_url=model_base_url,
         model_api_key=model_api_key,
-        max_iterations=15,
+        max_iterations=40,
         role=(
             "You are an elite deep research specialist. Your ONLY domain is MARKET OPPORTUNITY — "
             "TAM/SAM/SOM, market growth trends, timing thesis, and investment narrative. "
             "NOT competitor profiling (research_competitors), NOT financial benchmarks (research_financial), "
             "NOT regulatory risk (research_regulatory), NOT customer personas (customer_discovery).\n\n"
-            "Prioritize speed + quality: complete core coverage fast, then stop once evidence is sufficient.\n\n"
+            "Be THOROUGH: visit many sources across the web. Run multiple search rounds and read "
+            "8-15 high-value pages before synthesizing. Breadth and primary-source depth matter more than speed.\n\n"
             "TOOLS:\n"
             "- run_research_pipeline(topic, focus) — complete first-pass research: query plan + parallel searches + deduped sources. Use this first.\n"
             "- build_research_queries(topic, focus) — creates a high-coverage query plan. Use this before batch_search.\n"
@@ -150,7 +151,8 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
             "- Prefer primary sources, analyst reports, competitor pages, government/public datasets, and reputable review sites.\n"
             "- Check run_research_pipeline.coverage. If coverage.ready is false, fill gaps with one targeted batch_search or clearly mark uncertainty.\n"
             "- Always name concrete companies, numbers, dates, and URLs. If evidence is weak, say so.\n"
-            "- Do not spend the run on endless searching. After batch_search plus focused fetches, synthesize and finish.\n\n"
+            "- Search broadly: run run_research_pipeline, THEN 2-4 additional batch_search rounds to fill gaps and "
+            "go deeper on specifics. fetch_and_read 8-15 of the best URLs. Aim for 15+ distinct sources before you finish.\n\n"
             "YOUR SEARCH PLAN (replace {topic} with the actual subject):\n\n"
             + focus_searches
         ),

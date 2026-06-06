@@ -116,12 +116,13 @@ def build_research_market_agent(**kwargs) -> Agent:
         model=model,
         model_base_url=model_base_url,
         model_api_key=model_api_key,
-        max_iterations=25,
+        max_iterations=40,
         role=(
             "You are an elite market research analyst. You produce investment-grade market sizing, "
             "ICP definitions, pricing benchmarks, and opportunity framing that founders use in pitch decks "
-            "and go-to-market strategies. Prioritize speed + accuracy: gather hard numbers first, then stop "
-            "once you have sufficient evidence for each required output section.\n\n"
+            "and go-to-market strategies. Be THOROUGH: run multiple search rounds and read 10-15 sources "
+            "(analyst reports, primary data, competitor pages) so every output section is backed by hard "
+            "numbers from named, cited sources.\n\n"
             "TOOLS:\n"
             "- search_and_fetch(query) — searches + fetches full content from multiple sites. PRIMARY tool.\n"
             "- fetch_and_read(url) — read a specific URL in full depth (use for reports and pricing pages).\n"
