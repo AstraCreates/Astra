@@ -207,6 +207,45 @@ def _compact_result(result: Any) -> Any:
     return _compact_value(result)
 
 
+def _merge_live_tool_result(agent_state: dict[str, Any], tool: str | None, result: dict[str, Any]) -> None:
+    compact = _compact_result(result)
+    live_result = dict(agent_state.get("result") or {}) if isinstance(agent_state.get("result"), dict) else {}
+
+    if tool == "generate_color_palette":
+        live_result["color_palette"] = compact
+    elif tool == "generate_design_spec":
+        live_result["design_spec"] = compact
+    elif tool == "generate_wireframe":
+        wireframes = list(live_result.get("wireframes") or [])
+        wireframes.append(compact)
+        live_result["wireframes"] = wireframes[-12:]
+    elif tool == "generate_logo":
+        slot = "logo_wordmark" if result.get("style") == "wordmark" else "logo_icon"
+        live_result[slot] = compact
+    elif tool in {"generate_brand_board", "generate_brand_image", "generate_ad_image", "composite_logo_on_image"}:
+        brand_images = list(live_result.get("brand_images") or [])
+        brand_images.append(compact)
+        live_result["brand_images"] = brand_images[-12:]
+    elif tool == "generate_logo_brief":
+        live_result["logo_brief"] = compact
+    elif tool == "run_research_pipeline":
+        if result.get("sources") is not None:
+            live_result["research_sources"] = _compact_value(result.get("sources"))
+        if result.get("combined_formatted") is not None:
+            live_result["research_summary"] = _compact_value(result.get("combined_formatted"))
+    elif tool == "generate_pdf" and result.get("path"):
+        pdfs = list(live_result.get("pdfs") or [])
+        pdfs.append(str(result.get("path")))
+        live_result["pdfs"] = pdfs[-12:]
+    elif tool == "format_legal_document":
+        documents = list(live_result.get("documents") or [])
+        documents.append(compact)
+        live_result["documents"] = documents[-12:]
+
+    if live_result:
+        agent_state["result"] = live_result
+
+
 def _update_agent_snapshot(agents: dict[str, dict[str, Any]], event: dict[str, Any]) -> None:
     event_type = event.get("type")
     agent = event.get("agent")
@@ -248,6 +287,7 @@ def _update_agent_snapshot(agents: dict[str, dict[str, Any]], event: dict[str, A
             text = f"{tool}: {result.get('error')}"
         _append_agent_log(state, "result" if ok else "error", text, ts)
         if ok and isinstance(result, dict):
+            _merge_live_tool_result(state, event.get("tool"), result)
             if event.get("tool") in {"generate_ad_image", "generate_brand_image", "generate_brand_board"}:
                 images = list(state.get("adImages") or [])
                 images.append(_compact_result(result))

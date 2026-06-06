@@ -3114,6 +3114,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
   const [stackReadiness, setStackReadiness] = useState<StackReadiness | null>(null);
   const [manualStackOverride, setManualStackOverride] = useState(false);
   const REQUIRED_AGENTS = new Set(["research"]);
+  const FULL_STACK_EXCLUDED = new Set(["technical_scaffold"]);
   const [customAgents, setCustomAgents] = useState<string[]>(["research", "web", "technical", "marketing"]);
   const [customPickerOpen, setCustomPickerOpen] = useState(true);
   const [agentCatalog, setAgentCatalog] = useState<AgentCatalogEntry[]>([]);
@@ -3292,7 +3293,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
               {/* Full Stack option */}
               {(() => {
                 const active = selectedStackId === "full_stack";
-                const allAgentNames = agentCatalog.map(a => a.id);
+                const allAgentNames = agentCatalog.map(a => a.id).filter(id => !FULL_STACK_EXCLUDED.has(id));
                 return (
                   <button
                     type="button"

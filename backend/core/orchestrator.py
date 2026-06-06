@@ -20,6 +20,20 @@ _RAW_BLOB_KEYS = {"sources", "results", "raw", "pages", "html", "content",
                   "image", "logo", "b64", "base64", "screenshot"}
 _SHARED_FIELD_CAP = 50_000     # max chars per string field kept in shared
 _SHARED_RESULT_CAP = 100_000   # max chars of any single agent result kept in shared
+_RESEARCH_LANE_FOCUS = {
+    "research": (
+        "Lane focus: market size, growth, ICP, pricing anchors, buyer pain, and timing thesis. "
+        "Do not spend this lane on deep named-competitor teardown."
+    ),
+    "research_competitors": (
+        "Lane focus: named competitors only. Build a concrete competitor table with pricing, funding, "
+        "positioning, strengths, weaknesses, and whitespace. Do not drift back into generic TAM research."
+    ),
+    "research_execution": (
+        "Lane focus: execution strategy only. Ground GTM, launch motion, channel choices, product wedge, "
+        "and technical implementation recommendations in concrete evidence and case studies."
+    ),
+}
 
 
 def _is_base64ish(s: str) -> bool:
@@ -673,6 +687,11 @@ class Orchestrator:
 
         # Phase 1: stack plan — default to the productized outcome stack.
         _agent_filter: list[str] | None = (constraints or {}).get("agents") or (constraints or {}).get("agent_filter") or None
+        if _agent_filter:
+            filtered = [agent for agent in _agent_filter if agent in self.specialists]
+            if "technical" in filtered and "technical_scaffold" in filtered:
+                filtered = [agent for agent in filtered if agent != "technical_scaffold"]
+            _agent_filter = filtered
         _is_custom = bool(_agent_filter)
 
         initial_tasks = [
@@ -807,7 +826,12 @@ class Orchestrator:
             ("r_execution",       "research_execution"),
         ]
         parallel_research_tasks = [
-            {"id": tid, "agent": agent_name, "instruction": research_instruction, "depends_on": []}
+            {
+                "id": tid,
+                "agent": agent_name,
+                "instruction": f"{research_instruction}\n\n{_RESEARCH_LANE_FOCUS.get(agent_name, '')}".strip(),
+                "depends_on": [],
+            }
             for tid, agent_name in candidate_research
             if agent_name in self.specialists
         ]

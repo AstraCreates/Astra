@@ -57,6 +57,22 @@ def test_workflow_state_reconstructs_compact_agent_previews():
     assert sales["log"][-1]["text"] == "Complete"
 
 
+def test_workflow_state_reconstructs_design_preview_from_intermediate_tool_results():
+    events = [
+        (1, {"type": "plan_done", "tasks": [{"id": "t_design", "agent": "design", "instruction": "Design the brand"}]}),
+        (2, {"type": "agent_start", "agent": "design", "task_id": "t_design", "instruction": "Design the brand", "ts_unix": 1}),
+        (3, {"type": "agent_action_result", "agent": "design", "tool": "generate_design_spec", "result": {"product": "ClearNotes"}, "ts_unix": 2}),
+        (4, {"type": "agent_action_result", "agent": "design", "tool": "generate_logo", "result": {"style": "wordmark", "base64": "a" * 50_000, "prompt": "logo"}, "ts_unix": 3}),
+    ]
+
+    state = build_session_state("session_design_restore", events)
+
+    design = state["agents"]["design"]
+    assert design["status"] == "running"
+    assert design["result"]["design_spec"]["product"] == "ClearNotes"
+    assert design["result"]["logo_wordmark"]["base64"] == "[base64:50000chars]"
+
+
 def test_workflow_state_marks_terminal_agent_without_goal_done_as_stalled():
     events = [
         (1, {"type": "goal_start", "goal": "Build", "founder_id": "founder_1"}),

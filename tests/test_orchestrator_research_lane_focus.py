@@ -1,0 +1,57 @@
+from unittest.mock import AsyncMock
+
+import pytest
+
+from backend.core.orchestrator import Orchestrator
+
+
+class _FakePlanner:
+    name = "planner"
+    model = "planner-test"
+
+
+class _FakeAgent:
+    def __init__(self, name, outputs):
+        self.name = name
+        self.outputs = list(outputs)
+        self.tools = {}
+        self.calls = 0
+
+    async def run(self, _ctx):
+        self.calls += 1
+        return self.outputs[min(self.calls - 1, len(self.outputs) - 1)]
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_adds_lane_specific_focus_to_initial_research_tasks(monkeypatch):
+    planner = _FakePlanner()
+    orch = Orchestrator(
+        planner=planner,
+        specialists={
+            "research": _FakeAgent("research", [{"summary": "researched"}]),
+            "research_competitors": _FakeAgent("research_competitors", [{"summary": "competitors"}]),
+            "research_execution": _FakeAgent("research_execution", [{"summary": "execution"}]),
+            "web": _FakeAgent("web", [{"url": "https://example.com"}]),
+        },
+    )
+
+    published: list[dict] = []
+
+    async def capture_publish(_session_id: str, event: dict):
+        published.append(event)
+
+    monkeypatch.setattr("backend.core.events.publish", capture_publish)
+    monkeypatch.setattr(orch, "_expand_goal", AsyncMock(return_value="goal"))
+    monkeypatch.setattr(orch, "_initial_plan", AsyncMock(return_value=[{"id": "t1", "agent": "research", "instruction": "r", "depends_on": []}]))
+    monkeypatch.setattr(orch, "_replan_with_research", AsyncMock(return_value=[{"id": "w1", "agent": "web", "instruction": "w", "depends_on": []}]))
+    monkeypatch.setattr(orch, "_generate_detailed_plan", AsyncMock(return_value=[]))
+    monkeypatch.setattr("backend.tools.obsidian_logger._note_path", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("backend.tools.obsidian_logger.auto_log_if_missing", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr("backend.tools.obsidian_logger.obsidian_session_index", lambda *_args, **_kwargs: {"indexed": True})
+
+    await orch.run(goal="g", founder_id="f", session_id="s")
+
+    first_plan = next(event for event in published if event.get("type") == "plan_done")
+    tasks_by_agent = {task["agent"]: task for task in first_plan.get("tasks", [])}
+    assert "named competitors only" in tasks_by_agent["research_competitors"]["instruction"]
+    assert "execution strategy only" in tasks_by_agent["research_execution"]["instruction"]
