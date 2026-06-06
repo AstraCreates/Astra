@@ -109,10 +109,10 @@ export default function StarField() {
       shootingStars.push({
         x: Math.random() * w * 0.7 + w * 0.15,
         y: Math.random() < 0.5 ? -20 : Math.random() * h * 0.3,
-        vx: theme === "dark" ? 2.2 + Math.random() * 1.5 : 1.2 + Math.random() * 0.8,
-        vy: theme === "dark" ? 0.6 + Math.random() * 0.6 : 0.24 + Math.random() * 0.35,
+        vx: 1.2 + Math.random() * 0.8,
+        vy: 0.24 + Math.random() * 0.35,
         life: 0,
-        maxLife: theme === "dark" ? 80 + Math.random() * 40 : 110 + Math.random() * 50,
+        maxLife: 110 + Math.random() * 50,
       });
     }
 
