@@ -475,6 +475,41 @@ def _extract_conflict_markers(text: str) -> set[str]:
     return markers
 
 
+def _record_conflict_scope(record: dict[str, Any]) -> str:
+    meta = record.get("metadata") or {}
+    for key in ("company_id", "project_id", "product_id", "stack_id", "workspace_id"):
+        if meta.get(key):
+            return f"{key}:{str(meta[key]).strip().lower()}"
+    for key in ("company", "project", "product", "stack_name"):
+        if meta.get(key):
+            return f"{key}:{str(meta[key]).strip().lower()}"
+    title = str(record.get("title") or "")
+    match = re.match(r"^(?:Agent Department Manifest|Run Digest) - ([^-]+?)(?: - |$)", title, re.I)
+    if match:
+        return f"product:{match.group(1).strip().lower()}"
+    if meta.get("session_id"):
+        return f"session:{str(meta['session_id']).strip().lower()}"
+    return ""
+
+
+def _records_share_conflict_scope(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    a_scope = _record_conflict_scope(a)
+    b_scope = _record_conflict_scope(b)
+    if a_scope and b_scope:
+        return a_scope == b_scope
+    return not a_scope and not b_scope
+
+
+def _record_conflict_eligible(record: dict[str, Any]) -> bool:
+    kind = str(record.get("kind") or "").lower()
+    source = str(record.get("source") or "").lower()
+    if kind in {"agent_memory", "run_digest"}:
+        return False
+    if source == "astra_vault":
+        return False
+    return True
+
+
 def _record_overlap(a: dict[str, Any], b: dict[str, Any]) -> set[str]:
     a_text = f"{a.get('title', '')} {a.get('content', '')}"
     b_text = f"{b.get('title', '')} {b.get('content', '')}"
@@ -495,13 +530,29 @@ def _proposal(kind: str, title: str, records: list[dict[str, Any]], reason: str,
     }
 
 
+MAINTENANCE_PROPOSAL_KINDS = {"missing_canonical", "contradiction", "stale_record"}
+
+
 def _merge_proposals(data: dict[str, Any], proposals: list[dict[str, Any]]) -> None:
     existing = {p.get("id"): p for p in data.get("proposals", []) if p.get("id")}
+    emitted_ids = {p["id"] for p in proposals if p.get("id")}
     for proposal in proposals:
         old = existing.get(proposal["id"])
-        if old and old.get("status") != "open":
-            proposal["status"] = old["status"]
+        if old:
+            proposal["created_at"] = old.get("created_at") or proposal["created_at"]
+            if old.get("status") != "open":
+                proposal["status"] = old["status"]
         existing[proposal["id"]] = proposal
+    for proposal_id, old in list(existing.items()):
+        if old.get("status") != "open":
+            continue
+        if old.get("kind") not in MAINTENANCE_PROPOSAL_KINDS:
+            continue
+        if proposal_id in emitted_ids:
+            continue
+        old["status"] = "dismissed"
+        old["updated_at"] = _now()
+        old["dismissed_reason"] = "maintenance_scan_obsolete"
     data["proposals"] = sorted(existing.values(), key=lambda p: (p.get("status") != "open", p.get("created_at", "")))
 
 
@@ -959,6 +1010,10 @@ def _run_maintenance(data: dict[str, Any]) -> dict[str, Any]:
 
         for canon in canonical:
             for rec in noncanonical:
+                if not (_record_conflict_eligible(canon) and _record_conflict_eligible(rec)):
+                    continue
+                if not _records_share_conflict_scope(canon, rec):
+                    continue
                 overlap = _record_overlap(canon, rec)
                 if len(overlap) < 2:
                     continue

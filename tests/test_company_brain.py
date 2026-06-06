@@ -7,6 +7,7 @@ from backend.tools.company_brain import (
     get_company_brain,
     ingest_company_brain_records,
     maintain_company_brain,
+    revise_company_brain_record,
     resolve_company_brain_proposal,
     run_due_company_brain_syncs,
     run_company_brain_sync,
@@ -124,6 +125,90 @@ def test_company_brain_ingest_detects_conflicts_and_resolves_proposals(tmp_path,
     resolved = resolve_company_brain_proposal(founder_id, proposal["id"], "resolved")
     assert resolved["ok"] is True
     assert resolved["proposal"]["status"] == "resolved"
+
+
+def test_company_brain_maintenance_dismisses_obsolete_proposals(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    founder_id = "founder_obsolete_maintenance"
+
+    ingest_company_brain_records(
+        founder_id,
+        "notion",
+        [{
+            "title": "Architecture source of truth",
+            "content": "The backend uses FastAPI, Postgres, Supabase, Clerk auth, and Vercel deployment.",
+            "canonical": True,
+            "domain": "architecture",
+        }],
+    )
+    ingest_company_brain_records(
+        founder_id,
+        "slack",
+        [{
+            "title": "Old launch thread",
+            "text": "Decision: use Django, MySQL, custom JWT auth, and AWS for the architecture.",
+            "channel": "eng",
+            "domain": "architecture",
+        }],
+    )
+    first = maintain_company_brain(founder_id)
+    proposal = next(p for p in first["proposals"] if p["kind"] == "contradiction")
+
+    brain = get_company_brain(founder_id)
+    old_record = next(r for r in brain["records"] if r["id"] in proposal["record_ids"] and r["source"] == "slack")
+    revised = revise_company_brain_record(
+        founder_id,
+        old_record["id"],
+        content="Decision: use FastAPI, Postgres, Supabase, Clerk auth, and Vercel for the architecture.",
+    )
+    assert revised["ok"] is True
+
+    maintained = maintain_company_brain(founder_id)
+    assert maintained["maintenance"]["contradiction_count"] == 0
+    assert [p for p in maintained["proposals"] if p["id"] == proposal["id"]] == []
+
+    brain = get_company_brain(founder_id)
+    dismissed = next(p for p in brain["proposals"] if p["id"] == proposal["id"])
+    assert dismissed["status"] == "dismissed"
+    assert dismissed["dismissed_reason"] == "maintenance_scan_obsolete"
+
+
+def test_company_brain_maintenance_ignores_generated_run_artifact_conflicts(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    founder_id = "founder_generated_artifacts"
+
+    add_company_brain_record(
+        founder_id,
+        "astra",
+        "Agent Department Manifest - Venture",
+        "Venture product choices: FastAPI, Postgres, subscription pricing, and Vercel deployment.",
+        kind="department_manifest",
+        canonical=True,
+        metadata={"domain": "product"},
+    )
+    add_company_brain_record(
+        founder_id,
+        "astra",
+        "Run Digest - Venture - abc123",
+        "This generated run digest mentions Django, MySQL, free pricing, and AWS deployment.",
+        kind="run_digest",
+        canonical=False,
+        metadata={"domain": "product"},
+    )
+    add_company_brain_record(
+        founder_id,
+        "astra_vault",
+        "abc123 / market_research",
+        "Agent notes mention Django, MySQL, free pricing, and AWS while researching Venture.",
+        kind="agent_memory",
+        canonical=False,
+        metadata={"domain": "product", "session_id": "abc123"},
+    )
+
+    maintained = maintain_company_brain(founder_id)
+
+    assert maintained["maintenance"]["contradiction_count"] == 0
+    assert [p for p in maintained["proposals"] if p["kind"] == "contradiction"] == []
 
 
 def test_company_brain_github_import_normalizes_provider_payload(tmp_path, monkeypatch):
