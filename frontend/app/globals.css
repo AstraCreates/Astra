@@ -224,6 +224,7 @@ button { cursor: pointer; }
   50%      { opacity: 0.54; filter: brightness(1.16); }
 }
 
+
 @keyframes nightTwinklePop {
   0%, 100% {
     opacity: 0.42;
@@ -440,6 +441,17 @@ button { cursor: pointer; }
 
 [data-theme="light"] .astra-convergence-glass__stars::before,
 [data-theme="light"] .astra-convergence-glass__stars::after {
+  opacity: 0;
+  animation: none;
+}
+
+[data-theme="dark"] .astra-convergence-glass__stars {
+  opacity: 0;
+  animation: none;
+}
+
+[data-theme="dark"] .astra-convergence-glass__stars::before,
+[data-theme="dark"] .astra-convergence-glass__stars::after {
   opacity: 0;
   animation: none;
 }
@@ -1172,30 +1184,13 @@ p { margin: 0; }
 }
 
 [data-theme="dark"] .goal-workspace::before {
-  opacity: 1;
-  background:
-    radial-gradient(circle at 6% 8%, rgba(255,255,255,1) 0 2.4px, rgba(255,255,255,0.22) 3.4px, transparent 11px),
-    radial-gradient(circle at 21% 22%, rgba(150,176,255,0.98) 0 2.1px, rgba(126,154,255,0.22) 3.2px, transparent 10px),
-    radial-gradient(circle at 47% 11%, rgba(255,225,180,0.90) 0 2px, rgba(255,225,180,0.18) 3px, transparent 10px),
-    radial-gradient(circle at 72% 28%, rgba(255,255,255,0.88) 0 1.9px, rgba(255,255,255,0.16) 2.9px, transparent 9px),
-    radial-gradient(circle at 90% 18%, rgba(124,154,255,0.86) 0 1.9px, rgba(124,154,255,0.16) 2.9px, transparent 9px),
-    radial-gradient(circle at 14% 67%, rgba(255,255,255,0.76) 0 1.7px, rgba(255,255,255,0.12) 2.7px, transparent 8px),
-    radial-gradient(circle at 54% 74%, rgba(124,154,255,0.82) 0 1.8px, rgba(124,154,255,0.14) 2.8px, transparent 8px),
-    radial-gradient(circle at 83% 84%, rgba(255,255,255,0.70) 0 1.6px, rgba(255,255,255,0.12) 2.6px, transparent 8px);
-  filter: drop-shadow(0 0 12px rgba(160,185,255,0.62));
-  animation: nightTwinklePop 2.35s ease-in-out infinite;
+  opacity: 0;
+  animation: none;
 }
 
 [data-theme="dark"] .goal-workspace::after {
-  opacity: 0.84;
-  background:
-    radial-gradient(circle at 13% 36%, rgba(255,255,255,0.92) 0 1.4px, transparent 2.4px),
-    radial-gradient(circle at 38% 18%, rgba(156,182,255,0.86) 0 1.3px, transparent 2.3px),
-    radial-gradient(circle at 58% 48%, rgba(255,232,190,0.78) 0 1.4px, transparent 2.4px),
-    radial-gradient(circle at 78% 70%, rgba(255,255,255,0.80) 0 1.2px, transparent 2.2px),
-    radial-gradient(circle at 94% 42%, rgba(156,182,255,0.72) 0 1.2px, transparent 2.2px);
-  filter: drop-shadow(0 0 10px rgba(190,210,255,0.72));
-  animation: nightTwinklePop 1.65s ease-in-out infinite reverse;
+  opacity: 0;
+  animation: none;
 }
 
 .astra-orbit-field {

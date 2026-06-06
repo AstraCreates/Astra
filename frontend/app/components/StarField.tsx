@@ -40,7 +40,7 @@ export default function StarField() {
     function currentPalette() {
       return theme === "dark"
         ? {
-          count: 330,
+          count: 0,
           radiusMin: 0.42,
           radiusMax: 1.9,
           alphaMin: 0.22,
@@ -51,7 +51,7 @@ export default function StarField() {
           glowCool: "112,144,255",
           glowWarm: "255,190,126",
           crossChance: 0.34,
-          shootingChance: reduceMotion ? 0 : 0.0048,
+          shootingChance: 0,
           canvasOpacity: 1,
         }
         : {
@@ -103,6 +103,7 @@ export default function StarField() {
     }
 
     function spawnShootingStar() {
+      if (theme === "dark") return;
       const palette = currentPalette();
       if (Math.random() > palette.shootingChance) return;
       shootingStars.push({
@@ -164,33 +165,7 @@ export default function StarField() {
         return;
       }
 
-      const x = w * 0.84;
-      const y = h * 0.14;
-      const r = Math.max(46, Math.min(w, h) * 0.07);
-      const pulse = reduceMotion ? 1 : 0.92 + 0.08 * Math.sin(now / 1700);
-      const glow = ctx.createRadialGradient(x, y, r * 0.18, x, y, r * 2.8 * pulse);
-      glow.addColorStop(0, "rgba(210,224,255,0.26)");
-      glow.addColorStop(0.34, "rgba(86,118,255,0.14)");
-      glow.addColorStop(1, "rgba(86,118,255,0)");
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(x, y, r * 2.8 * pulse, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.fillStyle = "rgba(235,241,255,0.68)";
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.beginPath();
-      ctx.arc(x + r * 0.38, y - r * 0.08, r * 0.94, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalCompositeOperation = "source-over";
-      ctx.strokeStyle = "rgba(255,255,255,0.24)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(x - r * 0.03, y, r * 0.98, Math.PI * 0.34, Math.PI * 1.64);
-      ctx.stroke();
+      // dark mode: no celestial body drawn
     }
 
     let t0 = performance.now();
