@@ -141,7 +141,7 @@ def _clone_url(repo_url: str) -> str:
 def _sh(cmd: list, cwd: str = None, timeout: int = 60) -> str:
     r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
     if r.returncode != 0:
-        raise RuntimeError(f"{' '.join(cmd[:2])} failed: {r.stderr[:300]}")
+        raise RuntimeError(f"{' '.join(cmd[:2])} failed: {r.stderr[:2000]}")
     return r.stdout.strip()
 
 
@@ -153,6 +153,7 @@ def _workspace_dir(session_id: str, repo_url: str) -> Path:
 
 def _ensure_clone(repo_url: str, session_id: str = "default") -> str:
     """Clone repo into persistent workspace, return local path."""
+    import time
     key = f"{session_id}:{repo_url}"
     if key in _clones and os.path.isdir(_clones[key]):
         return _clones[key]
@@ -165,7 +166,19 @@ def _ensure_clone(repo_url: str, session_id: str = "default") -> str:
         except Exception:
             pass
     else:
-        _sh(["git", "clone", "--depth", "1", _clone_url(repo_url), str(workspace)])
+        # Retry clone up to 3 times with backoff — GitHub repo may not be ready yet
+        last_err: Exception = RuntimeError("clone never attempted")
+        for attempt in range(3):
+            try:
+                _sh(["git", "clone", "--depth", "1", _clone_url(repo_url), str(workspace)])
+                break
+            except Exception as e:
+                last_err = e
+                logger.warning("clone attempt %d/3 failed for %s: %s", attempt + 1, repo_url, str(e)[:400])
+                if attempt < 2:
+                    time.sleep(5 * (attempt + 1))
+        else:
+            raise last_err
         _sh(["git", "config", "user.email", "astra-agent@astra.ai"], cwd=str(workspace))
         _sh(["git", "config", "user.name", "Astra Agent"], cwd=str(workspace))
     # Ensure astra user (uid 1000) can write files in the workspace when running as root
@@ -960,6 +973,9 @@ def run_claude_in_repo(
     """
     if not settings.github_token:
         return {"error": "GITHUB_TOKEN not set"}
+    if not repo_url or not repo_url.startswith("https://github.com/"):
+        return {"error": f"run_claude_in_repo requires a valid GitHub repo URL; got: {repo_url!r}. "
+                         "If no repo exists yet, call github_create_repo first, then run_mvp_loop."}
 
     ctx_section = f"\n\nCONTEXT:\n{context}\n" if context else ""
     prompt = (

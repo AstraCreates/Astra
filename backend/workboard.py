@@ -183,7 +183,7 @@ def build_session_workboard(session_id: str, events: list[tuple[int, dict]]) -> 
         },
         "pending_approvals": [approval for approval in approvals_by_gate.values() if approval.get("status") == "triggered"],
         "summary": (
-            f"{counts['done']} done, {counts['running']} running, {counts['queued']} queued, "
+            f"{counts['done']} operating lanes complete, {counts['running']} active, {counts['queued']} queued for next work, "
             f"{counts['blocked']} blocked, {counts['founder_next']} waiting on founder review/action."
         ),
     }

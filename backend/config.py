@@ -142,6 +142,7 @@ class Settings(BaseSettings):
     clerk_webhook_secret: str = ""
     deepinfra_api_key: str = ""
     notion_token: str = ""
+    notion_operating_parent_id: str = ""
 
     # Frontend env vars that may leak into .env — ignored by backend
     next_public_clerk_publishable_key: str = ""

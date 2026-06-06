@@ -5,10 +5,15 @@ import { useDevUser } from "@/lib/use-dev-user";
 import {
   createMission,
   deleteMission,
+  getCompanyGoal,
   getMissions,
   runMission,
+  syncMissionNotion,
   updateMission,
+  updateMissionTask,
+  type CompanyGoal,
   type Mission,
+  type MissionTask,
 } from "@/lib/api";
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
@@ -96,6 +101,67 @@ function formatDate(iso: string | null): string {
   const diffH = Math.floor(diffMins / 60);
   if (diffH < 24) return `${diffH}h ago`;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function TaskBadge({ status }: { status: MissionTask["status"] }) {
+  const styles: Record<MissionTask["status"], React.CSSProperties> = {
+    pending: { background: c.surface, color: c.textMuted },
+    in_progress: { background: c.blueTint, color: c.blue },
+    done: { background: c.greenTint, color: c.greenText },
+    blocked: { background: "#FEF2F2", color: "#DC2626" },
+  };
+  return <span style={{ ...styles[status], fontSize: 11, padding: "2px 8px", borderRadius: 99, fontWeight: 600 }}>{status.replace("_", " ")}</span>;
+}
+
+function MissionTaskTree({ mission, onRefresh }: { mission: Mission; onRefresh: () => void }) {
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const tasks = mission.tasks ?? [];
+  const roots = tasks.filter((task) => !task.parent_id);
+  const childrenByParent = tasks.reduce<Record<string, MissionTask[]>>((acc, task) => {
+    if (task.parent_id) (acc[task.parent_id] ??= []).push(task);
+    return acc;
+  }, {});
+
+  const toggleDone = async (task: MissionTask, nextDone: boolean) => {
+    setSavingId(task.id);
+    try {
+      await updateMissionTask(mission.id, task.id, { status: nextDone ? "done" : "pending" });
+      onRefresh();
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const renderTask = (task: MissionTask, depth = 0) => (
+    <div key={task.id} style={{ display: "flex", flexDirection: "column", gap: 8, marginLeft: depth * 18 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", border: `1px solid ${c.border}`, borderRadius: 10, background: c.surface }}>
+        <input
+          type="checkbox"
+          checked={task.status === "done"}
+          disabled={savingId === task.id}
+          onChange={(e) => toggleDone(task, e.currentTarget.checked)}
+          style={{ marginTop: 2 }}
+        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: c.text }}>{task.title}</span>
+            <TaskBadge status={task.status} />
+            <span style={{ fontSize: 11, color: c.textMuted }}>{task.owner_agent}</span>
+          </div>
+          {task.notes && <div style={{ fontSize: 12, color: c.textMuted, marginTop: 4, lineHeight: 1.5 }}>{task.notes}</div>}
+          {task.notion_page_url && (
+            <a href={task.notion_page_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: c.blue, marginTop: 6, display: "inline-block" }}>
+              Open in Notion
+            </a>
+          )}
+        </div>
+      </div>
+      {(childrenByParent[task.id] || []).map((child) => renderTask(child, depth + 1))}
+    </div>
+  );
+
+  if (!roots.length) return <p style={{ fontSize: 13, color: c.textMuted, margin: 0 }}>No operating tasks yet.</p>;
+  return <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{roots.map((task) => renderTask(task))}</div>;
 }
 
 // ── MissionCard ────────────────────────────────────────────────────────────────
@@ -378,6 +444,12 @@ function MissionCard({ mission, onRefresh }: MissionCardProps) {
                 ))}
               </div>
             )}
+          </div>
+          <div style={{ flex: "1 1 320px", minWidth: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: c.textMuted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>
+              Operating tasks
+            </div>
+            <MissionTaskTree mission={mission} onRefresh={onRefresh} />
           </div>
         </div>
       )}
@@ -754,17 +826,20 @@ export default function MissionsPanel() {
   const founderId = userId === "anon" ? "" : userId;
 
   const [missions, setMissions] = useState<Mission[]>([]);
+  const [companyGoal, setCompanyGoal] = useState<CompanyGoal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [syncingNotion, setSyncingNotion] = useState(false);
 
   const load = useCallback(async () => {
     if (!founderId) return;
     setLoading(true);
     setError(null);
     try {
-      const data = await getMissions(founderId);
+      const [data, goal] = await Promise.all([getMissions(founderId), getCompanyGoal(founderId)]);
       setMissions(data);
+      setCompanyGoal(goal);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load missions");
     } finally {
@@ -855,7 +930,47 @@ export default function MissionsPanel() {
         >
           + New Mission
         </button>
+        <button
+          onClick={async () => {
+            if (!founderId || syncingNotion) return;
+            setSyncingNotion(true);
+            try {
+              await syncMissionNotion(founderId);
+              await load();
+            } finally {
+              setSyncingNotion(false);
+            }
+          }}
+          style={{
+            padding: "10px 18px",
+            borderRadius: 99,
+            border: `1px solid ${c.border}`,
+            background: c.bg,
+            color: c.text,
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {syncingNotion ? "Syncing…" : "Sync Notion"}
+        </button>
       </div>
+
+      {companyGoal && (
+        <div style={{ marginBottom: 24, padding: "16px 18px", borderRadius: 12, border: `1px solid ${c.border}`, background: c.blueTint }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: c.blue, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 8 }}>
+            Company Goal
+          </div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: c.text, marginBottom: 6 }}>{companyGoal.company_goal}</div>
+          <div style={{ fontSize: 13, color: c.textMuted, lineHeight: 1.5 }}>North star: {companyGoal.north_star}</div>
+          {companyGoal.notion_url && (
+            <a href={companyGoal.notion_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: c.blue, marginTop: 8, display: "inline-block" }}>
+              Open operating mirror in Notion
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Summary row */}
       {missions.length > 0 && (
@@ -872,6 +987,7 @@ export default function MissionsPanel() {
             { label: "Active", value: activeMissions },
             { label: "Total runs", value: totalRuns },
             { label: "Total cost", value: `$${totalCost.toFixed(2)}` },
+            { label: "Open tasks", value: missions.reduce((sum, mission) => sum + mission.tasks.filter((task) => task.status !== "done").length, 0) },
           ].map((stat) => (
             <div
               key={stat.label}
