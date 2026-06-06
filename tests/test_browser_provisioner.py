@@ -155,6 +155,26 @@ def test_resolve_webmail_credentials_uses_base_gmail_for_alias(monkeypatch):
     assert password == "gmail-web-password"
 
 
+def test_launch_options_uses_proxy_and_extension(monkeypatch, tmp_path):
+    ext = tmp_path / "capsolver"
+    ext.mkdir()
+    monkeypatch.setattr("backend.config.settings.browser_headless", False, raising=False)
+    monkeypatch.setattr("backend.config.settings.capsolver_extension_path", str(ext), raising=False)
+    monkeypatch.setattr("backend.config.settings.browser_proxy_server", "http://proxy.example:8080", raising=False)
+    monkeypatch.setattr("backend.config.settings.browser_proxy_username", "user", raising=False)
+    monkeypatch.setattr("backend.config.settings.browser_proxy_password", "pass", raising=False)
+
+    opts = bp._launch_options()
+
+    assert opts["headless"] is False
+    assert "--load-extension=" in " ".join(opts["args"])
+    assert opts["proxy"] == {
+        "server": "http://proxy.example:8080",
+        "username": "user",
+        "password": "pass",
+    }
+
+
 def test_handle_google_login_can_pick_account_and_continue():
     page = FakePage(
         content="Choose an account",

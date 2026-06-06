@@ -6,6 +6,7 @@ extracts API tokens, returns them.
 import logging
 import secrets
 import time
+from pathlib import Path
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,37 @@ _COMPOSIO_APP_SERVICE_MAP: dict[str, tuple[str, ...]] = {
     "linkedin": ("linkedin",),
 }
 
+_STEALTH_ARGS = [
+    "--no-sandbox",
+    "--disable-blink-features=AutomationControlled",
+    "--disable-infobars",
+    "--disable-dev-shm-usage",
+]
+
+
+def _launch_options() -> dict:
+    from backend.config import settings
+
+    args = list(_STEALTH_ARGS)
+    headless = settings.browser_headless
+    ext = (settings.capsolver_extension_path or "").strip()
+    if ext and Path(ext).exists() and not headless:
+        args.extend([
+            f"--disable-extensions-except={ext}",
+            f"--load-extension={ext}",
+        ])
+    proxy_server = (settings.browser_proxy_server or "").strip()
+    proxy_username = (settings.browser_proxy_username or "").strip()
+    proxy_password = (settings.browser_proxy_password or "").strip()
+    options: dict[str, object] = {"headless": headless, "args": args}
+    if proxy_server:
+        options["proxy"] = {
+            "server": proxy_server,
+            **({"username": proxy_username} if proxy_username else {}),
+            **({"password": proxy_password} if proxy_password else {}),
+        }
+    return options
+
 
 def provision_github(email: str, password: str, username: str = None, imap_password: str = None) -> dict:
     """
@@ -30,7 +62,7 @@ def provision_github(email: str, password: str, username: str = None, imap_passw
     username = username or _slug(email)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(**_launch_options())
         ctx = browser.new_context(
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
         )
@@ -202,7 +234,7 @@ def provision_vercel(email: str, password: str, github_token: str = None, imap_p
     from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(**_launch_options())
         ctx = browser.new_context()
         page = ctx.new_page()
 
@@ -295,7 +327,7 @@ def provision_sendgrid(email: str, password: str, imap_password: str = None) -> 
     from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(**_launch_options())
         ctx = browser.new_context()
         page = ctx.new_page()
 
@@ -378,7 +410,7 @@ def provision_composio(email: str, password: str) -> dict:
     from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(**_launch_options())
         ctx = browser.new_context(
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
         )
@@ -527,7 +559,7 @@ def provision_composio_oauth_apps(
         return results
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(**_launch_options())
         ctx = browser.new_context(
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
         )

@@ -5,6 +5,7 @@ Each agent run gets one persistent session — actions share state across the fu
 import asyncio
 import base64
 import logging
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,30 @@ _USER_AGENT = (
 )
 
 
+def _launch_config() -> dict[str, Any]:
+    from backend.config import settings
+
+    args = list(_STEALTH_ARGS)
+    headless = settings.browser_headless
+    ext = (settings.capsolver_extension_path or "").strip()
+    if ext and Path(ext).exists() and not headless:
+        args.extend([
+            f"--disable-extensions-except={ext}",
+            f"--load-extension={ext}",
+        ])
+    proxy_server = (settings.browser_proxy_server or "").strip()
+    proxy_username = (settings.browser_proxy_username or "").strip()
+    proxy_password = (settings.browser_proxy_password or "").strip()
+    config: dict[str, Any] = {"headless": headless, "args": args}
+    if proxy_server:
+        config["proxy"] = {
+            "server": proxy_server,
+            **({"username": proxy_username} if proxy_username else {}),
+            **({"password": proxy_password} if proxy_password else {}),
+        }
+    return config
+
+
 class BrowserSession:
     def __init__(self, headless: bool = True):
         self.headless = headless
@@ -50,10 +75,10 @@ class BrowserSession:
         if not _PLAYWRIGHT_AVAILABLE:
             raise RuntimeError("playwright not installed. Run: pip install playwright && playwright install chromium")
         self._pw = await async_playwright().start()
-        self._browser = await self._pw.chromium.launch(
-            headless=self.headless,
-            args=_STEALTH_ARGS,
-        )
+        launch = _launch_config()
+        if self.headless is not None:
+            launch["headless"] = self.headless
+        self._browser = await self._pw.chromium.launch(**launch)
         self._page = await self._browser.new_page(
             viewport={"width": 1280, "height": 800},
             user_agent=_USER_AGENT,
