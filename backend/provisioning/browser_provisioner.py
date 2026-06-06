@@ -580,9 +580,22 @@ def _complete_composio_oauth_app(
 
         current = page.url or ""
         host = urlparse(current).netloc.lower()
+        page_text = _page_text(page)
+
+        if app == "linear" and _has_turnstile_challenge(page):
+            return {
+                "connected": False,
+                "app": app,
+                "error": "Linear signup/login is blocked by a Cloudflare Turnstile challenge.",
+                "last_url": current,
+                "last_state": page_text[:240],
+            }
 
         if "accounts.google.com" in host:
             _handle_google_login(page, email, password)
+            if app == "linear" and _is_google_rejected(page):
+                page.goto("https://linear.app/signup", timeout=30000)
+                page.wait_for_timeout(1500)
         elif "linkedin.com" in host:
             _handle_linkedin_login(page, email, password)
         elif "notion.so" in host:
@@ -693,6 +706,21 @@ def _click_generic_oauth_buttons(page) -> bool:
     ])
 
 
+def _has_turnstile_challenge(page) -> bool:
+    page_text = _page_text(page)
+    if "verifying it’s you" in page_text or "verifying it's you" in page_text or "turnstile" in page_text:
+        return True
+    try:
+        return page.locator("input[name='cf-turnstile-response']").count() > 0
+    except Exception:
+        return False
+
+
+def _is_google_rejected(page) -> bool:
+    current = (getattr(page, "url", "") or "").lower()
+    return "accounts.google.com" in current and "/signin/rejected" in current
+
+
 def _maybe_handle_email_challenge(
     page,
     email: str,
@@ -772,6 +800,10 @@ def _handle_linkedin_login(page, email: str, password: str) -> None:
 
 def _handle_notion_login(page, email: str, password: str, imap_password: str | None) -> None:
     page_text = _page_text(page)
+    if "new user? sign up" in page_text or page.url.rstrip("/").endswith("/login"):
+        _click_text(page, ["Sign up"])
+        page.wait_for_timeout(1000)
+        page_text = _page_text(page)
     if "log in" in page_text or "sign in" in page_text:
         _click_text(page, ["Log in", "Sign in"])
     _fill_first(page, ["input[type='email']", "input[name='email']"], email)
@@ -784,6 +816,11 @@ def _handle_notion_login(page, email: str, password: str, imap_password: str | N
 
 def _handle_linear_login(page, email: str, password: str, imap_password: str | None) -> None:
     page_text = _page_text(page)
+    if page.url.rstrip("/").endswith("/signup") or "create your workspace" in page_text or "what’s your email address?" in page_text or "what's your email address?" in page_text:
+        _click_text(page, ["Continue with email"])
+        _fill_first(page, ["input[type='email']", "input[name='email']"], email)
+        _click_text(page, ["Continue with email", "Continue"])
+        return
     if "log in" in page_text or "sign in" in page_text:
         _click_text(page, ["Log in", "Sign in"])
     _fill_first(page, ["input[type='email']", "input[name='email']"], email)

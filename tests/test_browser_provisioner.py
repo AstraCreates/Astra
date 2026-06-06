@@ -130,9 +130,11 @@ def test_handle_google_login_can_pick_account_and_continue():
 
 def test_handle_notion_login_pushes_through_grant_access(monkeypatch):
     page = FakePage(
-        content="Sign in to Notion",
+        url="https://app.notion.com/login",
+        content="Sign in to Notion New user? Sign up",
         available={
             "text=Sign in",
+            "text=Sign up",
             "input[type='email']",
             "button:has-text('Continue with email')",
             "input[type='password']",
@@ -146,4 +148,14 @@ def test_handle_notion_login_pushes_through_grant_access(monkeypatch):
 
     assert ("input[type='email']", "test@example.com") in page.filled
     assert ("input[type='password']", "secret") in page.filled
+    assert "text=Sign up" in page.clicked
     assert "button:has-text('Allow access')" in page.clicked
+
+
+def test_has_turnstile_challenge_detects_linear_verification():
+    page = FakePage(
+        content="Verifying it's you",
+        available={"input[name='cf-turnstile-response']"},
+    )
+
+    assert bp._has_turnstile_challenge(page) is True
