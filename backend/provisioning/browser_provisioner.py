@@ -6,6 +6,7 @@ extracts API tokens, returns them.
 import logging
 import secrets
 import time
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -498,6 +499,184 @@ def _extract_composio_key(page) -> str | None:
             if val and len(val) > 20 and " " not in val.strip():
                 return val.strip()
     return None
+
+
+def provision_composio_oauth_apps(
+    founder_id: str,
+    oauth_urls: dict[str, str],
+    email: str,
+    password: str,
+    imap_password: str | None = None,
+    timeout_per_app: int = 180,
+) -> dict[str, dict]:
+    """Complete provider OAuth flows for Composio apps using founder credentials."""
+    from playwright.sync_api import sync_playwright
+    from backend.tools.integration_connect import get_composio_app_status
+
+    results: dict[str, dict] = {}
+    if not oauth_urls:
+        return results
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        ctx = browser.new_context(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+        )
+        page = ctx.new_page()
+        try:
+            for app, url in oauth_urls.items():
+                try:
+                    results[app] = _complete_composio_oauth_app(
+                        founder_id=founder_id,
+                        app=app,
+                        url=url,
+                        page=page,
+                        email=email,
+                        password=password,
+                        imap_password=imap_password,
+                        timeout_seconds=timeout_per_app,
+                        get_status=get_composio_app_status,
+                    )
+                except Exception as e:
+                    logger.warning("Composio OAuth auto-connect failed for %s: %s", app, e)
+                    results[app] = {"connected": False, "error": str(e)}
+        finally:
+            browser.close()
+    return results
+
+
+def _complete_composio_oauth_app(
+    *,
+    founder_id: str,
+    app: str,
+    url: str,
+    page,
+    email: str,
+    password: str,
+    imap_password: str | None,
+    timeout_seconds: int,
+    get_status,
+) -> dict:
+    deadline = time.time() + timeout_seconds
+    page.goto(url, timeout=30000)
+    page.wait_for_timeout(1500)
+
+    while time.time() < deadline:
+        status = get_status(founder_id)
+        if status.get(app):
+            return {"connected": True, "app": app}
+
+        current = page.url or ""
+        host = urlparse(current).netloc.lower()
+
+        if "accounts.google.com" in host:
+            _handle_google_login(page, email, password)
+        elif "linkedin.com" in host:
+            _handle_linkedin_login(page, email, password)
+        elif "notion.so" in host:
+            _handle_notion_login(page, email, password, imap_password)
+        elif "linear.app" in host:
+            _handle_linear_login(page, email, password, imap_password)
+        elif "github.com" in host:
+            _handle_github_login(page, email, password)
+
+        _click_first(page, [
+            "button:has-text('Allow access')",
+            "button:has-text('Allow')",
+            "button:has-text('Authorize')",
+            "button:has-text('Accept')",
+            "button:has-text('Continue')",
+            "button:has-text('Grant access')",
+            "button:has-text('Approve')",
+            "input[type='submit']",
+        ])
+        page.wait_for_timeout(2500)
+
+    status = get_status(founder_id)
+    if status.get(app):
+        return {"connected": True, "app": app}
+    return {"connected": False, "app": app, "error": f"Timed out completing OAuth for {app}"}
+
+
+def _click_first(page, selectors: list[str]) -> bool:
+    for selector in selectors:
+        try:
+            el = page.locator(selector).first
+            if el.count() > 0 and el.is_visible():
+                el.click(timeout=4000)
+                page.wait_for_timeout(800)
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _fill_first(page, selectors: list[str], value: str) -> bool:
+    for selector in selectors:
+        try:
+            el = page.locator(selector).first
+            if el.count() > 0 and el.is_visible():
+                el.fill(value, timeout=4000)
+                page.wait_for_timeout(500)
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _handle_google_login(page, email: str, password: str) -> None:
+    _fill_first(page, ["input[type='email']", "input[name='identifier']"], email)
+    _click_first(page, ["#identifierNext", "button:has-text('Next')"])
+    _fill_first(page, ["input[type='password']", "input[name='Passwd']"], password)
+    _click_first(page, ["#passwordNext", "button:has-text('Next')"])
+    _click_first(page, ["button:has-text('Continue')", "button:has-text('Allow')", "button:has-text('Accept')"])
+
+
+def _handle_linkedin_login(page, email: str, password: str) -> None:
+    _fill_first(page, ["input#username", "input[name='session_key']", "input[type='email']"], email)
+    _fill_first(page, ["input#password", "input[name='session_password']", "input[type='password']"], password)
+    _click_first(page, ["button[type='submit']", "button:has-text('Sign in')", "button:has-text('Continue')"])
+    _click_first(page, ["button:has-text('Allow')", "button:has-text('Continue')"])
+
+
+def _handle_notion_login(page, email: str, password: str, imap_password: str | None) -> None:
+    _fill_first(page, ["input[type='email']", "input[name='email']"], email)
+    _click_first(page, ["button:has-text('Continue with email')", "button:has-text('Continue')"])
+    _fill_first(page, ["input[type='password']", "input[name='password']"], password)
+    _click_first(page, ["button:has-text('Continue')", "button:has-text('Sign in')"])
+    if imap_password and ("check your email" in page.content().lower() or "verification code" in page.content().lower()):
+        from backend.testing.email_reader import wait_for_verification_code, wait_for_verification_url
+        code = wait_for_verification_code(email, imap_password, "notion", timeout=90)
+        if code:
+            _fill_first(page, ["input[autocomplete='one-time-code']", "input[inputmode='numeric']", "input[type='text']"], code)
+            _click_first(page, ["button:has-text('Continue')", "button:has-text('Verify')"])
+        else:
+            link = wait_for_verification_url(email, imap_password, "notion", timeout=90)
+            if link:
+                page.goto(link, timeout=30000)
+
+
+def _handle_linear_login(page, email: str, password: str, imap_password: str | None) -> None:
+    _fill_first(page, ["input[type='email']", "input[name='email']"], email)
+    _click_first(page, ["button:has-text('Continue')", "button[type='submit']"])
+    _fill_first(page, ["input[type='password']", "input[name='password']"], password)
+    _click_first(page, ["button:has-text('Sign in')", "button:has-text('Continue')"])
+    if imap_password and ("check your email" in page.content().lower() or "verification code" in page.content().lower()):
+        from backend.testing.email_reader import wait_for_verification_code, wait_for_verification_url
+        code = wait_for_verification_code(email, imap_password, "linear", timeout=90)
+        if code:
+            _fill_first(page, ["input[inputmode='numeric']", "input[autocomplete='one-time-code']", "input[type='text']"], code)
+            _click_first(page, ["button:has-text('Continue')", "button:has-text('Verify')"])
+        else:
+            link = wait_for_verification_url(email, imap_password, "linear", timeout=90)
+            if link:
+                page.goto(link, timeout=30000)
+
+
+def _handle_github_login(page, email: str, password: str) -> None:
+    _fill_first(page, ["input#login_field", "input[name='login']", "input[type='email']"], email)
+    _fill_first(page, ["input#password", "input[name='password']", "input[type='password']"], password)
+    _click_first(page, ["input[type='submit']", "button[type='submit']", "button:has-text('Sign in')"])
 
 
 def _slug(email: str) -> str:

@@ -18,6 +18,8 @@ VERIFICATION_SENDERS = {
     "sendgrid": ["sendgrid.com", "twilio.com", "noreply@sendgrid.com"],
     "composio": ["composio.dev", "composio.io"],
     "vercel": ["vercel.com", "noreply@vercel.com", "team@vercel.com"],
+    "notion": ["notion.so", "notion.com", "mail.notion.so"],
+    "linear": ["linear.app", "linear.com"],
 }
 
 

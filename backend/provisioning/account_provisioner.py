@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from backend.provisioning.browser_provisioner import (
     provision_composio,
+    provision_composio_oauth_apps,
     provision_github,
     provision_sendgrid,
     provision_vercel,
@@ -146,6 +147,22 @@ async def provision_all(
             )
         except Exception as e:
             composio_urls = {"error": str(e)}
+    oauth_app_results = {}
+    if plan["composio_apps"] and isinstance(composio_urls, dict) and composio_urls and not composio_urls.get("error"):
+        try:
+            oauth_app_results = await loop.run_in_executor(
+                _EXECUTOR,
+                provision_composio_oauth_apps,
+                founder_id,
+                composio_urls,
+                email,
+                password,
+                imap_pw,
+            )
+        except Exception as e:
+            oauth_app_results = {"error": str(e)}
+    if oauth_app_results:
+        results["composio_oauth_apps"] = oauth_app_results
 
     # Store credentials that were successfully obtained
     _store_service_creds(founder_id, results)
@@ -282,8 +299,18 @@ def _summarize(results: dict) -> list[str]:
             pass  # composio not attempted yet — skip
         else:
             lines.append(f"✗ {label} — {r.get('error', r.get('note', 'failed'))}")
-    lines.append("→ Connect Gmail / LinkedIn / Twitter / Calendar via OAuth buttons below")
-    lines.append("→ Instagram / TikTok / Meta Ads require phone verification — connect manually")
+    oauth_apps = results.get("composio_oauth_apps", {})
+    if isinstance(oauth_apps, dict):
+        for app, row in oauth_apps.items():
+            if app == "error":
+                lines.append(f"✗ OAuth connections — {row}")
+                continue
+            if isinstance(row, dict) and row.get("connected"):
+                lines.append(f"✓ {app} — connected via browser OAuth")
+            elif isinstance(row, dict):
+                lines.append(f"⚠ {app} — {row.get('error', 'OAuth not completed')}")
+    lines.append("→ Remaining OAuth-required apps can still be finished from the Integrations step if browser automation did not complete them.")
+    lines.append("→ Instagram / TikTok / Meta Ads may still require phone verification or manual review.")
     return lines
 
 
