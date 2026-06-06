@@ -65,28 +65,26 @@ def get_orchestrator() -> Orchestrator:
             model_api_key=_or_key,
         )
         _small_kwargs = dict(
-            model=settings.or_light_model,  # ling-2.6-flash
+            model=settings.or_light_model,  # xiaomi/mimo-v2.5
             model_base_url=_or_base,
             model_api_key=_or_key,
         )
-        _large_ctx_kwargs = _deepseek_kwargs
         specialists = {
-            # Research — Llama-4-Scout (fast, 320k ctx, good synthesis)
-            "research": build_research_agent(agent_name="research", use_computer=True),
-            "research_competitors": build_research_agent(agent_name="research_competitors", use_computer=True),
-            "research_execution": build_research_agent(agent_name="research_execution", use_computer=True),
-            "research_market": build_research_market_agent(use_computer=True),
-            # Financial/regulatory research needs 1M ctx for large data dumps
-            "research_financial": build_research_financial_agent(use_computer=True, **_large_ctx_kwargs),
-            "research_regulatory": build_research_regulatory_agent(use_computer=True, **_large_ctx_kwargs),
+            # Research — MiMo for fast, repeated, source-grounded cycles
+            "research": build_research_agent(agent_name="research", use_computer=True, **_small_kwargs),
+            "research_competitors": build_research_agent(agent_name="research_competitors", use_computer=True, **_small_kwargs),
+            "research_execution": build_research_agent(agent_name="research_execution", use_computer=True, **_small_kwargs),
+            "research_market": build_research_market_agent(use_computer=True, **_small_kwargs),
+            "research_financial": build_research_financial_agent(use_computer=True, **_small_kwargs),
+            "research_regulatory": build_research_regulatory_agent(use_computer=True, **_small_kwargs),
             # Web — hy3-preview (best tool calling for deploy/HTML gen)
             "web": build_web_agent(use_computer=True, **_coder_kwargs),
-            # Technical — kimi-k2.6:free (built for long-horizon coding)
+            # Technical/support synthesis — high-output OpenRouter model
             "technical": build_technical_agent(use_computer=True, **_highoutput_kwargs),
             "technical_scaffold": build_technical_scaffold_agent(use_computer=True, **_highoutput_kwargs),
             "technical_infra": build_technical_infra_agent(use_computer=True, **_highoutput_kwargs),
             "technical_data": build_technical_data_agent(use_computer=True, **_highoutput_kwargs),
-            # Writing agents — Mistral-Small-3.2 ($0.075/$0.20, 125k ctx, great long-form)
+            # Writing/synthesis agents — high-output OpenRouter model
             "marketing": build_marketing_agent(use_computer=True, **_highoutput_kwargs),
             "legal": build_legal_agent(use_computer=True, **_highoutput_kwargs),
             "ops": build_ops_agent(use_computer=True, **_coder_kwargs),
@@ -95,13 +93,13 @@ def get_orchestrator() -> Orchestrator:
             "legal_entity": build_legal_entity_agent(use_computer=True, **_highoutput_kwargs),
             "legal_ip": build_legal_ip_agent(use_computer=True, **_highoutput_kwargs),
             "marketing_content": build_marketing_content_agent(use_computer=True, **_highoutput_kwargs),
-            "marketing_outreach": build_marketing_outreach_agent(use_computer=True, **_highoutput_kwargs),
+            "marketing_outreach": build_marketing_outreach_agent(use_computer=True, **_small_kwargs),
             "marketing_seo": build_marketing_seo_agent(use_computer=True, max_tool_calls={"search_and_fetch": 3, "web_search": 5}, **_highoutput_kwargs),
             "marketing_paid": build_marketing_paid_agent(use_computer=True, max_tool_calls={"search_and_fetch": 4, "web_search": 6}, **_highoutput_kwargs),
             "sales_enablement": build_sales_enablement_agent(use_computer=False, **_highoutput_kwargs),
             "finance_model": build_finance_model_agent(use_computer=True, **_highoutput_kwargs),
             "finance_fundraise": build_finance_fundraise_agent(use_computer=True, **_highoutput_kwargs),
-            # Simple task agents — Llama-4-Scout (fast, cheap)
+            # Short repeated-output task agents — MiMo (fast, cheap)
             "sales": build_sales_agent(use_computer=False, max_iterations=15, **_small_kwargs),
             "sales_pipeline": build_sales_pipeline_agent(use_computer=False, **_small_kwargs),
             # Web Navigator — vision-driven autonomous browser agent

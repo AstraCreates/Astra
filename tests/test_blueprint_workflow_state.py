@@ -39,6 +39,24 @@ def test_workflow_state_persists_execution_blueprint_and_lane_status():
     assert state["workboard"]["items"][0]["phase"] == "diagnose"
 
 
+def test_workflow_state_reconstructs_compact_agent_previews():
+    events = [
+        (1, {"type": "plan_done", "tasks": [{"id": "t_sales", "agent": "sales", "instruction": "Find leads"}]}),
+        (2, {"type": "agent_start", "agent": "sales", "task_id": "t_sales", "instruction": "Find leads", "ts_unix": 1}),
+        (3, {"type": "model_stats", "agent": "sales", "model": "xiaomi/mimo-v2.5", "tks": 42}),
+        (4, {"type": "agent_done", "agent": "sales", "result": {"leads": [{"company": "Acme"}], "base64": "a" * 50_000}, "ts_unix": 2}),
+    ]
+
+    state = build_session_state("session_agents", events)
+
+    sales = state["agents"]["sales"]
+    assert sales["status"] == "done"
+    assert sales["model"] == "xiaomi/mimo-v2.5"
+    assert sales["result"]["leads"][0]["company"] == "Acme"
+    assert sales["result"]["base64"] == "[base64:50000chars]"
+    assert sales["log"][-1]["text"] == "Complete"
+
+
 def test_workflow_state_marks_terminal_agent_without_goal_done_as_stalled():
     events = [
         (1, {"type": "goal_start", "goal": "Build", "founder_id": "founder_1"}),
@@ -66,6 +84,22 @@ def test_workflow_state_marks_done_with_failed_completion_audit_as_stalled():
 
     assert state["status"] == "stalled"
     assert state["completion_audit"]["ok"] is False
+
+
+def test_workflow_state_marks_truncated_running_log_as_stalled(monkeypatch):
+    monkeypatch.setattr("backend.workflow_state._run_ledger_snapshot", lambda _session_id: {
+        "status": "running",
+        "event_count": 324,
+        "running_agents": 7,
+    })
+    events = [
+        (315, {"type": "agent_action", "agent": "legal", "tool": "format_legal_document"}),
+        (316, {"type": "agent_action_result", "agent": "legal", "tool": "format_legal_document", "result": {"ok": True}}),
+    ]
+
+    state = build_session_state("session_truncated", events)
+
+    assert state["status"] == "stalled"
 
 
 def test_workboard_uses_blueprint_lane_packets_without_operating_plan():

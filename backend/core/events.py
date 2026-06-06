@@ -374,13 +374,13 @@ async def stream_events(session_id: str, last_event_id: int | None = None) -> As
             # Auto-reconnect: replay only events missed since last seen
             for eid, ev in _event_log[session_id]:
                 if eid > last_event_id:
-                    yield _fmt(eid, ev)
+                    yield _fmt(eid, _strip_base64(ev))
         else:
             # Fresh connect: replay state events only — skips action/thinking noise
             # that would duplicate log entries already restored from localStorage
             for eid, ev in _event_log[session_id]:
                 if ev.get("type") in _STATE_EVENTS:
-                    yield _fmt(eid, ev)
+                    yield _fmt(eid, _strip_base64(ev))
 
     # Already completed — send closed signal immediately (after replay)
     if session_id in _completed:

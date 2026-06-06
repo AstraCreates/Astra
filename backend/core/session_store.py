@@ -178,13 +178,22 @@ def load_events(session_id: str) -> list[tuple[int, dict]] | None:
         return None
     result = []
     try:
+        pending = ""
         with p.open() as f:
             for line in f:
                 line = line.strip()
                 if not line:
                     continue
-                obj = json.loads(line)
+                candidate = line if not pending else f"{pending}\\n{line}"
+                try:
+                    obj = json.loads(candidate)
+                except json.JSONDecodeError:
+                    pending = candidate
+                    continue
+                pending = ""
                 result.append((int(obj["id"]), obj["event"]))
+        if pending:
+            logger.warning("session_store.load_events ignored malformed trailing event for %s", session_id)
         return result if result else None
     except Exception as exc:
         logger.warning("session_store.load_events failed for %s: %s", session_id, exc)

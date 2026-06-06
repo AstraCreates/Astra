@@ -97,9 +97,6 @@ _MARKET_RESEARCH_SEARCHES = (
 
 def build_research_market_agent(**kwargs) -> Agent:
     """Build a market research specialist agent focused on TAM/SAM/SOM, ICP, pricing, and opportunity framing."""
-    for k in ("model", "model_base_url", "model_api_key"):
-        kwargs.pop(k, None)
-
     agent_name = "research_market"
     ctx_holder: list = [None]
 
@@ -110,11 +107,15 @@ def build_research_market_agent(**kwargs) -> Agent:
     auto_news = _make_auto_logging_tool(news_search, "news_search", ctx_holder, log_name)
 
     from backend.config import settings
+    from backend.core.key_rotator import get_openrouter_key
+    model = kwargs.pop("model", settings.or_light_model)
+    model_base_url = kwargs.pop("model_base_url", settings.openrouter_base_url)
+    model_api_key = kwargs.pop("model_api_key", get_openrouter_key() or settings.agent_model_api_key)
     agent = Agent(
         name=agent_name,
-        model="deepseek-ai/DeepSeek-V4-Flash",
-        model_base_url=settings.agent_model_base_url,
-        model_api_key=settings.agent_model_api_key,
+        model=model,
+        model_base_url=model_base_url,
+        model_api_key=model_api_key,
         max_iterations=25,
         role=(
             "You are an elite market research analyst. You produce investment-grade market sizing, "

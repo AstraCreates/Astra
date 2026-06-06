@@ -442,6 +442,7 @@ export interface SessionStateSnapshot {
   manifest?: AgentDepartmentManifest | null;
   execution_contract?: StackExecutionContract | null;
   company_genome?: Record<string, unknown> | null;
+  agents?: Record<string, Record<string, unknown>>;
   digest?: SessionDigest | null;
   workboard?: SessionWorkboard | null;
   approval_workflow?: {

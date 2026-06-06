@@ -783,37 +783,36 @@ def _detect_rerun_intent(instruction: str, available_agents: list[str]) -> dict 
     try:
         import openai, json as _json
         from backend.config import settings
+        from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
         client = openai.OpenAI(
             base_url=settings.openrouter_base_url,
             api_key=settings.openrouter_api_key or settings.agent_model_api_key,
         )
         agents_list = ", ".join(available_agents)
+        messages = [
+            {"role": "system", "content": (
+                f"You are a chat intent classifier for an AI startup assistant. Available agents: {agents_list}.\n\n"
+                "Classify the user's message and return JSON:\n\n"
+                "IF the message asks an agent to do something (run, redo, fix, change, generate, update, make, add, remove anything):\n"
+                '{"intent":"agent_action","agent":"<name>","instruction":"<complete precise instruction for the agent>","scope":"full"|"partial"}\n'
+                "- scope=partial if they only want ONE thing changed (e.g. 'make the logo a star' → only regenerate logo, skip rest)\n"
+                "- scope=full if they want the whole agent rerun\n"
+                "- instruction must be a complete, specific task the agent can execute\n\n"
+                "IF the message is a question or general chat (not asking an agent to do something):\n"
+                '{"intent":"chat"}\n\n'
+                "Agent mapping: logo/design/colors/wireframe/brand → design | landing page/website/deploy → web | "
+                "marketing/ads/tiktok/instagram/email → marketing | legal/privacy/terms/docs → legal | "
+                "sales/leads/outreach/crm → sales | technical/code/auth/dashboard → technical | research/market/competitor → research | ops/plan/strategy → ops.\n"
+                "code/mvp/technical/build/app → technical | fundraise/investors/pitch → ops.\n\n"
+                "For scope=partial, instruction must tell the agent to ONLY do that one thing and skip everything else.\n"
+                "Return ONLY JSON."
+            )},
+            {"role": "user", "content": instruction},
+        ]
         resp = client.chat.completions.create(
             model=settings.or_planner_model,
-            messages=[
-                {"role": "system", "content": (
-                    f"You are a chat intent classifier for an AI startup assistant. Available agents: {agents_list}.\n\n"
-                    "Classify the user's message and return JSON:\n\n"
-                    "IF the message asks an agent to do something (run, redo, fix, change, generate, update, make, add, remove anything):\n"
-                    '{"intent":"agent_action","agent":"<name>","instruction":"<complete precise instruction for the agent>","scope":"full"|"partial"}\n'
-                    "- scope=partial if they only want ONE thing changed (e.g. 'make the logo a star' → only regenerate logo, skip rest)\n"
-                    "- scope=full if they want the whole agent rerun\n"
-                    "- instruction must be a complete, specific task the agent can execute\n\n"
-                    "IF the message is a question or general chat (not asking an agent to do something):\n"
-                    '{"intent":"chat"}\n\n'
-                    "Agent mapping: logo/design/colors/wireframe/brand → design | landing page/website/deploy → web | "
-                    "marketing/ads/tiktok/instagram/email → marketing | legal/privacy/terms/docs → legal | "
-                    "code/mvp/technical/build/app → technical | sales/leads/outreach → sales | "
-                    "fundraise/investors/ops/pitch → ops | research/market/competitors → research\n\n"
-                    "For scope=partial, instruction must tell the agent to ONLY do that one thing and skip everything else.\n"
-                    "Example: 'make the logo a star' → agent=design, scope=partial, "
-                    'instruction="Regenerate ONLY the logo. Call generate_logo twice: once with style=wordmark and once with style=icon. '
-                    'For both, use a star geometric motif in the icon shape. Use the existing brand colors from your previous run. '
-                    'Skip color_palette, design_spec, wireframes, and brand_image — only regenerate logos. Call done with {logo_wordmark, logo_icon}."\n\n'
-                    "Output ONLY valid JSON. No prose."
-                )},
-                {"role": "user", "content": instruction},
-            ],
+            messages=cacheable_messages(messages),
+            extra_body=openrouter_extra_body(settings.or_planner_model),
             max_tokens=300,
             temperature=0,
             timeout=15.0,
@@ -1021,13 +1020,17 @@ async def chat_agent(agent_key: str, body: AskRequest, request: Request):
     model_name = settings.chat_model_name or settings.agent_model_name
 
     try:
+        from backend.core.llm_cache import cacheable_messages, is_openrouter_base_url, openrouter_extra_body
         client = _openai.AsyncOpenAI(base_url=base_url, api_key=api_key)
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": body.question},
+        ]
+        is_openrouter = is_openrouter_base_url(base_url)
         resp = await client.chat.completions.create(
             model=model_name,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": body.question},
-            ],
+            messages=cacheable_messages(messages) if is_openrouter else messages,
+            extra_body=openrouter_extra_body(model_name) if is_openrouter else None,
             temperature=0.7,
             timeout=60.0,
         )

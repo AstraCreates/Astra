@@ -8,6 +8,7 @@ from typing import Any
 
 from backend.core.agent import Agent, AgentContext
 from backend.core.bus import AgentBus
+from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
 
 logger = logging.getLogger(__name__)
 
@@ -317,10 +318,7 @@ class Orchestrator:
                 base_url=settings.openrouter_base_url,
                 api_key=settings.openrouter_api_key or settings.planner_model_api_key or settings.agent_model_api_key,
             )
-            resp = await asyncio.to_thread(
-                client.chat.completions.create,
-                model=settings.or_planner_model,
-                messages=[
+            messages = [
                     {"role": "system", "content": (
                         "Output ONLY a single company/product name for this startup idea. "
                         "1-2 words max. CamelCase. Memorable, domain-friendly, not generic. "
@@ -331,7 +329,12 @@ class Orchestrator:
                         f"Startup idea:\n{goal[:300]}\n\n"
                         f"Creative direction:\n{json.dumps(creative_brief or {}, indent=2)}"
                     )},
-                ],
+                ]
+            resp = await asyncio.to_thread(
+                client.chat.completions.create,
+                model=settings.or_planner_model,
+                messages=cacheable_messages(messages),
+                extra_body=openrouter_extra_body(settings.or_planner_model),
                 max_tokens=10,
                 temperature=0.85,
             )
@@ -363,13 +366,15 @@ class Orchestrator:
                 base_url=settings.openrouter_base_url,
                 api_key=settings.openrouter_api_key or settings.planner_model_api_key or settings.agent_model_api_key,
             )
+            messages = [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": goal},
+                ]
             resp = await asyncio.to_thread(
                 client.chat.completions.create,
                 model=settings.or_planner_model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": goal},
-                ],
+                messages=cacheable_messages(messages),
+                extra_body=openrouter_extra_body(settings.or_planner_model),
                 max_tokens=400,
                 temperature=0.7,
             )

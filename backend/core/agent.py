@@ -13,6 +13,7 @@ from typing import Any, Callable, Optional
 import openai
 
 from backend.config import settings
+from backend.core.llm_cache import cacheable_messages, is_openrouter_base_url, openrouter_extra_body
 
 logger = logging.getLogger(__name__)
 
@@ -228,11 +229,7 @@ class Agent:
 
     def _call_llm(self, messages: list[dict], ctx: "AgentContext | None" = None) -> str:
         import time as _time
-        is_openrouter = "openrouter" in (self._model_base_url or "")
-        extra: dict = {}
-        # hy3-preview defaults to reasoning mode — disable for fast JSON output
-        if "hy3" in self.model:
-            extra["reasoning"] = {"effort": "none"}
+        is_openrouter = is_openrouter_base_url(self._model_base_url)
         # Inject cache_control on stable message prefixes for OpenRouter models.
         # OpenRouter uses Anthropic-style per-block markers; models that don't support
         # caching ignore it. We mark two breakpoints:
@@ -240,25 +237,16 @@ class Agent:
         #   [1] initial user   — goal + shared context, stable for the entire agent loop
         # MiMo: $0.14→$0.0028/M on cache hit (50x cheaper). hy3/ling also benefit.
         if is_openrouter and messages:
-            messages = list(messages)  # shallow copy — don't mutate caller's list
-            for idx in (0, 1):
-                if idx >= len(messages):
-                    break
-                msg = messages[idx]
-                if isinstance(msg.get("content"), str):
-                    messages[idx] = {
-                        "role": msg["role"],
-                        "content": [{"type": "text", "text": msg["content"],
-                                     "cache_control": {"type": "ephemeral"}}],
-                    }
+            messages = cacheable_messages(messages)
         kwargs: dict = dict(
             model=self.model,
             messages=messages,
             temperature=0.1,
             timeout=300.0,
         )
-        if extra:
-            kwargs["extra_body"] = extra
+        extra_body = openrouter_extra_body(self.model) if is_openrouter else None
+        if extra_body:
+            kwargs["extra_body"] = extra_body
         # json_object not supported by OpenRouter models
         if not is_openrouter:
             kwargs["response_format"] = {"type": "json_object"}

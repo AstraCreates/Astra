@@ -97,10 +97,6 @@ _FOCUS_ROLES = {
 
 
 def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
-    # Strip model overrides — research always uses planner model
-    for k in ("model", "model_base_url", "model_api_key"):
-        kwargs.pop(k, None)
-
     # ctx_holder: mutable so wrappers can see the live AgentContext
     ctx_holder: list = [None]
 
@@ -122,11 +118,14 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     from backend.config import settings
     from backend.core.key_rotator import get_openrouter_key
     focus_searches = _FOCUS_ROLES.get(agent_name, _FOCUS_ROLES["research"])
+    model = kwargs.pop("model", settings.or_light_model)
+    model_base_url = kwargs.pop("model_base_url", settings.openrouter_base_url)
+    model_api_key = kwargs.pop("model_api_key", get_openrouter_key() or settings.agent_model_api_key)
     agent = Agent(
         name=agent_name,
-        model="tencent/hy3-preview",
-        model_base_url=settings.openrouter_base_url,
-        model_api_key=get_openrouter_key() or settings.agent_model_api_key,
+        model=model,
+        model_base_url=model_base_url,
+        model_api_key=model_api_key,
         max_iterations=15,
         role=(
             "You are an elite deep research specialist. Your ONLY domain is MARKET OPPORTUNITY — "

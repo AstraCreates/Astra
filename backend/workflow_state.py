@@ -14,6 +14,8 @@ from typing import Any
 from backend.session_digest import build_session_digest
 from backend.workboard import build_session_workboard
 
+_LARGE_STRING_LIMIT = 40_000
+
 
 def _state_root() -> Path:
     root = Path(".astra/workflows")
@@ -56,9 +58,11 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
     saferun: dict[str, dict[str, Any]] = {}
     final_status = "running"
     agent_status: dict[str, str] = {}
+    agents: dict[str, dict[str, Any]] = {}
 
     for event in event_dicts:
         event_type = event.get("type")
+        _update_agent_snapshot(agents, event)
         if event_type == "approval_request" and event.get("request"):
             request = event["request"]
             item = _approval_request_state(request)
@@ -101,6 +105,13 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
         ledger = _run_ledger_snapshot(session_id)
         if isinstance(ledger, dict) and ledger.get("status") == "stalled":
             final_status = "stalled"
+        elif (
+            isinstance(ledger, dict)
+            and ledger.get("status") == "running"
+            and int(ledger.get("event_count") or 0) > len(events)
+            and int(ledger.get("running_agents") or 0) > 0
+        ):
+            final_status = "stalled"
         elif agent_status and "running" not in set(agent_status.values()):
             last_type = event_dicts[-1].get("type") if event_dicts else ""
             if last_type in {"agent_done", "agent_error", "stack_artifact_verification", "stack_lane_status"}:
@@ -122,6 +133,7 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
         "manifest": manifest,
         "execution_contract": execution_contract,
         "execution_blueprint": execution_blueprint,
+        "agents": agents,
         "lane_status": list(lane_status.values()),
         "company_genome": genome,
         "digest": build_session_digest(session_id, events) if events else None,
@@ -142,6 +154,140 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
     except Exception as exc:
         state["completion_audit"] = {"ok": False, "status": "error", "summary": str(exc), "checks": [], "failed": []}
     return state
+
+
+def _agent_snapshot(agents: dict[str, dict[str, Any]], agent: str) -> dict[str, Any]:
+    return agents.setdefault(agent, {
+        "task_id": "",
+        "agent": agent,
+        "instruction": "",
+        "status": "waiting",
+        "currentAction": None,
+        "currentTool": None,
+        "lastToolAt": None,
+        "reasoning": None,
+        "model": None,
+        "tks": None,
+        "result": None,
+        "log": [],
+        "visitedUrls": [],
+        "commits": [],
+    })
+
+
+def _append_agent_log(agent_state: dict[str, Any], log_type: str, text: str, ts: float | None = None) -> None:
+    if not text:
+        return
+    logs = list(agent_state.get("log") or [])
+    logs.append({"ts": int((ts or 0) * 1000) if ts else 0, "type": log_type, "text": text[:500]})
+    agent_state["log"] = logs[-80:]
+
+
+def _compact_value(value: Any) -> Any:
+    if isinstance(value, str):
+        if len(value) > _LARGE_STRING_LIMIT:
+            return f"[large-string:{len(value)}chars]"
+        return value
+    if isinstance(value, list):
+        return [_compact_value(item) for item in value[:100]]
+    if isinstance(value, dict):
+        compact: dict[str, Any] = {}
+        for key, item in value.items():
+            if isinstance(item, str) and len(item) > 10_000 and key.lower() in {"base64", "image", "image_base64"}:
+                compact[key] = f"[base64:{len(item)}chars]"
+            else:
+                compact[key] = _compact_value(item)
+        return compact
+    return value
+
+
+def _compact_result(result: Any) -> Any:
+    if not isinstance(result, dict):
+        return _compact_value(result)
+    return _compact_value(result)
+
+
+def _update_agent_snapshot(agents: dict[str, dict[str, Any]], event: dict[str, Any]) -> None:
+    event_type = event.get("type")
+    agent = event.get("agent")
+    if not agent and event_type == "plan_done":
+        for task in event.get("tasks") or []:
+            task_agent = str(task.get("agent") or "")
+            if not task_agent:
+                continue
+            state = _agent_snapshot(agents, task_agent)
+            state["task_id"] = task.get("id") or state.get("task_id") or ""
+            state["instruction"] = task.get("instruction") or state.get("instruction") or ""
+        return
+    if not agent:
+        return
+    state = _agent_snapshot(agents, str(agent))
+    ts = event.get("ts_unix")
+    if event_type == "agent_start":
+        state["status"] = "running"
+        state["task_id"] = event.get("task_id") or state.get("task_id") or ""
+        state["instruction"] = event.get("instruction") or state.get("instruction") or ""
+        _append_agent_log(state, "info", "Started", ts)
+    elif event_type == "agent_action":
+        state["currentAction"] = event.get("action")
+        state["currentTool"] = event.get("tool")
+        state["reasoning"] = event.get("reasoning")
+        text = str(event.get("tool") or event.get("action") or "Action")
+        args = event.get("args")
+        if isinstance(args, dict):
+            detail = args.get("query") or args.get("url") or args.get("title") or args.get("company")
+            if detail:
+                text = f"{text}: {str(detail)[:120]}"
+        _append_agent_log(state, "action", text, ts)
+    elif event_type == "agent_action_result":
+        result = event.get("result")
+        ok = not (isinstance(result, dict) and result.get("error"))
+        tool = event.get("tool") or "tool"
+        text = f"{'Done' if ok else 'Error'}: {tool}"
+        if isinstance(result, dict) and result.get("error"):
+            text = f"{tool}: {result.get('error')}"
+        _append_agent_log(state, "result" if ok else "error", text, ts)
+        if ok and isinstance(result, dict):
+            if event.get("tool") in {"generate_ad_image", "generate_brand_image", "generate_brand_board"}:
+                images = list(state.get("adImages") or [])
+                images.append(_compact_result(result))
+                state["adImages"] = images[-12:]
+            if isinstance(result.get("files_preview"), list):
+                state["filesPreview"] = result["files_preview"]
+            if isinstance(result.get("files_in_repo"), int):
+                state["filesCount"] = result["files_in_repo"]
+    elif event_type == "model_stats":
+        state["model"] = event.get("model") or state.get("model")
+        state["tks"] = event.get("tks")
+    elif event_type == "agent_done":
+        result = _compact_result(event.get("result") or {})
+        state["status"] = "done"
+        state["currentAction"] = None
+        state["currentTool"] = None
+        state["result"] = result if isinstance(result, dict) else {"output": result}
+        if isinstance(state["result"], dict):
+            preview_url = (
+                state["result"].get("url")
+                or state["result"].get("deployment_url")
+                or state["result"].get("project_url")
+                or state["result"].get("github_url")
+            )
+            if preview_url:
+                state["previewUrl"] = preview_url
+            if isinstance(state["result"].get("files_preview"), list):
+                state["filesPreview"] = state["result"]["files_preview"]
+            if isinstance(state["result"].get("files_in_repo"), int):
+                state["filesCount"] = state["result"]["files_in_repo"]
+        _append_agent_log(state, "result", "Complete", ts)
+    elif event_type == "agent_error":
+        state["status"] = "error"
+        state["currentAction"] = None
+        state["currentTool"] = None
+        state["result"] = state.get("result") or {"error": event.get("error") or "Agent error"}
+        _append_agent_log(state, "error", str(event.get("error") or "Agent error"), ts)
+    elif event_type == "mirror_verdict":
+        state["mirrorVerdict"] = event.get("verdict")
+        state["mirrorCritique"] = event.get("critique")
 
 
 def save_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict[str, Any]:

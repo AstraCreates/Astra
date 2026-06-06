@@ -94,10 +94,6 @@ _REGULATORY_SEARCHES = (
 
 def build_research_regulatory_agent(**kwargs) -> Agent:
     """Build the regulatory & compliance research specialist agent."""
-    # Strip model overrides — always uses planner model
-    for k in ("model", "model_base_url", "model_api_key"):
-        kwargs.pop(k, None)
-
     ctx_holder: list = [None]
 
     auto_search = _make_auto_logging_tool(search_and_fetch, "search_and_fetch", ctx_holder)
@@ -107,12 +103,16 @@ def build_research_regulatory_agent(**kwargs) -> Agent:
     auto_patent = _make_auto_logging_tool(patent_search, "patent_search", ctx_holder)
 
     from backend.config import settings
+    from backend.core.key_rotator import get_openrouter_key
+    model = kwargs.pop("model", settings.or_light_model)
+    model_base_url = kwargs.pop("model_base_url", settings.openrouter_base_url)
+    model_api_key = kwargs.pop("model_api_key", get_openrouter_key() or settings.agent_model_api_key)
 
     agent = Agent(
         name="research_regulatory",
-        model="deepseek-ai/DeepSeek-V4-Flash",
-        model_base_url=settings.agent_model_base_url,
-        model_api_key=settings.agent_model_api_key,
+        model=model,
+        model_base_url=model_base_url,
+        model_api_key=model_api_key,
         max_iterations=25,
         role=(
             "You are an elite regulatory and compliance research specialist. "

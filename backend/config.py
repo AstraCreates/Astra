@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     or_planner_model: str = "tencent/hy3-preview"
     or_highoutput_model: str = "tencent/hy3-preview"
-    or_light_model: str = "inclusionai/ling-2.6-flash"
+    or_light_model: str = "xiaomi/mimo-v2.5"
     # Tool-use model — hy3-preview for web agent (strong agentic workflows)
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
     tooluse_model_name: str = "tencent/hy3-preview"
@@ -37,9 +37,9 @@ class Settings(BaseSettings):
     chat_model_base_url: str = "https://openrouter.ai/api/v1"
     chat_model_api_key: str = ""
     chat_model_name: str = "tencent/hy3-preview"
-    # Light model — ling-2.6-flash: cheap, fast for research synthesis
+    # Light model — MiMo: cheap, fast for research and short repeated tasks
     light_model_base_url: str = "https://openrouter.ai/api/v1"
-    light_model_name: str = "inclusionai/ling-2.6-flash"
+    light_model_name: str = "xiaomi/mimo-v2.5"
     # High-output model — hy3-preview via OpenRouter
     highoutput_model_base_url: str = "https://openrouter.ai/api/v1"
     highoutput_model_name: str = "tencent/hy3-preview"

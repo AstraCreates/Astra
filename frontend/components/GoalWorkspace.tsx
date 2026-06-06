@@ -290,6 +290,42 @@ function hasStructuredOutput(result: Record<string, unknown> | null | undefined)
   });
 }
 
+function agentStateFromSnapshot(agentName: string, snapshot: Record<string, unknown>, previous?: AgentState): AgentState {
+  const status = snapshot.status === "running" || snapshot.status === "done" || snapshot.status === "error" || snapshot.status === "waiting"
+    ? snapshot.status
+    : previous?.status ?? "waiting";
+  const log = Array.isArray(snapshot.log)
+    ? snapshot.log.filter((item): item is LogEntry => Boolean(item) && typeof item === "object" && typeof (item as LogEntry).text === "string").slice(-80)
+    : previous?.log ?? [];
+  const result = snapshot.result && typeof snapshot.result === "object"
+    ? snapshot.result as Record<string, unknown>
+    : previous?.result ?? null;
+  return {
+    task_id: typeof snapshot.task_id === "string" ? snapshot.task_id : previous?.task_id ?? "",
+    agent: typeof snapshot.agent === "string" ? snapshot.agent : previous?.agent ?? agentName,
+    instruction: typeof snapshot.instruction === "string" ? snapshot.instruction : previous?.instruction ?? "",
+    status,
+    currentAction: typeof snapshot.currentAction === "string" ? snapshot.currentAction : null,
+    currentTool: typeof snapshot.currentTool === "string" ? snapshot.currentTool : null,
+    lastToolAt: typeof snapshot.lastToolAt === "number" ? snapshot.lastToolAt : previous?.lastToolAt ?? null,
+    reasoning: typeof snapshot.reasoning === "string" ? snapshot.reasoning : previous?.reasoning ?? null,
+    model: typeof snapshot.model === "string" ? snapshot.model : previous?.model ?? null,
+    tks: typeof snapshot.tks === "number" ? snapshot.tks : previous?.tks ?? null,
+    result,
+    log,
+    mirrorVerdict: snapshot.mirrorVerdict === "pass" || snapshot.mirrorVerdict === "flag" || snapshot.mirrorVerdict === "block" ? snapshot.mirrorVerdict : previous?.mirrorVerdict,
+    mirrorCritique: typeof snapshot.mirrorCritique === "string" ? snapshot.mirrorCritique : previous?.mirrorCritique,
+    currentUrl: typeof snapshot.currentUrl === "string" ? snapshot.currentUrl : previous?.currentUrl,
+    visitedUrls: Array.isArray(snapshot.visitedUrls) ? snapshot.visitedUrls.filter((url): url is string => typeof url === "string") : previous?.visitedUrls ?? [],
+    previewUrl: typeof snapshot.previewUrl === "string" ? snapshot.previewUrl : previous?.previewUrl,
+    commits: Array.isArray(snapshot.commits) ? snapshot.commits.filter((commit): commit is string => typeof commit === "string") : previous?.commits ?? [],
+    filesPreview: Array.isArray(snapshot.filesPreview) ? snapshot.filesPreview.filter((file): file is string => typeof file === "string") : previous?.filesPreview,
+    filesCount: typeof snapshot.filesCount === "number" ? snapshot.filesCount : previous?.filesCount,
+    adImages: Array.isArray(snapshot.adImages) ? snapshot.adImages as Array<{ url?: string; base64?: string; prompt?: string }> : previous?.adImages,
+    webQualityError: typeof snapshot.webQualityError === "string" ? snapshot.webQualityError : previous?.webQualityError,
+  };
+}
+
 function extractAdImagesFromResult(obj: unknown, seen = new Set<string>()): Array<{ url?: string; base64?: string; prompt?: string }> {
   if (!obj || typeof obj !== "object") return [];
   const o = obj as Record<string, unknown>;
@@ -4492,6 +4528,20 @@ export function GoalWorkspace({
           if (workboardResult.status === "fulfilled") setSessionWorkboard(workboardResult.value);
           if (stateResult.status === "fulfilled") {
             setSessionState(stateResult.value);
+            if (stateResult.value.agents && typeof stateResult.value.agents === "object") {
+              setAgents(prev => {
+                const next = { ...prev };
+                for (const [agentName, snapshot] of Object.entries(stateResult.value.agents ?? {})) {
+                  if (!snapshot || typeof snapshot !== "object") continue;
+                  const restored = agentStateFromSnapshot(agentName, snapshot as Record<string, unknown>, next[agentName]);
+                  const existing = next[agentName];
+                  next[agentName] = existing?.result && !restored.result
+                    ? { ...restored, result: existing.result }
+                    : restored;
+                }
+                return next;
+              });
+            }
             if (stateResult.value.status === "done") {
               setDone(true);
               updateSession(sessionId, { status: "done" });

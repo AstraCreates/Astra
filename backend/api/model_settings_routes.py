@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 model_settings_router = APIRouter()
 
 AVAILABLE_MODELS: list[str] = [
+    "tencent/hy3-preview",
+    "xiaomi/mimo-v2.5",
+    "google/gemma-3-27b-it",
     "deepseek-ai/DeepSeek-V4-Flash",
     "meta-llama/Llama-4-Scout-17B-16E-Instruct",
     "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
