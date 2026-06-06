@@ -3962,6 +3962,10 @@ function WorkspaceSidebar({
           <span aria-hidden="true">▣</span>
           Plan
         </button>
+        <Link href="/brain" style={navItemStyle}>
+          <span aria-hidden="true">◈</span>
+          Brain
+        </Link>
         <Link data-tour="nav-integrations" href="/integrations" style={navItemStyle}>
           <span aria-hidden="true">⌘</span>
           Integrations
