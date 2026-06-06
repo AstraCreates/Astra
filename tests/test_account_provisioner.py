@@ -1,7 +1,7 @@
 import asyncio
 import imaplib
 
-from backend.provisioning.account_provisioner import build_provision_plan, get_founder_setup_status, get_zero_touch_readiness, _summarize
+from backend.provisioning.account_provisioner import build_provision_plan, get_founder_setup_status, get_zero_touch_readiness, _interaction_required_map, _summarize
 
 
 def test_build_provision_plan_for_idea_to_revenue_required_connectors():
@@ -65,6 +65,33 @@ def test_summarize_reports_human_step_required():
     })
 
     assert any("linear" in line and "human step required" in line for line in lines)
+
+
+def test_interaction_required_map_returns_only_human_gated_apps():
+    interaction = _interaction_required_map({
+        "composio_oauth_apps": {
+            "linear": {
+                "connected": False,
+                "requires_human": True,
+                "category": "anti_bot",
+            },
+            "notion": {
+                "connected": False,
+                "error": "Timed out",
+            },
+            "github": {
+                "connected": True,
+            },
+        }
+    })
+
+    assert interaction == {
+        "linear": {
+            "connected": False,
+            "requires_human": True,
+            "category": "anti_bot",
+        }
+    }
 
 
 def test_google_sheets_uses_google_drive_oauth_app():

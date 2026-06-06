@@ -167,11 +167,7 @@ async def provision_all(
         app for app, row in oauth_app_results.items()
         if app != "error" and isinstance(row, dict) and not row.get("connected")
     ]
-    interaction_required = {
-        app: row
-        for app, row in oauth_app_results.items()
-        if app != "error" and isinstance(row, dict) and row.get("requires_human")
-    }
+    interaction_required = _interaction_required_map({"composio_oauth_apps": oauth_app_results})
     if oauth_app_results:
         results["composio_oauth_apps"] = oauth_app_results
 
@@ -326,6 +322,17 @@ def _summarize(results: dict) -> list[str]:
     lines.append("→ Remaining OAuth-required apps can still be finished from the Integrations step if browser automation did not complete them.")
     lines.append("→ Instagram / TikTok / Meta Ads may still require phone verification or manual review.")
     return lines
+
+
+def _interaction_required_map(results: dict) -> dict[str, dict[str, Any]]:
+    oauth_apps = results.get("composio_oauth_apps", {})
+    if not isinstance(oauth_apps, dict):
+        return {}
+    return {
+        app: row
+        for app, row in oauth_apps.items()
+        if app != "error" and isinstance(row, dict) and row.get("requires_human")
+    }
 
 
 async def get_founder_setup_status(founder_id: str) -> dict:

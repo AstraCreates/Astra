@@ -949,10 +949,10 @@ def _click_generic_oauth_buttons(page) -> bool:
 
 def _has_turnstile_challenge(page) -> bool:
     page_text = _page_text(page)
-    if "verifying it’s you" in page_text or "turnstile" in page_text or "cf-challenge" in page_text:
+    if "verifying it's you" in page_text or "verifying it’s you" in page_text or "turnstile" in page_text or "cf-challenge" in page_text:
         return True
     try:
-        return page.locator("input[name=’cf-turnstile-response’], iframe[src*=’challenges.cloudflare.com’]").count() > 0
+        return page.locator("input[name='cf-turnstile-response'], iframe[src*='challenges.cloudflare.com']").count() > 0
     except Exception:
         return False
 
