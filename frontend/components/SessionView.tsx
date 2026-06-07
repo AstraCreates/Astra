@@ -5,7 +5,9 @@
    Layout: phase bar → status bar → dept cards → vault | detail → steer bar. */
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
-import { apiFetch, killSession, decideStackApproval } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal } from "@/lib/api";
+import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -105,6 +107,7 @@ function ago(ts: number | string | undefined): string {
 export default function SessionView({ sessionId }: { sessionId: string }) {
   const { userId } = useDevUser();
   const founderId = userId;
+  const router = useRouter();
   const S = useRef<SState>({
     status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
     decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false,
@@ -314,6 +317,26 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     try { await apiFetch(`${API}/steer/${sessionId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg }) }); } catch {}
   };
   const stop = async () => { if (!confirm("Stop this run?")) return; await killSession(sessionId); S.current.status = "killed"; sseRef.current?.close(); force(); };
+  // TEMP: kill this run, delete it server+local, resubmit the same goal as a fresh run.
+  const killClearRestart = async () => {
+    const goal = S.current.goal;
+    const company = S.current.company || S.current.projectName;
+    const stack = S.current.stackId || "idea_to_revenue";
+    if (!goal) { alert("Can't restart yet — the original goal hasn't loaded. Try again in a moment."); return; }
+    if (!confirm("Kill this run, delete it completely, and restart the SAME goal fresh?")) return;
+    try {
+      sseRef.current?.close();
+      await killSession(sessionId).catch(() => {});
+      await deleteSessionRemote(sessionId).catch(() => {});
+      deleteLocalSession(sessionId);
+      const instruction = company ? `Company/project name: ${company}\n\n${goal}` : goal;
+      const data = await submitGoal(founderId, instruction, {}, stack);
+      if (!data.session_id) throw new Error("No session_id returned");
+      router.push(`/?session=${data.session_id}&founder=${encodeURIComponent(founderId)}`);
+    } catch (e) {
+      alert(`Restart failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
   const pauseToggle = async () => {
     const next = !S.current.paused;
     try {
@@ -424,6 +447,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           <button className="btn sm" style={{ background: st.paused ? "var(--green)" : "var(--surface)", border: "1px solid var(--bd)", color: st.paused ? "#fff" : "var(--fg)" }} onClick={pauseToggle}>{st.paused ? "▶ Resume" : "⏸ Pause"}</button>
           <button className="btn danger sm" onClick={stop}>Stop</button>
         </>}
+        {/* TEMP debug control — kill, delete, and restart the same goal fresh. */}
+        <button className="btn sm" title="Kill + delete this run and restart the same goal" style={{ background: "var(--surface)", border: "1px solid var(--bd)", color: "var(--fg)" }} onClick={killClearRestart}>↻ Restart</button>
       </div>
 
       {/* urgent banner */}
