@@ -222,6 +222,29 @@ async def stack_connector_validation_route(stack_id: str, founder_id: str, reque
     return validate_stack_connectors(founder_id, stack_id, live=live)
 
 
+async def _reconcile_orphaned_agents(session_id: str, reason: str) -> None:
+    """Flip any agent still 'running'/'waiting' to error.
+
+    When a run ends abnormally (top-level exception, kill, cancellation) the
+    orchestrator may not emit a terminal event for in-flight or not-yet-started
+    agents, leaving them frozen in the UI. Emitting agent_error reconciles the
+    state reducer so the dashboard/session view stop showing live spinners.
+    """
+    try:
+        from backend.core.session_store import load_events
+        from backend.workflow_state import build_session_state
+        events = await asyncio.to_thread(load_events, session_id) or []
+        state = build_session_state(session_id, events)
+        for name, ag in (state.get("agents") or {}).items():
+            if (ag or {}).get("status") in ("running", "waiting"):
+                await publish(session_id, {
+                    "type": "agent_error", "agent": name,
+                    "task_id": (ag or {}).get("task_id") or "", "error": reason,
+                })
+    except Exception:
+        pass
+
+
 @router.post("/goal")
 async def submit_goal(body: GoalRequest, request: Request):
     actor_id = require_founder_access(request, body.founder_id, min_role="operator")
@@ -290,12 +313,14 @@ async def submit_goal(body: GoalRequest, request: Request):
             try:
                 from backend.core.session_store import update_session_status
                 update_session_status(session_id, "killed")
+                await _reconcile_orphaned_agents(session_id, "Run stopped by user.")
                 await publish(session_id, {"type": "goal_error", "error": "Run stopped by user.", "killed": True})
             except Exception:
                 pass
         except Exception as e:
             logger.error("goal run error session=%s: %s", session_id, e, exc_info=True)
             try:
+                await _reconcile_orphaned_agents(session_id, "Run failed before this agent completed.")
                 await publish(session_id, {"type": "goal_error", "error": str(e)})
             except Exception:
                 pass
@@ -405,23 +430,9 @@ async def kill_session(session_id: str, request: Request):
         update_session_status(session_id, "killed")
     except Exception:
         pass
-    # Reconcile orphaned agents: hard-cancelling the orchestrator task means its
-    # in-flight agents never emit a terminal event, so they would stay frozen at
-    # "running"/"waiting" in the UI forever. Flip them to error here.
-    try:
-        from backend.core.session_store import load_events
-        from backend.workflow_state import build_session_state
-        events = await asyncio.to_thread(load_events, session_id) or []
-        state = build_session_state(session_id, events)
-        for name, ag in (state.get("agents") or {}).items():
-            if (ag or {}).get("status") in ("running", "waiting"):
-                await publish(session_id, {
-                    "type": "agent_error", "agent": name,
-                    "task_id": (ag or {}).get("task_id") or "",
-                    "error": "Run stopped by user.",
-                })
-    except Exception:
-        pass
+    # Hard-cancelling the orchestrator task means its in-flight agents never emit a
+    # terminal event, so they would stay frozen at "running"/"waiting" forever.
+    await _reconcile_orphaned_agents(session_id, "Run stopped by user.")
     try:
         await publish(session_id, {"type": "goal_error", "error": "Run stopped by user.", "killed": True})
     except Exception:

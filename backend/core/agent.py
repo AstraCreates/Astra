@@ -297,6 +297,7 @@ class Agent:
         # back off. Honors a Retry-After header when the provider sends one.
         import openai as _openai
         import random as _random
+        import json as _json
         _max_attempts = 5
         _t0 = _time.monotonic()
         for _attempt in range(_max_attempts):
@@ -306,9 +307,18 @@ class Agent:
             except Exception as _e:
                 _status = getattr(_e, "status_code", None)
                 _is_rate = isinstance(_e, _openai.RateLimitError) or _status == 429
+                # A malformed/truncated HTTP body (provider returned non-JSON, partial
+                # JSON, or an HTML error page) surfaces as JSONDecodeError / APIError with
+                # no status code. That is a transient provider glitch, not a fatal bug —
+                # retrying usually succeeds. Without this, one bad response killed the
+                # entire run (every downstream agent orphaned).
+                _is_badbody = isinstance(_e, (_json.JSONDecodeError, _openai.APIResponseValidationError)) or (
+                    isinstance(_e, _openai.APIError) and _status is None
+                )
                 _is_transient = (
                     isinstance(_e, (_openai.APITimeoutError, _openai.APIConnectionError))
                     or (isinstance(_status, int) and _status >= 500)
+                    or _is_badbody
                 )
                 if _attempt == _max_attempts - 1 or not (_is_rate or _is_transient):
                     raise
