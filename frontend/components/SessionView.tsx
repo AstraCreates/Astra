@@ -233,6 +233,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   }, [sessionId, founderId, handleEvent]);
 
   const decide = async (key: string, decision: "approved" | "skipped" | "rejected") => {
+    if (!key) { alert("This approval is missing its gate key — refresh the page (Cmd+Shift+R) and try again."); return; }
     const snapshot = S.current.approvals;
     S.current.decidedKeys.add(key);
     S.current.approvals = S.current.approvals.filter((a) => a.gate_key !== key);
