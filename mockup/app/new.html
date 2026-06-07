@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Astra — New Goal</title>
+<link rel="stylesheet" href="astra.css"/>
+<style>
+.new-wrap{max-width:680px;margin:0 auto;padding:36px 24px}
+.new-title{font-family:'Chakra Petch',sans-serif;font-size:22px;font-weight:700;letter-spacing:.03em;margin-bottom:6px}
+.new-sub{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--fd);margin-bottom:32px;line-height:1.6}
+.stack-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.stack-card{padding:14px 16px;background:var(--s2);border:1px solid var(--bd2);cursor:pointer;
+  transition:border-color .12s,background .12s}
+.stack-card:hover{border-color:var(--bb);background:var(--bdim)}
+.stack-card.sel{border-color:var(--blue);background:var(--bdim)}
+.stack-card-name{font-family:'Chakra Petch',sans-serif;font-size:12px;font-weight:700;letter-spacing:.04em;margin-bottom:3px}
+.stack-card-desc{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--fd);line-height:1.5}
+.stack-card-agents{font-size:9.5px;color:var(--blue);font-family:'IBM Plex Mono',monospace;margin-top:6px;letter-spacing:.03em}
+.submit-row{display:flex;align-items:center;gap:10px;margin-top:24px}
+.char-count{font-size:10px;color:var(--fm);font-family:'IBM Plex Mono',monospace}
+.loading-overlay{position:fixed;inset:0;background:rgba(255,255,255,.8);display:none;
+  align-items:center;justify-content:center;flex-direction:column;gap:14px;z-index:999}
+.loading-overlay.show{display:flex}
+.loading-title{font-family:'Chakra Petch',sans-serif;font-size:16px;font-weight:700;letter-spacing:.04em;color:var(--fg)}
+.loading-sub{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--fd)}
+.loading-ring{width:36px;height:36px;border:3px solid var(--bdim);border-top-color:var(--blue);
+  border-radius:50%;animation:spin 1s linear infinite}
+
+/* No stack option */
+.stack-card.auto{border-style:dashed}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- NAV -->
+<nav class="appnav">
+  <div class="an-brand">
+    <div class="an-logo-row">
+      <div class="an-logo"><div class="an-logo-inner">A</div></div>
+      <div>
+        <div class="an-name">Astra</div>
+        <div class="an-sub">ready</div>
+      </div>
+    </div>
+    <a href="new.html" class="an-new">＋ &nbsp;New goal</a>
+  </div>
+  <div class="an-nav">
+    <a href="index.html" class="an-item"><span class="an-ic">⬡</span> Dashboard</a>
+    <a href="#" class="an-item"><span class="an-ic">✦</span> Outreach</a>
+    <a href="#" class="an-item"><span class="an-ic">◈</span> Company Brain</a>
+    <div class="an-sep"></div>
+    <a href="#" class="an-item"><span class="an-ic">⌘</span> Integrations</a>
+    <a href="#" class="an-item"><span class="an-ic">$</span> Payments</a>
+  </div>
+  <div class="an-sep"></div>
+  <div class="an-bottom">
+    <a href="#" class="an-item"><span class="an-ic">⚙</span> Settings</a>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <a href="index.html" class="btn" style="font-size:12px;padding:4px 0;border:none;color:var(--fm)">← Back</a>
+    <div class="topbar-title">New goal</div>
+    <div class="topbar-r">
+      <div class="av" id="avInitial">?</div>
+    </div>
+  </div>
+
+  <div style="flex:1;overflow-y:auto">
+    <div class="new-wrap">
+      <div class="new-title">What do you want to build?</div>
+      <div class="new-sub">Tell Astra your goal in plain English. The more specific, the better.<br/>
+        Example: "Build a SaaS app for freelancers to track invoices and payments"</div>
+
+      <div class="form-field">
+        <label class="form-label">Your goal</label>
+        <textarea class="form-textarea" id="goalInput" rows="5"
+          placeholder="Describe what you want to build, launch, or research. Include your target customer and any important constraints…"
+          oninput="onGoalInput()"></textarea>
+        <div class="form-hint"><span id="charCount">0</span> characters · aim for 50–300</div>
+      </div>
+
+      <div class="form-field">
+        <label class="form-label">Stack — how much do you want Astra to do?</label>
+        <div class="stack-grid" id="stackGrid">
+          <div class="stack-card auto sel" data-id="" onclick="selectStack(this)">
+            <div class="stack-card-name">Auto-select</div>
+            <div class="stack-card-desc">Astra picks the right agents for your goal automatically. Recommended for most cases.</div>
+            <div class="stack-card-agents">Recommended</div>
+          </div>
+        </div>
+        <div class="form-hint" id="stackHint" style="margin-top:8px">Loading available stacks…</div>
+      </div>
+
+      <div id="errMsg" class="err-banner" style="display:none;margin-bottom:16px"></div>
+
+      <div class="submit-row">
+        <button class="btn primary" onclick="submitGoal()" id="submitBtn">Launch Astra →</button>
+        <a href="index.html" class="btn">Cancel</a>
+        <span class="char-count" id="validNote"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-ring"></div>
+  <div class="loading-title">Launching your goal</div>
+  <div class="loading-sub">Astra is spinning up agents…</div>
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+const founderId = localStorage.getItem('astra_founder_id') || 'demo-founder';
+let selectedStackId = '';  // empty = auto
+
+document.getElementById('avInitial').textContent =
+  founderId ? founderId.replace('user_','').slice(0,2).toUpperCase() : '?';
+
+function onGoalInput() {
+  const val = document.getElementById('goalInput').value;
+  document.getElementById('charCount').textContent = val.length;
+  document.getElementById('validNote').textContent =
+    val.length < 20 ? 'Please describe your goal in more detail' :
+    val.length > 1000 ? 'Try to keep it under 1000 characters' : '';
+}
+
+function selectStack(el) {
+  document.querySelectorAll('.stack-card').forEach(c => c.classList.remove('sel'));
+  el.classList.add('sel');
+  selectedStackId = el.dataset.id;
+}
+
+async function loadStacks() {
+  try {
+    const res = await fetch(`${API}/stacks`);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const stacks = data.stacks || [];
+    const grid = document.getElementById('stackGrid');
+
+    stacks.forEach(s => {
+      const agentList = Array.isArray(s.agents) ? s.agents : [];
+      const card = document.createElement('div');
+      card.className = 'stack-card';
+      card.dataset.id = s.id;
+      card.onclick = () => selectStack(card);
+      card.innerHTML = `
+        <div class="stack-card-name">${escHtml(s.name || s.id)}</div>
+        <div class="stack-card-desc">${escHtml(s.description || '')}</div>
+        ${agentList.length ? `<div class="stack-card-agents">${agentList.length} agents</div>` : ''}
+      `;
+      grid.appendChild(card);
+    });
+
+    document.getElementById('stackHint').textContent =
+      stacks.length ? `${stacks.length} stack${stacks.length>1?'s':''} available` : 'Using auto-select';
+  } catch {
+    document.getElementById('stackHint').textContent = 'Could not load stacks — auto-select will be used';
+  }
+}
+
+async function submitGoal() {
+  const goal = document.getElementById('goalInput').value.trim();
+  if (goal.length < 10) {
+    showErr('Please describe your goal in at least a few words');
+    return;
+  }
+  if (!founderId) {
+    showErr('Please set your user ID first — go back to the Dashboard');
+    return;
+  }
+
+  document.getElementById('loadingOverlay').classList.add('show');
+  document.getElementById('submitBtn').disabled = true;
+  hideErr();
+
+  try {
+    const body = {
+      founder_id: founderId,
+      instruction: goal,
+    };
+    if (selectedStackId) body.stack_id = selectedStackId;
+
+    const res = await fetch(`${API}/goal`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-astra-user-id': founderId,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    const sessionId = data.session_id;
+    if (!sessionId) throw new Error('No session_id returned from server');
+
+    location.href = `session.html?id=${sessionId}`;
+  } catch (err) {
+    document.getElementById('loadingOverlay').classList.remove('show');
+    document.getElementById('submitBtn').disabled = false;
+    showErr(`Failed to start goal: ${err.message}`);
+  }
+}
+
+function showErr(msg) {
+  const el = document.getElementById('errMsg');
+  el.textContent = '⚠ ' + msg;
+  el.style.display = 'flex';
+}
+function hideErr() {
+  document.getElementById('errMsg').style.display = 'none';
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+loadStacks();
+</script>
+</body>
+</html>

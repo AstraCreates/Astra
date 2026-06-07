@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Astra — Mockup v8</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#eeeeee;
+  --surface:#ffffff;
+  --s2:#f6f6f6;
+  --s3:#f0f0f0;
+  --bd:rgba(0,0,0,0.09);
+  --bd2:rgba(0,0,0,0.15);
+
+  --fg:#0a0a0a;
+  --fd:#666666;
+  --fm:#aaaaaa;
+
+  --blue:#2b45ff;
+  --bdim:rgba(43,69,255,0.08);
+  --bb:rgba(43,69,255,0.28);
+  --bglow:rgba(43,69,255,0.18);
+
+  --green:#16a34a;--gdim:rgba(22,163,74,0.08);--gb:rgba(22,163,74,0.25);
+  --amber:#d97706;--adim:rgba(217,119,6,0.08);--ab:rgba(217,119,6,0.25);
+  --red:#dc2626;--rdim:rgba(220,38,38,0.07);--rb:rgba(220,38,38,0.25);
+}
+
+body{font-family:'IBM Plex Mono',monospace;background:var(--bg);color:var(--fg);
+  height:100vh;display:flex;overflow:hidden;font-size:12.5px;line-height:1.4;
+  animation:pageIn .5s cubic-bezier(.22,1,.36,1) both}
+@keyframes pageIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* Orbital ring decorations (light mode — dark-tinted) */
+.main::before{content:'';position:fixed;top:-120px;right:-140px;width:640px;height:640px;
+  border-radius:50%;border:1px solid rgba(43,69,255,0.08);pointer-events:none;z-index:0}
+.main::after{content:'';position:fixed;top:40px;right:20px;width:400px;height:400px;
+  border-radius:50%;border:1px solid rgba(43,69,255,0.05);pointer-events:none;z-index:0}
+
+/* ── APP NAV ── */
+.appnav{width:208px;flex-shrink:0;display:flex;flex-direction:column;
+  background:var(--surface);border-right:1px solid var(--bd);height:100vh;
+  position:relative;z-index:2;box-shadow:2px 0 12px rgba(0,0,0,.04)}
+
+.an-brand{padding:20px 16px 16px;border-bottom:1px solid var(--bd)}
+.an-logo-row{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.an-logo{width:28px;height:28px;background:var(--blue);display:flex;align-items:center;
+  justify-content:center;flex-shrink:0;
+  clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);
+  box-shadow:0 0 20px var(--bglow)}
+.an-logo-inner{font-family:'Chakra Petch',sans-serif;font-size:12px;font-weight:700;color:#fff;margin-left:1px}
+.an-name{font-family:'Chakra Petch',sans-serif;font-size:16px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--fg)}
+.an-sub{font-size:9px;color:var(--blue);display:flex;align-items:center;gap:5px;
+  font-family:'IBM Plex Mono',monospace;margin-top:2px;letter-spacing:.06em;text-transform:uppercase}
+.an-sub::before{content:'';width:4px;height:4px;background:var(--blue);flex-shrink:0;box-shadow:0 0 6px var(--blue)}
+
+.an-newgoal{display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:8px 12px;border:1px solid var(--bd2);
+  color:var(--fd);font-size:11px;font-weight:500;font-family:'Chakra Petch',sans-serif;
+  cursor:pointer;background:transparent;width:100%;letter-spacing:.05em;text-transform:uppercase;
+  transition:border-color .15s,color .15s}
+.an-newgoal:hover{border-color:var(--blue);color:var(--blue)}
+
+.an-nav{display:flex;flex-direction:column;gap:1px;padding:10px 8px;flex:1;overflow-y:auto}
+.an-item{display:flex;align-items:center;gap:10px;padding:9px 10px;
+  font-family:'Chakra Petch',sans-serif;font-size:12px;font-weight:500;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--fm);cursor:pointer;position:relative;
+  border-left:2px solid transparent;transition:color .12s,background .12s,border-color .12s}
+.an-item:hover{color:var(--fd);background:rgba(0,0,0,.03)}
+.an-item.active{color:var(--fg);border-left-color:var(--blue);background:rgba(43,69,255,0.06)}
+.an-ic{font-size:13px;width:18px;text-align:center;flex-shrink:0;line-height:1}
+.an-badge{margin-left:auto;min-width:18px;height:18px;background:var(--blue);
+  color:#fff;font-size:9px;font-family:'IBM Plex Mono',monospace;font-weight:500;
+  display:flex;align-items:center;justify-content:center;padding:0 5px;letter-spacing:0}
+.an-sep{height:1px;background:var(--bd);margin:6px 8px}
+.an-bottom{padding:0 8px 14px;display:flex;flex-direction:column;gap:1px}
+
+/* ── MAIN ── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;position:relative}
+
+/* Topbar */
+.topbar{height:46px;display:flex;align-items:center;gap:10px;padding:0 18px;
+  border-bottom:1px solid var(--bd);background:var(--surface);
+  flex-shrink:0;position:relative;z-index:2;box-shadow:0 1px 8px rgba(0,0,0,.05)}
+.topbar-title{font-family:'Chakra Petch',sans-serif;font-size:15px;font-weight:700;letter-spacing:.04em;color:var(--fg)}
+
+/* Demo segmented control — lives in topbar */
+.demo-seg{display:flex;border:1px solid var(--bd2);overflow:hidden;margin-left:10px;flex-shrink:0}
+.ds-btn{font-family:'Chakra Petch',sans-serif;font-size:9px;font-weight:600;
+  letter-spacing:.07em;text-transform:uppercase;padding:4px 11px;cursor:pointer;
+  border:none;border-right:1px solid var(--bd2);background:transparent;
+  color:var(--fm);transition:all .12s;white-space:nowrap}
+.ds-btn:last-child{border-right:none}
+.ds-btn:hover{background:var(--s2);color:var(--fd)}
+.ds-btn.on{background:var(--blue);color:#fff}
+.ds-btn.on.danger{background:var(--red)!important}
+
+.pill{font-size:10px;font-family:'IBM Plex Mono',monospace;
+  padding:3px 10px;border:1px solid var(--bd2);color:var(--fd);letter-spacing:.04em}
+.pill.blue{background:var(--bdim);border-color:var(--bb);color:var(--blue)}
+.pill.green{background:var(--gdim);border-color:var(--gb);color:var(--green)}
+.pill.amber{background:var(--adim);border-color:var(--ab);color:var(--amber)}
+.pill.red{background:var(--rdim);border-color:var(--rb);color:var(--red)}
+
+.topbar-r{margin-left:auto;display:flex;align-items:center;gap:10px}
+.btn{font-family:'Chakra Petch',sans-serif;font-size:10px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;padding:5px 12px;cursor:pointer;
+  border:1px solid var(--bd2);background:transparent;color:var(--fd);transition:all .12s}
+.btn:hover{border-color:var(--bd2);color:var(--fg)}
+.btn.blue{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn.red{background:var(--rdim);color:var(--red);border-color:var(--rb)}
+.av{width:26px;height:26px;background:var(--blue);display:flex;align-items:center;justify-content:center;
+  font-family:'Chakra Petch',sans-serif;font-size:10px;font-weight:700;letter-spacing:.04em;color:#fff}
+
+/* ── URGENT APPROVAL BANNER ── */
+#urgentBanner{display:none;background:var(--red);flex-shrink:0;position:relative;z-index:3}
+#urgentBanner.show{display:flex;animation:slideDown .25s cubic-bezier(.22,1,.36,1) both}
+@keyframes slideDown{from{opacity:0;transform:translateY(-100%)}to{opacity:1;transform:none}}
+.urgent-inner{display:flex;align-items:center;gap:14px;padding:12px 22px;width:100%}
+.urgent-pulse{width:10px;height:10px;border-radius:50%;background:#fff;flex-shrink:0;
+  animation:upulse 1.2s ease-in-out infinite}
+@keyframes upulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(255,255,255,.5)}
+  50%{opacity:.8;box-shadow:0 0 0 8px rgba(255,255,255,0)}}
+.urgent-text{flex:1}
+.urgent-title{font-family:'Chakra Petch',sans-serif;font-size:14px;font-weight:700;
+  letter-spacing:.03em;color:#fff}
+.urgent-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;color:rgba(255,255,255,.75);margin-top:2px}
+.urgent-dismiss{font-family:'Chakra Petch',sans-serif;font-size:9px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;padding:5px 12px;
+  background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.35);
+  color:#fff;cursor:pointer;transition:background .12s;flex-shrink:0}
+.urgent-dismiss:hover{background:rgba(255,255,255,.3)}
+
+/* ── PHASE BAR ── */
+.phasebar{display:flex;align-items:center;padding:0 22px;
+  border-bottom:1px solid var(--bd);flex-shrink:0;overflow-x:auto;
+  height:42px;position:relative;z-index:2;background:var(--surface)}
+.ph{display:flex;align-items:center;gap:8px;padding:0 12px;
+  font-family:'Chakra Petch',sans-serif;font-size:10.5px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;
+  cursor:default;color:var(--fm);position:relative;height:42px}
+.ph::after{content:'';position:absolute;bottom:0;left:12px;right:12px;height:2px;background:transparent}
+.ph.done{color:var(--green)}.ph.done::after{background:var(--green)}
+.ph.active{color:var(--fg)}.ph.active::after{background:var(--blue)}
+.ph.gate{color:var(--amber)}.ph.gate::after{background:var(--amber)}
+.ph-node{width:6px;height:6px;flex-shrink:0;background:currentColor}
+.ph.active .ph-node{background:var(--blue);box-shadow:0 0 8px var(--blue);animation:bpulse 2s ease-in-out infinite}
+@keyframes bpulse{0%,100%{box-shadow:0 0 0 0 rgba(43,69,255,.5)}50%{box-shadow:0 0 0 6px rgba(43,69,255,0)}}
+.ph-div{width:1px;height:16px;background:var(--bd2);flex-shrink:0}
+
+/* ── WORKSPACE BODY ── */
+.body{display:flex;flex:1;overflow:hidden;position:relative;z-index:1}
+
+/* Artifact vault */
+.artvault{width:168px;flex-shrink:0;border-right:1px solid var(--bd);
+  background:var(--surface);overflow-y:auto;padding:12px 6px;display:flex;flex-direction:column}
+.av-sec{font-family:'Chakra Petch',sans-serif;font-size:9px;font-weight:700;
+  color:var(--fm);text-transform:uppercase;letter-spacing:.14em;padding:10px 8px 5px}
+.av-sec:first-child{padding-top:0}
+.av-status{font-size:9px;font-family:'IBM Plex Mono',monospace;padding:5px 8px 3px;display:flex;align-items:center;gap:5px}
+.av-art{display:flex;align-items:center;gap:7px;font-size:10.5px;
+  font-family:'IBM Plex Mono',monospace;color:var(--fd);
+  padding:5px 8px;cursor:pointer;line-height:1.25;transition:background .1s,color .1s}
+.av-art:hover{background:rgba(0,0,0,.04);color:var(--fg)}
+.av-art.sel{background:var(--bdim);color:var(--blue)}
+.av-art.dim{color:var(--fm);cursor:default}
+.av-art.dim:hover{background:none;color:var(--fm)}
+.adot{width:4px;height:4px;flex-shrink:0}
+.adot.ready{background:var(--green)}
+.adot.live{background:var(--amber);animation:blink 1.2s ease-in-out infinite}
+.adot.pend{background:var(--fm)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+
+/* Center */
+.center{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* Status bar */
+.statusbar{display:flex;align-items:center;gap:14px;padding:9px 22px;
+  border-bottom:1px solid var(--bd);font-size:10.5px;
+  font-family:'IBM Plex Mono',monospace;color:var(--fm);
+  flex-shrink:0;flex-wrap:wrap;background:var(--s2)}
+.sv{font-weight:500}
+.sv.blue{color:var(--blue)}.sv.green{color:var(--green)}
+.sv.amber{color:var(--amber)}.sv.red{color:var(--red)}
+.s-sep{width:1px;height:10px;background:var(--bd2)}
+.pulse{width:6px;height:6px;background:var(--blue);flex-shrink:0;animation:bpulse 2s ease-in-out infinite}
+
+/* Dept cards */
+.depts{display:flex;gap:8px;padding:14px 18px;
+  border-bottom:1px solid var(--bd);overflow-x:auto;flex-shrink:0;background:var(--bg)}
+.dc{border:1px solid var(--bd);background:var(--surface);
+  padding:13px 15px;cursor:pointer;min-width:148px;flex:1;
+  display:flex;flex-direction:column;gap:9px;position:relative;overflow:hidden;
+  transition:border-color .15s,background .15s,box-shadow .15s;
+  animation:cardIn .4s cubic-bezier(.22,1,.36,1) both}
+@keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.dc:nth-child(1){animation-delay:.06s}
+.dc:nth-child(2){animation-delay:.12s}
+.dc:nth-child(3){animation-delay:.18s}
+.dc:nth-child(4){animation-delay:.24s}
+.dc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.dc.run::before{background:var(--blue)}
+.dc.done::before{background:var(--green)}
+.dc.que::before{background:var(--fm);opacity:.4}
+.dc.run::after{content:'';position:absolute;top:2px;left:-80%;width:40%;bottom:0;
+  background:linear-gradient(90deg,transparent,rgba(43,69,255,0.05),transparent);
+  animation:scan 2.8s ease-in-out infinite}
+@keyframes scan{0%{left:-40%}100%{left:120%}}
+.dc:hover{background:var(--s2);box-shadow:0 2px 12px rgba(0,0,0,.06)}
+.dc.run{border-color:rgba(43,69,255,0.22)}
+.dc.done{border-color:rgba(22,163,74,0.18)}
+.dc.que{opacity:.45;cursor:default}
+.dc.sel{border-color:rgba(43,69,255,.4)!important;background:var(--s2);box-shadow:0 2px 14px rgba(43,69,255,.08)}
+.dc-top{display:flex;align-items:center;gap:8px}
+.dc-icon{font-size:16px;line-height:1;flex-shrink:0}
+.dc-name{font-family:'Chakra Petch',sans-serif;font-size:13px;font-weight:700;letter-spacing:.04em;flex:1;color:var(--fg)}
+.dc-badge{font-family:'IBM Plex Mono',monospace;font-size:9px;padding:2px 6px;flex-shrink:0;letter-spacing:.04em;border:1px solid}
+.dc-badge.run{background:var(--bdim);color:var(--blue);border-color:var(--bb)}
+.dc-badge.done{background:var(--gdim);color:var(--green);border-color:var(--gb)}
+.dc-badge.que{background:rgba(0,0,0,.04);color:var(--fm);border-color:var(--bd)}
+.dc-what{font-size:10.5px;color:var(--fd);line-height:1.5;font-family:'IBM Plex Mono',monospace}
+.dc-progress{height:1px;background:rgba(0,0,0,.07)}
+.dc-bar{height:100%;transition:width .9s cubic-bezier(.22,1,.36,1)}
+
+/* Detail panel */
+.detail{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.dtabs{display:flex;padding:0 22px;border-bottom:1px solid var(--bd);flex-shrink:0;background:var(--surface)}
+.dtab{font-family:'Chakra Petch',sans-serif;font-size:10.5px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;
+  color:var(--fm);padding:10px 14px;cursor:pointer;
+  border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;transition:color .12s}
+.dtab:hover{color:var(--fd)}
+.dtab.on{color:var(--fg);border-bottom-color:var(--blue)}
+.dscroll{flex:1;overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:12px}
+
+.sec-label{font-family:'Chakra Petch',sans-serif;font-size:9px;font-weight:700;
+  color:var(--fm);text-transform:uppercase;letter-spacing:.14em;margin-bottom:6px}
+
+/* Browser */
+.browser{overflow:hidden;border:1px solid var(--bd2)}
+.bbar{display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--s2);border-bottom:1px solid var(--bd)}
+.burl{flex:1;font-size:9.5px;color:var(--fm);background:var(--surface);
+  padding:3px 8px;border:1px solid var(--bd);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'IBM Plex Mono',monospace}
+.bframe{background:#fff;height:230px;position:relative}
+.bframe iframe{width:100%;height:100%;border:none;display:block}
+.boverlay{position:absolute;bottom:0;left:0;right:0;height:40px;
+  background:linear-gradient(transparent,rgba(246,246,246,.9));pointer-events:none}
+
+/* URL list */
+.url-list{display:flex;flex-direction:column;gap:3px}
+.url-item{display:flex;align-items:center;gap:8px;padding:6px 10px;
+  background:var(--surface);border:1px solid var(--bd);
+  font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--fd);text-decoration:none;transition:border-color .12s}
+.url-item:hover{border-color:var(--bb)}
+
+/* Palette */
+.palette{display:flex;gap:8px;flex-wrap:wrap}
+.sw-col{display:flex;flex-direction:column;gap:4px;align-items:center}
+.swatch{width:42px;height:42px;border:1px solid rgba(0,0,0,.1)}
+.swhex{font-size:9px;color:var(--fm);font-family:'IBM Plex Mono',monospace}
+
+/* Insight grid */
+.insight-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.insight{padding:11px 14px;background:var(--surface);border:1px solid var(--bd2);box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.insight-val{font-family:'Chakra Petch',sans-serif;font-size:22px;font-weight:700;color:var(--fg);letter-spacing:-.02em}
+.insight-lbl{font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--fm);margin-top:3px;letter-spacing:.03em}
+
+/* Progress list */
+.prog-list{display:flex;flex-direction:column;gap:4px}
+.prog-item{display:flex;align-items:center;gap:10px;padding:8px 11px;background:var(--surface);border:1px solid var(--bd)}
+.prog-item.done{background:var(--gdim);border-color:var(--gb)}
+.prog-item.active{background:var(--bdim);border-color:var(--bb)}
+.prog-ic{font-size:11px;flex-shrink:0;width:16px;text-align:center;font-family:'IBM Plex Mono',monospace;color:var(--fd)}
+.prog-item.done .prog-ic{color:var(--green)}
+.prog-item.active .prog-ic{color:var(--blue)}
+.prog-label{flex:1;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--fd)}
+.prog-item.done .prog-label{color:var(--green)}
+.prog-item.active .prog-label{color:var(--fg)}
+.prog-tag{font-size:9px;font-weight:500;flex-shrink:0;font-family:'Chakra Petch',sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--fm)}
+.prog-item.done .prog-tag{color:var(--green)}
+.prog-item.active .prog-tag{color:var(--blue)}
+
+/* Log */
+.log-stream{display:flex;flex-direction:column;gap:4px}
+.le{display:flex;gap:10px;padding:5px 0;border-bottom:1px solid rgba(0,0,0,.04)}
+.le-ic{flex-shrink:0;font-size:12px;margin-top:2px;width:16px;text-align:center}
+.le-lbl{font-family:'Chakra Petch',sans-serif;font-size:8.5px;font-weight:700;color:var(--fm);text-transform:uppercase;letter-spacing:.12em;margin-bottom:2px}
+.le-txt{font-family:'IBM Plex Mono',monospace;font-size:10.5px;line-height:1.55;color:var(--fd)}
+.le.think .le-txt{color:#6d5fd0;font-style:italic}
+.le.tool .le-txt{color:var(--blue)}
+.le.ok .le-txt{color:var(--green)}
+.spin{animation:spin 1s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Artifact */
+.art-content{background:var(--surface);border:1px solid var(--bd2);padding:15px 17px;
+  font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--fd);
+  line-height:1.8;white-space:pre-wrap;max-height:420px;overflow-y:auto}
+.art-actions{display:flex;gap:7px;flex-wrap:wrap}
+.art-btn{font-family:'Chakra Petch',sans-serif;font-size:10px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;padding:6px 13px;cursor:pointer;
+  border:1px solid var(--bd2);background:transparent;color:var(--fd);transition:all .12s}
+.art-btn:hover{border-color:var(--bb);color:var(--blue)}
+.art-btn.pri{background:var(--blue);color:#fff;border-color:var(--blue)}
+
+/* Approval — full prominence */
+.apv{border:2px solid var(--red);background:#fff;display:flex;flex-direction:column;gap:12px;
+  box-shadow:0 4px 32px rgba(220,38,38,0.12)}
+.apv-header{background:var(--red);padding:14px 18px;display:flex;align-items:center;gap:12px}
+.apv-title{font-family:'Chakra Petch',sans-serif;font-size:14px;font-weight:700;letter-spacing:.03em;color:#fff}
+.apv-meta{font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:rgba(255,255,255,.7);margin-top:3px}
+.apv-body-wrap{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.apv-body{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--fd);line-height:1.65}
+.apv-acts{display:flex;gap:8px;flex-wrap:wrap}
+.btn-ok{font-family:'Chakra Petch',sans-serif;font-size:11px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;padding:9px 18px;
+  background:var(--green);color:#fff;border:none;cursor:pointer;transition:opacity .12s}
+.btn-ok:hover{opacity:.88}
+.btn-sk{font-family:'Chakra Petch',sans-serif;font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;padding:8px 14px;
+  background:transparent;color:var(--fm);border:1px solid var(--bd2);cursor:pointer}
+.btn-vw{font-family:'Chakra Petch',sans-serif;font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;padding:8px 14px;
+  background:transparent;color:var(--blue);border:1px solid var(--bb);cursor:pointer}
+
+/* Gate */
+.gate{border:1px solid var(--ab);background:var(--surface);box-shadow:0 2px 12px rgba(0,0,0,.05)}
+.gate-hd{padding:15px 17px;border-bottom:1px solid var(--ab);background:rgba(217,119,6,0.06)}
+.gate-title{font-family:'Chakra Petch',sans-serif;font-size:15px;font-weight:700;letter-spacing:.04em;color:var(--amber)}
+.gate-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--fm);margin-top:4px;letter-spacing:.03em}
+.gate-body{padding:10px 17px;display:flex;flex-direction:column;gap:6px}
+.gate-art{display:flex;align-items:flex-start;gap:10px;padding:8px 11px;background:var(--s2);border:1px solid var(--bd)}
+.gate-art.pass{background:var(--gdim);border-color:var(--gb)}
+.gate-art.warn{background:var(--adim);border-color:var(--ab)}
+.gate-ft{padding:11px 17px;border-top:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;gap:12px}
+
+/* Chat */
+.chatbar{border-top:1px solid var(--bd);background:var(--surface);padding:10px 18px;flex-shrink:0}
+.chat-wrap{display:flex;align-items:center;gap:10px;background:var(--s2);
+  border:1px solid var(--bd2);padding:8px 13px;transition:border-color .15s,box-shadow .15s}
+.chat-wrap:focus-within{border-color:var(--bb);box-shadow:0 0 0 3px rgba(43,69,255,0.06)}
+.chat-input{flex:1;background:none;border:none;outline:none;color:var(--fg);
+  font-size:11.5px;font-family:'IBM Plex Mono',monospace}
+.chat-input::placeholder{color:var(--fm)}
+.chat-send{width:26px;height:26px;background:var(--blue);border:none;cursor:pointer;
+  color:#fff;font-size:13px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 10px var(--bglow)}
+
+/* Alt page */
+.altpage{flex:1;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px;color:var(--fm)}
+.altpage-icon{font-size:32px;opacity:.12}
+
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
+</style>
+</head>
+<body>
+
+<!-- APP NAV -->
+<div class="appnav">
+  <div class="an-brand">
+    <div class="an-logo-row">
+      <div class="an-logo"><div class="an-logo-inner">A</div></div>
+      <div>
+        <div class="an-name">Astra</div>
+        <div class="an-sub">ready</div>
+      </div>
+    </div>
+    <button class="an-newgoal">＋ &nbsp;New goal</button>
+  </div>
+
+  <div class="an-nav">
+    <div class="an-item active" onclick="navTo(this,'run')">
+      <span class="an-ic">⬡</span> Dashboard
+      <span class="an-badge">2</span>
+    </div>
+    <div class="an-item" onclick="navTo(this,'outreach')">
+      <span class="an-ic">✦</span> Outreach
+    </div>
+    <div class="an-item" onclick="navTo(this,'brain')">
+      <span class="an-ic">◈</span> Company Brain
+    </div>
+    <div class="an-sep"></div>
+    <div class="an-item" onclick="navTo(this,'integrations')">
+      <span class="an-ic">⌘</span> Integrations
+    </div>
+    <div class="an-item" onclick="navTo(this,'payments')">
+      <span class="an-ic">$</span> Payments
+    </div>
+  </div>
+
+  <div class="an-sep"></div>
+  <div class="an-bottom">
+    <div class="an-item" onclick="navTo(this,'settings')">
+      <span class="an-ic">⚙</span> Settings
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title">ClearNotes</div>
+    <!-- Demo state switcher — now in topbar -->
+    <div class="demo-seg">
+      <button class="ds-btn on" id="ds0" onclick="setState('running',this)">① Running</button>
+      <button class="ds-btn" id="ds1" onclick="setState('approval',this)">② Approval needed</button>
+      <button class="ds-btn" id="ds2" onclick="setState('gate',this)">③ Phase complete</button>
+    </div>
+    <div class="topbar-r">
+      <div class="pill blue" id="topStatus">2 agents working</div>
+      <button class="btn red">Stop run</button>
+      <div class="av">JH</div>
+    </div>
+  </div>
+
+  <!-- Urgent approval banner — hidden by default -->
+  <div id="urgentBanner">
+    <div class="urgent-inner">
+      <div class="urgent-pulse"></div>
+      <div class="urgent-text">
+        <div class="urgent-title">Action Required — Astra has paused and is waiting for you</div>
+        <div class="urgent-sub">Your legal agent wants to publish a draft contract. Scroll down to approve or skip.</div>
+      </div>
+      <button class="urgent-dismiss" onclick="this.parentElement.parentElement.classList.remove('show')">Dismiss</button>
+    </div>
+  </div>
+
+  <div class="altpage" id="altPage">
+    <div class="altpage-icon" id="altIcon">✦</div>
+    <div style="font-family:'Chakra Petch',sans-serif;font-size:14px;font-weight:700;letter-spacing:.04em;color:var(--fd)" id="altLabel">Outreach</div>
+    <div style="font-size:10px;margin-top:4px;letter-spacing:.04em">not mocked — go back to Dashboard</div>
+  </div>
+
+  <div id="ws" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+    <div class="phasebar" id="phaseBar"></div>
+
+    <div class="body">
+      <!-- Artifact vault -->
+      <div class="artvault">
+        <div class="av-sec">Deliverables</div>
+
+        <div class="av-status" style="color:var(--green)"><span style="width:4px;height:4px;background:var(--green);flex-shrink:0"></span> Done</div>
+        <div class="av-art" onclick="selArt('market_brief')"><div class="adot ready"></div>Market Brief</div>
+        <div class="av-art" onclick="selArt('icp')"><div class="adot ready"></div>ICP Brief</div>
+        <div class="av-art" onclick="selArt('pricing')"><div class="adot ready"></div>Pricing Plan</div>
+        <div class="av-art" onclick="selArt('brand')"><div class="adot ready"></div>Brand Direction</div>
+
+        <div class="av-status" style="color:var(--amber)"><span style="width:4px;height:4px;background:var(--amber);flex-shrink:0;animation:blink 1.2s ease-in-out infinite"></span> In progress</div>
+        <div class="av-art" onclick="selArt('mvp')"><div class="adot live"></div>App Roadmap</div>
+        <div class="av-art" onclick="selArt('tech_plan')"><div class="adot live"></div>Tech Plan</div>
+
+        <div class="av-status" style="color:var(--fm)"><span style="width:4px;height:4px;background:var(--fm);flex-shrink:0"></span> Coming up</div>
+        <div class="av-art dim"><div class="adot pend"></div>Website Copy</div>
+        <div class="av-art dim"><div class="adot pend"></div>Legal Checklist</div>
+        <div class="av-art dim"><div class="adot pend"></div>Landing Page</div>
+        <div class="av-art dim"><div class="adot pend"></div>Email Sequence</div>
+        <div class="av-art dim"><div class="adot pend"></div>GTM Plan</div>
+        <div class="av-art dim"><div class="adot pend"></div>Investor Memo</div>
+      </div>
+
+      <div class="center">
+        <div class="statusbar" id="statusBar">
+          <div class="pulse"></div>
+          <span class="sv blue">2</span> agents working
+          <div class="s-sep"></div>
+          <span class="sv green">4</span> deliverables ready
+          <div class="s-sep"></div>
+          <span class="sv" style="color:var(--fd)">6</span> more coming
+          <div class="s-sep"></div>
+          About 22 min left
+        </div>
+
+        <div class="depts" id="deptRow"></div>
+
+        <div class="detail">
+          <div class="dtabs" id="dtabs"></div>
+          <div class="dscroll" id="dscroll"></div>
+        </div>
+
+        <div class="chatbar">
+          <div class="chat-wrap">
+            <input class="chat-input" placeholder='Ask Astra anything — "what did Research find?" · "focus on the technical side" · "skip legal for now"'/>
+            <button class="chat-send">↑</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PHASES=[
+  {id:'discover',label:'Discover',s:'done'},
+  {id:'blueprint',label:'Blueprint',s:'active'},
+  {id:'build',label:'Build',s:'locked'},
+  {id:'launch',label:'Launch',s:'locked'},
+  {id:'scale',label:'Scale',s:'locked'},
+];
+
+const DEPTS={
+  research:{
+    name:'Research',icon:'🔬',status:'done',
+    what:'Found 34 sources about your market',
+    progress:100,
+    log:[
+      {t:'think',text:'Reading market data — productivity tools for 5–50 person teams.'},
+      {t:'tool',text:'Searching: "B2B SaaS productivity market size 2024"'},
+      {t:'ok',text:'34 websites researched across 8 sources'},
+      {t:'tool',text:'Scanning competitor pricing and positioning'},
+      {t:'ok',text:'Market brief complete — whitespace identified'},
+    ],
+    urls:['https://notion.so','https://linear.app','https://monday.com','https://techcrunch.com','https://statista.com','https://g2.com','https://producthunt.com','https://ycombinator.com'],
+    previewUrl:'https://notion.so',
+    insights:[['$4.2B','Market size'],['22%','YoY growth'],['34','Sources checked'],['#1 pain','Too many tools']],
+  },
+  design:{
+    name:'Design',icon:'🎨',status:'done',
+    what:'Your brand direction is ready',
+    progress:100,
+    log:[
+      {t:'think',text:'ICP wants something clean, trustworthy — not playful or cluttered.'},
+      {t:'tool',text:'Generating 3 visual identity concepts'},
+      {t:'ok',text:'Brand locked: navy/blue palette, clean typography'},
+      {t:'ok',text:'Creative brief sent to Web team'},
+    ],
+    colors:['#1e3a8a','#1d4ed8','#3b82f6','#93c5fd','#f8fafc','#0f172a'],
+  },
+  technical:{
+    name:'Technical',icon:'⚙️',status:'running',
+    what:'Setting up your database structure',
+    progress:40,
+    log:[
+      {t:'think',text:'5–50 person teams means multi-tenant setup — each company keeps their data separate.'},
+      {t:'tool',text:'Designing database structure'},
+      {t:'ok',text:'Core tables created: organisations, users, workspaces'},
+      {t:'tool',text:'Setting up security rules for data isolation'},
+      {t:'think',text:'Flagging: PDF generation may hit a size limit on Vercel — will route separately.'},
+    ],
+    steps:[
+      {label:'Choose technology stack',status:'done'},
+      {label:'Design database structure',status:'done'},
+      {label:'Set up data security rules',status:'active'},
+      {label:'Plan API endpoints',status:'pending'},
+      {label:'Write deployment guide',status:'pending'},
+    ],
+    commits:['Set up core database tables','Added data security rules'],
+  },
+  legal:{
+    name:'Legal',icon:'⚖️',status:'waiting',
+    what:'Waiting for Technical to finish first',
+    progress:0,
+    log:[{t:'act',text:'Queued — will start once the Technical plan is ready.'}],
+  },
+};
+
+const ARTIFACTS={
+  market_brief:{title:'Market Brief',ready:true,actions:['Copy','Download','Save to Notion'],
+    content:`MARKET BRIEF — ClearNotes
+
+YOUR MARKET
+• Size: $4.2B total market, growing 22% per year
+• Best fit: Small businesses with 5–50 people
+• Who's buying: Founders and operations leads
+
+WHY NOW
+67% of small business owners use 3 or more tools
+that don't talk to each other. That's your opening.
+
+COMPETITORS
+• Notion — popular but complex, no AI
+• Linear — built for engineers, not whole teams
+• Monday — too expensive, aimed at big companies
+
+YOUR EDGE
+AI-first workspace built for founders.
+Works out of the box. No setup needed.
+Delivers value in under 10 minutes.
+
+CONFIDENCE LEVEL: High
+(34 sources checked across 8 websites)`},
+
+  icp:{title:'Ideal Customer Profile',ready:true,actions:['Copy','Download'],
+    content:`WHO YOU'RE BUILDING FOR — ClearNotes
+
+THE PERSON
+• Job title: Founder or Head of Operations
+• Company: Software startup or services business
+• Team size: 5 to 50 people
+• Stage: Just raised seed round to Series A
+
+WHAT THEY STRUGGLE WITH
+1. Team doesn't know what everyone else is working on
+2. Decisions get made but no one remembers why
+3. New hires take weeks to get up to speed
+4. Too much time in "what are we doing?" meetings
+
+WHAT THEY WANT
+Something that works immediately — no 3-hour setup.
+They've been burned before by tools that promised
+everything and delivered nothing.
+
+WON'T WORK FOR
+• Companies larger than 200 people
+• Anyone who needs security certification before buying`},
+
+  pricing:{title:'Pricing Plan',ready:true,actions:['Copy','Download'],
+    content:`RECOMMENDED PRICING — ClearNotes
+
+FREE          Up to 3 people, core features
+GROWTH $49/person/month — teams of 5–25
+SCALE  $79/person/month — teams of 26–100
+
+WHY THIS WORKS
+• Research shows founders will pay $49–149/seat
+• Free plan brings people in, Growth converts them
+• 20% discount for paying yearly upfront
+
+BASIS
+Analysed pricing from 12 competitors.
+Validated against 8 founder interviews.`},
+
+  brand:{title:'Brand Direction',ready:true,actions:['Download files','Send to Figma'],isDesign:true,
+    content:`BRAND DIRECTION — ClearNotes
+
+LOOK & FEEL
+Clean, sharp, trustworthy. Built for serious work.
+Not playful. Not corporate. Founder-first.
+
+COLOURS  Deep navy → electric blue gradient
+FONT     Inter — modern, highly readable
+STYLE    Clean layouts, no clutter, fast loading
+
+VOICE
+• Straight to the point — no filler words
+• Confident — don't hedge on what the product does
+• Human — written for founders, not investors`},
+
+  mvp:{title:'App Roadmap',ready:false,actions:['Copy','Download'],
+    content:`APP ROADMAP — ClearNotes
+(In progress — 40% complete)
+
+WEEK 1 — The Foundation
+□ User accounts and login
+□ Organisation and team setup
+□ Core dashboard layout
+
+WEEK 2 — The Product
+□ Workspace: where goals and agents live
+□ Company memory: stores decisions and context
+□ Billing: connect Stripe for payments
+
+WEEK 3 — Ready to Launch
+□ Onboarding: get users to value in 10 minutes
+□ Integrations: GitHub, Notion, Slack
+□ Polish: performance, error handling, testing
+
+⚠ One thing to watch: PDF exports may need
+  special handling — being resolved now.`},
+
+  tech_plan:{title:'Tech Plan',ready:false,actions:['Copy','Download'],
+    content:`TECHNICAL PLAN — ClearNotes
+(In progress — writing now)
+
+WHAT WE'RE BUILDING
+A web app where each company's data is
+completely separate and secure.
+
+TECHNOLOGY
+Frontend:  Next.js (what users see)
+Backend:   FastAPI (the engine behind it)
+Database:  Supabase (stores everything)
+Hosting:   Vercel + Railway
+
+HOW THE DATA WORKS
+Each organisation gets their own private space.
+Users can only see their own company's data.
+Security rules enforced at database level.
+
+CURRENT STATUS
+✓ Database tables designed
+✓ Core security rules written
+⋯ API structure being defined
+○ Deployment guide coming next`},
+};
+
+let appState='running';
+let selView={type:'dept',key:'technical'};
+
+function navTo(el,page){
+  document.querySelectorAll('.an-item').forEach(i=>i.classList.remove('active'));
+  el.classList.add('active');
+  const ws=document.getElementById('ws');
+  const alt=document.getElementById('altPage');
+  if(page==='run'){ws.style.display='flex';alt.style.display='none';}
+  else{
+    ws.style.display='none';alt.style.display='flex';
+    const icons={outreach:'✦',brain:'◈',integrations:'⌘',payments:'$',settings:'⚙'};
+    const labels={outreach:'Outreach',brain:'Company Brain',integrations:'Integrations',payments:'Payments',settings:'Settings'};
+    document.getElementById('altIcon').textContent=icons[page]??'?';
+    document.getElementById('altLabel').textContent=labels[page]??page;
+  }
+}
+
+function renderPhaseBar(ov={}){
+  const bar=document.getElementById('phaseBar');bar.innerHTML='';
+  PHASES.forEach((p,i)=>{
+    const s=ov[p.id]??p.s;
+    const pill=document.createElement('div');
+    pill.className=`ph ${s}`;
+    pill.innerHTML=`<div class="ph-node"></div>${p.label}`;
+    bar.appendChild(pill);
+    if(i<PHASES.length-1){const d=document.createElement('div');d.className='ph-div';bar.appendChild(d);}
+  });
+}
+
+function renderDepts(){
+  document.getElementById('deptRow').innerHTML=Object.entries(DEPTS).map(([k,d])=>{
+    const st=appState==='gate'?'done':d.status;
+    const prog=appState==='gate'?100:d.progress;
+    const sel=selView.type==='dept'&&selView.key===k;
+    const stLabel=st==='running'?'Working':st==='done'?'Done':st==='waiting'?'Queued':'';
+    const stClass=st==='running'?'run':st==='done'?'done':'que';
+    const barColor=st==='done'?'var(--green)':st==='running'?'var(--blue)':'var(--fm)';
+    return `<div class="dc ${stClass}${sel?' sel':''}" onclick="${st==='waiting'?'void 0':`selDept('${k}')`}">
+      <div class="dc-top">
+        <div class="dc-icon">${d.icon}</div>
+        <div class="dc-name">${d.name}</div>
+        <div class="dc-badge ${stClass}">${stLabel}</div>
+      </div>
+      <div class="dc-what">${d.what}</div>
+      <div class="dc-progress"><div class="dc-bar" style="width:${prog}%;background:${barColor}"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderTabs(){
+  const isArt=selView.type==='art';
+  const tabs=isArt?['Read it','Actions']:['What happened','Preview','Sources'];
+  const d=DEPTS[selView.key];
+  const hasSources=d?.urls?.length>0;
+  const hasPreview=!!(d?.previewUrl||d?.colors||d?.steps);
+  document.getElementById('dtabs').innerHTML=tabs.filter(t=>{
+    if(t==='Sources') return hasSources;
+    if(t==='Preview') return hasPreview;
+    return true;
+  }).map((t,i)=>`<div class="dtab${i===0?' on':''}" onclick="switchTab(this,'${t}')">${t}</div>`).join('');
+  renderContent(tabs[0]);
+}
+
+function switchTab(el,tab){
+  document.querySelectorAll('.dtab').forEach(t=>t.classList.remove('on'));
+  el.classList.add('on');renderContent(tab);
+}
+
+function renderContent(tab){
+  const sc=document.getElementById('dscroll');
+  if(selView.type==='art'){
+    sc.innerHTML=tab==='Read it'?renderArtContent(ARTIFACTS[selView.key]):renderArtActions(ARTIFACTS[selView.key]);
+  } else {
+    const d=DEPTS[selView.key];
+    if(tab==='What happened') sc.innerHTML=renderLog(d);
+    else if(tab==='Preview') sc.innerHTML=renderPreview(selView.key,d);
+    else if(tab==='Sources') sc.innerHTML=renderSources(d);
+  }
+}
+
+function renderPreview(key,d){
+  if(key==='research') return `
+    <div class="sec-label">Website being researched now</div>
+    <div class="browser">
+      <div class="bbar">
+        <div style="display:flex;gap:4px">${['#FF5F56','#FFBD2E','#27C93F'].map(c=>`<span style="width:8px;height:8px;background:${c}"></span>`).join('')}</div>
+        <div class="burl">${d.previewUrl}</div>
+        <a href="${d.previewUrl}" target="_blank" style="font-size:9.5px;color:var(--blue);text-decoration:none;font-family:'IBM Plex Mono',monospace">↗</a>
+      </div>
+      <div class="bframe"><iframe src="${d.previewUrl}" sandbox="allow-scripts allow-same-origin"></iframe><div class="boverlay"></div></div>
+    </div>
+    <div class="sec-label" style="margin-top:6px">Key findings</div>
+    <div class="insight-grid">${d.insights.map(([v,l])=>`<div class="insight"><div class="insight-val">${v}</div><div class="insight-lbl">${l}</div></div>`).join('')}</div>`;
+
+  if(key==='design') return `
+    <div class="sec-label">Your brand</div>
+    <div style="display:flex;align-items:center;gap:12px;padding:13px 15px;background:var(--surface);border:1px solid var(--bd2);margin-bottom:12px;box-shadow:0 1px 6px rgba(0,0,0,.05)">
+      <div style="width:36px;height:36px;background:linear-gradient(135deg,#1e3a8a,#3b82f6);display:flex;align-items:center;justify-content:center;font-family:'Chakra Petch',sans-serif;font-weight:900;color:#fff;font-size:13px;flex-shrink:0">Cl</div>
+      <div>
+        <div style="font-family:'Chakra Petch',sans-serif;font-size:16px;font-weight:700;letter-spacing:.04em;color:var(--fg)">ClearNotes</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--fm);margin-top:3px">Navy blue · clean & sharp</div>
+      </div>
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <button class="art-btn">Download</button>
+        <button class="art-btn">Figma</button>
+      </div>
+    </div>
+    <div class="sec-label">Colours</div>
+    <div class="palette">${d.colors.map(c=>`<div class="sw-col"><div class="swatch" style="background:${c}"></div><div class="swhex">${c}</div></div>`).join('')}</div>
+    <div class="sec-label" style="margin-top:12px">Typography</div>
+    <div style="background:var(--surface);border:1px solid var(--bd2);padding:15px 17px">
+      <div style="font-family:'Chakra Petch',sans-serif;font-size:20px;font-weight:700;letter-spacing:.02em;color:var(--fg);margin-bottom:5px">The future of team clarity</div>
+      <div style="font-family:'Chakra Petch',sans-serif;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fd);margin-bottom:6px">Ship faster. Stay aligned.</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--fm);line-height:1.7">Clean, readable body text — works well at any size.</div>
+    </div>`;
+
+  if(key==='technical') return `
+    <div class="sec-label">Progress</div>
+    <div class="prog-list">${d.steps.map(s=>`
+      <div class="prog-item ${s.status}">
+        <div class="prog-ic">${s.status==='done'?'✓':s.status==='active'?'<span class="spin">⟳</span>':'○'}</div>
+        <div class="prog-label">${s.label}</div>
+        <div class="prog-tag">${s.status==='done'?'Done':s.status==='active'?'Now':'Soon'}</div>
+      </div>`).join('')}
+    </div>
+    ${d.commits?.length?`<div class="sec-label" style="margin-top:6px">Completed</div>
+    <div style="display:flex;flex-direction:column;gap:3px">${d.commits.map(c=>`<div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--green);padding:6px 10px;border-left:2px solid var(--green);background:var(--gdim)">✓ ${c}</div>`).join('')}</div>`:''}`;
+
+  return `<div style="color:var(--fm);text-align:center;padding:28px;font-size:11px">No preview yet</div>`;
+}
+
+function renderSources(d){
+  return `<div class="sec-label">${d.urls.length} websites researched</div>
+  <div class="url-list">${d.urls.map(u=>{let dom=u;try{dom=new URL(u).hostname.replace(/^www\./,'');}catch{}
+    return`<a class="url-item" href="${u}" target="_blank">
+      <img src="https://www.google.com/s2/favicons?domain=${dom}&sz=16" width="12" height="12" style="flex-shrink:0" onerror="this.style.display='none'"/>
+      <span style="font-weight:500;color:var(--fd)">${dom}</span>
+      <span style="font-size:9.5px;color:var(--blue);margin-left:auto">↗</span>
+    </a>`;}).join('')}</div>`;
+}
+
+function renderLog(d){
+  const labels={think:'Thinking',tool:'Searching',ok:'Found',act:'Status'};
+  return`<div class="sec-label">What the agent did</div>
+  <div class="log-stream">${d.log.map(l=>`
+    <div class="le ${l.t}">
+      <div class="le-ic">${l.t==='think'?'💭':l.t==='tool'?'🔍':l.t==='ok'?'✓':'→'}</div>
+      <div>
+        <div class="le-lbl">${labels[l.t]??l.t}</div>
+        <div class="le-txt">${l.text}</div>
+      </div>
+    </div>`).join('')}
+    ${DEPTS[selView.key]?.status==='running'?`<div class="le tool"><div class="le-ic"><span class="spin">🔍</span></div><div><div class="le-lbl">Working now</div><div class="le-txt">${DEPTS[selView.key].what}…</div></div></div>`:''}
+  </div>`;
+}
+
+function renderArtContent(a){
+  if(!a) return '';
+  let extra='';
+  if(a.isDesign) extra=`<div style="display:flex;gap:7px;margin-bottom:12px;flex-wrap:wrap">${['#1e3a8a','#1d4ed8','#3b82f6','#93c5fd','#f8fafc','#0f172a'].map(h=>`<div style="display:flex;flex-direction:column;gap:4px;align-items:center"><div style="width:38px;height:38px;background:${h};border:1px solid rgba(0,0,0,.1)"></div><span style="font-size:9px;color:var(--fm);font-family:'IBM Plex Mono',monospace">${h}</span></div>`).join('')}</div>`;
+  return `
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:11px">
+    <div>
+      <div style="font-family:'Chakra Petch',sans-serif;font-size:15px;font-weight:700;letter-spacing:.03em;color:var(--fg)">${a.title}</div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:${a.ready?'var(--green)':'var(--amber)'};margin-top:4px;letter-spacing:.04em">${a.ready?'✓ ready':'⋯ being written'}</div>
+    </div>
+    <div class="art-actions">${a.actions.map(ac=>`<button class="art-btn${ac==='Download'||ac==='Download files'?' pri':''}">${ac}</button>`).join('')}</div>
+  </div>${extra}<pre class="art-content">${a.content}</pre>`;
+}
+
+function renderArtActions(a){
+  if(!a) return '';
+  const icons={'Copy':'📋','Download':'⬇️','Download files':'⬇️','Save to Notion':'🗒️','Send to Figma':'🎨'};
+  return `<div style="font-family:'Chakra Petch',sans-serif;font-size:14px;font-weight:700;letter-spacing:.03em;margin-bottom:11px;color:var(--fg)">What can you do with ${a.title}?</div>
+  <div style="display:flex;flex-direction:column;gap:7px">${a.actions.map(ac=>`
+    <button class="art-btn" style="display:flex;align-items:center;gap:12px;padding:11px 15px;width:100%;text-align:left">
+      <span style="font-size:18px">${icons[ac]??'•'}</span>
+      <div><div style="font-family:'Chakra Petch',sans-serif;font-weight:700;letter-spacing:.04em;color:var(--fg);font-size:11px">${ac}</div><div style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--fm);margin-top:3px">${ac==='Copy'?'Copy text to clipboard':ac.includes('Download')?'Save file to your computer':ac.includes('Notion')?'Send to Notion workspace':ac.includes('Figma')?'Open design files in Figma':'Take action'}</div></div>
+    </button>`).join('')}</div>`;
+}
+
+function renderApproval(){
+  document.getElementById('topStatus').textContent='⚠ Your approval needed';
+  document.getElementById('topStatus').className='pill red';
+  document.getElementById('urgentBanner').className='show';
+  document.getElementById('dtabs').innerHTML='';
+  document.getElementById('dscroll').innerHTML=`
+  <div class="apv">
+    <div class="apv-header">
+      <div>
+        <div class="apv-title">🔒 Legal wants to publish a draft contract</div>
+        <div class="apv-meta">Legal agent · Medium risk · 2 minutes ago — run paused until you decide</div>
+      </div>
+    </div>
+    <div class="apv-body-wrap">
+      <div class="apv-body">Your legal agent has written a Terms of Service draft and wants to save it to your Notion workspace. Since this is a legal document, you need to approve it before it goes anywhere.</div>
+      <div style="padding:11px 13px;background:var(--s2);border:1px solid var(--bd2);font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--fd);line-height:1.75;white-space:pre-wrap;max-height:160px;overflow-y:auto">TERMS OF SERVICE — Draft
+Effective: [DATE]
+
+1. ACCEPTANCE
+By using ClearNotes, you agree to these terms.
+
+2. WHAT WE DO
+ClearNotes is an AI-powered workspace for startup teams…
+
+3. YOUR ACCOUNT
+You're responsible for keeping your account secure…
+
+[Click "Read full draft" to see all 12 sections]</div>
+      <div class="apv-acts">
+        <button class="btn-ok" onclick="this.closest('.apv').style.opacity='.5';this.textContent='✓ Approved — resuming'">✓ Approve &amp; save to Notion</button>
+        <button class="btn-vw">Read full draft</button>
+        <button class="btn-sk">Skip for now</button>
+      </div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--fm)">All other agents keep working. Only legal is paused waiting for you.</div>
+    </div>
+  </div>`;
+}
+
+function renderGate(){
+  document.getElementById('topStatus').textContent='✓ Phase complete';
+  document.getElementById('topStatus').className='pill green';
+  document.getElementById('urgentBanner').className='';
+  document.getElementById('dtabs').innerHTML='';
+  document.getElementById('dscroll').innerHTML=`
+  <div class="gate">
+    <div class="gate-hd">
+      <div class="gate-title">Blueprint phase complete ⚠</div>
+      <div class="gate-sub">Almost ready to start building — one thing needs your attention</div>
+    </div>
+    <div class="gate-body">
+      ${[['✓','Brand Direction','Looks great — navy palette, clean typography','pass'],
+         ['✓','Creative Brief','Ready for the web team to use','pass'],
+         ['✓','App Roadmap','3-week plan with risks flagged','pass'],
+         ['✓','Tech Plan','Architecture chosen, security rules designed','pass'],
+         ['✓','Legal Checklist','Company setup steps and IP risks listed','pass'],
+         ['✓','Policy Outline','Terms of Service structure is ready','pass'],
+         ['⚠','Website Copy','Needs a rewrite — it doesn\'t mention who the product is for (small startup teams). Too vague for a landing page.','warn']].map(([ic,name,note,cls])=>`
+      <div class="gate-art ${cls}">
+        <div style="font-size:13px;flex-shrink:0">${ic}</div>
+        <div><div style="font-family:'Chakra Petch',sans-serif;font-size:12px;font-weight:700;letter-spacing:.03em;color:var(--fg)">${name}</div><div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--fm);margin-top:3px;line-height:1.55">${note}</div></div>
+      </div>`).join('')}
+    </div>
+    <div class="gate-ft">
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--fm)">Once you advance, the Build phase begins.</div>
+      <div style="display:flex;gap:7px">
+        <button class="btn" style="color:var(--amber);border-color:var(--ab)" onclick="alert('Rerunning…')">Fix the copy</button>
+        <button class="btn blue" onclick="alert('Build phase starting!')">Start building →</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function selDept(key){
+  selView={type:'dept',key};
+  document.querySelectorAll('.av-art').forEach(el=>el.classList.remove('sel'));
+  renderDepts();renderTabs();
+}
+
+function selArt(key){
+  selView={type:'art',key};
+  document.querySelectorAll('.av-art').forEach(el=>{
+    el.classList.toggle('sel',el.getAttribute('onclick')===`selArt('${key}')`);
+  });
+  renderDepts();renderTabs();
+}
+
+function setState(state,btn){
+  appState=state;
+  document.querySelectorAll('.ds-btn').forEach(b=>b.classList.remove('on','danger'));
+  btn.classList.add('on');
+  if(state==='approval') btn.classList.add('danger');
+
+  const ov={};
+  if(state==='gate') ov.blueprint='gate';
+  renderPhaseBar(ov);
+  renderDepts();
+
+  // Hide banner by default
+  document.getElementById('urgentBanner').className='';
+
+  if(state==='running'){
+    document.getElementById('topStatus').textContent='2 agents working';
+    document.getElementById('topStatus').className='pill blue';
+    document.getElementById('statusBar').innerHTML=`<div class="pulse"></div><span class="sv blue">2</span> agents working<div class="s-sep"></div><span class="sv green">4</span> deliverables ready<div class="s-sep"></div><span class="sv" style="color:var(--fd)">6</span> more coming<div class="s-sep"></div>About 22 min left`;
+    selView={type:'dept',key:'technical'};renderTabs();
+  } else if(state==='approval'){
+    document.getElementById('statusBar').innerHTML=`<span class="sv red">⚠</span>&nbsp;Run paused — waiting for your approval on one item`;
+    renderApproval();
+  } else {
+    renderGate();
+  }
+}
+
+renderPhaseBar();renderDepts();renderTabs();
+</script>
+</body>
+</html>
