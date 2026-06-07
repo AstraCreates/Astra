@@ -13,7 +13,7 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 type LogEntry = { ts: number; type: string; text: string };
 type Agent = { key: string; status: string; log: LogEntry[]; visitedUrls: string[]; currentTool: string | null; result: unknown; instruction: string };
 type Artifact = { key?: string; title?: string; status?: string; preview?: string; content?: string; description?: string; owner_agent?: string };
-type Approval = { gate_key: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string }[] };
+type Approval = { gate_key: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string; preview?: string }[] };
 
 type SState = {
   status: string; goal: string; company: string; projectName: string; stackId: string;
@@ -539,13 +539,16 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 {ap.artifacts && ap.artifacts.length > 0 && (
                   <div style={{ marginBottom: 12 }}>
                     <div style={{ fontSize: 9, fontWeight: 700, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 5 }}>Deliverables to review</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {ap.artifacts.map((art, i) => (
-                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 6, background: "var(--surface)", border: "1px solid var(--bd)", cursor: "pointer" }}
-                          onClick={() => sel(null, art.key || null)}>
-                          <span style={{ fontSize: 10, color: "var(--green)" }}>✓</span>
-                          <span style={{ fontSize: 11, color: "var(--fg)", fontWeight: 500 }}>{art.title || art.key}</span>
-                          <span style={{ fontSize: 9, color: "var(--fm)", marginLeft: "auto" }}>{art.agent}</span>
+                        <div key={i} style={{ borderRadius: 7, background: "var(--surface)", border: "1px solid var(--bd)", overflow: "hidden" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 8px", cursor: "pointer" }}
+                            onClick={() => sel(null, art.key || null)}>
+                            <span style={{ fontSize: 10, color: "var(--green)" }}>✓</span>
+                            <span style={{ fontSize: 11, color: "var(--fg)", fontWeight: 600 }}>{art.title || art.key}</span>
+                            <span style={{ fontSize: 9, color: "var(--blue)", marginLeft: "auto" }}>View full ↗</span>
+                          </div>
+                          {art.preview && <div style={{ padding: "0 8px 8px", fontSize: 10.5, color: "var(--fd)", lineHeight: 1.55, borderTop: "1px solid var(--bd)", paddingTop: 6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{art.preview}</div>}
                         </div>
                       ))}
                     </div>
@@ -605,37 +608,45 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               if (!art) return null;
               // Extract full content from the owning agent's result
               let fullContent: string | null = null;
-              const ownerResult = art.owner_agent ? (st.agents[art.owner_agent]?.result as Record<string, unknown> | null) : null;
-              if (ownerResult && typeof ownerResult === "object") {
-                const r = ownerResult as Record<string, unknown>;
-                // Try direct key, then {key}_summary, then common summary fields
+              const tryExtract = (r: Record<string, unknown>): string | null => {
+                // Try summary variant first (agents often put content in {key}_summary, not {key})
                 const candidates = [
-                  art.key ? r[art.key] : null,
                   art.key ? r[`${art.key}_summary`] : null,
+                  art.key ? r[art.key] : null,
                   r.summary, r.output_summary, r.formatted_text, r.report, r.text, r.url, r.html,
                 ];
                 for (const c of candidates) {
-                  if (c && typeof c === "string" && c.length > 0) { fullContent = c; break; }
+                  if (c && typeof c === "string" && c.length > 30) return c;
                 }
                 // Fallback: format the result as readable sections (never raw JSON)
-                if (!fullContent) {
-                  const SKIP = new Set(["handoff", "mirror_verdict", "mirror_critique", "agent", "status", "task_id", "session_id", "sources_list"]);
-                  const sections: string[] = [];
-                  for (const [k, v] of Object.entries(r)) {
-                    if (SKIP.has(k) || v === null || v === undefined || v === "") continue;
-                    const label = k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-                    if (typeof v === "string") sections.push(`${label}\n${"─".repeat(label.length)}\n${v}`);
-                    else if (typeof v === "number" || typeof v === "boolean") sections.push(`${label}: ${v}`);
-                    else if (Array.isArray(v)) sections.push(`${label}\n${"─".repeat(label.length)}\n${(v as unknown[]).map((x, i) => `${i + 1}. ${x}`).join("\n")}`);
-                    else if (typeof v === "object") {
-                      const sub = Object.entries(v as Record<string, unknown>).filter(([, sv]) => sv !== null && sv !== "").map(([sk, sv]) => `  • ${sk.replace(/_/g, " ")}: ${sv}`).join("\n");
-                      if (sub) sections.push(`${label}\n${"─".repeat(label.length)}\n${sub}`);
-                    }
+                const SKIP = new Set(["handoff", "mirror_verdict", "mirror_critique", "agent", "status", "task_id", "session_id", "sources_list", "artifacts_produced"]);
+                const sections: string[] = [];
+                for (const [k, v] of Object.entries(r)) {
+                  if (SKIP.has(k) || v === null || v === undefined || v === "") continue;
+                  const label = k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+                  if (typeof v === "string" && v.length > 5) sections.push(`${label}\n${"─".repeat(label.length)}\n${v}`);
+                  else if (typeof v === "number" || typeof v === "boolean") sections.push(`${label}: ${v}`);
+                  else if (Array.isArray(v)) sections.push(`${label}\n${"─".repeat(label.length)}\n${(v as unknown[]).map((x, i) => `${i + 1}. ${x}`).join("\n")}`);
+                  else if (typeof v === "object") {
+                    const sub = Object.entries(v as Record<string, unknown>).filter(([, sv]) => sv !== null && sv !== "").map(([sk, sv]) => `  • ${sk.replace(/_/g, " ")}: ${sv}`).join("\n");
+                    if (sub) sections.push(`${label}\n${"─".repeat(label.length)}\n${sub}`);
                   }
-                  fullContent = sections.join("\n\n") || null;
+                }
+                return sections.join("\n\n") || null;
+              };
+              // Try owner agent first, then scan all agents (owner_agent may be unset or mismatched)
+              const ownerResult = art.owner_agent ? (st.agents[art.owner_agent]?.result as Record<string, unknown> | null) : null;
+              if (ownerResult && typeof ownerResult === "object") {
+                fullContent = tryExtract(ownerResult as Record<string, unknown>);
+              }
+              if (!fullContent) {
+                for (const ag of Object.values(st.agents)) {
+                  if (!ag.result || typeof ag.result !== "object") continue;
+                  const extracted = tryExtract(ag.result as Record<string, unknown>);
+                  if (extracted && extracted.length > 50) { fullContent = extracted; break; }
                 }
               }
-              const displayContent = fullContent || art.content || art.preview || art.description || null;
+              const displayContent = fullContent || art.content || (art.preview && art.preview.length > 30 ? art.preview : null) || art.description || null;
               return <>
                 <div style={{ fontFamily: "var(--font-chakra)", fontSize: 13, fontWeight: 700, color: "var(--fg)" }}>{art.title || art.key}</div>
                 <div style={{ fontSize: 9, color: art.status === "ready" ? "var(--green)" : "var(--amber)", marginBottom: 10 }}>{art.status === "ready" ? "✓ ready" : "⋯ being written"}</div>

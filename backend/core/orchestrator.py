@@ -439,6 +439,7 @@ class Orchestrator:
         if not isinstance(result, dict):
             return str(result)[:280]
         candidates = [
+            result.get(f"{artifact_key}_summary") if artifact_key else None,
             result.get(artifact_key),
             result.get("summary"),
             result.get("output_summary"),
@@ -450,10 +451,8 @@ class Orchestrator:
             result.get("html"),
         ]
         for candidate in candidates:
-            if candidate:
-                if isinstance(candidate, str):
-                    return candidate.replace("\n", " ").strip()[:360]
-                return str(candidate)[:360]
+            if candidate and isinstance(candidate, str) and len(candidate) > 20:
+                return candidate.replace("\n", " ").strip()[:360]
         return str(result)[:360]
 
     async def _publish_stack_artifacts(
@@ -1236,12 +1235,23 @@ class Orchestrator:
             gate_artifacts: list[dict] = []
             for _gt in phase_task_list:
                 _lane = stack_lane_by_agent.get(_gt["agent"], {})
+                _task_result = completed.get(_gt["id"])
+                _task_result_dict: dict = _task_result if isinstance(_task_result, dict) else {}
                 for _art in (_lane.get("deliverables") or []):
+                    _art_key = _art.get("artifact_key") or _art.get("key", "")
+                    _art_preview = ""
+                    _lookup_keys = [k for k in [f"{_art_key}_summary" if _art_key else None, _art_key, "summary", "output_summary", "formatted_text", "text"] if k]
+                    for _lk in _lookup_keys:
+                        _cv = _task_result_dict.get(_lk)
+                        if _cv and isinstance(_cv, str) and len(_cv) > 20:
+                            _art_preview = _cv[:600]
+                            break
                     gate_artifacts.append({
-                        "key": _art.get("artifact_key") or _art.get("key", ""),
+                        "key": _art_key,
                         "title": _art.get("title") or _art.get("artifact_key", _gt["agent"]),
                         "agent": _gt["agent"],
                         "status": "ready",
+                        "preview": _art_preview,
                     })
 
             try:
@@ -1294,6 +1304,11 @@ class Orchestrator:
             logger.info("Phase gate '%s' approved — proceeding to %s", phase_name, next_phase)
             return True
 
+        # Initialize gate tracking here so the pre-scheduler gate result persists into the scheduler.
+        _phase_gates_cleared: set[str] = {
+            ph for ph in _PHASE_ORDER if not _tasks_by_phase.get(ph)
+        } | {"diagnose"}
+
         # Diagnose phase gate: block before launching design/deploy/etc. agents.
         # If rejected, research tasks are re-added to remaining and the scheduler runs them.
         # The scheduler-level gate will re-fire after those tasks complete.
@@ -1302,7 +1317,10 @@ class Orchestrator:
                 (p for p in _PHASE_ORDER if p != "diagnose" and any(_task_phase(t) == p for t in remaining)),
                 "design",
             )
-            await _phase_gate("diagnose", _first_next, parallel_research_tasks)
+            _diagnose_gate_ok = await _phase_gate("diagnose", _first_next, parallel_research_tasks)
+            if _diagnose_gate_ok and not cancellation.is_killed(session_id):
+                # Mark next phase as cleared so the scheduler doesn't re-fire the same gate
+                _phase_gates_cleared.add(_first_next)
 
         # ── Scheduler ──────────────────────────────────────────────────────────────
         # Run remaining agents in parallel (research is done, deps resolve)
@@ -1369,11 +1387,8 @@ class Orchestrator:
         # and wake on the first completion — never wait for a whole "wave" to finish.
         running: set[asyncio.Task] = set()
         task_for: dict[asyncio.Task, dict] = {}
-        # Phases cleared by the founder (diagnose is pre-cleared since its gate ran above).
-        # Any phase not in this set will block even if its tasks' deps are met.
-        _phase_gates_cleared: set[str] = {
-            ph for ph in _PHASE_ORDER if not _tasks_by_phase.get(ph)
-        } | {"diagnose"}
+        # _phase_gates_cleared initialized above (before diagnose gate) — already includes
+        # diagnose + whichever next phase the founder just approved.
 
         while remaining or running:
             if cancellation.is_killed(session_id):
@@ -1385,9 +1400,11 @@ class Orchestrator:
                 if all(dep in completed for dep in t.get("depends_on", []))
             ]
 
-            # Phase gate: if ready tasks belong to a phase whose gate hasn't been cleared,
-            # wait until nothing is running (current phase fully done), then block for approval.
-            if all_ready and not running:
+            # Phase gate: fire only when nothing is running AND no cleared-phase tasks are
+            # ready to launch. This prevents gating phase N+2 immediately after clearing N+1
+            # (before N+1 tasks even start).
+            _ready_cleared = [t for t in all_ready if _task_phase(t) in _phase_gates_cleared]
+            if all_ready and not running and not _ready_cleared:
                 next_phases_sorted = sorted(
                     {_task_phase(t) for t in all_ready},
                     key=lambda p: _PHASE_ORDER.index(p) if p in _PHASE_ORDER else 99,
@@ -1395,8 +1412,15 @@ class Orchestrator:
                 ungated = [p for p in next_phases_sorted if p not in _phase_gates_cleared]
                 if ungated:
                     _np = ungated[0]
-                    _pi = _PHASE_ORDER.index(_np) if _np in _PHASE_ORDER else 1
-                    _prev_ph = _PHASE_ORDER[_pi - 1] if _pi > 0 else "diagnose"
+                    # Use the actual last completed phase (not just prev in PHASE_ORDER) so the
+                    # gate says "X Phase Complete" only when X actually ran and finished.
+                    _completed_phases = [
+                        ph for ph in _PHASE_ORDER
+                        if ph != _np and _tasks_by_phase.get(ph) and all(t["id"] in completed for t in _tasks_by_phase[ph])
+                    ]
+                    _prev_ph = _completed_phases[-1] if _completed_phases else (
+                        _PHASE_ORDER[max(0, (_PHASE_ORDER.index(_np) if _np in _PHASE_ORDER else 1) - 1)]
+                    )
                     _prev_tasks = _tasks_by_phase.get(_prev_ph, [])
                     _gate_ok = await _phase_gate(_prev_ph, _np, _prev_tasks)
                     if _gate_ok:
@@ -1409,8 +1433,8 @@ class Orchestrator:
                                 _tasks_by_phase.setdefault(_rph, []).append(_rrt)
                     continue  # Re-evaluate after gate decision
 
-            # Only launch tasks whose phase gate is cleared
-            ready_to_launch = [t for t in all_ready if _task_phase(t) in _phase_gates_cleared]
+            # Only launch tasks whose phase gate is cleared (_ready_cleared already computed above)
+            ready_to_launch = _ready_cleared
             for t in ready_to_launch:
                 remaining.remove(t)
                 in_flight.add(t["id"])
