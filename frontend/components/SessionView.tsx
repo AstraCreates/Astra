@@ -316,14 +316,17 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     if (steerRef.current) steerRef.current.value = "";
     try { await apiFetch(`${API}/steer/${sessionId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg }) }); } catch {}
   };
-  const stop = async () => { if (!confirm("Stop this run?")) return; await killSession(sessionId); S.current.status = "killed"; sseRef.current?.close(); force(); };
+  // No window.confirm — mobile in-app webviews suppress it (returns false), which
+  // made Stop/Restart silently no-op. Optimistic UI + fire the request.
+  const stop = async () => { S.current.status = "killed"; sseRef.current?.close(); force(); await killSession(sessionId).catch(() => {}); };
   // TEMP: kill this run, delete it server+local, resubmit the same goal as a fresh run.
   const killClearRestart = async () => {
     const goal = S.current.goal;
     const company = S.current.company || S.current.projectName;
     const stack = S.current.stackId || "idea_to_revenue";
     if (!goal) { alert("Can't restart yet — the original goal hasn't loaded. Try again in a moment."); return; }
-    if (!confirm("Kill this run, delete it completely, and restart the SAME goal fresh?")) return;
+    // No window.confirm — suppressed in mobile webviews.
+    S.current.status = "killed"; force();
     try {
       sseRef.current?.close();
       await killSession(sessionId).catch(() => {});
@@ -444,11 +447,11 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         <div className="topbar-title" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName || shortGoal}</div>
         {statusPill(st.status)}
         {(st.status === "running" || st.status === "loading") && <>
-          <button className="btn sm" style={{ background: st.paused ? "var(--green)" : "var(--surface)", border: "1px solid var(--bd)", color: st.paused ? "#fff" : "var(--fg)" }} onClick={pauseToggle}>{st.paused ? "▶ Resume" : "⏸ Pause"}</button>
-          <button className="btn danger sm" onClick={stop}>Stop</button>
+          <button className="btn sm" style={{ flexShrink: 0, touchAction: "manipulation", background: st.paused ? "var(--green)" : "var(--surface)", border: "1px solid var(--bd)", color: st.paused ? "#fff" : "var(--fg)" }} onClick={pauseToggle}>{st.paused ? "▶ Resume" : "⏸ Pause"}</button>
+          <button className="btn danger sm" style={{ flexShrink: 0, touchAction: "manipulation" }} onClick={stop}>Stop</button>
         </>}
         {/* TEMP debug control — kill, delete, and restart the same goal fresh. */}
-        <button className="btn sm" title="Kill + delete this run and restart the same goal" style={{ background: "var(--surface)", border: "1px solid var(--bd)", color: "var(--fg)" }} onClick={killClearRestart}>↻ Restart</button>
+        <button className="btn sm" title="Kill + delete this run and restart the same goal" style={{ flexShrink: 0, touchAction: "manipulation", background: "var(--surface)", border: "1px solid var(--bd)", color: "var(--fg)" }} onClick={killClearRestart}>↻ Restart</button>
       </div>
 
       {/* urgent banner */}
