@@ -985,12 +985,16 @@ export default function OnboardingWizard() {
   const [launching, setLaunching] = useState(false);
 
   // localStorage may be full (quota exceeded). A thrown setItem must never block
-  // navigation, AND the onboarding-done flag MUST persist (the home page gates on
-  // it — if it doesn't save, the user is stuck on the welcome screen). So on a
-  // quota error, evict the largest key (session history) and retry once.
+  // navigation, AND the onboarding-done flag MUST persist — AppHome gates the whole
+  // app on it, so if it doesn't save the user is stuck on the welcome screen. Try
+  // increasingly aggressive eviction until the (tiny) write succeeds.
   function lsSet(key: string, val: string) {
-    try { localStorage.setItem(key, val); return; } catch { /* full — evict below */ }
-    try { localStorage.removeItem("astra_sessions"); localStorage.setItem(key, val); } catch { /* give up */ }
+    try { localStorage.setItem(key, val); return; } catch { /* full */ }
+    for (const k of ["astra_sessions", "astra_workspaces", "astra_events", "astra_chapters"]) {
+      try { localStorage.removeItem(k); localStorage.setItem(key, val); return; } catch { /* keep evicting */ }
+    }
+    // Last resort: wipe everything so the critical flag lands (loses local history).
+    try { localStorage.clear(); localStorage.setItem(key, val); } catch { /* localStorage unavailable */ }
   }
 
   async function handleLaunch() {
