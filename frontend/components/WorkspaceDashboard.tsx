@@ -136,14 +136,21 @@ export default function WorkspaceDashboard() {
   const { userId } = useDevUser();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
 
   useEffect(() => {
     if (!userId) return;
-    listWorkspaces(userId)
-      .then(setWorkspaces)
-      .catch((e) => setErr(String(e)))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    const load = () => {
+      listWorkspaces(userId)
+        .then((ws) => { if (!cancelled) { setWorkspaces(ws); setErr(""); } })
+        .catch(() => {
+          // Server may still be starting — retry silently after 4s
+          if (!cancelled) setTimeout(load, 4000);
+        })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    };
+    load();
+    return () => { cancelled = true; };
   }, [userId]);
 
   const openWorkspace = (ws: Workspace) => {
@@ -165,10 +172,7 @@ export default function WorkspaceDashboard() {
       </div>
 
       {loading && (
-        <div style={{ color: "var(--fm)", fontSize: 11 }}>Loading workspaces…</div>
-      )}
-      {err && (
-        <div style={{ color: "var(--red)", fontSize: 11 }}>{err}</div>
+        <div style={{ color: "var(--fm)", fontSize: 11 }}>Loading projects…</div>
       )}
 
       {!loading && (
