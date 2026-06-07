@@ -9,15 +9,15 @@ class Settings(BaseSettings):
     outreach_use_supabase: bool = False
     # Model that drives openclaude for technical-agent MVP builds. Must be a
     # strong agentic/tool-use model (DeepSeek-V4-Flash chats instead of building).
-    mvp_build_model: str = "moonshotai/Kimi-K2.5"
+    mvp_build_model: str = "tencent/hy3-preview"
     # MVP builds (openclaude tool-use) are billed as separate, higher-rate
     # credits — this multiplier is applied to the build's token-based credit cost.
     mvp_credit_multiplier: float = 3.0
     redis_url: str = "redis://localhost:6379"
     gemini_api_key: str = ""
-    agent_model_base_url: str = "https://api.deepinfra.com/v1/openai"
+    agent_model_base_url: str = "https://openrouter.ai/api/v1"
     agent_model_api_key: str = ""
-    agent_model_name: str = "deepseek-ai/DeepSeek-V4-Flash"
+    agent_model_name: str = "xiaomi/mimo-v2.5"
     # OpenRouter — NOT overridden by Coolify (new field names)
     openrouter_api_key: str = ""
     openrouter_api_key_2: str = ""

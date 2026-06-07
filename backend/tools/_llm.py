@@ -14,17 +14,21 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-_FAST_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
-_LARGE_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
-_INSTRUCT_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
-_NEMOTRON_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
+# Text generation moved to OpenRouter: light=MiMo, heavy(docs/html/design)=hy3-preview.
+_FAST_MODEL = settings.or_light_model           # xiaomi/mimo-v2.5
+_LARGE_MODEL = settings.or_highoutput_model     # tencent/hy3-preview
+_INSTRUCT_MODEL = settings.or_highoutput_model  # tencent/hy3-preview
+_NEMOTRON_MODEL = settings.or_highoutput_model  # tencent/hy3-preview
+_PROMPT_MODEL = settings.or_light_model         # xiaomi/mimo-v2.5
+# Image generation has no OpenRouter equivalent — stays on DeepInfra (FLUX).
 _IMAGE_MODEL = "black-forest-labs/FLUX-2-pro"
-_PROMPT_MODEL = "deepseek-ai/DeepSeek-V4-Flash"
-_DI_BASE = "https://api.deepinfra.com/v1/openai"
+_IMAGE_BASE = "https://api.deepinfra.com/v1/openai"
+_DI_BASE = settings.openrouter_base_url
 
 
 def _api_key() -> str:
-    return settings.deepinfra_api_key or settings.planner_model_api_key or settings.agent_model_api_key
+    from backend.core.key_rotator import get_openrouter_key
+    return get_openrouter_key() or settings.openrouter_api_key or settings.planner_model_api_key
 
 
 def generate(prompt: str, max_tokens: int | None = None, json_mode: bool = False, model: str = "large", temperature: float = 0.7) -> str:
@@ -174,9 +178,11 @@ def generate_image(description: str, width: int = 1024, height: int = 1024, foun
     image_prompt = _re.sub(r'^(prompt|image|here is|here\'s)[:\s]+', '', image_prompt, flags=_re.IGNORECASE).strip()
     logger.info("FLUX prompt: %s", image_prompt)
 
-    # Step 2: FLUX generates image via OpenAI-compatible images/generations endpoint
+    # Step 2: FLUX generates image via OpenAI-compatible images/generations endpoint.
+    # OpenRouter has no images endpoint — this call stays on DeepInfra.
     try:
-        img_client = openai.OpenAI(base_url=_DI_BASE, api_key=_api_key())
+        _img_key = settings.deepinfra_api_key or settings.agent_model_api_key
+        img_client = openai.OpenAI(base_url=_IMAGE_BASE, api_key=_img_key)
         size = f"{width}x{height}"
         img_resp = img_client.images.generate(
             model=_IMAGE_MODEL,

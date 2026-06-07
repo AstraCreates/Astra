@@ -1,6 +1,8 @@
 import logging
 from typing import Optional
 
+from backend.config import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,7 +31,8 @@ def deep_research(query: str, focus: str = "") -> dict:
             return future.result(timeout=300)
 
 
-_DEEPINFRA_MODELS = ["deepseek-ai/DeepSeek-V4-Flash"]
+# Synthesis runs against planner_model_base_url (OpenRouter); use an OpenRouter model.
+_DEEPINFRA_MODELS = [settings.or_highoutput_model]
 _GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b"]
 
 
