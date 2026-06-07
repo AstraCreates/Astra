@@ -656,16 +656,24 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 </>;
               }
 
-              // "updates" tab — agent-level completions only (done / error), never raw tool results
-              const updates = all.filter((l) => l.type === "done" || l.type === "error");
+              // "updates" tab — live agent reasoning (think) + completions (done) + errors (error)
+              const updates = all.filter((l) => l.type === "think" || l.type === "done" || l.type === "error");
               if (!updates.length) {
                 const isRunning = ags.some((a) => st.agents[a].status === "running");
-                return <div style={{ color: "var(--fd)", fontSize: 10.5, lineHeight: 1.6 }}>{isRunning ? "Agents are working — summaries appear here when each one finishes." : "Waiting to start."}</div>;
+                return <div style={{ color: "var(--fd)", fontSize: 10.5, lineHeight: 1.6 }}>{isRunning ? "Agents are working — updates appear here as they think and act." : "Waiting to start."}</div>;
               }
-              return <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              // Helper: extract first meaningful sentence from think text
+              const thinkSnippet = (raw: string): string => {
+                const clean = raw.replace(/\s+/g, " ").trim();
+                const end = Math.min(
+                  ...[". ", ".\n", "! ", "? ", "\n"].map((sep) => { const i = clean.indexOf(sep); return i > 10 ? i + 1 : 9999; })
+                );
+                return (end < 9999 ? clean.slice(0, end) : clean).slice(0, 160).trim();
+              };
+              return <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {updates.map((l, i) => {
                   if (l.type === "error") return (
-                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", borderRadius: 8, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.18)" }}>
+                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", borderRadius: 8, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.18)", marginTop: 4 }}>
                       <span style={{ fontSize: 13, flexShrink: 0, marginTop: 2 }}>✗</span>
                       <div>
                         {ags.length > 1 && <div style={{ fontSize: 9, fontWeight: 700, color: "var(--red)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 3 }}>{l.agent}</div>}
@@ -673,17 +681,31 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                       </div>
                     </div>
                   );
-                  // done — agent completed, show its summary
-                  const summary = l.text && l.text !== "Agent finished" ? l.text : null;
-                  return (
-                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px 13px", borderRadius: 8, background: "rgba(52,211,153,.05)", border: "1px solid rgba(52,211,153,.2)" }}>
-                      <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>✓</span>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--green)", marginBottom: summary ? 5 : 0 }}>
-                          {l.agent.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())} finished
+                  if (l.type === "done") {
+                    const summary = l.text && l.text !== "Agent finished" ? l.text : null;
+                    return (
+                      <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px 13px", borderRadius: 8, background: "rgba(52,211,153,.05)", border: "1px solid rgba(52,211,153,.2)", marginTop: 4 }}>
+                        <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>✓</span>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--green)", marginBottom: summary ? 5 : 0 }}>
+                            {l.agent.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())} finished
+                          </div>
+                          {summary && <div style={{ fontSize: 12, color: "var(--fg)", lineHeight: 1.65, wordBreak: "break-word" }}>{summary}</div>}
                         </div>
-                        {summary && <div style={{ fontSize: 12, color: "var(--fg)", lineHeight: 1.65, wordBreak: "break-word" }}>{summary}</div>}
                       </div>
+                    );
+                  }
+                  // think — live reasoning snippet
+                  const snippet = thinkSnippet(l.text);
+                  if (!snippet) return null;
+                  return (
+                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0" }}>
+                      {ags.length > 1 && (
+                        <span style={{ fontSize: 9, color: "var(--blue)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", flexShrink: 0, marginTop: 2, minWidth: 54 }}>
+                          {l.agent.split("_")[0]}
+                        </span>
+                      )}
+                      <span style={{ fontSize: 11.5, color: "var(--fd)", lineHeight: 1.55, fontStyle: "italic" }}>{snippet}</span>
                     </div>
                   );
                 })}
