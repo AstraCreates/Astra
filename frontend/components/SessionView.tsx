@@ -68,7 +68,10 @@ const DEPTS: Record<string, { n: string; ic: string; ags: string[] }> = {
   sales:     { n: "Sales",     ic: "💼", ags: ["sales", "sales_pipeline", "sales_enablement", "ops"] },
   finance:   { n: "Finance",   ic: "💰", ags: ["finance_model", "finance_fundraise"] },
 };
-const PENDING = new Set(["pending", "triggered", "armed", "waiting_approval"]);
+// Actionable = an agent actually hit the gate and is blocked waiting on the founder.
+// "armed" is NOT actionable: it's a pre-configured gate slot that exists from the
+// moment the run starts — showing it as an approval card means "approve nothing".
+const PENDING = new Set(["pending", "triggered", "waiting_approval"]);
 
 function agToDept(k: string): string | null {
   for (const [dk, d] of Object.entries(DEPTS)) if (d.ags.includes(k)) return dk;
@@ -212,7 +215,11 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           else if (d.stack?.stack_id && !S.current.stackId) S.current.stackId = d.stack.stack_id;
           S.current.status = d.status || S.current.status;
           S.current.artifacts = Array.isArray(d.artifacts) ? d.artifacts : [];
-          S.current.approvals = Array.isArray(d.approvals) ? d.approvals.filter((a: any) => PENDING.has(a.status)) : [];
+          S.current.approvals = Array.isArray(d.approvals)
+            ? d.approvals
+                .filter((a: any) => PENDING.has(a.status) && (a.gate_key || a.key))
+                .map((a: any) => ({ ...a, gate_key: a.gate_key || a.key }))
+            : [];
           if (d.agents && typeof d.agents === "object") {
             for (const [k, ag] of Object.entries<any>(d.agents)) {
               S.current.agents[k] = { key: k, status: ag.status || "waiting", log: ag.log || [], visitedUrls: ag.visitedUrls || ag.visited_urls || [], currentTool: null, result: ag.result || null, instruction: ag.instruction || "" };
