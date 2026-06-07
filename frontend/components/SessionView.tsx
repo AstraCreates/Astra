@@ -22,6 +22,13 @@ type SState = {
   selDept: string | null; selArt: string | null; tab: string;
 };
 
+function safeText(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (v == null) return "";
+  if (typeof v === "object") { try { return JSON.stringify(v); } catch {} }
+  return String(v);
+}
+
 function extractProjectName(goal: string): { projectName: string; cleanGoal: string } {
   let m = goal.match(/^Company name: (.+?)\.\s*\n+([\s\S]*)$/);
   if (m) return { projectName: m[1].trim(), cleanGoal: m[2].trim() };
@@ -108,13 +115,14 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const ensureAg = (key: string) => {
     if (!S.current.agents[key]) S.current.agents[key] = { key, status: "waiting", log: [], visitedUrls: [], currentTool: null, result: null, instruction: "" };
   };
-  const addLog = (agentKey: string, type: string, text: string) => {
+  const addLog = (agentKey: string, type: string, text: unknown) => {
     ensureAg(agentKey);
-    const entry = { ts: Date.now(), type, text: String(text || "").slice(0, 500) };
+    const str = safeText(text).slice(0, 500);
+    const entry = { ts: Date.now(), type, text: str };
     const ag = S.current.agents[agentKey];
     ag.log.push(entry);
     if (ag.log.length > 300) ag.log.shift();
-    const m = text && text.match(/https?:\/\/[^\s"',>)]+/);
+    const m = str.match(/https?:\/\/[^\s"',>)]+/);
     if (m && !ag.visitedUrls.includes(m[0])) ag.visitedUrls.push(m[0]);
   };
 
@@ -247,7 +255,13 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             : [];
           if (d.agents && typeof d.agents === "object") {
             for (const [k, ag] of Object.entries<any>(d.agents)) {
-              S.current.agents[k] = { key: k, status: ag.status || "waiting", log: ag.log || [], visitedUrls: ag.visitedUrls || ag.visited_urls || [], currentTool: null, result: ag.result || null, instruction: ag.instruction || "" };
+              const rawLog: any[] = ag.log || [];
+              S.current.agents[k] = {
+                key: k, status: ag.status || "waiting",
+                log: rawLog.map((e) => ({ ts: e.ts ?? Date.now(), type: String(e.type || ""), text: safeText(e.text) })),
+                visitedUrls: ag.visitedUrls || ag.visited_urls || [],
+                currentTool: null, result: ag.result || null, instruction: ag.instruction || "",
+              };
             }
           }
         }
