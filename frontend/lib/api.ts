@@ -1008,18 +1008,31 @@ export async function submitGoal(
   workspaceId?: string,
   workspaceName?: string,
 ): Promise<{ session_id: string; status: string; workspace_id: string; chapter_id: string }> {
-  const res = await fetch(`${BASE}/goal`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-astra-user-id": founderId },
-    body: JSON.stringify({
-      founder_id: founderId,
-      instruction,
-      constraints,
-      stack_id: stackId,
-      workspace_id: workspaceId || undefined,
-      workspace_name: workspaceName || undefined,
-    }),
-  });
+  // Abort after 30s so a hung request surfaces an error instead of leaving the
+  // UI stuck on "Launching…" forever (e.g. a stale bundle pointing at a dead host).
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30_000);
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/goal`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-astra-user-id": founderId },
+      body: JSON.stringify({
+        founder_id: founderId,
+        instruction,
+        constraints,
+        stack_id: stackId,
+        workspace_id: workspaceId || undefined,
+        workspace_name: workspaceName || undefined,
+      }),
+      signal: ctrl.signal,
+    });
+  } catch (e) {
+    if (ctrl.signal.aborted) throw new Error(`Request timed out reaching the backend at ${BASE}/goal. Hard-refresh (Cmd+Shift+R) and try again.`);
+    throw new Error(`Could not reach the backend at ${BASE}/goal: ${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
