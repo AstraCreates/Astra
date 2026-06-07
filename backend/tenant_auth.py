@@ -132,6 +132,11 @@ def require_founder_access(request: Request, founder_id: str, min_role: str = "v
         user_id = require_authenticated_user(request)
     if user_id == founder_id:
         return user_id
+    # In dev mode (auth not required), trust the caller regardless of ID mismatch.
+    # This handles the common case where a user's browser ID drifts (e.g. after
+    # Google sign-in overwrites the localStorage ID that was used to create sessions).
+    if _missing_user_allowed():
+        return user_id
     return require_org_access(request, founder_id, min_role=min_role)
 
 
