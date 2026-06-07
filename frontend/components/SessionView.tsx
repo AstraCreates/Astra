@@ -304,18 +304,27 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       const built = plan.map((ph) => {
         const ags = agents.filter((a) => ph.groups.some((g) => a.key === g || a.key.startsWith(g + "_")));
         const present = ags.length > 0;
-        return { name: ph.name, present, allDone: present && ags.every((a) => a.status === "done"), anyStarted: ags.some((a) => a.status !== "waiting") };
+        return { name: ph.name, present, allDone: present && ags.every((a) => a.status === "done"), anyRunning: ags.some((a) => a.status === "running") };
       });
-      // Sequential enforcement: only the FIRST non-done phase that has started becomes active.
-      // Phases after it stay locked even if their agents are running in parallel.
+      // Phase advances ONLY when agents actually start running (triggered by approval).
+      // Never speculatively activate a phase — approvals are the gate.
       let activeSeen = false;
       phases = built.map((b) => {
         if (b.allDone) return ["done", b.name];
-        if (!activeSeen && b.anyStarted) { activeSeen = true; return ["act", b.name]; }
-        return ["", b.name];
+        if (!activeSeen && b.anyRunning) { activeSeen = true; return ["act", b.name]; }
+        return ["", b.name]; // locked
       });
-      // Nothing started yet (planning) — mark the first phase as active so the bar isn't blank
-      if (!activeSeen) { const i = phases.findIndex(([c]) => c !== "done"); if (i >= 0) phases[i] = ["act", phases[i][1]]; }
+      // Approval pending: insert "⚠ Approval" as active step, keep next phases locked.
+      // Do NOT activate next phase via fallback — approval gate controls when agents start.
+      if (st.approvals.length) {
+        const insertAt = phases.findIndex(([c]) => c === "");
+        if (insertAt >= 0) phases.splice(insertAt, 0, ["act", "⚠ Approval"]);
+        else phases.push(["act", "⚠ Approval"]);
+      } else if (!activeSeen) {
+        // Nothing running and no approvals pending: planning stage — make first phase active
+        const i = phases.findIndex(([c]) => c !== "done");
+        if (i >= 0) phases[i] = ["act", phases[i][1]];
+      }
       phases.push(["", "Complete"]);
     }
   } else {
