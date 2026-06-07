@@ -1,10 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { listSessions, deleteSessionRemote, type SessionIndexEntry } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
+
+const GREETINGS = [
+  "Welcome back",
+  "Let's get to work",
+  "Ready to build",
+  "Good to see you",
+  "Let's keep building",
+];
 
 function ago(ts: string | undefined): string {
   if (!ts) return "";
@@ -14,12 +22,14 @@ function ago(ts: string | undefined): string {
   const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
 }
-function pill(s: string) {
-  if (s === "running") return <span className="pill blue">● Running</span>;
-  if (s === "done") return <span className="pill green">✓ Done</span>;
-  if (s === "error" || s === "killed") return <span className="pill red">✗ {s === "killed" ? "Stopped" : "Error"}</span>;
-  if (s === "stalled") return <span className="pill amber">⚠ Stalled</span>;
-  return <span className="pill">{s}</span>;
+
+function StatusPill({ status }: { status: string }) {
+  if (status === "running") return <span className="pill blue">● Running</span>;
+  if (status === "done") return <span className="pill green">✓ Done</span>;
+  if (status === "error") return <span className="pill red">✗ Error</span>;
+  if (status === "killed") return <span className="pill red">✗ Stopped</span>;
+  if (status === "stalled") return <span className="pill amber">⚠ Needs attention</span>;
+  return <span className="pill">{status}</span>;
 }
 
 export default function DashboardView() {
@@ -29,11 +39,34 @@ export default function DashboardView() {
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
   const [company, setCompany] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [greeting, setGreeting] = useState("");
+  const [greetFade, setGreetFade] = useState(true);
+  const greetIdx = useRef(0);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       setCompany(localStorage.getItem("astra_onboarding_company") || "");
+      const fullName = localStorage.getItem("astra_onboarding_name") || "";
+      setFirstName(fullName.split(" ")[0] || fullName);
     }
+    // Pick random starting greeting
+    greetIdx.current = Math.floor(Math.random() * GREETINGS.length);
+    setGreeting(GREETINGS[greetIdx.current]);
+  }, []);
+
+  // Rotate greeting every 7 seconds
+  useEffect(() => {
+    if (!GREETINGS.length) return;
+    const interval = setInterval(() => {
+      setGreetFade(false);
+      setTimeout(() => {
+        greetIdx.current = (greetIdx.current + 1) % GREETINGS.length;
+        setGreeting(GREETINGS[greetIdx.current]);
+        setGreetFade(true);
+      }, 300);
+    }, 7000);
+    return () => clearInterval(interval);
   }, []);
 
   const del = useCallback(async (e: React.MouseEvent, s: SessionIndexEntry) => {
@@ -55,75 +88,193 @@ export default function DashboardView() {
   useEffect(() => { load(); }, [load]);
 
   const running = (sessions || []).filter((s) => s.status === "running").length;
-  const sub = sessions === null ? "Loading sessions…"
-    : error ? "Could not reach backend"
-    : !sessions.length ? "No runs yet — start your first goal."
-    : running ? `${running} run${running > 1 ? "s" : ""} active · ${sessions.length} total`
-    : `${sessions.length} total run${sessions.length > 1 ? "s" : ""}`;
+  const stalled = (sessions || []).filter((s) => s.status === "stalled").length;
 
-  const displayName = company;
+  const headlineName = firstName || (company ? `the ${company} team` : null);
+  const headline = greeting && headlineName ? `${greeting}, ${headlineName}.` : greeting ? `${greeting}.` : "";
 
   return (
-    <div style={{ flex: 1, overflowY: "auto" }}>
-      <div style={{ padding: "28px 22px 0", borderBottom: "1px solid var(--bd)" }}>
-        {company && (
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--bd)", background: "var(--surface)", fontSize: 10.5, color: "var(--fd)", marginBottom: 12 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)" }} />
-            <span style={{ fontWeight: 600, color: "var(--fg)" }}>{displayName}</span>
+    <>
+      <style>{`
+        @keyframes dv-fade { from { opacity: 0; } to { opacity: 1; } }
+        .greeting-text { transition: opacity 0.3s ease; }
+        .sc-row { cursor: pointer; padding: 14px 16px; border-radius: 10px; border: 1.5px solid var(--bd); background: var(--surface); display: flex; align-items: flex-start; gap: 14; transition: border-color .15s, box-shadow .15s; }
+        .sc-row:hover { border-color: var(--blue) !important; box-shadow: 0 0 0 3px rgba(59,130,246,.08); }
+        .sc-row.stalled { border-color: rgba(245,158,11,0.4) !important; background: rgba(245,158,11,0.04) !important; }
+        .sc-row.running { border-color: rgba(59,130,246,0.3) !important; }
+      `}</style>
+
+      <div style={{ flex: 1, overflowY: "auto" }}>
+        {/* Header */}
+        <div style={{ padding: "28px 24px 20px", borderBottom: "1px solid var(--bd)" }}>
+          {company && (
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--bd)", background: "var(--surface)", fontSize: 10.5, color: "var(--fd)", marginBottom: 14 }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)" }} />
+              <span style={{ fontWeight: 600, color: "var(--fg)" }}>{company}</span>
+            </div>
+          )}
+
+          <div
+            className="greeting-text"
+            style={{
+              fontFamily: "var(--font-chakra)", fontSize: 22, fontWeight: 700,
+              color: "var(--fg)", marginBottom: 4,
+              opacity: greetFade ? 1 : 0,
+            }}
+          >
+            {headline || "Sessions"}
           </div>
-        )}
-        <div className="dash-ht">Sessions</div>
-        <div className="dash-sub">{sub}</div>
-        <div style={{ display: "flex", gap: 9, paddingBottom: 22 }}>
-          <button className="btn pri" onClick={() => router.push("/?new=1")}>＋ New run</button>
-          <button className="btn" onClick={load}>Refresh</button>
+
+          {/* Stats row */}
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18 }}>
+            {sessions !== null && (
+              <>
+                <span style={{ fontSize: 11, color: "var(--fm)" }}>
+                  {sessions.length} session{sessions.length !== 1 ? "s" : ""}
+                </span>
+                {running > 0 && (
+                  <span style={{ fontSize: 11, color: "var(--blue)", fontWeight: 600 }}>
+                    ● {running} running
+                  </span>
+                )}
+                {stalled > 0 && (
+                  <span style={{ fontSize: 11, color: "rgba(245,158,11,1)", fontWeight: 600 }}>
+                    ⚠ {stalled} need{stalled === 1 ? "s" : ""} attention
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+
+          <div style={{ display: "flex", gap: 9 }}>
+            <button className="btn pri" onClick={() => router.push("/?new=1")}>＋ New run</button>
+            <button className="btn" onClick={load}>Refresh</button>
+          </div>
+        </div>
+
+        <div style={{ padding: "20px 24px 40px" }}>
+          {/* Attention banner */}
+          {stalled > 0 && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 10,
+              padding: "10px 14px", borderRadius: 9,
+              border: "1px solid rgba(245,158,11,0.35)",
+              background: "rgba(245,158,11,0.07)",
+              marginBottom: 18, fontSize: 12, color: "rgba(245,158,11,0.95)",
+            }}>
+              <span style={{ fontSize: 15 }}>⚠</span>
+              <span>
+                {stalled} session{stalled > 1 ? "s need" : " needs"} your attention — approval may be required.
+                <button
+                  style={{ marginLeft: 8, background: "none", border: "none", color: "inherit", cursor: "pointer", fontWeight: 600, textDecoration: "underline", padding: 0, fontSize: 12 }}
+                  onClick={() => {
+                    const first = (sessions || []).find((s) => s.status === "stalled");
+                    if (first) router.push(`/?session=${first.session_id}&founder=${encodeURIComponent(userId)}`);
+                  }}
+                >
+                  Review →
+                </button>
+              </span>
+            </div>
+          )}
+
+          {sessions === null ? (
+            <div style={{ color: "var(--fm)", fontSize: 11, padding: "12px 0" }}>Loading sessions…</div>
+          ) : error ? (
+            <div className="empty">
+              <div style={{ fontSize: 34, opacity: .12 }}>⚙</div>
+              <div className="empty-title">Backend not reachable</div>
+              <div className="empty-sub" style={{ fontSize: 10.5, maxWidth: 280, lineHeight: 1.6 }}>{error}</div>
+              <button className="btn pri" style={{ marginTop: 12 }} onClick={load}>Try again</button>
+            </div>
+          ) : !sessions.length ? (
+            <div className="empty">
+              <div style={{ fontSize: 34, opacity: .12 }}>◈</div>
+              <div className="empty-title">No runs yet</div>
+              <div className="empty-sub" style={{ fontSize: 10.5, maxWidth: 280, lineHeight: 1.6 }}>
+                Start your first run and Astra will get to work.
+              </div>
+              <button className="btn pri" style={{ marginTop: 12 }} onClick={() => router.push("/?new=1")}>
+                Start first run →
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {sessions.map((s) => {
+                const isStalled = s.status === "stalled";
+                const isRunning = s.status === "running";
+                return (
+                  <div
+                    key={s.session_id}
+                    className={`sc-row${isStalled ? " stalled" : isRunning ? " running" : ""}`}
+                    onClick={() => router.push(`/?session=${s.session_id}&founder=${encodeURIComponent(userId)}`)}
+                    style={{ position: "relative" }}
+                  >
+                    {/* Delete */}
+                    <button
+                      title="Delete run"
+                      disabled={deleting.has(s.session_id)}
+                      onClick={(e) => del(e, s)}
+                      style={{
+                        position: "absolute", top: 10, right: 10,
+                        width: 22, height: 22,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        background: "var(--surface)", border: "1px solid var(--bd)",
+                        color: "var(--fm)", cursor: "pointer", fontSize: 11, borderRadius: 5,
+                        opacity: deleting.has(s.session_id) ? 0.4 : 0.6,
+                        transition: "opacity .15s",
+                      }}
+                    >{deleting.has(s.session_id) ? "…" : "✕"}</button>
+
+                    <div style={{ flex: 1, paddingRight: 28 }}>
+                      {/* Goal */}
+                      <div style={{
+                        fontSize: 12.5, fontWeight: 600, color: "var(--fg)",
+                        lineHeight: 1.45, marginBottom: 7,
+                        display: "-webkit-box", WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical", overflow: "hidden",
+                      }}>
+                        {s.goal || "Untitled run"}
+                      </div>
+
+                      {/* Running progress dots */}
+                      {isRunning && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 7 }}>
+                          {["diagnose", "design", "deploy", "govern", "operate"].map((ph) => (
+                            <div key={ph} style={{
+                              width: 28, height: 3, borderRadius: 2,
+                              background: "rgba(59,130,246,0.25)",
+                              position: "relative", overflow: "hidden",
+                            }}>
+                              <div style={{
+                                position: "absolute", inset: 0,
+                                background: "rgba(59,130,246,0.7)",
+                                animation: "dv-fade 1.5s ease-in-out infinite alternate",
+                              }} />
+                            </div>
+                          ))}
+                          <span style={{ fontSize: 9, color: "var(--blue)", marginLeft: 4, fontWeight: 600 }}>IN PROGRESS</span>
+                        </div>
+                      )}
+
+                      {/* Meta row */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <StatusPill status={s.status} />
+                        <span style={{ fontSize: 10, color: "var(--fm)" }}>{ago(s.created_at)}</span>
+                        {s.stack_id && (
+                          <span style={{ fontSize: 9, color: "var(--fm)", fontFamily: "var(--font-ibm-mono)", marginLeft: "auto" }}>
+                            {s.stack_id}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 22px 0" }}>
-        <div className="sec-label">Recent runs</div>
-      </div>
-
-      <div style={{ padding: "14px 22px 22px" }}>
-        {sessions === null ? (
-          <div style={{ display: "flex", alignItems: "center", gap: 9, padding: 22, color: "var(--fm)", fontSize: 11 }}>Loading sessions…</div>
-        ) : error ? (
-          <div className="empty">
-            <div style={{ fontSize: 34, opacity: .12 }}>⚙</div>
-            <div className="empty-title">Backend not reachable</div>
-            <div className="empty-sub" style={{ fontSize: 10.5, maxWidth: 280, lineHeight: 1.6 }}>{error}</div>
-            <button className="btn pri" style={{ marginTop: 12 }} onClick={load}>Try again</button>
-          </div>
-        ) : !sessions.length ? (
-          <div className="empty">
-            <div style={{ fontSize: 34, opacity: .12 }}>◈</div>
-            <div className="empty-title">No runs yet</div>
-            <div className="empty-sub" style={{ fontSize: 10.5, maxWidth: 280, lineHeight: 1.6 }}>Start your first goal and Astra will build your company step by step.</div>
-            <button className="btn pri" style={{ marginTop: 12 }} onClick={() => router.push("/?new=1")}>Start first goal →</button>
-          </div>
-        ) : (
-          <div className="sessions-grid">
-            {sessions.map((s) => {
-              const cls = s.status === "running" ? "running" : s.status === "done" ? "done" : (s.status === "error" || s.status === "killed") ? "error" : "";
-              return (
-                <div key={s.session_id} className={`sc ${cls}`} style={{ position: "relative" }} onClick={() => router.push(`/?session=${s.session_id}&founder=${encodeURIComponent(userId)}`)}>
-                  <button
-                    className="sc-del"
-                    title="Delete run"
-                    disabled={deleting.has(s.session_id)}
-                    onClick={(e) => del(e, s)}
-                    style={{ position: "absolute", top: 8, right: 8, width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface)", border: "1px solid var(--bd)", color: "var(--fm)", cursor: "pointer", fontSize: 12, lineHeight: 1, opacity: deleting.has(s.session_id) ? 0.4 : 1 }}
-                  >{deleting.has(s.session_id) ? "…" : "✕"}</button>
-                  <div className="sc-goal" style={{ paddingRight: 24 }}>{s.goal || "Untitled run"}</div>
-                  <div className="sc-meta">
-                    {pill(s.status)}
-                    <span className="sc-time">{ago(s.created_at)}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
+    </>
   );
 }

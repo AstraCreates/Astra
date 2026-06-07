@@ -984,6 +984,7 @@ export default function OnboardingWizard() {
 
   async function handleLaunch() {
     localStorage.setItem("astra_show_tour", "1");
+    if (name.trim()) localStorage.setItem("astra_onboarding_name", name.trim());
     if (goal.trim()) localStorage.setItem("astra_onboarding_goal", goal.trim());
     if (company.trim()) localStorage.setItem("astra_onboarding_company", company.trim());
     if (selectedStackId === "custom" && customAgents.length > 0) {
@@ -993,12 +994,12 @@ export default function OnboardingWizard() {
       localStorage.setItem("astra_onboarding_stack", selectedStackId);
     }
     localStorage.setItem("astra_onboarding_done", "1");
-    router.push("/?from_onboarding=1");
+    router.push(`/?welcome=1&name=${encodeURIComponent(name.trim())}`);
   }
 
   async function handleSkip() {
     localStorage.setItem("astra_onboarding_done", "1");
-    router.push("/?from_onboarding=1");
+    router.push("/?welcome=1");
   }
 
   return (
