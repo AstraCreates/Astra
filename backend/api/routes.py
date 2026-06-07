@@ -429,6 +429,32 @@ async def kill_session(session_id: str, request: Request):
     return {"ok": True, "killed": cancelled, "session_id": session_id}
 
 
+@router.post("/sessions/{session_id}/pause")
+async def pause_session_route(session_id: str, request: Request):
+    """Pause a running session — new agents will not start until resumed."""
+    from backend.core.session_store import get_session_meta
+    meta = get_session_meta(session_id)
+    owner = str((meta or {}).get("founder_id") or "")
+    if owner:
+        require_founder_access(request, owner, min_role="operator")
+    from backend.core.cancellation import pause_session
+    pause_session(session_id)
+    return {"ok": True, "paused": True}
+
+
+@router.post("/sessions/{session_id}/resume")
+async def resume_session_route(session_id: str, request: Request):
+    """Resume a paused session."""
+    from backend.core.session_store import get_session_meta
+    meta = get_session_meta(session_id)
+    owner = str((meta or {}).get("founder_id") or "")
+    if owner:
+        require_founder_access(request, owner, min_role="operator")
+    from backend.core.cancellation import resume_session
+    resume_session(session_id)
+    return {"ok": True, "paused": False}
+
+
 @router.get("/sessions/{session_id}/images")
 async def session_images(session_id: str, request: Request):
     """Return design images (logos, brand board) with full base64 from the durable

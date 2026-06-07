@@ -19,7 +19,7 @@ type SState = {
   status: string; goal: string; company: string; projectName: string; stackId: string;
   agents: Record<string, Agent>;
   artifacts: Artifact[]; approvals: Approval[]; decidedKeys: Set<string>;
-  selDept: string | null; selArt: string | null; tab: string;
+  selDept: string | null; selArt: string | null; tab: string; paused: boolean;
 };
 
 function safeText(v: unknown): string {
@@ -106,7 +106,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const founderId = userId;
   const S = useRef<SState>({
     status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
-    decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates",
+    decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false,
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
   const sseRef = useRef<EventSource | null>(null);
@@ -213,7 +213,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!sessionId || !founderId) return;
     let alive = true;
-    S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "log" };
+    S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false };
     force();
 
     (async () => {
@@ -300,6 +300,13 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     try { await apiFetch(`${API}/steer/${sessionId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg }) }); } catch {}
   };
   const stop = async () => { if (!confirm("Stop this run?")) return; await killSession(sessionId); S.current.status = "killed"; sseRef.current?.close(); force(); };
+  const pauseToggle = async () => {
+    const next = !S.current.paused;
+    try {
+      await apiFetch(`${API}/sessions/${sessionId}/${next ? "pause" : "resume"}`, { method: "POST" });
+      S.current.paused = next; force();
+    } catch {}
+  };
   const sel = (dept: string | null, art: string | null) => { S.current.selDept = dept; S.current.selArt = art; S.current.tab = art ? "read" : "updates"; force(); };
 
   // ── Derived render data ──
@@ -399,7 +406,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       <div style={{ height: 44, display: "flex", alignItems: "center", gap: 10, padding: "0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
         <div className="topbar-title" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName || shortGoal}</div>
         {statusPill(st.status)}
-        {(st.status === "running" || st.status === "loading") && <button className="btn danger sm" onClick={stop}>Stop</button>}
+        {(st.status === "running" || st.status === "loading") && <>
+          <button className="btn sm" style={{ background: st.paused ? "var(--green)" : "var(--surface)", border: "1px solid var(--bd)", color: st.paused ? "#fff" : "var(--fg)" }} onClick={pauseToggle}>{st.paused ? "▶ Resume" : "⏸ Pause"}</button>
+          <button className="btn danger sm" onClick={stop}>Stop</button>
+        </>}
       </div>
 
       {/* urgent banner */}
@@ -508,10 +518,24 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             {st.selArt && (() => {
               const art = st.artifacts.find((a) => a.key === st.selArt);
               if (!art) return null;
+              // Extract full content from the owning agent's result (backend only stores 360-char preview on the artifact itself)
+              let fullContent: string | null = null;
+              const ownerResult = art.owner_agent ? (st.agents[art.owner_agent]?.result as Record<string, unknown> | null) : null;
+              if (ownerResult && typeof ownerResult === "object") {
+                const r = ownerResult as Record<string, unknown>;
+                const candidates = [art.key ? r[art.key] : null, r.summary, r.output_summary, r.formatted_text, r.report, r.text, r.url, r.html];
+                for (const c of candidates) {
+                  if (c && typeof c === "string" && c.length > 0) { fullContent = c; break; }
+                }
+                if (!fullContent) fullContent = JSON.stringify(ownerResult, null, 2);
+              }
+              const displayContent = fullContent || art.content || art.preview || art.description || null;
               return <>
                 <div style={{ fontFamily: "var(--font-chakra)", fontSize: 13, fontWeight: 700, color: "var(--fg)" }}>{art.title || art.key}</div>
-                <div style={{ fontSize: 9, color: art.status === "ready" ? "var(--green)" : "var(--amber)", marginBottom: 6 }}>{art.status === "ready" ? "✓ ready" : "⋯ being written"}</div>
-                <pre className="art-pre">{art.preview || art.content || art.description || "(No preview yet)"}</pre>
+                <div style={{ fontSize: 9, color: art.status === "ready" ? "var(--green)" : "var(--amber)", marginBottom: 10 }}>{art.status === "ready" ? "✓ ready" : "⋯ being written"}</div>
+                {displayContent
+                  ? <pre className="art-pre" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: "none" }}>{displayContent}</pre>
+                  : <div style={{ color: "var(--fm)", fontSize: 10.5, fontStyle: "italic" }}>Agent hasn't produced output yet — check back when it completes.</div>}
               </>;
             })()}
 

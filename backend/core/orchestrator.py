@@ -803,6 +803,7 @@ class Orchestrator:
                 tid = task["id"]
                 agent_name = task["agent"]
                 from backend.core import cancellation
+                await cancellation.wait_if_paused(session_id)
                 if cancellation.is_killed(session_id):
                     completed[tid] = {"error": "killed"}
                     return
@@ -888,6 +889,11 @@ class Orchestrator:
         async def _run_task(task: dict) -> None:
             tid = task["id"]
             agent_name = task["agent"]
+            from backend.core import cancellation as _cancel
+            await _cancel.wait_if_paused(session_id)
+            if _cancel.is_killed(session_id):
+                completed[tid] = {"error": "killed"}
+                return
             agent = self.specialists.get(agent_name)
             stack_lane = stack_lane_by_agent.get(agent_name, {})
             lane_id = stack_lane.get("id") or task.get("id")
