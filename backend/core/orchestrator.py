@@ -477,10 +477,22 @@ class Orchestrator:
             artifact.key: artifact
             for artifact in getattr(stack_template, "artifacts", [])
         }
+        # Resolve workspace context for vault upsert (non-fatal if unavailable)
+        _ws_id = ""
+        _ch_id = ""
+        try:
+            from backend.core.session_store import get_session_meta as _gsm
+            _sm = _gsm(session_id) or {}
+            _ws_id = _sm.get("workspace_id", "")
+            _ch_id = _sm.get("chapter_id", "")
+        except Exception:
+            pass
+
         for artifact_key in expected_keys:
             artifact = artifact_by_key.get(artifact_key)
             if not artifact:
                 continue
+            _preview = self._artifact_preview(result, artifact.key)
             await publish(session_id, {
                 "type": "stack_artifact",
                 "artifact": {
@@ -491,9 +503,32 @@ class Orchestrator:
                     "required": artifact.required,
                     "status": "ready",
                     "task_id": task.get("id", ""),
-                    "preview": self._artifact_preview(result, artifact.key),
+                    "preview": _preview,
                 },
             })
+            # Persist to workspace vault with full content
+            if _ws_id and _ch_id:
+                try:
+                    _content = ""
+                    if isinstance(result, dict):
+                        for _ck in [f"{artifact_key}_summary", artifact_key, "summary", "output_summary", "formatted_text"]:
+                            _cv = result.get(_ck)
+                            if _cv and isinstance(_cv, str) and len(_cv) > 20:
+                                _content = _cv
+                                break
+                    from backend.core.workspace_store import upsert_vault_artifact
+                    upsert_vault_artifact(
+                        workspace_id=_ws_id,
+                        chapter_id=_ch_id,
+                        session_id=session_id,
+                        key=artifact.key,
+                        title=artifact.title,
+                        agent=agent_name,
+                        preview=_preview,
+                        content=_content,
+                    )
+                except Exception as _vex:
+                    logger.warning("workspace vault upsert failed for %s: %s", artifact_key, _vex)
 
     async def _publish_outcomes(self, session_id: str, task: dict, result: Any) -> None:
         """Emit measurable Outcome Ledger events from a completed task result."""

@@ -280,6 +280,29 @@ async def submit_goal(body: GoalRequest, request: Request):
         constraints["stack_id"] = body.stack_id
     constraints["unlimited_credits"] = _unlimited
 
+    # Create or resolve workspace + chapter
+    _workspace_id: str = ""
+    _chapter_id: str = ""
+    try:
+        from backend.core import workspace_store as _wss
+        _ws_name = (body.workspace_name or "").strip() or body.instruction[:60]
+        if body.workspace_id:
+            # Add a new chapter to an existing workspace
+            _workspace_id = body.workspace_id
+        else:
+            # Auto-create a new workspace for this project
+            _ws = _wss.create_workspace(
+                founder_id=body.founder_id,
+                name=_ws_name,
+                goal=body.instruction,
+                stack_id=body.stack_id or "idea_to_revenue",
+            )
+            _workspace_id = _ws["workspace_id"]
+        _ch = _wss.create_chapter(workspace_id=_workspace_id, session_id=session_id)
+        _chapter_id = _ch["chapter_id"]
+    except Exception as _we:
+        logger.warning("workspace creation failed (non-fatal): %s", _we)
+
     # Register session in durable store before launching
     try:
         from backend.core.session_store import register_session as _reg
@@ -290,6 +313,8 @@ async def submit_goal(body: GoalRequest, request: Request):
             stack_id=body.stack_id or "",
             company_name=str(constraints.get("company_name", "")),
             agents=list(constraints.get("agents", [])),
+            workspace_id=_workspace_id,
+            chapter_id=_chapter_id,
         )
     except Exception as _se:
         logger.warning("session_store.register_session failed: %s", _se)
@@ -301,6 +326,7 @@ async def submit_goal(body: GoalRequest, request: Request):
 
     async def _run():
         from backend.core import cancellation
+        _final_status = "done"
         try:
             await orch.run(
                 goal=body.instruction,
@@ -309,6 +335,7 @@ async def submit_goal(body: GoalRequest, request: Request):
                 session_id=session_id,
             )
         except asyncio.CancelledError:
+            _final_status = "killed"
             logger.info("goal run killed session=%s", session_id)
             try:
                 from backend.core.session_store import update_session_status
@@ -318,6 +345,7 @@ async def submit_goal(body: GoalRequest, request: Request):
             except Exception:
                 pass
         except Exception as e:
+            _final_status = "error"
             logger.error("goal run error session=%s: %s", session_id, e, exc_info=True)
             try:
                 await _reconcile_orphaned_agents(session_id, "Run failed before this agent completed.")
@@ -326,11 +354,18 @@ async def submit_goal(body: GoalRequest, request: Request):
                 pass
         finally:
             cancellation.clear(session_id)
+            # Update chapter status when the session ends
+            if _workspace_id and _chapter_id:
+                try:
+                    from backend.core import workspace_store as _wss2
+                    _wss2.update_chapter(_workspace_id, _chapter_id, status=_final_status)
+                except Exception as _ce:
+                    logger.warning("chapter status update failed: %s", _ce)
 
     _task = asyncio.create_task(_run())
     from backend.core import cancellation
     cancellation.register_task(session_id, _task)
-    return {"session_id": session_id, "status": "running"}
+    return {"session_id": session_id, "status": "running", "workspace_id": _workspace_id, "chapter_id": _chapter_id}
 
 
 @router.get("/stream/{session_id}")

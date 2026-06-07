@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from backend.api.routes import router
 from backend.api.admin import router as admin_router
+from backend.api.workspace_routes import router as workspace_router
 from backend.api.teams_routes import teams_router
 from backend.api.model_settings_routes import model_settings_router
 from backend.api.library_routes import library_router
@@ -26,6 +27,7 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(workspace_router)
 app.include_router(admin_router)
 app.include_router(teams_router, prefix="/api")
 app.include_router(model_settings_router, prefix="/api")

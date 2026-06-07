@@ -51,9 +51,13 @@ export default function NewGoalView() {
       if (attachments.length) {
         instruction += "\n\nAttached context:\n" + attachments.map((a) => `--- ${a.name} ---\n${a.content.slice(0, 8000)}`).join("\n\n");
       }
-      const data = await submitGoal(userId, instruction, {}, selStack || "idea_to_revenue");
+      const data = await submitGoal(userId, instruction, {}, selStack || "idea_to_revenue", undefined, name || undefined);
       if (!data.session_id) throw new Error("No session_id returned");
-      router.push(`/?session=${data.session_id}&founder=${encodeURIComponent(userId)}`);
+      if (data.workspace_id && data.chapter_id) {
+        router.push(`/?workspace=${data.workspace_id}&chapter=${data.chapter_id}&founder=${encodeURIComponent(userId)}`);
+      } else {
+        router.push(`/?session=${data.session_id}&founder=${encodeURIComponent(userId)}`);
+      }
     } catch (e) {
       setBusy(false);
       setErr(`⚠ ${e instanceof Error ? e.message : String(e)}`);

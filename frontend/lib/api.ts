@@ -1004,14 +1004,92 @@ export async function submitGoal(
   founderId: string,
   instruction: string,
   constraints: Record<string, unknown> = {},
-  stackId = "idea_to_revenue"
-): Promise<{ session_id: string; status: string }> {
-  // Use plain fetch — backend auth is disabled so no Clerk token needed
+  stackId = "idea_to_revenue",
+  workspaceId?: string,
+  workspaceName?: string,
+): Promise<{ session_id: string; status: string; workspace_id: string; chapter_id: string }> {
   const res = await fetch(`${BASE}/goal`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-astra-user-id": founderId },
-    body: JSON.stringify({ founder_id: founderId, instruction, constraints, stack_id: stackId }),
+    body: JSON.stringify({
+      founder_id: founderId,
+      instruction,
+      constraints,
+      stack_id: stackId,
+      workspace_id: workspaceId || undefined,
+      workspace_name: workspaceName || undefined,
+    }),
   });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+// ── Workspace API ───────────────────────────────────────────────────────────
+
+export interface WorkspaceChapter {
+  chapter_id: string;
+  workspace_id: string;
+  session_id: string;
+  name: string;
+  phase_scope: string | null;
+  status: "running" | "done" | "error" | "killed";
+  artifact_count: number;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface WorkspaceVaultEntry {
+  key: string;
+  title: string;
+  current: {
+    chapter_id: string;
+    session_id: string;
+    agent: string;
+    title: string;
+    preview: string;
+    content: string;
+    updated_at: string;
+  };
+  history: WorkspaceVaultEntry["current"][];
+}
+
+export interface Workspace {
+  workspace_id: string;
+  founder_id: string;
+  name: string;
+  goal: string;
+  company_name: string;
+  stack_id: string;
+  status: string;
+  created_at: string;
+  last_active: string;
+  chapter_ids: string[];
+  chapters?: WorkspaceChapter[];
+  vault?: Record<string, WorkspaceVaultEntry>;
+}
+
+export async function listWorkspaces(founderId: string): Promise<Workspace[]> {
+  const res = await apiFetch(`${BASE}/workspaces?founder_id=${encodeURIComponent(founderId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getWorkspace(workspaceId: string): Promise<Workspace> {
+  const res = await apiFetch(`${BASE}/workspaces/${encodeURIComponent(workspaceId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function updateWorkspace(workspaceId: string, fields: Partial<Pick<Workspace, "name" | "company_name" | "status">>): Promise<void> {
+  await apiFetch(`${BASE}/workspaces/${encodeURIComponent(workspaceId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(fields),
+  });
+}
+
+export async function getWorkspaceVault(workspaceId: string): Promise<Record<string, WorkspaceVaultEntry>> {
+  const res = await apiFetch(`${BASE}/workspaces/${encodeURIComponent(workspaceId)}/vault`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }

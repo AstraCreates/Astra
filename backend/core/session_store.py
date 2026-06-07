@@ -95,6 +95,8 @@ def register_session(
     stack_id: str = "",
     company_name: str = "",
     agents: list[str] | None = None,
+    workspace_id: str | None = None,
+    chapter_id: str | None = None,
 ) -> None:
     meta = {
         "session_id": session_id,
@@ -107,6 +109,8 @@ def register_session(
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "completed_at": None,
         "artifact_count": 0,
+        "workspace_id": workspace_id or "",
+        "chapter_id": chapter_id or "",
     }
     with _session_lock(session_id):
         meta_path(session_id).write_text(json.dumps(meta, indent=2))

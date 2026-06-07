@@ -7,6 +7,8 @@ class GoalRequest(BaseModel):
     instruction: str
     stack_id: Optional[str] = None
     constraints: dict = {}
+    workspace_id: Optional[str] = None
+    workspace_name: Optional[str] = None
 
 
 class StackRecommendRequest(BaseModel):
