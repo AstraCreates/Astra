@@ -99,7 +99,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const founderId = userId;
   const S = useRef<SState>({
     status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
-    decidedKeys: new Set(), selDept: null, selArt: null, tab: "log",
+    decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates",
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
   const sseRef = useRef<EventSource | null>(null);
@@ -286,7 +286,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     try { await apiFetch(`${API}/steer/${sessionId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg }) }); } catch {}
   };
   const stop = async () => { if (!confirm("Stop this run?")) return; await killSession(sessionId); S.current.status = "killed"; sseRef.current?.close(); force(); };
-  const sel = (dept: string | null, art: string | null) => { S.current.selDept = dept; S.current.selArt = art; S.current.tab = art ? "read" : "log"; force(); };
+  const sel = (dept: string | null, art: string | null) => { S.current.selDept = dept; S.current.selArt = art; S.current.tab = art ? "read" : "updates"; force(); };
 
   // ── Derived render data ──
   const st = S.current;
@@ -465,12 +465,14 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         {/* detail */}
         <div className="detail">
           <div className="dtabs">
-            {st.selArt ? <><div className={`dtab${st.tab === "read" ? " on" : ""}`} onClick={() => { st.tab = "read"; force(); }}>Read it</div></>
-            : st.selDept ? <>
-                <div className={`dtab${st.tab === "log" ? " on" : ""}`} onClick={() => { st.tab = "log"; force(); }}>What happened</div>
-                <div className={`dtab${st.tab === "sources" ? " on" : ""}`} onClick={() => { st.tab = "sources"; force(); }}>Sources</div>
-              </>
-            : <div className="dtab on">What happened</div>}
+            {st.selArt
+              ? <div className={`dtab${st.tab === "read" ? " on" : ""}`} onClick={() => { st.tab = "read"; force(); }}>Read it</div>
+              : st.selDept ? <>
+                  <div className={`dtab${st.tab === "updates" ? " on" : ""}`} onClick={() => { st.tab = "updates"; force(); }}>Updates</div>
+                  <div className={`dtab${st.tab === "tech" ? " on" : ""}`} onClick={() => { st.tab = "tech"; force(); }}>Technical logs</div>
+                  <div className={`dtab${st.tab === "sources" ? " on" : ""}`} onClick={() => { st.tab = "sources"; force(); }}>Sources</div>
+                </>
+              : <div className="dtab on">Updates</div>}
           </div>
           <div className="dscroll">
             {/* approval cards always first */}
@@ -499,10 +501,14 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               </>;
             })()}
 
-            {/* selected dept log / sources */}
+            {/* selected dept — updates / tech logs / sources */}
             {st.selDept && !st.selArt && (() => {
               const d = st.selDept === "__other" ? { ags: otherAgs } : DEPTS[st.selDept] || { ags: [] };
               const ags = (d.ags || []).filter((a) => st.agents[a]);
+              const all: (LogEntry & { agent: string })[] = [];
+              for (const k of ags) for (const e of st.agents[k].log) all.push({ ...e, agent: k });
+              all.sort((a, b) => a.ts - b.ts);
+
               if (st.tab === "sources") {
                 const urls: string[] = [];
                 for (const k of ags) for (const u of st.agents[k].visitedUrls) if (!urls.includes(u)) urls.push(u);
@@ -510,17 +516,54 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 return <><div style={{ fontFamily: "var(--font-chakra)", fontSize: 8, fontWeight: 700, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".14em" }}>{urls.length} source{urls.length !== 1 ? "s" : ""} visited</div>
                   <div className="url-list" style={{ display: "flex", flexDirection: "column", gap: 3 }}>{urls.map((u) => { let dm = u; try { dm = new URL(u).hostname.replace(/^www\./, ""); } catch {} return <a key={u} className="url-item" href={u} target="_blank" rel="noreferrer">{dm} ↗</a>; })}</div></>;
               }
-              const all: (LogEntry & { agent: string })[] = [];
-              for (const k of ags) for (const e of st.agents[k].log) all.push({ ...e, agent: k });
-              all.sort((a, b) => a.ts - b.ts);
-              if (!all.length) return <div style={{ color: "var(--fd)", fontSize: 10 }}>{ags.map((a) => st.agents[a].status === "running" ? "Working…" : "Waiting to start").join(" / ") || "No agents active yet."}</div>;
-              return <><div style={{ fontFamily: "var(--font-chakra)", fontSize: 8, fontWeight: 700, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".14em", marginBottom: 4 }}>Activity log</div>
-                {all.slice(-120).map((l, i) => (
-                  <div key={i} className={`le ${l.type}`}>
-                    <div className="le-ic">{ICONS[l.type] || "·"}</div>
-                    <div><div style={{ fontFamily: "var(--font-chakra)", fontSize: 7.5, fontWeight: 700, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".1em" }}>{LABELS[l.type] || l.type}{ags.length > 1 ? ` · ${l.agent}` : ""}</div><div className="le-txt">{l.text}</div></div>
+
+              if (st.tab === "tech") {
+                if (!all.length) return <div style={{ color: "var(--fd)", fontSize: 10 }}>No activity yet.</div>;
+                return <>
+                  <div style={{ fontFamily: "var(--font-chakra)", fontSize: 8, fontWeight: 700, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".14em", marginBottom: 6 }}>Technical log · {all.length} entries</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                    {all.map((l, i) => (
+                      <div key={i} style={{ display: "flex", gap: 7, padding: "3px 0", borderBottom: "1px solid rgba(0,0,0,.04)", alignItems: "flex-start" }}>
+                        <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 8.5, color: "var(--fm)", flexShrink: 0, marginTop: 1, minWidth: 42, textTransform: "uppercase", letterSpacing: ".06em" }}>{l.type}</span>
+                        {ags.length > 1 && <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 8.5, color: "var(--blue)", flexShrink: 0, marginTop: 1 }}>{l.agent}</span>}
+                        <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 9, color: "var(--fg)", lineHeight: 1.5, wordBreak: "break-all" }}>{l.text}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}</>;
+                </>;
+              }
+
+              // "updates" tab — plain English, completed actions only (result / done / error)
+              const updates = all.filter((l) => l.type === "result" || l.type === "done" || l.type === "error");
+              if (!updates.length) {
+                const isRunning = ags.some((a) => st.agents[a].status === "running");
+                return <div style={{ color: "var(--fd)", fontSize: 10.5, lineHeight: 1.6 }}>{isRunning ? "Agent is working — updates will appear here as steps complete." : "Waiting to start."}</div>;
+              }
+              return <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {updates.map((l, i) => {
+                  if (l.type === "done") return (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, background: "rgba(52,211,153,.07)", border: "1px solid rgba(52,211,153,.18)" }}>
+                      <span style={{ fontSize: 14 }}>✓</span>
+                      <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--green)" }}>
+                        {ags.length > 1 ? `${l.agent} finished` : "Done"}
+                      </span>
+                    </div>
+                  );
+                  if (l.type === "error") return (
+                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px", borderRadius: 8, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.18)" }}>
+                      <span style={{ fontSize: 13, flexShrink: 0, marginTop: 1 }}>✗</span>
+                      <span style={{ fontSize: 11.5, color: "var(--red)", lineHeight: 1.5 }}>{l.text}</span>
+                    </div>
+                  );
+                  // result — completed action output, plain English
+                  return (
+                    <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "9px 11px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--bd)" }}>
+                      {ags.length > 1 && <span style={{ fontSize: 8.5, fontWeight: 700, color: "var(--blue)", textTransform: "uppercase", letterSpacing: ".1em" }}>{l.agent}</span>}
+                      <span style={{ fontSize: 12, color: "var(--fg)", lineHeight: 1.6 }}>{l.text}</span>
+                    </div>
+                  );
+                })}
+              </div>;
             })()}
 
             {/* empty */}
