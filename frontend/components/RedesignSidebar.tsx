@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
 import { useDevUser } from "@/lib/use-dev-user";
+import CreditsDisplay from "@/components/CreditsDisplay";
 
 const LINKS: { href: string; ic: string; label: string; match: (p: string) => boolean }[] = [
   { href: "/", ic: "⬡", label: "Dashboard", match: (p) => p === "/" },
@@ -42,6 +43,7 @@ export default function RedesignSidebar() {
       </div>
 
       <div style={{ height: 1, background: "var(--bd)", margin: "6px 8px" }} />
+      <div style={{ padding: "6px 12px 4px" }}><CreditsDisplay /></div>
       <div style={{ padding: "0 8px 14px", display: "flex", flexDirection: "column", gap: 1 }}>
         <Link href="/settings" className={`nl${pathname.startsWith("/settings") ? " on" : ""}`} style={{ textDecoration: "none" }}><span style={{ width: 18, textAlign: "center" }}>⚙</span>Settings</Link>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px" }}>
