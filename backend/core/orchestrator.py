@@ -434,26 +434,50 @@ class Orchestrator:
         return goal
 
     @staticmethod
+    def _readable(value: Any, limit: int = 800) -> str:
+        """Render any value as human-readable text (never a raw Python dict repr)."""
+        if isinstance(value, str):
+            return value.strip()[:limit]
+        if isinstance(value, dict):
+            lines = []
+            for k, v in value.items():
+                label = str(k).replace("_", " ").strip().capitalize()
+                if isinstance(v, (dict, list)):
+                    try:
+                        vs = json.dumps(v, ensure_ascii=False)
+                    except Exception:
+                        vs = str(v)
+                else:
+                    vs = str(v)
+                lines.append(f"{label}: {vs}")
+            return "\n".join(lines)[:limit]
+        if isinstance(value, list):
+            return "\n".join(f"• {Orchestrator._readable(v, 200)}" for v in value)[:limit]
+        return str(value)[:limit]
+
+    @staticmethod
     def _artifact_preview(result: Any, artifact_key: str) -> str:
-        """Create a compact preview for a typed stack artifact event."""
+        """Create a compact, readable preview for a typed stack artifact event.
+
+        Picks the most artifact-specific field available, formatting dicts/lists
+        as readable text rather than skipping them (which used to dump the raw
+        result repr into every artifact, so all of them showed the same blob)."""
         if not isinstance(result, dict):
-            return str(result)[:280]
-        candidates = [
-            result.get(f"{artifact_key}_summary") if artifact_key else None,
-            result.get(artifact_key),
-            result.get("summary"),
-            result.get("output_summary"),
-            result.get("formatted_text"),
-            result.get("report"),
-            result.get("text"),
-            result.get("url"),
-            result.get("preview_url"),
-            result.get("html"),
-        ]
-        for candidate in candidates:
-            if candidate and isinstance(candidate, str) and len(candidate) > 20:
-                return candidate.replace("\n", " ").strip()[:360]
-        return str(result)[:360]
+            return Orchestrator._readable(result, 600)
+        for key in (f"{artifact_key}_summary" if artifact_key else None, artifact_key,
+                    "summary", "output_summary", "formatted_text", "report", "text",
+                    "url", "preview_url", "html"):
+            if not key:
+                continue
+            candidate = result.get(key)
+            if candidate not in (None, "", [], {}):
+                text = Orchestrator._readable(candidate, 600)
+                if len(text) > 12:
+                    return text
+        # No artifact-specific field — render the structured result readably,
+        # dropping bookkeeping keys so it isn't just noise.
+        pruned = {k: v for k, v in result.items() if k not in ("artifacts_produced", "status")}
+        return Orchestrator._readable(pruned or result, 600)
 
     async def _publish_stack_artifacts(
         self,
@@ -511,11 +535,12 @@ class Orchestrator:
                 try:
                     _content = ""
                     if isinstance(result, dict):
-                        for _ck in [f"{artifact_key}_summary", artifact_key, "summary", "output_summary", "formatted_text"]:
+                        for _ck in [f"{artifact_key}_summary", artifact_key, "summary", "output_summary", "formatted_text", "report", "text"]:
                             _cv = result.get(_ck)
-                            if _cv and isinstance(_cv, str) and len(_cv) > 20:
-                                _content = _cv
-                                break
+                            if _cv not in (None, "", [], {}):
+                                _content = self._readable(_cv, 20000)
+                                if len(_content) > 12:
+                                    break
                     from backend.core.workspace_store import upsert_vault_artifact
                     upsert_vault_artifact(
                         workspace_id=_ws_id,
