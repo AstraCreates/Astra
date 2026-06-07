@@ -603,23 +603,44 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             {st.selArt && (() => {
               const art = st.artifacts.find((a) => a.key === st.selArt);
               if (!art) return null;
-              // Extract full content from the owning agent's result (backend only stores 360-char preview on the artifact itself)
+              // Extract full content from the owning agent's result
               let fullContent: string | null = null;
               const ownerResult = art.owner_agent ? (st.agents[art.owner_agent]?.result as Record<string, unknown> | null) : null;
               if (ownerResult && typeof ownerResult === "object") {
                 const r = ownerResult as Record<string, unknown>;
-                const candidates = [art.key ? r[art.key] : null, r.summary, r.output_summary, r.formatted_text, r.report, r.text, r.url, r.html];
+                // Try direct key, then {key}_summary, then common summary fields
+                const candidates = [
+                  art.key ? r[art.key] : null,
+                  art.key ? r[`${art.key}_summary`] : null,
+                  r.summary, r.output_summary, r.formatted_text, r.report, r.text, r.url, r.html,
+                ];
                 for (const c of candidates) {
                   if (c && typeof c === "string" && c.length > 0) { fullContent = c; break; }
                 }
-                if (!fullContent) fullContent = JSON.stringify(ownerResult, null, 2);
+                // Fallback: format the result as readable sections (never raw JSON)
+                if (!fullContent) {
+                  const SKIP = new Set(["handoff", "mirror_verdict", "mirror_critique", "agent", "status", "task_id", "session_id", "sources_list"]);
+                  const sections: string[] = [];
+                  for (const [k, v] of Object.entries(r)) {
+                    if (SKIP.has(k) || v === null || v === undefined || v === "") continue;
+                    const label = k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+                    if (typeof v === "string") sections.push(`${label}\n${"─".repeat(label.length)}\n${v}`);
+                    else if (typeof v === "number" || typeof v === "boolean") sections.push(`${label}: ${v}`);
+                    else if (Array.isArray(v)) sections.push(`${label}\n${"─".repeat(label.length)}\n${(v as unknown[]).map((x, i) => `${i + 1}. ${x}`).join("\n")}`);
+                    else if (typeof v === "object") {
+                      const sub = Object.entries(v as Record<string, unknown>).filter(([, sv]) => sv !== null && sv !== "").map(([sk, sv]) => `  • ${sk.replace(/_/g, " ")}: ${sv}`).join("\n");
+                      if (sub) sections.push(`${label}\n${"─".repeat(label.length)}\n${sub}`);
+                    }
+                  }
+                  fullContent = sections.join("\n\n") || null;
+                }
               }
               const displayContent = fullContent || art.content || art.preview || art.description || null;
               return <>
                 <div style={{ fontFamily: "var(--font-chakra)", fontSize: 13, fontWeight: 700, color: "var(--fg)" }}>{art.title || art.key}</div>
                 <div style={{ fontSize: 9, color: art.status === "ready" ? "var(--green)" : "var(--amber)", marginBottom: 10 }}>{art.status === "ready" ? "✓ ready" : "⋯ being written"}</div>
                 {displayContent
-                  ? <pre className="art-pre" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: "none" }}>{displayContent}</pre>
+                  ? <pre className="art-pre" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: "none", fontFamily: "inherit", fontSize: 12, lineHeight: 1.7 }}>{displayContent}</pre>
                   : <div style={{ color: "var(--fm)", fontSize: 10.5, fontStyle: "italic" }}>Agent hasn't produced output yet — check back when it completes.</div>}
               </>;
             })()}

@@ -1214,6 +1214,7 @@ class Orchestrator:
         # ── Phase gate infrastructure ─────────────────────────────────────────────
         # After every phase completes, the founder must review deliverables and approve
         # before the next phase starts. Rejection re-queues that phase's tasks with notes.
+        from backend.core import cancellation  # must be in scope before _phase_gate is called
         _PHASE_ORDER = ["diagnose", "design", "deploy", "govern", "operate"]
 
         def _task_phase(t: dict) -> str:
@@ -1364,7 +1365,6 @@ class Orchestrator:
                 logger.info("Pruned unsatisfiable deps for %s: %s -> %s", t["agent"], deps, pruned)
                 t["depends_on"] = pruned
 
-        from backend.core import cancellation
         # Dependency-driven scheduler: launch each task the instant ITS deps are met
         # and wake on the first completion — never wait for a whole "wave" to finish.
         running: set[asyncio.Task] = set()
