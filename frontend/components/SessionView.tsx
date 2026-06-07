@@ -687,12 +687,31 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 }
               }
               const displayContent = fullContent || art.content || (art.preview && art.preview.length > 30 ? art.preview : null) || art.description || null;
+              // Collect any generated files (PDFs, images, docs) from agent results so
+              // the founder can open the actual documents an agent produced.
+              const files = new Map<string, string>();
+              const scanFiles = (val: unknown) => {
+                if (typeof val === "string") {
+                  const m = val.match(/[\w./\-]+\.(pdf|png|jpe?g|docx?|csv|md|html?)\b/gi);
+                  if (m) for (const p of m) { const base = p.split("/").pop()!; files.set(base, `${API}/files/${encodeURIComponent(base)}`); }
+                } else if (Array.isArray(val)) { val.forEach(scanFiles); }
+                else if (val && typeof val === "object") { Object.values(val as Record<string, unknown>).forEach(scanFiles); }
+              };
+              for (const ag of Object.values(st.agents)) if (ag.result) scanFiles(ag.result);
+              const fileList = Array.from(files.entries());
               return <>
                 <div style={{ fontFamily: "var(--font-chakra)", fontSize: 13, fontWeight: 700, color: "var(--fg)" }}>{art.title || art.key}</div>
                 <div style={{ fontSize: 9, color: art.status === "ready" ? "var(--green)" : "var(--amber)", marginBottom: 10 }}>{art.status === "ready" ? "✓ ready" : "⋯ being written"}</div>
+                {fileList.length > 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 }}>
+                    {fileList.map(([name, url]) => (
+                      <a key={name} href={url} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 10px", border: "1px solid var(--bd)", background: "var(--surface)", color: "var(--blue)", fontSize: 11, textDecoration: "none", fontFamily: "var(--font-ibm-mono)" }}>📄 {name} ↗</a>
+                    ))}
+                  </div>
+                )}
                 {displayContent
                   ? <pre className="art-pre" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: "none", fontFamily: "inherit", fontSize: 12, lineHeight: 1.7 }}>{displayContent}</pre>
-                  : <div style={{ color: "var(--fm)", fontSize: 10.5, fontStyle: "italic" }}>Agent hasn't produced output yet — check back when it completes.</div>}
+                  : fileList.length === 0 && <div style={{ color: "var(--fm)", fontSize: 10.5, fontStyle: "italic" }}>Agent hasn't produced output yet — check back when it completes.</div>}
               </>;
             })()}
 
