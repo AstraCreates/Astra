@@ -5,7 +5,7 @@
    Layout: phase bar → status bar → dept cards → vault | detail → steer bar. */
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
-import { apiFetch, killSession } from "@/lib/api";
+import { apiFetch, killSession, decideStackApproval } from "@/lib/api";
 import { useDevUser } from "@/lib/use-dev-user";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -16,10 +16,47 @@ type Artifact = { key?: string; title?: string; status?: string; preview?: strin
 type Approval = { gate_key: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number };
 
 type SState = {
-  status: string; goal: string; company: string;
+  status: string; goal: string; company: string; stackId: string;
   agents: Record<string, Agent>;
   artifacts: Artifact[]; approvals: Approval[]; decidedKeys: Set<string>;
   selDept: string | null; selArt: string | null; tab: string;
+};
+
+// Named phases per stack (agent prefixes per phase). Drives the top phase bar.
+const PHASE_PLANS: Record<string, { name: string; groups: string[] }[]> = {
+  idea_to_revenue: [
+    { name: "Diagnose", groups: ["research"] },
+    { name: "Design", groups: ["design", "technical"] },
+    { name: "Deploy", groups: ["web", "marketing", "sales"] },
+    { name: "Govern", groups: ["legal"] },
+    { name: "Operate", groups: ["ops"] },
+  ],
+  sales: [
+    { name: "Diagnose", groups: ["research"] },
+    { name: "Deploy", groups: ["sales", "marketing"] },
+    { name: "Operate", groups: ["ops"] },
+  ],
+  marketing: [
+    { name: "Diagnose", groups: ["research"] },
+    { name: "Design", groups: ["design"] },
+    { name: "Deploy", groups: ["marketing", "web"] },
+    { name: "Operate", groups: ["ops"] },
+  ],
+  founder_ops: [
+    { name: "Diagnose", groups: ["research"] },
+    { name: "Design", groups: ["technical"] },
+    { name: "Govern", groups: ["legal"] },
+    { name: "Operate", groups: ["ops"] },
+  ],
+  support: [
+    { name: "Diagnose", groups: ["research"] },
+    { name: "Deploy", groups: ["ops", "marketing"] },
+    { name: "Design", groups: ["technical"] },
+  ],
+  product: [
+    { name: "Diagnose", groups: ["research"] },
+    { name: "Design", groups: ["design", "technical", "ops"] },
+  ],
 };
 
 const DEPTS: Record<string, { n: string; ic: string; ags: string[] }> = {
@@ -50,7 +87,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const { userId } = useDevUser();
   const founderId = userId;
   const S = useRef<SState>({
-    status: "loading", goal: "", company: "", agents: {}, artifacts: [], approvals: [],
+    status: "loading", goal: "", company: "", stackId: "", agents: {}, artifacts: [], approvals: [],
     decidedKeys: new Set(), selDept: null, selArt: null, tab: "log",
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
@@ -152,7 +189,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!sessionId || !founderId) return;
     let alive = true;
-    S.current = { status: "loading", goal: "", company: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "log" };
+    S.current = { status: "loading", goal: "", company: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "log" };
     force();
 
     (async () => {
@@ -162,7 +199,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         if (r.ok) {
           const d = await r.json();
           const meta = (d.sessions || d || []).find((s: any) => s.session_id === sessionId);
-          if (meta && alive) { S.current.goal = meta.goal || meta.instruction || ""; S.current.status = meta.status || "running"; S.current.company = meta.company_name || ""; }
+          if (meta && alive) { S.current.goal = meta.goal || meta.instruction || ""; S.current.status = meta.status || "running"; S.current.company = meta.company_name || ""; S.current.stackId = meta.stack_id || ""; }
         }
       } catch {}
       // rich state (404 normal)
@@ -171,6 +208,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         if (r.ok && alive) {
           const d = await r.json();
           if (!S.current.goal) S.current.goal = d.instruction || "";
+          if (d.stack_id) S.current.stackId = d.stack_id;
           S.current.status = d.status || S.current.status;
           S.current.artifacts = Array.isArray(d.artifacts) ? d.artifacts : [];
           S.current.approvals = Array.isArray(d.approvals) ? d.approvals.filter((a: any) => PENDING.has(a.status)) : [];
@@ -193,16 +231,20 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     return () => { alive = false; sseRef.current?.close(); sseRef.current = null; };
   }, [sessionId, founderId, handleEvent]);
 
-  const decide = async (key: string, decision: string) => {
+  const decide = async (key: string, decision: "approved" | "skipped" | "rejected") => {
+    const snapshot = S.current.approvals;
     S.current.decidedKeys.add(key);
     S.current.approvals = S.current.approvals.filter((a) => a.gate_key !== key);
     force();
     try {
-      await apiFetch(`${API}/stack/approval`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, gate_key: key, decision, founder_id: founderId }),
-      });
-    } catch {}
+      await decideStackApproval(sessionId, key, decision as "approved" | "skipped", founderId);
+    } catch (e) {
+      // Restore so the founder can retry — don't pretend it was accepted.
+      S.current.decidedKeys.delete(key);
+      S.current.approvals = snapshot;
+      force();
+      alert(`Approval failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
   };
   const sendSteer = async () => {
     const msg = steerRef.current?.value.trim(); if (!msg) return;
@@ -219,11 +261,33 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     done = agents.filter((a) => a.status === "done").length, err = agents.filter((a) => a.status === "error").length;
   const artReady = st.artifacts.filter((a) => a.status === "ready").length;
 
-  const phases: [string, string][] = st.status === "done"
-    ? [["done", "Planning"], ["done", "Execution"], ["act", "Complete"]]
-    : !total ? [["act", "Planning"], ["", "Execution"], ["", "Complete"]]
-    : st.approvals.length ? [["done", "Planning"], ["act", "Execution"], ["act", "Approval"], ["", "Complete"]]
-    : [["done", "Planning"], ["act", "Execution"], ["", "Complete"]];
+  const plan = PHASE_PLANS[st.stackId];
+  let phases: [string, string][];
+  if (plan) {
+    if (st.status === "done") {
+      phases = [...plan.map((p) => ["done", p.name] as [string, string]), ["act", "Complete"]];
+    } else {
+      const built = plan.map((ph) => {
+        const ags = agents.filter((a) => ph.groups.some((g) => a.key === g || a.key.startsWith(g + "_") || a.key === g));
+        const present = ags.length > 0;
+        return { name: ph.name, allDone: present && ags.every((a) => a.status === "done"), anyRun: ags.some((a) => a.status === "running") };
+      });
+      let frontier = false;
+      phases = built.map((b) => {
+        if (b.allDone) return ["done", b.name];
+        if (b.anyRun) { frontier = true; return ["act", b.name]; }
+        return ["", b.name];
+      });
+      if (!frontier) { const i = phases.findIndex(([c]) => c !== "done"); if (i >= 0) phases[i] = ["act", phases[i][1]]; }
+      phases.push(["", "Complete"]);
+    }
+  } else {
+    phases = st.status === "done"
+      ? [["done", "Planning"], ["done", "Execution"], ["act", "Complete"]]
+      : !total ? [["act", "Planning"], ["", "Execution"], ["", "Complete"]]
+      : st.approvals.length ? [["done", "Planning"], ["act", "Execution"], ["act", "Approval"], ["", "Complete"]]
+      : [["done", "Planning"], ["act", "Execution"], ["", "Complete"]];
+  }
 
   // active depts
   const activeDepts: [string, { n: string; ic: string; ags: string[]; inS: string[] }][] = [];
