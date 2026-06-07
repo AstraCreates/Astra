@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { listSessions, deleteSessionRemote, type SessionIndexEntry } from "@/lib/api";
+import { listSessions, deleteSessionRemote, killSession, type SessionIndexEntry } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 
@@ -53,11 +53,21 @@ export default function DashboardView() {
 
   const del = useCallback(async (e: React.MouseEvent, s: SessionIndexEntry) => {
     e.stopPropagation();
+    e.preventDefault();
     if (!confirm(`Delete this run permanently?\n\n${s.goal || s.session_id}`)) return;
     setDeleting((p) => new Set(p).add(s.session_id));
-    const ok = await deleteSessionRemote(s.session_id);
-    if (ok) { deleteLocalSession(s.session_id); setSessions((prev) => (prev || []).filter((x) => x.session_id !== s.session_id)); }
-    else { alert("Could not delete this run — try again."); setDeleting((p) => { const n = new Set(p); n.delete(s.session_id); return n; }); }
+    // Optimistically drop from the UI immediately so it feels instant.
+    deleteLocalSession(s.session_id);
+    setSessions((prev) => (prev || []).filter((x) => x.session_id !== s.session_id));
+    try {
+      // Kill first — a live run would otherwise keep re-persisting itself to the
+      // index and reappear on the next refresh.
+      await killSession(s.session_id).catch(() => {});
+      const ok = await deleteSessionRemote(s.session_id);
+      if (!ok) { alert("Could not delete this run on the server — it may reappear on refresh."); }
+    } finally {
+      setDeleting((p) => { const n = new Set(p); n.delete(s.session_id); return n; });
+    }
   }, []);
 
   const load = useCallback(async () => {

@@ -411,6 +411,13 @@ async def delete_session_route(session_id: str, request: Request):
     owner = str(meta.get("founder_id") or "")
     if owner:
         require_founder_access(request, owner, min_role="operator")
+    # Kill any live run first — otherwise the orchestrator keeps writing and would
+    # re-persist the session right after we delete it (so it reappears on refresh).
+    try:
+        from backend.core import cancellation
+        cancellation.request_kill(session_id)
+    except Exception:
+        pass
     removed = _del(session_id)
     return {"ok": True, "deleted": removed}
 
