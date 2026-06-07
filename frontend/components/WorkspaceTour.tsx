@@ -14,45 +14,39 @@ interface TourStep {
 const TOUR_STEPS: TourStep[] = [
   {
     target: "new-goal-btn",
-    title: "Start a new goal",
-    description: "Type any startup goal here and your team of 8 AI agents activates instantly — in parallel, producing real artifacts and taking real actions.",
-    position: "bottom",
-  },
-  {
-    target: "workspace-sidebar",
-    title: "Your workspace sidebar",
-    description: "Navigate between your current run, execution plan, and account settings. Everything your agents produce lives here.",
+    title: "Start a new run",
+    description: "Give Astra a goal in plain English — your AI founding team activates instantly across research, design, marketing, legal, and more.",
     position: "right",
   },
   {
-    target: "nav-integrations",
-    title: "Connect your tools",
-    description: "Link GitHub, Gmail, Vercel, Stripe, and more. Agents use your connected tools to deploy code, send emails, and take real actions on your behalf.",
+    target: "nav-dashboard",
+    title: "Your sessions",
+    description: "Every run lives here. See what's in progress, what's done, and jump back into any session with a click.",
     position: "right",
   },
   {
     target: "nav-outreach",
     title: "Outreach",
-    description: "Find leads from our contact database and run personalized cold email campaigns — all routed through your connected Gmail.",
+    description: "Find leads and run personalized cold email campaigns routed through your connected Gmail — no manual list-building.",
+    position: "right",
+  },
+  {
+    target: "nav-company-brain",
+    title: "Company Brain",
+    description: "Everything Astra learns about your company lives here — goals, context, and artifacts your agents build on each run.",
+    position: "right",
+  },
+  {
+    target: "nav-integrations",
+    title: "Connect your tools",
+    description: "Link GitHub, Gmail, Vercel, Stripe, and more. Agents use your connected tools to ship code, send emails, and take real actions.",
     position: "right",
   },
   {
     target: "nav-payments",
     title: "Payments",
-    description: "Connect Stripe to accept payments. Once live, your revenue dashboard updates here in real time.",
+    description: "Connect Stripe to accept payments. Your revenue dashboard updates here in real time once you're live.",
     position: "right",
-  },
-  {
-    target: "agent-tabs",
-    title: "Switch between agents",
-    description: "Each pill is one of your 8 AI agents. Click any to see its live output, artifacts, and logs in real time.",
-    position: "bottom",
-  },
-  {
-    target: "unified-chat",
-    title: "Chat with your agents",
-    description: "Steer all agents at once with a plain message, or route to a specific one with @agent — e.g. @research what's the TAM? Works during a run and after.",
-    position: "top",
   },
 ];
 

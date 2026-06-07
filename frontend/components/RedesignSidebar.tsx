@@ -40,12 +40,12 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
             <div style={{ fontSize: 9, color: "var(--blue)", letterSpacing: ".06em", textTransform: "uppercase" }}>ready</div>
           </div>
         </Link>
-        <Link href="/?new=1" className="btn" style={{ display: "flex", justifyContent: "center", gap: 7, width: "100%", textDecoration: "none" }}>＋ New goal</Link>
+        <Link data-tour="new-goal-btn" href="/?new=1" className="btn" style={{ display: "flex", justifyContent: "center", gap: 7, width: "100%", textDecoration: "none" }}>＋ New goal</Link>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "10px 8px", flex: 1, overflowY: "auto" }}>
         {LINKS.map((l) => (
-          <Link key={l.href} href={l.href} className={`nl${l.match(pathname) ? " on" : ""}`} style={{ textDecoration: "none" }}>
+          <Link key={l.href} href={l.href} data-tour={`nav-${l.label.toLowerCase().replace(/\s+/g, "-")}`} className={`nl${l.match(pathname) ? " on" : ""}`} style={{ textDecoration: "none" }}>
             <span style={{ width: 18, textAlign: "center" }}>{l.ic}</span>{l.label}
           </Link>
         ))}

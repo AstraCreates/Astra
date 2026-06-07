@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import RedesignSidebar from "@/components/RedesignSidebar";
+import WorkspaceTour from "@/components/WorkspaceTour";
 import { useIsMobile } from "@/lib/use-is-mobile";
 
 const BARE_PREFIXES = ["/sign-in", "/sign-up", "/onboarding", "/invite", "/cookies"];
@@ -22,6 +23,19 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() || "/";
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showTour, setShowTour] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const shouldShow = localStorage.getItem("astra_show_tour") === "1"
+        && !localStorage.getItem("astra_tour_done");
+      if (shouldShow) {
+        // Small delay so sidebar is fully mounted before tour measures elements
+        const t = setTimeout(() => setShowTour(true), 600);
+        return () => clearTimeout(t);
+      }
+    }
+  }, []);
 
   // Close the drawer whenever the route changes.
   useEffect(() => { setDrawerOpen(false); }, [pathname]);
@@ -32,6 +46,8 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
     return <main>{children}</main>;
   }
 
+  const tour = showTour ? <WorkspaceTour onDone={() => { localStorage.removeItem("astra_show_tour"); setShowTour(false); }} /> : null;
+
   const isHome = pathname === "/";
   const title = TITLES.find((t) => t.match(pathname))?.title;
 
@@ -39,6 +55,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   if (isMobile) {
     return (
       <div style={{ display: "flex", flexDirection: "column", minHeight: "100dvh", background: "var(--bg)" }}>
+        {tour}
         <RedesignSidebar mobile open={drawerOpen} onClose={() => setDrawerOpen(false)} />
         {/* Backdrop */}
         {drawerOpen && (
@@ -69,6 +86,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   // ── Desktop: fixed sidebar + main ───────────────────────────────────────────
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg)" }}>
+      {tour}
       <RedesignSidebar />
       {isHome ? (
         <main style={{ flex: 1, minWidth: 0, height: "100vh", overflow: "hidden" }}>{children}</main>
