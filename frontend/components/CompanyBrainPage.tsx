@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import Link from "next/link";
 import {
@@ -26,7 +26,11 @@ import {
   type CompanyBrain,
   type GraphRagVisualization,
 } from "@/lib/api";
-import LiquidGlass from "@/components/LiquidGlass";
+const Card = ({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) => (
+  <div style={{ background: "var(--surface)", border: "1px solid var(--bd)", padding: 18, display: "grid", gap: 14, ...style }}>
+    {children}
+  </div>
+);
 
 const DEFAULT_QUERY = "decisions product roadmap code customers";
 
@@ -261,7 +265,7 @@ function GraphRagPanel({
   );
 
   return (
-    <LiquidGlass contentStyle={{ padding: 18, display: "grid", gap: 14 }}>
+    <Card>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 650, color: "var(--fg)" }}>GraphRAG v2 map</div>
@@ -358,7 +362,7 @@ function GraphRagPanel({
           </div>
         </div>
       </div>
-    </LiquidGlass>
+    </Card>
   );
 }
 
@@ -650,7 +654,7 @@ export default function CompanyBrainPage() {
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1.25fr 0.75fr", gap: 18 }}>
-        <LiquidGlass contentStyle={{ padding: 18, display: "grid", gap: 16 }}>
+        <Card style={{ gap: 16 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <div>
               <div style={{ fontSize: 15, fontWeight: 650, color: "var(--fg)" }}>Sources</div>
@@ -693,9 +697,9 @@ export default function CompanyBrainPage() {
             }}
             onSave={saveFocusedCredential}
           />
-        </LiquidGlass>
+        </Card>
 
-        <LiquidGlass contentStyle={{ padding: 18, display: "grid", gap: 12 }}>
+        <Card style={{ gap: 12 }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 650, color: "var(--fg)" }}>Manual memory</div>
             <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>Pin decisions, facts, customer notes, or architecture context.</div>
@@ -712,10 +716,10 @@ export default function CompanyBrainPage() {
               Save to brain
             </button>
           </form>
-        </LiquidGlass>
+        </Card>
       </div>
 
-      <LiquidGlass contentStyle={{ padding: 18, display: "grid", gap: 14 }}>
+      <Card>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 650, color: "var(--fg)" }}>Continuous sync</div>
@@ -762,9 +766,9 @@ export default function CompanyBrainPage() {
             ))}
           </div>
         )}
-      </LiquidGlass>
+      </Card>
 
-      <LiquidGlass contentStyle={{ padding: 18, display: "grid", gap: 14 }}>
+      <Card>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div>
             <div style={{ fontSize: 15, fontWeight: 650, color: "var(--fg)" }}>Maintenance</div>
@@ -782,10 +786,10 @@ export default function CompanyBrainPage() {
             <ProposalCard key={proposal.id} proposal={proposal} recordsById={recordsById} onUpdate={updateProposal} />
           ))}
         </div>
-      </LiquidGlass>
+      </Card>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-        <LiquidGlass contentStyle={{ padding: 18, display: "grid", gap: 14 }}>
+        <Card>
           <form onSubmit={search} style={{ display: "flex", gap: 10 }}>
             <input className="site-input" value={query} onChange={e => setQuery(e.target.value)} placeholder="Ask across Slack, GitHub, Notion, Google, and agent memory" style={{ padding: "10px 13px", fontSize: 13 }} />
             <button type="submit" disabled={loading || !query.trim()} className="site-btn site-btn-primary" style={{ minHeight: 40, fontSize: 12 }}>
@@ -796,7 +800,7 @@ export default function CompanyBrainPage() {
             {displayResults.length === 0 && <p style={{ color: "var(--fg-mute)", fontSize: 12 }}>Sync sources or add a manual memory to start the graph.</p>}
             {displayResults.map(record => <RecordRow key={record.id} record={record} />)}
           </div>
-        </LiquidGlass>
+        </Card>
 
         <GraphRagPanel
           graph={graph}
@@ -807,7 +811,7 @@ export default function CompanyBrainPage() {
         />
       </div>
 
-      <LiquidGlass contentStyle={{ padding: 18, display: "grid", gap: 12 }}>
+      <Card style={{ gap: 12 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 650, color: "var(--fg)" }}>Ask the brain</div>
           <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>Returns an answer grounded in synced records with citations.</div>
@@ -843,7 +847,7 @@ export default function CompanyBrainPage() {
             )}
           </div>
         )}
-      </LiquidGlass>
+      </Card>
     </div>
   );
 }
