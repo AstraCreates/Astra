@@ -434,6 +434,36 @@ class Orchestrator:
         return goal
 
     @staticmethod
+    def _artifact_output_contract(task: dict, stack_template: Any, agent_name: str) -> str:
+        """Instruct the agent to return one output field per deliverable it owns, so
+        each artifact card renders its own distinct content (additive — agents keep
+        any other fields like web's `html`)."""
+        keys = list(task.get("expected_artifacts") or [])
+        artifacts = getattr(stack_template, "artifacts", []) if stack_template else []
+        if not keys:
+            keys = [a.key for a in artifacts if getattr(a, "owner_agent", "") == agent_name]
+        if not keys:
+            return ""
+        by_key = {a.key: a for a in artifacts}
+        lines = []
+        for k in keys:
+            a = by_key.get(k)
+            title = getattr(a, "title", k) if a else k
+            desc = (getattr(a, "description", "") if a else "") or ""
+            lines.append(f'  - "{k}" ({title}){f": {desc}" if desc else ""}')
+        keynames = ", ".join(f'"{k}"' for k in keys)
+        return (
+            "\n\n## OUTPUT CONTRACT (REQUIRED)\n"
+            'When you finish, your final action is {"action":"done","output":{...}}. The `output` object '
+            "MUST contain one key per deliverable below, and each value must be that deliverable's COMPLETE, "
+            "self-contained content — do NOT collapse them into a single shared summary, and do not just list "
+            "which artifacts you produced.\n"
+            f"Deliverables:\n" + "\n".join(lines) + "\n"
+            f"Required `output` keys: {keynames}. You may include other fields too, but these keys are mandatory "
+            "and each must stand on its own."
+        )
+
+    @staticmethod
     def _readable(value: Any, limit: int = 800) -> str:
         """Render any value as human-readable text (never a raw Python dict repr)."""
         if isinstance(value, str):
@@ -990,8 +1020,14 @@ class Orchestrator:
             except Exception:
                 pass
 
+            # Require one output field per deliverable so each artifact card shows its
+            # own distinct content (agents used to emit a single merged summary, which
+            # made every artifact render the same blob).
+            _contract = self._artifact_output_contract(task, stack_template, agent_name)
+            _instruction = task["instruction"] + _contract if _contract else task["instruction"]
+
             ctx = AgentContext(
-                goal=task["instruction"],
+                goal=_instruction,
                 founder_id=founder_id,
                 session_id=session_id,
                 unlimited_credits=bool((constraints or {}).get("unlimited_credits", False)),
