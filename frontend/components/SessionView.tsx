@@ -677,24 +677,54 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 </>;
               }
 
-              // "updates" tab — live agent reasoning (think) + completions (done) + errors (error)
-              const updates = all.filter((l) => l.type === "think" || l.type === "done" || l.type === "error");
+              // "updates" tab — tool actions + thinking + completions + errors
+              // think: only fires if model emits reasoning tokens (not always)
+              // tool: fires for every tool call — reformatted as plain English
+              const updates = all.filter((l) => l.type === "think" || l.type === "tool" || l.type === "done" || l.type === "error" || l.type === "start");
               if (!updates.length) {
                 const isRunning = ags.some((a) => st.agents[a].status === "running");
-                return <div style={{ color: "var(--fd)", fontSize: 10.5, lineHeight: 1.6 }}>{isRunning ? "Agents are working — updates appear here as they think and act." : "Waiting to start."}</div>;
+                return <div style={{ color: "var(--fd)", fontSize: 10.5, lineHeight: 1.6 }}>{isRunning ? "Agents are working — updates appear here as they act." : "Waiting to start."}</div>;
               }
-              // Helper: extract first meaningful sentence from think text
+
+              // Reformat a tool log entry into a human-readable action string
+              const TOOL_VERBS: Record<string, string> = {
+                web_search: "Searching", search: "Searching", google_search: "Searching",
+                read_url: "Reading", fetch_url: "Reading", browse: "Reading", get_url: "Reading",
+                analyze: "Analyzing", analyze_market: "Analyzing market",
+                obsidian_log: "Saving notes", write_note: "Saving notes",
+                create_file: "Creating file", write_file: "Writing file", save_file: "Saving file",
+                generate_pdf: "Generating PDF", create_pdf: "Generating PDF",
+                send_email: "Sending email", draft_email: "Drafting email",
+                find_leads: "Finding leads", enrich_lead: "Enriching lead",
+                claude_code: "Building", deploy: "Deploying", git_push: "Pushing code",
+                create_repo: "Creating repo", create_design: "Creating design",
+              };
+              const fmtTool = (text: string): string => {
+                const ci = text.indexOf(": ");
+                const name = ci > 0 ? text.slice(0, ci) : text;
+                const argsRaw = ci > 0 ? text.slice(ci + 2) : "";
+                const verb = TOOL_VERBS[name] || `Using ${name.replace(/_/g, " ")}`;
+                try {
+                  const args = JSON.parse(argsRaw);
+                  const q = args.query || args.url || args.path || args.topic || args.subject || args.keyword || args.name || "";
+                  if (q && typeof q === "string") return `${verb}: ${q.slice(0, 90)}`;
+                } catch {}
+                return verb;
+              };
+
+              // First sentence from think text
               const thinkSnippet = (raw: string): string => {
                 const clean = raw.replace(/\s+/g, " ").trim();
-                const end = Math.min(
-                  ...[". ", ".\n", "! ", "? ", "\n"].map((sep) => { const i = clean.indexOf(sep); return i > 10 ? i + 1 : 9999; })
-                );
+                const seps = [". ", "! ", "? ", "\n"];
+                let end = 9999;
+                for (const sep of seps) { const i = clean.indexOf(sep); if (i > 15) { end = Math.min(end, i + 1); } }
                 return (end < 9999 ? clean.slice(0, end) : clean).slice(0, 160).trim();
               };
-              return <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+
+              return <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {updates.map((l, i) => {
                   if (l.type === "error") return (
-                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", borderRadius: 8, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.18)", marginTop: 4 }}>
+                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", borderRadius: 8, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.18)", marginTop: 6 }}>
                       <span style={{ fontSize: 13, flexShrink: 0, marginTop: 2 }}>✗</span>
                       <div>
                         {ags.length > 1 && <div style={{ fontSize: 9, fontWeight: 700, color: "var(--red)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 3 }}>{l.agent}</div>}
@@ -705,7 +735,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                   if (l.type === "done") {
                     const summary = l.text && l.text !== "Agent finished" ? l.text : null;
                     return (
-                      <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px 13px", borderRadius: 8, background: "rgba(52,211,153,.05)", border: "1px solid rgba(52,211,153,.2)", marginTop: 4 }}>
+                      <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px 13px", borderRadius: 8, background: "rgba(52,211,153,.05)", border: "1px solid rgba(52,211,153,.2)", marginTop: 6 }}>
                         <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>✓</span>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--green)", marginBottom: summary ? 5 : 0 }}>
@@ -716,16 +746,29 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                       </div>
                     );
                   }
-                  // think — live reasoning snippet
+                  if (l.type === "start") return (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, padding: "4px 0", opacity: 0.65 }}>
+                      <span style={{ fontSize: 10, color: "var(--blue)" }}>▶</span>
+                      <span style={{ fontSize: 11, color: "var(--fd)" }}>
+                        {l.agent.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())} started
+                      </span>
+                    </div>
+                  );
+                  if (l.type === "tool") {
+                    const action = fmtTool(l.text);
+                    return (
+                      <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "4px 0" }}>
+                        {ags.length > 1 && <span style={{ fontSize: 9, color: "var(--blue)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", flexShrink: 0, marginTop: 2, minWidth: 54 }}>{l.agent.split("_")[0]}</span>}
+                        <span style={{ fontSize: 11.5, color: "var(--fg)", lineHeight: 1.5 }}>{action}</span>
+                      </div>
+                    );
+                  }
+                  // think — only shows if reasoning tokens emitted
                   const snippet = thinkSnippet(l.text);
                   if (!snippet) return null;
                   return (
-                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0" }}>
-                      {ags.length > 1 && (
-                        <span style={{ fontSize: 9, color: "var(--blue)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", flexShrink: 0, marginTop: 2, minWidth: 54 }}>
-                          {l.agent.split("_")[0]}
-                        </span>
-                      )}
+                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "3px 0" }}>
+                      {ags.length > 1 && <span style={{ fontSize: 9, color: "var(--blue)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", flexShrink: 0, marginTop: 2, minWidth: 54 }}>{l.agent.split("_")[0]}</span>}
                       <span style={{ fontSize: 11.5, color: "var(--fd)", lineHeight: 1.55, fontStyle: "italic" }}>{snippet}</span>
                     </div>
                   );
