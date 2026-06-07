@@ -23,7 +23,7 @@ function statusDot(ws: Workspace) {
   return { color: "var(--fm)", label: "Idle" };
 }
 
-function WorkspaceCard({ ws, onClick }: { ws: Workspace; onClick: () => void }) {
+function WorkspaceCard({ ws, onClick, onNewRun }: { ws: Workspace; onClick: () => void; onNewRun: (e: React.MouseEvent) => void }) {
   const dot = statusDot(ws);
   const chapterCount = ws.chapters?.length ?? 0;
   const latestChapter = ws.chapters?.[ws.chapters.length - 1];
@@ -74,8 +74,8 @@ function WorkspaceCard({ ws, onClick }: { ws: Workspace; onClick: () => void }) 
         {ws.goal}
       </div>
 
-      {/* Stats */}
-      <div style={{ display: "flex", gap: 14, borderTop: "1px solid var(--bd)", paddingTop: 10, marginTop: 2 }}>
+      {/* Stats + actions */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, borderTop: "1px solid var(--bd)", paddingTop: 10, marginTop: 2 }}>
         <div style={{ textAlign: "center" }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--fg)", fontFamily: "var(--font-chakra)" }}>{chapterCount}</div>
           <div style={{ fontSize: 8, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".08em" }}>Chapter{chapterCount !== 1 ? "s" : ""}</div>
@@ -84,10 +84,16 @@ function WorkspaceCard({ ws, onClick }: { ws: Workspace; onClick: () => void }) 
           <div style={{ fontSize: 15, fontWeight: 700, color: "var(--fg)", fontFamily: "var(--font-chakra)" }}>{artifactCount}</div>
           <div style={{ fontSize: 8, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".08em" }}>Artifacts</div>
         </div>
-        <div style={{ marginLeft: "auto", textAlign: "right" }}>
-          <div style={{ fontSize: 9, color: "var(--fm)" }}>{ago(ws.last_active)}</div>
+        <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+          <button
+            className="btn"
+            style={{ fontSize: 10, padding: "4px 10px", lineHeight: 1.4 }}
+            onClick={onNewRun}
+          >
+            New Run →
+          </button>
           {latestChapter && (
-            <div style={{ fontSize: 9, color: "var(--fd)", marginTop: 2 }}>
+            <div style={{ fontSize: 9, color: "var(--fd)" }}>
               {latestChapter.status === "running" ? "⋯ in progress" : `✓ ${latestChapter.name}`}
             </div>
           )}
@@ -160,6 +166,11 @@ export default function WorkspaceDashboard() {
     router.push(`/?workspace=${ws.workspace_id}${chapterParam}&founder=${encodeURIComponent(userId)}`);
   };
 
+  const startNewRun = (ws: Workspace, e: React.MouseEvent) => {
+    e.stopPropagation();
+    router.push(`/?workspace=${ws.workspace_id}&run=1&founder=${encodeURIComponent(userId)}`);
+  };
+
   return (
     <div style={{ flex: 1, overflowY: "auto", padding: "28px 28px 60px" }}>
       {/* Header */}
@@ -183,7 +194,7 @@ export default function WorkspaceDashboard() {
           gap: 14,
         }}>
           {workspaces.map((ws) => (
-            <WorkspaceCard key={ws.workspace_id} ws={ws} onClick={() => openWorkspace(ws)} />
+            <WorkspaceCard key={ws.workspace_id} ws={ws} onClick={() => openWorkspace(ws)} onNewRun={(e) => startNewRun(ws, e)} />
           ))}
           <NewProjectCard onClick={() => router.push("/?new=1")} />
         </div>

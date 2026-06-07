@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   getWorkspace,
   getWorkspaceVault,
-  submitGoal,
   type Workspace,
   type WorkspaceChapter,
   type WorkspaceVaultEntry,
@@ -153,84 +152,6 @@ function VaultPanel({ vault }: { vault: Record<string, WorkspaceVaultEntry> }) {
   );
 }
 
-interface NewChapterModalProps {
-  workspace: Workspace;
-  founderId: string;
-  onDone: (chapterId: string, sessionId: string) => void;
-  onClose: () => void;
-}
-
-function NewChapterModal({ workspace, founderId, onDone, onClose }: NewChapterModalProps) {
-  const [instruction, setInstruction] = useState(workspace.goal);
-  const [chapterName, setChapterName] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-
-  const launch = async () => {
-    if (!instruction.trim()) return;
-    setBusy(true);
-    try {
-      const data = await submitGoal(founderId, instruction, {}, workspace.stack_id, workspace.workspace_id, chapterName || undefined);
-      onDone(data.chapter_id, data.session_id);
-    } catch (e) {
-      setErr(String(e));
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", backdropFilter: "blur(4px)",
-      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
-    }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{
-        width: 480, background: "var(--surface)", border: "1.5px solid var(--bd)", borderRadius: 16,
-        padding: 24, display: "flex", flexDirection: "column", gap: 16,
-      }}>
-        <div style={{ fontFamily: "var(--font-chakra)", fontSize: 15, fontWeight: 700, color: "var(--fg)" }}>
-          New Chapter
-        </div>
-        <div style={{ fontSize: 11, color: "var(--fd)" }}>
-          Start a new run in <strong>{workspace.company_name || workspace.name}</strong>. The vault keeps all artifacts from previous chapters.
-        </div>
-
-        <div>
-          <label style={{ fontSize: 10, fontWeight: 700, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".08em", display: "block", marginBottom: 5 }}>
-            Chapter name (optional)
-          </label>
-          <input
-            value={chapterName}
-            onChange={(e) => setChapterName(e.target.value)}
-            placeholder="e.g. Redesigned pricing strategy"
-            style={{ width: "100%", padding: "8px 10px", borderRadius: 7, border: "1.5px solid var(--bd)", background: "var(--bg)", color: "var(--fg)", fontSize: 12, boxSizing: "border-box" }}
-          />
-        </div>
-
-        <div>
-          <label style={{ fontSize: 10, fontWeight: 700, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".08em", display: "block", marginBottom: 5 }}>
-            Goal / instruction
-          </label>
-          <textarea
-            value={instruction}
-            onChange={(e) => setInstruction(e.target.value)}
-            rows={4}
-            style={{ width: "100%", padding: "8px 10px", borderRadius: 7, border: "1.5px solid var(--bd)", background: "var(--bg)", color: "var(--fg)", fontSize: 12, lineHeight: 1.55, resize: "vertical", boxSizing: "border-box", fontFamily: "inherit" }}
-          />
-        </div>
-
-        {err && <div style={{ color: "var(--red)", fontSize: 11 }}>{err}</div>}
-
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn pri" disabled={busy || !instruction.trim()} onClick={launch} style={{ flex: 1 }}>
-            {busy ? "Launching…" : "Launch Chapter →"}
-          </button>
-          <button className="btn" onClick={onClose}>Cancel</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function WorkspaceView({
   workspaceId,
   initialChapterId,
@@ -244,7 +165,6 @@ export default function WorkspaceView({
   const [activeChapterId, setActiveChapterId] = useState<string | null>(initialChapterId || null);
   const [vaultOpen, setVaultOpen] = useState(false);
   const [vault, setVault] = useState<Record<string, WorkspaceVaultEntry>>({});
-  const [showNewChapter, setShowNewChapter] = useState(false);
   const [loading, setLoading] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -285,15 +205,6 @@ export default function WorkspaceView({
 
   const activeChapter = workspace?.chapters?.find((c) => c.chapter_id === activeChapterId) || null;
 
-  const handleNewChapter = (chapterId: string, sessionId: string) => {
-    setShowNewChapter(false);
-    loadWorkspace().then(() => {
-      setActiveChapterId(chapterId);
-      setVaultOpen(false);
-      router.replace(`/?workspace=${workspaceId}&chapter=${chapterId}&founder=${encodeURIComponent(userId)}`);
-    });
-  };
-
   const selectChapter = (ch: WorkspaceChapter) => {
     setActiveChapterId(ch.chapter_id);
     setVaultOpen(false);
@@ -328,9 +239,9 @@ export default function WorkspaceView({
         <button
           className="btn"
           style={{ fontSize: 11, padding: "5px 12px" }}
-          onClick={() => setShowNewChapter(true)}
+          onClick={() => router.push(`/?workspace=${workspaceId}&run=1&founder=${encodeURIComponent(userId)}`)}
         >
-          + New Chapter
+          + New Run
         </button>
       </div>
 
@@ -390,22 +301,14 @@ export default function WorkspaceView({
               <div style={{ fontSize: 11.5, color: "var(--fm)", textAlign: "center", maxWidth: 320, lineHeight: 1.6 }}>
                 {workspace.goal}
               </div>
-              <button className="btn pri" style={{ marginTop: 8 }} onClick={() => setShowNewChapter(true)}>
-                + Start first chapter
+              <button className="btn pri" style={{ marginTop: 8 }} onClick={() => router.push(`/?workspace=${workspaceId}&run=1&founder=${encodeURIComponent(userId)}`)}>
+                + Start first run
               </button>
             </div>
           )}
         </div>
       </div>
 
-      {showNewChapter && (
-        <NewChapterModal
-          workspace={workspace}
-          founderId={userId}
-          onDone={handleNewChapter}
-          onClose={() => setShowNewChapter(false)}
-        />
-      )}
     </div>
   );
 }
