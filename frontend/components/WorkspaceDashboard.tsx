@@ -136,6 +136,7 @@ export default function WorkspaceDashboard() {
   const { userId } = useDevUser();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
 
   useEffect(() => {
     if (!userId) return;
