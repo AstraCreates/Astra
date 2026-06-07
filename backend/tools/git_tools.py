@@ -129,6 +129,23 @@ WORKSPACE_ROOT.mkdir(parents=True, exist_ok=True)
 _clones: dict[str, str] = {}
 
 
+def _git_trust_workspaces() -> None:
+    """Mark workspaces as safe so git never refuses with 'detected dubious ownership'.
+
+    The workspace volume is owned by a different uid than the process (and the
+    scaffold subprocess may run as yet another user), which made every git add/
+    push fail and produced empty repos. Register safe.directory in the SYSTEM
+    config so it applies to all users, and globally as a fallback.
+    """
+    for scope in ("--system", "--global"):
+        try:
+            subprocess.run(["git", "config", scope, "--add", "safe.directory", "*"],
+                           capture_output=True, timeout=10)
+        except Exception:
+            pass
+
+
+_git_trust_workspaces()
 
 
 def _clone_url(repo_url: str) -> str:
