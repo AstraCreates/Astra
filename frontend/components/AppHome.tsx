@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useDevUser } from "@/lib/use-dev-user";
 import { getSessionSnapshot, subscribeSessions } from "@/lib/history";
 import { GoalWorkspace } from "@/components/GoalWorkspace";
+import SessionView from "@/components/SessionView";
 
 import type { SessionRecord } from "@/lib/history";
 
@@ -26,6 +27,15 @@ export default function AppHome() {
   const activeInstruction = forceNewGoal ? "" : searchParams.get("instruction") ?? latestSession?.instruction ?? "";
   const activeFounderId = forceNewGoal ? userId : searchParams.get("founder") ?? latestSession?.founderId ?? userId;
   const activeCompany = forceNewGoal ? "" : searchParams.get("company") ?? latestSession?.companyName ?? "";
+
+  // Redesigned session monitor for existing runs; goal-entry stays on GoalWorkspace.
+  if (activeSessionId && !forceNewGoal) {
+    return (
+      <div style={{ height: "calc(100vh - 48px)", overflow: "hidden" }}>
+        <SessionView key={activeSessionId} sessionId={activeSessionId} />
+      </div>
+    );
+  }
 
   return (
     <div className="site-shell" style={{ paddingTop: 48, paddingBottom: 88, maxWidth: 1920 }}>
