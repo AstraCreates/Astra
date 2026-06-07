@@ -3,7 +3,8 @@
 /* Redesigned dashboard — ported from mockup (#v-dash). Lists a founder's runs. */
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { listSessions, type SessionIndexEntry } from "@/lib/api";
+import { listSessions, deleteSessionRemote, type SessionIndexEntry } from "@/lib/api";
+import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 
 function ago(ts: string | undefined): string {
@@ -27,6 +28,16 @@ export default function DashboardView() {
   const { userId } = useDevUser();
   const [sessions, setSessions] = useState<SessionIndexEntry[] | null>(null);
   const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState<Set<string>>(new Set());
+
+  const del = useCallback(async (e: React.MouseEvent, s: SessionIndexEntry) => {
+    e.stopPropagation();
+    if (!confirm(`Delete this run permanently?\n\n${s.goal || s.session_id}`)) return;
+    setDeleting((p) => new Set(p).add(s.session_id));
+    const ok = await deleteSessionRemote(s.session_id);
+    if (ok) { deleteLocalSession(s.session_id); setSessions((prev) => (prev || []).filter((x) => x.session_id !== s.session_id)); }
+    else { alert("Could not delete this run — try again."); setDeleting((p) => { const n = new Set(p); n.delete(s.session_id); return n; }); }
+  }, []);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -80,8 +91,15 @@ export default function DashboardView() {
             {sessions.map((s) => {
               const cls = s.status === "running" ? "running" : s.status === "done" ? "done" : (s.status === "error" || s.status === "killed") ? "error" : "";
               return (
-                <div key={s.session_id} className={`sc ${cls}`} onClick={() => router.push(`/?session=${s.session_id}&founder=${encodeURIComponent(userId)}`)}>
-                  <div className="sc-goal">{s.goal || "Untitled run"}</div>
+                <div key={s.session_id} className={`sc ${cls}`} style={{ position: "relative" }} onClick={() => router.push(`/?session=${s.session_id}&founder=${encodeURIComponent(userId)}`)}>
+                  <button
+                    className="sc-del"
+                    title="Delete run"
+                    disabled={deleting.has(s.session_id)}
+                    onClick={(e) => del(e, s)}
+                    style={{ position: "absolute", top: 8, right: 8, width: 22, height: 22, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface)", border: "1px solid var(--bd)", color: "var(--fm)", cursor: "pointer", fontSize: 12, lineHeight: 1, opacity: deleting.has(s.session_id) ? 0.4 : 1 }}
+                  >{deleting.has(s.session_id) ? "…" : "✕"}</button>
+                  <div className="sc-goal" style={{ paddingRight: 24 }}>{s.goal || "Untitled run"}</div>
                   <div className="sc-meta">
                     {pill(s.status)}
                     <span className="sc-time">{ago(s.created_at)}</span>
