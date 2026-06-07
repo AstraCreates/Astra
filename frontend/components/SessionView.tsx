@@ -158,21 +158,26 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         st.agents[ev.agent].currentTool = tn; break;
       }
       case "agent_action_result": case "tool_result":
-        if (ev.agent) addLog(ev.agent, "result", String(ev.result || ev.output || ev.content || "").slice(0, 300)); break;
+        if (ev.agent) addLog(ev.agent, "result", safeText(ev.result || ev.output || ev.content || "").slice(0, 300)); break;
       case "agent_build": {
         // Technical build stream — fold into the technical agent log.
         const a = ev.agent || "technical"; ensureAg(a);
         const k = ev.kind;
         if (k === "file") addLog(a, "tool", `${ev.verb || "wrote"} ${ev.path} (${ev.size ?? 0}b)`);
         else if (k === "command") addLog(a, "tool", `$ ${ev.command || ""}`);
-        else if (k === "output") addLog(a, "result", String(ev.text || "").slice(0, 300));
-        else if (k === "error") addLog(a, "error", String(ev.text || "").slice(0, 300));
+        else if (k === "output") addLog(a, "result", safeText(ev.text || "").slice(0, 300));
+        else if (k === "error") addLog(a, "error", safeText(ev.text || "").slice(0, 300));
         else if (k === "phase" || k === "plan" || k === "build_start") addLog(a, "think", ev.text || ev.goal || "");
         break;
       }
-      case "agent_done":
+      case "agent_done": {
         ensureAg(ev.agent); st.agents[ev.agent].status = "done"; st.agents[ev.agent].currentTool = null; st.agents[ev.agent].result = ev.result;
-        addLog(ev.agent, "done", "Completed"); break;
+        const _r = ev.result as Record<string, unknown> | null;
+        const _sum = (_r && typeof _r === "object")
+          ? (String(_r.summary || _r.output_summary || _r.headline || _r.tldr || _r.text || _r.formatted_text || "")).trim().slice(0, 400)
+          : "";
+        addLog(ev.agent, "done", _sum || "Agent finished"); break;
+      }
       case "agent_error":
         ensureAg(ev.agent); st.agents[ev.agent].status = "error"; st.agents[ev.agent].currentTool = null;
         addLog(ev.agent, "error", ev.error || ev.message || "Error"); break;
@@ -651,33 +656,34 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 </>;
               }
 
-              // "updates" tab — plain English, completed actions only (result / done / error)
-              const updates = all.filter((l) => l.type === "result" || l.type === "done" || l.type === "error");
+              // "updates" tab — agent-level completions only (done / error), never raw tool results
+              const updates = all.filter((l) => l.type === "done" || l.type === "error");
               if (!updates.length) {
                 const isRunning = ags.some((a) => st.agents[a].status === "running");
-                return <div style={{ color: "var(--fd)", fontSize: 10.5, lineHeight: 1.6 }}>{isRunning ? "Agent is working — updates will appear here as steps complete." : "Waiting to start."}</div>;
+                return <div style={{ color: "var(--fd)", fontSize: 10.5, lineHeight: 1.6 }}>{isRunning ? "Agents are working — summaries appear here when each one finishes." : "Waiting to start."}</div>;
               }
               return <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {updates.map((l, i) => {
-                  if (l.type === "done") return (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px", borderRadius: 8, background: "rgba(52,211,153,.07)", border: "1px solid rgba(52,211,153,.18)" }}>
-                      <span style={{ fontSize: 14 }}>✓</span>
-                      <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--green)" }}>
-                        {ags.length > 1 ? `${l.agent} finished` : "Done"}
-                      </span>
-                    </div>
-                  );
                   if (l.type === "error") return (
-                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "8px 10px", borderRadius: 8, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.18)" }}>
-                      <span style={{ fontSize: 13, flexShrink: 0, marginTop: 1 }}>✗</span>
-                      <span style={{ fontSize: 11.5, color: "var(--red)", lineHeight: 1.5 }}>{l.text}</span>
+                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px", borderRadius: 8, background: "rgba(239,68,68,.06)", border: "1px solid rgba(239,68,68,.18)" }}>
+                      <span style={{ fontSize: 13, flexShrink: 0, marginTop: 2 }}>✗</span>
+                      <div>
+                        {ags.length > 1 && <div style={{ fontSize: 9, fontWeight: 700, color: "var(--red)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 3 }}>{l.agent}</div>}
+                        <span style={{ fontSize: 11.5, color: "var(--red)", lineHeight: 1.5 }}>{l.text}</span>
+                      </div>
                     </div>
                   );
-                  // result — completed action output, plain English
+                  // done — agent completed, show its summary
+                  const summary = l.text && l.text !== "Agent finished" ? l.text : null;
                   return (
-                    <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4, padding: "9px 11px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--bd)" }}>
-                      {ags.length > 1 && <span style={{ fontSize: 8.5, fontWeight: 700, color: "var(--blue)", textTransform: "uppercase", letterSpacing: ".1em" }}>{l.agent}</span>}
-                      <span style={{ fontSize: 12, color: "var(--fg)", lineHeight: 1.6 }}>{l.text}</span>
+                    <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "12px 13px", borderRadius: 8, background: "rgba(52,211,153,.05)", border: "1px solid rgba(52,211,153,.2)" }}>
+                      <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>✓</span>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--green)", marginBottom: summary ? 5 : 0 }}>
+                          {l.agent.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())} finished
+                        </div>
+                        {summary && <div style={{ fontSize: 12, color: "var(--fg)", lineHeight: 1.65, wordBreak: "break-word" }}>{summary}</div>}
+                      </div>
                     </div>
                   );
                 })}
