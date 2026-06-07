@@ -1,0 +1,1490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Astra</title>
+<script src="https://accounts.google.com/gsi/client" async></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet"/>
+<style>
+/* ─── RESET + VARS ─────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#eeeeee;--surface:#ffffff;--s2:#f6f6f6;--s3:#f0f0f0;
+  --bd:rgba(0,0,0,.09);--bd2:rgba(0,0,0,.15);
+  --fg:#0a0a0a;--fd:#555555;--fm:#aaaaaa;
+  --blue:#2b45ff;--bdim:rgba(43,69,255,.08);--bb:rgba(43,69,255,.3);
+  --green:#16a34a;--gdim:rgba(22,163,74,.08);--gb:rgba(22,163,74,.25);
+  --amber:#d97706;--adim:rgba(217,119,6,.08);--ab:rgba(217,119,6,.25);
+  --red:#dc2626;--rdim:rgba(220,38,38,.07);--rb:rgba(220,38,38,.25);
+  --nav-w:200px;
+}
+html,body{height:100%;overflow:hidden}
+body{font-family:'IBM Plex Mono',monospace;background:var(--bg);color:var(--fg);font-size:12px;line-height:1.5}
+a{text-decoration:none;color:inherit}
+button{cursor:pointer;font-family:inherit}
+
+/* ─── SHELL ─────────────────────────────────────────────── */
+#shell{display:flex;height:100vh;overflow:hidden}
+
+/* ─── SIDEBAR NAV ────────────────────────────────────────── */
+#nav{
+  width:var(--nav-w);flex-shrink:0;
+  background:var(--surface);border-right:1px solid var(--bd);
+  display:flex;flex-direction:column;height:100vh;overflow:hidden;
+  box-shadow:2px 0 16px rgba(0,0,0,.04);z-index:10;
+}
+.nav-brand{padding:18px 14px 14px;border-bottom:1px solid var(--bd)}
+.nav-logo-row{display:flex;align-items:center;gap:9px;margin-bottom:11px}
+.nav-hex{
+  width:27px;height:27px;background:var(--blue);flex-shrink:0;
+  clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 18px rgba(43,69,255,.3);
+}
+.nav-hex span{font-family:'Chakra Petch',sans-serif;font-size:11px;font-weight:700;color:#fff}
+.nav-wordmark{font-family:'Chakra Petch',sans-serif;font-size:15px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--fg)}
+.nav-live{font-size:9px;color:var(--blue);font-family:'IBM Plex Mono',monospace;display:flex;align-items:center;gap:5px;letter-spacing:.05em;text-transform:uppercase}
+.nav-live::before{content:'';width:4px;height:4px;background:var(--blue);flex-shrink:0;box-shadow:0 0 5px var(--blue)}
+.nav-new{
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  padding:7px 12px;border:1px solid var(--bd2);
+  font-family:'Chakra Petch',sans-serif;font-size:10px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--fd);
+  background:transparent;width:100%;transition:border-color .15s,color .15s;
+}
+.nav-new:hover{border-color:var(--blue);color:var(--blue)}
+
+.nav-links{display:flex;flex-direction:column;gap:1px;padding:8px 6px;flex:1;overflow-y:auto}
+.nl{
+  display:flex;align-items:center;gap:9px;padding:8px 10px;
+  font-family:'Chakra Petch',sans-serif;font-size:11px;font-weight:500;
+  letter-spacing:.04em;text-transform:uppercase;color:var(--fm);
+  border-left:2px solid transparent;transition:color .12s,background .12s,border-color .12s;
+}
+.nl:hover{color:var(--fd);background:rgba(0,0,0,.03)}
+.nl.on{color:var(--fg);border-left-color:var(--blue);background:rgba(43,69,255,.06)}
+.nl-ic{font-size:12px;width:16px;text-align:center;flex-shrink:0;line-height:1}
+.nl-badge{margin-left:auto;background:var(--blue);color:#fff;font-size:8px;
+  font-family:'IBM Plex Mono',monospace;padding:1px 5px;min-width:16px;text-align:center}
+.nav-sep{height:1px;background:var(--bd);margin:5px 6px}
+.nav-bottom{padding:0 6px 12px;display:flex;flex-direction:column;gap:1px}
+.nav-av{display:flex;align-items:center;gap:8px;padding:8px 10px}
+.av-circle{width:24px;height:24px;background:var(--blue);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Chakra Petch',sans-serif;font-size:9px;font-weight:700;color:#fff}
+.av-id{font-size:9px;color:var(--fm);font-family:'IBM Plex Mono',monospace;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ─── MAIN AREA ─────────────────────────────────────────── */
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* ─── TOPBAR ─────────────────────────────────────────────── */
+#topbar{
+  height:44px;display:flex;align-items:center;gap:10px;padding:0 18px;
+  border-bottom:1px solid var(--bd);background:var(--surface);flex-shrink:0;
+  box-shadow:0 1px 6px rgba(0,0,0,.04);
+}
+#topbar-title{font-family:'Chakra Petch',sans-serif;font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--fg);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#topbar-r{display:flex;align-items:center;gap:9px;flex-shrink:0}
+
+/* ─── URGENT BANNER ─────────────────────────────────────── */
+#urgent{display:none;background:var(--red);flex-shrink:0}
+#urgent.show{display:flex;animation:slideDown .25s ease both}
+@keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+.urg-inner{display:flex;align-items:center;gap:12px;padding:10px 18px;width:100%}
+.urg-dot{width:8px;height:8px;border-radius:50%;background:#fff;flex-shrink:0;animation:upulse 1.3s ease-in-out infinite}
+@keyframes upulse{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.5)}50%{box-shadow:0 0 0 6px rgba(255,255,255,0)}}
+.urg-title{font-family:'Chakra Petch',sans-serif;font-size:12px;font-weight:700;color:#fff}
+.urg-sub{font-size:9.5px;color:rgba(255,255,255,.7);margin-top:1px}
+.urg-btn{margin-left:auto;font-family:'Chakra Petch',sans-serif;font-size:9px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;padding:5px 11px;
+  background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);color:#fff;
+  flex-shrink:0;transition:background .12s}
+.urg-btn:hover{background:rgba(255,255,255,.28)}
+
+/* ─── VIEW CONTAINER ──────────────────────────────────────── */
+#view{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.view{display:none;flex:1;overflow:hidden;flex-direction:column;animation:vfade .2s ease both}
+.view.active{display:flex}
+@keyframes vfade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* ─── PILLS ──────────────────────────────────────────────── */
+.pill{font-size:9px;font-family:'IBM Plex Mono',monospace;padding:3px 8px;
+  border:1px solid var(--bd2);color:var(--fd);white-space:nowrap}
+.pill.blue{background:var(--bdim);border-color:var(--bb);color:var(--blue)}
+.pill.green{background:var(--gdim);border-color:var(--gb);color:var(--green)}
+.pill.amber{background:var(--adim);border-color:var(--ab);color:var(--amber)}
+.pill.red{background:var(--rdim);border-color:var(--rb);color:var(--red)}
+
+/* ─── BUTTONS ─────────────────────────────────────────────── */
+.btn{font-family:'Chakra Petch',sans-serif;font-size:10px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;padding:6px 13px;
+  border:1px solid var(--bd2);background:transparent;color:var(--fd);transition:all .12s}
+.btn:hover{border-color:var(--bd2);color:var(--fg)}
+.btn.pri{background:var(--blue);color:#fff;border-color:var(--blue)}
+.btn.pri:hover{background:#1f36e0}
+.btn.danger{background:var(--rdim);color:var(--red);border-color:var(--rb)}
+.btn.sm{padding:4px 9px;font-size:9px}
+
+/* ─── FORMS ───────────────────────────────────────────────── */
+.f-label{font-family:'Chakra Petch',sans-serif;font-size:9px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.12em;color:var(--fm);display:block;margin-bottom:5px}
+.f-input{width:100%;padding:9px 11px;background:var(--s2);border:1px solid var(--bd2);
+  font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--fg);outline:none;transition:border-color .15s}
+.f-input:focus{border-color:var(--bb)}
+.f-ta{resize:vertical;min-height:110px}
+.f-hint{font-size:9.5px;color:var(--fm);margin-top:4px;font-family:'IBM Plex Mono',monospace}
+.f-field{margin-bottom:18px}
+.f-err{background:var(--rdim);border:1px solid var(--rb);padding:10px 14px;
+  font-size:11px;color:var(--red);font-family:'IBM Plex Mono',monospace;margin-bottom:14px;display:none}
+.f-err.show{display:block}
+
+/* ─── EMPTY ───────────────────────────────────────────────── */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:9px;padding:60px 20px;color:var(--fm);text-align:center;flex:1}
+.empty-ico{font-size:34px;opacity:.12}
+.empty-title{font-family:'Chakra Petch',sans-serif;font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--fd)}
+.empty-sub{font-size:10.5px;max-width:260px;line-height:1.6}
+
+/* ─── SCROLLBAR ─────────────────────────────────────────── */
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-thumb{background:rgba(0,0,0,.1)}
+
+/* ─── ANIMATIONS ─────────────────────────────────────────── */
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin 1s linear infinite;display:inline-block}
+@keyframes fadein{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.fadein{animation:fadein .3s ease both}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.blink{animation:pulse 1.3s ease-in-out infinite}
+@keyframes scanline{0%{left:-40%}100%{left:130%}}
+
+/* ════════════════════════════════════════════════════════════
+   VIEW 1 — DASHBOARD
+   ════════════════════════════════════════════════════════════ */
+#v-dash{overflow-y:auto}
+.dash-hero{padding:28px 22px 0;border-bottom:1px solid var(--bd)}
+.dash-ht{font-family:'Chakra Petch',sans-serif;font-size:20px;font-weight:700;letter-spacing:.03em;margin-bottom:5px}
+.dash-sub{font-size:11px;color:var(--fd);margin-bottom:18px;line-height:1.6}
+.dash-hero-acts{display:flex;gap:9px;padding-bottom:22px}
+.sec-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 22px 0}
+.sec-label{font-family:'Chakra Petch',sans-serif;font-size:10px;font-weight:700;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--fm)}
+.sessions-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px;padding:14px 22px 22px}
+.sc{background:var(--surface);border:1px solid var(--bd);padding:16px;cursor:pointer;
+  transition:border-color .14s,box-shadow .14s;position:relative;overflow:hidden}
+.sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.sc.running::before{background:var(--blue)}
+.sc.done::before{background:var(--green)}
+.sc.error::before,.sc.killed::before{background:var(--red)}
+.sc:hover{border-color:var(--bd2);box-shadow:0 2px 12px rgba(0,0,0,.07)}
+.sc-goal{font-size:12px;color:var(--fg);line-height:1.5;margin-bottom:12px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sc-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.sc-time{font-size:9px;color:var(--fm);margin-left:auto}
+.sc-loading{display:flex;align-items:center;gap:9px;padding:22px;color:var(--fm);font-size:11px}
+.sc-ldot{width:5px;height:5px;background:var(--blue);animation:pulse 1.5s ease-in-out infinite}
+
+/* ════════════════════════════════════════════════════════════
+   VIEW 2 — NEW GOAL
+   ════════════════════════════════════════════════════════════ */
+#v-new{overflow-y:auto}
+.new-wrap{max-width:640px;margin:0 auto;padding:32px 22px}
+.new-ht{font-family:'Chakra Petch',sans-serif;font-size:20px;font-weight:700;letter-spacing:.03em;margin-bottom:5px}
+.new-sub{font-size:11px;color:var(--fd);margin-bottom:28px;line-height:1.6}
+.stack-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}
+.sk{padding:13px 14px;background:var(--s2);border:1px solid var(--bd2);cursor:pointer;transition:border-color .12s,background .12s}
+.sk:hover{border-color:var(--bb);background:var(--bdim)}
+.sk.sel{border-color:var(--blue);background:var(--bdim)}
+.sk.auto{border-style:dashed}
+.sk-name{font-family:'Chakra Petch',sans-serif;font-size:11px;font-weight:700;letter-spacing:.04em;margin-bottom:3px}
+.sk-desc{font-size:10px;color:var(--fd);line-height:1.5}
+.sk-ct{font-size:9px;color:var(--blue);margin-top:5px}
+.submit-row{display:flex;align-items:center;gap:9px;margin-top:22px}
+.launch-loader{position:fixed;inset:0;background:rgba(255,255,255,.85);
+  display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px;z-index:200}
+.launch-loader.show{display:flex}
+.ll-ring{width:34px;height:34px;border:3px solid var(--bdim);border-top-color:var(--blue);
+  border-radius:50%;animation:spin 1s linear infinite}
+.ll-title{font-family:'Chakra Petch',sans-serif;font-size:14px;font-weight:700;letter-spacing:.04em}
+.ll-sub{font-size:10px;color:var(--fd)}
+
+/* ════════════════════════════════════════════════════════════
+   VIEW 3 — SESSION
+   ════════════════════════════════════════════════════════════ */
+#v-sess{overflow:hidden}
+
+/* Phase bar */
+.phasebar{display:flex;align-items:center;padding:0 16px;border-bottom:1px solid var(--bd);
+  flex-shrink:0;height:36px;background:var(--surface);overflow-x:auto}
+.ph{display:flex;align-items:center;gap:6px;padding:0 9px;height:36px;
+  font-family:'Chakra Petch',sans-serif;font-size:9.5px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--fm);white-space:nowrap;position:relative}
+.ph::after{content:'';position:absolute;bottom:0;left:9px;right:9px;height:2px;background:transparent}
+.ph.done{color:var(--green)}.ph.done::after{background:var(--green)}
+.ph.act{color:var(--fg)}.ph.act::after{background:var(--blue)}
+.ph.err{color:var(--red)}.ph.err::after{background:var(--red)}
+.ph-dot{width:4px;height:4px;flex-shrink:0;background:currentColor}
+.ph.act .ph-dot{background:var(--blue);box-shadow:0 0 6px var(--blue)}
+.ph-div{width:1px;height:12px;background:var(--bd2);flex-shrink:0}
+
+/* Status bar */
+.sbar{display:flex;align-items:center;gap:10px;padding:6px 16px;
+  border-bottom:1px solid var(--bd);font-size:9.5px;font-family:'IBM Plex Mono',monospace;
+  color:var(--fm);flex-shrink:0;flex-wrap:wrap;background:var(--s2)}
+.sv{font-weight:500}
+.sv.b{color:var(--blue)}.sv.g{color:var(--green)}.sv.r{color:var(--red)}.sv.a{color:var(--amber)}
+.s-sep{width:1px;height:8px;background:var(--bd2);flex-shrink:0}
+.live-dot{width:5px;height:5px;background:var(--blue);flex-shrink:0;animation:pulse 2s ease-in-out infinite}
+
+/* Dept cards */
+.depts{display:flex;gap:7px;padding:10px 14px;border-bottom:1px solid var(--bd);
+  overflow-x:auto;flex-shrink:0;background:var(--bg)}
+.dc{border:1px solid var(--bd);background:var(--surface);padding:11px 13px;
+  cursor:pointer;min-width:130px;flex:1 0 130px;display:flex;flex-direction:column;gap:7px;
+  position:relative;overflow:hidden;transition:border-color .14s,box-shadow .14s}
+.dc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.dc.run::before{background:var(--blue)}
+.dc.done::before{background:var(--green)}
+.dc.err::before{background:var(--red)}
+.dc.que::before{background:var(--fm);opacity:.3}
+.dc.run::after{content:'';position:absolute;top:2px;left:-40%;width:35%;bottom:0;
+  background:linear-gradient(90deg,transparent,rgba(43,69,255,.06),transparent);
+  animation:scanline 2.8s ease-in-out infinite}
+.dc:hover,.dc.sel{box-shadow:0 2px 12px rgba(0,0,0,.07)}
+.dc.sel{border-color:rgba(43,69,255,.35)!important}
+.dc.run{border-color:rgba(43,69,255,.2)}
+.dc.done{border-color:rgba(22,163,74,.16)}
+.dc.err{border-color:rgba(220,38,38,.18)}
+.dc-top{display:flex;align-items:center;gap:6px}
+.dc-ico{font-size:14px;flex-shrink:0}
+.dc-name{font-family:'Chakra Petch',sans-serif;font-size:11px;font-weight:700;letter-spacing:.04em;flex:1;color:var(--fg)}
+.dc-badge{font-size:8.5px;padding:1px 5px;font-family:'IBM Plex Mono',monospace;border:1px solid;flex-shrink:0}
+.dc-badge.run{color:var(--blue);border-color:var(--bb);background:var(--bdim)}
+.dc-badge.done{color:var(--green);border-color:var(--gb);background:var(--gdim)}
+.dc-badge.err{color:var(--red);border-color:var(--rb);background:var(--rdim)}
+.dc-badge.que{color:var(--fm);border-color:var(--bd);background:rgba(0,0,0,.03)}
+.dc-what{font-size:9.5px;color:var(--fd);line-height:1.45;font-family:'IBM Plex Mono',monospace}
+.dc-prog{height:1px;background:rgba(0,0,0,.06)}.dc-bar{height:100%;transition:width .9s cubic-bezier(.22,1,.36,1)}
+
+/* Session workspace */
+.sess-ws{flex:1;display:flex;overflow:hidden}
+
+/* Artifact vault */
+.vault{width:155px;flex-shrink:0;border-right:1px solid var(--bd);
+  background:var(--surface);overflow-y:auto;padding:8px 4px;display:flex;flex-direction:column}
+.v-sec{font-family:'Chakra Petch',sans-serif;font-size:8px;font-weight:700;
+  color:var(--fm);text-transform:uppercase;letter-spacing:.14em;padding:8px 8px 3px}
+.v-row{font-size:9px;color:var(--fm);padding:3px 8px 2px;display:flex;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace}
+.v-art{display:flex;align-items:center;gap:5px;font-size:9.5px;font-family:'IBM Plex Mono',monospace;
+  color:var(--fd);padding:4px 8px;cursor:pointer;line-height:1.35;transition:background .1s,color .1s}
+.v-art:hover{background:rgba(0,0,0,.04);color:var(--fg)}
+.v-art.sel{background:var(--bdim);color:var(--blue)}
+.v-dot{width:4px;height:4px;flex-shrink:0}
+.v-dot.ready{background:var(--green)}
+.v-dot.live{background:var(--amber);animation:pulse 1.2s ease-in-out infinite}
+.v-dot.pend{background:var(--fm)}
+
+/* Detail panel */
+.detail{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.dtabs{display:flex;padding:0 18px;border-bottom:1px solid var(--bd);flex-shrink:0;background:var(--surface)}
+.dtab{font-family:'Chakra Petch',sans-serif;font-size:9.5px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--fm);padding:8px 11px;
+  cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;transition:color .12s}
+.dtab:hover{color:var(--fd)}
+.dtab.on{color:var(--fg);border-bottom-color:var(--blue)}
+.dscroll{flex:1;overflow-y:auto;padding:14px 18px;display:flex;flex-direction:column;gap:9px}
+
+/* Log entries */
+.log-stream{display:flex;flex-direction:column;gap:2px}
+.le{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid rgba(0,0,0,.04)}
+.le-ic{flex-shrink:0;font-size:10px;margin-top:2px;width:13px;text-align:center}
+.le-lbl{font-family:'Chakra Petch',sans-serif;font-size:7.5px;font-weight:700;
+  color:var(--fm);text-transform:uppercase;letter-spacing:.1em;margin-bottom:1px}
+.le-txt{font-family:'IBM Plex Mono',monospace;font-size:9.5px;line-height:1.55;color:var(--fd);word-break:break-word}
+.le.think .le-txt{color:#6d5fd0;font-style:italic}
+.le.tool .le-txt{color:var(--blue)}
+.le.done .le-txt{color:var(--green)}
+.le.error .le-txt{color:var(--red)}
+.sec-lbl{font-family:'Chakra Petch',sans-serif;font-size:8px;font-weight:700;
+  color:var(--fm);text-transform:uppercase;letter-spacing:.14em;margin-bottom:4px}
+.url-list{display:flex;flex-direction:column;gap:3px}
+.url-item{display:flex;align-items:center;gap:7px;padding:5px 9px;
+  background:var(--surface);border:1px solid var(--bd);
+  font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--fd);
+  transition:border-color .12s;word-break:break-all}
+.url-item:hover{border-color:var(--bb)}
+.art-pre{background:var(--surface);border:1px solid var(--bd2);padding:13px 15px;
+  font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--fd);
+  line-height:1.8;white-space:pre-wrap;max-height:380px;overflow-y:auto}
+
+/* Approval card */
+.apv{border:2px solid var(--red);background:var(--surface)}
+.apv-hd{background:var(--red);padding:12px 15px}
+.apv-ht{font-family:'Chakra Petch',sans-serif;font-size:12px;font-weight:700;color:#fff}
+.apv-mt{font-size:9px;color:rgba(255,255,255,.7);margin-top:2px;font-family:'IBM Plex Mono',monospace}
+.apv-body{padding:13px 15px;display:flex;flex-direction:column;gap:9px}
+.apv-reason{font-size:10.5px;color:var(--fd);line-height:1.65;font-family:'IBM Plex Mono',monospace}
+.apv-acts{display:flex;gap:7px;flex-wrap:wrap}
+.btn-ok{font-family:'Chakra Petch',sans-serif;font-size:10px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;padding:7px 15px;
+  background:var(--green);color:#fff;border:none}
+.btn-skip{font-family:'Chakra Petch',sans-serif;font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;padding:7px 12px;background:transparent;
+  color:var(--fm);border:1px solid var(--bd2)}
+.btn-reject{font-family:'Chakra Petch',sans-serif;font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;padding:7px 12px;background:var(--rdim);
+  color:var(--red);border:1px solid var(--rb)}
+
+/* Done banner */
+.done-bar{background:var(--gdim);border:1px solid var(--gb);padding:11px 18px;
+  flex-shrink:0;display:flex;align-items:center;gap:11px}
+.done-title{font-family:'Chakra Petch',sans-serif;font-size:12px;font-weight:700;color:var(--green)}
+.done-sub{font-size:9.5px;color:var(--fd);margin-top:2px}
+
+/* Steer bar */
+.steerbar{border-top:1px solid var(--bd);background:var(--surface);padding:8px 14px;flex-shrink:0}
+.steer-wrap{display:flex;align-items:center;gap:8px;background:var(--s2);
+  border:1px solid var(--bd2);padding:6px 11px;transition:border-color .15s}
+.steer-wrap:focus-within{border-color:var(--bb)}
+.steer-inp{flex:1;background:none;border:none;outline:none;color:var(--fg);
+  font-size:11px;font-family:'IBM Plex Mono',monospace}
+.steer-inp::placeholder{color:var(--fm)}
+.steer-send{width:22px;height:22px;background:var(--blue);border:none;
+  color:#fff;font-size:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+
+/* ─── SETUP MODAL ────────────────────────────────────────── */
+#setup-modal{position:fixed;inset:0;background:rgba(0,0,0,.42);
+  display:flex;align-items:center;justify-content:center;z-index:300}
+.setup-box{background:var(--surface);border:1px solid var(--bd2);padding:30px;min-width:360px;max-width:460px;width:90%}
+.setup-ht{font-family:'Chakra Petch',sans-serif;font-size:17px;font-weight:700;letter-spacing:.04em;margin-bottom:5px}
+.setup-sub{font-size:10px;color:var(--fd);margin-bottom:22px;line-height:1.6}
+.setup-acts{display:flex;gap:8px;margin-top:8px}
+</style>
+</head>
+<body>
+
+<div id="shell">
+
+  <!-- ── NAV ── -->
+  <nav id="nav">
+    <div class="nav-brand">
+      <div class="nav-logo-row">
+        <div class="nav-hex"><span>A</span></div>
+        <div>
+          <div class="nav-wordmark">Astra</div>
+          <div class="nav-live" id="nav-status">ready</div>
+        </div>
+      </div>
+      <button class="nav-new" onclick="go('/new')">＋ &nbsp;New goal</button>
+    </div>
+    <div class="nav-links">
+      <a class="nl" data-route="/" onclick="go('/')"><span class="nl-ic">⬡</span> Dashboard</a>
+      <a class="nl" href="#" onclick="stub('Outreach')"><span class="nl-ic">✦</span> Outreach</a>
+      <a class="nl" href="#" onclick="stub('Company Brain')"><span class="nl-ic">◈</span> Company Brain</a>
+      <div class="nav-sep"></div>
+      <a class="nl" href="#" onclick="stub('Integrations')"><span class="nl-ic">⌘</span> Integrations</a>
+      <a class="nl" href="#" onclick="stub('Payments')"><span class="nl-ic">$</span> Payments</a>
+    </div>
+    <div class="nav-sep"></div>
+    <div class="nav-bottom">
+      <a class="nl" href="#" onclick="stub('Settings')"><span class="nl-ic">⚙</span> Settings</a>
+      <div class="nav-av" id="nav-user-row">
+        <div class="av-circle" id="nav-av">?</div>
+        <div style="flex:1;min-width:0">
+          <div class="av-id" id="nav-uid">not connected</div>
+          <div id="nav-signin-btn" style="display:none">
+            <div id="g_id_onload"
+              data-client_id="642840461553-96ocfhlv3q190t3abg0f91a8r5n404qr.apps.googleusercontent.com"
+              data-context="signin"
+              data-callback="handleGoogleSignIn"
+              data-auto_select="false"
+              data-itp_support="true">
+            </div>
+            <div class="g_id_signin"
+              data-type="standard"
+              data-shape="rectangular"
+              data-theme="outline"
+              data-text="sign_in_with"
+              data-size="small"
+              data-logo_alignment="left">
+            </div>
+          </div>
+        </div>
+        <button id="nav-signout-btn" onclick="signOutUser()" style="display:none;background:none;border:none;font-size:9px;color:var(--fm);cursor:pointer;padding:2px 0;font-family:'IBM Plex Mono',monospace">sign out</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── MAIN ── -->
+  <div id="main">
+
+    <!-- TOPBAR -->
+    <div id="topbar">
+      <div id="topbar-title">Dashboard</div>
+      <div id="topbar-r"></div>
+    </div>
+
+    <!-- URGENT -->
+    <div id="urgent">
+      <div class="urg-inner">
+        <div class="urg-dot"></div>
+        <div>
+          <div class="urg-title">Action Required — Astra is waiting for you</div>
+          <div class="urg-sub" id="urg-sub">An agent needs your approval before it can continue.</div>
+        </div>
+        <button class="urg-btn" onclick="scrollToApproval()">Review →</button>
+      </div>
+    </div>
+
+    <!-- VIEWS -->
+    <div id="view">
+
+      <!-- ════ DASHBOARD ════ -->
+      <div id="v-dash" class="view">
+        <div class="dash-hero">
+          <div class="dash-ht">Your goals</div>
+          <div class="dash-sub" id="dash-sub">Loading sessions…</div>
+          <div class="dash-hero-acts">
+            <button class="btn pri" onclick="go('/new')">＋ Start a new goal</button>
+            <button class="btn" onclick="loadSessions()">Refresh</button>
+          </div>
+        </div>
+        <div class="sec-hd"><div class="sec-label">Recent runs</div></div>
+        <div id="sessions-area"></div>
+      </div>
+
+      <!-- ════ NEW GOAL ════ -->
+      <div id="v-new" class="view">
+        <div id="v-new-scroll" style="flex:1;overflow-y:auto">
+          <div class="new-wrap">
+            <div class="new-ht">What do you want to build?</div>
+            <div class="new-sub">Tell Astra your goal in plain English. Be specific — include your target customer and key constraints.</div>
+            <div class="f-field">
+              <label class="f-label">Company / Project name <span style="color:var(--fm);font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+              <input class="f-input" id="name-inp" type="text" placeholder="e.g. InvoiceFlow, NomadHQ, Astra…" maxlength="80"/>
+              <div class="f-hint">If left blank, Astra will generate a name from your goal.</div>
+            </div>
+            <div class="f-field">
+              <label class="f-label">Your goal</label>
+              <textarea class="f-input f-ta" id="goal-inp" rows="5"
+                placeholder="e.g. Build a SaaS tool for freelancers to track invoices and get paid faster"
+                oninput="onGoalInput()"></textarea>
+              <div class="f-hint"><span id="char-ct">0</span> chars · aim for 50–400</div>
+            </div>
+            <div class="f-field">
+              <label class="f-label">Stack</label>
+              <div class="stack-grid" id="stack-grid">
+                <div class="sk auto sel" data-id="" onclick="selStack(this)">
+                  <div class="sk-name">Auto-select</div>
+                  <div class="sk-desc">Astra picks the right agents for your goal automatically.</div>
+                  <div class="sk-ct">Recommended</div>
+                </div>
+              </div>
+              <div class="f-hint" id="stack-hint" style="margin-top:7px">Loading stacks…</div>
+            </div>
+            <div class="f-err" id="new-err"></div>
+            <div class="submit-row">
+              <button class="btn pri" id="launch-btn" onclick="submitGoal()">Launch Astra →</button>
+              <button class="btn" onclick="go('/')">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════ SESSION ════ -->
+      <div id="v-sess" class="view">
+        <!-- done banner -->
+        <div id="done-bar" style="display:none">
+          <div class="done-bar">
+            <div>
+              <div class="done-title">✓ Run complete</div>
+              <div class="done-sub" id="done-sub">All agents finished. Deliverables are in the vault.</div>
+            </div>
+            <button class="btn sm" onclick="go('/')" style="margin-left:auto">← All runs</button>
+          </div>
+        </div>
+        <!-- phase bar -->
+        <div class="phasebar" id="phasebar">
+          <div class="ph act"><div class="ph-dot"></div>Starting</div>
+        </div>
+        <!-- status bar -->
+        <div class="sbar" id="sbar">
+          <div class="live-dot"></div><span style="color:var(--fd)">Connecting…</span>
+        </div>
+        <!-- dept cards -->
+        <div class="depts" id="depts">
+          <div style="padding:6px;font-size:9.5px;color:var(--fm)">Waiting for agents…</div>
+        </div>
+        <!-- workspace -->
+        <div class="sess-ws">
+          <!-- vault -->
+          <div class="vault" id="vault">
+            <div class="v-sec">Deliverables</div>
+            <div style="padding:10px 8px;font-size:9.5px;color:var(--fm);line-height:1.55">Agents are working…</div>
+          </div>
+          <!-- detail -->
+          <div class="detail">
+            <div class="dtabs" id="dtabs">
+              <div class="dtab on">What happened</div>
+            </div>
+            <div class="dscroll" id="dscroll">
+              <div class="empty">
+                <div class="empty-ico">◈</div>
+                <div class="empty-title">Select a department</div>
+                <div class="empty-sub">Click a card above to see what that team is working on.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- steer -->
+        <div class="steerbar">
+          <div class="steer-wrap">
+            <input class="steer-inp" id="steer-inp" placeholder='Steer Astra — "focus more on pricing" · "skip legal" · "make it B2B"'/>
+            <button class="steer-send" onclick="sendSteer()">↑</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /view -->
+  </div><!-- /main -->
+</div><!-- /shell -->
+
+<!-- LAUNCH LOADER -->
+<div class="launch-loader" id="launch-loader">
+  <div class="ll-ring"></div>
+  <div class="ll-title">Launching your goal</div>
+  <div class="ll-sub">Astra is spinning up agents…</div>
+</div>
+
+<!-- no setup modal — user ID is auto-managed -->
+
+<script>
+/* ═══════════════════════════════════════════════════════════
+   GLOBALS
+═══════════════════════════════════════════════════════════ */
+const API = 'http://localhost:8000';
+
+/* Use the same localStorage key as the real Next.js frontend.
+   Auto-generate if missing — same logic as use-dev-user.ts */
+function getOrCreateUserId() {
+  let id = localStorage.getItem('astra_dev_user_id');
+  if (!id) {
+    id = 'user_' + (crypto.randomUUID ? crypto.randomUUID().replace(/-/g,'').slice(0,20) : Math.random().toString(36).slice(2,12) + Math.random().toString(36).slice(2,12));
+    localStorage.setItem('astra_dev_user_id', id);
+  }
+  return id;
+}
+let founderId = getOrCreateUserId();
+let currentRoute = '/';
+let currentSession = null;
+
+/* Session view state */
+const S = {
+  status:'loading', goal:'', agents:{}, artifacts:[], approvals:[], decidedKeys:new Set(),
+  selDept:null, selArt:null, tab:'log',
+};
+
+/* ═══════════════════════════════════════════════════════════
+   ROUTER
+═══════════════════════════════════════════════════════════ */
+function go(route, replace=false) {
+  const hash = '#' + route;
+  if (replace) history.replaceState(null,'',hash);
+  else history.pushState(null,'',hash);
+  route_(route);
+}
+
+function route_(r) {
+  currentRoute = r;
+  // Hide all views
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  // Update nav active state
+  document.querySelectorAll('.nl[data-route]').forEach(l => {
+    l.classList.toggle('on', l.dataset.route === r || (r === '/' && l.dataset.route === '/'));
+  });
+
+  if (r === '/') {
+    showView('v-dash');
+    setTopbar('Dashboard', []);
+    loadSessions();
+  } else if (r === '/new') {
+    showView('v-new');
+    setTopbar('New goal', []);
+    loadStacks();
+  } else if (r.startsWith('/session/')) {
+    const id = r.replace('/session/','');
+    showView('v-sess');
+    openSession(id);
+  } else {
+    go('/');
+  }
+}
+
+function showView(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+}
+
+window.addEventListener('popstate', () => {
+  const hash = location.hash.replace('#','') || '/';
+  route_(hash);
+});
+
+function stub(name) {
+  alert(`${name} is available in the full app at localhost:3000`);
+  return false;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TOPBAR
+═══════════════════════════════════════════════════════════ */
+function setTopbar(title, actions) {
+  document.getElementById('topbar-title').textContent = title;
+  const r = document.getElementById('topbar-r');
+  r.innerHTML = '';
+  actions.forEach(a => r.appendChild(a));
+  if (founderId) {
+    const av = document.createElement('div');
+    av.className = 'av-circle';
+    av.textContent = initials(founderId);
+    r.appendChild(av);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   AUTH — Google Identity Services
+═══════════════════════════════════════════════════════════ */
+let isGoogleSignedIn = false;
+
+function handleGoogleSignIn(response) {
+  try {
+    // Decode the JWT payload (no verification needed client-side — just reading email)
+    const payload = JSON.parse(atob(response.credential.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    const email = payload.email || '';
+    if (!email) return;
+    const userId = 'google_' + email.replace(/[^a-z0-9]/g, '_');
+    founderId = userId;
+    localStorage.setItem('astra_dev_user_id', userId);
+    // Also store in the same key the real Next.js app uses
+    localStorage.setItem('astra_google_email', email);
+    isGoogleSignedIn = true;
+    updateNavUser();
+    // Reload current view so sessions/data refresh with new user
+    route_(currentRoute);
+  } catch (e) {
+    console.error('Google sign-in parse error:', e);
+  }
+}
+
+function signOutUser() {
+  isGoogleSignedIn = false;
+  // Generate a fresh anon ID
+  const newId = 'user_' + (crypto.randomUUID ? crypto.randomUUID().replace(/-/g,'').slice(0,20) : Math.random().toString(36).slice(2,22));
+  founderId = newId;
+  localStorage.setItem('astra_dev_user_id', newId);
+  localStorage.removeItem('astra_google_email');
+  if (window.google?.accounts?.id) {
+    window.google.accounts.id.disableAutoSelect();
+  }
+  updateNavUser();
+  route_(currentRoute);
+}
+
+function initAuth() {
+  // Check if already signed in via Google (email stored)
+  const storedEmail = localStorage.getItem('astra_google_email');
+  if (storedEmail && founderId.startsWith('google_')) {
+    isGoogleSignedIn = true;
+  }
+  updateNavUser();
+}
+
+function updateNavUser() {
+  const av = document.getElementById('nav-av');
+  const uid = document.getElementById('nav-uid');
+  const signInBtn = document.getElementById('nav-signin-btn');
+  const signOutBtn = document.getElementById('nav-signout-btn');
+  av.textContent = initials(founderId);
+
+  if (isGoogleSignedIn) {
+    const email = localStorage.getItem('astra_google_email') || founderId.replace('google_','').replace(/_/g,'.');
+    uid.textContent = email.slice(0,20) + (email.length > 20 ? '…' : '');
+    if (signInBtn) signInBtn.style.display = 'none';
+    if (signOutBtn) signOutBtn.style.display = '';
+    av.style.background = 'var(--green)';
+  } else {
+    const display = founderId.replace('user_','').slice(0,12);
+    uid.textContent = display + '…';
+    if (signInBtn) signInBtn.style.display = '';
+    if (signOutBtn) signOutBtn.style.display = 'none';
+    av.style.background = 'var(--blue)';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VIEW: DASHBOARD
+═══════════════════════════════════════════════════════════ */
+async function loadSessions() {
+  const area = document.getElementById('sessions-area');
+  area.innerHTML = '<div class="sc-loading"><div class="sc-ldot"></div>Loading sessions…</div>';
+
+  try {
+    const res = await fetch(`${API}/sessions?founder_id=${encodeURIComponent(founderId)}`, {
+      headers: { 'x-astra-user-id': founderId }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const sessions = data.sessions || data || [];
+
+    if (!sessions.length) {
+      document.getElementById('dash-sub').textContent = 'No runs yet — start your first goal.';
+      area.innerHTML = `<div class="empty">
+        <div class="empty-ico">◈</div>
+        <div class="empty-title">No runs yet</div>
+        <div class="empty-sub">Start your first goal and Astra will build your company step by step.</div>
+        <button class="btn pri" style="margin-top:12px" onclick="go('/new')">Start first goal →</button>
+      </div>`;
+      return;
+    }
+
+    const running = sessions.filter(s => s.status === 'running').length;
+    document.getElementById('dash-sub').textContent = running
+      ? `${running} run${running>1?'s':''} active · ${sessions.length} total`
+      : `${sessions.length} total run${sessions.length>1?'s':''}`;
+
+    area.innerHTML = `<div class="sessions-grid">${sessions.map(s => {
+      const ags = Array.isArray(s.agents) ? s.agents.length : Object.keys(s.agents||{}).length;
+      const sc = s.status === 'running' ? 'running' : s.status === 'done' ? 'done' : (s.status === 'error'||s.status==='killed') ? 'error' : '';
+      return `<div class="sc ${sc}" onclick="go('/session/${s.session_id}')">
+        <div class="sc-goal">${esc(s.goal || s.instruction || 'Untitled run')}</div>
+        <div class="sc-meta">
+          ${spill(s.status)}
+          ${ags ? `<span style="font-size:9px;color:var(--fm)">${ags} agent${ags>1?'s':''}</span>` : ''}
+          ${s.company_name ? `<span style="font-size:9px;color:var(--fd)">· ${esc(s.company_name)}</span>` : ''}
+          <span class="sc-time">${ago(s.created_at)}</span>
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+
+  } catch (err) {
+    document.getElementById('dash-sub').textContent = 'Could not reach backend';
+    area.innerHTML = `<div class="empty">
+      <div class="empty-ico">⚙</div>
+      <div class="empty-title">Backend not reachable</div>
+      <div class="empty-sub">Make sure the backend is running at ${API}.<br/>${err.message}</div>
+      <button class="btn pri" style="margin-top:12px" onclick="loadSessions()">Try again</button>
+    </div>`;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VIEW: NEW GOAL
+═══════════════════════════════════════════════════════════ */
+let selStackId = '';
+
+function onGoalInput() {
+  document.getElementById('char-ct').textContent = document.getElementById('goal-inp').value.length;
+}
+
+function selStack(el) {
+  document.querySelectorAll('.sk').forEach(c => c.classList.remove('sel'));
+  el.classList.add('sel');
+  selStackId = el.dataset.id;
+}
+
+async function loadStacks() {
+  try {
+    const res = await fetch(`${API}/stacks`);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const stacks = data.stacks || [];
+    const grid = document.getElementById('stack-grid');
+    // Remove existing non-auto cards
+    grid.querySelectorAll('.sk:not(.auto)').forEach(c => c.remove());
+    stacks.forEach(s => {
+      const c = document.createElement('div');
+      c.className = 'sk';
+      c.dataset.id = s.stack_id || s.id || '';
+      c.onclick = () => selStack(c);
+      c.innerHTML = `<div class="sk-name">${esc(s.name||s.stack_id||s.id)}</div>
+        <div class="sk-desc">${esc(s.description||'')}</div>
+        ${Array.isArray(s.agents)&&s.agents.length?`<div class="sk-ct">${s.agents.length} agents</div>`:''}`;
+      grid.appendChild(c);
+    });
+    document.getElementById('stack-hint').textContent = stacks.length
+      ? `${stacks.length} stack${stacks.length>1?'s':''} available`
+      : 'Using auto-select';
+  } catch {
+    document.getElementById('stack-hint').textContent = 'Could not load stacks — auto will be used';
+  }
+}
+
+async function submitGoal() {
+  const goal = document.getElementById('goal-inp').value.trim();
+  const projectName = document.getElementById('name-inp').value.trim();
+  const errEl = document.getElementById('new-err');
+  errEl.classList.remove('show');
+  if (goal.length < 10) { errEl.textContent = '⚠ Please describe your goal in more detail'; errEl.classList.add('show'); return; }
+  document.getElementById('launch-loader').classList.add('show');
+  document.getElementById('launch-btn').disabled = true;
+  try {
+    const instruction = projectName ? `Company/project name: ${projectName}\n\n${goal}` : goal;
+    const body = { founder_id: founderId, instruction };
+    if (selStackId) body.stack_id = selStackId;
+    const res = await fetch(`${API}/goal`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-astra-user-id':founderId},
+      body:JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(()=>({}));
+      throw new Error(d.detail || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    if (!data.session_id) throw new Error('No session_id returned');
+    document.getElementById('launch-loader').classList.remove('show');
+    document.getElementById('goal-inp').value = '';
+    document.getElementById('name-inp').value = '';
+    selStackId = '';
+    go(`/session/${data.session_id}`);
+  } catch (err) {
+    document.getElementById('launch-loader').classList.remove('show');
+    document.getElementById('launch-btn').disabled = false;
+    errEl.textContent = `⚠ ${err.message}`;
+    errEl.classList.add('show');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   VIEW: SESSION
+═══════════════════════════════════════════════════════════ */
+const DEPTS = {
+  research:  {n:'Research',  ic:'🔬', ags:['research','research_competitors','research_market','research_execution','research_financial']},
+  design:    {n:'Design',    ic:'🎨', ags:['design']},
+  technical: {n:'Technical', ic:'⚙️', ags:['technical','technical_scaffold','technical_infra','technical_data','web','web_navigator']},
+  marketing: {n:'Marketing', ic:'📣', ags:['marketing','marketing_content','marketing_outreach','marketing_seo','marketing_paid']},
+  legal:     {n:'Legal',     ic:'⚖️', ags:['legal','legal_docs','legal_entity','legal_ip']},
+  sales:     {n:'Sales',     ic:'💼', ags:['sales','sales_pipeline','sales_enablement','ops']},
+  finance:   {n:'Finance',   ic:'💰', ags:['finance_model','finance_fundraise']},
+};
+
+function agToDept(k) {
+  for (const [dk,d] of Object.entries(DEPTS)) if (d.ags.includes(k)) return dk;
+  return null;
+}
+
+let sse = null;
+let sseSessionId = null;
+
+async function openSession(id) {
+  if (sse) { sse.close(); sse = null; }
+  Object.assign(S, { status:'loading', goal:'', agents:{}, artifacts:[], approvals:[], decidedKeys:new Set(), selDept:null, selArt:null, tab:'log' });
+  currentSession = id;
+  sseSessionId = id;
+
+  // Reset UI
+  document.getElementById('urgent').classList.remove('show');
+  document.getElementById('done-bar').style.display = 'none';
+  document.getElementById('phasebar').innerHTML = '<div class="ph act"><div class="ph-dot"></div>Starting</div>';
+  document.getElementById('sbar').innerHTML = '<div class="live-dot"></div><span style="color:var(--fd)">Connecting…</span>';
+  document.getElementById('depts').innerHTML = '<div style="padding:6px;font-size:9.5px;color:var(--fm)">Waiting for agents…</div>';
+  document.getElementById('vault').innerHTML = '<div class="v-sec">Deliverables</div><div style="padding:10px 8px;font-size:9.5px;color:var(--fm)">Working…</div>';
+  document.getElementById('dtabs').innerHTML = '<div class="dtab on">What happened</div>';
+  document.getElementById('dscroll').innerHTML = '<div class="empty"><div class="empty-ico">◈</div><div class="empty-title">Select a department</div><div class="empty-sub">Click a card above to see what that team is working on.</div></div>';
+
+  setTopbar('Loading…', []);
+  setNavStatus('connecting…', 'var(--amber)');
+
+  // Step 1: Get goal + status from sessions list (state endpoint has no goal field)
+  try {
+    const listRes = await fetch(`${API}/sessions?founder_id=${encodeURIComponent(founderId)}`, {
+      headers: { 'x-astra-user-id': founderId }
+    });
+    if (listRes.ok) {
+      const listData = await listRes.json();
+      const sessions = listData.sessions || listData || [];
+      const meta = sessions.find(s => s.session_id === id);
+      if (meta) {
+        S.goal = meta.goal || meta.instruction || '';
+        S.status = meta.status || 'running';
+      }
+    }
+  } catch {}
+
+  // Step 2: Load rich state — 404 is normal for sessions that errored before persisting events
+  try {
+    const res = await fetch(`${API}/sessions/${id}/state`, {
+      headers: { 'x-astra-user-id': founderId }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      // state has no goal field; keep goal from sessions list above
+      if (!S.goal) S.goal = data.instruction || '';
+      S.status = data.status || S.status;
+      S.artifacts = Array.isArray(data.artifacts) ? data.artifacts : [];
+      const PENDING = new Set(['pending','triggered','armed','waiting_approval']);
+      S.approvals = Array.isArray(data.approvals) ? data.approvals.filter(a => PENDING.has(a.status)) : [];
+      if (data.agents && typeof data.agents === 'object') {
+        for (const [k,ag] of Object.entries(data.agents)) {
+          S.agents[k] = { key:k, status:ag.status||'waiting', log:ag.log||[], visitedUrls:ag.visitedUrls||ag.visited_urls||[], currentTool:null, result:ag.result||null, instruction:ag.instruction||'' };
+        }
+      }
+    }
+    // non-200 is silently ignored — SSE will deliver events from scratch
+  } catch {}
+
+  // Step 3: Render with whatever we managed to load
+  const shortGoal = S.goal ? S.goal.slice(0,60)+(S.goal.length>60?'…':'') : `Session ${id.slice(0,8)}`;
+  document.title = `Astra — ${shortGoal}`;
+
+  const actions = [];
+  const pill = mk('span');
+  pill.id = 'sess-pill';
+  setPill(pill, S.status === 'loading' ? 'running' : S.status);
+  actions.push(pill);
+
+  if (S.status === 'running' || S.status === 'loading') {
+    const stopBtn = mk('button','btn danger sm');
+    stopBtn.textContent = 'Stop';
+    stopBtn.onclick = stopRun;
+    stopBtn.id = 'stop-btn';
+    actions.push(stopBtn);
+  }
+  setTopbar(shortGoal, actions);
+
+  if (S.status === 'done') { document.getElementById('done-bar').style.display = ''; setNavStatus('done','var(--green)'); }
+  if (S.approvals.length) showUrgent(S.approvals[0]);
+
+  renderPhase(); renderDepts(); renderSbar(); renderVault();
+  if (S.selDept || S.approvals.length) renderDetail();
+
+  // Step 4: Connect SSE regardless of state load result
+  connectSSE(id);
+}
+
+function connectSSE(id) {
+  if (sse) { sse.close(); }
+  sse = new EventSource(`${API}/stream/${id}`);
+  sse.onopen = () => { if (id === sseSessionId) setNavStatus('live','var(--blue)'); };
+  sse.onerror = () => { if (id === sseSessionId) setNavStatus('reconnecting…','var(--amber)'); };
+  sse.onmessage = e => {
+    if (id !== sseSessionId) { sse.close(); return; }
+    try {
+      const ev = JSON.parse(e.data);
+      if (ev.type !== 'ping') handleEvent(ev);
+    } catch {}
+  };
+}
+
+function handleEvent(ev) {
+  switch(ev.type) {
+    case 'goal_start':
+      S.goal = ev.goal||ev.instruction||S.goal;
+      S.status = 'running';
+      const sg = S.goal.slice(0,60)+(S.goal.length>60?'…':'');
+      document.title = `Astra — ${sg}`;
+      document.getElementById('topbar-title').textContent = sg;
+      const p2 = document.getElementById('sess-pill');
+      if (p2) setPill(p2,'running');
+      setNavStatus('live','var(--blue)');
+      renderPhase(); renderSbar();
+      break;
+    case 'plan_done':
+      if (Array.isArray(ev.agents)) { ev.agents.forEach(a => ensureAg(a)); renderDepts(); renderSbar(); }
+      break;
+    case 'company_genome':
+      if (ev.company_name) {
+        const t = `${ev.company_name} — ${S.goal.slice(0,40)}`;
+        document.getElementById('topbar-title').textContent = t;
+        document.title = `Astra — ${t}`;
+      }
+      break;
+    case 'agent_start':
+      ensureAg(ev.agent); S.agents[ev.agent].status='running';
+      if (ev.instruction) S.agents[ev.agent].instruction=ev.instruction;
+      addLog(ev.agent,'start',ev.instruction||'Started');
+      renderDepts(); renderSbar(); renderVault();
+      break;
+    case 'agent_thinking': case 'reasoning':
+      if (ev.agent) addLog(ev.agent,'think',ev.text||ev.reasoning||ev.content||'');
+      break;
+    case 'agent_tool_call': case 'agent_action': case 'tool_use':
+      if (!ev.agent) break;
+      const tn = ev.tool||ev.action||ev.function||ev.name||'tool';
+      const ta = ev.args||ev.input||ev.parameters||{};
+      addLog(ev.agent,'tool',`${tn}: ${(typeof ta==='string'?ta:JSON.stringify(ta)).slice(0,150)}`);
+      S.agents[ev.agent].currentTool = tn;
+      renderDepts();
+      break;
+    case 'agent_action_result': case 'tool_result':
+      if (ev.agent) addLog(ev.agent,'result',String(ev.result||ev.output||ev.content||'').slice(0,300));
+      break;
+    case 'agent_done':
+      ensureAg(ev.agent); S.agents[ev.agent].status='done'; S.agents[ev.agent].currentTool=null; S.agents[ev.agent].result=ev.result;
+      addLog(ev.agent,'done','Completed');
+      renderDepts(); renderSbar();
+      break;
+    case 'agent_error':
+      ensureAg(ev.agent); S.agents[ev.agent].status='error'; S.agents[ev.agent].currentTool=null;
+      addLog(ev.agent,'error',ev.error||ev.message||'Error');
+      renderDepts(); renderSbar();
+      break;
+    case 'stack_artifact': case 'artifact': {
+      const art = ev.artifact||ev;
+      if (!art.key&&!art.title) break;
+      const idx = S.artifacts.findIndex(a=>a.key===art.key);
+      if (idx>=0) S.artifacts[idx]={...S.artifacts[idx],...art};
+      else S.artifacts.push(art);
+      renderVault();
+      break;
+    }
+    case 'approval_request': case 'stack_approval_queue': case 'saferun_action': {
+      // Normalize: approval_request nests data under ev.request, saferun uses ev.approval_gate
+      const raw = ev.request || ev;
+      const apv = {
+        gate_key: raw.gate_key || raw.key || ev.approval_gate || raw.id || '',
+        title: raw.title || (ev.approval_gate||'').replace(/_/g,' '),
+        reason: raw.reason || ev.reason || '',
+        triggered_by: raw.action_id || raw.triggered_by || ev.agent || ev.tool || '',
+        agent: raw.agent || ev.agent || '',
+        ts: Date.now(),
+      };
+      if (!apv.gate_key) break;
+      // Don't re-add if already decided or already in list
+      if (S.decidedKeys.has(apv.gate_key)) break;
+      if (!S.approvals.find(a=>a.gate_key===apv.gate_key)) S.approvals.push(apv);
+      showUrgent(apv); renderDetail(); renderSbar(); renderPhase();
+      break;
+    }
+    case 'stack_approval_decision':
+      if (ev.gate_key) S.decidedKeys.add(ev.gate_key);
+      S.approvals = S.approvals.filter(a=>a.gate_key!==ev.gate_key);
+      if (!S.approvals.length) document.getElementById('urgent').classList.remove('show');
+      renderDetail(); renderSbar();
+      break;
+    case 'goal_done':
+      S.status='done'; sse?.close();
+      const p3 = document.getElementById('sess-pill'); if (p3) setPill(p3,'done');
+      const sb = document.getElementById('stop-btn'); if (sb) sb.style.display='none';
+      document.getElementById('done-bar').style.display='';
+      setNavStatus('done','var(--green)');
+      renderPhase(); renderSbar();
+      break;
+    case 'goal_error':
+      S.status='error'; sse?.close();
+      const p4 = document.getElementById('sess-pill'); if (p4) setPill(p4,'error');
+      setNavStatus('error','var(--red)');
+      renderSbar();
+      break;
+  }
+}
+
+/* ── Render helpers ── */
+function renderPhase() {
+  const total = Object.keys(S.agents).length;
+  const done = Object.values(S.agents).filter(a=>a.status==='done').length;
+  const run = Object.values(S.agents).filter(a=>a.status==='running').length;
+  const apv = S.approvals.length;
+
+  let phases;
+  if (S.status==='done') phases=[['done','Planning'],['done','Execution'],['act','Complete']];
+  else if (!total) phases=[['act','Planning'],['','Execution'],['','Complete']];
+  else if (apv) phases=[['done','Planning'],['act','Execution'],['act','Approval'],['','Complete']];
+  else phases=[['done','Planning'],['act','Execution'],['','Complete']];
+
+  document.getElementById('phasebar').innerHTML = phases.map(([cls,lbl],i)=>
+    `<div class="ph ${cls}"><div class="ph-dot"></div>${lbl}</div>${i<phases.length-1?'<div class="ph-div"></div>':''}`
+  ).join('');
+}
+
+function renderSbar() {
+  const ags = Object.values(S.agents);
+  const total=ags.length, run=ags.filter(a=>a.status==='running').length,
+    done=ags.filter(a=>a.status==='done').length, err=ags.filter(a=>a.status==='error').length;
+  const artDone = S.artifacts.filter(a=>a.status==='ready').length;
+  const el = document.getElementById('sbar');
+
+  if (S.status==='done') { el.innerHTML=`<span class="sv g">✓</span> Complete &nbsp;·&nbsp; <span class="sv g">${done}</span> agents &nbsp;·&nbsp; <span class="sv g">${artDone}</span> deliverable${artDone!==1?'s':''}`;return;}
+  if (S.status==='error') { el.innerHTML=`<span class="sv r">✗</span> Failed &nbsp;·&nbsp; <span class="sv r">${err}</span> error${err!==1?'s':''}`;return;}
+  if (!total) { el.innerHTML=`<div class="live-dot"></div><span style="color:var(--fd)">Planning your goal…</span>`;return;}
+  if (S.approvals.length) { el.innerHTML=`<span class="sv r">⚠</span> Approval needed — run paused <div class="s-sep"></div> <span class="sv g">${done}</span> done <div class="s-sep"></div> <span class="sv b">${run}</span> paused`;return;}
+
+  const parts=[];
+  if (run) parts.push(`<div class="live-dot"></div><span class="sv b">${run}</span> working`);
+  if (done) parts.push(`<span class="sv g">${done}</span> done`);
+  if (err) parts.push(`<span class="sv r">${err}</span> error${err!==1?'s':''}`);
+  if (artDone) parts.push(`<span class="sv g">${artDone}</span> deliverable${artDone!==1?'s':''}`);
+  el.innerHTML = parts.join('<div class="s-sep"></div>') || '<div class="live-dot"></div>Agents starting…';
+}
+
+function renderDepts() {
+  const active = {};
+  for (const [dk,d] of Object.entries(DEPTS)) {
+    const inS = d.ags.filter(a=>S.agents[a]);
+    if (inS.length) active[dk]={...d,inS};
+  }
+  // Unknown agents
+  for (const k of Object.keys(S.agents)) {
+    if (!agToDept(k)) {
+      active.__other = active.__other||{n:'Other',ic:'🤖',ags:[],inS:[]};
+      active.__other.inS.push(k);
+    }
+  }
+  const el = document.getElementById('depts');
+  if (!Object.keys(active).length) { el.innerHTML='<div style="padding:6px;font-size:9.5px;color:var(--fm)">Waiting for agents…</div>'; return; }
+
+  el.innerHTML = Object.entries(active).map(([dk,d],i)=>{
+    const st = deptSt(dk,d);
+    const prog = deptProg(dk,d);
+    const what = deptWhat(dk,d);
+    const sel = S.selDept===dk;
+    const bc = st==='done'?'var(--green)':st==='run'?'var(--blue)':st==='err'?'var(--red)':'var(--fm)';
+    const badge = st==='run'?'Working':st==='done'?'Done':st==='err'?'Error':'Queued';
+    return `<div class="dc ${st}${sel?' sel':''}" style="animation:fadein .3s ${i*.06}s both" onclick="selDept('${dk}')">
+      <div class="dc-top"><div class="dc-ico">${d.ic}</div><div class="dc-name">${d.n}</div><div class="dc-badge ${st}">${badge}</div></div>
+      <div class="dc-what">${esc(what)}</div>
+      <div class="dc-prog"><div class="dc-bar" style="width:${prog}%;background:${bc}"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function deptSt(dk,d) {
+  const inS = (d.inS||d.ags||[]).filter(a=>S.agents[a]);
+  if (!inS.length) return 'que';
+  const sts = inS.map(a=>S.agents[a].status);
+  if (sts.includes('running')) return 'run';
+  if (sts.every(s=>s==='done')) return 'done';
+  if (sts.includes('error')) return 'err';
+  return 'que';
+}
+function deptProg(dk,d) {
+  const inS=(d.ags||[]).filter(a=>S.agents[a]);
+  if (!inS.length) return 0;
+  return Math.round(inS.filter(a=>S.agents[a].status==='done').length/inS.length*100);
+}
+function deptWhat(dk,d) {
+  const inS=(d.inS||d.ags||[]).filter(a=>S.agents[a]);
+  const running = inS.find(a=>S.agents[a].status==='running');
+  if (running) {
+    const ag=S.agents[running];
+    if (ag.currentTool) return `Using: ${ag.currentTool}`;
+    const last=ag.log[ag.log.length-1];
+    return last?last.text.slice(0,80):(ag.instruction||'Working…').slice(0,80);
+  }
+  const done=inS.filter(a=>S.agents[a].status==='done').length;
+  if (done===inS.length&&inS.length) return `All ${done} agent${done>1?'s':''} done`;
+  if (done) return `${done}/${inS.length} done`;
+  return 'Waiting to start';
+}
+
+function renderVault() {
+  const el = document.getElementById('vault');
+  const ready=S.artifacts.filter(a=>a.status==='ready');
+  const live=S.artifacts.filter(a=>a.status!=='ready');
+  if (!S.artifacts.length) {
+    el.innerHTML=`<div class="v-sec">Deliverables</div><div style="padding:10px 8px;font-size:9.5px;color:var(--fm);line-height:1.55">${S.status==='running'?'Agents working — deliverables appear here when ready.':'Nothing yet.'}</div>`;
+    return;
+  }
+  let h='<div class="v-sec">Deliverables</div>';
+  if (ready.length) {
+    h+=`<div class="v-row"><span style="width:4px;height:4px;background:var(--green);display:inline-block;flex-shrink:0"></span> Ready</div>`;
+    h+=ready.map(a=>`<div class="v-art${S.selArt===a.key?' sel':''}" onclick="selArt('${eA(a.key)}')">${a.title||a.key}</div>`).join('');
+  }
+  if (live.length) {
+    h+=`<div class="v-row"><span style="width:4px;height:4px;background:var(--amber);display:inline-block;animation:pulse 1.2s infinite;flex-shrink:0"></span> Writing</div>`;
+    h+=live.map(a=>`<div class="v-art${S.selArt===a.key?' sel':''}" onclick="selArt('${eA(a.key)}')">${a.title||a.key}</div>`).join('');
+  }
+  el.innerHTML=h;
+}
+
+/* ── Detail panel ── */
+function selDept(dk) {
+  S.selDept=dk; S.selArt=null;
+  renderDepts(); renderVault(); renderDetailTabs(); renderDetail();
+}
+function selArt(key) {
+  S.selArt=key; S.selDept=null;
+  renderDepts(); renderVault(); renderDetailTabs(); renderDetail();
+}
+
+function renderDetailTabs() {
+  const el=document.getElementById('dtabs');
+  if (S.selArt) {
+    const tabs=[['read','Read it'],['actions','Actions']];
+    el.innerHTML=tabs.map(([id,lbl])=>`<div class="dtab${S.tab===id?' on':''}" onclick="switchTab('${id}')">${lbl}</div>`).join('');
+    if (!['read','actions'].includes(S.tab)) S.tab='read';
+  } else if (S.selDept) {
+    const d=DEPTS[S.selDept]||{ags:[]};
+    const hasUrls=(d.ags||[]).filter(a=>S.agents[a]).some(a=>S.agents[a]?.visitedUrls?.length);
+    const tabs=[['log','What happened'],['sources','Sources']].filter(([id])=>id!=='sources'||hasUrls);
+    el.innerHTML=tabs.map(([id,lbl])=>`<div class="dtab${S.tab===id?' on':''}" onclick="switchTab('${id}')">${lbl}</div>`).join('');
+    if (!tabs.some(([id])=>id===S.tab)) S.tab='log';
+  } else {
+    el.innerHTML='<div class="dtab on">What happened</div>';
+  }
+}
+
+function switchTab(tab) {
+  S.tab=tab;
+  renderDetailTabs();
+  renderDetail();
+}
+
+function renderDetail() {
+  const sc=document.getElementById('dscroll');
+  const apvH = S.approvals.length ? renderApvCards() : '';
+
+  if (S.selArt) {
+    const art=S.artifacts.find(a=>a.key===S.selArt);
+    if (!art) { sc.innerHTML=apvH||'<div style="padding:20px;color:var(--fm)">Not found</div>'; return; }
+    if (S.tab==='read') sc.innerHTML=apvH+artRead(art);
+    else sc.innerHTML=apvH+artActions(art);
+    return;
+  }
+  if (S.selDept) {
+    if (S.tab==='log') sc.innerHTML=apvH+deptLog(S.selDept);
+    else sc.innerHTML=apvH+deptSrcs(S.selDept);
+    return;
+  }
+  sc.innerHTML=apvH||`<div class="empty"><div class="empty-ico">◈</div><div class="empty-title">Select a department</div><div class="empty-sub">Click a card above to see what that team is working on.</div></div>`;
+}
+
+function deptLog(dk) {
+  const d=DEPTS[dk]||{ags:[]};
+  const ags=(d.ags||[]).filter(a=>S.agents[a]);
+  if (!ags.length) return '<div style="color:var(--fm);font-size:10px;padding:10px 0">No agents active yet.</div>';
+  const all=[];
+  for (const k of ags) for (const e of (S.agents[k].log||[])) all.push({...e,agent:k});
+  all.sort((a,b)=>a.ts-b.ts);
+  if (!all.length) return `<div style="color:var(--fd);font-size:10px;font-family:'IBM Plex Mono',monospace;padding:10px 0">${ags.map(a=>S.agents[a].status==='running'?'Working…':'Waiting to start').join(' / ')}</div>`;
+  const icons={think:'💭',tool:'🔍',result:'→',done:'✓',error:'✗',start:'↳'};
+  const labels={think:'Thinking',tool:'Searching',result:'Found',done:'Done',error:'Error',start:'Started'};
+  return `<div class="sec-lbl">Activity log</div><div class="log-stream" id="live-log">
+    ${all.slice(-100).map(l=>`<div class="le ${l.type} fadein">
+      <div class="le-ic">${icons[l.type]||'·'}</div>
+      <div><div class="le-lbl">${labels[l.type]||l.type}${ags.length>1?` · ${l.agent}`:''}</div>
+      <div class="le-txt">${esc(l.text)}</div></div>
+    </div>`).join('')}
+    ${ags.some(a=>S.agents[a]?.status==='running')?`<div class="le tool"><div class="le-ic"><span class="spin" style="font-size:9px">⟳</span></div><div><div class="le-lbl">Now</div><div class="le-txt">${esc(deptWhat(dk,d))}</div></div></div>`:''}
+  </div>`;
+}
+
+function deptSrcs(dk) {
+  const d=DEPTS[dk]||{ags:[]};
+  const ags=(d.ags||[]).filter(a=>S.agents[a]);
+  const urls=[];
+  for (const k of ags) for (const u of (S.agents[k]?.visitedUrls||[])) if(!urls.includes(u)) urls.push(u);
+  if (!urls.length) return '<div style="color:var(--fm);font-size:10px">No sources logged yet.</div>';
+  return `<div class="sec-lbl">${urls.length} source${urls.length!==1?'s':''} visited</div>
+  <div class="url-list">${urls.map(u=>{
+    let domain=u; try{domain=new URL(u).hostname.replace(/^www\./,'');}catch{}
+    return `<a class="url-item" href="${eA(u)}" target="_blank">
+      <img src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=14" width="11" height="11" style="flex-shrink:0" onerror="this.style.display='none'"/>
+      <span style="flex:1;color:var(--fg)">${esc(domain)}</span>
+      <span style="font-size:9px;color:var(--blue)">↗</span>
+    </a>`;
+  }).join('')}</div>`;
+}
+
+function artRead(art) {
+  const preview=art.preview||art.content||art.description||'(No preview yet)';
+  return `<div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:9px;margin-bottom:11px">
+    <div>
+      <div style="font-family:'Chakra Petch',sans-serif;font-size:13px;font-weight:700;letter-spacing:.03em;color:var(--fg)">${esc(art.title||art.key)}</div>
+      <div style="font-size:9px;color:${art.status==='ready'?'var(--green)':'var(--amber)'};margin-top:3px;font-family:'IBM Plex Mono',monospace">${art.status==='ready'?'✓ ready':'⋯ being written'}</div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="btn sm" onclick="cpArt('${eA(art.key)}')">Copy</button>
+      <button class="btn sm" onclick="dlArt('${eA(art.key)}')">Download</button>
+    </div>
+  </div>
+  <pre class="art-pre">${esc(preview)}</pre>`;
+}
+
+function artActions(art) {
+  return `<div style="font-family:'Chakra Petch',sans-serif;font-size:13px;font-weight:700;letter-spacing:.03em;margin-bottom:11px">Actions for: ${esc(art.title||art.key)}</div>
+  <div style="display:flex;flex-direction:column;gap:6px">
+    ${[['📋','Copy text','Copy content to clipboard',`cpArt('${eA(art.key)}')`],
+       ['⬇️','Download','Save as a file to your computer',`dlArt('${eA(art.key)}')`],
+    ].map(([ic,lbl,desc,fn])=>`<button class="btn" style="display:flex;align-items:center;gap:11px;padding:10px 13px;width:100%;text-align:left" onclick="${fn}">
+      <span style="font-size:17px">${ic}</span>
+      <div><div style="font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:10px;letter-spacing:.04em;color:var(--fg)">${lbl}</div>
+      <div style="font-size:9px;color:var(--fm);margin-top:1px">${desc}</div></div>
+    </button>`).join('')}
+  </div>`;
+}
+
+function renderApvCards() {
+  return S.approvals.map(ap=>`<div class="apv fadein" id="apv-${eA(ap.gate_key||ap.request_id||'main')}">
+    <div class="apv-hd">
+      <div class="apv-ht">🔒 ${esc(ap.title||ap.gate_key||'Action requires your approval')}</div>
+      <div class="apv-mt">${esc(ap.triggered_by||ap.agent||'Agent')} · ${ago(ap.ts)}</div>
+    </div>
+    <div class="apv-body">
+      <div class="apv-reason">${esc(ap.reason||ap.description||'An agent wants to take a significant action and needs your go-ahead.')}</div>
+      <div class="apv-acts">
+        <button class="btn-ok" onclick="decide('${eA(ap.gate_key||ap.request_id)}','approved')">✓ Approve</button>
+        <button class="btn-skip" onclick="decide('${eA(ap.gate_key||ap.request_id)}','skipped')">Skip</button>
+        <button class="btn-reject" onclick="decide('${eA(ap.gate_key||ap.request_id)}','rejected')">✗ Reject</button>
+      </div>
+      <div style="font-size:9px;color:var(--fm)">Other agents keep running while you decide.</div>
+    </div>
+  </div>`).join('');
+}
+
+/* ── Approval ── */
+function showUrgent(ap) {
+  document.getElementById('urgent').classList.add('show');
+  document.getElementById('urg-sub').textContent = ap.title||ap.gate_key||'An agent needs your go-ahead.';
+}
+function scrollToApproval() {
+  if (!S.selDept && !S.selArt) renderDetail();
+  document.getElementById('dscroll').scrollTo({top:0,behavior:'smooth'});
+}
+async function decide(key, decision) {
+  const card=document.getElementById(`apv-${key}`);
+  if (card){card.style.opacity='.4';card.style.pointerEvents='none';}
+  try {
+    const res = await fetch(`${API}/stack/approval`,{
+      method:'POST',headers:{'Content-Type':'application/json','x-astra-user-id':founderId},
+      body:JSON.stringify({session_id:currentSession,gate_key:key,decision,founder_id:founderId}),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(()=>({}));
+      throw new Error(d.detail || `HTTP ${res.status}`);
+    }
+    // Track as decided so SSE replays can't re-add it
+    S.decidedKeys.add(key);
+    S.approvals=S.approvals.filter(a=>(a.gate_key||a.request_id)!==key);
+    if (!S.approvals.length) document.getElementById('urgent').classList.remove('show');
+    renderDetail(); renderSbar();
+  } catch(err) {
+    if (card){card.style.opacity='';card.style.pointerEvents='';}
+    const errBanner=document.createElement('div');
+    errBanner.style.cssText='position:fixed;bottom:16px;right:16px;background:var(--red);color:#fff;padding:10px 16px;font-family:IBM Plex Mono,monospace;font-size:11px;z-index:500;max-width:320px';
+    errBanner.textContent='Approval failed: '+err.message;
+    document.body.appendChild(errBanner);
+    setTimeout(()=>errBanner.remove(),5000);
+  }
+}
+
+/* ── Stop ── */
+async function stopRun() {
+  if (!confirm('Stop this run?')) return;
+  try {
+    await fetch(`${API}/sessions/${currentSession}/kill`,{method:'POST',headers:{'x-astra-user-id':founderId}});
+    S.status='killed'; sse?.close();
+    const p=document.getElementById('sess-pill'); if(p) setPill(p,'killed');
+    const sb=document.getElementById('stop-btn'); if(sb) sb.style.display='none';
+    setNavStatus('stopped','var(--red)');
+  } catch(err){alert('Could not stop: '+err.message);}
+}
+
+/* ── Steer ── */
+async function sendSteer() {
+  const inp=document.getElementById('steer-inp');
+  const msg=inp.value.trim(); if(!msg) return;
+  inp.value='';
+  try {
+    await fetch(`${API}/steer/${currentSession}`,{
+      method:'POST',headers:{'Content-Type':'application/json','x-astra-user-id':founderId},
+      body:JSON.stringify({message:msg}),
+    });
+  } catch {}
+}
+document.getElementById('steer-inp').addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendSteer();}
+});
+
+/* ── Artifact actions ── */
+function cpArt(key) {
+  const art=S.artifacts.find(a=>a.key===key);
+  if (art) navigator.clipboard.writeText(art.preview||art.content||art.description||'');
+}
+function dlArt(key) {
+  const art=S.artifacts.find(a=>a.key===key); if(!art) return;
+  const b=new Blob([art.preview||art.content||art.description||''],{type:'text/plain'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(b);
+  a.download=`${(art.title||art.key).replace(/[^a-z0-9]/gi,'_')}.txt`; a.click();
+}
+
+/* ── Live log append ── */
+function addLog(agentKey, type, text) {
+  ensureAg(agentKey);
+  const entry={ts:Date.now(),type,text:String(text||'').slice(0,500)};
+  S.agents[agentKey].log.push(entry);
+  if (S.agents[agentKey].log.length>300) S.agents[agentKey].log.shift();
+  const urlM=text&&text.match(/https?:\/\/[^\s"',>)]+/);
+  if (urlM && !S.agents[agentKey].visitedUrls.includes(urlM[0])) S.agents[agentKey].visitedUrls.push(urlM[0]);
+  // Append live if this dept is selected
+  const dk=agToDept(agentKey);
+  if (S.selDept&&dk===S.selDept&&S.tab==='log') {
+    const ll=document.getElementById('live-log');
+    if (ll) {
+      const icons={think:'💭',tool:'🔍',result:'→',done:'✓',error:'✗',start:'↳'};
+      const labels={think:'Thinking',tool:'Searching',result:'Found',done:'Done',error:'Error',start:'Started'};
+      const div=document.createElement('div');
+      div.className=`le ${type} fadein`;
+      div.innerHTML=`<div class="le-ic">${icons[type]||'·'}</div><div><div class="le-lbl">${labels[type]||type}</div><div class="le-txt">${esc(entry.text)}</div></div>`;
+      // Insert before last "Now" entry if exists
+      const nowEl=ll.querySelector('.le.tool:last-child');
+      if (nowEl) ll.insertBefore(div,nowEl); else ll.appendChild(div);
+      ll.scrollTop=ll.scrollHeight;
+    }
+  }
+}
+
+function ensureAg(key) {
+  if (!S.agents[key]) S.agents[key]={key,status:'waiting',log:[],visitedUrls:[],currentTool:null,result:null,instruction:''};
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SHARED UTILS
+═══════════════════════════════════════════════════════════ */
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function eA(s){return String(s||'').replace(/['"<>&]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function mk(tag,cls){const el=document.createElement(tag);if(cls)el.className=cls;return el;}
+function initials(id){if(!id)return'?';return id.replace('user_','').slice(0,2).toUpperCase();}
+function ago(ts){
+  if(!ts) return '';
+  const diff=Date.now()-(typeof ts==='number'?ts:new Date(ts).getTime());
+  const m=Math.floor(diff/60000);
+  if(m<1) return 'just now'; if(m<60) return `${m}m ago`;
+  const h=Math.floor(m/60); if(h<24) return `${h}h ago`;
+  return `${Math.floor(h/24)}d ago`;
+}
+function spill(s){
+  if(s==='running') return '<span class="pill blue">● Running</span>';
+  if(s==='done') return '<span class="pill green">✓ Done</span>';
+  if(s==='error') return '<span class="pill red">✗ Error</span>';
+  if(s==='killed') return '<span class="pill red">■ Stopped</span>';
+  if(s==='stalled') return '<span class="pill amber">⚠ Stalled</span>';
+  return `<span class="pill">${s}</span>`;
+}
+function setPill(el,status){
+  if(status==='running'){el.textContent='● Running';el.className='pill blue';}
+  else if(status==='done'){el.textContent='✓ Done';el.className='pill green';}
+  else if(status==='error'){el.textContent='✗ Error';el.className='pill red';}
+  else if(status==='killed'){el.textContent='■ Stopped';el.className='pill red';}
+  else if(status==='stalled'){el.textContent='⚠ Stalled';el.className='pill amber';}
+  else{el.textContent=status;el.className='pill';}
+}
+function setNavStatus(text,color){
+  const el=document.getElementById('nav-status');
+  el.textContent=text; el.style.color=color||'var(--blue)';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BOOT
+═══════════════════════════════════════════════════════════ */
+initAuth();
+
+// Route on load
+const initHash = location.hash.replace('#','') || '/';
+go(initHash, true);
+</script>
+</body>
+</html>

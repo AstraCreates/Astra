@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>Astra — Session</title>
+<link rel="stylesheet" href="astra.css"/>
+<style>
+/* ── PHASE BAR ── */
+.phasebar{display:flex;align-items:center;padding:0 20px;border-bottom:1px solid var(--bd);
+  flex-shrink:0;height:40px;background:var(--surface);overflow-x:auto}
+.ph{display:flex;align-items:center;gap:7px;padding:0 10px;
+  font-family:'Chakra Petch',sans-serif;font-size:10px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;
+  cursor:default;color:var(--fm);position:relative;height:40px}
+.ph::after{content:'';position:absolute;bottom:0;left:10px;right:10px;height:2px;background:transparent}
+.ph.done{color:var(--green)}.ph.done::after{background:var(--green)}
+.ph.active{color:var(--fg)}.ph.active::after{background:var(--blue)}
+.ph.error{color:var(--red)}.ph.error::after{background:var(--red)}
+.ph-node{width:5px;height:5px;flex-shrink:0;background:currentColor}
+.ph.active .ph-node{background:var(--blue);animation:pulse 2s ease-in-out infinite}
+.ph-div{width:1px;height:14px;background:var(--bd2);flex-shrink:0}
+
+/* ── WORKSPACE ── */
+.workspace{display:flex;flex:1;overflow:hidden}
+
+/* ── STATUS BAR ── */
+.statusbar{display:flex;align-items:center;gap:12px;padding:8px 20px;
+  border-bottom:1px solid var(--bd);font-size:10px;font-family:'IBM Plex Mono',monospace;
+  color:var(--fm);flex-shrink:0;flex-wrap:wrap;background:var(--s2)}
+.sv{font-weight:500}
+.sv.blue{color:var(--blue)}.sv.green{color:var(--green)}
+.sv.amber{color:var(--amber)}.sv.red{color:var(--red)}
+.s-sep{width:1px;height:9px;background:var(--bd2);flex-shrink:0}
+.live-dot{width:5px;height:5px;background:var(--blue);flex-shrink:0;animation:pulse 2s ease-in-out infinite}
+
+/* ── DEPT CARDS ── */
+.depts{display:flex;gap:8px;padding:12px 16px;border-bottom:1px solid var(--bd);
+  overflow-x:auto;flex-shrink:0;background:var(--bg)}
+.dc{border:1px solid var(--bd);background:var(--surface);padding:12px 14px;
+  cursor:pointer;min-width:140px;flex:1;display:flex;flex-direction:column;gap:8px;
+  position:relative;overflow:hidden;transition:border-color .15s,box-shadow .15s;
+  animation:fadeIn .35s ease both}
+.dc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.dc.run::before{background:var(--blue)}
+.dc.done::before{background:var(--green)}
+.dc.err::before{background:var(--red)}
+.dc.que::before{background:var(--fm);opacity:.4}
+/* scan animation on running */
+.dc.run::after{content:'';position:absolute;top:2px;left:-80%;width:40%;bottom:0;
+  background:linear-gradient(90deg,transparent,rgba(43,69,255,.05),transparent);
+  animation:scanline 2.8s ease-in-out infinite}
+@keyframes scanline{0%{left:-40%}100%{left:120%}}
+.dc:hover{box-shadow:0 2px 12px rgba(0,0,0,.07)}
+.dc.run{border-color:rgba(43,69,255,.22)}
+.dc.done{border-color:rgba(22,163,74,.18)}
+.dc.err{border-color:rgba(220,38,38,.2)}
+.dc.sel{border-color:rgba(43,69,255,.4)!important;box-shadow:0 2px 14px rgba(43,69,255,.1)}
+.dc-top{display:flex;align-items:center;gap:7px}
+.dc-icon{font-size:15px;flex-shrink:0}
+.dc-name{font-family:'Chakra Petch',sans-serif;font-size:12px;font-weight:700;letter-spacing:.04em;flex:1;color:var(--fg)}
+.dc-badge{font-family:'IBM Plex Mono',monospace;font-size:9px;padding:1px 6px;flex-shrink:0;border:1px solid}
+.dc-badge.run{background:var(--bdim);color:var(--blue);border-color:var(--bb)}
+.dc-badge.done{background:var(--gdim);color:var(--green);border-color:var(--gb)}
+.dc-badge.err{background:var(--rdim);color:var(--red);border-color:var(--rb)}
+.dc-badge.que{background:rgba(0,0,0,.04);color:var(--fm);border-color:var(--bd)}
+.dc-what{font-size:10px;color:var(--fd);line-height:1.45;font-family:'IBM Plex Mono',monospace}
+.dc-bar-wrap{height:1px;background:rgba(0,0,0,.07)}
+.dc-bar{height:100%;transition:width .9s cubic-bezier(.22,1,.36,1)}
+
+/* ── CENTER + VAULT ── */
+.center{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* ── ARTIFACT VAULT ── */
+.artvault{width:160px;flex-shrink:0;border-right:1px solid var(--bd);
+  background:var(--surface);overflow-y:auto;padding:10px 5px;display:flex;flex-direction:column}
+.av-sec{font-family:'Chakra Petch',sans-serif;font-size:8.5px;font-weight:700;
+  color:var(--fm);text-transform:uppercase;letter-spacing:.14em;padding:9px 8px 4px}
+.av-status-row{font-size:9px;font-family:'IBM Plex Mono',monospace;padding:4px 8px 2px;
+  display:flex;align-items:center;gap:4px;color:var(--fm)}
+.av-art{display:flex;align-items:center;gap:6px;font-size:10px;font-family:'IBM Plex Mono',monospace;
+  color:var(--fd);padding:4px 8px;cursor:pointer;line-height:1.3;transition:background .1s,color .1s}
+.av-art:hover{background:rgba(0,0,0,.04);color:var(--fg)}
+.av-art.sel{background:var(--bdim);color:var(--blue)}
+.av-art.dim{color:var(--fm);cursor:default}
+.av-art.dim:hover{background:none;color:var(--fm)}
+.adot{width:4px;height:4px;flex-shrink:0}
+.adot.ready{background:var(--green)}
+.adot.live{background:var(--amber);animation:blink 1.2s ease-in-out infinite}
+.adot.pend{background:var(--fm)}
+
+/* ── DETAIL PANEL ── */
+.detail{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.dtabs{display:flex;padding:0 20px;border-bottom:1px solid var(--bd);flex-shrink:0;background:var(--surface)}
+.dtab{font-family:'Chakra Petch',sans-serif;font-size:10px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--fm);padding:9px 12px;cursor:pointer;
+  border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;transition:color .12s}
+.dtab:hover{color:var(--fd)}
+.dtab.on{color:var(--fg);border-bottom-color:var(--blue)}
+.dscroll{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:10px}
+
+/* ── DETAIL CONTENT ── */
+.sec-label{font-family:'Chakra Petch',sans-serif;font-size:8.5px;font-weight:700;
+  color:var(--fm);text-transform:uppercase;letter-spacing:.14em;margin-bottom:5px}
+.log-stream{display:flex;flex-direction:column;gap:3px}
+.le{display:flex;gap:9px;padding:4px 0;border-bottom:1px solid rgba(0,0,0,.04)}
+.le-ic{flex-shrink:0;font-size:11px;margin-top:2px;width:14px;text-align:center}
+.le-lbl{font-family:'Chakra Petch',sans-serif;font-size:8px;font-weight:700;
+  color:var(--fm);text-transform:uppercase;letter-spacing:.1em;margin-bottom:1px}
+.le-txt{font-family:'IBM Plex Mono',monospace;font-size:10px;line-height:1.55;color:var(--fd);word-break:break-word}
+.le.think .le-txt{color:#6d5fd0;font-style:italic}
+.le.tool .le-txt{color:var(--blue)}
+.le.done .le-txt{color:var(--green)}
+.le.error .le-txt{color:var(--red)}
+.le.start .le-txt{color:var(--fm)}
+
+.url-list{display:flex;flex-direction:column;gap:3px}
+.url-item{display:flex;align-items:center;gap:7px;padding:5px 9px;
+  background:var(--surface);border:1px solid var(--bd);
+  font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--fd);
+  text-decoration:none;transition:border-color .12s;word-break:break-all}
+.url-item:hover{border-color:var(--bb)}
+
+.art-content{background:var(--surface);border:1px solid var(--bd2);padding:14px 16px;
+  font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--fd);
+  line-height:1.8;white-space:pre-wrap;max-height:400px;overflow-y:auto}
+
+.art-actions{display:flex;gap:7px;flex-wrap:wrap}
+.art-btn{font-family:'Chakra Petch',sans-serif;font-size:9.5px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;padding:5px 12px;cursor:pointer;
+  border:1px solid var(--bd2);background:transparent;color:var(--fd);transition:all .12s}
+.art-btn:hover{border-color:var(--bb);color:var(--blue)}
+.art-btn.pri{background:var(--blue);color:#fff;border-color:var(--blue)}
+
+.result-block{background:var(--s2);border:1px solid var(--bd);padding:12px 14px;
+  font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--fd);
+  line-height:1.7;white-space:pre-wrap;max-height:300px;overflow-y:auto}
+
+/* ── APPROVAL CARD ── */
+.apv{border:2px solid var(--red);background:var(--surface);display:flex;flex-direction:column;
+  box-shadow:0 4px 24px rgba(220,38,38,.1)}
+.apv-hd{background:var(--red);padding:13px 16px}
+.apv-title{font-family:'Chakra Petch',sans-serif;font-size:13px;font-weight:700;color:#fff}
+.apv-meta{font-size:9.5px;color:rgba(255,255,255,.7);font-family:'IBM Plex Mono',monospace;margin-top:3px}
+.apv-body{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.apv-reason{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--fd);line-height:1.65}
+.apv-acts{display:flex;gap:8px;flex-wrap:wrap}
+.btn-ok{font-family:'Chakra Petch',sans-serif;font-size:10px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;padding:8px 16px;
+  background:var(--green);color:#fff;border:none;cursor:pointer}
+.btn-skip{font-family:'Chakra Petch',sans-serif;font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;padding:8px 13px;background:transparent;
+  color:var(--fm);border:1px solid var(--bd2);cursor:pointer}
+.btn-reject{font-family:'Chakra Petch',sans-serif;font-size:10px;letter-spacing:.06em;
+  text-transform:uppercase;padding:8px 13px;background:var(--rdim);
+  color:var(--red);border:1px solid var(--rb);cursor:pointer}
+
+/* ── CHAT BAR ── */
+.chatbar{border-top:1px solid var(--bd);background:var(--surface);padding:9px 16px;flex-shrink:0}
+.chat-wrap{display:flex;align-items:center;gap:9px;background:var(--s2);
+  border:1px solid var(--bd2);padding:7px 12px;transition:border-color .15s}
+.chat-wrap:focus-within{border-color:var(--bb)}
+.chat-input{flex:1;background:none;border:none;outline:none;color:var(--fg);
+  font-size:11px;font-family:'IBM Plex Mono',monospace}
+.chat-input::placeholder{color:var(--fm)}
+.chat-send{width:24px;height:24px;background:var(--blue);border:none;cursor:pointer;
+  color:#fff;font-size:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+
+/* ── DONE / ERROR STATE ── */
+.done-banner{background:var(--gdim);border:1px solid var(--gb);padding:12px 20px;
+  flex-shrink:0;display:flex;align-items:center;gap:12px}
+.done-title{font-family:'Chakra Petch',sans-serif;font-size:13px;font-weight:700;color:var(--green)}
+.done-sub{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--fd);margin-top:2px}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- NAV -->
+<nav class="appnav">
+  <div class="an-brand">
+    <div class="an-logo-row">
+      <div class="an-logo"><div class="an-logo-inner">A</div></div>
+      <div>
+        <div class="an-name">Astra</div>
+        <div class="an-sub" id="navStatus">ready</div>
+      </div>
+    </div>
+    <a href="new.html" class="an-new">＋ &nbsp;New goal</a>
+  </div>
+  <div class="an-nav">
+    <a href="index.html" class="an-item"><span class="an-ic">⬡</span> Dashboard</a>
+    <a href="#" class="an-item"><span class="an-ic">✦</span> Outreach</a>
+    <a href="#" class="an-item"><span class="an-ic">◈</span> Company Brain</a>
+    <div class="an-sep"></div>
+    <a href="#" class="an-item"><span class="an-ic">⌘</span> Integrations</a>
+    <a href="#" class="an-item"><span class="an-ic">$</span> Payments</a>
+  </div>
+  <div class="an-sep"></div>
+  <div class="an-bottom">
+    <a href="#" class="an-item"><span class="an-ic">⚙</span> Settings</a>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <a href="index.html" style="font-size:11px;color:var(--fm);text-decoration:none;font-family:'IBM Plex Mono',monospace;flex-shrink:0">← All runs</a>
+    <div class="topbar-title" id="goalTitle" style="max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Loading…</div>
+    <div class="topbar-r">
+      <span class="pill blue" id="topPill">Connecting…</span>
+      <button class="btn danger" id="stopBtn" onclick="stopRun()" style="display:none">Stop run</button>
+      <div class="av" id="avInit">?</div>
+    </div>
+  </div>
+
+  <!-- URGENT APPROVAL BANNER -->
+  <div class="urgent-banner" id="urgentBanner">
+    <div class="urgent-inner">
+      <div class="urgent-dot"></div>
+      <div>
+        <div class="urgent-title">Action Required — Astra is waiting for you</div>
+        <div class="urgent-sub" id="urgentSub">An agent needs your approval before it can continue.</div>
+      </div>
+      <button class="urgent-btn" onclick="scrollToApproval()">View →</button>
+    </div>
+  </div>
+
+  <!-- DONE BANNER -->
+  <div id="doneBanner" style="display:none">
+    <div class="done-banner">
+      <div>
+        <div class="done-title">✓ Run complete</div>
+        <div class="done-sub" id="doneSub">All agents finished. Your deliverables are in the vault.</div>
+      </div>
+      <a href="index.html" class="btn" style="margin-left:auto">← All runs</a>
+    </div>
+  </div>
+
+  <!-- PHASE BAR -->
+  <div class="phasebar" id="phaseBar">
+    <div class="ph active"><div class="ph-node"></div>Starting</div>
+  </div>
+
+  <!-- WORKSPACE -->
+  <div class="workspace">
+    <!-- ARTIFACT VAULT -->
+    <div class="artvault" id="artVault">
+      <div class="av-sec">Deliverables</div>
+      <div style="padding:12px 8px;font-size:10px;color:var(--fm);font-family:'IBM Plex Mono',monospace">Waiting for agents…</div>
+    </div>
+
+    <!-- CENTER -->
+    <div class="center">
+      <!-- STATUS BAR -->
+      <div class="statusbar" id="statusBar">
+        <div class="live-dot"></div>
+        <span style="color:var(--fd)">Connecting to session…</span>
+      </div>
+
+      <!-- DEPT CARDS -->
+      <div class="depts" id="deptCards">
+        <div style="padding:8px;font-size:10px;color:var(--fm);font-family:'IBM Plex Mono',monospace">
+          Waiting for agents to start…
+        </div>
+      </div>
+
+      <!-- DETAIL PANEL -->
+      <div class="detail">
+        <div class="dtabs" id="dtabs">
+          <div class="dtab on" onclick="switchTab(this,'log')">What happened</div>
+        </div>
+        <div class="dscroll" id="dscroll">
+          <div class="empty" style="padding:30px 0">
+            <div class="empty-icon">◈</div>
+            <div class="empty-title">Select a department</div>
+            <div class="empty-sub">Click a card above to see what that team is working on.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CHAT -->
+      <div class="chatbar">
+        <div class="chat-wrap">
+          <input class="chat-input" id="steerInput" placeholder='Give Astra a new direction — "focus more on pricing" · "skip legal for now" · "make it B2B"'/>
+          <button class="chat-send" onclick="sendSteer()">↑</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+const founderId = localStorage.getItem('astra_founder_id') || 'demo-founder';
+const params = new URLSearchParams(location.search);
+const sessionId = params.get('id');
+
+document.getElementById('avInit').textContent =
+  founderId ? founderId.replace('user_','').slice(0,2).toUpperCase() : '?';
+
+if (!sessionId) {
+  location.href = 'index.html';
+}
+
+/* ── STATE ── */
+const S = {
+  status: 'loading',
+  goal: '',
+  agents: {},       // agentKey → { status, log[], visitedUrls[], commits[], currentTool, result, instruction }
+  artifacts: [],    // { key, title, owner_agent, status, preview, description }
+  approvals: [],    // pending approval requests
+  selDept: null,    // selected dept key
+  selArt: null,     // selected artifact key
+  tab: 'log',       // current detail tab
+};
+
+/* ── DEPT DEFINITIONS ── */
+const DEPTS = {
+  research:  { name:'Research',   icon:'🔬', agents:['research','research_competitors','research_market','research_execution','research_financial'] },
+  design:    { name:'Design',     icon:'🎨', agents:['design'] },
+  technical: { name:'Technical',  icon:'⚙️', agents:['technical','technical_scaffold','technical_infra','technical_data','web','web_navigator'] },
+  marketing: { name:'Marketing',  icon:'📣', agents:['marketing','marketing_content','marketing_outreach','marketing_seo','marketing_paid'] },
+  legal:     { name:'Legal',      icon:'⚖️', agents:['legal','legal_docs','legal_entity','legal_ip'] },
+  sales:     { name:'Sales',      icon:'💼', agents:['sales','sales_pipeline','sales_enablement','ops'] },
+  finance:   { name:'Finance',    icon:'💰', agents:['finance_model','finance_fundraise'] },
+};
+
+function agentToDept(key) {
+  for (const [dk, d] of Object.entries(DEPTS)) {
+    if (d.agents.includes(key)) return dk;
+  }
+  return null;
+}
+
+function getActiveDepts() {
+  const active = {};
+  for (const [dk, d] of Object.entries(DEPTS)) {
+    const inSession = d.agents.filter(a => S.agents[a]);
+    if (inSession.length) active[dk] = { ...d, inSession };
+  }
+  // Also collect unknown agents into a catch-all
+  for (const key of Object.keys(S.agents)) {
+    if (!agentToDept(key)) {
+      active['other'] = active['other'] || { name:'Other', icon:'🤖', inSession:[], agents:[] };
+      active['other'].inSession.push(key);
+      active['other'].agents.push(key);
+    }
+  }
+  return active;
+}
+
+function deptStatus(dk) {
+  const inS = (DEPTS[dk]?.agents || [dk === 'other' ? Object.keys(S.agents).filter(k=>!agentToDept(k)) : []]).flat().filter(a => S.agents[a]);
+  if (!inS.length) return 'que';
+  const statuses = inS.map(a => S.agents[a].status);
+  if (statuses.includes('running')) return 'run';
+  if (statuses.every(s => s === 'done')) return 'done';
+  if (statuses.includes('error')) return 'err';
+  return 'que';
+}
+
+function deptProgress(dk) {
+  const agents = (DEPTS[dk]?.agents || []).filter(a => S.agents[a]);
+  if (!agents.length) return 0;
+  const done = agents.filter(a => S.agents[a].status === 'done').length;
+  return Math.round(done / agents.length * 100);
+}
+
+function deptWhat(dk) {
+  const agents = (DEPTS[dk]?.agents || []).filter(a => S.agents[a]);
+  const running = agents.find(a => S.agents[a].status === 'running');
+  if (running) {
+    const ag = S.agents[running];
+    if (ag.currentTool) return `Using: ${ag.currentTool}`;
+    const lastLog = ag.log[ag.log.length - 1];
+    if (lastLog) return lastLog.text.slice(0, 80);
+    return ag.instruction ? ag.instruction.slice(0, 80) : 'Working…';
+  }
+  const done = agents.filter(a => S.agents[a].status === 'done').length;
+  if (done === agents.length && agents.length) return `All ${done} agent${done>1?'s':''} done`;
+  if (done) return `${done}/${agents.length} agents done`;
+  return 'Waiting to start';
+}
+
+/* ── HELPERS ── */
+function ensureAgent(key) {
+  if (!S.agents[key]) {
+    S.agents[key] = { key, status: 'waiting', log: [], visitedUrls: [], commits: [], currentTool: null, result: null };
+  }
+}
+
+function addLog(agentKey, type, text) {
+  ensureAgent(agentKey);
+  const entry = { ts: Date.now(), type, text: String(text || '').slice(0, 500) };
+  S.agents[agentKey].log.push(entry);
+  if (S.agents[agentKey].log.length > 300) S.agents[agentKey].log.shift();
+
+  // Extract visited URLs
+  const urlMatch = text && text.match(/https?:\/\/[^\s"',>)]+/);
+  if (urlMatch) {
+    const url = urlMatch[0];
+    if (!S.agents[agentKey].visitedUrls.includes(url)) {
+      S.agents[agentKey].visitedUrls.push(url);
+    }
+  }
+
+  // Live-append to log if this agent's dept is selected
+  const dk = agentToDept(agentKey);
+  if (S.selDept && dk === S.selDept && S.tab === 'log') {
+    appendLogEntry(entry, agentKey);
+  }
+}
+
+/* ── SSE ── */
+let sse = null;
+
+function connectSSE() {
+  if (sse) sse.close();
+  sse = new EventSource(`${API}/stream/${sessionId}`);
+
+  sse.onmessage = (e) => {
+    try {
+      const ev = JSON.parse(e.data);
+      if (ev.type === 'ping') return;
+      handleEvent(ev);
+    } catch {}
+  };
+
+  sse.onerror = () => {
+    // EventSource auto-reconnects; update nav status
+    document.getElementById('navStatus').textContent = 'reconnecting…';
+    document.getElementById('navStatus').style.color = 'var(--amber)';
+  };
+
+  sse.onopen = () => {
+    document.getElementById('navStatus').textContent = 'live';
+    document.getElementById('navStatus').style.color = 'var(--blue)';
+  };
+}
+
+/* ── EVENT HANDLER ── */
+function handleEvent(ev) {
+  switch (ev.type) {
+
+    case 'goal_start':
+      S.goal = ev.goal || ev.instruction || S.goal;
+      S.status = 'running';
+      document.getElementById('goalTitle').textContent = S.goal;
+      document.title = `Astra — ${S.goal.slice(0, 40)}`;
+      setTopPill('running');
+      document.getElementById('stopBtn').style.display = '';
+      renderPhaseBar();
+      break;
+
+    case 'plan_done':
+      if (Array.isArray(ev.agents)) {
+        for (const a of ev.agents) ensureAgent(a);
+        renderDeptCards();
+        renderStatusBar();
+      }
+      break;
+
+    case 'stack_selected':
+      // Stack has been chosen
+      renderStatusBar();
+      break;
+
+    case 'stack_operating_plan':
+    case 'stack_manifest':
+    case 'stack_execution_contract':
+      // Additional planning data — could render phases if available
+      break;
+
+    case 'company_genome':
+      S.companyName = ev.company_name || ev.name;
+      if (S.companyName) document.getElementById('goalTitle').textContent = S.companyName + ' — ' + S.goal;
+      break;
+
+    case 'agent_start':
+      ensureAgent(ev.agent);
+      S.agents[ev.agent].status = 'running';
+      if (ev.instruction) S.agents[ev.agent].instruction = ev.instruction;
+      addLog(ev.agent, 'start', ev.instruction || 'Started');
+      renderDeptCards();
+      renderStatusBar();
+      renderArtifactVault();
+      break;
+
+    case 'agent_thinking':
+    case 'reasoning':
+      if (!ev.agent) break;
+      addLog(ev.agent, 'think', ev.text || ev.reasoning || ev.content || '');
+      break;
+
+    case 'agent_tool_call':
+    case 'agent_action':
+    case 'tool_use': {
+      if (!ev.agent) break;
+      ensureAgent(ev.agent);
+      const toolName = ev.tool || ev.action || ev.function || ev.name || 'tool';
+      const toolArgs = ev.args || ev.input || ev.parameters || {};
+      const argStr = typeof toolArgs === 'string' ? toolArgs : JSON.stringify(toolArgs);
+      addLog(ev.agent, 'tool', `${toolName}: ${argStr.slice(0, 150)}`);
+      S.agents[ev.agent].currentTool = toolName;
+      renderDeptCards();
+      break;
+    }
+
+    case 'agent_action_result':
+    case 'tool_result':
+      if (!ev.agent) break;
+      addLog(ev.agent, 'result', String(ev.result || ev.output || ev.content || '').slice(0, 300));
+      break;
+
+    case 'agent_done':
+      ensureAgent(ev.agent);
+      S.agents[ev.agent].status = 'done';
+      S.agents[ev.agent].result = ev.result;
+      S.agents[ev.agent].currentTool = null;
+      addLog(ev.agent, 'done', 'Completed');
+      renderDeptCards();
+      renderStatusBar();
+      break;
+
+    case 'agent_error':
+      ensureAgent(ev.agent);
+      S.agents[ev.agent].status = 'error';
+      S.agents[ev.agent].currentTool = null;
+      addLog(ev.agent, 'error', ev.error || ev.message || 'An error occurred');
+      renderDeptCards();
+      renderStatusBar();
+      break;
+
+    case 'stack_artifact':
+    case 'artifact': {
+      const art = ev.artifact || ev;
+      if (!art.key && !art.title) break;
+      const idx = S.artifacts.findIndex(a => a.key === art.key);
+      if (idx >= 0) S.artifacts[idx] = { ...S.artifacts[idx], ...art };
+      else S.artifacts.push(art);
+      renderArtifactVault();
+      break;
+    }
+
+    case 'approval_request':
+    case 'stack_approval_queue':
+    case 'saferun_action':
+      S.approvals.push(ev);
+      showApprovalBanner(ev);
+      if (S.selDept || S.selArt) renderDetailPanel();
+      break;
+
+    case 'stack_approval_decision':
+      S.approvals = S.approvals.filter(a => a.gate_key !== ev.gate_key);
+      if (!S.approvals.length) hideApprovalBanner();
+      renderDetailPanel();
+      break;
+
+    case 'outcome_recorded':
+      // Could display outcomes panel
+      break;
+
+    case 'goal_done':
+      S.status = 'done';
+      sse?.close();
+      setTopPill('done');
+      document.getElementById('stopBtn').style.display = 'none';
+      document.getElementById('doneBanner').style.display = '';
+      document.getElementById('navStatus').textContent = 'done';
+      document.getElementById('navStatus').style.color = 'var(--green)';
+      renderPhaseBar();
+      renderStatusBar();
+      break;
+
+    case 'goal_error':
+      S.status = 'error';
+      sse?.close();
+      setTopPill('error');
+      document.getElementById('stopBtn').style.display = 'none';
+      document.getElementById('navStatus').textContent = 'error';
+      document.getElementById('navStatus').style.color = 'var(--red)';
+      renderStatusBar();
+      break;
+  }
+}
+
+/* ── LOAD INITIAL STATE ── */
+async function loadInitialState() {
+  try {
+    const res = await fetch(`${API}/sessions/${sessionId}/state`, {
+      headers: { 'x-astra-user-id': founderId }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    S.goal = data.goal || data.instruction || '';
+    S.status = data.status || 'running';
+    S.agents = {};
+    S.artifacts = [];
+    S.approvals = [];
+
+    // Normalise agents from state
+    if (data.agents && typeof data.agents === 'object') {
+      for (const [key, ag] of Object.entries(data.agents)) {
+        S.agents[key] = {
+          key,
+          status: ag.status || 'waiting',
+          log: ag.log || [],
+          visitedUrls: ag.visitedUrls || ag.visited_urls || [],
+          commits: ag.commits || [],
+          currentTool: ag.currentTool || ag.current_tool || null,
+          result: ag.result || null,
+          instruction: ag.instruction || '',
+        };
+      }
+    }
+
+    // Normalise artifacts
+    if (Array.isArray(data.artifacts)) {
+      S.artifacts = data.artifacts;
+    }
+
+    // Check for pending approvals
+    if (Array.isArray(data.approvals)) {
+      S.approvals = data.approvals.filter(a => a.status === 'triggered' || a.status === 'armed');
+    }
+
+    // Update UI
+    document.getElementById('goalTitle').textContent = S.goal || 'Session';
+    document.title = `Astra — ${(S.goal||'Session').slice(0, 40)}`;
+    setTopPill(S.status);
+    if (S.status === 'running') document.getElementById('stopBtn').style.display = '';
+    if (S.status === 'done') {
+      document.getElementById('doneBanner').style.display = '';
+      document.getElementById('navStatus').textContent = 'done';
+      document.getElementById('navStatus').style.color = 'var(--green)';
+    }
+
+    renderPhaseBar();
+    renderDeptCards();
+    renderStatusBar();
+    renderArtifactVault();
+
+    if (S.approvals.length) showApprovalBanner(S.approvals[0]);
+
+    // Start SSE if still running
+    if (S.status === 'running') {
+      connectSSE();
+    } else {
+      // Replay events for completed sessions to populate logs
+      connectSSE();
+    }
+
+  } catch (err) {
+    document.getElementById('goalTitle').textContent = 'Error loading session';
+    document.getElementById('topPill').textContent = 'Error';
+    document.getElementById('topPill').className = 'pill red';
+    console.error('Load error:', err);
+    // Still try SSE
+    connectSSE();
+  }
+}
+
+/* ── RENDER FUNCTIONS ── */
+function setTopPill(status) {
+  const el = document.getElementById('topPill');
+  if (status === 'running') { el.textContent = '● Running'; el.className = 'pill blue'; }
+  else if (status === 'done') { el.textContent = '✓ Done'; el.className = 'pill green'; }
+  else if (status === 'error') { el.textContent = '✗ Error'; el.className = 'pill red'; }
+  else if (status === 'killed') { el.textContent = '■ Stopped'; el.className = 'pill red'; }
+  else if (status === 'stalled') { el.textContent = '⚠ Stalled'; el.className = 'pill amber'; }
+  else { el.textContent = status; el.className = 'pill'; }
+}
+
+function renderPhaseBar() {
+  const bar = document.getElementById('phaseBar');
+  const agentKeys = Object.keys(S.agents);
+  const running = agentKeys.filter(k => S.agents[k].status === 'running').length;
+  const done = agentKeys.filter(k => S.agents[k].status === 'done').length;
+  const total = agentKeys.length;
+
+  let phases;
+  if (S.status === 'done') {
+    phases = [
+      { label:'Planning', s:'done' },
+      { label:'Execution', s:'done' },
+      { label:'Complete', s:'active' },
+    ];
+  } else if (total === 0) {
+    phases = [
+      { label:'Planning', s:'active' },
+      { label:'Execution', s:'locked' },
+      { label:'Complete', s:'locked' },
+    ];
+  } else if (running > 0 || done > 0) {
+    phases = [
+      { label:'Planning', s:'done' },
+      { label:'Execution', s:'active' },
+      { label:'Complete', s:'locked' },
+    ];
+  } else {
+    phases = [
+      { label:'Planning', s:'done' },
+      { label:'Execution', s:'active' },
+      { label:'Complete', s:'locked' },
+    ];
+  }
+
+  if (S.approvals.length && S.status === 'running') {
+    phases = [
+      { label:'Planning', s:'done' },
+      { label:'Execution', s:'active' },
+      { label:'Approval', s:'active' },
+      { label:'Complete', s:'locked' },
+    ];
+  }
+
+  bar.innerHTML = phases.map((p, i) => {
+    const cls = p.s === 'active' ? 'active' : p.s === 'done' ? 'done' : '';
+    return `<div class="ph ${cls}"><div class="ph-node"></div>${p.label}</div>${i < phases.length-1 ? '<div class="ph-div"></div>' : ''}`;
+  }).join('');
+}
+
+function renderStatusBar() {
+  const el = document.getElementById('statusBar');
+  const agents = Object.values(S.agents);
+  const total = agents.length;
+  const running = agents.filter(a => a.status === 'running').length;
+  const done = agents.filter(a => a.status === 'done').length;
+  const errors = agents.filter(a => a.status === 'error').length;
+  const artDone = S.artifacts.filter(a => a.status === 'ready').length;
+
+  if (S.status === 'done') {
+    el.innerHTML = `<span class="sv green">✓</span> Run complete &nbsp;·&nbsp; <span class="sv green">${done}</span> agents done &nbsp;·&nbsp; <span class="sv green">${artDone}</span> deliverables ready`;
+    return;
+  }
+  if (S.status === 'error') {
+    el.innerHTML = `<span class="sv red">✗</span> Run failed &nbsp;·&nbsp; <span class="sv red">${errors}</span> error${errors>1?'s':''}`;
+    return;
+  }
+  if (!total) {
+    el.innerHTML = `<div class="live-dot"></div><span style="color:var(--fd)">Astra is planning your goal…</span>`;
+    return;
+  }
+  if (S.approvals.length) {
+    el.innerHTML = `<span class="sv red">⚠</span> Approval needed — run paused <div class="s-sep"></div> <span class="sv green">${done}</span> done <div class="s-sep"></div> <span class="sv blue">${running}</span> paused`;
+    return;
+  }
+
+  const parts = [];
+  if (running) parts.push(`<div class="live-dot"></div><span class="sv blue">${running}</span> working`);
+  if (done) parts.push(`<span class="sv green">${done}</span> done`);
+  if (errors) parts.push(`<span class="sv red">${errors}</span> error${errors>1?'s':''}`);
+  if (artDone) parts.push(`<span class="sv green">${artDone}</span> deliverable${artDone>1?'s':''} ready`);
+
+  el.innerHTML = parts.join('<div class="s-sep"></div>') || '<div class="live-dot"></div>Agents starting…';
+}
+
+function renderDeptCards() {
+  const active = getActiveDepts();
+  const el = document.getElementById('deptCards');
+
+  if (!Object.keys(active).length) {
+    el.innerHTML = '<div style="padding:8px;font-size:10px;color:var(--fm);font-family:\'IBM Plex Mono\',monospace">Waiting for agents to start…</div>';
+    return;
+  }
+
+  el.innerHTML = Object.entries(active).map(([dk, d], i) => {
+    const st = deptStatus(dk);
+    const prog = deptProgress(dk);
+    const what = deptWhat(dk);
+    const sel = S.selDept === dk;
+    const barColor = st === 'done' ? 'var(--green)' : st === 'run' ? 'var(--blue)' : st === 'err' ? 'var(--red)' : 'var(--fm)';
+    const badge = st === 'run' ? 'Working' : st === 'done' ? 'Done' : st === 'err' ? 'Error' : 'Queued';
+
+    return `<div class="dc ${st}${sel ? ' sel' : ''}" style="animation-delay:${i*0.06}s" onclick="selectDept('${dk}')">
+      <div class="dc-top">
+        <div class="dc-icon">${d.icon}</div>
+        <div class="dc-name">${d.name}</div>
+        <div class="dc-badge ${st}">${badge}</div>
+      </div>
+      <div class="dc-what">${escHtml(what)}</div>
+      <div class="dc-bar-wrap"><div class="dc-bar" style="width:${prog}%;background:${barColor}"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function renderArtifactVault() {
+  const el = document.getElementById('artVault');
+  const ready = S.artifacts.filter(a => a.status === 'ready');
+  const inProg = S.artifacts.filter(a => a.status !== 'ready');
+
+  if (!S.artifacts.length) {
+    el.innerHTML = `<div class="av-sec">Deliverables</div>
+    <div style="padding:10px 8px;font-size:10px;color:var(--fm);font-family:'IBM Plex Mono',monospace;line-height:1.55">
+      ${S.status === 'running' ? 'Agents are working — deliverables appear here when ready.' : 'No deliverables yet.'}
+    </div>`;
+    return;
+  }
+
+  let html = '<div class="av-sec">Deliverables</div>';
+
+  if (ready.length) {
+    html += `<div class="av-status-row"><span style="width:4px;height:4px;background:var(--green);flex-shrink:0;display:inline-block"></span> Ready</div>`;
+    html += ready.map(a => {
+      const sel = S.selArt === a.key ? ' sel' : '';
+      return `<div class="av-art${sel}" onclick="selectArt('${escAttr(a.key)}')">
+        <div class="adot ready"></div>${escHtml(a.title || a.key)}
+      </div>`;
+    }).join('');
+  }
+
+  if (inProg.length) {
+    html += `<div class="av-status-row"><span style="width:4px;height:4px;background:var(--amber);flex-shrink:0;display:inline-block;animation:blink 1.2s ease-in-out infinite"></span> Working on</div>`;
+    html += inProg.map(a => {
+      const sel = S.selArt === a.key ? ' sel' : '';
+      return `<div class="av-art${sel}" onclick="selectArt('${escAttr(a.key)}')">
+        <div class="adot live"></div>${escHtml(a.title || a.key)}
+      </div>`;
+    }).join('');
+  }
+
+  el.innerHTML = html;
+}
+
+/* ── DETAIL PANEL ── */
+function selectDept(dk) {
+  S.selDept = dk;
+  S.selArt = null;
+  document.querySelectorAll('.dc').forEach(c => c.classList.remove('sel'));
+  document.querySelectorAll('.av-art').forEach(c => c.classList.remove('sel'));
+  renderDeptCards();
+  renderDetailTabs();
+  renderDetailPanel();
+}
+
+function selectArt(key) {
+  S.selArt = key;
+  S.selDept = null;
+  renderDeptCards();
+  renderArtifactVault();
+  renderDetailTabs();
+  renderDetailPanel();
+}
+
+function renderDetailTabs() {
+  const el = document.getElementById('dtabs');
+  if (S.selArt) {
+    const tabs = [['read','Read it'],['actions','Actions']];
+    el.innerHTML = tabs.map(([id,label]) =>
+      `<div class="dtab${S.tab === id ? ' on' : ''}" onclick="switchTab(this,'${id}')">${label}</div>`
+    ).join('');
+    if (!['read','actions'].includes(S.tab)) S.tab = 'read';
+  } else if (S.selDept) {
+    const agents = (DEPTS[S.selDept]?.agents || []).filter(a => S.agents[a]);
+    const hasUrls = agents.some(a => S.agents[a]?.visitedUrls?.length);
+    const tabs = [['log','What happened'],['sources','Sources']].filter(([id]) => id !== 'sources' || hasUrls);
+    el.innerHTML = tabs.map(([id,label]) =>
+      `<div class="dtab${S.tab === id ? ' on' : ''}" onclick="switchTab(this,'${id}')">${label}</div>`
+    ).join('');
+    if (!tabs.some(([id]) => id === S.tab)) S.tab = 'log';
+  } else {
+    el.innerHTML = '<div class="dtab on">What happened</div>';
+    S.tab = 'log';
+  }
+}
+
+function switchTab(el, tab) {
+  S.tab = tab;
+  document.querySelectorAll('.dtab').forEach(t => t.classList.remove('on'));
+  el.classList.add('on');
+  renderDetailPanel();
+}
+
+function renderDetailPanel() {
+  const sc = document.getElementById('dscroll');
+
+  // Show pending approvals at top if any
+  const approvalHtml = S.approvals.length ? renderApprovalCards() : '';
+
+  if (S.selArt) {
+    const art = S.artifacts.find(a => a.key === S.selArt);
+    if (!art) { sc.innerHTML = approvalHtml || '<div style="padding:20px;color:var(--fm);font-size:11px">Artifact not found</div>'; return; }
+    if (S.tab === 'read') sc.innerHTML = approvalHtml + renderArtRead(art);
+    else sc.innerHTML = approvalHtml + renderArtActions(art);
+    return;
+  }
+
+  if (S.selDept) {
+    if (S.tab === 'log') sc.innerHTML = approvalHtml + renderDeptLog(S.selDept);
+    else if (S.tab === 'sources') sc.innerHTML = approvalHtml + renderDeptSources(S.selDept);
+    return;
+  }
+
+  // Nothing selected — show approvals or welcome
+  sc.innerHTML = approvalHtml || `<div class="empty" style="padding:30px 0">
+    <div class="empty-icon">◈</div>
+    <div class="empty-title">Select a department</div>
+    <div class="empty-sub">Click a card above to see what that team is working on.</div>
+  </div>`;
+}
+
+function renderDeptLog(dk) {
+  const agents = (DEPTS[dk]?.agents || []).filter(a => S.agents[a]);
+  if (!agents.length) return '<div style="color:var(--fm);font-size:11px;padding:10px 0">No agents active in this department yet.</div>';
+
+  const allLogs = [];
+  for (const key of agents) {
+    for (const entry of (S.agents[key].log || [])) {
+      allLogs.push({ ...entry, agent: key });
+    }
+  }
+  allLogs.sort((a, b) => a.ts - b.ts);
+
+  if (!allLogs.length) {
+    const ag = S.agents[agents[0]];
+    return `<div class="sec-label">Status</div>
+    <div style="color:var(--fd);font-size:11px;font-family:'IBM Plex Mono',monospace;padding:10px 0">
+      ${ag.status === 'waiting' ? 'Waiting to start…' : ag.status === 'running' ? 'Working — log loading…' : 'Done'}
+    </div>`;
+  }
+
+  const icons = { think:'💭', tool:'🔍', result:'→', done:'✓', error:'✗', start:'↳', result:'→' };
+  const labels = { think:'Thinking', tool:'Searching', result:'Found', done:'Done', error:'Error', start:'Started' };
+
+  return `<div class="sec-label">Activity log</div>
+  <div class="log-stream" id="liveLog">
+    ${allLogs.slice(-100).map(l => `
+    <div class="le ${l.type}">
+      <div class="le-ic">${icons[l.type] || '·'}</div>
+      <div>
+        <div class="le-lbl">${labels[l.type] || l.type}${agents.length > 1 ? ` · ${l.agent}` : ''}</div>
+        <div class="le-txt">${escHtml(l.text)}</div>
+      </div>
+    </div>`).join('')}
+    ${agents.some(a => S.agents[a]?.status === 'running') ? `
+    <div class="le tool">
+      <div class="le-ic"><span class="spin">🔍</span></div>
+      <div>
+        <div class="le-lbl">Working now</div>
+        <div class="le-txt">${escHtml(deptWhat(dk))}</div>
+      </div>
+    </div>` : ''}
+  </div>`;
+}
+
+function renderDeptSources(dk) {
+  const agents = (DEPTS[dk]?.agents || []).filter(a => S.agents[a]);
+  const allUrls = [];
+  for (const key of agents) {
+    for (const url of (S.agents[key]?.visitedUrls || [])) {
+      if (!allUrls.includes(url)) allUrls.push(url);
+    }
+  }
+
+  if (!allUrls.length) return '<div style="color:var(--fm);font-size:11px">No sources logged yet</div>';
+
+  return `<div class="sec-label">${allUrls.length} sources visited</div>
+  <div class="url-list">
+    ${allUrls.map(url => {
+      let domain = url;
+      try { domain = new URL(url).hostname.replace(/^www\./, ''); } catch {}
+      return `<a class="url-item" href="${escAttr(url)}" target="_blank">
+        <img src="https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=16"
+          width="12" height="12" style="flex-shrink:0" onerror="this.style.display='none'"/>
+        <span style="font-weight:500;color:var(--fd)">${escHtml(domain)}</span>
+        <span style="font-size:9px;color:var(--blue);margin-left:auto">↗</span>
+      </a>`;
+    }).join('')}
+  </div>`;
+}
+
+function renderArtRead(art) {
+  const preview = art.preview || art.content || art.description || '(No preview available)';
+  return `<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+    <div>
+      <div style="font-family:'Chakra Petch',sans-serif;font-size:14px;font-weight:700;letter-spacing:.03em;color:var(--fg)">${escHtml(art.title || art.key)}</div>
+      <div style="font-size:9.5px;color:${art.status==='ready'?'var(--green)':'var(--amber)'};margin-top:4px;font-family:'IBM Plex Mono',monospace">${art.status === 'ready' ? '✓ ready' : '⋯ being written'}</div>
+    </div>
+    <div class="art-actions">
+      <button class="art-btn pri" onclick="copyArtifact('${escAttr(art.key)}')">Copy</button>
+      <button class="art-btn" onclick="downloadArtifact('${escAttr(art.key)}')">Download</button>
+    </div>
+  </div>
+  <pre class="art-content">${escHtml(preview)}</pre>`;
+}
+
+function renderArtActions(art) {
+  return `<div style="font-family:'Chakra Petch',sans-serif;font-size:14px;font-weight:700;letter-spacing:.03em;margin-bottom:12px">
+    What do you want to do with ${escHtml(art.title || art.key)}?
+  </div>
+  <div style="display:flex;flex-direction:column;gap:7px">
+    ${[['📋','Copy text','Copy the full content to your clipboard','copyArtifact'],
+       ['⬇️','Download','Save as a text file to your computer','downloadArtifact'],
+       ['📤','Export','Send to Notion or another tool','exportArtifact']].map(([ic,label,desc,fn]) =>
+    `<button class="art-btn" style="display:flex;align-items:center;gap:12px;padding:11px 14px;width:100%;text-align:left" onclick="${fn}('${escAttr(art.key)}')">
+      <span style="font-size:18px">${ic}</span>
+      <div>
+        <div style="font-family:'Chakra Petch',sans-serif;font-weight:700;letter-spacing:.04em;color:var(--fg);font-size:11px">${label}</div>
+        <div style="font-size:9.5px;color:var(--fm);margin-top:2px;font-family:'IBM Plex Mono',monospace">${desc}</div>
+      </div>
+    </button>`).join('')}
+  </div>`;
+}
+
+function renderApprovalCards() {
+  return S.approvals.map(ap => `
+  <div class="apv" id="apv-${escAttr(ap.gate_key || ap.request_id || 'main')}">
+    <div class="apv-hd">
+      <div class="apv-title">🔒 ${escHtml(ap.title || ap.gate_key || 'Action requires your approval')}</div>
+      <div class="apv-meta">${escHtml(ap.triggered_by || ap.agent || 'Agent')} · ${timeAgo(ap.ts)}</div>
+    </div>
+    <div class="apv-body">
+      <div class="apv-reason">${escHtml(ap.reason || ap.description || 'An agent wants to take a significant action and needs your go-ahead.')}</div>
+      ${ap.details ? `<pre class="result-block">${escHtml(String(ap.details).slice(0, 500))}</pre>` : ''}
+      <div class="apv-acts">
+        <button class="btn-ok" onclick="decide('${escAttr(ap.gate_key || ap.request_id)}', 'approved')">✓ Approve</button>
+        <button class="btn-skip" onclick="decide('${escAttr(ap.gate_key || ap.request_id)}', 'skipped')">Skip for now</button>
+        <button class="btn-reject" onclick="decide('${escAttr(ap.gate_key || ap.request_id)}', 'rejected')">✗ Reject</button>
+      </div>
+      <div style="font-size:9.5px;color:var(--fm);font-family:'IBM Plex Mono',monospace">All other agents keep running while you decide.</div>
+    </div>
+  </div>`).join('');
+}
+
+/* ── APPROVAL BANNER ── */
+function showApprovalBanner(ap) {
+  const b = document.getElementById('urgentBanner');
+  b.classList.add('show');
+  document.getElementById('urgentSub').textContent =
+    ap.title || ap.gate_key || 'An agent needs your go-ahead before continuing.';
+  renderDetailPanel();
+  renderStatusBar();
+  renderPhaseBar();
+}
+
+function hideApprovalBanner() {
+  document.getElementById('urgentBanner').classList.remove('show');
+}
+
+function scrollToApproval() {
+  // If nothing is selected, just show the approval in the detail panel
+  if (!S.selDept && !S.selArt) {
+    renderDetailPanel();
+  }
+  document.getElementById('dscroll').scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function decide(gateKey, decision) {
+  const card = document.getElementById(`apv-${gateKey}`);
+  if (card) {
+    card.style.opacity = '.5';
+    card.style.pointerEvents = 'none';
+  }
+
+  try {
+    await fetch(`${API}/stack/approval`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-astra-user-id': founderId },
+      body: JSON.stringify({ session_id: sessionId, gate_key: gateKey, decision }),
+    });
+    // SSE will fire stack_approval_decision event to update state
+    S.approvals = S.approvals.filter(a => (a.gate_key || a.request_id) !== gateKey);
+    if (!S.approvals.length) hideApprovalBanner();
+    renderDetailPanel();
+  } catch (err) {
+    console.error('Approval error:', err);
+    if (card) { card.style.opacity = ''; card.style.pointerEvents = ''; }
+  }
+}
+
+/* ── STOP RUN ── */
+async function stopRun() {
+  if (!confirm('Stop this run? Agents will finish their current step and halt.')) return;
+  try {
+    await fetch(`${API}/sessions/${sessionId}/kill`, {
+      method: 'POST',
+      headers: { 'x-astra-user-id': founderId },
+    });
+    S.status = 'killed';
+    setTopPill('killed');
+    document.getElementById('stopBtn').style.display = 'none';
+    sse?.close();
+  } catch (err) {
+    alert('Could not stop run: ' + err.message);
+  }
+}
+
+/* ── STEER / CHAT ── */
+async function sendSteer() {
+  const input = document.getElementById('steerInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+
+  try {
+    await fetch(`${API}/steer/${sessionId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-astra-user-id': founderId },
+      body: JSON.stringify({ message: msg }),
+    });
+    // Visual feedback
+    addLog('__steer__', 'tool', `You: ${msg}`);
+  } catch (err) {
+    console.warn('Steer failed:', err);
+  }
+}
+document.getElementById('steerInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSteer(); }
+});
+
+/* ── ARTIFACT ACTIONS ── */
+function copyArtifact(key) {
+  const art = S.artifacts.find(a => a.key === key);
+  if (art) navigator.clipboard.writeText(art.preview || art.content || art.description || '');
+}
+
+function downloadArtifact(key) {
+  const art = S.artifacts.find(a => a.key === key);
+  if (!art) return;
+  const blob = new Blob([art.preview || art.content || art.description || ''], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${(art.title || art.key).replace(/[^a-z0-9]/gi, '_')}.txt`;
+  a.click();
+}
+
+function exportArtifact(key) {
+  alert('Notion/export integration coming soon — use Copy + Paste for now.');
+}
+
+/* ── LIVE LOG APPEND ── */
+function appendLogEntry(entry, agentKey) {
+  const logEl = document.getElementById('liveLog');
+  if (!logEl) return;
+  const icons = { think:'💭', tool:'🔍', result:'→', done:'✓', error:'✗', start:'↳' };
+  const labels = { think:'Thinking', tool:'Searching', result:'Found', done:'Done', error:'Error', start:'Started' };
+  const div = document.createElement('div');
+  div.className = `le ${entry.type} fade-in`;
+  div.innerHTML = `<div class="le-ic">${icons[entry.type] || '·'}</div>
+    <div>
+      <div class="le-lbl">${labels[entry.type] || entry.type}</div>
+      <div class="le-txt">${escHtml(entry.text)}</div>
+    </div>`;
+  logEl.appendChild(div);
+  logEl.scrollTop = logEl.scrollHeight;
+  // Update the spinning "Working now" entry
+  const spinEntry = logEl.querySelector('.le.tool:last-child .spin');
+  if (spinEntry) spinEntry.closest('.le').querySelector('.le-txt').textContent = deptWhat(S.selDept);
+}
+
+/* ── UTILS ── */
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+  return String(s||'').replace(/['"<>&]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function timeAgo(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - (typeof ts === 'number' ? ts : new Date(ts).getTime());
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  return `${Math.floor(m/60)}h ago`;
+}
+
+/* ── BOOT ── */
+loadInitialState();
+</script>
+</body>
+</html>
