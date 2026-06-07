@@ -1206,6 +1206,99 @@ class Orchestrator:
                 t["instruction"] = enriched
                 logger.info("Applied enriched instruction to %s", t["agent"])
 
+        # ── Phase gate infrastructure ─────────────────────────────────────────────
+        # After every phase completes, the founder must review deliverables and approve
+        # before the next phase starts. Rejection re-queues that phase's tasks with notes.
+        _PHASE_ORDER = ["diagnose", "design", "deploy", "govern", "operate"]
+
+        def _task_phase(t: dict) -> str:
+            return stack_lane_by_agent.get(t["agent"], {}).get("phase") or "deploy"
+
+        # Map phase → task list (includes research tasks so the gate can list their artifacts)
+        _tasks_by_phase: dict[str, list[dict]] = {}
+        for _t in parallel_research_tasks + list(remaining):
+            _tasks_by_phase.setdefault(_task_phase(_t), []).append(_t)
+
+        async def _phase_gate(phase_name: str, next_phase: str, phase_task_list: list[dict]) -> bool:
+            """Publish a phase-complete approval gate and block until the founder decides.
+            Returns True to advance to next phase; False if rejected (tasks re-queued)."""
+            from backend.core.events import _approval_decisions
+            gate_key = f"phase_gate_{phase_name}"
+            # Clear any stale decision so a re-run of the same phase gate doesn't instantly resolve.
+            _approval_decisions.get(session_id, {}).pop(gate_key, None)
+
+            gate_artifacts: list[dict] = []
+            for _gt in phase_task_list:
+                _lane = stack_lane_by_agent.get(_gt["agent"], {})
+                for _art in (_lane.get("deliverables") or []):
+                    gate_artifacts.append({
+                        "key": _art.get("artifact_key") or _art.get("key", ""),
+                        "title": _art.get("title") or _art.get("artifact_key", _gt["agent"]),
+                        "agent": _gt["agent"],
+                        "status": "ready",
+                    })
+
+            try:
+                from backend.approval_workflows import create_approval_request
+                create_approval_request(
+                    session_id=session_id,
+                    gate_key=gate_key,
+                    title=f"{phase_name.title()} Phase Complete",
+                    reason=f"Review deliverables before {next_phase} begins.",
+                    agent="orchestrator",
+                )
+            except Exception:
+                pass
+
+            await publish(session_id, {
+                "type": "approval_request",
+                "request": {
+                    "gate_key": gate_key,
+                    "title": f"{phase_name.title()} Phase Complete",
+                    "reason": (
+                        f"Review what the {phase_name} team produced. "
+                        f"Approve to move to {next_phase}, or request revisions."
+                    ),
+                    "phase": phase_name,
+                    "next_phase": next_phase,
+                    "is_phase_gate": True,
+                    "artifacts": gate_artifacts,
+                },
+            })
+            logger.info("Phase gate published: %s → %s (%d artifacts)", phase_name, next_phase, len(gate_artifacts))
+
+            from backend.core.events import approval_decision_wait
+            decision = await approval_decision_wait(session_id, gate_key, timeout=7200)
+            if cancellation.is_killed(session_id):
+                return False
+
+            dec = (decision or {}).get("decision", "approved")
+            note = ((decision or {}).get("note") or "").strip()
+            await publish(session_id, {"type": "stack_approval_decision", "gate_key": gate_key, "decision": dec})
+
+            if dec == "rejected":
+                logger.info("Phase gate '%s' rejected (note=%r) — re-queuing %d tasks", phase_name, note, len(phase_task_list))
+                for _rt in phase_task_list:
+                    completed.pop(_rt["id"], None)
+                    if note:
+                        _rt["instruction"] = (_rt.get("instruction") or "") + f"\n\n[Founder revision request]: {note}"
+                remaining.extend(phase_task_list)
+                return False
+
+            logger.info("Phase gate '%s' approved — proceeding to %s", phase_name, next_phase)
+            return True
+
+        # Diagnose phase gate: block before launching design/deploy/etc. agents.
+        # If rejected, research tasks are re-added to remaining and the scheduler runs them.
+        # The scheduler-level gate will re-fire after those tasks complete.
+        if remaining and not cancellation.is_killed(session_id):
+            _first_next = next(
+                (p for p in _PHASE_ORDER if p != "diagnose" and any(_task_phase(t) == p for t in remaining)),
+                "design",
+            )
+            await _phase_gate("diagnose", _first_next, parallel_research_tasks)
+
+        # ── Scheduler ──────────────────────────────────────────────────────────────
         # Run remaining agents in parallel (research is done, deps resolve)
         logger.info("Starting non-research agents: %s", [t["agent"] for t in remaining])
         in_flight: set[str] = set()
@@ -1269,28 +1362,58 @@ class Orchestrator:
         from backend.core import cancellation
         # Dependency-driven scheduler: launch each task the instant ITS deps are met
         # and wake on the first completion — never wait for a whole "wave" to finish.
-        # The old gather-per-wave barrier serialized the pipeline: web (deps: design)
-        # could not start until design AND every other research-only agent in the same
-        # wave finished, and technical (deps: web) waited behind that — so the two build
-        # agents started very late. This launches dependents the moment they unblock.
         running: set[asyncio.Task] = set()
         task_for: dict[asyncio.Task, dict] = {}
+        # Phases cleared by the founder (diagnose is pre-cleared since its gate ran above).
+        # Any phase not in this set will block even if its tasks' deps are met.
+        _phase_gates_cleared: set[str] = {
+            ph for ph in _PHASE_ORDER if not _tasks_by_phase.get(ph)
+        } | {"diagnose"}
+
         while remaining or running:
             if cancellation.is_killed(session_id):
                 logger.info("Orchestrator: session %s killed — halting scheduling", session_id)
                 break
-            ready = [
+
+            all_ready = [
                 t for t in remaining
                 if all(dep in completed for dep in t.get("depends_on", []))
             ]
-            for t in ready:
+
+            # Phase gate: if ready tasks belong to a phase whose gate hasn't been cleared,
+            # wait until nothing is running (current phase fully done), then block for approval.
+            if all_ready and not running:
+                next_phases_sorted = sorted(
+                    {_task_phase(t) for t in all_ready},
+                    key=lambda p: _PHASE_ORDER.index(p) if p in _PHASE_ORDER else 99,
+                )
+                ungated = [p for p in next_phases_sorted if p not in _phase_gates_cleared]
+                if ungated:
+                    _np = ungated[0]
+                    _pi = _PHASE_ORDER.index(_np) if _np in _PHASE_ORDER else 1
+                    _prev_ph = _PHASE_ORDER[_pi - 1] if _pi > 0 else "diagnose"
+                    _prev_tasks = _tasks_by_phase.get(_prev_ph, [])
+                    _gate_ok = await _phase_gate(_prev_ph, _np, _prev_tasks)
+                    if _gate_ok:
+                        _phase_gates_cleared.add(_np)
+                    else:
+                        # Rejected: tasks re-queued; update map to include them.
+                        for _rrt in remaining:
+                            _rph = _task_phase(_rrt)
+                            if _rrt not in _tasks_by_phase.get(_rph, []):
+                                _tasks_by_phase.setdefault(_rph, []).append(_rrt)
+                    continue  # Re-evaluate after gate decision
+
+            # Only launch tasks whose phase gate is cleared
+            ready_to_launch = [t for t in all_ready if _task_phase(t) in _phase_gates_cleared]
+            for t in ready_to_launch:
                 remaining.remove(t)
                 in_flight.add(t["id"])
                 at = asyncio.create_task(_run_task_guarded(t))
                 running.add(at)
                 task_for[at] = t
-            if ready:
-                logger.info("Launched: %s, remaining: %s, in_flight: %s", [t["agent"] for t in ready], [t["agent"] for t in remaining], in_flight)
+            if ready_to_launch:
+                logger.info("Launched: %s, remaining: %s, in_flight: %s", [t["agent"] for t in ready_to_launch], [t["agent"] for t in remaining], in_flight)
 
             if not running:
                 if remaining:

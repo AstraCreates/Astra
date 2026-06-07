@@ -13,13 +13,14 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 type LogEntry = { ts: number; type: string; text: string };
 type Agent = { key: string; status: string; log: LogEntry[]; visitedUrls: string[]; currentTool: string | null; result: unknown; instruction: string };
 type Artifact = { key?: string; title?: string; status?: string; preview?: string; content?: string; description?: string; owner_agent?: string };
-type Approval = { gate_key: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number };
+type Approval = { gate_key: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string }[] };
 
 type SState = {
   status: string; goal: string; company: string; projectName: string; stackId: string;
   agents: Record<string, Agent>;
   artifacts: Artifact[]; approvals: Approval[]; decidedKeys: Set<string>;
   selDept: string | null; selArt: string | null; tab: string; paused: boolean;
+  revisionGate: string | null; revisionNote: string;
 };
 
 function safeText(v: unknown): string {
@@ -107,6 +108,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const S = useRef<SState>({
     status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
     decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false,
+    revisionGate: null, revisionNote: "",
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
   const sseRef = useRef<EventSource | null>(null);
@@ -190,9 +192,16 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           reason: raw.reason || ev.reason || "",
           triggered_by: raw.action_id || raw.triggered_by || ev.agent || ev.tool || "",
           agent: raw.agent || ev.agent || "", ts: Date.now(),
+          is_phase_gate: raw.is_phase_gate || false,
+          phase: raw.phase || "",
+          next_phase: raw.next_phase || "",
+          artifacts: raw.artifacts || [],
         };
         if (!apv.gate_key || st.decidedKeys.has(apv.gate_key)) break;
-        if (!st.approvals.find((a) => a.gate_key === apv.gate_key)) st.approvals.push(apv);
+        // Replace existing gate with same key (e.g. after rejection re-fire)
+        const existIdx = st.approvals.findIndex((a) => a.gate_key === apv.gate_key);
+        if (existIdx >= 0) st.approvals[existIdx] = apv;
+        else st.approvals.push(apv);
         break;
       }
       case "stack_approval_decision":
@@ -213,7 +222,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!sessionId || !founderId) return;
     let alive = true;
-    S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false };
+    S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "" };
     force();
 
     (async () => {
@@ -278,16 +287,16 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     return () => { alive = false; sseRef.current?.close(); sseRef.current = null; };
   }, [sessionId, founderId, handleEvent]);
 
-  const decide = async (key: string, decision: "approved" | "skipped" | "rejected") => {
+  const decide = async (key: string, decision: "approved" | "skipped" | "rejected", note?: string) => {
     if (!key) { alert("This approval is missing its gate key — refresh the page (Cmd+Shift+R) and try again."); return; }
     const snapshot = S.current.approvals;
     S.current.decidedKeys.add(key);
     S.current.approvals = S.current.approvals.filter((a) => a.gate_key !== key);
+    S.current.revisionGate = null; S.current.revisionNote = "";
     force();
     try {
-      await decideStackApproval(sessionId, key, decision as "approved" | "skipped", founderId);
+      await decideStackApproval(sessionId, key, decision as any, founderId, note);
     } catch (e) {
-      // Restore so the founder can retry — don't pretend it was accepted.
       S.current.decidedKeys.delete(key);
       S.current.approvals = snapshot;
       force();
@@ -413,17 +422,28 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       </div>
 
       {/* urgent banner */}
-      {st.approvals.length > 0 && (
-        <div style={{ background: "var(--red)", flexShrink: 0, animation: "astraSlideDown .25s ease both" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px" }}>
-            <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff" }} className="blink" />
-            <div>
-              <div style={{ fontFamily: "var(--font-chakra)", fontSize: 12, fontWeight: 700, color: "#fff" }}>Action Required — Astra is waiting for you</div>
-              <div style={{ fontSize: 9.5, color: "rgba(255,255,255,.7)" }}>{st.approvals[0].title || "An agent needs your approval."}</div>
+      {st.approvals.length > 0 && (() => {
+        const first = st.approvals[0];
+        const isPhaseGate = first.is_phase_gate;
+        const bg = isPhaseGate ? "var(--blue)" : "var(--red)";
+        const headline = isPhaseGate
+          ? `${(first.phase || "Phase").replace(/^\w/, c => c.toUpperCase())} phase complete — review deliverables`
+          : "Action Required — Astra is waiting for you";
+        const sub = isPhaseGate
+          ? `Approve to continue to ${first.next_phase || "next phase"}, or request revisions`
+          : (first.title || "An agent needs your approval.");
+        return (
+          <div style={{ background: bg, flexShrink: 0, animation: "astraSlideDown .25s ease both" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px" }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff" }} className={isPhaseGate ? "" : "blink"} />
+              <div>
+                <div style={{ fontFamily: "var(--font-chakra)", fontSize: 12, fontWeight: 700, color: "#fff" }}>{headline}</div>
+                <div style={{ fontSize: 9.5, color: "rgba(255,255,255,.7)" }}>{sub}</div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* done banner */}
       {st.status === "done" && (
@@ -500,7 +520,67 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           </div>
           <div className="dscroll">
             {/* approval cards always first */}
-            {st.approvals.map((ap) => (
+            {st.approvals.map((ap) => ap.is_phase_gate ? (
+              /* ── Phase checkpoint card ── */
+              <div key={ap.gate_key} style={{ borderRadius: 12, border: "1.5px solid var(--blue)", background: "rgba(59,130,246,.06)", padding: "16px 16px 12px", marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 18 }}>✅</span>
+                  <div>
+                    <div style={{ fontFamily: "var(--font-chakra)", fontSize: 13, fontWeight: 700, color: "var(--fg)" }}>{ap.title}</div>
+                    <div style={{ fontSize: 10, color: "var(--blue)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".08em" }}>Phase Checkpoint</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--fd)", lineHeight: 1.6, marginBottom: 10 }}>{ap.reason}</div>
+                {ap.artifacts && ap.artifacts.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 5 }}>Deliverables to review</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      {ap.artifacts.map((art, i) => (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 7, padding: "5px 8px", borderRadius: 6, background: "var(--surface)", border: "1px solid var(--bd)", cursor: "pointer" }}
+                          onClick={() => sel(null, art.key || null)}>
+                          <span style={{ fontSize: 10, color: "var(--green)" }}>✓</span>
+                          <span style={{ fontSize: 11, color: "var(--fg)", fontWeight: 500 }}>{art.title || art.key}</span>
+                          <span style={{ fontSize: 9, color: "var(--fm)", marginLeft: "auto" }}>{art.agent}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {st.revisionGate === ap.gate_key ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    <div style={{ fontSize: 10.5, color: "var(--fd)", fontWeight: 500 }}>What needs to be fixed?</div>
+                    <textarea
+                      value={st.revisionNote}
+                      onChange={(e) => { st.revisionNote = e.target.value; force(); }}
+                      placeholder={`Tell the ${ap.phase} team what to redo — be specific. E.g. "The ICP analysis missed SMB segment, focus on companies 10-50 employees."`}
+                      style={{ width: "100%", minHeight: 72, padding: "8px 10px", borderRadius: 7, border: "1.5px solid var(--blue)", background: "var(--bg)", color: "var(--fg)", fontSize: 11.5, lineHeight: 1.55, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }}
+                    />
+                    <div style={{ display: "flex", gap: 7 }}>
+                      <button style={{ flex: 1, padding: "7px 0", borderRadius: 7, border: "1.5px solid var(--red)", background: "rgba(239,68,68,.08)", color: "var(--red)", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}
+                        onClick={() => decide(ap.gate_key, "rejected", st.revisionNote)}>
+                        Send revision request
+                      </button>
+                      <button style={{ padding: "7px 12px", borderRadius: 7, border: "1px solid var(--bd)", background: "var(--surface)", color: "var(--fm)", fontSize: 11, cursor: "pointer" }}
+                        onClick={() => { st.revisionGate = null; st.revisionNote = ""; force(); }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: "var(--blue)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                      onClick={() => decide(ap.gate_key, "approved")}>
+                      Approve → Continue to {ap.next_phase || "next phase"}
+                    </button>
+                    <button style={{ padding: "9px 14px", borderRadius: 8, border: "1.5px solid var(--red)", background: "rgba(239,68,68,.07)", color: "var(--red)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                      onClick={() => { st.revisionGate = ap.gate_key; st.revisionNote = ""; force(); }}>
+                      Request revisions
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* ── Action gate card (mid-phase SafeRun) ── */
               <div key={ap.gate_key} className="apv">
                 <div className="apv-hd"><div className="apv-ht">🔒 {ap.title || "Action requires your approval"}</div><div className="apv-mt">{ap.triggered_by || ap.agent || "Agent"} · {ago(ap.ts)}</div></div>
                 <div className="apv-body">
