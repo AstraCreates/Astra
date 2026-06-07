@@ -1,9 +1,8 @@
 "use client";
 
-/* Redesigned new-goal form — ported from mockup (#v-new). */
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getStacks, submitGoal, createWorkspace, ingestAttachment, type AgentStackTemplate } from "@/lib/api";
+import { getStacks, submitGoal, ingestAttachment, type AgentStackTemplate } from "@/lib/api";
 import { useDevUser } from "@/lib/use-dev-user";
 
 export default function NewGoalView() {
@@ -11,14 +10,27 @@ export default function NewGoalView() {
   const { userId } = useDevUser();
   const [stacks, setStacks] = useState<AgentStackTemplate[]>([]);
   const [stackHint, setStackHint] = useState("Loading stacks…");
-  const [selStack, setSelStack] = useState<string>(""); // "" = auto
+  const [selStack, setSelStack] = useState<string>("");
   const [chars, setChars] = useState(0);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [attachments, setAttachments] = useState<{ name: string; content: string }[]>([]);
   const [uploading, setUploading] = useState(false);
-  const nameRef = useRef<HTMLInputElement>(null);
+  const [company, setCompany] = useState("");
   const goalRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setCompany(localStorage.getItem("astra_onboarding_company") || "");
+    }
+    getStacks().then((s) => {
+      setStacks(s);
+      // Pre-select stack from onboarding if set
+      const savedStack = typeof window !== "undefined" ? localStorage.getItem("astra_onboarding_stack") || "" : "";
+      if (savedStack) setSelStack(savedStack);
+      setStackHint(s.length ? `${s.length} stack${s.length > 1 ? "s" : ""} available` : "Using auto-select");
+    }).catch(() => setStackHint("Could not load stacks — auto will be used"));
+  }, []);
 
   const onFiles = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -33,32 +45,20 @@ export default function NewGoalView() {
     setUploading(false);
   };
 
-  useEffect(() => {
-    getStacks().then((s) => {
-      setStacks(s);
-      setStackHint(s.length ? `${s.length} stack${s.length > 1 ? "s" : ""} available` : "Using auto-select");
-    }).catch(() => setStackHint("Could not load stacks — auto will be used"));
-  }, []);
-
   const submit = async () => {
     const goal = goalRef.current?.value.trim() || "";
-    const name = nameRef.current?.value.trim() || "";
     setErr("");
     if (goal.length < 10) { setErr("⚠ Please describe your goal in more detail (min 10 chars)."); return; }
     setBusy(true);
     try {
-      let instruction = name ? `Company/project name: ${name}\n\n${goal}` : goal;
+      // Prepend company context from onboarding if available
+      let instruction = company ? `Company: ${company}\n\n${goal}` : goal;
       if (attachments.length) {
         instruction += "\n\nAttached context:\n" + attachments.map((a) => `--- ${a.name} ---\n${a.content.slice(0, 8000)}`).join("\n\n");
       }
-      // Step 1: create the workspace explicitly (so we own the ID regardless of backend version)
-      const ws = await createWorkspace(userId, name || goal.slice(0, 60), goal, selStack || "idea_to_revenue");
-      // Step 2: submit goal, linked to this workspace
-      const data = await submitGoal(userId, instruction, {}, selStack || "idea_to_revenue", ws.workspace_id, name || undefined);
+      const data = await submitGoal(userId, instruction, {}, selStack || "idea_to_revenue");
       if (!data.session_id) throw new Error("No session_id returned");
-      // Step 3: navigate to workspace view — use chapter_id from backend if returned, else open workspace
-      const chapterParam = data.chapter_id ? `&chapter=${data.chapter_id}` : "";
-      router.push(`/?workspace=${ws.workspace_id}${chapterParam}&founder=${encodeURIComponent(userId)}`);
+      router.push(`/?session=${data.session_id}&founder=${encodeURIComponent(userId)}`);
     } catch (e) {
       setBusy(false);
       setErr(`⚠ ${e instanceof Error ? e.message : String(e)}`);
@@ -68,19 +68,20 @@ export default function NewGoalView() {
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <div className="new-wrap">
-        <div className="new-ht">What do you want to build?</div>
-        <div className="new-sub">Tell Astra your goal in plain English. Be specific — include your target customer and key constraints.</div>
+        {company && (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--bd)", background: "var(--surface)", fontSize: 10.5, color: "var(--fd)", marginBottom: 16 }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)" }} />
+            <span style={{ fontWeight: 600, color: "var(--fg)" }}>{company}</span>
+          </div>
+        )}
 
-        <div className="f-field" style={{ marginBottom: 18 }}>
-          <label className="f-label">Company / Project name <span style={{ color: "var(--fm)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span></label>
-          <input ref={nameRef} className="f-input" type="text" placeholder="e.g. InvoiceFlow, NomadHQ, Astra…" maxLength={80} />
-          <div className="f-hint">If left blank, Astra will generate a name from your goal.</div>
-        </div>
+        <div className="new-ht">What do you want to build?</div>
+        <div className="new-sub">Describe this run's goal in plain English. Be specific — include your target customer and key constraints.</div>
 
         <div className="f-field" style={{ marginBottom: 18 }}>
           <label className="f-label">Your goal</label>
           <textarea ref={goalRef} className="f-input f-ta" rows={5}
-            placeholder="e.g. Build a SaaS tool for freelancers to track invoices and get paid faster"
+            placeholder="e.g. Build a go-to-market strategy for our enterprise segment, targeting CTOs at 50–500 person companies"
             onInput={(e) => setChars((e.target as HTMLTextAreaElement).value.length)} />
           <div className="f-hint">{chars} chars · aim for 50–400</div>
         </div>
@@ -120,7 +121,7 @@ export default function NewGoalView() {
               ))}
             </div>
           )}
-          <div className="f-hint">PDFs, docs, or images — Astra reads them as extra context for the build.</div>
+          <div className="f-hint">PDFs, docs, or images — Astra reads them as extra context for this run.</div>
         </div>
 
         {err && <div className="err-banner" style={{ marginBottom: 14 }}>{err}</div>}

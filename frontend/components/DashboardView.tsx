@@ -1,6 +1,5 @@
 "use client";
 
-/* Redesigned dashboard — ported from mockup (#v-dash). Lists a founder's runs. */
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { listSessions, deleteSessionRemote, type SessionIndexEntry } from "@/lib/api";
@@ -29,6 +28,13 @@ export default function DashboardView() {
   const [sessions, setSessions] = useState<SessionIndexEntry[] | null>(null);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const [company, setCompany] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setCompany(localStorage.getItem("astra_onboarding_company") || "");
+    }
+  }, []);
 
   const del = useCallback(async (e: React.MouseEvent, s: SessionIndexEntry) => {
     e.stopPropagation();
@@ -55,13 +61,21 @@ export default function DashboardView() {
     : running ? `${running} run${running > 1 ? "s" : ""} active · ${sessions.length} total`
     : `${sessions.length} total run${sessions.length > 1 ? "s" : ""}`;
 
+  const displayName = company;
+
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <div style={{ padding: "28px 22px 0", borderBottom: "1px solid var(--bd)" }}>
-        <div className="dash-ht">Your goals</div>
+        {company && (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--bd)", background: "var(--surface)", fontSize: 10.5, color: "var(--fd)", marginBottom: 12 }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)" }} />
+            <span style={{ fontWeight: 600, color: "var(--fg)" }}>{displayName}</span>
+          </div>
+        )}
+        <div className="dash-ht">Sessions</div>
         <div className="dash-sub">{sub}</div>
         <div style={{ display: "flex", gap: 9, paddingBottom: 22 }}>
-          <button className="btn pri" onClick={() => router.push("/?new=1")}>＋ Start a new goal</button>
+          <button className="btn pri" onClick={() => router.push("/?new=1")}>＋ New run</button>
           <button className="btn" onClick={load}>Refresh</button>
         </div>
       </div>
