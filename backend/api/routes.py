@@ -405,6 +405,23 @@ async def kill_session(session_id: str, request: Request):
         update_session_status(session_id, "killed")
     except Exception:
         pass
+    # Reconcile orphaned agents: hard-cancelling the orchestrator task means its
+    # in-flight agents never emit a terminal event, so they would stay frozen at
+    # "running"/"waiting" in the UI forever. Flip them to error here.
+    try:
+        from backend.core.session_store import load_events
+        from backend.workflow_state import build_session_state
+        events = await asyncio.to_thread(load_events, session_id) or []
+        state = build_session_state(session_id, events)
+        for name, ag in (state.get("agents") or {}).items():
+            if (ag or {}).get("status") in ("running", "waiting"):
+                await publish(session_id, {
+                    "type": "agent_error", "agent": name,
+                    "task_id": (ag or {}).get("task_id") or "",
+                    "error": "Run stopped by user.",
+                })
+    except Exception:
+        pass
     try:
         await publish(session_id, {"type": "goal_error", "error": "Run stopped by user.", "killed": True})
     except Exception:

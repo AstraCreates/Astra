@@ -1299,6 +1299,33 @@ class Orchestrator:
                 if finished:
                     in_flight.discard(finished["id"])
 
+        # Reconcile orphaned tasks when the loop broke early (kill / dependency cycle).
+        # Otherwise in-flight agents stay frozen at "running" and never-launched agents
+        # stay "waiting" forever in the UI — there is no terminal event to flip them.
+        killed = cancellation.is_killed(session_id)
+        _orphan_reason = "run cancelled by founder" if killed else "run halted before this agent completed"
+        if running:
+            for at in running:
+                at.cancel()
+            await asyncio.gather(*running, return_exceptions=True)
+            for at, t in list(task_for.items()):
+                in_flight.discard(t["id"])
+                if t["id"] not in completed:
+                    completed[t["id"]] = {"error": _orphan_reason, "agent": t["agent"], "cancelled": True}
+                await publish(session_id, {"type": "agent_error", "agent": t["agent"], "task_id": t["id"], "error": _orphan_reason})
+                await publish(session_id, {
+                    "type": "stack_lane_status", "lane_id": t.get("id"), "agent": t["agent"], "task_id": t["id"],
+                    "status": "blocked", "title": t.get("stack_task_title") or t["agent"],
+                    "blockers": [_orphan_reason], "next_actor": "founder",
+                })
+            running.clear(); task_for.clear()
+        # Never-launched tasks (killed/cycle): flip them off "waiting" too.
+        for t in remaining:
+            if t["id"] not in completed:
+                completed[t["id"]] = {"error": _orphan_reason, "agent": t["agent"], "cancelled": True}
+            await publish(session_id, {"type": "agent_error", "agent": t["agent"], "task_id": t["id"], "error": _orphan_reason})
+        remaining = []
+
         completion_failures = _completion_failures(tasks, completed, task_verifications)
         if completion_failures:
             await publish(session_id, {
