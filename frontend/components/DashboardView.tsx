@@ -138,7 +138,7 @@ export default function DashboardView() {
           </div>
 
           <div style={{ display: "flex", gap: 9 }}>
-            <button className="btn pri" onClick={() => router.push("/?new=1")}>＋ New run</button>
+            <button data-tour="dash-new-run" className="btn pri" onClick={() => router.push("/?new=1")}>＋ New run</button>
             <button className="btn" onClick={load}>Refresh</button>
           </div>
         </div>
@@ -190,7 +190,7 @@ export default function DashboardView() {
               </button>
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div data-tour="dash-sessions" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {sessions.map((s) => {
                 const isStalled = s.status === "stalled";
                 const isRunning = s.status === "running";

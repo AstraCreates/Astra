@@ -1,301 +1,351 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-
-// ── Tour step definitions ─────────────────────────────────────────────────────
+import { useRouter } from "next/navigation";
 
 interface TourStep {
-  target: string;       // data-tour attribute value
+  target: string | null;       // data-tour value, or null for a centered card
   title: string;
   description: string;
+  icon: string;
   position?: "top" | "bottom" | "left" | "right";
+  action?: { label: string; href: string };  // optional "Try it" CTA
 }
 
 const TOUR_STEPS: TourStep[] = [
   {
+    target: null,
+    title: "Welcome to your workspace",
+    icon: "✦",
+    description: "This is where your AI founding team lives. Let's walk through the key parts — takes about 30 seconds.",
+    position: "bottom",
+  },
+  {
     target: "new-goal-btn",
     title: "Start a new run",
-    description: "Give Astra a goal in plain English — your AI founding team activates instantly across research, design, marketing, legal, and more.",
+    icon: "＋",
+    description: "Give Astra a goal in plain English. Your AI team — research, design, marketing, legal, finance — activates instantly and works in parallel.",
     position: "right",
+    action: { label: "Try it →", href: "/?new=1" },
   },
   {
     target: "nav-dashboard",
-    title: "Your sessions",
-    description: "Every run lives here. See what's in progress, what's done, and jump back into any session with a click.",
+    title: "Sessions dashboard",
+    icon: "⬡",
+    description: "Every run you launch lives here. See live status, what's running, what's done, and what needs your approval — all at a glance.",
     position: "right",
+  },
+  {
+    target: "dash-new-run",
+    title: "Launch from the dashboard too",
+    icon: "↗",
+    description: "You can also kick off a new run directly from the dashboard. Your company context from onboarding is automatically included — just describe the goal.",
+    position: "bottom",
   },
   {
     target: "nav-outreach",
     title: "Outreach",
-    description: "Find leads and run personalized cold email campaigns routed through your connected Gmail — no manual list-building.",
+    icon: "✦",
+    description: "Find qualified leads and run personalized cold email campaigns — automatically routed through your connected Gmail. No manual list-building.",
     position: "right",
   },
   {
     target: "nav-company-brain",
     title: "Company Brain",
-    description: "Everything Astra learns about your company lives here — goals, context, and artifacts your agents build on each run.",
+    icon: "◈",
+    description: "Everything Astra learns about your company lives here. Agents reference this context on every run — the more you build, the smarter they get.",
     position: "right",
   },
   {
     target: "nav-integrations",
     title: "Connect your tools",
-    description: "Link GitHub, Gmail, Vercel, Stripe, and more. Agents use your connected tools to ship code, send emails, and take real actions.",
+    icon: "⌘",
+    description: "Link GitHub, Gmail, Vercel, Stripe, Notion, and more. Agents use your connected tools to ship code, send emails, and take real actions on your behalf.",
     position: "right",
+    action: { label: "Connect tools →", href: "/integrations" },
   },
   {
     target: "nav-payments",
     title: "Payments",
-    description: "Connect Stripe to accept payments. Your revenue dashboard updates here in real time once you're live.",
+    icon: "$",
+    description: "Once you connect Stripe, your revenue dashboard updates in real time. Track MRR, transactions, and active subscribers from here.",
     position: "right",
   },
 ];
 
-// ── Tooltip ───────────────────────────────────────────────────────────────────
+interface SpotlightRect { top: number; left: number; width: number; height: number; }
 
-interface TooltipPos {
-  top: number;
-  left: number;
-  arrowSide: "top" | "bottom" | "left" | "right";
+function measureTarget(target: string | null): SpotlightRect | null {
+  if (!target) return null;
+  const el = document.querySelector(`[data-tour="${target}"]`);
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return { top: r.top, left: r.left, width: r.width, height: r.height };
 }
 
-function computePosition(rect: DOMRect, position: TourStep["position"] = "bottom"): TooltipPos {
-  const TW = 300; // tooltip width
-  const TH = 140; // approx tooltip height
-  const GAP = 14;
+const PAD = 10;
 
+function getTooltipPos(
+  rect: SpotlightRect | null,
+  position: TourStep["position"] = "right",
+  TW = 320,
+  TH = 200,
+) {
+  if (!rect) {
+    // Centered
+    return {
+      top: window.innerHeight / 2 - TH / 2,
+      left: window.innerWidth / 2 - TW / 2,
+    };
+  }
+  const GAP = 18;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let top = 0, left = 0;
   switch (position) {
     case "right":
-      return {
-        top: rect.top + rect.height / 2 - TH / 2,
-        left: rect.right + GAP,
-        arrowSide: "left",
-      };
+      top = rect.top + rect.height / 2 - TH / 2;
+      left = rect.left + rect.width + PAD + GAP;
+      break;
     case "left":
-      return {
-        top: rect.top + rect.height / 2 - TH / 2,
-        left: rect.left - TW - GAP,
-        arrowSide: "right",
-      };
+      top = rect.top + rect.height / 2 - TH / 2;
+      left = rect.left - TW - PAD - GAP;
+      break;
     case "top":
-      return {
-        top: rect.top - TH - GAP,
-        left: rect.left + rect.width / 2 - TW / 2,
-        arrowSide: "bottom",
-      };
+      top = rect.top - PAD - TH - GAP;
+      left = rect.left + rect.width / 2 - TW / 2;
+      break;
     case "bottom":
     default:
-      return {
-        top: rect.bottom + GAP,
-        left: rect.left + rect.width / 2 - TW / 2,
-        arrowSide: "top",
-      };
+      top = rect.top + rect.height + PAD + GAP;
+      left = rect.left + rect.width / 2 - TW / 2;
   }
+  // Clamp
+  top = Math.max(12, Math.min(vh - TH - 12, top));
+  left = Math.max(12, Math.min(vw - TW - 12, left));
+  return { top, left };
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+export default function WorkspaceTour({ onDone }: { onDone: () => void }) {
+  const router = useRouter();
+  const [idx, setIdx] = useState(0);
+  const [rect, setRect] = useState<SpotlightRect | null>(null);
+  const [entering, setEntering] = useState(true);
+  const step = TOUR_STEPS[idx];
 
-interface WorkspaceTourProps {
-  onDone: () => void;
-}
-
-export default function WorkspaceTour({ onDone }: WorkspaceTourProps) {
-  const [stepIndex, setStepIndex] = useState(0);
-  const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
-  const [visible, setVisible] = useState(false);
-  const step = TOUR_STEPS[stepIndex];
-
-  // Find the target element and get its rect
-  const measureTarget = useCallback(() => {
-    if (!step) return;
-    const el = document.querySelector(`[data-tour="${step.target}"]`);
-    if (el) {
-      setTargetRect(el.getBoundingClientRect());
-      setVisible(true);
-    } else {
-      // Target not in DOM — skip to next
-      setTargetRect(null);
-      setVisible(false);
-    }
+  const measure = useCallback(() => {
+    const r = measureTarget(step?.target ?? null);
+    setRect(r);
   }, [step]);
 
   useEffect(() => {
-    // Small delay so DOM has settled
-    const t = window.setTimeout(measureTarget, 120);
-    return () => window.clearTimeout(t);
-  }, [measureTarget]);
+    setEntering(true);
+    const t = setTimeout(() => {
+      measure();
+      setEntering(false);
+    }, 80);
+    return () => clearTimeout(t);
+  }, [measure, idx]);
 
-  // Re-measure on resize
   useEffect(() => {
-    window.addEventListener("resize", measureTarget, { passive: true });
-    return () => window.removeEventListener("resize", measureTarget);
-  }, [measureTarget]);
+    window.addEventListener("resize", measure, { passive: true });
+    return () => window.removeEventListener("resize", measure);
+  }, [measure]);
 
-  function handleNext() {
-    if (stepIndex < TOUR_STEPS.length - 1) {
-      setVisible(false);
-      setStepIndex(i => i + 1);
+  function advance() {
+    if (idx < TOUR_STEPS.length - 1) {
+      setEntering(true);
+      setTimeout(() => setIdx(i => i + 1), 50);
     } else {
-      handleDone();
+      finish();
     }
   }
 
-  function handleDone() {
+  function finish() {
     localStorage.setItem("astra_tour_done", "1");
     onDone();
   }
 
-  const isLast = stepIndex === TOUR_STEPS.length - 1;
-  const tooltipPos = targetRect ? computePosition(targetRect, step?.position) : null;
-
-  // Spotlight padding around the highlighted element
-  const PAD = 8;
-  const spotlight = targetRect
-    ? {
-        top: targetRect.top - PAD,
-        left: targetRect.left - PAD,
-        width: targetRect.width + PAD * 2,
-        height: targetRect.height + PAD * 2,
-      }
+  const isLast = idx === TOUR_STEPS.length - 1;
+  const spotlight = rect
+    ? { top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2 }
     : null;
+  const tipPos = getTooltipPos(rect, step?.position);
 
   return (
     <>
-      {/* Dark overlay with spotlight cutout */}
+      <style>{`
+        @keyframes tour-fade-in {
+          from { opacity: 0; transform: scale(0.97) translateY(6px); }
+          to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes tour-spotlight-pulse {
+          0%, 100% { box-shadow: 0 0 0 2px rgba(59,130,246,0.7), 0 0 20px rgba(59,130,246,0.25); }
+          50%       { box-shadow: 0 0 0 3px rgba(59,130,246,0.9), 0 0 32px rgba(59,130,246,0.4); }
+        }
+        @keyframes tour-dot-active {
+          0%, 100% { transform: scaleX(1); }
+          50%       { transform: scaleX(1.15); }
+        }
+        .tour-tip {
+          animation: tour-fade-in 0.22s cubic-bezier(0.22,1,0.36,1) forwards;
+        }
+        .tour-spotlight-ring {
+          animation: tour-spotlight-pulse 2s ease-in-out infinite;
+          transition: top 0.35s cubic-bezier(0.22,1,0.36,1),
+                      left 0.35s cubic-bezier(0.22,1,0.36,1),
+                      width 0.35s cubic-bezier(0.22,1,0.36,1),
+                      height 0.35s cubic-bezier(0.22,1,0.36,1);
+        }
+      `}</style>
+
+      {/* Overlay */}
       <div
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 9998,
-          pointerEvents: "auto",
-        }}
-        onClick={e => e.stopPropagation()}
+        style={{ position: "fixed", inset: 0, zIndex: 9000, pointerEvents: "auto" }}
+        onClick={(e) => e.stopPropagation()}
       >
-        <svg
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
-          xmlns="http://www.w3.org/2000/svg"
-        >
+        <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
           <defs>
             <mask id="tour-mask">
               <rect width="100%" height="100%" fill="white" />
               {spotlight && (
                 <rect
-                  x={spotlight.left}
-                  y={spotlight.top}
-                  width={spotlight.width}
-                  height={spotlight.height}
-                  rx={12}
-                  fill="black"
+                  x={spotlight.left} y={spotlight.top}
+                  width={spotlight.width} height={spotlight.height}
+                  rx={10} fill="black"
+                  style={{ transition: "all 0.35s cubic-bezier(0.22,1,0.36,1)" }}
                 />
               )}
             </mask>
           </defs>
-          <rect
-            width="100%"
-            height="100%"
-            fill="rgba(0,0,0,0.55)"
-            mask="url(#tour-mask)"
-          />
+          <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#tour-mask)" />
         </svg>
 
-        {/* Spotlight border glow */}
+        {/* Spotlight ring */}
         {spotlight && (
           <div
+            className="tour-spotlight-ring"
             style={{
               position: "absolute",
-              top: spotlight.top,
-              left: spotlight.left,
-              width: spotlight.width,
-              height: spotlight.height,
-              borderRadius: 12,
-              boxShadow: "0 0 0 2px rgba(37,99,235,0.7), 0 0 20px rgba(37,99,235,0.3)",
+              top: spotlight.top, left: spotlight.left,
+              width: spotlight.width, height: spotlight.height,
+              borderRadius: 10,
               pointerEvents: "none",
-              transition: "all 0.25s",
             }}
           />
         )}
       </div>
 
-      {/* Tooltip */}
-      {tooltipPos && visible && (
+      {/* Tooltip card */}
+      {!entering && (
         <div
+          key={idx}
+          className="tour-tip"
           style={{
             position: "fixed",
-            top: Math.max(12, Math.min(window.innerHeight - 180, tooltipPos.top)),
-            left: Math.max(12, Math.min(window.innerWidth - 320, tooltipPos.left)),
-            width: 300,
-            zIndex: 9999,
-            borderRadius: 18,
-            border: "1px solid rgba(0,0,0,0.12)",
-            background: "var(--glass, rgba(255,255,255,0.92))",
-            backdropFilter: "blur(16px)",
-            WebkitBackdropFilter: "blur(16px)",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
-            padding: "18px 20px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 12,
-            transition: "top 0.25s, left 0.25s",
+            top: tipPos.top,
+            left: tipPos.left,
+            width: 320,
+            zIndex: 9001,
+            borderRadius: 16,
+            background: "var(--surface)",
+            border: "1px solid var(--bd)",
+            boxShadow: "0 12px 40px rgba(0,0,0,0.28), 0 2px 8px rgba(0,0,0,0.12)",
+            overflow: "hidden",
           }}
         >
-          {/* Step counter */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-mute, #888)" }}>
-              {stepIndex + 1} of {TOUR_STEPS.length}
-            </span>
-            <button
-              onClick={handleDone}
-              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--fg-mute, #888)", lineHeight: 1, padding: 0 }}
-              aria-label="Close tour"
-            >
-              ×
-            </button>
-          </div>
+          {/* Blue accent bar */}
+          <div style={{ height: 3, background: "linear-gradient(90deg, var(--blue), rgba(139,92,246,0.8))" }} />
 
-          {/* Content */}
-          <div>
-            <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 5px", color: "var(--fg, #111)" }}>{step.title}</h3>
-            <p style={{ fontSize: 12, color: "var(--fg-mute, #666)", margin: 0, lineHeight: 1.6 }}>{step.description}</p>
-          </div>
+          <div style={{ padding: "16px 18px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{
+                  width: 34, height: 34, borderRadius: 9, flexShrink: 0,
+                  background: "rgba(59,130,246,0.1)",
+                  border: "1px solid rgba(59,130,246,0.25)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 14, color: "var(--blue)",
+                  fontFamily: "var(--font-chakra)", fontWeight: 700,
+                }}>
+                  {step.icon}
+                </div>
+                <div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--fg)", lineHeight: 1.3 }}>{step.title}</div>
+                  <div style={{ fontSize: 9.5, color: "var(--fm)", marginTop: 1 }}>
+                    {idx + 1} of {TOUR_STEPS.length}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={finish}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--fm)", fontSize: 18, lineHeight: 1, padding: "2px 4px", borderRadius: 4, flexShrink: 0 }}
+              >×</button>
+            </div>
 
-          {/* Progress dots */}
-          <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-            {TOUR_STEPS.map((_, i) => (
-              <div
-                key={i}
-                style={{
-                  width: i === stepIndex ? 16 : 6,
-                  height: 6,
-                  borderRadius: 999,
-                  background: i === stepIndex ? "#2b45ff" : i < stepIndex ? "rgba(37,99,235,0.35)" : "rgba(0,0,0,0.15)",
-                  transition: "width 0.2s, background 0.2s",
-                }}
-              />
-            ))}
-          </div>
+            {/* Description */}
+            <p style={{ fontSize: 12, color: "var(--fd)", lineHeight: 1.65, margin: 0 }}>
+              {step.description}
+            </p>
 
-          {/* Buttons */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <button
-              onClick={handleDone}
-              style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "var(--fg-mute, #888)", padding: 0 }}
-            >
-              Skip tour
-            </button>
-            <button
-              onClick={handleNext}
-              style={{
-                padding: "8px 20px",
-                borderRadius: 999,
-                background: "#2b45ff",
-                color: "#fff",
-                border: "none",
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              {isLast ? "Done ✓" : "Next →"}
-            </button>
+            {/* Progress dots */}
+            <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+              {TOUR_STEPS.map((_, i) => (
+                <div
+                  key={i}
+                  onClick={() => { setEntering(true); setTimeout(() => setIdx(i), 50); }}
+                  style={{
+                    height: 4, borderRadius: 999,
+                    width: i === idx ? 20 : 6,
+                    background: i === idx ? "var(--blue)" : i < idx ? "rgba(59,130,246,0.35)" : "var(--bd)",
+                    transition: "width 0.25s, background 0.25s",
+                    cursor: "pointer",
+                    animation: i === idx ? "tour-dot-active 2s ease-in-out infinite" : "none",
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <button
+                onClick={finish}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--fm)", padding: 0 }}
+              >
+                Skip tour
+              </button>
+              <div style={{ display: "flex", gap: 7 }}>
+                {step.action && (
+                  <button
+                    onClick={() => { finish(); router.push(step.action!.href); }}
+                    style={{
+                      padding: "7px 14px", borderRadius: 8, fontSize: 11, fontWeight: 600,
+                      background: "rgba(59,130,246,0.1)",
+                      border: "1px solid rgba(59,130,246,0.35)",
+                      color: "var(--blue)", cursor: "pointer",
+                      transition: "background 0.15s",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(59,130,246,0.18)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(59,130,246,0.1)")}
+                  >
+                    {step.action.label}
+                  </button>
+                )}
+                <button
+                  onClick={advance}
+                  style={{
+                    padding: "7px 16px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+                    background: "var(--blue)", color: "#fff",
+                    border: "none", cursor: "pointer",
+                    transition: "opacity 0.15s",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.85")}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+                >
+                  {isLast ? "Done ✓" : "Next →"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
