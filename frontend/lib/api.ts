@@ -1081,6 +1081,21 @@ export interface Workspace {
   vault?: Record<string, WorkspaceVaultEntry>;
 }
 
+export async function createWorkspace(
+  founderId: string,
+  name: string,
+  goal: string,
+  stackId: string = "idea_to_revenue",
+): Promise<Workspace> {
+  const res = await apiFetch(`${BASE}/workspaces`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: founderId, name, goal, stack_id: stackId }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function listWorkspaces(founderId: string): Promise<Workspace[]> {
   const res = await apiFetch(`${BASE}/workspaces?founder_id=${encodeURIComponent(founderId)}`);
   if (!res.ok) throw new Error(await res.text());

@@ -3,7 +3,7 @@
 /* Redesigned new-goal form — ported from mockup (#v-new). */
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getStacks, submitGoal, ingestAttachment, type AgentStackTemplate } from "@/lib/api";
+import { getStacks, submitGoal, createWorkspace, ingestAttachment, type AgentStackTemplate } from "@/lib/api";
 import { useDevUser } from "@/lib/use-dev-user";
 
 export default function NewGoalView() {
@@ -51,13 +51,14 @@ export default function NewGoalView() {
       if (attachments.length) {
         instruction += "\n\nAttached context:\n" + attachments.map((a) => `--- ${a.name} ---\n${a.content.slice(0, 8000)}`).join("\n\n");
       }
-      const data = await submitGoal(userId, instruction, {}, selStack || "idea_to_revenue", undefined, name || undefined);
+      // Step 1: create the workspace explicitly (so we own the ID regardless of backend version)
+      const ws = await createWorkspace(userId, name || goal.slice(0, 60), goal, selStack || "idea_to_revenue");
+      // Step 2: submit goal, linked to this workspace
+      const data = await submitGoal(userId, instruction, {}, selStack || "idea_to_revenue", ws.workspace_id, name || undefined);
       if (!data.session_id) throw new Error("No session_id returned");
-      if (data.workspace_id && data.chapter_id) {
-        router.push(`/?workspace=${data.workspace_id}&chapter=${data.chapter_id}&founder=${encodeURIComponent(userId)}`);
-      } else {
-        router.push(`/?session=${data.session_id}&founder=${encodeURIComponent(userId)}`);
-      }
+      // Step 3: navigate to workspace view — use chapter_id from backend if returned, else open workspace
+      const chapterParam = data.chapter_id ? `&chapter=${data.chapter_id}` : "";
+      router.push(`/?workspace=${ws.workspace_id}${chapterParam}&founder=${encodeURIComponent(userId)}`);
     } catch (e) {
       setBusy(false);
       setErr(`⚠ ${e instanceof Error ? e.message : String(e)}`);
