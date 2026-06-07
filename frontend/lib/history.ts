@@ -91,15 +91,43 @@ export function subscribeSessions(callback: () => void): () => void {
   };
 }
 
+// Write the session list to localStorage without ever throwing. Artifact values
+// can be large (copy, base64), so 50 of them easily blow the storage quota — which
+// previously threw QuotaExceededError and broke unrelated callers (e.g. the
+// onboarding launch button). Trim oversized values, then prune the oldest entries
+// and retry until it fits; give up to an empty list rather than throw.
+function persist(sessions: SessionRecord[]): SessionRecord[] {
+  const trimmed = sessions.slice(0, 50).map(s => ({
+    ...s,
+    artifacts: (s.artifacts || []).slice(0, 12).map(a => ({
+      ...a,
+      value: typeof a.value === "string" && a.value.length > 2000 ? a.value.slice(0, 2000) + "…" : a.value,
+    })),
+  }));
+  for (let limit = trimmed.length; ; limit = Math.floor(limit / 2)) {
+    const slice = trimmed.slice(0, Math.max(limit, 0));
+    try {
+      const raw = JSON.stringify(slice);
+      localStorage.setItem(KEY, raw);
+      cachedRaw = raw;
+      cachedSessions = slice;
+      return slice;
+    } catch {
+      if (limit <= 0) {
+        try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+        cachedRaw = "[]";
+        cachedSessions = EMPTY_SESSIONS;
+        return cachedSessions;
+      }
+    }
+  }
+}
+
 export function saveSession(record: SessionRecord): void {
   if (typeof window === "undefined") return;
   const sessions = getSessions().filter(s => s.sessionId !== record.sessionId);
   sessions.unshift(record);
-  const next = sessions.slice(0, 50);
-  const raw = JSON.stringify(next);
-  localStorage.setItem(KEY, raw);
-  cachedRaw = raw;
-  cachedSessions = next;
+  persist(sessions);
   emitSessionsChange();
 }
 
@@ -108,20 +136,14 @@ export function updateSession(sessionId: string, patch: Partial<SessionRecord>):
   const sessions = getSessions().map(s =>
     s.sessionId === sessionId ? { ...s, ...patch } : s
   );
-  const raw = JSON.stringify(sessions);
-  localStorage.setItem(KEY, raw);
-  cachedRaw = raw;
-  cachedSessions = sessions;
+  persist(sessions);
   emitSessionsChange();
 }
 
 export function deleteSession(sessionId: string): void {
   if (typeof window === "undefined") return;
   const sessions = getSessions().filter(s => s.sessionId !== sessionId);
-  const raw = JSON.stringify(sessions);
-  localStorage.setItem(KEY, raw);
-  cachedRaw = raw;
-  cachedSessions = sessions;
+  persist(sessions);
   emitSessionsChange();
 }
 

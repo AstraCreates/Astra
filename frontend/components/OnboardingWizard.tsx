@@ -984,19 +984,25 @@ export default function OnboardingWizard() {
 
   const [launching, setLaunching] = useState(false);
 
+  // localStorage can be full (quota exceeded) — a thrown setItem must never
+  // block navigation, so every write is best-effort.
+  function lsSet(key: string, val: string) {
+    try { localStorage.setItem(key, val); } catch { /* quota full — ignore */ }
+  }
+
   async function handleLaunch() {
     if (launching) return;
-    localStorage.setItem("astra_onboarding_done", "1");
-    localStorage.setItem("astra_show_tour", "1");
+    lsSet("astra_onboarding_done", "1");
+    lsSet("astra_show_tour", "1");
     // Persist for any consumer that reads these (tour, prefill, etc.).
-    if (name.trim()) localStorage.setItem("astra_onboarding_name", name.trim());
-    if (goal.trim()) localStorage.setItem("astra_onboarding_goal", goal.trim());
-    if (company.trim()) localStorage.setItem("astra_onboarding_company", company.trim());
+    if (name.trim()) lsSet("astra_onboarding_name", name.trim());
+    if (goal.trim()) lsSet("astra_onboarding_goal", goal.trim());
+    if (company.trim()) lsSet("astra_onboarding_company", company.trim());
     if (selectedStackId === "custom" && customAgents.length > 0) {
-      localStorage.setItem("astra_custom_agents", JSON.stringify(customAgents));
-      localStorage.setItem("astra_onboarding_stack", "custom");
+      lsSet("astra_custom_agents", JSON.stringify(customAgents));
+      lsSet("astra_onboarding_stack", "custom");
     } else {
-      localStorage.setItem("astra_onboarding_stack", selectedStackId);
+      lsSet("astra_onboarding_stack", selectedStackId);
     }
     const g = goal.trim();
     const nm = (company.trim() || name.trim());
@@ -1021,7 +1027,7 @@ export default function OnboardingWizard() {
   }
 
   async function handleSkip() {
-    localStorage.setItem("astra_onboarding_done", "1");
+    lsSet("astra_onboarding_done", "1");
     router.push("/");
   }
 
