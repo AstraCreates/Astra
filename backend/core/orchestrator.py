@@ -530,6 +530,11 @@ class Orchestrator:
             logger.warning("Company brain record write failed for %s: %s", title, exc)
 
     async def run(self, goal: str, founder_id: str, constraints: dict = None, session_id: str = None) -> dict[str, Any]:
+        # Imported once at function scope so every reference below is bound regardless
+        # of which code path runs first. The phase-gate block uses `cancellation` before
+        # the later local re-imports, which made Python treat it as an unassigned local
+        # (UnboundLocalError) on the research→design handoff.
+        from backend.core import cancellation
         if not session_id:
             from backend.core.session_ids import new_session_id
             session_id = new_session_id()
