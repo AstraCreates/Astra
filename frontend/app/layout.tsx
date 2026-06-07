@@ -3,7 +3,7 @@ import { Geist, JetBrains_Mono, Chakra_Petch, IBM_Plex_Mono } from "next/font/go
 import ApiAuthBridge from "@/components/ApiAuthBridge";
 import CookieNotice from "@/components/CookieNotice";
 import SessionWrapper from "@/components/SessionWrapper";
-import SiteNav from "./site-nav";
+import AppChrome from "@/components/AppChrome";
 import StarField from "./components/StarField";
 import "./globals.css";
 import "./astra-redesign.css";
@@ -34,8 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <StarField />
         <SessionWrapper>
           <ApiAuthBridge />
-          <SiteNav />
-          <main>{children}</main>
+          <AppChrome>{children}</AppChrome>
           <CookieNotice />
         </SessionWrapper>
       </body>
