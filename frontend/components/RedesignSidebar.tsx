@@ -17,12 +17,21 @@ const LINKS: { href: string; ic: string; label: string; match: (p: string) => bo
 
 function initials(id: string) { return (id || "?").replace(/^(user_|google_)/, "").slice(0, 2).toUpperCase(); }
 
-export default function RedesignSidebar() {
+export default function RedesignSidebar({ mobile = false, open = false, onClose }: { mobile?: boolean; open?: boolean; onClose?: () => void } = {}) {
   const pathname = usePathname() || "/";
   const { userId, isSignedIn, user } = useDevUser();
 
+  // On mobile the sidebar is an off-canvas drawer (fixed, slides in over content);
+  // on desktop it's the usual sticky in-flow column.
+  const navStyle: React.CSSProperties = mobile
+    ? { width: 240, maxWidth: "82vw", display: "flex", flexDirection: "column", background: "var(--surface)", borderRight: "1px solid var(--bd)", height: "100dvh", boxShadow: "2px 0 24px rgba(0,0,0,.18)", position: "fixed", top: 0, left: 0, zIndex: 60, transform: open ? "translateX(0)" : "translateX(-104%)", transition: "transform .22s ease" }
+    : { width: 210, flexShrink: 0, display: "flex", flexDirection: "column", background: "var(--surface)", borderRight: "1px solid var(--bd)", height: "100vh", boxShadow: "2px 0 12px rgba(0,0,0,.04)", position: "sticky", top: 0 };
+
+  // Close the drawer after any in-drawer navigation on mobile.
+  const closeOnNav = mobile ? onClose : undefined;
+
   return (
-    <nav style={{ width: 210, flexShrink: 0, display: "flex", flexDirection: "column", background: "var(--surface)", borderRight: "1px solid var(--bd)", height: "100vh", boxShadow: "2px 0 12px rgba(0,0,0,.04)", position: "sticky", top: 0 }}>
+    <nav onClick={(e) => { if (mobile && (e.target as HTMLElement).closest("a")) closeOnNav?.(); }} style={navStyle}>
       <div style={{ padding: "20px 16px 16px", borderBottom: "1px solid var(--bd)" }}>
         <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, textDecoration: "none" }}>
           <div className="nav-hex"><span style={{ fontFamily: "var(--font-chakra)", fontSize: 12, fontWeight: 700, color: "#fff" }}>A</span></div>

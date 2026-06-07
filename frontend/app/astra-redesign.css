@@ -243,3 +243,20 @@ h1, h2, h3, h4, h5, h6 {
    (settings/brain/integrations/payments/outreach) that can't be reached via
    token remap alone. */
 * { border-radius: 0 !important; }
+
+/* ── Mobile / responsive ──────────────────────────────────────────────────
+   The fixed sidebar is an off-canvas drawer on phones (AppChrome handles the
+   toggle). These rules keep topbar titles clear of the floating hamburger and
+   stop wide desktop-only layouts from forcing horizontal scroll. */
+@media (max-width: 768px) {
+  .topbar-title { padding-left: 42px; }
+  /* Session monitor / dashboards: stack columns instead of side-by-side. */
+  .sessions-grid { grid-template-columns: 1fr !important; }
+  .sc, .dc { min-width: 0 !important; }
+  /* Vault | detail split → stacked: deliverables on top, detail fills the rest. */
+  .sess-ws { flex-direction: column !important; }
+  .vault { width: 100% !important; max-height: 32vh; flex-shrink: 0; border-right: none !important; border-bottom: 1px solid var(--bd); }
+  .detail { width: 100% !important; min-width: 0 !important; flex: 1; }
+  /* Prevent any fixed/min widths from overflowing the viewport. */
+  body { overflow-x: hidden; }
+}
