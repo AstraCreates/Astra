@@ -225,6 +225,11 @@ async def stack_connector_validation_route(stack_id: str, founder_id: str, reque
 @router.post("/goal")
 async def submit_goal(body: GoalRequest, request: Request):
     actor_id = require_founder_access(request, body.founder_id, min_role="operator")
+    # Validate the initial prompt: minimum length + disallowed-content screen.
+    from backend.safety.content_filter import screen_goal
+    _ok, _reason = screen_goal(body.instruction)
+    if not _ok:
+        raise HTTPException(status_code=400, detail=_reason)
     from backend.core.session_ids import new_session_id
     session_id = new_session_id()
     orch = get_orchestrator()
