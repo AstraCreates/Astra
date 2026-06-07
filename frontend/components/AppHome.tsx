@@ -1,15 +1,23 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import SessionView from "@/components/SessionView";
 import DashboardView from "@/components/DashboardView";
 import NewGoalView from "@/components/NewGoalView";
 
 export default function AppHome() {
+  const router = useRouter();
   const searchParams = useSearchParams();
 
   const sessionId = searchParams.get("session") ?? "";
   const forceNew = searchParams.get("new") === "1";
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && !localStorage.getItem("astra_onboarding_done")) {
+      router.replace("/onboarding");
+    }
+  }, [router]);
 
   const view = forceNew ? "new" : sessionId ? "session" : "home";
 

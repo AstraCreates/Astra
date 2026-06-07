@@ -992,10 +992,12 @@ export default function OnboardingWizard() {
     } else {
       localStorage.setItem("astra_onboarding_stack", selectedStackId);
     }
+    localStorage.setItem("astra_onboarding_done", "1");
     router.push("/?from_onboarding=1");
   }
 
   async function handleSkip() {
+    localStorage.setItem("astra_onboarding_done", "1");
     router.push("/?from_onboarding=1");
   }
 
