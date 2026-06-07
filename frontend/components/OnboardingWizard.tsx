@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useDevUser } from "@/lib/use-dev-user";
-import { apiFetch, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getSetupStatus, saveServiceCredential, getComposioOAuthUrls, setupAccounts } from "@/lib/api";
+import { apiFetch, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getSetupStatus, saveServiceCredential, getComposioOAuthUrls, setupAccounts, createWorkspace, submitGoal } from "@/lib/api";
 import type { AgentStackTemplate, AgentCatalogEntry, StackReadiness } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -982,8 +982,13 @@ export default function OnboardingWizard() {
   const selectedStack = stacks.find(s => s.stack_id === selectedStackId);
   const stackName = selectedStackId === "custom" ? "Custom Stack" : (selectedStack?.name ?? "Idea to Revenue Stack");
 
+  const [launching, setLaunching] = useState(false);
+
   async function handleLaunch() {
+    if (launching) return;
+    localStorage.setItem("astra_onboarding_done", "1");
     localStorage.setItem("astra_show_tour", "1");
+    // Persist for any consumer that reads these (tour, prefill, etc.).
     if (name.trim()) localStorage.setItem("astra_onboarding_name", name.trim());
     if (goal.trim()) localStorage.setItem("astra_onboarding_goal", goal.trim());
     if (company.trim()) localStorage.setItem("astra_onboarding_company", company.trim());
@@ -993,13 +998,31 @@ export default function OnboardingWizard() {
     } else {
       localStorage.setItem("astra_onboarding_stack", selectedStackId);
     }
-    localStorage.setItem("astra_onboarding_done", "1");
-    router.push(`/?welcome=1&name=${encodeURIComponent(name.trim())}`);
+    const g = goal.trim();
+    const nm = (company.trim() || name.trim());
+    const stack = selectedStackId || "idea_to_revenue";
+    // No goal yet → just land on the dashboard so the user can start a project.
+    if (!g) { router.push("/"); return; }
+    setLaunching(true);
+    try {
+      // Same flow as the new-project view: own the workspace, then launch a chapter.
+      const ws = await createWorkspace(founderId, nm || g.slice(0, 60), g, stack);
+      const constraints = (selectedStackId === "custom" && customAgents.length > 0)
+        ? { custom_agents: customAgents } : {};
+      const data = await submitGoal(founderId, g, constraints, stack, ws.workspace_id, nm || undefined);
+      const chapterParam = data.chapter_id ? `&chapter=${data.chapter_id}` : "";
+      router.push(`/?workspace=${ws.workspace_id}${chapterParam}&founder=${encodeURIComponent(founderId)}`);
+    } catch (e) {
+      // Never leave the button dead — fall back to the dashboard.
+      console.error("onboarding launch failed:", e);
+      setLaunching(false);
+      router.push("/");
+    }
   }
 
   async function handleSkip() {
     localStorage.setItem("astra_onboarding_done", "1");
-    router.push("/?welcome=1");
+    router.push("/");
   }
 
   return (
