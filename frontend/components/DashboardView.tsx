@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { listSessions, deleteSessionRemote, type SessionIndexEntry } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
@@ -41,32 +41,14 @@ export default function DashboardView() {
   const [company, setCompany] = useState("");
   const [firstName, setFirstName] = useState("");
   const [greeting, setGreeting] = useState("");
-  const [greetFade, setGreetFade] = useState(true);
-  const greetIdx = useRef(0);
-
   useEffect(() => {
     if (typeof window !== "undefined") {
       setCompany(localStorage.getItem("astra_onboarding_company") || "");
       const fullName = localStorage.getItem("astra_onboarding_name") || "";
       setFirstName(fullName.split(" ")[0] || fullName);
     }
-    // Pick random starting greeting
-    greetIdx.current = Math.floor(Math.random() * GREETINGS.length);
-    setGreeting(GREETINGS[greetIdx.current]);
-  }, []);
-
-  // Rotate greeting every 7 seconds
-  useEffect(() => {
-    if (!GREETINGS.length) return;
-    const interval = setInterval(() => {
-      setGreetFade(false);
-      setTimeout(() => {
-        greetIdx.current = (greetIdx.current + 1) % GREETINGS.length;
-        setGreeting(GREETINGS[greetIdx.current]);
-        setGreetFade(true);
-      }, 300);
-    }, 7000);
-    return () => clearInterval(interval);
+    // Pick one greeting randomly for this session — never changes until next load
+    setGreeting(GREETINGS[Math.floor(Math.random() * GREETINGS.length)]);
   }, []);
 
   const del = useCallback(async (e: React.MouseEvent, s: SessionIndexEntry) => {
@@ -119,7 +101,6 @@ export default function DashboardView() {
             style={{
               fontFamily: "var(--font-chakra)", fontSize: 22, fontWeight: 700,
               color: "var(--fg)", marginBottom: 4,
-              opacity: greetFade ? 1 : 0,
             }}
           >
             {headline || "Sessions"}
