@@ -62,12 +62,17 @@ def generate(prompt: str, max_tokens: int | None = None, json_mode: bool = False
     return re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
 
 
+import os as _os
 _IMAGE_COST = 0.03          # FLUX-2-pro cost per image in USD
-_IMAGE_MONTHLY_BUDGET = 1.50  # per founder per month
+# Per founder per month. Override with ASTRA_IMAGE_MONTHLY_BUDGET; set to 0 (or
+# negative) for UNLIMITED — useful during development.
+_IMAGE_MONTHLY_BUDGET = float(_os.environ.get("ASTRA_IMAGE_MONTHLY_BUDGET", "1.50"))
 
 
 def _check_image_budget(founder_id: str) -> tuple[bool, float]:
     """Returns (allowed, remaining_budget). Uses Redis for tracking."""
+    if _IMAGE_MONTHLY_BUDGET <= 0:
+        return True, float("inf")  # unlimited (dev mode)
     try:
         import redis, calendar, datetime
         from backend.config import settings
