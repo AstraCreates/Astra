@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useDevUser } from "@/lib/use-dev-user";
-import { apiFetch, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getSetupStatus, saveServiceCredential, getComposioOAuthUrls, setupAccounts, createWorkspace, submitGoal } from "@/lib/api";
+import { apiFetch, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getSetupStatus, saveServiceCredential, getComposioOAuthUrls, setupAccounts, submitGoal } from "@/lib/api";
 import type { AgentStackTemplate, AgentCatalogEntry, StackReadiness } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -984,10 +984,13 @@ export default function OnboardingWizard() {
 
   const [launching, setLaunching] = useState(false);
 
-  // localStorage can be full (quota exceeded) — a thrown setItem must never
-  // block navigation, so every write is best-effort.
+  // localStorage may be full (quota exceeded). A thrown setItem must never block
+  // navigation, AND the onboarding-done flag MUST persist (the home page gates on
+  // it — if it doesn't save, the user is stuck on the welcome screen). So on a
+  // quota error, evict the largest key (session history) and retry once.
   function lsSet(key: string, val: string) {
-    try { localStorage.setItem(key, val); } catch { /* quota full — ignore */ }
+    try { localStorage.setItem(key, val); return; } catch { /* full — evict below */ }
+    try { localStorage.removeItem("astra_sessions"); localStorage.setItem(key, val); } catch { /* give up */ }
   }
 
   async function handleLaunch() {
@@ -1007,17 +1010,17 @@ export default function OnboardingWizard() {
     const g = goal.trim();
     const nm = (company.trim() || name.trim());
     const stack = selectedStackId || "idea_to_revenue";
-    // No goal yet → just land on the dashboard so the user can start a project.
+    // No goal yet → land on the dashboard (now onboarded) so the user can start one.
     if (!g) { router.push("/"); return; }
     setLaunching(true);
     try {
-      // Same flow as the new-project view: own the workspace, then launch a chapter.
-      const ws = await createWorkspace(founderId, nm || g.slice(0, 60), g, stack);
+      // Same launch path as the New Goal view: submit, then open the live session.
+      const instruction = nm ? `Company/project name: ${nm}\n\n${g}` : g;
       const constraints = (selectedStackId === "custom" && customAgents.length > 0)
         ? { custom_agents: customAgents } : {};
-      const data = await submitGoal(founderId, g, constraints, stack, ws.workspace_id, nm || undefined);
-      const chapterParam = data.chapter_id ? `&chapter=${data.chapter_id}` : "";
-      router.push(`/?workspace=${ws.workspace_id}${chapterParam}&founder=${encodeURIComponent(founderId)}`);
+      const data = await submitGoal(founderId, instruction, constraints, stack);
+      if (!data.session_id) throw new Error("No session_id returned");
+      router.push(`/?session=${data.session_id}&founder=${encodeURIComponent(founderId)}`);
     } catch (e) {
       // Never leave the button dead — fall back to the dashboard.
       console.error("onboarding launch failed:", e);
