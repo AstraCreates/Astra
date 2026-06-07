@@ -303,20 +303,18 @@ def _commit_and_push(local: str, message: str) -> str | None:
 
 
 def _make_env() -> dict:
-    # openclaude talks to the DeepInfra endpoint below, so it needs a DeepInfra
-    # key. Prefer the DeepInfra-specific keys; planner_model_api_key is often an
-    # OpenRouter key (sk-or-...) which would 401 against DeepInfra and make every
-    # build spin until timeout. Only fall back to it if it's NOT an OpenRouter key.
-    planner_key = getattr(settings, "planner_model_api_key", "") or ""
-    deepinfra_key = (
-        getattr(settings, "deepinfra_api_key", "")
-        or getattr(settings, "agent_model_api_key", "")
-        or (planner_key if not planner_key.startswith("sk-or-") else "")
+    # openclaude talks to OpenRouter (OpenAI-compatible). Use the OpenRouter key +
+    # base + the configured MVP build model (a strong tool-use model on OpenRouter).
+    from backend.core.key_rotator import get_openrouter_key
+    or_key = (
+        get_openrouter_key()
+        or getattr(settings, "openrouter_api_key", "")
+        or getattr(settings, "planner_model_api_key", "")
     )
     env = os.environ.copy()
-    env["OPENAI_BASE_URL"] = "https://api.deepinfra.com/v1/openai"
-    env["OPENAI_API_KEY"] = deepinfra_key
-    env["OPENAI_MODEL"] = getattr(settings, "mvp_build_model", "") or "moonshotai/Kimi-K2.5"
+    env["OPENAI_BASE_URL"] = getattr(settings, "openrouter_base_url", "") or "https://openrouter.ai/api/v1"
+    env["OPENAI_API_KEY"] = or_key
+    env["OPENAI_MODEL"] = getattr(settings, "mvp_build_model", "") or "tencent/hy3-preview"
     return env
 
 
@@ -359,6 +357,8 @@ def _stream_build_events(cmd: list, cwd: str, timeout: int, env: dict,
     from backend.core.events import publish_sync
 
     files: dict[str, str] = {}
+    tool_names: dict[str, str] = {}   # tool_use_id -> tool name (to label results)
+    tool_targets: dict[str, str] = {}  # tool_use_id -> short target (cmd/path)
     result_obj = None
 
     def pub(ev: dict) -> None:
@@ -366,6 +366,20 @@ def _stream_build_events(cmd: list, cwd: str, timeout: int, env: dict,
             publish_sync(app_session_id, {"type": "agent_build", "agent": agent, **ev})
         except Exception:
             pass
+
+    def _block_text(content) -> str:
+        """Flatten a tool_result content (str or list of blocks) to plain text."""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for b in content:
+                if isinstance(b, dict):
+                    parts.append(b.get("text") or b.get("content") or "")
+                else:
+                    parts.append(str(b))
+            return "\n".join(p for p in parts if p)
+        return str(content or "")
 
     with _build_semaphore:
         proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -393,16 +407,56 @@ def _stream_build_events(cmd: list, cwd: str, timeout: int, env: dict,
                         elif bt == "tool_use":
                             name = block.get("name") or ""
                             inp = block.get("input") or {}
+                            bid = block.get("id") or ""
+                            if bid:
+                                tool_names[bid] = name
                             if name in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
                                 path = inp.get("file_path") or inp.get("path") or inp.get("notebook_path") or ""
                                 content = inp.get("content") or inp.get("new_string") or ""
+                                if bid:
+                                    tool_targets[bid] = path
                                 if path:
                                     files[path] = content
-                                    pub({"kind": "file", "path": path, "content": content[:20000], "size": len(content)})
+                                    verb = "edited" if name in ("Edit", "MultiEdit") else "wrote"
+                                    pub({"kind": "file", "path": path, "content": content[:20000], "size": len(content), "verb": verb})
                             elif name == "Bash":
-                                pub({"kind": "command", "command": (inp.get("command") or "")[:500]})
+                                cmd = (inp.get("command") or "")[:500]
+                                desc = (inp.get("description") or "")[:120]
+                                if bid:
+                                    tool_targets[bid] = cmd
+                                pub({"kind": "command", "command": cmd, "desc": desc})
+                            elif name == "TodoWrite":
+                                todos = inp.get("todos") or []
+                                items = [str(t.get("content") or t.get("task") or t)[:80] for t in todos if isinstance(t, (dict, str))]
+                                active = next((str(t.get("content") or "")[:80] for t in todos
+                                               if isinstance(t, dict) and t.get("status") == "in_progress"), "")
+                                pub({"kind": "plan", "text": f"Plan ({len(items)} steps)" + (f" — now: {active}" if active else ""),
+                                     "todos": items[:12]})
                             elif name in ("Read", "Glob", "Grep"):
-                                pub({"kind": "tool", "tool": name, "target": str(inp.get("file_path") or inp.get("pattern") or "")[:120]})
+                                tgt = str(inp.get("file_path") or inp.get("pattern") or "")[:120]
+                                if bid:
+                                    tool_targets[bid] = tgt
+                                pub({"kind": "tool", "tool": name, "target": tgt})
+                            else:
+                                pub({"kind": "tool", "tool": name, "target": str(inp.get("file_path") or inp.get("url") or "")[:120]})
+                elif etype == "user":
+                    # Tool results — bash stdout/stderr, test output, build errors. The
+                    # detail that makes the build watchable. Only surface Bash results
+                    # (file reads are noise; we already stream files separately).
+                    for block in (ev.get("message", {}).get("content") or []):
+                        if not isinstance(block, dict) or block.get("type") != "tool_result":
+                            continue
+                        rid = block.get("tool_use_id") or ""
+                        rname = tool_names.get(rid, "")
+                        if rname and rname not in ("Bash",):
+                            continue
+                        out = _block_text(block.get("content")).strip()
+                        if not out:
+                            continue
+                        is_err = bool(block.get("is_error"))
+                        tail = out[-700:] if len(out) > 700 else out
+                        pub({"kind": "error" if is_err else "output",
+                             "text": tail, "command": tool_targets.get(rid, "")[:120]})
                 elif etype == "result":
                     result_obj = ev
         finally:
@@ -430,7 +484,7 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
         raise RuntimeError(f"openclaude not found at {OPENCLAUDE_BIN}")
 
     env = _make_env()
-    model = model or env.get("OPENAI_MODEL", "moonshotai/Kimi-K2.5")
+    model = model or env.get("OPENAI_MODEL", "tencent/hy3-preview")
     # Build args list (excluding cwd — handled by shell cd).
     # --output-format json gives a clean, parseable result object (and reliably
     # runs the agentic tool loop). Keep the prompt as the LAST arg with no
@@ -463,7 +517,7 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
     # can never break shell parsing. openclaude blocks --dangerously-skip-permissions
     # as root, so drop to the astra user via sudo + env for the credentials.
     openai_key = env.get("OPENAI_API_KEY", "")
-    openai_base = env.get("OPENAI_BASE_URL", "https://api.deepinfra.com/v1/openai")
+    openai_base = env.get("OPENAI_BASE_URL", settings.openrouter_base_url)
     openai_model = env.get("OPENAI_MODEL", model)
     if os.getuid() == 0:
         cmd = [
@@ -511,10 +565,10 @@ def _pm_respond(agent_output: str, goal: str, context: str, missing: list[str]) 
     """Use planner LLM to generate the orchestrator's next message to openclaude."""
     env = _make_env()
     api_key = env.get("OPENAI_API_KEY", "")
-    base_url = env.get("OPENAI_BASE_URL", "https://api.deepinfra.com/v1/openai")
+    base_url = env.get("OPENAI_BASE_URL", settings.openrouter_base_url)
     # These review calls run against the DeepInfra endpoint, so use a model valid
     # there (planner_model_name may be an OpenRouter-only slug -> 404).
-    model = getattr(settings, "mvp_build_model", "") or "moonshotai/Kimi-K2.5"
+    model = getattr(settings, "mvp_build_model", "") or "tencent/hy3-preview"
 
     client = openai.OpenAI(base_url=base_url, api_key=api_key)
     missing_str = ", ".join(missing) if missing else "none — MVP may be complete"
@@ -566,7 +620,7 @@ def _planner_review(local: str, goal: str, files: list[str]) -> dict:
     client = openai.OpenAI(base_url=env["OPENAI_BASE_URL"], api_key=env["OPENAI_API_KEY"])
     # These review calls run against the DeepInfra endpoint, so use a model valid
     # there (planner_model_name may be an OpenRouter-only slug -> 404).
-    model = getattr(settings, "mvp_build_model", "") or "moonshotai/Kimi-K2.5"
+    model = getattr(settings, "mvp_build_model", "") or "tencent/hy3-preview"
 
     # Sample key files — read enough that truncation false-positives don't trigger
     samples = []
@@ -796,12 +850,23 @@ def run_mvp_loop(
         Path(local, ".oc_session_id").write_text(oc_session_id)
         commits = []
 
+        def _phase(text: str, **extra) -> None:
+            """Publish a build-progress line so the technical preview shows what's
+            happening between openclaude steps (passes, rounds, commits)."""
+            try:
+                from backend.core.events import publish_sync
+                publish_sync(session_id, {"type": "agent_build", "agent": agent,
+                                          "kind": "phase", "text": text, **extra})
+            except Exception:
+                pass
+
         try:
             from backend.core.events import publish_sync
             publish_sync(session_id, {"type": "agent_build", "agent": agent,
                                       "kind": "build_start", "goal": goal[:160], "github": is_github})
         except Exception:
             pass
+        _phase(f"Workspace ready ({'GitHub' if is_github else 'local'}) — {len(required_files)} target files")
 
         logger.info("MVP build start (github=%s) for %s", is_github, repo_url or "(local)")
         if is_github:
@@ -822,6 +887,7 @@ def run_mvp_loop(
               "tools. Keep working until the whole MVP is complete; do not stop after one file."
         )
         logger.info("Pass 1: holistic MVP build (%d target files)", len(required_files))
+        _phase("Pass 1/4 — building the full MVP")
         _run_claude(local, build_prompt, session_id=build_sid, timeout=1800,
                     founder_id=founder_id, app_session_id=session_id, agent=agent)
 
@@ -832,6 +898,7 @@ def run_mvp_loop(
             if not missing:
                 break
             logger.info("Completion round %d: %d still missing", _round + 1, len(missing))
+            _phase(f"Completion round {_round + 1} — {len(missing)} file(s) still missing: {', '.join(missing[:5])}")
             fix_prompt = (
                 "These required files are still missing or incomplete: " + ", ".join(missing)
                 + ". Create and fully implement them NOW with your Write tool — real, complete code. "
@@ -859,6 +926,7 @@ def run_mvp_loop(
         # Pass 2: openclaude self-test + fix (fresh session, reads actual files on disk)
         fix_session = str(uuid.uuid4())
         logger.info("Pass 2: openclaude fix pass")
+        _phase("Pass 2/4 — self-test & fix")
         _run_claude(local, _OC_TEST_PROMPT, session_id=None, timeout=600, founder_id=founder_id, app_session_id=session_id, agent=agent)
         _sanitize_package_json(local)
         if is_github:
@@ -870,6 +938,7 @@ def run_mvp_loop(
 
         # Pass 2b: build-error self-healing — run `npm run build`, fix any errors, repeat
         logger.info("Pass 2b: build-error self-healing pass")
+        _phase("Pass 3/4 — build-error self-healing (npm run build)")
         _run_claude(local, _BUILD_CHECK_PROMPT, session_id=None, timeout=900, founder_id=founder_id, app_session_id=session_id, agent=agent)
         _sanitize_package_json(local)
         if is_github:
@@ -881,8 +950,10 @@ def run_mvp_loop(
 
         # Pass 3: planner review → fix any remaining issues
         current_files = _staged_files(local)
+        _phase("Pass 4/4 — planner review")
         review = _planner_review(local, goal, current_files)
         logger.info("Planner review: pass=%s issues=%s", review["pass"], review["issues"])
+        _phase(f"Review: {'passed' if review['pass'] else 'needs fixes'} — {len(review.get('issues') or [])} issue(s)")
         if not review["pass"] and review["fix_instructions"]:
             _run_claude(local, review["fix_instructions"], session_id=None, timeout=600, founder_id=founder_id, app_session_id=session_id, agent=agent)
             _sanitize_package_json(local)
@@ -895,6 +966,7 @@ def run_mvp_loop(
 
         _stage_all(local)
         all_files = _list_built_files(local)
+        _phase(f"Build complete — {len(all_files)} files written", files_total=len(all_files))
 
         # Auto-deploy to Vercel so there's a live preview URL (uses placeholder env
         # vars so it builds without real keys). Only when pushed to GitHub.

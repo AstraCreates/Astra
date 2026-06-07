@@ -484,23 +484,25 @@ function WebPreview({ state, sessionId, founderId }: { state: AgentState; sessio
 
 interface BuildEvent {
   kind: string;
-  path?: string; content?: string; size?: number;
-  command?: string; text?: string; tool?: string; target?: string;
-  goal?: string; files?: string[]; url?: string;
+  path?: string; content?: string; size?: number; verb?: string;
+  command?: string; desc?: string; text?: string; tool?: string; target?: string;
+  goal?: string; files?: string[]; url?: string; todos?: string[]; files_total?: number;
 }
 
 function BuildStream({ events, files }: { events: BuildEvent[]; files: Record<string, { content: string; size: number }> }) {
   const [open, setOpen] = useState<string | null>(null);
   const fileList = Object.keys(files).sort();
-  const icon = (k: string) => k === "file" ? "📝" : k === "command" ? "▶" : k === "build_start" ? "🔨" : k === "done" ? "✅" : k === "deploy" ? "🚀" : k === "deploy_start" ? "☁️" : k === "tool" ? "⚙" : "·";
+  const icon = (k: string) => k === "file" ? "📝" : k === "command" ? "▶" : k === "build_start" ? "🔨" : k === "done" ? "✅" : k === "deploy" ? "🚀" : k === "deploy_start" ? "☁️" : k === "tool" ? "⚙" : k === "phase" ? "◆" : k === "plan" ? "📋" : k === "output" ? "»" : k === "error" ? "⚠" : "·";
   const lineText = (e: BuildEvent) =>
-    e.kind === "file" ? `wrote ${e.path} (${e.size ?? 0}b)` :
-    e.kind === "command" ? `$ ${e.command}` :
+    e.kind === "file" ? `${e.verb ?? "wrote"} ${e.path} (${e.size ?? 0}b)` :
+    e.kind === "command" ? `$ ${e.command}${e.desc ? `  # ${e.desc}` : ""}` :
     e.kind === "build_start" ? `Building MVP: ${e.goal ?? ""}` :
     e.kind === "done" ? `Build step complete — ${(e.files?.length ?? 0)} files` :
     e.kind === "deploy_start" ? "Deploying to Vercel…" :
     e.kind === "deploy" ? `Deployed → ${e.url ?? ""}` :
     e.kind === "tool" ? `${e.tool ?? "tool"} ${e.target ?? ""}` :
+    e.kind === "output" ? `${e.command ? e.command + " → " : ""}${e.text ?? ""}` :
+    e.kind === "error" ? `error: ${e.text ?? ""}` :
     (e.text ?? "");
   if (!events.length && !fileList.length) return null;
   return (
@@ -508,11 +510,20 @@ function BuildStream({ events, files }: { events: BuildEvent[]; files: Record<st
       <div style={{ ...PREVIEW_CARD, padding: 0, overflow: "hidden" }}>
         <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#2563EB", padding: "8px 10px", borderBottom: "1px solid var(--line)" }}>openclaude build · live</div>
         <div style={{ maxHeight: 200, overflowY: "auto", padding: "6px 10px", fontFamily: "var(--font-jetbrains-mono)", fontSize: 11, lineHeight: 1.5 }}>
-          {events.slice(-120).map((e, i) => (
-            <div key={i} style={{ color: e.kind === "file" ? "#3D9E5F" : e.kind === "command" ? "#2563EB" : "var(--fg-dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              <span style={{ opacity: 0.7 }}>{icon(e.kind)}</span> {lineText(e).slice(0, 160)}
-            </div>
-          ))}
+          {events.slice(-120).map((e, i) => {
+            const wrap = e.kind === "output" || e.kind === "error" || e.kind === "plan";
+            const color = e.kind === "error" ? "#D14343"
+              : e.kind === "file" ? "#3D9E5F"
+              : e.kind === "command" ? "#2563EB"
+              : e.kind === "phase" ? "#7C3AED"
+              : e.kind === "output" ? "var(--fg-mute)"
+              : "var(--fg-dim)";
+            return (
+              <div key={i} style={{ color, whiteSpace: wrap ? "pre-wrap" : "nowrap", overflow: "hidden", textOverflow: wrap ? undefined : "ellipsis", wordBreak: wrap ? "break-word" : undefined }}>
+                <span style={{ opacity: 0.7 }}>{icon(e.kind)}</span> {lineText(e).slice(0, wrap ? 500 : 160)}
+              </div>
+            );
+          })}
         </div>
       </div>
       {fileList.length > 0 && (
@@ -563,8 +574,13 @@ function TechnicalPreview({ state }: { state: AgentState }) {
         const last = buildEvents.length ? buildEvents[buildEvents.length - 1] : null;
         const fileCount = Object.keys(buildFiles).length;
         const stepText = last
-          ? (last.kind === "file" ? `Writing ${last.path}`
-            : last.kind === "command" ? `Running ${last.command}`
+          ? (last.kind === "file" ? `${last.verb === "edited" ? "Editing" : "Writing"} ${last.path}`
+            : last.kind === "command" ? `Running ${last.desc || last.command}`
+            : last.kind === "output" ? `Output: ${(last.text ?? "").slice(0, 100)}`
+            : last.kind === "error" ? `Error: ${(last.text ?? "").slice(0, 100)}`
+            : last.kind === "plan" ? (last.text ?? "Planning…")
+            : last.kind === "phase" ? (last.text ?? "Building…")
+            : last.kind === "tool" ? `${last.tool} ${last.target ?? ""}`
             : last.kind === "build_start" ? "Building the MVP…"
             : last.kind === "done" ? "Finishing up…"
             : last.text ? last.text.slice(0, 120) : "Building…")
