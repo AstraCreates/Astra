@@ -383,6 +383,16 @@ def create_product_with_payment_link(
     Used by agents to set up pricing from research findings.
     Returns {product_id, price_id, payment_link_url, name, amount, currency, interval}.
     """
+    # No real Stripe key connected (common in dev) — return a clean skip instead of
+    # letting the agent hammer the API with guessed keys and emit repeated errors.
+    tok = str(access_token or "")
+    if not tok.startswith(("sk_live_", "sk_test_", "rk_live_", "rk_test_")) or "YOUR" in tok or "*" in tok:
+        return {
+            "skipped": True,
+            "payment_link_url": None,
+            "reason": "No Stripe account connected. Connect Stripe in Integrations to create a real payment link; the pricing plan is recorded for later.",
+            "name": name, "amount": amount, "currency": currency, "interval": interval or "one_time",
+        }
     product = create_stripe_product(access_token, name, description)
     if "error" in product:
         return product

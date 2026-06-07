@@ -57,16 +57,32 @@ def _expand_section(heading: str, body: str, doc_title: str) -> str:
     return body
 
 
-def generate_pdf(title: str, sections: list, output_dir: str = "", expand_content: bool = False) -> dict:
-    """Generate PDF. Args: title (str), sections (list — MUST be a JSON array of objects, e.g. [{"heading": "Executive Summary", "body": "text..."}, {"heading": "Market Size", "body": "text..."}]), expand_content (bool, default False — set True only if you want slow LLM expansion of thin sections). Returns {generated, path, filename}. IMPORTANT: sections must be a real list/array, NOT a string."""
+def generate_pdf(title: str = "", sections: list = None, output_dir: str = "", expand_content: bool = False,
+                 content: str = "", filename: str = "", body: str = "", **kwargs) -> dict:
+    """Generate PDF. Args: title (str), sections (list — MUST be a JSON array of objects, e.g. [{"heading": "Executive Summary", "body": "text..."}, {"heading": "Market Size", "body": "text..."}]), expand_content (bool, default False — set True only if you want slow LLM expansion of thin sections). Returns {generated, path, filename}. IMPORTANT: sections must be a real list/array, NOT a string. Also accepts the simpler form generate_pdf(content="...", filename="x.pdf")."""
     import os as _os
     from backend.config import settings
+    # Accept the (content=/body=, filename=) form some agents use instead of (title, sections).
+    if sections is None:
+        text = content or body or kwargs.get("text") or ""
+        sections = [{"heading": "", "body": text}] if text else []
+    if not title:
+        stem = (filename or kwargs.get("name") or "document").rsplit(".", 1)[0]
+        title = stem.replace("_", " ").replace("-", " ").strip().title() or "Document"
     if not output_dir:
         vault = _os.environ.get("OBSIDIAN_VAULT") or getattr(settings, "obsidian_vault", "") or "/tmp/astra_docs"
         output_dir = str(vault).rstrip("/") + "/files"
     os.makedirs(output_dir, exist_ok=True)
-    safe_title = title.lower().replace(" ", "_").encode("ascii", "ignore").decode()
-    filename = f"{safe_title}_{uuid.uuid4().hex[:8]}.pdf"
+    if filename:
+        safe_name = _os.path.basename(str(filename)).encode("ascii", "ignore").decode()
+        if not safe_name.lower().endswith(".pdf"):
+            safe_name += ".pdf"
+        # Keep names unique so concurrent docs don't clobber each other.
+        stem, ext = safe_name.rsplit(".", 1)
+        filename = f"{stem}_{uuid.uuid4().hex[:6]}.{ext}"
+    else:
+        safe_title = title.lower().replace(" ", "_").encode("ascii", "ignore").decode()
+        filename = f"{safe_title}_{uuid.uuid4().hex[:8]}.pdf"
     filepath = os.path.join(output_dir, filename)
 
     # Coerce sections to list — model sometimes passes a string repr or a single dict

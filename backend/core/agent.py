@@ -65,6 +65,18 @@ def _trim_message_history(messages: list[dict]) -> list[dict]:
         return messages
 
 
+# Aliases for tool names models commonly hallucinate → the real registered tool.
+_TOOL_ALIASES = {
+    "obsidian_write": "obsidian_log",
+    "obsidian_save": "obsidian_log",
+    "obsidian_note": "obsidian_log",
+    "obsidian_create": "obsidian_log",
+    "obsidian_update": "obsidian_append",
+    "save_note": "obsidian_log",
+    "write_note": "obsidian_log",
+}
+
+
 def _format_tool_result(tool_name: str, result: Any) -> str:
     text = _format_tool_result_raw(tool_name, result)
     if isinstance(text, str) and len(text) > _TOOL_RESULT_CHAR_CAP:
@@ -1038,6 +1050,12 @@ class Agent:
 
     async def _execute_tool(self, tool_name: str, args: dict, ctx: AgentContext) -> Any:
         fn = self.tools.get(tool_name)
+        if fn is None:
+            # Models frequently hallucinate alternate names for the note tool.
+            # Resolve common aliases instead of erroring (was a recurring failure).
+            alias = _TOOL_ALIASES.get(tool_name)
+            if alias:
+                fn = self.tools.get(alias)
         if fn is None:
             return {"error": f"Unknown tool: {tool_name}"}
         import time as _time
