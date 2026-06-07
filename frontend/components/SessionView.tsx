@@ -4,11 +4,12 @@
    Self-contained: own SSE + state, wired to the real backend via apiFetch.
    Layout: phase bar → status bar → dept cards → vault | detail → steer bar. */
 
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
+import SessionTour from "@/components/SessionTour";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -116,6 +117,17 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [, force] = useReducer((x: number) => x + 1, 0);
   const sseRef = useRef<EventSource | null>(null);
   const steerRef = useRef<HTMLInputElement>(null);
+  const [showSessionTour, setShowSessionTour] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined"
+      && localStorage.getItem("astra_onboarding_done") === "1"
+      && !localStorage.getItem("astra_session_tour_done")) {
+      // Wait for session elements to render before starting tour
+      const t = setTimeout(() => setShowSessionTour(true), 1200);
+      return () => clearTimeout(t);
+    }
+  }, []);
 
   const ensureAg = (key: string) => {
     if (!S.current.agents[key]) S.current.agents[key] = { key, status: "waiting", log: [], visitedUrls: [], currentTool: null, result: null, instruction: "" };
@@ -484,7 +496,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       )}
 
       {/* phase bar */}
-      <div className="phasebar">
+      <div data-tour="session-phasebar" className="phasebar">
         {phases.map(([cls, lbl], i) => (
           <span key={i} style={{ display: "contents" }}>
             <div className={`ph ${cls}`}><div className="ph-dot" />{lbl}</div>
@@ -508,7 +520,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       </div>
 
       {/* dept cards */}
-      <div className="depts">
+      <div data-tour="session-depts" className="depts">
         {activeDepts.length === 0 ? <div style={{ padding: 6, fontSize: 9.5, color: "var(--fm)" }}>Waiting for agents…</div>
         : activeDepts.map(([dk, d]) => {
           const s = deptSt(d.inS);
@@ -528,7 +540,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       {/* workspace: vault | detail */}
       <div className="sess-ws">
         {/* vault */}
-        <div className="vault">
+        <div data-tour="session-vault" className="vault">
           <div className="v-sec">Deliverables</div>
           {st.artifacts.length === 0 ? <div style={{ padding: "10px 8px", fontSize: 9.5, color: "var(--fm)", lineHeight: 1.55 }}>{st.status === "running" ? "Agents working — deliverables appear here when ready." : "Nothing yet."}</div>
           : <>
@@ -540,7 +552,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         </div>
 
         {/* detail */}
-        <div className="detail">
+        <div data-tour="session-detail" className="detail">
           <div className="dtabs">
             {st.selArt
               ? <div className={`dtab${st.tab === "read" ? " on" : ""}`} onClick={() => { st.tab = "read"; force(); }}>Read it</div>
@@ -824,13 +836,17 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       </div>
 
       {/* steer bar */}
-      <div className="steerbar">
+      <div data-tour="session-steerbar" className="steerbar">
         <div className="steer-wrap">
           <input ref={steerRef} className="steer-inp" placeholder='Steer Astra — "focus more on pricing" · "skip legal" · "make it B2B"'
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendSteer(); } }} />
           <button className="steer-send" onClick={sendSteer}>↑</button>
         </div>
       </div>
+
+      {showSessionTour && (
+        <SessionTour onDone={() => { localStorage.setItem("astra_session_tour_done", "1"); setShowSessionTour(false); }} />
+      )}
     </div>
   );
 }
