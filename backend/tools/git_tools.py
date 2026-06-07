@@ -281,8 +281,37 @@ def _vercel_root_dir(local: str) -> str:
     return ""
 
 
+def _flatten_nested_repos(local: str) -> None:
+    """Strip nested .git from scaffolded subprojects so they're tracked as normal
+    files. Tools like create-next-app run their own `git init`, which turns the
+    subdir into a gitlink with no commit — then `git add -A` fails with
+    'does not have a commit checked out' and the build commits nothing."""
+    import shutil
+    try:
+        root = Path(local).resolve()
+        root_git = (root / ".git").resolve()
+        for gitpath in root.rglob(".git"):
+            if "/node_modules/" in str(gitpath):
+                continue
+            try:
+                if gitpath.resolve() == root_git:
+                    continue
+            except Exception:
+                continue
+            if gitpath.is_dir():
+                shutil.rmtree(gitpath, ignore_errors=True)
+            else:
+                try:
+                    gitpath.unlink()
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
 def _stage_all(local: str) -> None:
     """Stage all files (no commit) so disk contents are tracked in local mode."""
+    _flatten_nested_repos(local)
     try:
         _sh(["git", "add", "-A"], cwd=local)
     except Exception:
@@ -303,6 +332,7 @@ def _staged_files(local: str) -> list[str]:
 
 def _commit_and_push(local: str, message: str) -> str | None:
     """Stage all, commit if dirty, push. Returns short SHA or None."""
+    _flatten_nested_repos(local)
     status = subprocess.run(["git", "status", "--porcelain"], cwd=local, capture_output=True, text=True).stdout.strip()
     if status:
         _sh(["git", "add", "-A"], cwd=local)
