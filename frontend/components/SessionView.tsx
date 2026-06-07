@@ -209,6 +209,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           const d = await r.json();
           if (!S.current.goal) S.current.goal = d.instruction || "";
           if (d.stack_id) S.current.stackId = d.stack_id;
+          else if (d.stack?.stack_id && !S.current.stackId) S.current.stackId = d.stack.stack_id;
           S.current.status = d.status || S.current.status;
           S.current.artifacts = Array.isArray(d.artifacts) ? d.artifacts : [];
           S.current.approvals = Array.isArray(d.approvals) ? d.approvals.filter((a: any) => PENDING.has(a.status)) : [];
