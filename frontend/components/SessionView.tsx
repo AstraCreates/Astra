@@ -16,11 +16,19 @@ type Artifact = { key?: string; title?: string; status?: string; preview?: strin
 type Approval = { gate_key: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number };
 
 type SState = {
-  status: string; goal: string; company: string; stackId: string;
+  status: string; goal: string; company: string; projectName: string; stackId: string;
   agents: Record<string, Agent>;
   artifacts: Artifact[]; approvals: Approval[]; decidedKeys: Set<string>;
   selDept: string | null; selArt: string | null; tab: string;
 };
+
+function extractProjectName(goal: string): { projectName: string; cleanGoal: string } {
+  let m = goal.match(/^Company name: (.+?)\.\s*\n+([\s\S]*)$/);
+  if (m) return { projectName: m[1].trim(), cleanGoal: m[2].trim() };
+  m = goal.match(/^Company\/project name: (.+?)\n+([\s\S]*)$/);
+  if (m) return { projectName: m[1].trim(), cleanGoal: m[2].trim() };
+  return { projectName: "", cleanGoal: goal };
+}
 
 // Named phases per stack (agent prefixes per phase). Drives the top phase bar.
 const PHASE_PLANS: Record<string, { name: string; groups: string[] }[]> = {
@@ -90,7 +98,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const { userId } = useDevUser();
   const founderId = userId;
   const S = useRef<SState>({
-    status: "loading", goal: "", company: "", stackId: "", agents: {}, artifacts: [], approvals: [],
+    status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
     decidedKeys: new Set(), selDept: null, selArt: null, tab: "log",
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
@@ -113,8 +121,13 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const handleEvent = useCallback((ev: Record<string, any>) => {
     const st = S.current;
     switch (ev.type) {
-      case "goal_start":
-        st.goal = ev.goal || ev.instruction || st.goal; st.status = "running"; break;
+      case "goal_start": {
+        const rawGoal = ev.goal || ev.instruction || st.goal;
+        const { projectName, cleanGoal } = extractProjectName(rawGoal);
+        st.goal = cleanGoal;
+        if (!st.projectName && projectName) st.projectName = projectName;
+        st.status = "running"; break;
+      }
       case "plan_done":
         if (Array.isArray(ev.tasks)) ev.tasks.forEach((t: any) => t.agent && ensureAg(t.agent));
         if (Array.isArray(ev.agents)) ev.agents.forEach((a: string) => ensureAg(a));
@@ -192,7 +205,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!sessionId || !founderId) return;
     let alive = true;
-    S.current = { status: "loading", goal: "", company: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "log" };
+    S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "log" };
     force();
 
     (async () => {
@@ -202,7 +215,15 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         if (r.ok) {
           const d = await r.json();
           const meta = (d.sessions || d || []).find((s: any) => s.session_id === sessionId);
-          if (meta && alive) { S.current.goal = meta.goal || meta.instruction || ""; S.current.status = meta.status || "running"; S.current.company = meta.company_name || ""; S.current.stackId = meta.stack_id || ""; }
+          if (meta && alive) {
+            const rawGoal = meta.goal || meta.instruction || "";
+            const { projectName, cleanGoal } = extractProjectName(rawGoal);
+            S.current.goal = cleanGoal;
+            S.current.projectName = projectName;
+            S.current.status = meta.status || "running";
+            S.current.company = meta.company_name || "";
+            S.current.stackId = meta.stack_id || "";
+          }
         }
       } catch {}
       // rich state (404 normal)
@@ -210,7 +231,11 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         const r = await apiFetch(`${API}/sessions/${sessionId}/state`);
         if (r.ok && alive) {
           const d = await r.json();
-          if (!S.current.goal) S.current.goal = d.instruction || "";
+          if (!S.current.goal && d.instruction) {
+            const { projectName, cleanGoal } = extractProjectName(d.instruction);
+            S.current.goal = cleanGoal;
+            if (!S.current.projectName) S.current.projectName = projectName;
+          }
           if (d.stack_id) S.current.stackId = d.stack_id;
           else if (d.stack?.stack_id && !S.current.stackId) S.current.stackId = d.stack.stack_id;
           S.current.status = d.status || S.current.status;
@@ -277,17 +302,20 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       phases = [...plan.map((p) => ["done", p.name] as [string, string]), ["act", "Complete"]];
     } else {
       const built = plan.map((ph) => {
-        const ags = agents.filter((a) => ph.groups.some((g) => a.key === g || a.key.startsWith(g + "_") || a.key === g));
+        const ags = agents.filter((a) => ph.groups.some((g) => a.key === g || a.key.startsWith(g + "_")));
         const present = ags.length > 0;
-        return { name: ph.name, allDone: present && ags.every((a) => a.status === "done"), anyRun: ags.some((a) => a.status === "running") };
+        return { name: ph.name, present, allDone: present && ags.every((a) => a.status === "done"), anyStarted: ags.some((a) => a.status !== "waiting") };
       });
-      let frontier = false;
+      // Sequential enforcement: only the FIRST non-done phase that has started becomes active.
+      // Phases after it stay locked even if their agents are running in parallel.
+      let activeSeen = false;
       phases = built.map((b) => {
         if (b.allDone) return ["done", b.name];
-        if (b.anyRun) { frontier = true; return ["act", b.name]; }
+        if (!activeSeen && b.anyStarted) { activeSeen = true; return ["act", b.name]; }
         return ["", b.name];
       });
-      if (!frontier) { const i = phases.findIndex(([c]) => c !== "done"); if (i >= 0) phases[i] = ["act", phases[i][1]]; }
+      // Nothing started yet (planning) — mark the first phase as active so the bar isn't blank
+      if (!activeSeen) { const i = phases.findIndex(([c]) => c !== "done"); if (i >= 0) phases[i] = ["act", phases[i][1]]; }
       phases.push(["", "Complete"]);
     }
   } else {
@@ -331,6 +359,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
   const ready = st.artifacts.filter((a) => a.status === "ready");
   const live = st.artifacts.filter((a) => a.status !== "ready");
+  const displayName = st.projectName || st.company || "";
   const shortGoal = st.goal ? st.goal.slice(0, 70) + (st.goal.length > 70 ? "…" : "") : `Session ${sessionId.slice(0, 8)}`;
   const ICONS: Record<string, string> = { think: "💭", tool: "🔍", result: "→", done: "✓", error: "✗", start: "↳" };
   const LABELS: Record<string, string> = { think: "Thinking", tool: "Searching", result: "Found", done: "Done", error: "Error", start: "Started" };
@@ -345,7 +374,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg)" }}>
       {/* topbar */}
       <div style={{ height: 44, display: "flex", alignItems: "center", gap: 10, padding: "0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
-        <div className="topbar-title" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{st.company ? `${st.company} — ${shortGoal}` : shortGoal}</div>
+        <div className="topbar-title" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName || shortGoal}</div>
         {statusPill(st.status)}
         {(st.status === "running" || st.status === "loading") && <button className="btn danger sm" onClick={stop}>Stop</button>}
       </div>
