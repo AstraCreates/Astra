@@ -165,7 +165,7 @@ const AGENT_ICONS: Record<string, string> = {
 
 const STATUS_COLOR = {
   waiting: "rgba(0,0,0,0.2)",
-  running: "#2563EB",
+  running: "#2b45ff",
   done: "#3D9E5F",
   error: "#C0392B",
 };
@@ -393,7 +393,7 @@ function ResearchPreview({ state }: { state: AgentState }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid rgba(0,0,0,0.07)", background: "rgba(180,205,228,0.10)" }}>
             {faviconUrl(current) && <img src={faviconUrl(current)!} width={12} height={12} style={{ opacity: 0.6 }} onError={e => (e.currentTarget.style.display = "none")} />}
             <span style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{current}</span>
-            <a href={current} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2563EB", textDecoration: "none" }}>↗</a>
+            <a href={current} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2b45ff", textDecoration: "none" }}>↗</a>
           </div>
           <div style={{ height: 280, position: "relative" }}>
             <iframe
@@ -448,7 +448,7 @@ function WebPreview({ state, sessionId, founderId }: { state: AgentState; sessio
               {["#ff5f57","#febc2e","#28c840"].map(c => <div key={c} style={{ width: 10, height: 10, borderRadius: "50%", background: c }} />)}
             </div>
             <span style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{url}</span>
-            <a href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2563EB", textDecoration: "none" }}>↗</a>
+            <a href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2b45ff", textDecoration: "none" }}>↗</a>
           </div>
           <div style={{ height: 340, background: "#FFFFFF" }}>
             <iframe src={url} style={{ width: "100%", height: "100%", border: "none" }} title="Site preview" />
@@ -470,7 +470,7 @@ function WebPreview({ state, sessionId, founderId }: { state: AgentState; sessio
           <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)" }}>Recent commits</span>
           {commits.map((c, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
-              <span style={{ fontFamily: "var(--font-jetbrains-mono)", fontSize: 10, color: "#2563EB" }}>●</span>
+              <span style={{ fontFamily: "var(--font-jetbrains-mono)", fontSize: 10, color: "#2b45ff" }}>●</span>
               <span style={{ fontSize: 11, color: "var(--fg-dim)" }}>{c}</span>
             </div>
           ))}
@@ -508,13 +508,13 @@ function BuildStream({ events, files }: { events: BuildEvent[]; files: Record<st
   return (
     <div style={{ display: "grid", gap: 10 }}>
       <div style={{ ...PREVIEW_CARD, padding: 0, overflow: "hidden" }}>
-        <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#2563EB", padding: "8px 10px", borderBottom: "1px solid var(--line)" }}>openclaude build · live</div>
+        <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#2b45ff", padding: "8px 10px", borderBottom: "1px solid var(--line)" }}>openclaude build · live</div>
         <div style={{ maxHeight: 200, overflowY: "auto", padding: "6px 10px", fontFamily: "var(--font-jetbrains-mono)", fontSize: 11, lineHeight: 1.5 }}>
           {events.slice(-120).map((e, i) => {
             const wrap = e.kind === "output" || e.kind === "error" || e.kind === "plan";
             const color = e.kind === "error" ? "#D14343"
               : e.kind === "file" ? "#3D9E5F"
-              : e.kind === "command" ? "#2563EB"
+              : e.kind === "command" ? "#2b45ff"
               : e.kind === "phase" ? "#7C3AED"
               : e.kind === "output" ? "var(--fg-mute)"
               : "var(--fg-dim)";
@@ -565,7 +565,7 @@ function TechnicalPreview({ state }: { state: AgentState }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ ...PREVIEW_CARD, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px" }}>
         <span style={PREVIEW_HEADER}>Technical Build</span>
-        <span style={{ fontSize: 11, color: state.status === "done" ? "#3D9E5F" : "#2563EB", fontWeight: 600 }}>
+        <span style={{ fontSize: 11, color: state.status === "done" ? "#3D9E5F" : "#2b45ff", fontWeight: 600 }}>
           {state.status === "done" ? "Complete" : state.status === "running" ? "Running" : "Queued"}
         </span>
       </div>
@@ -591,8 +591,8 @@ function TechnicalPreview({ state }: { state: AgentState }) {
         return (
           <div style={{ borderRadius: 12, border: "1px solid rgba(37,99,235,0.2)", background: "rgba(37,99,235,0.08)", padding: "8px 10px", display: "grid", gap: 4 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2563EB" }} className="animate-pulse" />
-              <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#2563EB" }}>Live build · {fileCount} file{fileCount === 1 ? "" : "s"}</span>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2b45ff" }} className="animate-pulse" />
+              <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#2b45ff" }}>Live build · {fileCount} file{fileCount === 1 ? "" : "s"}</span>
             </div>
             <div style={{ fontSize: 12, color: "var(--fg-dim)", fontFamily: "var(--font-jetbrains-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stepText}</div>
           </div>
@@ -608,7 +608,7 @@ function TechnicalPreview({ state }: { state: AgentState }) {
               {["#ff5f57","#febc2e","#28c840"].map(c => <div key={c} style={{ width: 9, height: 9, borderRadius: "50%", background: c }} />)}
             </div>
             <span style={{ fontSize: 10, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deploy.replace(/^https?:\/\//, "")}</span>
-            <a href={deploy} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2563EB", textDecoration: "none", flexShrink: 0 }}>↗</a>
+            <a href={deploy} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2b45ff", textDecoration: "none", flexShrink: 0 }}>↗</a>
           </div>
           <iframe src={deploy} style={{ width: "100%", height: 280, border: "none", display: "block" }} title="Live MVP" />
         </div>
@@ -632,7 +632,7 @@ function TechnicalPreview({ state }: { state: AgentState }) {
 
       {/* GitHub repo link */}
       {repo && (
-        <a href={repo} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 20, border: "1px solid rgba(0,0,0,0.1)", background: "rgba(0,0,0,0.03)", padding: "8px 14px", color: "#2563EB", textDecoration: "none", fontSize: 12 }}>
+        <a href={repo} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 20, border: "1px solid rgba(0,0,0,0.1)", background: "rgba(0,0,0,0.03)", padding: "8px 14px", color: "#2b45ff", textDecoration: "none", fontSize: 12 }}>
           <span>🐙</span>
           <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{repo.replace("https://github.com/", "")}</span>
           <span style={{ opacity: 0.5, flexShrink: 0 }}>↗</span>
@@ -658,7 +658,7 @@ function TechnicalPreview({ state }: { state: AgentState }) {
           <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)" }}>Build commits</span>
           {commits.slice(-5).map((c, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 6, background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.07)" }}>
-              <span style={{ fontFamily: "var(--font-jetbrains-mono)", fontSize: 10, color: "#2563EB" }}>{c.slice(0, 7)}</span>
+              <span style={{ fontFamily: "var(--font-jetbrains-mono)", fontSize: 10, color: "#2b45ff" }}>{c.slice(0, 7)}</span>
               <span style={{ fontSize: 10, color: "var(--fg-mute)" }}>committed</span>
             </div>
           ))}
@@ -1025,12 +1025,12 @@ function PdfEmbed({ path, label, height = 340 }: { path: string; label?: string;
     <div style={{ borderRadius: 16, overflow: "hidden", border: "1px solid rgba(0,0,0,0.10)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 14px", background: "rgba(180,205,228,0.10)", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
         <span style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1 }}>📄 {label ?? filename}</span>
-        <a href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2563EB", textDecoration: "none", flexShrink: 0 }}>Download ↗</a>
+        <a href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2b45ff", textDecoration: "none", flexShrink: 0 }}>Download ↗</a>
       </div>
       {isPdf
         ? <iframe src={url} style={{ width: "100%", height, border: "none", display: "block" }} title={label ?? filename} />
         : <div style={{ fontSize: 11, color: "var(--fg-dim)", padding: "10px 14px" }}>
-            <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "#2563EB" }}>{filename} ↗</a>
+            <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "#2b45ff" }}>{filename} ↗</a>
           </div>
       }
     </div>
@@ -1383,7 +1383,7 @@ function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId
     }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2563EB", fontWeight: 600 }}>
+        <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2b45ff", fontWeight: 600 }}>
           Deployment
         </span>
         {isPublished && (
@@ -1397,7 +1397,7 @@ function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId
         {!isPublished && (
           <span style={{
             fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
-            color: "#2563EB", background: "rgba(37,99,235,0.1)", borderRadius: 6, padding: "2px 8px",
+            color: "#2b45ff", background: "rgba(37,99,235,0.1)", borderRadius: 6, padding: "2px 8px",
           }}>
             Staged
           </span>
@@ -1418,7 +1418,7 @@ function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId
             href={deployment.staging_url}
             target="_blank"
             rel="noopener noreferrer"
-            style={{ fontSize: 10, color: "#2563EB", textDecoration: "none", flexShrink: 0 }}
+            style={{ fontSize: 10, color: "#2b45ff", textDecoration: "none", flexShrink: 0 }}
             title="Open preview"
           >
             ↗
@@ -1457,7 +1457,7 @@ function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId
           onClick={() => setShowForm(true)}
           style={{
             padding: "8px 16px", borderRadius: 9, border: "none", cursor: "pointer",
-            background: "linear-gradient(135deg,#2563EB,#1d4ed8)",
+            background: "linear-gradient(135deg,#2b45ff,#1f36e0)",
             color: "#fff", fontSize: 12, fontWeight: 600,
             alignSelf: "flex-start",
           }}
@@ -1502,7 +1502,7 @@ function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId
               style={{
                 flex: 1, padding: "8px 16px", borderRadius: 9, border: "none",
                 cursor: publishing || !tokenInput.trim() ? "not-allowed" : "pointer",
-                background: publishing || !tokenInput.trim() ? "rgba(37,99,235,0.3)" : "linear-gradient(135deg,#2563EB,#1d4ed8)",
+                background: publishing || !tokenInput.trim() ? "rgba(37,99,235,0.3)" : "linear-gradient(135deg,#2b45ff,#1f36e0)",
                 color: "#fff", fontSize: 12, fontWeight: 600,
               }}
             >
@@ -1532,7 +1532,7 @@ function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId
 
 function renderResultValue(v: unknown): React.ReactNode {
   if (typeof v === "string") {
-    if (v.startsWith("http")) return <a href={v} target="_blank" rel="noreferrer" style={{ color: "#2563EB", fontSize: 11, textDecoration: "none", wordBreak: "break-all" as const }}>{v.slice(0, 70)}</a>;
+    if (v.startsWith("http")) return <a href={v} target="_blank" rel="noreferrer" style={{ color: "#2b45ff", fontSize: 11, textDecoration: "none", wordBreak: "break-all" as const }}>{v.slice(0, 70)}</a>;
     if (v.length > 160) return <div style={{ ...PREVIEW_CARD, fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.6, whiteSpace: "pre-wrap" as const }}>{v.slice(0, 420)}…</div>;
     return <span style={{ fontSize: 11, color: "var(--fg-dim)" }}>{v}</span>;
   }
@@ -1577,7 +1577,7 @@ function GenericResultOutput({ result }: { result: Record<string, unknown> | nul
             <span style={{ fontSize: 12 }}>↗</span>
           </div>
           <div style={{ flex: 1, overflow: "hidden" }}>
-            <div style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "#2563EB", marginBottom: 2 }}>{k.replace(/_/g, " ")}</div>
+            <div style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "#2b45ff", marginBottom: 2 }}>{k.replace(/_/g, " ")}</div>
             <div style={{ fontSize: 11, color: "#60A5FA", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(v as string).replace(/^https?:\/\//, "")}</div>
           </div>
         </a>
@@ -1601,12 +1601,12 @@ function BuildingIndicator({ label, tool }: { label: string; tool?: string | nul
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "18px 0" }}>
       <div style={{ height: 2, borderRadius: 999, background: "rgba(37,99,235,0.12)", overflow: "hidden" }}>
-        <div style={{ height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #2563EB, #7C3AED, #2563EB)", backgroundSize: "200% 100%", animation: "shimmer 1.8s linear infinite" }} />
+        <div style={{ height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #2b45ff, #7C3AED, #2b45ff)", backgroundSize: "200% 100%", animation: "shimmer 1.8s linear infinite" }} />
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#2563EB", flexShrink: 0 }} className="animate-pulse" />
+        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#2b45ff", flexShrink: 0 }} className="animate-pulse" />
         <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>{label}</span>
-        {tool && <span style={{ fontSize: 10, color: "#2563EB", fontFamily: "var(--font-jetbrains-mono)", marginLeft: "auto", opacity: 0.8 }}>{tool.replace(/_/g, "_")}</span>}
+        {tool && <span style={{ fontSize: 10, color: "#2b45ff", fontFamily: "var(--font-jetbrains-mono)", marginLeft: "auto", opacity: 0.8 }}>{tool.replace(/_/g, "_")}</span>}
       </div>
       <style>{`@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }`}</style>
     </div>
@@ -1703,7 +1703,7 @@ function LiveRunningLog({ state, label }: { state: AgentState; label: string }) 
       {/* Animated progress line */}
       {isRunning && (
         <div style={{ height: 2, background: "rgba(0,0,0,0.4)" }}>
-          <div style={{ height: "100%", background: "linear-gradient(90deg,#2563EB,#7C3AED,#4ADE80,#2563EB)", backgroundSize: "300% 100%", animation: "termShimmer 2.4s linear infinite" }} />
+          <div style={{ height: "100%", background: "linear-gradient(90deg,#2b45ff,#7C3AED,#4ADE80,#2b45ff)", backgroundSize: "300% 100%", animation: "termShimmer 2.4s linear infinite" }} />
         </div>
       )}
       <style>{`
@@ -2057,7 +2057,7 @@ function AgentDetail({
               display: "flex", alignItems: "center", gap: 5, padding: "5px 10px",
               borderRadius: 8, border: "1px solid rgba(180,205,228,0.25)",
               background: rerunning ? "rgba(37,99,235,0.12)" : "rgba(255,255,255,0.04)",
-              color: rerunning ? "#2563EB" : "var(--fg-dim)", cursor: rerunning ? "default" : "pointer",
+              color: rerunning ? "#2b45ff" : "var(--fg-dim)", cursor: rerunning ? "default" : "pointer",
               fontSize: 11, fontWeight: 500, flexShrink: 0,
               transition: "all 0.15s",
             }}
@@ -2070,7 +2070,7 @@ function AgentDetail({
         <div style={{ position: "relative", width: 40, height: 40, flexShrink: 0 }}>
           <svg viewBox="0 0 40 40" style={{ transform: "rotate(-90deg)" }}>
             <circle cx="20" cy="20" r="17" fill="none" stroke="rgba(0,0,0,0.08)" strokeWidth="3" />
-            <circle cx="20" cy="20" r="17" fill="none" stroke={isDone ? "#3D9E5F" : "#2563EB"} strokeWidth="3"
+            <circle cx="20" cy="20" r="17" fill="none" stroke={isDone ? "#3D9E5F" : "#2b45ff"} strokeWidth="3"
               strokeDasharray={`${2 * Math.PI * 17}`}
               strokeDashoffset={`${2 * Math.PI * 17 * (1 - p / 100)}`}
               style={{ transition: "stroke-dashoffset 0.6s" }} />
@@ -2081,13 +2081,13 @@ function AgentDetail({
 
       {/* Progress bar */}
       <div style={{ height: 3, borderRadius: 999, background: "rgba(0,0,0,0.08)", overflow: "hidden" }}>
-        <div style={{ height: "100%", borderRadius: 999, width: `${p}%`, background: isDone ? "#3D9E5F" : "#2563EB", transition: "width 0.6s" }} />
+        <div style={{ height: "100%", borderRadius: 999, width: `${p}%`, background: isDone ? "#3D9E5F" : "#2b45ff", transition: "width 0.6s" }} />
       </div>
 
       {/* Current action pill */}
       {isRunning && state.currentAction && (
         <div style={{ display: "flex", alignItems: "center", gap: 7, borderRadius: 24, background: "rgba(180,205,228,0.10)", padding: "6px 11px", fontSize: 11, color: "var(--fg-dim)", border: "1px solid rgba(180,205,228,0.22)" }}>
-          <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#2563EB", flexShrink: 0 }} className="animate-pulse" />
+          <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#2b45ff", flexShrink: 0 }} className="animate-pulse" />
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {state.currentTool ? `${state.currentTool.replace(/_/g, " ")}` : state.currentAction}
             {state.currentUrl ? ` — ${state.currentUrl.replace(/^https?:\/\//, "").slice(0, 50)}` : ""}
@@ -2223,25 +2223,25 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect, onRerun }: {
             padding: "6px 10px 6px 8px",
             minHeight: 52,
             borderRadius: 14,
-            border: `1px solid ${isActive ? "#2563EB" : isRunning ? "rgba(37,99,235,0.35)" : "var(--line)"}`,
+            border: `1px solid ${isActive ? "#2b45ff" : isRunning ? "rgba(37,99,235,0.35)" : "var(--line)"}`,
             background: isActive ? "rgba(37,99,235,0.10)" : isRunning ? "rgba(37,99,235,0.05)" : "rgba(255,255,255,0.03)",
             cursor: "pointer", transition: "background 0.15s, border-color 0.15s",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontSize: 13 }}>{AGENT_ICONS[name] ?? "🤖"}</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: isActive ? "#2563EB" : isRunning ? "var(--fg)" : "var(--fg-mute)", whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: isActive ? "#2b45ff" : isRunning ? "var(--fg)" : "var(--fg-mute)", whiteSpace: "nowrap" }}>
                 {AGENT_LABELS[name] ?? name}
               </span>
               <span style={{
                 width: 5, height: 5, borderRadius: "50%", flexShrink: 0,
-                background: status === "done" ? "#22C55E" : status === "running" ? "#2563EB" : status === "error" ? "#EF4444" : "rgba(255,255,255,0.15)",
+                background: status === "done" ? "#22C55E" : status === "running" ? "#2b45ff" : status === "error" ? "#EF4444" : "rgba(255,255,255,0.15)",
               }} className={status === "running" ? "animate-pulse" : ""} />
               {(status === "done" || status === "error") && onRerun && (
                 <span
                   title={`Rerun ${AGENT_LABELS[name] ?? name}`}
                   onClick={e => { e.stopPropagation(); onRerun(name); }}
                   style={{ fontSize: 11, color: "var(--fg-mute)", cursor: "pointer", lineHeight: 1, padding: "0 2px", borderRadius: 4, transition: "color 0.1s" }}
-                  onMouseEnter={e => (e.currentTarget.style.color = "#2563EB")}
+                  onMouseEnter={e => (e.currentTarget.style.color = "#2b45ff")}
                   onMouseLeave={e => (e.currentTarget.style.color = "var(--fg-mute)")}
                 >↺</span>
               )}
@@ -2249,7 +2249,7 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect, onRerun }: {
             {/* Second row always rendered for uniform height */}
             <div style={{ display: "flex", alignItems: "center", gap: 4, paddingLeft: 19, minHeight: 13 }}>
               {modelShort ? (
-                <span style={{ fontSize: 9, color: "#2563EB", whiteSpace: "nowrap", fontFamily: "var(--font-jetbrains-mono)", opacity: 0.8 }}>
+                <span style={{ fontSize: 9, color: "#2b45ff", whiteSpace: "nowrap", fontFamily: "var(--font-jetbrains-mono)", opacity: 0.8 }}>
                   {modelShort}
                 </span>
               ) : <span style={{ minWidth: 1 }} />}
@@ -2803,14 +2803,14 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
               )}
               <div style={{
                 maxWidth: "75%", padding: "8px 12px", borderRadius: 12, fontSize: 13, lineHeight: 1.6, wordBreak: "break-word", whiteSpace: "pre-wrap",
-                background: m.role === "user" ? "#2563EB" : m.role === "system" ? "#EFF6FF" : "#F8F9FA",
-                color: m.role === "user" ? "#fff" : m.role === "system" ? "#1D4ED8" : "#111827",
+                background: m.role === "user" ? "#2b45ff" : m.role === "system" ? "#EFF6FF" : "#F8F9FA",
+                color: m.role === "user" ? "#fff" : m.role === "system" ? "#1f36e0" : "#111827",
                 border: m.role === "user" ? "none" : "1px solid #E5E7EB",
                 fontStyle: m.role === "system" ? "italic" : "normal",
               }}>{m.text}</div>
             </div>
           ))}
-          {loading && <div style={{ fontSize: 12, color: "#9CA3AF", display: "flex", alignItems: "center", gap: 6 }}><span className="animate-pulse" style={{ color: "#2563EB" }}>●</span> Thinking…</div>}
+          {loading && <div style={{ fontSize: 12, color: "#9CA3AF", display: "flex", alignItems: "center", gap: 6 }}><span className="animate-pulse" style={{ color: "#2b45ff" }}>●</span> Thinking…</div>}
           <div ref={bottomRef} />
         </div>
       )}
@@ -2841,7 +2841,7 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
             style={{ flex: 1, padding: "10px 16px", fontSize: 13, borderRadius: 999, border: "1px solid #E5E7EB", background: "#F8F9FA", color: "#111827", outline: "none" }}
           />
           <button onClick={send} disabled={loading || (!input.trim() && !chatAttachments.length)}
-            style={{ padding: "0 20px", borderRadius: 999, fontSize: 13, background: loading || (!input.trim() && !chatAttachments.length) ? "#E5E7EB" : "#2563EB", color: loading || (!input.trim() && !chatAttachments.length) ? "#9CA3AF" : "#fff", border: "none", cursor: loading || (!input.trim() && !chatAttachments.length) ? "default" : "pointer", fontWeight: 600 }}>
+            style={{ padding: "0 20px", borderRadius: 999, fontSize: 13, background: loading || (!input.trim() && !chatAttachments.length) ? "#E5E7EB" : "#2b45ff", color: loading || (!input.trim() && !chatAttachments.length) ? "#9CA3AF" : "#fff", border: "none", cursor: loading || (!input.trim() && !chatAttachments.length) ? "default" : "pointer", fontWeight: 600 }}>
             {loading ? "…" : "↑"}
           </button>
         </div>
@@ -2932,7 +2932,7 @@ function TaskWorkboardTable({
           const isDone = row.status === "done" || row.status === "completed";
           const isRunning = row.status === "running";
           const isBlocked = row.blockers.length > 0 || row.status === "blocked" || row.status === "error";
-          const statusColor = isDone ? "#10B981" : isBlocked ? "#D97706" : isRunning ? "#2563EB" : "var(--text-muted)";
+          const statusColor = isDone ? "#10B981" : isBlocked ? "#D97706" : isRunning ? "#2b45ff" : "var(--text-muted)";
           const actorLabel = row.nextActor.replace("_", " ");
           return (
             <button
@@ -3809,12 +3809,12 @@ function LaunchChecklist({ sessionId, done, operating, agents, agentList, select
           <span style={{
             fontSize: 11, padding: "2px 9px", borderRadius: 999, fontWeight: 600,
             background: allDone ? "rgba(61,158,95,0.12)" : "rgba(37,99,235,0.10)",
-            color: allDone ? "#3D9E5F" : "#2563EB",
+            color: allDone ? "#3D9E5F" : "#2b45ff",
           }}>{totalDone + runDone}/{total + runItems.length}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 80, height: 4, borderRadius: 999, background: "var(--line-2)", overflow: "hidden" }}>
-            <div style={{ height: "100%", borderRadius: 999, transition: "width 0.5s", width: `${Math.round(((totalDone + runDone) / (total + runItems.length)) * 100)}%`, background: allDone ? "#3D9E5F" : "#2563EB" }} />
+            <div style={{ height: "100%", borderRadius: 999, transition: "width 0.5s", width: `${Math.round(((totalDone + runDone) / (total + runItems.length)) * 100)}%`, background: allDone ? "#3D9E5F" : "#2b45ff" }} />
           </div>
           <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{Math.round(((totalDone + runDone) / (total + runItems.length)) * 100)}%</span>
           <span style={{ fontSize: 10, color: "var(--fg-mute)" }}>{listOpen ? "▲" : "▼"}</span>
@@ -3858,7 +3858,7 @@ function LaunchChecklist({ sessionId, done, operating, agents, agentList, select
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <div style={{ width: 40, height: 3, borderRadius: 999, background: "var(--line-2)", overflow: "hidden" }}>
-                      <div style={{ height: "100%", borderRadius: 999, width: `${Math.round((catDone / cat.items.length) * 100)}%`, background: catAllDone ? "#3D9E5F" : "#2563EB", transition: "width 0.4s" }} />
+                      <div style={{ height: "100%", borderRadius: 999, width: `${Math.round((catDone / cat.items.length) * 100)}%`, background: catAllDone ? "#3D9E5F" : "#2b45ff", transition: "width 0.4s" }} />
                     </div>
                     <span style={{ fontSize: 9, color: "var(--fg-mute)" }}>{catOpen ? "▲" : "▼"}</span>
                   </div>
@@ -3877,17 +3877,17 @@ function LaunchChecklist({ sessionId, done, operating, agents, agentList, select
                             width: 15, height: 15, borderRadius: 4, flexShrink: 0, marginTop: item.detail ? 2 : 0,
                             display: "flex", alignItems: "center", justifyContent: "center",
                             background: checked ? (isAuto ? "rgba(37,99,235,0.15)" : "rgba(61,158,95,0.15)") : "transparent",
-                            border: `1.5px solid ${checked ? (isAuto ? "#2563EB" : "#3D9E5F") : "rgba(255,255,255,0.18)"}`,
+                            border: `1.5px solid ${checked ? (isAuto ? "#2b45ff" : "#3D9E5F") : "rgba(255,255,255,0.18)"}`,
                             transition: "all 0.15s",
                           }}>
-                            {checked && <span style={{ fontSize: 7, color: isAuto ? "#2563EB" : "#3D9E5F", fontWeight: 800 }}>✓</span>}
+                            {checked && <span style={{ fontSize: 7, color: isAuto ? "#2b45ff" : "#3D9E5F", fontWeight: 800 }}>✓</span>}
                           </div>
                           <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
                             <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                               <span style={{ fontSize: 11, color: checked ? "var(--fg)" : "var(--fg-mute)", lineHeight: 1.35, textDecoration: checked && !isAuto ? "line-through" : "none", opacity: checked && !isAuto ? 0.6 : 1 }}>
                                 {item.label}
                               </span>
-                              {isAuto && <span style={{ fontSize: 9, color: "#2563EB", flexShrink: 0 }}>auto</span>}
+                              {isAuto && <span style={{ fontSize: 9, color: "#2b45ff", flexShrink: 0 }}>auto</span>}
                             </span>
                             {item.detail && <span style={{ fontSize: 9.5, color: "var(--text-3)", lineHeight: 1.3, opacity: checked ? 0.5 : 0.85 }}>{item.detail}</span>}
                           </span>
@@ -4128,7 +4128,7 @@ function SessionHistory({ currentSessionId }: { currentSessionId: string }) {
   }, [isSignedIn, userId]);
   if (!mounted || sessions.length === 0) return null;
   const statusDot = (s: SessionRecord["status"]) =>
-    s === "done" ? "#3D9E5F" : s === "running" ? "#2563EB" : "#C0392B";
+    s === "done" ? "#3D9E5F" : s === "running" ? "#2b45ff" : "#C0392B";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4195,7 +4195,7 @@ function PlanTreeNode({
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingDesc, setEditingDesc] = useState(false);
 
-  const statusColor = agentStatus === "done" ? "#3D9E5F" : agentStatus === "running" ? "#2563EB" : agentStatus === "error" ? "#C0392B" : "rgba(176,180,186,0.3)";
+  const statusColor = agentStatus === "done" ? "#3D9E5F" : agentStatus === "running" ? "#2b45ff" : agentStatus === "error" ? "#C0392B" : "rgba(176,180,186,0.3)";
   const statusBg = agentStatus === "done" ? "rgba(61,158,95,0.12)" : agentStatus === "running" ? "rgba(37,99,235,0.12)" : "rgba(255,255,255,0.03)";
   const icon = AGENT_ICONS[node.agent] ?? "◆";
   const completedSteps = agentStatus === "done" ? node.steps.length : agentStatus === "running" ? Math.ceil(node.steps.length * 0.5) : 0;
@@ -4344,7 +4344,7 @@ function PlanOverlay({
             {nodes.length > 0 && (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ width: 120, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${overallPct}%`, background: "#2563EB", borderRadius: 2, transition: "width 0.4s" }} />
+                  <div style={{ height: "100%", width: `${overallPct}%`, background: "#2b45ff", borderRadius: 2, transition: "width 0.4s" }} />
                 </div>
                 <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{doneCount}/{nodes.length} agents · {overallPct}%</span>
               </div>
@@ -5190,7 +5190,7 @@ export function GoalWorkspace({
         {companyGoal && (
           <div style={{ borderRadius: 10, border: "1px solid rgba(37,99,235,0.18)", background: "rgba(37,99,235,0.07)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2563EB" }}>Operating</span>
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2b45ff" }}>Operating</span>
               <span style={{ fontSize: 12, color: "var(--fg-dim)" }}>{companyGoal.status}</span>
             </div>
             <div style={{ fontSize: 14, color: "var(--fg)", fontWeight: 600 }}>{companyGoal.company_goal}</div>
@@ -5292,7 +5292,7 @@ export function GoalWorkspace({
                   <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{total ? Math.round((doneCount / total) * 100) : 0}%</span>
                 </div>
                 <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(176,180,186,0.10)", overflow: "hidden" }}>
-                  <div style={{ width: `${total ? (doneCount / total) * 100 : 0}%`, height: "100%", borderRadius: 999, background: done ? "#3D9E5F" : "#2563EB", transition: "width 0.4s ease" }} />
+                  <div style={{ width: `${total ? (doneCount / total) * 100 : 0}%`, height: "100%", borderRadius: 999, background: done ? "#3D9E5F" : "#2b45ff", transition: "width 0.4s ease" }} />
                 </div>
               </div>
               {completionAudit && (
@@ -5309,7 +5309,7 @@ export function GoalWorkspace({
                       const agent = String(laneRecord.agent || laneRecord.lane_id || `lane_${index}`);
                       const laneStatus = String(laneRecord.status || "missing");
                       const ok = laneRecord.ok === true || laneStatus === "done";
-                      const color = ok ? "#3D9E5F" : laneStatus === "running" ? "#2563EB" : "#C0392B";
+                      const color = ok ? "#3D9E5F" : laneStatus === "running" ? "#2b45ff" : "#C0392B";
                       return (
                         <button
                           key={`${agent}-${index}`}

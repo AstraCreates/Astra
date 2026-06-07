@@ -49,15 +49,15 @@ function CoinIcon({ size = 16 }: { size?: number }) {
       fill="none"
       aria-hidden="true"
     >
-      <circle cx="8" cy="8" r="7.5" stroke="#2563EB" strokeWidth="1" fill="#EFF6FF" />
-      <circle cx="8" cy="8" r="5" fill="#2563EB" opacity="0.15" />
+      <circle cx="8" cy="8" r="7.5" stroke="#2b45ff" strokeWidth="1" fill="#EFF6FF" />
+      <circle cx="8" cy="8" r="5" fill="#2b45ff" opacity="0.15" />
       <text
         x="8"
         y="11.5"
         textAnchor="middle"
         fontSize="7"
         fontWeight="700"
-        fill="#2563EB"
+        fill="#2b45ff"
         fontFamily="ui-sans-serif, system-ui, sans-serif"
       >
         C
@@ -149,7 +149,7 @@ function PackCard({
         gap: 6,
         padding: "16px 12px",
         border: pack.popular
-          ? "2px solid #2563EB"
+          ? "2px solid #2b45ff"
           : `1px solid ${hovered ? "#D1D5DB" : "#E5E7EB"}`,
         borderRadius: 12,
         background: pack.popular
@@ -176,7 +176,7 @@ function PackCard({
             top: -10,
             left: "50%",
             transform: "translateX(-50%)",
-            background: "#2563EB",
+            background: "#2b45ff",
             color: "#FFFFFF",
             fontSize: 10,
             fontWeight: 600,
@@ -194,7 +194,7 @@ function PackCard({
         style={{
           fontSize: 22,
           fontWeight: 700,
-          color: "#2563EB",
+          color: "#2b45ff",
           letterSpacing: "-0.02em",
           lineHeight: 1,
         }}
@@ -223,7 +223,7 @@ function PackCard({
             width: 16,
             height: 16,
             border: "2px solid #BFDBFE",
-            borderTopColor: "#2563EB",
+            borderTopColor: "#2b45ff",
             borderRadius: "50%",
             animation: "credits-spin 0.7s linear infinite",
           }}
@@ -234,7 +234,7 @@ function PackCard({
             marginTop: 6,
             fontSize: 12,
             fontWeight: 600,
-            color: pack.popular ? "#2563EB" : "#374151",
+            color: pack.popular ? "#2b45ff" : "#374151",
           }}
         >
           Buy
@@ -358,7 +358,7 @@ export default function CreditsDisplay() {
           borderRadius: 9999,
           border: isLow ? "1px solid #FCA5A5" : "1px solid #E5E7EB",
           background: isLow ? "#FEF2F2" : "#EFF6FF",
-          color: isLow ? "#DC2626" : "#2563EB",
+          color: isLow ? "#DC2626" : "#2b45ff",
           fontSize: 13,
           fontWeight: 600,
           cursor: "pointer",
@@ -529,7 +529,7 @@ export default function CreditsDisplay() {
                   style={{
                     fontSize: 36,
                     fontWeight: 800,
-                    color: "#2563EB",
+                    color: "#2b45ff",
                     letterSpacing: "-0.03em",
                     lineHeight: 1,
                     fontVariantNumeric: "tabular-nums",

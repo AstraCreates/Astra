@@ -167,7 +167,7 @@ function SectionCard({ title, children, action }: { title: string; children: Rea
   );
 }
 
-const CHART_COLORS = ["#2563EB", "#16a34a", "#d97706", "#dc2626", "#7c3aed"];
+const CHART_COLORS = ["#2b45ff", "#16a34a", "#d97706", "#dc2626", "#7c3aed"];
 
 const tooltipStyle = {
   contentStyle: {
@@ -207,7 +207,7 @@ function ConnectStripe({ founderId, email }: { founderId: string; email: string 
           width: 56, height: 56, borderRadius: 14,
           background: "#EFF6FF", border: "1px solid #BFDBFE",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 24, margin: "0 auto 20px", color: "#2563EB",
+          fontSize: 24, margin: "0 auto 20px", color: "#2b45ff",
         }}>$</div>
         <h2 style={{ fontSize: 18, fontWeight: 600, color: "#111827", margin: "0 0 10px", letterSpacing: "-0.02em" }}>Connect your Stripe account</h2>
         <p style={{ fontSize: 13, color: "#6B7280", margin: 0, lineHeight: 1.7 }}>
@@ -232,7 +232,7 @@ function ConnectStripe({ founderId, email }: { founderId: string; email: string 
               width: 20, height: 20, borderRadius: "50%",
               background: "#EFF6FF", border: "1px solid #BFDBFE",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 10, flexShrink: 0, color: "#2563EB", fontWeight: 600,
+              fontSize: 10, flexShrink: 0, color: "#2b45ff", fontWeight: 600,
             }}>{i + 1}</span>
             {s}
           </div>
@@ -285,9 +285,9 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
         onClick={() => setShowForm(v => !v)}
         style={{
           fontSize: 12, padding: "4px 12px", borderRadius: 8,
-          background: showForm ? "#F3F4F6" : "#2563EB",
+          background: showForm ? "#F3F4F6" : "#2b45ff",
           color: showForm ? "#374151" : "#FFFFFF",
-          border: showForm ? "1px solid #E5E7EB" : "1px solid #2563EB",
+          border: showForm ? "1px solid #E5E7EB" : "1px solid #2b45ff",
           cursor: "pointer", fontWeight: 500,
         }}
       >
@@ -314,7 +314,7 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
                     border: "1px solid #E5E7EB", background: "#FFFFFF",
                     color: "#111827", outline: "none",
                   }}
-                  onFocus={e => (e.target.style.borderColor = "#2563EB")}
+                  onFocus={e => (e.target.style.borderColor = "#2b45ff")}
                   onBlur={e => (e.target.style.borderColor = "#E5E7EB")}
                 />
               </div>
@@ -341,7 +341,7 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
             disabled={creating || !form.name || !form.amount}
             style={{
               alignSelf: "flex-start", fontSize: 13, padding: "8px 20px", borderRadius: 8,
-              background: "#2563EB", color: "#FFFFFF", border: "none", cursor: "pointer",
+              background: "#2b45ff", color: "#FFFFFF", border: "none", cursor: "pointer",
               opacity: (creating || !form.name || !form.amount) ? 0.6 : 1, fontWeight: 500,
             }}
           >
@@ -371,7 +371,7 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
                       {pr.payment_link && (
                         <button
                           onClick={() => copy(pr.payment_link!)}
-                          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: copied === pr.payment_link ? "#16a34a" : "#2563EB", padding: "0 4px", fontWeight: 500 }}
+                          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: copied === pr.payment_link ? "#16a34a" : "#2b45ff", padding: "0 4px", fontWeight: 500 }}
                         >
                           {copied === pr.payment_link ? "Copied!" : "Copy link"}
                         </button>
@@ -431,7 +431,7 @@ function AlertsFeed({ founderId }: { founderId: string }) {
     if (type.includes("succeeded") || type.includes("paid")) return "#16a34a";
     if (type.includes("failed")) return "#dc2626";
     if (type.includes("deleted")) return "#d97706";
-    return "#2563EB";
+    return "#2b45ff";
   };
 
   return (
@@ -648,7 +648,7 @@ export default function PaymentsPage() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 14 }}>
                 <StatCard label="Available Balance" value={fmt(data.balance.available, data.currency)} sub="Ready to pay out" accent="#16a34a" />
                 <StatCard label="Pending Balance" value={fmt(data.balance.pending, data.currency)} sub="Processing" />
-                <StatCard label="MRR" value={fmt(data.mrr, data.currency)} sub="This calendar month" accent="#2563EB" />
+                <StatCard label="MRR" value={fmt(data.mrr, data.currency)} sub="This calendar month" accent="#2b45ff" />
                 <StatCard label="Total Revenue" value={fmt(data.total_revenue, data.currency)} sub={`${data.charges.filter(c => c.status === "succeeded").length} successful charges`} />
               </div>
 
@@ -666,15 +666,15 @@ export default function PaymentsPage() {
                       <AreaChart data={revenueData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                         <defs>
                           <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#2563EB" stopOpacity={0.12} />
-                            <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                            <stop offset="5%" stopColor="#2b45ff" stopOpacity={0.12} />
+                            <stop offset="95%" stopColor="#2b45ff" stopOpacity={0} />
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
                         <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9CA3AF" }} tickLine={false} axisLine={false} interval={2} />
                         <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: "#9CA3AF" }} tickLine={false} axisLine={false} width={44} />
                         <Tooltip {...tooltipStyle} formatter={(v) => [fmt(Number(v)), "Revenue"]} />
-                        <Area type="monotone" dataKey="revenue" stroke="#2563EB" strokeWidth={2} fill="url(#revenueGrad)" dot={false} activeDot={{ r: 4, fill: "#2563EB" }} />
+                        <Area type="monotone" dataKey="revenue" stroke="#2b45ff" strokeWidth={2} fill="url(#revenueGrad)" dot={false} activeDot={{ r: 4, fill: "#2b45ff" }} />
                       </AreaChart>
                     </ResponsiveContainer>
                   ) : (
@@ -697,7 +697,7 @@ export default function PaymentsPage() {
                           <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9CA3AF" }} tickLine={false} axisLine={false} />
                           <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: "#9CA3AF" }} tickLine={false} axisLine={false} width={44} />
                           <Tooltip {...tooltipStyle} formatter={(v) => [fmt(Number(v)), "Payout"]} />
-                          <Bar dataKey="amount" fill="#2563EB" radius={[6, 6, 0, 0]} />
+                          <Bar dataKey="amount" fill="#2b45ff" radius={[6, 6, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     ) : (

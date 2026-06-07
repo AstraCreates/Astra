@@ -47,7 +47,7 @@ const SOURCE_ORDER = [
 
 function statusColor(status: string): string {
   if (status === "connected") return "#3D9E5F";
-  if (status === "oauth_ready") return "#2563EB";
+  if (status === "oauth_ready") return "#2b45ff";
   if (status === "planned") return "#C58B37";
   return "var(--fg-mute)";
 }
@@ -208,7 +208,7 @@ function ProposalCard({
   );
 }
 
-const GRAPH_COLORS = ["#2563EB", "#3D9E5F", "#C58B37", "#B45EA4", "#0F766E", "#DC2626", "#7C3AED", "#64748B"];
+const GRAPH_COLORS = ["#2b45ff", "#3D9E5F", "#C58B37", "#B45EA4", "#0F766E", "#DC2626", "#7C3AED", "#64748B"];
 
 function GraphRagPanel({
   graph,

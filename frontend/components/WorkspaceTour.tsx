@@ -272,7 +272,7 @@ export default function WorkspaceTour({ onDone }: WorkspaceTourProps) {
                   width: i === stepIndex ? 16 : 6,
                   height: 6,
                   borderRadius: 999,
-                  background: i === stepIndex ? "#2563EB" : i < stepIndex ? "rgba(37,99,235,0.35)" : "rgba(0,0,0,0.15)",
+                  background: i === stepIndex ? "#2b45ff" : i < stepIndex ? "rgba(37,99,235,0.35)" : "rgba(0,0,0,0.15)",
                   transition: "width 0.2s, background 0.2s",
                 }}
               />
@@ -292,7 +292,7 @@ export default function WorkspaceTour({ onDone }: WorkspaceTourProps) {
               style={{
                 padding: "8px 20px",
                 borderRadius: 999,
-                background: "#2563EB",
+                background: "#2b45ff",
                 color: "#fff",
                 border: "none",
                 fontSize: 12,

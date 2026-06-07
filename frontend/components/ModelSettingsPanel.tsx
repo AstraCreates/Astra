@@ -75,7 +75,7 @@ const DEPT_ICON: Record<Department, string> = {
 };
 
 const DEPT_COLOR: Record<Department, string> = {
-  Research:  "#2563EB",
+  Research:  "#2b45ff",
   Marketing: "#7C3AED",
   Technical: "#059669",
   Legal:     "#DC2626",
@@ -132,7 +132,7 @@ function ModelDropdown({
           borderRadius: 8,
           border: "1px solid #E5E7EB",
           background: value ? "#EFF6FF" : "#F9FAFB",
-          color: value ? "#2563EB" : "#6B7280",
+          color: value ? "#2b45ff" : "#6B7280",
           fontSize: 12,
           fontWeight: value ? 600 : 400,
           cursor: disabled ? "default" : "pointer",
@@ -170,7 +170,7 @@ function ModelDropdown({
               textAlign: "left",
               padding: "9px 14px",
               fontSize: 12,
-              color: value === null ? "#2563EB" : "#111827",
+              color: value === null ? "#2b45ff" : "#111827",
               fontWeight: value === null ? 600 : 400,
               background: value === null ? "#EFF6FF" : "transparent",
               border: "none",
@@ -190,7 +190,7 @@ function ModelDropdown({
                 textAlign: "left",
                 padding: "9px 14px",
                 fontSize: 12,
-                color: value === m ? "#2563EB" : "#111827",
+                color: value === m ? "#2b45ff" : "#111827",
                 fontWeight: value === m ? 600 : 400,
                 background: value === m ? "#EFF6FF" : "transparent",
                 border: "none",
@@ -317,7 +317,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6B7280", lineHeight: 1.5 }}>
             Override which model each agent uses. Saved overrides apply on the next run.
             {overrideCount > 0 && (
-              <span style={{ marginLeft: 8, color: "#2563EB", fontWeight: 500 }}>
+              <span style={{ marginLeft: 8, color: "#2b45ff", fontWeight: 500 }}>
                 {overrideCount} override{overrideCount === 1 ? "" : "s"} active
               </span>
             )}
@@ -350,7 +350,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
               padding: "8px 20px",
               borderRadius: 8,
               border: "none",
-              background: hasUnsavedChanges() ? "#2563EB" : "#E5E7EB",
+              background: hasUnsavedChanges() ? "#2b45ff" : "#E5E7EB",
               color: hasUnsavedChanges() ? "#fff" : "#9CA3AF",
               fontSize: 13,
               fontWeight: 600,
@@ -442,7 +442,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
                         padding: "2px 7px",
                         borderRadius: 999,
                         background: "#EFF6FF",
-                        color: "#2563EB",
+                        color: "#2b45ff",
                         fontWeight: 600,
                       }}
                     >
@@ -490,7 +490,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
                       {/* Current model badge (saved) */}
                       <div style={{ flexShrink: 0, minWidth: 100, textAlign: "right" }}>
                         {isOverridden ? (
-                          <span style={{ fontSize: 11, color: "#2563EB", fontWeight: 600, background: "#EFF6FF", padding: "2px 8px", borderRadius: 5 }}>
+                          <span style={{ fontSize: 11, color: "#2b45ff", fontWeight: 600, background: "#EFF6FF", padding: "2px 8px", borderRadius: 5 }}>
                             {shortModelName(currentModel!)}
                           </span>
                         ) : (
@@ -565,7 +565,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
             <button
               onClick={handleSave}
               disabled={saving}
-              style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: "#2563EB", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+              style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: "#2b45ff", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
             >
               {saving ? "Saving..." : "Save Changes"}
             </button>

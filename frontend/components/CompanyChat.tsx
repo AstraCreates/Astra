@@ -235,7 +235,7 @@ export default function CompanyChat({
                         </span>
                         <span style={{
                           fontSize: 10, padding: "1px 8px", borderRadius: 999,
-                          color: run.status === "done" ? "#3D9E5F" : run.status === "error" ? "#C0392B" : "#2563EB",
+                          color: run.status === "done" ? "#3D9E5F" : run.status === "error" ? "#C0392B" : "#2b45ff",
                           background: run.status === "done" ? "rgba(61,158,95,0.12)" : run.status === "error" ? "rgba(192,57,43,0.12)" : "rgba(37,99,235,0.12)",
                         }}>
                           {run.status === "running" ? "working…" : run.status}
@@ -247,7 +247,7 @@ export default function CompanyChat({
                 ))}
                 {!msg.done && (msg.runs ?? []).length === 0 && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-2)", padding: "6px 0" }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2563EB", flexShrink: 0 }} className="animate-pulse" />
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2b45ff", flexShrink: 0 }} className="animate-pulse" />
                     Dispatching agents…
                   </div>
                 )}

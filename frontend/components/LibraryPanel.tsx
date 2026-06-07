@@ -167,7 +167,7 @@ function NewFileForm({ founderId, onCreated, onCancel }: NewFileFormProps) {
             value={filename}
             onChange={(e) => setFilename(e.target.value)}
             placeholder="e.g. business_context.md"
-            className="w-full text-sm border border-[#E5E7EB] rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
+            className="w-full text-sm border border-[#E5E7EB] rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#2b45ff] focus:border-transparent"
           />
         </div>
         <div>
@@ -175,7 +175,7 @@ function NewFileForm({ founderId, onCreated, onCancel }: NewFileFormProps) {
           <select
             value={department}
             onChange={(e) => setDepartment(e.target.value)}
-            className="w-full text-sm border border-[#E5E7EB] rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#2563EB] bg-white"
+            className="w-full text-sm border border-[#E5E7EB] rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#2b45ff] bg-white"
           >
             {DEPARTMENTS.filter((d) => d !== "All").map((d) => (
               <option key={d} value={d}>
@@ -190,7 +190,7 @@ function NewFileForm({ founderId, onCreated, onCancel }: NewFileFormProps) {
             type="checkbox"
             checked={isCanonical}
             onChange={(e) => setIsCanonical(e.target.checked)}
-            className="w-4 h-4 rounded border-gray-300 text-[#2563EB] focus:ring-[#2563EB]"
+            className="w-4 h-4 rounded border-gray-300 text-[#2b45ff] focus:ring-[#2b45ff]"
           />
           <label htmlFor="is-canonical" className="text-sm text-[#111827] select-none">
             <span className="text-amber-500 mr-1">&#9733;</span>
@@ -204,7 +204,7 @@ function NewFileForm({ founderId, onCreated, onCancel }: NewFileFormProps) {
             onChange={(e) => setContent(e.target.value)}
             placeholder="Paste or type file content..."
             rows={14}
-            className="w-full text-sm font-mono border border-[#E5E7EB] rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent resize-none"
+            className="w-full text-sm font-mono border border-[#E5E7EB] rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#2b45ff] focus:border-transparent resize-none"
           />
         </div>
       </div>
@@ -212,7 +212,7 @@ function NewFileForm({ founderId, onCreated, onCancel }: NewFileFormProps) {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex-1 bg-[#2563EB] hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded px-4 py-2 transition-colors"
+          className="flex-1 bg-[#2b45ff] hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium rounded px-4 py-2 transition-colors"
         >
           {saving ? "Saving..." : "Create File"}
         </button>
@@ -303,7 +303,7 @@ function FileEditor({ file, founderId, onUpdated, onClose }: FileEditorProps) {
           <button
             onClick={handleSave}
             disabled={saving || !dirty}
-            className="bg-[#2563EB] hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-medium rounded px-3 py-1.5 transition-colors"
+            className="bg-[#2b45ff] hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-medium rounded px-3 py-1.5 transition-colors"
           >
             {saving ? "Saving..." : "Save"}
           </button>
@@ -321,7 +321,7 @@ function FileEditor({ file, founderId, onUpdated, onClose }: FileEditorProps) {
         <select
           value={department}
           onChange={(e) => { setDepartment(e.target.value); setDirty(true); }}
-          className="text-xs border border-[#E5E7EB] rounded px-2 py-0.5 bg-white focus:outline-none focus:ring-1 focus:ring-[#2563EB]"
+          className="text-xs border border-[#E5E7EB] rounded px-2 py-0.5 bg-white focus:outline-none focus:ring-1 focus:ring-[#2b45ff]"
         >
           {DEPARTMENTS.filter((d) => d !== "All").map((d) => (
             <option key={d} value={d}>{d}</option>
@@ -332,7 +332,7 @@ function FileEditor({ file, founderId, onUpdated, onClose }: FileEditorProps) {
             type="checkbox"
             checked={isCanonical}
             onChange={(e) => { setIsCanonical(e.target.checked); setDirty(true); }}
-            className="w-3.5 h-3.5 rounded border-gray-300 text-[#2563EB]"
+            className="w-3.5 h-3.5 rounded border-gray-300 text-[#2b45ff]"
           />
           <span className="text-amber-600 font-medium">Auto-inject</span>
         </label>
@@ -353,7 +353,7 @@ function FileEditor({ file, founderId, onUpdated, onClose }: FileEditorProps) {
           <textarea
             value={content}
             onChange={(e) => { setContent(e.target.value); setDirty(true); }}
-            className="w-full h-full text-sm font-mono border border-[#E5E7EB] rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent resize-none"
+            className="w-full h-full text-sm font-mono border border-[#E5E7EB] rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#2b45ff] focus:border-transparent resize-none"
             placeholder="File content..."
             spellCheck={false}
           />
@@ -436,7 +436,7 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
           <h2 className="text-sm font-semibold text-[#111827]">Library</h2>
           <button
             onClick={() => { setShowNewForm(true); setSelectedFile(null); }}
-            className="flex items-center gap-1 text-xs bg-[#2563EB] hover:bg-blue-700 text-white px-2.5 py-1.5 rounded transition-colors font-medium"
+            className="flex items-center gap-1 text-xs bg-[#2b45ff] hover:bg-blue-700 text-white px-2.5 py-1.5 rounded transition-colors font-medium"
           >
             <span className="text-base leading-none">+</span>
             New File
@@ -456,7 +456,7 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
                 onClick={() => setActiveDept(dept)}
                 className={`shrink-0 text-xs px-2.5 py-1 rounded-full transition-colors font-medium ${
                   activeDept === dept
-                    ? "bg-[#2563EB] text-white"
+                    ? "bg-[#2b45ff] text-white"
                     : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
                 }`}
               >
@@ -558,7 +558,7 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
             </p>
             <button
               onClick={() => setShowNewForm(true)}
-              className="mt-6 bg-[#2563EB] hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded transition-colors"
+              className="mt-6 bg-[#2b45ff] hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded transition-colors"
             >
               Create First File
             </button>

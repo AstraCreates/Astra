@@ -40,8 +40,8 @@ const c = {
   textSecondary: "#374151",
   textMuted: "#9CA3AF",
   grey: "#6B7280",
-  blue: "#2563EB",
-  blueHover: "#1D4ED8",
+  blue: "#2b45ff",
+  blueHover: "#1f36e0",
   blueTint: "#EFF6FF",
   green: "#16a34a",
   greenTint: "#DCFCE7",
@@ -1016,7 +1016,7 @@ export default function SettingsPage() {
               {/* Plan header */}
               <div style={{
                 padding: "14px 18px",
-                background: `linear-gradient(135deg, ${c.blue} 0%, #1D4ED8 100%)`,
+                background: `linear-gradient(135deg, ${c.blue} 0%, #1f36e0 100%)`,
                 display: "flex", alignItems: "center", justifyContent: "space-between",
               }}>
                 <div>

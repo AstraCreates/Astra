@@ -30,7 +30,7 @@ function TeamBadge() {
         padding: "2px 10px",
         borderRadius: 20,
         background: "#EFF6FF",
-        color: "#2563EB",
+        color: "#2b45ff",
         border: "1px solid #BFDBFE",
         letterSpacing: "0.04em",
         fontWeight: 600,
@@ -130,7 +130,7 @@ export default function SiteNav() {
             alignItems: "center",
             gap: 4,
             textDecoration: "none",
-            background: "#2563EB",
+            background: "#2b45ff",
             color: "#FFFFFF",
             fontSize: 13,
             fontWeight: 500,
@@ -142,10 +142,10 @@ export default function SiteNav() {
             lineHeight: 1,
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLAnchorElement).style.background = "#1D4ED8";
+            (e.currentTarget as HTMLAnchorElement).style.background = "#1f36e0";
           }}
           onMouseLeave={(e) => {
-            (e.currentTarget as HTMLAnchorElement).style.background = "#2563EB";
+            (e.currentTarget as HTMLAnchorElement).style.background = "#2b45ff";
           }}
         >
           New goal <span aria-hidden="true">→</span>

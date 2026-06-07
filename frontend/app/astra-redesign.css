@@ -237,3 +237,9 @@ h1, h2, h3, h4, h5, h6 {
 .steer-inp::placeholder{color:var(--fm)}
 .steer-send{width:22px;height:22px;background:var(--blue);border:none;color:#fff;font-size:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer}
 @keyframes scanline{0%{left:-40%}100%{left:130%}}
+
+/* ── Global square corners — reskin every page to the mockup aesthetic ──
+   The mockup is 0-radius everywhere; this squares inline-styled deep pages
+   (settings/brain/integrations/payments/outreach) that can't be reached via
+   token remap alone. */
+* { border-radius: 0 !important; }
