@@ -24,7 +24,8 @@ FOUNDER = "premade_test_founder"
 COMPANY = "ClearNotes"
 GOAL = ("Company/project name: ClearNotes\n\nBuild ClearNotes, a SaaS that turns meeting "
         "recordings into action items and email drafts for solo founders and small teams.")
-PER_AGENT_TIMEOUT = 360
+import os as _os
+PER_AGENT_TIMEOUT = int(_os.environ.get("PREMADE_TIMEOUT", "360"))
 
 # ── Premade research / upstream outputs (what a normal session would have) ──────
 MARKET_BRIEF = (
