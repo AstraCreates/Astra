@@ -1901,8 +1901,32 @@ async def serve_file(filename: str):
         if candidate.exists() and candidate.is_file():
             path = candidate
             break
+    # Fallback: agents often reference the logical name (privacy_policy.pdf) while the
+    # saved file carries a uuid suffix (privacy_policy_35419f.pdf). Match by stem +
+    # extension (any extension if none given, since .pdf can fall back to .txt).
+    if path is None:
+        stem = Path(safe_name).stem
+        req_ext = Path(safe_name).suffix.lower()
+        best = None
+        for d in search_dirs:
+            if not d.is_dir():
+                continue
+            for f in sorted(d.iterdir(), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
+                if not f.is_file():
+                    continue
+                if f.stem == stem or f.stem.startswith(stem + "_"):
+                    # Prefer same extension; otherwise accept (pdf↔txt fallback).
+                    if not req_ext or f.suffix.lower() == req_ext:
+                        path = f
+                        break
+                    if best is None:
+                        best = f
+            if path:
+                break
+        path = path or best
     if path is None:
         raise HTTPException(status_code=404, detail="File not found")
+    safe_name = path.name
     media_type, _ = mimetypes.guess_type(safe_name)
     return FileResponse(path, media_type=media_type or "application/octet-stream", filename=safe_name)
 
