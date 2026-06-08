@@ -116,6 +116,16 @@ async def list_missions(founder_id: str = ""):
     return {"missions": missions}
 
 
+@router.get("/missions/pending-approvals")
+async def list_pending_approvals(founder_id: str = ""):
+    """Every milestone awaiting the founder's sign-off, across all missions.
+    Declared before /missions/{mission_id} so it isn't swallowed by the dynamic route."""
+    if not founder_id:
+        raise HTTPException(status_code=400, detail="founder_id is required")
+    from backend.missions.store import pending_approvals
+    return {"pending": pending_approvals(founder_id)}
+
+
 @router.get("/missions/company-goal")
 async def get_company_goal(founder_id: str = ""):
     from backend.missions.company_goal import get_company_goal as load_company_goal
@@ -222,15 +232,6 @@ async def patch_task(mission_id: str, task_id: str, body: PatchTaskRequest):
     except KeyError:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"task": task}
-
-
-@router.get("/missions/pending-approvals")
-async def list_pending_approvals(founder_id: str = ""):
-    """Every milestone awaiting the founder's sign-off, across all missions."""
-    if not founder_id:
-        raise HTTPException(status_code=400, detail="founder_id is required")
-    from backend.missions.store import pending_approvals
-    return {"pending": pending_approvals(founder_id)}
 
 
 @router.post("/missions/{mission_id}/tasks/{task_id}/approve")
