@@ -24,6 +24,7 @@ type SState = {
   artifacts: Artifact[]; approvals: Approval[]; decidedKeys: Set<string>;
   selDept: string | null; selArt: string | null; tab: string; paused: boolean;
   revisionGate: string | null; revisionNote: string;
+  liveUrl: string;
 };
 
 function safeText(v: unknown): string {
@@ -167,7 +168,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const S = useRef<SState>({
     status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
     decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false,
-    revisionGate: null, revisionNote: "",
+    revisionGate: null, revisionNote: "", liveUrl: "",
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
   const sseRef = useRef<EventSource | null>(null);
@@ -239,7 +240,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         // Technical build stream — fold into the technical agent log.
         const a = ev.agent || "technical"; ensureAg(a);
         const k = ev.kind;
-        if (k === "file") addLog(a, "tool", `${ev.verb || "wrote"} ${ev.path} (${ev.size ?? 0}b)`);
+        if (k === "deploy" && ev.url) { st.liveUrl = String(ev.url); addLog(a, "result", `Deployed → ${ev.url}`); }
+        else if (k === "file") addLog(a, "tool", `${ev.verb || "wrote"} ${ev.path} (${ev.size ?? 0}b)`);
         else if (k === "command") addLog(a, "tool", `$ ${ev.command || ""}`);
         else if (k === "output") addLog(a, "result", safeText(ev.text || "").slice(0, 300));
         else if (k === "error") addLog(a, "error", safeText(ev.text || "").slice(0, 300));
@@ -303,7 +305,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!sessionId || !founderId) return;
     let alive = true;
-    S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "" };
+    S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "" };
     force();
 
     (async () => {
@@ -336,6 +338,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           }
           if (d.stack_id) S.current.stackId = d.stack_id;
           else if (d.stack?.stack_id && !S.current.stackId) S.current.stackId = d.stack.stack_id;
+          if (d.previewUrl) S.current.liveUrl = d.previewUrl;
           S.current.status = d.status || S.current.status;
           S.current.artifacts = Array.isArray(d.artifacts) ? d.artifacts : [];
           S.current.approvals = Array.isArray(d.approvals)
@@ -518,6 +521,13 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       {/* topbar */}
       <div style={{ height: 44, display: "flex", alignItems: "center", gap: 10, padding: "0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
         <div className="topbar-title" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName || shortGoal}</div>
+        {st.liveUrl && (
+          <a href={st.liveUrl} target="_blank" rel="noopener noreferrer" className="btn sm"
+             title={st.liveUrl}
+             style={{ flexShrink: 0, textDecoration: "none", background: "var(--green)", border: "1px solid var(--green)", color: "#fff", display: "inline-flex", alignItems: "center", gap: 5 }}>
+            ↗ Live site
+          </a>
+        )}
         {statusPill(st.status)}
         {(st.status === "running" || st.status === "loading") && <>
           <button className="btn sm" style={{ flexShrink: 0, touchAction: "manipulation", background: st.paused ? "var(--green)" : "var(--surface)", border: "1px solid var(--bd)", color: st.paused ? "#fff" : "var(--fg)" }} onClick={pauseToggle}>{st.paused ? "▶ Resume" : "⏸ Pause"}</button>

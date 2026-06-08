@@ -66,10 +66,17 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
     final_status = "running"
     agent_status: dict[str, str] = {}
     agents: dict[str, dict[str, Any]] = {}
+    preview_url = ""
 
     for event in event_dicts:
         event_type = event.get("type")
         _update_agent_snapshot(agents, event)
+        if event_type == "agent_build" and event.get("kind") == "deploy" and event.get("url"):
+            preview_url = event["url"]
+        elif event_type == "agent_done" and isinstance(event.get("result"), dict):
+            _u = event["result"].get("deploy_url") or event["result"].get("url")
+            if _u:
+                preview_url = _u
         if event_type == "approval_request" and event.get("request"):
             request = event["request"]
             item = _approval_request_state(request)
@@ -142,6 +149,7 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
         "execution_contract": execution_contract,
         "execution_blueprint": execution_blueprint,
         "agents": agents,
+        "previewUrl": preview_url,
         "lane_status": list(lane_status.values()),
         "company_genome": genome,
         "digest": build_session_digest(session_id, events) if events else None,
@@ -315,7 +323,8 @@ def _update_agent_snapshot(agents: dict[str, dict[str, Any]], event: dict[str, A
         state["result"] = result if isinstance(result, dict) else {"output": result}
         if isinstance(state["result"], dict):
             preview_url = (
-                state["result"].get("url")
+                state["result"].get("deploy_url")
+                or state["result"].get("url")
                 or state["result"].get("deployment_url")
                 or state["result"].get("project_url")
                 or state["result"].get("github_url")

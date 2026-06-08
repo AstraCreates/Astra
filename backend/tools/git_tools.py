@@ -168,6 +168,31 @@ def _workspace_dir(session_id: str, repo_url: str) -> Path:
     return WORKSPACE_ROOT / session_id / repo_name
 
 
+def remove_workspace(session_id: str) -> bool:
+    """Delete a session's entire workspace tree (all repos under it). Best-effort —
+    runs as root in the container, so chmod first to clear astra-owned, read-only
+    git objects that would otherwise block rmtree. Returns True if anything removed."""
+    import shutil
+    if not session_id:
+        return False
+    target = WORKSPACE_ROOT / session_id
+    if not target.exists():
+        # Drop any stale in-memory clone refs for this session anyway.
+        for k in [k for k in _clones if k.startswith(f"{session_id}:")]:
+            _clones.pop(k, None)
+        return False
+    try:
+        if os.getuid() == 0:
+            subprocess.run(["chmod", "-R", "u+rwX", str(target)], capture_output=True, timeout=30)
+    except Exception:
+        pass
+    shutil.rmtree(target, ignore_errors=True)
+    for k in [k for k in _clones if k.startswith(f"{session_id}:")]:
+        _clones.pop(k, None)
+    logger.info("Removed workspace for session %s (%s)", session_id, target)
+    return not target.exists()
+
+
 def _ensure_clone(repo_url: str, session_id: str = "default") -> str:
     """Clone repo into persistent workspace, return local path."""
     import time

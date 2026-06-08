@@ -3,12 +3,19 @@
 Starts the app (Next.js `npm run dev`, or a static/python server) on a free port
 in a published range and returns a public URL: http://<host>:<port>. Bounded to a
 small pool of ports; starting a new preview for a session replaces the old one.
+
+Teardown (`stop_local_preview`) kills the whole process group AND anything still
+bound to the port, then frees it — so a killed/deleted session leaves no live site
+and no port leak. A sidecar registry (`_REGISTRY`) maps session→port on disk so
+teardown still works after the backend process restarts (the in-memory `_previews`
+dict is lost on restart, but the detached preview servers keep running).
 """
 from __future__ import annotations
 
 import json
 import logging
 import os
+import signal
 import socket
 import subprocess
 import threading
@@ -26,6 +33,36 @@ _PORT_RANGE = range(
 )
 _previews: dict[str, tuple[int, subprocess.Popen]] = {}
 _lock = threading.Lock()
+
+# Survives backend restarts so we can still tear down a detached preview server
+# whose Popen handle we no longer hold.
+_REGISTRY = Path(os.environ.get("ASTRA_PREVIEW_REGISTRY", "/tmp/astra_previews.json"))
+
+
+def _registry_load() -> dict[str, int]:
+    try:
+        return {str(k): int(v) for k, v in json.loads(_REGISTRY.read_text()).items()}
+    except Exception:
+        return {}
+
+
+def _registry_set(session_id: str, port: int) -> None:
+    try:
+        reg = _registry_load()
+        reg[session_id] = port
+        _REGISTRY.write_text(json.dumps(reg))
+    except Exception as e:
+        logger.debug("preview registry write failed: %s", e)
+
+
+def _registry_pop(session_id: str) -> int | None:
+    try:
+        reg = _registry_load()
+        port = reg.pop(session_id, None)
+        _REGISTRY.write_text(json.dumps(reg))
+        return port
+    except Exception:
+        return None
 
 
 def _public_host() -> str:
@@ -57,6 +94,64 @@ def _alloc_port() -> int | None:
     return None
 
 
+def _kill_proc_group(proc: subprocess.Popen) -> None:
+    """SIGTERM then SIGKILL the process *group* (the dev server's children too)."""
+    if proc is None:
+        return
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(os.getpgid(proc.pid), sig)
+        except ProcessLookupError:
+            return
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            return
+
+
+def _kill_port(port: int) -> None:
+    """Kill whatever is still bound to ``port`` (covers sudo-detached children whose
+    process group we don't own). Best-effort across fuser/lsof."""
+    if not port:
+        return
+    try:
+        subprocess.run(["fuser", "-k", f"{port}/tcp"], capture_output=True, timeout=10)
+        return
+    except Exception:
+        pass
+    try:
+        out = subprocess.run(["lsof", "-t", f"-i:{port}"], capture_output=True, text=True, timeout=10)
+        for pid in out.stdout.split():
+            try:
+                os.kill(int(pid), signal.SIGKILL)
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+def stop_local_preview(session_id: str) -> bool:
+    """Stop the preview for a session: kill the server, free its port, drop the
+    registry entry. Returns True if anything was torn down. Restart-safe — works
+    even when the in-memory Popen handle is gone."""
+    with _lock:
+        entry = _previews.pop(session_id, None)
+    port = None
+    if entry:
+        port, proc = entry
+        _kill_proc_group(proc)
+    reg_port = _registry_pop(session_id)
+    if port is None:
+        port = reg_port
+    if port:
+        _kill_port(port)
+        logger.info("Stopped local preview for %s (port %s freed)", session_id, port)
+        return True
+    return bool(entry)
+
+
 def start_local_preview(local: str, session_id: str) -> str | None:
     """Start the MVP locally and return its public URL, or None if not possible."""
     pkg = Path(local) / "package.json"
@@ -69,13 +164,10 @@ def start_local_preview(local: str, session_id: str) -> str | None:
     is_node = pkg.exists()
     is_next = "next" in deps
 
+    # Tear down any prior preview for this session (kills its server + frees port).
+    stop_local_preview(session_id)
+
     with _lock:
-        old = _previews.pop(session_id, None)
-        if old:
-            try:
-                old[1].terminate()
-            except Exception:
-                pass
         port = _alloc_port()
         if not port:
             logger.warning("No free preview port for session %s", session_id)
@@ -102,11 +194,18 @@ def start_local_preview(local: str, session_id: str) -> str | None:
         else:
             cmd = ["sh", "-c", inner]
         try:
-            proc = subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # start_new_session=True → own process group so stop_local_preview can
+            # SIGKILL the whole tree (sh → npm → next), not just the shell.
+            proc = subprocess.Popen(
+                cmd, env=env,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
         except Exception as e:
             logger.warning("Failed to start local preview: %s", e)
             return None
         _previews[session_id] = (port, proc)
+        _registry_set(session_id, port)
 
     url = f"http://{_public_host()}:{port}"
     logger.info("Local preview for %s starting at %s (installing deps; ready in ~1-2 min)", session_id, url)

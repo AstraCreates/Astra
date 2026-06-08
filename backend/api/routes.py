@@ -400,6 +400,21 @@ async def list_sessions(request: Request, founder_id: str = "", limit: int = 50)
     return {"sessions": sessions}
 
 
+async def _teardown_session_artifacts(session_id: str) -> None:
+    """Stop the session's live preview (free its port) and delete its workspace
+    tree. Best-effort, offloaded to threads (rmtree + subprocess can block)."""
+    try:
+        from backend.tools.local_preview import stop_local_preview
+        await asyncio.to_thread(stop_local_preview, session_id)
+    except Exception as e:
+        logger.warning("preview teardown failed for %s: %s", session_id, e)
+    try:
+        from backend.tools.git_tools import remove_workspace
+        await asyncio.to_thread(remove_workspace, session_id)
+    except Exception as e:
+        logger.warning("workspace teardown failed for %s: %s", session_id, e)
+
+
 @router.delete("/sessions/{session_id}")
 async def delete_session_route(session_id: str, request: Request):
     """Permanently delete a session. Only the owning founder (or an authorized org member) may delete."""
@@ -418,6 +433,8 @@ async def delete_session_route(session_id: str, request: Request):
         cancellation.request_kill(session_id)
     except Exception:
         pass
+    # Shut down the live preview + delete the workspace before dropping the session.
+    await _teardown_session_artifacts(session_id)
     removed = _del(session_id)
     return {"ok": True, "deleted": removed}
 
@@ -475,6 +492,8 @@ async def kill_session(session_id: str, request: Request):
     # Hard-cancelling the orchestrator task means its in-flight agents never emit a
     # terminal event, so they would stay frozen at "running"/"waiting" forever.
     await _reconcile_orphaned_agents(session_id, "Run stopped by user.")
+    # Kill the live preview + delete the workspace for the stopped run.
+    await _teardown_session_artifacts(session_id)
     try:
         await publish(session_id, {"type": "goal_error", "error": "Run stopped by user.", "killed": True})
     except Exception:
