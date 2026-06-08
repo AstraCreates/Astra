@@ -21,8 +21,10 @@ logger = logging.getLogger(__name__)
 _BASE = "https://api.apollo.io/api/v1"
 _TIMEOUT = 20
 
-# Hard cap — never return more than this from a single search to protect credits
-MAX_PER_PULL = 15
+# Search is free — show up to 100 results so users can pick what they want
+MAX_SEARCH_RESULTS = 100
+# Enrichment costs 1 credit per contact — cap how many can be revealed at once
+MAX_ENRICH_BATCH = 15
 
 
 def _key() -> str:
@@ -205,18 +207,16 @@ def apollo_search_people(
     keywords: list[str] | None = None,
     has_email: bool = True,
     page: int = 1,
-    per_page: int = MAX_PER_PULL,
+    per_page: int = MAX_SEARCH_RESULTS,
 ) -> dict:
     """
     Credit-free people search via /mixed_people/api_search.
-    Hard-capped at MAX_PER_PULL (15) — returns no emails.
-    Call apollo_enrich_person() separately to reveal emails (costs credits).
+    Returns up to 100 results with no email addresses — free to call.
+    User picks which contacts to reveal; call apollo_enrich_batch() for
+    the selected contacts to get emails (costs 1 credit each, max 15 at once).
     """
-    # Hard cap — never exceed 15 to protect credits
-    capped = min(per_page, MAX_PER_PULL)
-
-    # Fetch a slightly larger page so we can rank and return the best capped contacts
-    fetch_size = min(capped * 3, 50)
+    # Search is free — allow up to 100 (Apollo's page limit)
+    fetch_size = min(per_page, MAX_SEARCH_RESULTS)
 
     params: dict[str, Any] = {
         "per_page": fetch_size,
@@ -252,16 +252,16 @@ def apollo_search_people(
             if (p.get("organization") or {}).get("name", "").lower() not in excluded
         ]
 
-    # Rank by quality score, take the best `capped` contacts
-    people_sorted = sorted(people, key=_score_person, reverse=True)[:capped]
+    # Rank by quality score — best contacts first
+    people_sorted = sorted(people, key=_score_person, reverse=True)
 
     return {
         "contacts": [_normalize_search_person(p) for p in people_sorted],
         "total": data.get("total_entries", len(people)),
         "page": page,
-        "per_page": capped,
+        "per_page": fetch_size,
         "has_more": data.get("total_entries", 0) > page * fetch_size,
-        "note": f"Showing {len(people_sorted)} best contacts. Emails hidden until enrichment.",
+        "note": f"{len(people_sorted)} contacts ranked by quality. Select up to {MAX_ENRICH_BATCH} to reveal emails.",
     }
 
 
@@ -313,11 +313,11 @@ def apollo_enrich_person(
 
 def apollo_enrich_batch(contacts: list[dict]) -> list[dict]:
     """
-    Enrich up to MAX_PER_PULL contacts at once.
-    Each contact should have `apollo_id` (or first_name + company_name).
-    Returns enriched contacts — credits consumed = len(contacts).
+    Reveal emails for up to MAX_ENRICH_BATCH contacts (1 credit each).
+    Each contact needs `apollo_id` (or first_name + company_name).
+    User should select which contacts they want before calling this.
     """
-    batch = contacts[:MAX_PER_PULL]
+    batch = contacts[:MAX_ENRICH_BATCH]
     results = []
     for contact in batch:
         enriched = apollo_enrich_person(

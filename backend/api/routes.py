@@ -2404,12 +2404,12 @@ async def outreach_search_people(
     domains_exclude: str = "",
     keywords: str = "",
     page: int = 1,
-    per_page: int = 25,
+    per_page: int = 100,
 ):
     """
     Search contacts. Priority:
       1. Local Supabase DB (free, instant)
-      2. Apollo API (if available on plan)
+      2. Apollo API (if available on plan) — credit-free, returns up to 100
       3. Web scraping fallback
     """
     require_founder_access(request, founder_id, min_role="viewer")
@@ -2853,10 +2853,10 @@ async def outreach_enrich_batch(request: Request, body: dict):
     """
     founder_id = body.get("founder_id", "")
     require_founder_access(request, founder_id, min_role="operator")
-    from backend.tools.apollo_tools import apollo_enrich_batch, MAX_PER_PULL
-    contacts = (body.get("contacts") or [])[:MAX_PER_PULL]
+    from backend.tools.apollo_tools import apollo_enrich_batch, MAX_ENRICH_BATCH
+    contacts = (body.get("contacts") or [])[:MAX_ENRICH_BATCH]
     if not contacts:
-        raise HTTPException(status_code=400, detail="contacts list is required (max 15)")
+        raise HTTPException(status_code=400, detail=f"contacts list is required (max {MAX_ENRICH_BATCH})")
     results = await asyncio.to_thread(apollo_enrich_batch, contacts)
     return {"enriched": results, "count": len(results), "credits_used": len([r for r in results if r.get("enriched")])}
 
