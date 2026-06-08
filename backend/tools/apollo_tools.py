@@ -24,7 +24,7 @@ _TIMEOUT = 20
 # Search is free — show up to 100 results so users can pick what they want
 MAX_SEARCH_RESULTS = 100
 # Enrichment costs 1 credit per contact — cap how many can be revealed at once
-MAX_ENRICH_BATCH = 15
+MAX_ENRICH_BATCH = 10
 
 
 def _key() -> str:
