@@ -13,6 +13,19 @@ export default function WelcomeScreen() {
           from { opacity: 0; transform: translateY(24px); }
           to   { opacity: 1; transform: translateY(0); }
         }
+        @keyframes grain-shift {
+          0%   { transform: translate(0px,   0px)  scale(1.05); }
+          10%  { transform: translate(-6px, -4px)  scale(1.05); }
+          20%  { transform: translate(4px,   7px)  scale(1.05); }
+          30%  { transform: translate(-3px,  3px)  scale(1.05); }
+          40%  { transform: translate(6px,  -6px)  scale(1.05); }
+          50%  { transform: translate(-5px,  5px)  scale(1.05); }
+          60%  { transform: translate(7px,  -3px)  scale(1.05); }
+          70%  { transform: translate(-4px,  6px)  scale(1.05); }
+          80%  { transform: translate(3px,  -7px)  scale(1.05); }
+          90%  { transform: translate(-6px,  2px)  scale(1.05); }
+          100% { transform: translate(0px,   0px)  scale(1.05); }
+        }
         .ws-logo {
           opacity: 0;
           animation: ws-up 0.7s cubic-bezier(0.22,1,0.36,1) 0.1s forwards;
@@ -42,34 +55,31 @@ export default function WelcomeScreen() {
           opacity: 0.88;
           transform: translateY(-1px);
         }
+        .ws-grain {
+          position: absolute;
+          inset: -10%;
+          width: 120%;
+          height: 120%;
+          pointer-events: none;
+          z-index: 1;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='1' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+          background-repeat: repeat;
+          background-size: 180px 180px;
+          image-rendering: pixelated;
+          opacity: 0.42;
+          mix-blend-mode: overlay;
+          animation: grain-shift 0.65s steps(10) infinite;
+        }
       `}</style>
-
-      {/* Grain overlay via SVG filter */}
-      <svg width="0" height="0" style={{ position: "absolute" }}>
-        <filter id="ws-grain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
-          <feColorMatrix type="saturate" values="0"/>
-          <feBlend in="SourceGraphic" mode="overlay" result="blend"/>
-          <feComposite in="blend" in2="SourceGraphic"/>
-        </filter>
-      </svg>
 
       <div style={{
         minHeight: "100vh",
         display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
         position: "relative", overflow: "hidden",
-        background: "linear-gradient(145deg, #002EFF 0%, #0048FF 30%, #1a72ff 60%, #7CFFC6 100%)",
+        background: "linear-gradient(145deg, #002EFF 0%, #0040FF 25%, #1a6aff 55%, #5DFFB8 85%, #7CFFC6 100%)",
       }}>
-        {/* Grain texture */}
-        <div style={{
-          position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1,
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E")`,
-          backgroundRepeat: "repeat",
-          backgroundSize: "128px 128px",
-          opacity: 0.18,
-          mixBlendMode: "overlay",
-        }} />
+        <div className="ws-grain" />
 
         <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 32px", display: "flex", flexDirection: "column", alignItems: "center", gap: 32 }}>
           <div className="ws-logo">

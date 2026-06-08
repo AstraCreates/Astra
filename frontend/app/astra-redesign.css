@@ -53,9 +53,9 @@ body {
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-heading);
-  letter-spacing: -0.01em;
-  font-weight: 500;
+  font-family: var(--font-fraunces), "Fraunces", serif !important;
+  letter-spacing: -0.02em !important;
+  font-weight: 400 !important;
 }
 
 /* Kill rounded corners from existing inline/utility styles where feasible */
@@ -214,7 +214,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Session — approval card */
 .apv{border:2px solid var(--red);background:var(--surface)}
 .apv-hd{background:var(--red);padding:12px 15px}
-.apv-ht{font-family:var(--font-chakra),sans-serif;font-size:12px;font-weight:700;color:#fff}
+.apv-ht{font-family:var(--font-fraunces),"Fraunces",serif;font-size:14px;font-weight:400;letter-spacing:-0.01em;color:#fff}
 .apv-mt{font-size:9px;color:rgba(255,255,255,.7);margin-top:2px;font-family:var(--font-ibm-mono),monospace}
 .apv-body{padding:13px 15px;display:flex;flex-direction:column;gap:9px}
 .apv-reason{font-size:10.5px;color:var(--fd);line-height:1.65;font-family:var(--font-ibm-mono),monospace}
@@ -225,7 +225,7 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Session — done banner + steer */
 .done-bar{background:linear-gradient(90deg,var(--gdim),rgba(124,255,198,.12) 50%,var(--gdim));border:1px solid var(--gb);padding:11px 18px;flex-shrink:0;display:flex;align-items:center;gap:11px}
-.done-title{font-family:var(--font-chakra),sans-serif;font-size:12px;font-weight:700;color:var(--green)}
+.done-title{font-family:var(--font-fraunces),"Fraunces",serif;font-size:14px;font-weight:400;letter-spacing:-0.01em;color:var(--green)}
 .done-sub{font-size:9.5px;color:var(--fd);margin-top:2px}
 .steerbar{border-top:1px solid var(--bd);background:var(--surface);padding:8px 14px;flex-shrink:0}
 .steer-wrap{display:flex;align-items:center;gap:8px;background:var(--s2);border:1px solid var(--bd2);padding:6px 11px;transition:border-color .15s}
