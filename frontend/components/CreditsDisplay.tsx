@@ -410,7 +410,7 @@ export default function CreditsDisplay() {
       {/* Price / spend tracker */}
       {balance !== null && (
         <div style={{ marginTop: 5, paddingLeft: 2, fontSize: 9.5, color: "#9CA3AF", fontFamily: "var(--font-ibm-mono), monospace", lineHeight: 1.5 }}>
-          {balance.balance.toLocaleString()} credits left · ~${(balance.total_used * 0.0998).toFixed(2)} used
+          {balance.balance.toLocaleString()} credits left · ~${(balance.total_used * 0.10).toFixed(2)} billed
         </div>
       )}
 

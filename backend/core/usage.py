@@ -53,8 +53,27 @@ def _cost_usd(model: str, prompt_tokens: int, completion_tokens: int, cached_tok
 
 
 def _tokens_to_credits(tokens: int) -> int:
-    """Flat rate: 10 tokens = 1 credit."""
+    """Flat rate: 10 tokens = 1 credit. (Legacy — used only in the usage report.)"""
     return max(0, tokens // 10)
+
+
+# ── Credit pricing ───────────────────────────────────────────────────────────────
+# Credits are priced off REAL API cost so revenue scales with spend:
+#   charged_usd = real_api_cost_usd * markup     (markup = 10× by default)
+#   credits     = charged_usd / CREDIT_USD
+# So $1 of real API cost bills as $10 of credits (10× markup). "Higher for certain
+# use cases" = a bigger markup (e.g. MVP builds use BASE × mvp_credit_multiplier).
+CREDIT_USD = 0.10          # 1 credit = $0.10 (the founder-facing price/credit)
+BASE_MARKUP = 10.0         # bill 10× the real API cost
+
+
+def cost_to_credits(model: str, prompt_tokens: int, completion_tokens: int,
+                    cached_tokens: int = 0, markup: float = BASE_MARKUP) -> int:
+    """Credits to charge for one call = real_api_cost_usd * markup / CREDIT_USD."""
+    import math
+    cost = _cost_usd(model, prompt_tokens, completion_tokens, cached_tokens)
+    charged = cost * max(1.0, markup)
+    return max(1, math.ceil(charged / CREDIT_USD))
 
 
 def get_session_cost(session_id: str) -> dict[str, Any]:

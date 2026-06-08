@@ -416,15 +416,15 @@ class Agent:
                 })
             except Exception:
                 pass
-            # Deduct credits: credits = tokens / (gold_price / 1000)
+            # Deduct credits = real API cost × markup (10×). Revenue scales with spend.
             if not ctx.unlimited_credits:
                 try:
                     from backend.credits.store import deduct_credits
-                    from backend.credits.gold_price import tokens_to_credits
+                    from backend.core.usage import cost_to_credits
                     total_t = prompt_t + completion_t
-                    credits = tokens_to_credits(total_t)
+                    credits = cost_to_credits(self.model, prompt_t, completion_t, 0)
                     deduct_credits(ctx.founder_id, credits,
-                                   f"{self.name} call ({total_t:,} tokens)", ctx.session_id)
+                                   f"{self.name} call ({total_t:,} tokens, {self.model})", ctx.session_id)
                 except Exception as _ce:
                     logger.warning("Per-call credit deduction failed: %s", _ce)
         if not resp or not getattr(resp, "choices", None):

@@ -458,18 +458,23 @@ def _record_build_usage(result_obj: dict, founder_id: str = "", session_id: str 
         if not founder_id:
             return
         usage = result_obj.get("usage") or {}
-        total_t = sum(int(usage.get(k, 0) or 0) for k in (
-            "input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+        cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
+        inp = sum(int(usage.get(k, 0) or 0) for k in ("input_tokens", "cache_creation_input_tokens")) + cache_read
+        out = int(usage.get("output_tokens", 0) or 0)
+        total_t = inp + out
         turns = int(result_obj.get("num_turns", 0) or 0)
         if total_t <= 0:
             return
-        from backend.credits.gold_price import tokens_to_credits
+        from backend.core.usage import cost_to_credits, BASE_MARKUP
         from backend.credits.store import deduct_credits
-        mult = float(getattr(settings, "mvp_credit_multiplier", 2.0) or 2.0)
-        credits = max(1, round(tokens_to_credits(total_t) * mult))
+        # Builds bill at a higher markup: BASE (10×) × mvp_credit_multiplier.
+        mult = float(getattr(settings, "mvp_credit_multiplier", 3.0) or 3.0)
+        build_model = getattr(settings, "mvp_build_model", "") or "tencent/hy3-preview"
+        markup = BASE_MARKUP * mult
+        credits = cost_to_credits(build_model, inp, out, cache_read, markup=markup)
         deduct_credits(
             founder_id, credits,
-            f"MVP build — {turns} tool rounds, {total_t:,} tokens (x{mult} MVP rate)",
+            f"MVP build — {turns} tool rounds, {total_t:,} tokens ({markup:.0f}x markup)",
             session_id or None,
         )
         logger.info("MVP build billed founder=%s credits=%s tokens=%s turns=%s", founder_id, credits, total_t, turns)
