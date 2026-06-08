@@ -52,119 +52,97 @@ function formatStatus(status: string): string {
 
 /* ─── sub-components ─── */
 
-function SourceCard({
-  source, active, focused, onToggle,
+function SourceRow({
+  source,
+  expanded,
+  values,
+  saving,
+  syncing,
+  onExpand,
+  onChange,
+  onSave,
+  onSync,
 }: {
   source: BrainSource;
-  active: boolean;
-  focused: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      style={{
-        minHeight: 100,
-        textAlign: "left",
-        border: focused
-          ? "1px solid var(--blue)"
-          : active
-            ? "1px solid rgba(124,255,198,0.35)"
-            : "1px solid var(--bd2)",
-        background: focused
-          ? "rgba(0,46,255,0.07)"
-          : active
-            ? "rgba(124,255,198,0.06)"
-            : "var(--surface)",
-        padding: "12px 13px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 7,
-        color: "var(--fg)",
-        cursor: "pointer",
-        transition: "all .12s",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {source.label}
-        </span>
-        <span style={{ width: 7, height: 7, borderRadius: 999, background: statusColor(source.status), flexShrink: 0 }} />
-      </div>
-      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-        <span className="pill" style={{ letterSpacing: 0 }}>{source.kind}</span>
-        <span className="pill" style={{ letterSpacing: 0 }}>{source.record_count}</span>
-      </div>
-      <p style={{ margin: "auto 0 0", color: "var(--fm)", fontSize: 10, lineHeight: 1.4 }}>
-        {formatStatus(source.status)}{source.importer === false ? " · planned" : ""}
-      </p>
-    </button>
-  );
-}
-
-function SourceConnectionPanel({
-  source, values, saving, onChange, onSave,
-}: {
-  source: BrainSource | null;
+  expanded: boolean;
   values: Record<string, string>;
   saving: boolean;
+  syncing: boolean;
+  onExpand: () => void;
   onChange: (field: string, value: string) => void;
   onSave: () => void;
+  onSync: () => void;
 }) {
-  if (!source) {
-    return (
-      <div style={{ border: "1px solid var(--bd)", background: "var(--s2)", padding: "14px 16px", color: "var(--fm)", fontSize: 12 }}>
-        Select a source to configure its connection.
-      </div>
-    );
-  }
+  const isConnected = source.status === "connected" || source.status === "oauth_ready";
+  const isPlanned = source.importer === false && source.status === "planned";
   const fields = source.credential_fields ?? [];
   const canSave = fields.length > 0 && fields.every(f => values[f]?.trim());
+
   return (
-    <div style={{ border: "1px solid var(--bd2)", background: "var(--s2)", padding: "16px", display: "grid", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 13, fontWeight: 650, color: "var(--fg)" }}>{source.label}</span>
-        <span style={{ width: 7, height: 7, borderRadius: 999, background: statusColor(source.status) }} />
-        <span style={{ color: "var(--fm)", fontSize: 11 }}>{formatStatus(source.status)}</span>
-        {(source.status === "connected" || source.status === "oauth_ready") && (
-          <span style={{ marginLeft: "auto", color: "#3D9E5F", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-            Connected
-          </span>
+    <div style={{ border: "1px solid var(--bd)", background: "var(--surface)" }}>
+      {/* row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px" }}>
+        <span style={{ width: 8, height: 8, borderRadius: 999, background: statusColor(source.status), flexShrink: 0 }} />
+        <span style={{ fontSize: 13, fontWeight: 650, color: "var(--fg)", flex: 1, minWidth: 0 }}>{source.label}</span>
+        <span className="pill" style={{ letterSpacing: 0, flexShrink: 0 }}>{source.kind}</span>
+        {source.record_count > 0 && (
+          <span style={{ fontSize: 11, color: "var(--fm)", flexShrink: 0 }}>{source.record_count} records</span>
+        )}
+        {isConnected ? (
+          <>
+            <span style={{ fontSize: 10, fontWeight: 700, color: "#3D9E5F", textTransform: "uppercase", letterSpacing: "0.08em", flexShrink: 0 }}>
+              Connected
+            </span>
+            <button type="button" onClick={onSync} disabled={syncing} className="btn" style={{ minHeight: 30, fontSize: 11, flexShrink: 0 }}>
+              {syncing ? "Syncing..." : "Sync"}
+            </button>
+          </>
+        ) : isPlanned ? (
+          <span style={{ fontSize: 11, color: "var(--fm)", flexShrink: 0 }}>Coming soon</span>
+        ) : (
+          <button type="button" onClick={onExpand} className="btn pri" style={{ minHeight: 30, fontSize: 11, flexShrink: 0 }}>
+            {expanded ? "Cancel" : "Connect →"}
+          </button>
         )}
       </div>
-      <p style={{ color: "var(--fd)", fontSize: 12, lineHeight: 1.55, margin: 0 }}>
-        {source.notes || source.setup_hint || "Ready to connect."}
-      </p>
-      {source.setup_hint && source.notes !== source.setup_hint && (
-        <p style={{ color: "var(--fm)", fontSize: 11, lineHeight: 1.45, margin: 0 }}>{source.setup_hint}</p>
-      )}
-      {source.setup_url && (
-        <a href={source.setup_url} target="_blank" rel="noopener noreferrer"
-          style={{ color: "var(--blue)", fontSize: 11, width: "fit-content" }}>
-          Setup docs →
-        </a>
-      )}
-      {fields.length > 0 && (
-        <div style={{ display: "grid", gap: 8 }}>
-          {fields.map(field => (
-            <input
-              key={field}
-              className="f-input"
-              value={values[field] ?? ""}
-              onChange={e => onChange(field, e.target.value)}
-              placeholder={field}
-              type={field.includes("token") || field.includes("key") || field.includes("secret") ? "password" : "text"}
-            />
-          ))}
-          <button type="button" onClick={onSave} disabled={saving || !canSave} className="btn pri" style={{ minHeight: 34, fontSize: 12 }}>
-            {saving ? "Saving..." : "Save credentials"}
-          </button>
-        </div>
-      )}
-      {fields.length === 0 && source.importer === false && (
-        <div style={{ color: "var(--fm)", fontSize: 11, padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--bd)" }}>
-          Direct import is not implemented yet for this source. Manual records can still reference it.
+
+      {/* expanded connect form */}
+      {expanded && !isConnected && (
+        <div style={{ borderTop: "1px solid var(--bd)", padding: "14px 16px", background: "var(--s2)", display: "grid", gap: 10 }}>
+          {(source.notes || source.setup_hint) && (
+            <p style={{ color: "var(--fd)", fontSize: 12, lineHeight: 1.55, margin: 0 }}>
+              {source.notes || source.setup_hint}
+            </p>
+          )}
+          {source.setup_url && (
+            <a href={source.setup_url} target="_blank" rel="noopener noreferrer"
+              style={{ color: "var(--blue)", fontSize: 11, width: "fit-content" }}>
+              Setup docs →
+            </a>
+          )}
+          {fields.length > 0 ? (
+            <>
+              {fields.map(field => (
+                <input
+                  key={field}
+                  className="f-input"
+                  value={values[field] ?? ""}
+                  onChange={e => onChange(field, e.target.value)}
+                  placeholder={field}
+                  type={field.includes("token") || field.includes("key") || field.includes("secret") ? "password" : "text"}
+                />
+              ))}
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button type="button" onClick={onSave} disabled={saving || !canSave} className="btn pri" style={{ minHeight: 34, fontSize: 12 }}>
+                  {saving ? "Saving..." : "Save & connect"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div style={{ color: "var(--fm)", fontSize: 12 }}>
+              No credentials needed — this source is ready to import from.
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -410,7 +388,8 @@ export default function CompanyBrainPage() {
   const [graphRebuilding, setGraphRebuilding] = useState(false);
   const [draft, setDraft] = useState({ source: "manual", title: "", content: "", canonical: true });
   const [pinOpen, setPinOpen] = useState(false);
-  const [focusedSourceKey, setFocusedSourceKey] = useState("github");
+  const [expandedSourceKey, setExpandedSourceKey] = useState<string | null>(null);
+  const [syncingSourceKey, setSyncingSourceKey] = useState<string | null>(null);
   const [credentialValues, setCredentialValues] = useState<Record<string, Record<string, string>>>({});
 
   /* ── data loaders ── */
@@ -464,18 +443,22 @@ export default function CompanyBrainPage() {
   }, [brain]);
 
   const records = useMemo(() => brain?.records ?? [], [brain]);
-  const focusedSource = sources.find(s => s.key === focusedSourceKey) ?? sources[0] ?? null;
+  const connectedKeys = useMemo(
+    () => sources.filter(s => s.status === "connected" || s.status === "oauth_ready").map(s => s.key),
+    [sources]
+  );
   const recordsById = useMemo(() => new Map(records.map(r => [r.id, r])), [records]);
   const openProposals = useMemo(() => (brain?.proposals ?? []).filter(p => p.status === "open"), [brain]);
   const connected = sources.filter(s => s.status === "connected" || s.status === "oauth_ready").length;
   const displayResults = results.length ? results : records.slice(0, 8);
 
   /* ── actions ── */
-  async function sync() {
+  async function syncAll() {
+    if (connectedKeys.length === 0) return;
     setSyncing(true);
     setError(null);
     try {
-      await syncCompanyBrain(founderId, selectedSources);
+      await syncCompanyBrain(founderId, connectedKeys);
       await loadBrain();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sync failed.");
@@ -489,7 +472,7 @@ export default function CompanyBrainPage() {
     setError(null);
     setImportSummary(null);
     try {
-      const result = await importCompanyBrainSources(founderId, selectedSources, 20);
+      const result = await importCompanyBrainSources(founderId, connectedKeys.length > 0 ? connectedKeys : selectedSources, 20);
       const imported = result.imported_sources.length ? result.imported_sources.join(", ") : "none";
       const failed = result.failed_sources.length ? ` Failed: ${result.failed_sources.join(", ")}.` : "";
       setImportSummary(`Imported: ${imported}.${failed}`);
@@ -502,14 +485,14 @@ export default function CompanyBrainPage() {
     }
   }
 
-  async function saveFocusedCredential() {
-    if (!focusedSource) return;
+  async function saveSourceCredential(sourceKey: string) {
     setSavingCredential(true);
     setError(null);
     try {
-      await saveServiceCredential(founderId, focusedSource.key, credentialValues[focusedSource.key] ?? {});
-      setCredentialValues(v => ({ ...v, [focusedSource.key]: {} }));
-      await syncCompanyBrain(founderId, [focusedSource.key]);
+      await saveServiceCredential(founderId, sourceKey, credentialValues[sourceKey] ?? {});
+      setCredentialValues(v => ({ ...v, [sourceKey]: {} }));
+      await syncCompanyBrain(founderId, [sourceKey]);
+      setExpandedSourceKey(null);
       await loadBrain();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save credentials.");
@@ -518,11 +501,24 @@ export default function CompanyBrainPage() {
     }
   }
 
+  async function syncSource(sourceKey: string) {
+    setSyncingSourceKey(sourceKey);
+    setError(null);
+    try {
+      await syncCompanyBrain(founderId, [sourceKey]);
+      await loadBrain();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sync failed.");
+    } finally {
+      setSyncingSourceKey(null);
+    }
+  }
+
   async function configureContinuousSync(enabled: boolean) {
     setContinuousSyncing(true);
     setError(null);
     try {
-      await configureCompanyBrainSync(founderId, { enabled, sources: selectedSources, interval_minutes: syncInterval });
+      await configureCompanyBrainSync(founderId, { enabled, sources: connectedKeys, interval_minutes: syncInterval });
       await loadBrain();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update sync settings.");
@@ -535,7 +531,7 @@ export default function CompanyBrainPage() {
     setContinuousSyncing(true);
     setError(null);
     try {
-      await runCompanyBrainSync(founderId, selectedSources);
+      await runCompanyBrainSync(founderId, connectedKeys.length > 0 ? connectedKeys : selectedSources);
       await loadBrain();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Continuous sync run failed.");
@@ -778,22 +774,21 @@ export default function CompanyBrainPage() {
 
         {/* ━━━ SOURCES TAB ━━━ */}
         {tab === "sources" && (
-          <div style={{ display: "grid", gap: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 650, color: "var(--fg)" }}>
-                  {connected} connected · {records.length} records · {brain?.relationships.length ?? 0} relationships
-                </div>
-                <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 3 }}>
-                  Select sources, then sync or import their records.
-                </div>
+          <div style={{ display: "grid", gap: 16, maxWidth: 760 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ fontSize: 12, color: "var(--fm)" }}>
+                {connected > 0
+                  ? `${connected} connected · ${records.length} records`
+                  : "No sources connected yet."}
               </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button type="button" onClick={importSources} disabled={importing} className="btn" style={{ minHeight: 34, fontSize: 12 }}>
-                  {importing ? "Importing..." : "Import records"}
-                </button>
-                <button type="button" onClick={sync} disabled={syncing} className="btn pri" style={{ minHeight: 34, fontSize: 12 }}>
-                  {syncing ? "Syncing..." : "Sync selected"}
+              <div style={{ display: "flex", gap: 7 }}>
+                {connected > 0 && (
+                  <button type="button" onClick={importSources} disabled={importing} className="btn" style={{ minHeight: 32, fontSize: 11 }}>
+                    {importing ? "Importing..." : "Import records"}
+                  </button>
+                )}
+                <button type="button" onClick={syncAll} disabled={syncing || connected === 0} className="btn pri" style={{ minHeight: 32, fontSize: 11 }}>
+                  {syncing ? "Syncing..." : "Sync all"}
                 </button>
               </div>
             </div>
@@ -804,39 +799,26 @@ export default function CompanyBrainPage() {
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, alignItems: "start" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(148px, 1fr))", gap: 8 }}>
-                {sources.map(source => (
-                  <SourceCard
-                    key={source.key}
-                    source={source}
-                    active={selectedSources.includes(source.key)}
-                    focused={focusedSource?.key === source.key}
-                    onToggle={() => {
-                      setFocusedSourceKey(source.key);
-                      setSelectedSources(prev =>
-                        prev.includes(source.key)
-                          ? prev.filter(s => s !== source.key)
-                          : [...prev, source.key]
-                      );
-                    }}
-                  />
-                ))}
-              </div>
-
-              <SourceConnectionPanel
-                source={focusedSource}
-                values={focusedSource ? credentialValues[focusedSource.key] ?? {} : {}}
-                saving={savingCredential}
-                onChange={(field, value) => {
-                  if (!focusedSource) return;
-                  setCredentialValues(prev => ({
-                    ...prev,
-                    [focusedSource.key]: { ...(prev[focusedSource.key] ?? {}), [field]: value },
-                  }));
-                }}
-                onSave={saveFocusedCredential}
-              />
+            <div style={{ display: "grid", gap: 6 }}>
+              {sources.map(source => (
+                <SourceRow
+                  key={source.key}
+                  source={source}
+                  expanded={expandedSourceKey === source.key}
+                  values={credentialValues[source.key] ?? {}}
+                  saving={savingCredential}
+                  syncing={syncingSourceKey === source.key}
+                  onExpand={() => setExpandedSourceKey(prev => prev === source.key ? null : source.key)}
+                  onChange={(field, value) =>
+                    setCredentialValues(prev => ({
+                      ...prev,
+                      [source.key]: { ...(prev[source.key] ?? {}), [field]: value },
+                    }))
+                  }
+                  onSave={() => saveSourceCredential(source.key)}
+                  onSync={() => syncSource(source.key)}
+                />
+              ))}
             </div>
           </div>
         )}
