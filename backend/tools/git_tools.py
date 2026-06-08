@@ -994,38 +994,70 @@ def _file_prompt(rel_path: str, goal: str, context: str, local: str) -> str:
 
 
 _BUILD_PLAN_SYSTEM = (
-    "You are a senior product engineer and architect. Given a product goal, produce a "
-    "COMPLETE, concrete build plan a coding agent can implement end-to-end with no further "
-    "decisions. Be specific and exhaustive — real features, not placeholders.\n\n"
+    "You are a senior product designer + engineer. From the product goal AND the RESEARCH "
+    "provided (market, ICP, pain points, competitors), produce a COMPLETE, concrete plan for "
+    "how the product/site will LOOK, how it WILL WORK, and WHAT IT DOES — exhaustive enough "
+    "that a coding agent implements it end-to-end with no further decisions. Ground every "
+    "choice in the research: the design, features, and copy must fit the target user and the "
+    "pain you're solving. Be specific; real features, not placeholders.\n\n"
     "Cover, in order:\n"
-    "1. PRODUCT: one-paragraph description, the core value, and the primary user.\n"
-    "2. USER FLOWS: the key end-to-end flows (e.g. sign up → onboard → core action → result).\n"
-    "3. PAGES/ROUTES: every route with its purpose and main UI elements.\n"
-    "4. CORE FEATURES: each real feature with what it does and how it works (no vague items).\n"
-    "5. DATA MODEL: entities, fields, and relationships.\n"
-    "6. AUTH: NextAuth.js v5 or Supabase Auth (NEVER Clerk).\n"
-    "7. FILES: the concrete file tree to create/extend, each with a one-line purpose.\n"
-    "8. ACCEPTANCE: a checklist of what 'done and working' means.\n\n"
+    "1. PRODUCT: one paragraph — what it does, the core value, the primary user, and the "
+    "specific pain it solves (cite the research).\n"
+    "2. WHO IT'S FOR: the ICP from research and how that shapes the product and tone.\n"
+    "3. LOOK & FEEL: the visual system — overall vibe/positioning, color palette, typography, "
+    "spacing/layout style, key components, iconography, imagery, and interaction/motion. Then, "
+    "for each main screen, describe its look and layout (what the user sees, top to bottom).\n"
+    "4. USER FLOWS: the key end-to-end flows (sign up → onboard → core action → result), with states.\n"
+    "5. PAGES/ROUTES: every route with its purpose, layout, and main UI elements.\n"
+    "6. CORE FEATURES: each real feature — what it does and exactly how it works.\n"
+    "7. DATA MODEL: entities, fields, relationships.\n"
+    "8. AUTH: NextAuth.js v5 or Supabase Auth (NEVER Clerk).\n"
+    "9. FILES: the concrete file tree to create/extend, each with a one-line purpose.\n"
+    "10. ACCEPTANCE: a checklist of what 'done and working' means.\n\n"
     "HONESTY: never plan fake testimonials, customer quotes/logos, user counts, ratings, revenue, "
     "or press mentions. A new product has no customers yet — plan honest copy and real features, "
     "with neutral placeholders (no invented specifics) where real data doesn't exist yet.\n\n"
-    "This is a real product, not a landing page. The landing page already exists — plan the "
-    "actual APP (auth, dashboard, the core feature set). Output clear markdown."
+    "Plan the actual APP (auth, dashboard, the core feature set) plus how it looks, not just a "
+    "landing page. Output clear markdown."
 )
 
 
-def _generate_build_plan(goal: str, context: str = "", kind: str = "app") -> dict:
+def _build_plan_research(founder_id: str) -> str:
+    """Pull the founder's research + design vault notes so the plan is grounded in the
+    actual market/ICP findings (not just the one-line goal). Best-effort, capped."""
+    if not founder_id:
+        return ""
+    try:
+        from backend.tools.obsidian_logger import format_vault_context
+    except Exception:
+        return ""
+    parts: list[str] = []
+    for agent in ("research", "research_market", "design"):
+        try:
+            txt = format_vault_context(agent, max_notes=2, founder_id=founder_id)
+            if txt and txt.strip():
+                parts.append(txt.strip())
+        except Exception:
+            continue
+    return ("\n\n".join(parts))[:7000]
+
+
+def _generate_build_plan(goal: str, context: str = "", kind: str = "app", founder_id: str = "") -> dict:
     """Produce a complete build spec with MiniMax-M3 before the build runs, so
     openclaude implements a real product instead of improvising from a one-liner.
+    Grounds the plan (look/function/purpose) in the founder's research notes.
     Best-effort — returns {"plan": "", "files": []} on any failure (build still runs)."""
     env = _make_env()
     model = getattr(settings, "build_plan_model", "") or "minimax/minimax-m3"
+    research = _build_plan_research(founder_id)
     try:
         client = openai.OpenAI(base_url=env["OPENAI_BASE_URL"], api_key=env["OPENAI_API_KEY"])
         user_msg = (
             f"PRODUCT GOAL:\n{goal}\n\n"
-            + (f"RESEARCH / CONTEXT:\n{context[:6000]}\n\n" if context else "")
-            + f"Produce the complete build plan for the {kind}. End with a line "
+            + (f"RESEARCH (market / ICP / pain / competitors — base the plan on this):\n{research}\n\n" if research else "")
+            + (f"DESIGN & PRODUCT CONTEXT:\n{context[:6000]}\n\n" if context else "")
+            + f"Produce the complete build plan for the {kind} — how it looks, how it works, and "
+              "what it does, grounded in the research above. End with a line "
               "'FILES:' followed by a JSON array of the key files to create/extend, "
               'e.g. FILES: ["app/dashboard/page.tsx", "app/api/auth/[...nextauth]/route.ts"].'
         )
@@ -1117,7 +1149,7 @@ def run_mvp_loop(
         # implements a real app from a concrete spec instead of improvising from a
         # one-line goal (the reason builds came out as bare skeletons). Best-effort.
         _phase("Planning the product (MiniMax-M3)…")
-        plan_info = _generate_build_plan(goal, context, kind=("website+app" if agent == "web" else "app"))
+        plan_info = _generate_build_plan(goal, context, kind=("website+app" if agent == "web" else "app"), founder_id=founder_id)
         build_plan = plan_info.get("plan") or ""
         if build_plan:
             plan_title = "Website plan" if agent == "web" else "Product build plan"
