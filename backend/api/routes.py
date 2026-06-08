@@ -2844,6 +2844,23 @@ async def outreach_enrich_person(request: Request, founder_id: str, email: str):
     return result
 
 
+@router.post("/outreach/enrich/batch")
+async def outreach_enrich_batch(request: Request, body: dict):
+    """
+    Reveal emails for up to 15 contacts by Apollo ID.
+    Costs 1 credit per contact — only call for contacts you'll actually contact.
+    Body: { "founder_id": "...", "contacts": [{"apollo_id": "...", "first_name": "...", "company_name": "..."}] }
+    """
+    founder_id = body.get("founder_id", "")
+    require_founder_access(request, founder_id, min_role="operator")
+    from backend.tools.apollo_tools import apollo_enrich_batch, MAX_PER_PULL
+    contacts = (body.get("contacts") or [])[:MAX_PER_PULL]
+    if not contacts:
+        raise HTTPException(status_code=400, detail="contacts list is required (max 15)")
+    results = await asyncio.to_thread(apollo_enrich_batch, contacts)
+    return {"enriched": results, "count": len(results), "credits_used": len([r for r in results if r.get("enriched")])}
+
+
 @router.get("/outreach/enrich/company")
 async def outreach_enrich_company(request: Request, founder_id: str, domain: str):
     """Combined Hunter + Apollo company enrichment."""

@@ -1,11 +1,13 @@
 """
 Apollo.io API wrapper.
 
-Endpoints:
-  POST /people/search          — search contacts with rich filters
-  POST /organizations/search   — search companies
-  POST /people/match           — enrich a single person by email / LinkedIn
-  POST /organizations/enrich   — enrich a company by domain
+Two-phase flow (saves credits):
+  Phase 1 — SEARCH  POST /mixed_people/api_search   free, no credits, no emails
+  Phase 2 — ENRICH  POST /people/match              costs 1 credit per person
+
+The search endpoint is credit-free so we can search freely.
+We hard-cap at MAX_PER_PULL contacts and only enrich when the
+user explicitly requests emails — that's when credits are spent.
 """
 import logging
 from typing import Any
@@ -19,9 +21,19 @@ logger = logging.getLogger(__name__)
 _BASE = "https://api.apollo.io/api/v1"
 _TIMEOUT = 20
 
+# Hard cap — never return more than this from a single search to protect credits
+MAX_PER_PULL = 15
+
 
 def _key() -> str:
     return settings.apollo_api_key
+
+
+def _headers() -> dict:
+    return {
+        "Content-Type": "application/json",
+        "x-api-key": _key(),
+    }
 
 
 def _post(endpoint: str, body: dict) -> dict:
@@ -31,10 +43,7 @@ def _post(endpoint: str, body: dict) -> dict:
         r = requests.post(
             f"{_BASE}{endpoint}",
             json=body,
-            headers={
-                "Content-Type": "application/json",
-                "x-api-key": _key(),
-            },
+            headers=_headers(),
             timeout=_TIMEOUT,
         )
         r.raise_for_status()
@@ -50,18 +59,88 @@ def _post(endpoint: str, body: dict) -> dict:
         return {"error": str(e)}
 
 
-def _normalize_person(p: dict) -> dict:
-    """Flatten Apollo's nested person object to a clean flat dict."""
+def _get(endpoint: str, params: dict) -> dict:
+    """GET request — used for credit-free search endpoint."""
+    if not _key():
+        return {"error": "APOLLO_API_KEY not configured"}
+    try:
+        r = requests.get(
+            f"{_BASE}{endpoint}",
+            params=params,
+            headers=_headers(),
+            timeout=_TIMEOUT,
+        )
+        r.raise_for_status()
+        return r.json()
+    except requests.HTTPError as e:
+        logger.warning("Apollo %s error %s: %s", endpoint, e.response.status_code if e.response else "?", e)
+        try:
+            return {"error": e.response.json(), "status_code": e.response.status_code}
+        except Exception:
+            return {"error": str(e)}
+    except Exception as e:
+        logger.error("Apollo %s failed: %s", endpoint, e)
+        return {"error": str(e)}
+
+
+def _score_person(p: dict) -> int:
+    """Score a search result so we surface the best contacts first.
+    Higher = better. Criteria: has email > has phone > recently refreshed > has location."""
+    score = 0
+    if p.get("has_email"):
+        score += 10
+    if p.get("has_direct_phone") == "Yes":
+        score += 5
+    if p.get("has_city"):
+        score += 2
+    if p.get("has_state"):
+        score += 1
+    if p.get("has_country"):
+        score += 1
+    org = p.get("organization") or {}
+    if org.get("has_revenue"):
+        score += 3
+    if org.get("has_employee_count"):
+        score += 2
+    if org.get("has_industry"):
+        score += 2
+    return score
+
+
+def _normalize_search_person(p: dict) -> dict:
+    """Normalize a result from the credit-free search endpoint.
+    Note: last_name is obfuscated, no email returned — that requires enrichment."""
+    org = p.get("organization") or {}
+    return {
+        "apollo_id": p.get("id", ""),
+        "first_name": p.get("first_name", ""),
+        "last_name": p.get("last_name_obfuscated", ""),   # e.g. "Sm***h"
+        "title": p.get("title", "") or "",
+        "company_name": org.get("name", ""),
+        "has_email": bool(p.get("has_email")),
+        "has_phone": p.get("has_direct_phone") == "Yes",
+        "city": "" if not p.get("has_city") else "(available)",
+        "state": "" if not p.get("has_state") else "(available)",
+        "country": "" if not p.get("has_country") else "(available)",
+        # email/full name only populated after enrichment
+        "email": "",
+        "email_status": "unknown",
+        "linkedin_url": "",
+        "enriched": False,
+    }
+
+
+def _normalize_enriched_person(p: dict) -> dict:
+    """Normalize a result from the credit-consuming enrichment endpoint."""
     org = p.get("organization") or {}
     return {
         "apollo_id": p.get("id", ""),
         "first_name": p.get("first_name", ""),
         "last_name": p.get("last_name", ""),
         "email": p.get("email", ""),
-        "email_status": p.get("email_status", ""),   # verified | unverified | likely | guessed
-        "title": p.get("title", ""),
+        "email_status": p.get("email_status", ""),
+        "title": p.get("title", "") or "",
         "seniority": p.get("seniority", ""),
-        "departments": p.get("departments", []),
         "linkedin_url": p.get("linkedin_url", ""),
         "city": p.get("city", ""),
         "state": p.get("state", ""),
@@ -74,8 +153,9 @@ def _normalize_person(p: dict) -> dict:
         "company_funding_stage": org.get("latest_funding_stage", ""),
         "company_linkedin": org.get("linkedin_url", ""),
         "company_website": org.get("website_url", ""),
-        "company_city": org.get("city", ""),
-        "company_country": org.get("country", ""),
+        "has_email": bool(p.get("email")),
+        "has_phone": bool(p.get("direct_phone")),
+        "enriched": True,
     }
 
 
@@ -94,10 +174,7 @@ def _normalize_org(o: dict) -> dict:
         "state": o.get("state", ""),
         "country": o.get("country", ""),
         "linkedin": o.get("linkedin_url", ""),
-        "twitter": o.get("twitter_url", ""),
         "technologies": [t.get("name", "") for t in (o.get("technology_names") or [])],
-        "keywords": o.get("keywords", []),
-        "founded_year": o.get("founded_year"),
         "description": o.get("short_description", ""),
     }
 
@@ -105,85 +182,156 @@ def _normalize_org(o: dict) -> dict:
 def _size_label(n: int | None) -> str:
     if not n:
         return ""
-    if n <= 10:
-        return "1-10"
-    if n <= 50:
-        return "11-50"
-    if n <= 200:
-        return "51-200"
-    if n <= 500:
-        return "201-500"
-    if n <= 1000:
-        return "501-1000"
-    if n <= 5000:
-        return "1001-5000"
+    if n <= 10:     return "1-10"
+    if n <= 50:     return "11-50"
+    if n <= 200:    return "51-200"
+    if n <= 500:    return "201-500"
+    if n <= 1000:   return "501-1000"
+    if n <= 5000:   return "1001-5000"
     return "5000+"
 
 
-# ── People search ─────────────────────────────────────────────────────────────
+# ── Phase 1: Credit-free people search ────────────────────────────────────────
 
 def apollo_search_people(
     titles: list[str] | None = None,
-    seniorities: list[str] | None = None,      # "c_suite" | "vp" | "director" | "manager" | "senior" | "entry"
+    seniorities: list[str] | None = None,
     locations: list[str] | None = None,
     industries: list[str] | None = None,
-    company_sizes: list[str] | None = None,    # e.g. ["1,10", "11,50", "51,200"]
-    funding_stages: list[str] | None = None,   # e.g. ["seed", "series_a"]
+    company_sizes: list[str] | None = None,
+    funding_stages: list[str] | None = None,
     domains_include: list[str] | None = None,
     domains_exclude: list[str] | None = None,
     keywords: list[str] | None = None,
     has_email: bool = True,
     page: int = 1,
-    per_page: int = 25,
+    per_page: int = MAX_PER_PULL,
 ) -> dict:
-    """Search Apollo's people database with rich filters. Returns normalized contacts."""
-    body: dict[str, Any] = {
+    """
+    Credit-free people search via /mixed_people/api_search.
+    Hard-capped at MAX_PER_PULL (15) — returns no emails.
+    Call apollo_enrich_person() separately to reveal emails (costs credits).
+    """
+    # Hard cap — never exceed 15 to protect credits
+    capped = min(per_page, MAX_PER_PULL)
+
+    # Fetch a slightly larger page so we can rank and return the best capped contacts
+    fetch_size = min(capped * 3, 50)
+
+    params: dict[str, Any] = {
+        "per_page": fetch_size,
         "page": page,
-        "per_page": min(per_page, 100),
     }
 
     if titles:
-        body["person_titles"] = titles
+        params["person_titles[]"] = titles
     if seniorities:
-        body["person_seniorities"] = seniorities
+        params["person_seniorities[]"] = seniorities
     if locations:
-        body["person_locations"] = locations
-    if industries:
-        body["organization_industry_tag_ids"] = industries  # pass raw tag names — Apollo accepts these
-        body["q_organization_industry_tag_id"] = industries
+        params["person_locations[]"] = locations
     if company_sizes:
-        body["organization_num_employees_ranges"] = company_sizes
-    if funding_stages:
-        body["organization_latest_funding_stage_cd"] = funding_stages
+        params["organization_num_employees_ranges[]"] = company_sizes
     if domains_include:
-        body["q_organization_domains"] = "\n".join(domains_include)
+        params["q_organization_domains_list[]"] = domains_include
     if keywords:
-        body["q_keywords"] = " ".join(keywords)
+        params["q_keywords"] = " ".join(keywords)
     if has_email:
-        body["contact_email_status"] = ["verified", "unverified", "likely"]
+        params["contact_email_status[]"] = ["verified", "unverified", "likely to engage"]
 
-    data = _post("/mixed_people/search", body)
+    data = _post("/mixed_people/api_search", params)
     if "error" in data:
         return data
 
-    people = data.get("people", []) or data.get("contacts", [])
-    pagination = data.get("pagination", {})
+    people = data.get("people", [])
 
-    # Exclude domains from results client-side if Apollo doesn't filter server-side
+    # Exclude domains client-side
     excluded = set(d.lower() for d in (domains_exclude or []))
     if excluded:
         people = [
             p for p in people
-            if (p.get("organization") or {}).get("primary_domain", "").lower() not in excluded
+            if (p.get("organization") or {}).get("name", "").lower() not in excluded
         ]
 
+    # Rank by quality score, take the best `capped` contacts
+    people_sorted = sorted(people, key=_score_person, reverse=True)[:capped]
+
     return {
-        "contacts": [_normalize_person(p) for p in people],
-        "total": pagination.get("total_entries", len(people)),
-        "page": pagination.get("page", page),
-        "total_pages": pagination.get("total_pages", 1),
-        "has_more": page < pagination.get("total_pages", 1),
+        "contacts": [_normalize_search_person(p) for p in people_sorted],
+        "total": data.get("total_entries", len(people)),
+        "page": page,
+        "per_page": capped,
+        "has_more": data.get("total_entries", 0) > page * fetch_size,
+        "note": f"Showing {len(people_sorted)} best contacts. Emails hidden until enrichment.",
     }
+
+
+# ── Phase 2: Credit-consuming enrichment ──────────────────────────────────────
+
+def apollo_enrich_person(
+    apollo_id: str = "",
+    email: str = "",
+    first_name: str = "",
+    last_name: str = "",
+    company_name: str = "",
+    domain: str = "",
+    linkedin_url: str = "",
+) -> dict:
+    """
+    Reveal full details (email, full name, LinkedIn) for one person.
+    Costs 1 credit. Only call this for contacts you intend to reach out to.
+    Accepts: apollo_id (from search), email, linkedin_url, or first_name + domain.
+    """
+    body: dict[str, Any] = {"reveal_personal_emails": False}
+
+    if apollo_id:
+        body["id"] = apollo_id
+    elif email:
+        body["email"] = email
+    elif linkedin_url:
+        body["linkedin_url"] = linkedin_url
+    elif first_name and (domain or company_name):
+        body["first_name"] = first_name
+        if last_name:
+            body["last_name"] = last_name
+        if domain:
+            body["domain"] = domain
+        if company_name:
+            body["organization_name"] = company_name
+    else:
+        return {"error": "Provide apollo_id, email, linkedin_url, or first_name + domain/company_name"}
+
+    data = _post("/people/match", body)
+    if "error" in data:
+        return data
+
+    person = data.get("person") or {}
+    if not person:
+        return {"error": "Person not found", "apollo_id": apollo_id}
+
+    return _normalize_enriched_person(person)
+
+
+def apollo_enrich_batch(contacts: list[dict]) -> list[dict]:
+    """
+    Enrich up to MAX_PER_PULL contacts at once.
+    Each contact should have `apollo_id` (or first_name + company_name).
+    Returns enriched contacts — credits consumed = len(contacts).
+    """
+    batch = contacts[:MAX_PER_PULL]
+    results = []
+    for contact in batch:
+        enriched = apollo_enrich_person(
+            apollo_id=contact.get("apollo_id", ""),
+            first_name=contact.get("first_name", ""),
+            last_name=contact.get("last_name", ""),
+            company_name=contact.get("company_name", ""),
+        )
+        if "error" not in enriched:
+            results.append(enriched)
+        else:
+            # Keep original data even if enrichment failed
+            results.append({**contact, "enriched": False, "enrich_error": enriched.get("error")})
+    return results
 
 
 # ── Company search ────────────────────────────────────────────────────────────
@@ -197,10 +345,10 @@ def apollo_search_companies(
     technologies: list[str] | None = None,
     domains_include: list[str] | None = None,
     page: int = 1,
-    per_page: int = 25,
+    per_page: int = MAX_PER_PULL,
 ) -> dict:
-    """Search Apollo's company database."""
-    body: dict[str, Any] = {"page": page, "per_page": min(per_page, 100)}
+    """Search Apollo's company database. Does not consume credits."""
+    body: dict[str, Any] = {"page": page, "per_page": min(per_page, MAX_PER_PULL)}
 
     if locations:
         body["organization_locations"] = locations
@@ -230,51 +378,3 @@ def apollo_search_companies(
         "page": pagination.get("page", page),
         "has_more": page < pagination.get("total_pages", 1),
     }
-
-
-# ── Person enrichment ─────────────────────────────────────────────────────────
-
-def apollo_enrich_person(
-    email: str = "",
-    first_name: str = "",
-    last_name: str = "",
-    domain: str = "",
-    linkedin_url: str = "",
-) -> dict:
-    """Enrich a single person by email, LinkedIn URL, or name + domain."""
-    body: dict[str, Any] = {"reveal_personal_emails": False}
-    if email:
-        body["email"] = email
-    elif linkedin_url:
-        body["linkedin_url"] = linkedin_url
-    elif first_name and last_name and domain:
-        body["first_name"] = first_name
-        body["last_name"] = last_name
-        body["domain"] = domain
-    else:
-        return {"error": "Provide email, linkedin_url, or first_name + last_name + domain"}
-
-    data = _post("/people/match", body)
-    if "error" in data:
-        return data
-
-    person = data.get("person") or {}
-    if not person:
-        return {"error": "Person not found", "email": email}
-
-    return _normalize_person(person)
-
-
-# ── Company enrichment ────────────────────────────────────────────────────────
-
-def apollo_enrich_company(domain: str) -> dict:
-    """Enrich a company by domain."""
-    data = _post("/organizations/enrich", {"domain": domain})
-    if "error" in data:
-        return data
-
-    org = data.get("organization") or {}
-    if not org:
-        return {"error": "Company not found", "domain": domain}
-
-    return _normalize_org(org)
