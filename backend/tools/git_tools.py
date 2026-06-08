@@ -1014,11 +1014,17 @@ _BUILD_PLAN_SYSTEM = (
     "8. AUTH: NextAuth.js v5 or Supabase Auth (NEVER Clerk).\n"
     "9. FILES: the concrete file tree to create/extend, each with a one-line purpose.\n"
     "10. ACCEPTANCE: a checklist of what 'done and working' means.\n\n"
+    "CRITICAL — DO NOT RESTATE THE RESEARCH. The research is INPUT for your decisions, not "
+    "content to repeat. Never summarize or copy the market brief / ICP doc. Every line you write "
+    "must be a concrete BUILD decision: a screen, a component, a layout, a feature, an interaction, "
+    "a data field, a file. If a sentence could appear in a market report, delete it. Translate "
+    "research INTO product: e.g. 'ICP is time-poor ops managers' → 'dashboard opens on a single "
+    "Today view with one primary CTA; no nested menus'.\n\n"
     "HONESTY: never plan fake testimonials, customer quotes/logos, user counts, ratings, revenue, "
     "or press mentions. A new product has no customers yet — plan honest copy and real features, "
     "with neutral placeholders (no invented specifics) where real data doesn't exist yet.\n\n"
     "Plan the actual APP (auth, dashboard, the core feature set) plus how it looks, not just a "
-    "landing page. Output clear markdown."
+    "landing page. Output clear markdown — a buildable spec, not a report."
 )
 
 
