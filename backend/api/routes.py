@@ -687,8 +687,15 @@ async def session_meta_public(session_id: str):
     status, founder) — so a session is reachable by a clean /s/<id> link without
     the founder in the URL or being logged in. The full /state stays auth-gated; the
     event stream is already public and replays history, so the view reconstructs."""
-    from backend.core.session_store import get_session_meta
+    from backend.core.session_store import get_session_meta, _load_index
     meta = get_session_meta(session_id)
+    if not meta:
+        # Some sessions live only in the index (no per-session meta.json) — fall back
+        # so the /s/<id> link still resolves.
+        try:
+            meta = _load_index().get(session_id)
+        except Exception:
+            meta = None
     if not meta:
         raise HTTPException(status_code=404, detail="session not found")
     return {
