@@ -186,8 +186,8 @@ export default function WorkspaceTour({ onDone }: { onDone: () => void }) {
           to   { opacity: 1; transform: scale(1) translateY(0); }
         }
         @keyframes tour-spotlight-pulse {
-          0%, 100% { box-shadow: 0 0 0 2px rgba(59,130,246,0.7), 0 0 20px rgba(59,130,246,0.25); }
-          50%       { box-shadow: 0 0 0 3px rgba(59,130,246,0.9), 0 0 32px rgba(59,130,246,0.4); }
+          0%, 100% { box-shadow: 0 0 0 2px rgba(0,46,255,0.7), 0 0 20px rgba(0,46,255,0.25); }
+          50%       { box-shadow: 0 0 0 3px rgba(0,46,255,0.9), 0 0 32px rgba(0,46,255,0.4); }
         }
         @keyframes tour-dot-active {
           0%, 100% { transform: scaleX(1); }
@@ -261,7 +261,7 @@ export default function WorkspaceTour({ onDone }: { onDone: () => void }) {
           }}
         >
           {/* Blue accent bar */}
-          <div style={{ height: 3, background: "linear-gradient(90deg, var(--blue), rgba(139,92,246,0.8))" }} />
+          <div style={{ height: 3, background: "linear-gradient(90deg, var(--blue), var(--mint))" }} />
 
           <div style={{ padding: "16px 18px 18px", display: "flex", flexDirection: "column", gap: 14 }}>
             {/* Header */}
@@ -269,8 +269,8 @@ export default function WorkspaceTour({ onDone }: { onDone: () => void }) {
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{
                   width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-                  background: "rgba(59,130,246,0.1)",
-                  border: "1px solid rgba(59,130,246,0.25)",
+                  background: "rgba(0,46,255,0.1)",
+                  border: "1px solid rgba(0,46,255,0.25)",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 14, color: "var(--blue)",
                   fontFamily: "var(--font-chakra)", fontWeight: 700,
@@ -327,13 +327,13 @@ export default function WorkspaceTour({ onDone }: { onDone: () => void }) {
                     onClick={() => { finish(); router.push(step.action!.href); }}
                     style={{
                       padding: "7px 14px", borderRadius: 8, fontSize: 11, fontWeight: 600,
-                      background: "rgba(59,130,246,0.1)",
+                      background: "rgba(0,46,255,0.1)",
                       border: "1px solid rgba(59,130,246,0.35)",
                       color: "var(--blue)", cursor: "pointer",
                       transition: "background 0.15s",
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(59,130,246,0.18)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(59,130,246,0.1)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0,46,255,0.1)")}
                   >
                     {step.action.label}
                   </button>

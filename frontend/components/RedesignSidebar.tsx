@@ -34,7 +34,11 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
     <nav onClick={(e) => { if (mobile && (e.target as HTMLElement).closest("a")) closeOnNav?.(); }} style={navStyle}>
       <div style={{ padding: "20px 16px 16px", borderBottom: "1px solid var(--bd)" }}>
         <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, textDecoration: "none" }}>
-          <div className="nav-hex"><span style={{ fontFamily: "var(--font-chakra)", fontSize: 12, fontWeight: 700, color: "#fff" }}>A</span></div>
+          <svg width="28" height="28" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <ellipse cx="50" cy="50" rx="3.5" ry="44" stroke="var(--blue)" strokeWidth="8.5"/>
+              <ellipse cx="50" cy="50" rx="3.5" ry="44" transform="rotate(120 50 50)" stroke="var(--blue)" strokeWidth="8.5"/>
+              <ellipse cx="50" cy="50" rx="3.5" ry="44" transform="rotate(240 50 50)" stroke="var(--blue)" strokeWidth="8.5"/>
+            </svg>
           <div>
             <div className="nav-wordmark">Astra</div>
             <div style={{ fontSize: 9, color: "var(--blue)", letterSpacing: ".06em", textTransform: "uppercase" }}>ready</div>

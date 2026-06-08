@@ -161,8 +161,8 @@ export default function SessionTour({ onDone }: { onDone: () => void }) {
           to   { opacity: 1; transform: translateY(0) scale(1); }
         }
         @keyframes st-ring {
-          0%, 100% { box-shadow: 0 0 0 2px rgba(59,130,246,.75), 0 0 18px rgba(59,130,246,.22); }
-          50%       { box-shadow: 0 0 0 3px rgba(59,130,246,.95), 0 0 30px rgba(59,130,246,.38); }
+          0%, 100% { box-shadow: 0 0 0 2px rgba(0,46,255,.75), 0 0 18px rgba(0,46,255,.22); }
+          50%       { box-shadow: 0 0 0 3px rgba(0,46,255,.95), 0 0 30px rgba(0,46,255,.38); }
         }
         .st-card { animation: st-in 0.2s cubic-bezier(0.22,1,0.36,1) forwards; }
         .st-ring { animation: st-ring 2s ease-in-out infinite; transition: top .32s cubic-bezier(0.22,1,0.36,1), left .32s cubic-bezier(0.22,1,0.36,1), width .32s cubic-bezier(0.22,1,0.36,1), height .32s cubic-bezier(0.22,1,0.36,1); }
@@ -203,7 +203,7 @@ export default function SessionTour({ onDone }: { onDone: () => void }) {
           overflow: "hidden",
         }}>
           {/* Top accent */}
-          <div style={{ height: 3, background: "linear-gradient(90deg, var(--blue), rgba(139,92,246,.8))" }} />
+          <div style={{ height: 3, background: "linear-gradient(90deg, var(--blue), var(--mint))" }} />
 
           <div style={{ padding: "16px 18px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
             {/* Header row */}
@@ -211,7 +211,7 @@ export default function SessionTour({ onDone }: { onDone: () => void }) {
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{
                   width: 34, height: 34, borderRadius: 9, flexShrink: 0,
-                  background: "rgba(59,130,246,.1)", border: "1px solid rgba(59,130,246,.25)",
+                  background: "rgba(0,46,255,.1)", border: "1px solid rgba(59,130,246,.25)",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 14, color: "var(--blue)", fontFamily: "var(--font-chakra)", fontWeight: 700,
                 }}>{step.icon}</div>
@@ -230,7 +230,7 @@ export default function SessionTour({ onDone }: { onDone: () => void }) {
             {step.hint && (
               <p style={{
                 fontSize: 10.5, color: "var(--blue)", lineHeight: 1.55, margin: 0,
-                background: "rgba(59,130,246,.07)", border: "1px solid rgba(59,130,246,.18)",
+                background: "rgba(59,130,246,.07)", border: "1px solid rgba(0,46,255,.18)",
                 borderRadius: 7, padding: "7px 10px", fontStyle: "italic",
               }}>
                 {step.hint}
@@ -246,7 +246,7 @@ export default function SessionTour({ onDone }: { onDone: () => void }) {
                   style={{
                     height: 4, borderRadius: 999, cursor: "pointer",
                     width: i === idx ? 20 : 6,
-                    background: i === idx ? "var(--blue)" : i < idx ? "rgba(59,130,246,.35)" : "var(--bd)",
+                    background: i === idx ? "var(--blue)" : i < idx ? "rgba(0,46,255,.35)" : "var(--bd)",
                     transition: "width .22s, background .22s",
                   }}
                 />

@@ -1,18 +1,18 @@
 /* ════════════════════════════════════════════════════════════════
    ASTRA REDESIGN — ported from mockup/feat-mockup-frontend-redesign
-   Light mode · Chakra Petch + IBM Plex Mono · square corners · #2b45ff
+   Light mode · Geist + Chakra Petch headings · square corners · #002EFF
    Loaded after globals.css so it remaps the design tokens app-wide.
    ════════════════════════════════════════════════════════════════ */
 
 /* ── Token remap (light theme is the redesign baseline) ───────── */
 :root,
 [data-theme="light"] {
-  --bg:           #eeeeee;
+  --bg:           #FEFFF6;
   --bg-surface:   #ffffff;
-  --bg-sunken:    #f0f0f0;
+  --bg-sunken:    #f5f6ee;
   --surface:      #ffffff;
-  --s2:           #f6f6f6;
-  --s3:           #f0f0f0;
+  --s2:           #f7f8f0;
+  --s3:           #eeefe8;
 
   --text:         #0a0a0a;
   --text-2:       #1b1b1b;
@@ -22,13 +22,17 @@
   --fd:           #555555;
   --fm:           #aaaaaa;
 
-  --accent:       #2b45ff;
-  --accent-hover: #1f36e0;
-  --accent-light: rgba(43, 69, 255, 0.08);
-  --blue:         #2b45ff;
-  --bdim:         rgba(43, 69, 255, 0.08);
-  --bb:           rgba(43, 69, 255, 0.30);
-  --bglow:        rgba(43, 69, 255, 0.15);
+  --accent:       #002EFF;
+  --accent-hover: #0024CC;
+  --accent-light: rgba(0, 46, 255, 0.08);
+  --blue:         #002EFF;
+  --bdim:         rgba(0, 46, 255, 0.08);
+  --bb:           rgba(0, 46, 255, 0.30);
+  --bglow:        rgba(0, 46, 255, 0.15);
+
+  --mint:         #7CFFC6;
+  --mint-dim:     rgba(124, 255, 198, 0.12);
+  --mint-border:  rgba(124, 255, 198, 0.35);
 
   --green:#16a34a; --gdim:rgba(22,163,74,.08); --gb:rgba(22,163,74,.25);
   --amber:#d97706; --adim:rgba(217,119,6,.08); --ab:rgba(217,119,6,.25);
@@ -44,14 +48,13 @@
   --radius-sm:    0px;
   --radius-lg:    0px;
 
-  /* Fonts — headings Chakra Petch, body/mono IBM Plex Mono */
+  /* Fonts — headings Chakra Petch, body Geist */
   --font-display: var(--font-chakra), "Chakra Petch", sans-serif;
-  --font-geist-sans: var(--font-chakra), "Chakra Petch", sans-serif;
   --font-jetbrains-mono: var(--font-ibm-mono), "IBM Plex Mono", monospace;
 }
 
 body {
-  font-family: var(--font-ibm-mono), "IBM Plex Mono", monospace;
+  font-family: var(--font-geist-sans), "Geist", sans-serif;
   background: var(--bg);
   color: var(--fg);
 }
@@ -101,7 +104,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Session card (dashboard grid) */
 .sc { background: var(--surface); border: 1px solid var(--bd); padding: 16px; cursor: pointer;
   transition: border-color .14s, box-shadow .14s; position: relative; overflow: hidden; }
-.sc:hover { border-color: var(--bb); box-shadow: 0 6px 20px rgba(43,69,255,.08); }
+.sc:hover { border-color: var(--bb); box-shadow: 0 6px 20px rgba(0,46,255,.08); }
 .sc::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--bd2); }
 .sc.running::before { background: var(--blue); }
 .sc.done::before { background: var(--green); }
@@ -129,7 +132,7 @@ h1, h2, h3, h4, h5, h6 {
 .nav-wordmark{font-family:var(--font-chakra),sans-serif;font-size:15px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--fg)}
 .nl{display:flex;align-items:center;gap:9px;padding:8px 10px;font-family:var(--font-chakra),sans-serif;font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--fm);border-left:2px solid transparent;transition:color .12s,background .12s,border-color .12s;cursor:pointer}
 .nl:hover{color:var(--fd);background:rgba(0,0,0,.03)}
-.nl.on{color:var(--fg);border-left-color:var(--blue);background:rgba(43,69,255,.06)}
+.nl.on{color:var(--fg);border-left-color:var(--blue);background:rgba(0,46,255,.06)}
 
 /* Topbar */
 .topbar-title{font-family:var(--font-chakra),sans-serif;font-size:13px;font-weight:700;letter-spacing:.04em;color:var(--fg)}

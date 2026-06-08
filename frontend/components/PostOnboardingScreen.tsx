@@ -47,13 +47,13 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
       <div style={{
         minHeight: "100vh", display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
-        background: "#05070f",
+        background: "linear-gradient(160deg, #020511 0%, #001040 42%, #000d35 65%, #020714 100%)",
         position: "relative", overflow: "hidden",
       }}>
         {/* Ambient glow */}
         <div style={{
           position: "absolute", width: 700, height: 700, borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(59,130,246,0.14) 0%, transparent 65%)",
+          background: "radial-gradient(circle, rgba(0,46,255,0.13) 0%, transparent 65%)",
           top: "50%", left: "50%",
           animation: "pos-orb-float 7s ease-in-out infinite",
           pointerEvents: "none",
@@ -62,7 +62,7 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
         {/* Grid */}
         <div style={{
           position: "absolute", inset: 0, pointerEvents: "none",
-          backgroundImage: "linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)",
+          backgroundImage: "linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)",
           backgroundSize: "60px 60px",
         }} />
 
@@ -81,7 +81,7 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
 
           {/* Name headline */}
           <h1 style={{
-            fontFamily: "'Chakra Petch', sans-serif",
+            fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
             fontSize: "clamp(48px, 9vw, 80px)",
             fontWeight: 700,
             lineHeight: 1.05,
@@ -93,7 +93,7 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
               Let&rsquo;s get started,
             </span>
             <span style={{
-              background: "linear-gradient(90deg, #fff 0%, rgba(59,130,246,1) 50%, #fff 100%)",
+              background: "linear-gradient(90deg, #fff 0%, #7CFFC6 35%, #002EFF 55%, #7CFFC6 75%, #fff 100%)",
               backgroundSize: "200% auto",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
@@ -120,22 +120,21 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
               style={{
                 padding: "12px 32px",
                 fontSize: 13, fontWeight: 600,
-                fontFamily: "'Chakra Petch', sans-serif",
                 letterSpacing: "0.04em",
                 color: "rgba(255,255,255,0.85)",
-                background: "rgba(59,130,246,0.12)",
-                border: "1.5px solid rgba(59,130,246,0.45)",
+                background: "rgba(0,46,255,0.15)",
+                border: "1.5px solid rgba(0,46,255,0.45)",
                 borderRadius: 9,
                 cursor: "pointer",
                 transition: "all 0.2s",
               }}
               onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.22)";
-                (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(59,130,246,0.8)";
+                (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,46,255,0.28)";
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(0,46,255,0.85)";
               }}
               onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = "rgba(59,130,246,0.12)";
-                (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(59,130,246,0.45)";
+                (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,46,255,0.15)";
+                (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(0,46,255,0.45)";
               }}
             >
               Go to dashboard →
@@ -151,7 +150,7 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
           }}>
             <div style={{
               height: "100%",
-              background: "linear-gradient(90deg, rgba(59,130,246,0.6), rgba(139,92,246,0.6))",
+              background: "linear-gradient(90deg, #002EFF, #7CFFC6)",
               animation: "pos-progress 2.3s linear forwards",
             }} />
           </div>
