@@ -74,6 +74,13 @@ _TOOL_ALIASES = {
     "obsidian_update": "obsidian_append",
     "save_note": "obsidian_log",
     "write_note": "obsidian_log",
+    # Design agents hallucinate landing/wireframe variants → the real wireframe tool.
+    "generate_landing": "generate_wireframe",
+    "generate_landing_page": "generate_wireframe",
+    "create_wireframe": "generate_wireframe",
+    "generate_mockup": "generate_wireframe",
+    "generate_logo_image": "generate_logo",
+    "generate_brandboard": "generate_brand_board",
 }
 
 
@@ -1085,7 +1092,11 @@ class Agent:
             if alias:
                 fn = self.tools.get(alias)
         if fn is None:
-            return {"error": f"Unknown tool: {tool_name}"}
+            # List the real tools so the model stops re-calling a hallucinated name
+            # (e.g. design looping on generate_landing) and picks a valid one.
+            available = ", ".join(sorted(self.tools.keys()))
+            return {"error": f"Unknown tool '{tool_name}'. It does not exist — do NOT call it again. "
+                             f"Use ONLY one of these tools: {available}."}
         import time as _time
         saferun_action = None
         try:
