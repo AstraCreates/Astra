@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
-import { CHECKLIST_CATEGORIES } from "@/lib/checklist-data";
-import type { CLItem } from "@/lib/checklist-data";
 import {
   getCompanyGoal,
   postponeCompanyTask,
@@ -33,16 +31,6 @@ function currentGoalOf(goal: CompanyGoal | null): CompanyGoalEntry | null {
   return goal.goals.find((g) => g.id === goal.current_goal_id) || goal.goals.find((g) => g.status === "active") || null;
 }
 
-// Build the set of agents that have completed work across all goal history.
-function completedAgentsFromGoal(goal: CompanyGoal | null): Set<string> {
-  const out = new Set<string>();
-  for (const g of goal?.goals ?? []) {
-    for (const t of g.tasks ?? []) {
-      for (const a of t.done_agents ?? []) out.add(a);
-    }
-  }
-  return out;
-}
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
 const C = {
@@ -106,159 +94,6 @@ function Btn({ label, onClick, primary, disabled, small }: {
     >
       {label}
     </button>
-  );
-}
-
-// ── Launch Checklist ───────────────────────────────────────────────────────────
-
-function LaunchChecklist({
-  founderId,
-  completedAgents,
-}: {
-  founderId: string;
-  completedAgents: Set<string>;
-}) {
-  const storageKey = `astra_cl_${founderId || "anon"}`;
-
-  const [manual, setManual] = useState<Record<string, boolean>>(() => {
-    try { return JSON.parse(localStorage.getItem(storageKey) ?? "{}"); }
-    catch { return {}; }
-  });
-  const [openCats, setOpenCats] = useState<Record<string, boolean>>({});
-  const [listOpen, setListOpen] = useState(true);
-
-  useEffect(() => {
-    try { localStorage.setItem(storageKey, JSON.stringify(manual)); }
-    catch {}
-  }, [manual, storageKey]);
-
-  const isAutoChecked = (item: CLItem) =>
-    item.autoAgent ? completedAgents.has(item.autoAgent) : false;
-
-  const isChecked = (item: CLItem) =>
-    manual[item.id] ?? isAutoChecked(item);
-
-  const toggle = (id: string, current: boolean) =>
-    setManual((m) => ({ ...m, [id]: !current }));
-
-  const allItems = CHECKLIST_CATEGORIES.flatMap((c) => c.items);
-  const totalDone = allItems.filter(isChecked).length;
-  const total = allItems.length;
-  const pct = Math.round((totalDone / total) * 100);
-  const allDone = totalDone === total;
-
-  return (
-    <div style={{
-      borderRadius: 14,
-      border: `1px solid ${allDone ? "rgba(22,163,74,0.3)" : C.border}`,
-      background: allDone ? "rgba(22,163,74,0.04)" : C.bg,
-      overflow: "hidden",
-      marginBottom: 24,
-    }}>
-      {/* Header */}
-      <button
-        onClick={() => setListOpen((o) => !o)}
-        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", background: "none", border: "none", cursor: "pointer", gap: 12 }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 15, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>Launch checklist</span>
-          <span style={{
-            fontSize: 11, padding: "2px 9px", borderRadius: 99, fontWeight: 600,
-            background: allDone ? "rgba(22,163,74,0.12)" : "rgba(0,46,255,0.08)",
-            color: allDone ? C.green : C.blue,
-          }}>
-            {totalDone}/{total}
-          </span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 100, height: 5, borderRadius: 999, background: C.border, overflow: "hidden" }}>
-            <div style={{
-              height: "100%", borderRadius: 999, transition: "width 0.5s",
-              width: `${pct}%`,
-              background: allDone ? C.green : C.blue,
-            }} />
-          </div>
-          <span style={{ fontSize: 12, color: C.textMuted, fontWeight: 600, minWidth: 32 }}>{pct}%</span>
-          <span style={{ fontSize: 10, color: C.textFaint }}>{listOpen ? "▲" : "▼"}</span>
-        </div>
-      </button>
-
-      {listOpen && (
-        <div style={{ borderTop: `1px solid ${C.border}` }}>
-          {/* Auto-completed notice */}
-          {completedAgents.size > 0 && (
-            <div style={{ padding: "8px 20px", fontSize: 11, color: C.blue, background: C.blueTint, borderBottom: `1px solid ${C.border}` }}>
-              ✦ Blue checkmarks were completed automatically by Astra agents
-            </div>
-          )}
-
-          {CHECKLIST_CATEGORIES.map((cat) => {
-            const catDone = cat.items.filter(isChecked).length;
-            const catOpen = openCats[cat.id] ?? false;
-            const catAllDone = catDone === cat.items.length;
-            return (
-              <div key={cat.id} style={{ borderTop: `1px solid ${C.border}` }}>
-                <button
-                  onClick={() => setOpenCats((o) => ({ ...o, [cat.id]: !catOpen }))}
-                  style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 20px", background: "none", border: "none", cursor: "pointer", gap: 10 }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 14 }}>{cat.icon}</span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: catAllDone ? C.green : C.text }}>{cat.label}</span>
-                    <span style={{ fontSize: 11, color: catAllDone ? C.green : C.textFaint }}>{catDone}/{cat.items.length}</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ width: 48, height: 3, borderRadius: 999, background: C.border, overflow: "hidden" }}>
-                      <div style={{ height: "100%", borderRadius: 999, width: `${Math.round((catDone / cat.items.length) * 100)}%`, background: catAllDone ? C.green : C.blue, transition: "width 0.4s" }} />
-                    </div>
-                    <span style={{ fontSize: 9, color: C.textFaint }}>{catOpen ? "▲" : "▼"}</span>
-                  </div>
-                </button>
-
-                {catOpen && (
-                  <div style={{ padding: "4px 20px 14px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px" }}>
-                    {cat.items.map((item) => {
-                      const checked = isChecked(item);
-                      const isAuto = isAutoChecked(item);
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={() => !isAuto && toggle(item.id, checked)}
-                          style={{ display: "flex", alignItems: item.detail ? "flex-start" : "center", gap: 8, background: "none", border: "none", cursor: isAuto ? "default" : "pointer", padding: "3px 0", textAlign: "left" }}
-                        >
-                          <div style={{
-                            width: 16, height: 16, borderRadius: 4, flexShrink: 0, marginTop: item.detail ? 2 : 0,
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            background: checked ? (isAuto ? "rgba(0,46,255,0.12)" : "rgba(22,163,74,0.12)") : "transparent",
-                            border: `1.5px solid ${checked ? (isAuto ? C.blue : C.green) : C.borderStrong}`,
-                            transition: "all 0.15s",
-                          }}>
-                            {checked && <span style={{ fontSize: 8, color: isAuto ? C.blue : C.green, fontWeight: 800 }}>✓</span>}
-                          </div>
-                          <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
-                            <span style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                              <span style={{ fontSize: 12, color: checked ? C.textMuted : C.text, lineHeight: 1.4, textDecoration: checked && !isAuto ? "line-through" : "none", opacity: checked && !isAuto ? 0.55 : 1 }}>
-                                {item.label}
-                              </span>
-                              {isAuto && <span style={{ fontSize: 9, color: C.blue, fontWeight: 700, flexShrink: 0 }}>auto</span>}
-                            </span>
-                            {item.detail && (
-                              <span style={{ fontSize: 10.5, color: C.textFaint, lineHeight: 1.4, opacity: checked ? 0.5 : 0.8 }}>
-                                {item.detail}
-                              </span>
-                            )}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -356,7 +191,6 @@ export default function MissionsPanel() {
   const doneGoals = (goal?.goals ?? []).filter((g) => g.status === "done").reverse();
   const runs = (goal?.operating_sessions ?? []).slice().reverse().slice(0, 8);
   const paused = goal?.status === "paused";
-  const completedAgents = completedAgentsFromGoal(goal);
 
   const postpone = async (t: CompanyTask) => {
     setBusy(t.id);
@@ -415,15 +249,12 @@ export default function MissionsPanel() {
       {/* ── Page header ── */}
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, margin: "0 0 6px", letterSpacing: "-0.025em" }}>
-          Launch Progress
+          Company Goal
         </h1>
         <p style={{ fontSize: 14, color: C.textMuted, margin: 0 }}>
-          Track every step to launch. Astra auto-completes items as agents finish — check off the rest yourself.
+          One goal at a time. Tasks tick as agents finish; the planner sets the next goal.
         </p>
       </div>
-
-      {/* ── Launch checklist (the primary content) ── */}
-      <LaunchChecklist founderId={founderId} completedAgents={completedAgents} />
 
       {/* ── What Astra is doing ── */}
       {goal && (
