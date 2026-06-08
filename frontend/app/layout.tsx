@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, JetBrains_Mono, Chakra_Petch, IBM_Plex_Mono } from "next/font/google";
+import { Geist, Syne, JetBrains_Mono, IBM_Plex_Mono } from "next/font/google";
 import ApiAuthBridge from "@/components/ApiAuthBridge";
 import CookieNotice from "@/components/CookieNotice";
 import SessionWrapper from "@/components/SessionWrapper";
@@ -10,8 +10,8 @@ import "./astra-redesign.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
 const jetBrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains-mono" });
-// Redesign fonts — Chakra Petch (headings), IBM Plex Mono (body/mono).
-const chakraPetch = Chakra_Petch({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-chakra" });
+// Display font — Syne (headings, labels, nav). Body is Geist.
+const syne = Syne({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-syne" });
 const ibmPlexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["300", "400", "500"], variable: "--font-ibm-mono" });
 
 export const metadata: Metadata = {
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geist.variable} ${jetBrainsMono.variable} ${chakraPetch.variable} ${ibmPlexMono.variable} antialiased`} data-theme="light" suppressHydrationWarning>
+    <html lang="en" className={`${geist.variable} ${jetBrainsMono.variable} ${syne.variable} ${ibmPlexMono.variable} antialiased`} data-theme="light" suppressHydrationWarning>
       <head>
         {/* Redesign baseline is light. Honour a saved preference, default light. */}
         <script
