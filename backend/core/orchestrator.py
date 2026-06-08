@@ -1435,18 +1435,29 @@ class Orchestrator:
         # Run remaining agents in parallel (research is done, deps resolve)
         logger.info("Starting non-research agents: %s", [t["agent"] for t in remaining])
         in_flight: set[str] = set()
-        _AGENT_TIMEOUT = 3600  # 1 hour max per agent — prevents hung agents blocking downstream
+        import os as _os
+        # Per-agent hard cap so a hung agent can't block forever. Build agents (web /
+        # technical) legitimately run far longer — run_mvp_loop chains many openclaude
+        # passes (build + 3 completion rounds + fix + build-error heal ≈ up to ~100min),
+        # so 60min cut real builds off mid-pass. Give them 3h; everyone else 1h.
+        _AGENT_TIMEOUT = int(_os.environ.get("ASTRA_AGENT_TIMEOUT", "3600"))
+        _BUILD_AGENT_TIMEOUT = int(_os.environ.get("ASTRA_BUILD_AGENT_TIMEOUT", "10800"))
+
+        def _timeout_for(agent: str) -> int:
+            a = (agent or "").lower()
+            return _BUILD_AGENT_TIMEOUT if a.startswith(("web", "technical")) else _AGENT_TIMEOUT
 
         async def _run_task_guarded(t: dict) -> None:
             """Run a task with a hard timeout so a hung agent never blocks the wave."""
+            _to = _timeout_for(t["agent"])
             try:
-                await asyncio.wait_for(_run_task(t), timeout=_AGENT_TIMEOUT)
+                await asyncio.wait_for(_run_task(t), timeout=_to)
             except asyncio.TimeoutError:
-                logger.error("Agent %s timed out after %ds — marking done to unblock downstream", t["agent"], _AGENT_TIMEOUT)
-                completed[t["id"]] = {"error": f"timed_out_after_{_AGENT_TIMEOUT}s", "agent": t["agent"], "timed_out": True}
+                logger.error("Agent %s timed out after %ds — marking done to unblock downstream", t["agent"], _to)
+                completed[t["id"]] = {"error": f"timed_out_after_{_to}s", "agent": t["agent"], "timed_out": True}
                 await publish(session_id, {
                     "type": "agent_error", "agent": t["agent"],
-                    "task_id": t["id"], "error": f"agent timed out after {_AGENT_TIMEOUT}s",
+                    "task_id": t["id"], "error": f"agent timed out after {_to}s",
                 })
                 await publish(session_id, {
                     "type": "stack_lane_status",
@@ -1455,7 +1466,7 @@ class Orchestrator:
                     "task_id": t["id"],
                     "status": "blocked",
                     "title": t.get("stack_task_title") or t["agent"],
-                    "blockers": [f"agent timed out after {_AGENT_TIMEOUT}s"],
+                    "blockers": [f"agent timed out after {_to}s"],
                     "next_actor": "founder",
                 })
             except Exception as _te:
