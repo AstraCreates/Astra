@@ -56,7 +56,7 @@ export default function WelcomeScreen() {
 
         <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 32px", display: "flex", flexDirection: "column", alignItems: "center", gap: 32 }}>
           <div className="ws-logo">
-            <Image src="/logo.png" alt="Astra" width={72} height={72} style={{ filter: "brightness(0) invert(1)", objectFit: "contain" }} />
+            <Image src="/logo.png" alt="Astra" width={72} height={72} style={{ filter: "brightness(0)", objectFit: "contain" }} />
           </div>
 
           <h1 className="ws-h1" style={{
