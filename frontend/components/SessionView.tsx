@@ -105,6 +105,61 @@ function ago(ts: number | string | undefined): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+// ── Lightweight inline markdown renderer for deliverable previews ──────────────
+// Parses **bold**, `code`, and [text](url) inside a line into styled spans.
+function inlineFmt(text: string, keyBase: string): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  const re = /\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
+  let last = 0, m: RegExpExecArray | null, i = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    if (m[1]) out.push(<strong key={`${keyBase}-b${i}`} style={{ fontWeight: 700, color: "var(--fg)" }}>{m[1]}</strong>);
+    else if (m[2]) out.push(<code key={`${keyBase}-c${i}`} style={{ fontFamily: "var(--font-ibm-mono),monospace", fontSize: "0.92em", background: "var(--s2)", padding: "1px 4px", borderRadius: 3 }}>{m[2]}</code>);
+    else if (m[3]) out.push(<a key={`${keyBase}-l${i}`} href={m[4]} target="_blank" rel="noreferrer" style={{ color: "var(--blue)" }}>{m[3]}</a>);
+    last = re.lastIndex; i++;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+// Render markdown-ish deliverable content as clean, styled blocks (no <pre> dump).
+function RichText({ text }: { text: string }) {
+  const lines = text.replace(/\r/g, "").split("\n");
+  const blocks: React.ReactNode[] = [];
+  let list: { items: string[]; ordered: boolean } | null = null;
+  const flush = () => {
+    if (!list) return;
+    const Tag = list.ordered ? "ol" : "ul";
+    const cur = list;
+    blocks.push(
+      <Tag key={`l${blocks.length}`} style={{ margin: "4px 0 8px", paddingLeft: 20, display: "flex", flexDirection: "column", gap: 3 }}>
+        {cur.items.map((it, i) => <li key={i} style={{ fontSize: 12.5, lineHeight: 1.6, color: "var(--fd)" }}>{inlineFmt(it, `li${blocks.length}-${i}`)}</li>)}
+      </Tag>
+    );
+    list = null;
+  };
+  lines.forEach((raw, idx) => {
+    const line = raw.trimEnd();
+    const t = line.trim();
+    if (!t) { flush(); return; }
+    let m: RegExpMatchArray | null;
+    if (/^(={3,}|-{3,}|─{3,}|—{3,})$/.test(t)) { flush(); blocks.push(<div key={`hr${idx}`} style={{ height: 1, background: "var(--bd)", margin: "8px 0" }} />); return; }
+    if ((m = t.match(/^(#{1,6})\s+(.*)$/))) {
+      flush();
+      const lvl = m[1].length;
+      const size = lvl <= 1 ? 16 : lvl === 2 ? 13.5 : 12;
+      blocks.push(<div key={`h${idx}`} style={{ fontFamily: "var(--font-chakra),sans-serif", fontWeight: 700, fontSize: size, color: "var(--fg)", margin: blocks.length ? "12px 0 5px" : "0 0 5px", letterSpacing: ".01em" }}>{inlineFmt(m[2], `h${idx}`)}</div>);
+      return;
+    }
+    if ((m = t.match(/^\d+[.)]\s+(.*)$/))) { if (!list || !list.ordered) { flush(); list = { items: [], ordered: true }; } list.items.push(m[1]); return; }
+    if ((m = t.match(/^[-*•]\s+(.*)$/))) { if (!list || list.ordered) { flush(); list = { items: [], ordered: false }; } list.items.push(m[1]); return; }
+    flush();
+    blocks.push(<p key={`p${idx}`} style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--fd)", margin: "0 0 7px" }}>{inlineFmt(t, `p${idx}`)}</p>);
+  });
+  flush();
+  return <div style={{ background: "var(--surface)", border: "1px solid var(--bd)", borderRadius: 8, padding: "14px 16px", maxHeight: 460, overflowY: "auto" }}>{blocks}</div>;
+}
+
 export default function SessionView({ sessionId }: { sessionId: string }) {
   const { userId } = useDevUser();
   const founderId = userId;
@@ -664,18 +719,19 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 for (const c of candidates) {
                   if (c && typeof c === "string" && c.length > 30) return c;
                 }
-                // Fallback: format the result as readable sections (never raw JSON)
-                const SKIP = new Set(["handoff", "mirror_verdict", "mirror_critique", "agent", "status", "task_id", "session_id", "sources_list", "artifacts_produced"]);
+                // Fallback: format the result as readable markdown sections (never raw JSON)
+                const SKIP = new Set(["handoff", "mirror_verdict", "mirror_critique", "agent", "status", "task_id", "session_id", "sources_list", "artifacts_produced", "documents"]);
                 const sections: string[] = [];
+                const fmtVal = (sv: unknown): string => typeof sv === "object" && sv !== null ? JSON.stringify(sv) : String(sv);
                 for (const [k, v] of Object.entries(r)) {
                   if (SKIP.has(k) || v === null || v === undefined || v === "") continue;
                   const label = k.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-                  if (typeof v === "string" && v.length > 5) sections.push(`${label}\n${"─".repeat(label.length)}\n${v}`);
-                  else if (typeof v === "number" || typeof v === "boolean") sections.push(`${label}: ${v}`);
-                  else if (Array.isArray(v)) sections.push(`${label}\n${"─".repeat(label.length)}\n${(v as unknown[]).map((x, i) => `${i + 1}. ${x}`).join("\n")}`);
+                  if (typeof v === "string" && v.length > 5) sections.push(`## ${label}\n${v}`);
+                  else if (typeof v === "number" || typeof v === "boolean") sections.push(`**${label}:** ${v}`);
+                  else if (Array.isArray(v)) sections.push(`## ${label}\n${(v as unknown[]).map((x) => `- ${fmtVal(x)}`).join("\n")}`);
                   else if (typeof v === "object") {
-                    const sub = Object.entries(v as Record<string, unknown>).filter(([, sv]) => sv !== null && sv !== "").map(([sk, sv]) => `  • ${sk.replace(/_/g, " ")}: ${sv}`).join("\n");
-                    if (sub) sections.push(`${label}\n${"─".repeat(label.length)}\n${sub}`);
+                    const sub = Object.entries(v as Record<string, unknown>).filter(([, sv]) => sv !== null && sv !== "").map(([sk, sv]) => `- **${sk.replace(/_/g, " ")}:** ${fmtVal(sv)}`).join("\n");
+                    if (sub) sections.push(`## ${label}\n${sub}`);
                   }
                 }
                 return sections.join("\n\n") || null;
@@ -767,7 +823,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                   </div>
                 )}
                 {displayContent
-                  ? <pre className="art-pre" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: "none", fontFamily: "inherit", fontSize: 12, lineHeight: 1.7 }}>{displayContent}</pre>
+                  ? <RichText text={displayContent} />
                   : fileList.length === 0 && palette.length === 0 && logoEntries.length === 0 && brandImgs.length === 0 && <div style={{ color: "var(--fm)", fontSize: 10.5, fontStyle: "italic" }}>Agent hasn't produced output yet — check back when it completes.</div>}
               </>;
             })()}

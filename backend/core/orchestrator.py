@@ -465,24 +465,31 @@ class Orchestrator:
 
     @staticmethod
     def _readable(value: Any, limit: int = 800) -> str:
-        """Render any value as human-readable text (never a raw Python dict repr)."""
+        """Render any value as readable markdown (headings/bold/bullets) — never a raw
+        Python dict repr. The UI renders this richly."""
         if isinstance(value, str):
             return value.strip()[:limit]
         if isinstance(value, dict):
-            lines = []
+            parts = []
             for k, v in value.items():
-                label = str(k).replace("_", " ").strip().capitalize()
-                if isinstance(v, (dict, list)):
-                    try:
-                        vs = json.dumps(v, ensure_ascii=False)
-                    except Exception:
-                        vs = str(v)
-                else:
-                    vs = str(v)
-                lines.append(f"{label}: {vs}")
-            return "\n".join(lines)[:limit]
+                label = str(k).replace("_", " ").strip().title()
+                if isinstance(v, dict):
+                    sub = "\n".join(
+                        f"- **{str(sk).replace('_', ' ').title()}:** "
+                        f"{json.dumps(sv, ensure_ascii=False) if isinstance(sv, (dict, list)) else sv}"
+                        for sk, sv in v.items() if sv not in (None, "", [], {})
+                    )
+                    if sub:
+                        parts.append(f"## {label}\n{sub}")
+                elif isinstance(v, list):
+                    body = "\n".join(f"- {Orchestrator._readable(item, 200)}" for item in v if item not in (None, ""))
+                    if body:
+                        parts.append(f"## {label}\n{body}")
+                elif v not in (None, ""):
+                    parts.append(f"**{label}:** {v}")
+            return "\n\n".join(parts)[:limit]
         if isinstance(value, list):
-            return "\n".join(f"• {Orchestrator._readable(v, 200)}" for v in value)[:limit]
+            return "\n".join(f"- {Orchestrator._readable(v, 200)}" for v in value)[:limit]
         return str(value)[:limit]
 
     @staticmethod
