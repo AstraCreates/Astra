@@ -131,6 +131,13 @@ export default function SessionTour({ onDone }: { onDone: () => void }) {
     return () => window.removeEventListener("resize", remeasure);
   }, [remeasure]);
 
+  // Esc always closes the tour so it can never trap the page.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onDone(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onDone]);
+
   function next() {
     if (idx < STEPS.length - 1) {
       setReady(false);

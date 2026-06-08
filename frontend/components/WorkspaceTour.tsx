@@ -146,6 +146,13 @@ export default function WorkspaceTour({ onDone }: { onDone: () => void }) {
     return () => clearTimeout(t);
   }, [measure, idx]);
 
+  // Esc always closes the tour so it can never trap the page.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onDone(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onDone]);
+
   useEffect(() => {
     window.addEventListener("resize", measure, { passive: true });
     return () => window.removeEventListener("resize", measure);
