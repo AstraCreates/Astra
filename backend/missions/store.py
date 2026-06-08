@@ -27,7 +27,10 @@ _lock = threading.Lock()
 DepartmentType = Literal["research", "marketing", "sales", "technical", "legal", "ops", "finance"]
 StatusType = Literal["active", "paused", "completed"]
 ApprovalPolicyType = Literal["auto", "require_approval"]
-TaskStatusType = Literal["pending", "in_progress", "done", "blocked"]
+# "awaiting_approval": the agent finished the work and is waiting for the founder
+# to sign off before it counts as "done". Goals/milestones are not complete until a
+# human approves them.
+TaskStatusType = Literal["pending", "in_progress", "awaiting_approval", "done", "blocked"]
 
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -383,6 +386,58 @@ def append_progress_note(mission_id: str, note: str, run_id: str) -> None:
             {"timestamp": _now_iso(), "note": note, "run_id": run_id}
         )
         _save_mission_file(mission)
+
+
+def decide_task(mission_id: str, task_id: str, approved: bool, note: str = "", decided_by: str = "founder") -> dict[str, Any]:
+    """Human decision on a milestone the agent marked awaiting_approval.
+
+    approved=True  → status "done" (the goal/milestone counts as complete).
+    approved=False → status "in_progress" with the founder's note as feedback, so
+                     the next mission run reworks it.
+    """
+    now = _task_now()
+    decision = {"approved": approved, "note": note, "by": decided_by, "at": now}
+    fields = {
+        "status": "done" if approved else "in_progress",
+        "approval": decision,
+    }
+    if note:
+        verb = "Approved" if approved else "Revisions requested"
+        existing_note = ""
+        try:
+            for t in list_tasks(mission_id):
+                if str(t.get("id")) == str(task_id):
+                    existing_note = t.get("notes", "")
+                    break
+        except Exception:
+            pass
+        fields["notes"] = (existing_note + f"\n[{verb} by {decided_by}]: {note}").strip()
+    return update_task(mission_id, task_id, **fields)
+
+
+def pending_approvals(founder_id: str) -> list[dict[str, Any]]:
+    """Every milestone across the founder's missions that is awaiting human sign-off."""
+    out: list[dict[str, Any]] = []
+    for mission in list_missions(founder_id):
+        for task in mission.get("tasks") or []:
+            if task.get("status") == "awaiting_approval":
+                out.append({
+                    "mission_id": mission["id"],
+                    "mission_name": mission.get("name"),
+                    "department": mission.get("department"),
+                    "task": dict(task),
+                })
+    return out
+
+
+def mission_progress(mission: dict[str, Any]) -> dict[str, int]:
+    """Count tasks by status for a mission (UI + completion checks)."""
+    counts = {"pending": 0, "in_progress": 0, "awaiting_approval": 0, "done": 0, "blocked": 0}
+    for task in mission.get("tasks") or []:
+        s = str(task.get("status") or "pending")
+        counts[s] = counts.get(s, 0) + 1
+    counts["total"] = sum(v for k, v in counts.items() if k != "total")
+    return counts
 
 
 def update_mission_status(mission_id: str, status: StatusType) -> None:

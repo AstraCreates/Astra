@@ -12,6 +12,7 @@ import { useIsMobile } from "@/lib/use-is-mobile";
 const BARE_PREFIXES = ["/sign-in", "/sign-up", "/onboarding", "/invite", "/cookies"];
 
 const TITLES: { match: (p: string) => boolean; title: string }[] = [
+  { match: (p) => p.startsWith("/goals"), title: "Goals" },
   { match: (p) => p.startsWith("/brain"), title: "Company Brain" },
   { match: (p) => p.startsWith("/integrations"), title: "Integrations" },
   { match: (p) => p.startsWith("/payments"), title: "Payments" },

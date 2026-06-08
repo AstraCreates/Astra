@@ -61,6 +61,12 @@ class SyncNotionRequest(BaseModel):
     founder_id: str
 
 
+class ApproveTaskRequest(BaseModel):
+    founder_id: str = ""
+    approved: bool = True
+    note: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -201,7 +207,7 @@ async def patch_task(mission_id: str, task_id: str, body: PatchTaskRequest):
     if body.notes is not None:
         updates["notes"] = body.notes
     if body.status is not None:
-        valid_statuses = {"pending", "in_progress", "done", "blocked"}
+        valid_statuses = {"pending", "in_progress", "awaiting_approval", "done", "blocked"}
         if body.status not in valid_statuses:
             raise HTTPException(status_code=400, detail=f"status must be one of: {', '.join(sorted(valid_statuses))}")
         updates["status"] = body.status
@@ -216,6 +222,55 @@ async def patch_task(mission_id: str, task_id: str, body: PatchTaskRequest):
     except KeyError:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"task": task}
+
+
+@router.get("/missions/pending-approvals")
+async def list_pending_approvals(founder_id: str = ""):
+    """Every milestone awaiting the founder's sign-off, across all missions."""
+    if not founder_id:
+        raise HTTPException(status_code=400, detail="founder_id is required")
+    from backend.missions.store import pending_approvals
+    return {"pending": pending_approvals(founder_id)}
+
+
+@router.post("/missions/{mission_id}/tasks/{task_id}/approve")
+async def approve_task(mission_id: str, task_id: str, body: ApproveTaskRequest, background_tasks: BackgroundTasks):
+    """Founder decision on a milestone the agent marked awaiting_approval.
+
+    approved → milestone is 'done'. If that clears all open work on the mission, the
+    planner assigns the next milestones (continuous operation). rejected → reopened
+    with the founder's note as feedback for the next run.
+    """
+    from backend.missions.store import get_mission as store_get, decide_task
+
+    mission = store_get(mission_id=mission_id)
+    if mission is None:
+        raise HTTPException(status_code=404, detail="Mission not found")
+    founder_id = body.founder_id or mission.get("founder_id", "")
+    try:
+        task = decide_task(mission_id, task_id, approved=body.approved, note=body.note)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    assigned = 0
+    if body.approved and founder_id:
+        # If approving cleared all open work, assign the next milestones now.
+        from backend.missions.planner import assign_next_milestones, has_open_work
+        refreshed = store_get(mission_id=mission_id) or {}
+        if not has_open_work(refreshed):
+            try:
+                background_tasks.add_task(assign_next_milestones, founder_id, mission_id)
+                assigned = -1  # scheduled in background
+            except Exception:
+                pass
+    # Mirror to Notion (best-effort, non-blocking).
+    if founder_id:
+        try:
+            from backend.tools.notion_sync import sync_founder_operating_system
+            background_tasks.add_task(sync_founder_operating_system, founder_id)
+        except Exception:
+            pass
+    return {"ok": True, "task": task, "next_milestones_scheduled": assigned == -1}
 
 
 @router.post("/missions/sync-notion")

@@ -11,6 +11,7 @@ import {
   syncMissionNotion,
   updateMission,
   updateMissionTask,
+  approveMissionTask,
   type CompanyGoal,
   type Mission,
   type MissionTask,
@@ -104,16 +105,20 @@ function formatDate(iso: string | null): string {
 }
 
 function TaskBadge({ status }: { status: MissionTask["status"] }) {
-  const styles: Record<MissionTask["status"], React.CSSProperties> = {
+  const styles: Record<string, React.CSSProperties> = {
     pending: { background: c.surface, color: c.textMuted },
     in_progress: { background: c.blueTint, color: c.blue },
+    running: { background: c.blueTint, color: c.blue },
+    awaiting_approval: { background: "#FFF7E6", color: "#B45309" },
     done: { background: c.greenTint, color: c.greenText },
     blocked: { background: "#FEF2F2", color: "#DC2626" },
   };
-  return <span style={{ ...styles[status], fontSize: 11, padding: "2px 8px", borderRadius: 99, fontWeight: 600 }}>{status.replace("_", " ")}</span>;
+  const label = status === "awaiting_approval" ? "needs approval" : status.replace("_", " ");
+  return <span style={{ ...(styles[status] || styles.pending), fontSize: 11, padding: "2px 8px", borderRadius: 99, fontWeight: 600, whiteSpace: "nowrap" }}>{label}</span>;
 }
 
 function MissionTaskTree({ mission, onRefresh }: { mission: Mission; onRefresh: () => void }) {
+  const { userId } = useDevUser();
   const [savingId, setSavingId] = useState<string | null>(null);
   const tasks = mission.tasks ?? [];
   const roots = tasks.filter((task) => !task.parent_id);
@@ -132,23 +137,54 @@ function MissionTaskTree({ mission, onRefresh }: { mission: Mission; onRefresh: 
     }
   };
 
-  const renderTask = (task: MissionTask, depth = 0) => (
+  const decide = async (task: MissionTask, approved: boolean) => {
+    let note = "";
+    if (!approved) { note = window.prompt("What needs changing? (sent back to the agent)") || ""; }
+    setSavingId(task.id);
+    try {
+      await approveMissionTask(mission.id, task.id, userId, approved, note);
+      onRefresh();
+    } catch (e) {
+      alert(`Could not record decision: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  const renderTask = (task: MissionTask, depth = 0) => {
+    const awaiting = task.status === "awaiting_approval";
+    return (
     <div key={task.id} style={{ display: "flex", flexDirection: "column", gap: 8, marginLeft: depth * 18 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", border: `1px solid ${c.border}`, borderRadius: 10, background: c.surface }}>
-        <input
-          type="checkbox"
-          checked={task.status === "done"}
-          disabled={savingId === task.id}
-          onChange={(e) => toggleDone(task, e.currentTarget.checked)}
-          style={{ marginTop: 2 }}
-        />
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", border: `1px solid ${awaiting ? c.blue : c.border}`, borderRadius: 10, background: awaiting ? "rgba(0,46,255,0.04)" : c.surface }}>
+        {!awaiting && (
+          <input
+            type="checkbox"
+            checked={task.status === "done"}
+            disabled={savingId === task.id}
+            onChange={(e) => toggleDone(task, e.currentTarget.checked)}
+            style={{ marginTop: 2 }}
+          />
+        )}
+        {awaiting && <span style={{ marginTop: 1, fontSize: 13 }}>🔔</span>}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: c.text }}>{task.title}</span>
             <TaskBadge status={task.status} />
             <span style={{ fontSize: 11, color: c.textMuted }}>{task.owner_agent}</span>
           </div>
-          {task.notes && <div style={{ fontSize: 12, color: c.textMuted, marginTop: 4, lineHeight: 1.5 }}>{task.notes}</div>}
+          {task.notes && <div style={{ fontSize: 12, color: c.textMuted, marginTop: 4, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{task.notes}</div>}
+          {awaiting && (
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button disabled={savingId === task.id} onClick={() => decide(task, true)}
+                style={{ fontSize: 11, fontWeight: 700, padding: "5px 12px", borderRadius: 8, border: "none", background: "#16a34a", color: "#fff", cursor: "pointer" }}>
+                ✓ Approve milestone
+              </button>
+              <button disabled={savingId === task.id} onClick={() => decide(task, false)}
+                style={{ fontSize: 11, fontWeight: 600, padding: "5px 12px", borderRadius: 8, border: `1px solid ${c.border}`, background: c.surface, color: c.text, cursor: "pointer" }}>
+                Request changes
+              </button>
+            </div>
+          )}
           {task.notion_page_url && (
             <a href={task.notion_page_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: c.blue, marginTop: 6, display: "inline-block" }}>
               Open in Notion
@@ -158,7 +194,8 @@ function MissionTaskTree({ mission, onRefresh }: { mission: Mission; onRefresh: 
       </div>
       {(childrenByParent[task.id] || []).map((child) => renderTask(child, depth + 1))}
     </div>
-  );
+    );
+  };
 
   if (!roots.length) return <p style={{ fontSize: 13, color: c.textMuted, margin: 0 }}>No operating tasks yet.</p>;
   return <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{roots.map((task) => renderTask(task))}</div>;

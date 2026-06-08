@@ -160,7 +160,7 @@ def bootstrap_company_operating_system(
                 primary_metric=(execution_contract.get("kpis") or [{}])[0].get("label", "Operating progress"),
                 objectives=[str(step) for step in (item.get("steps") or [])[:5]],
                 budget={"max_runs_per_day": 3, "max_cost_usd_per_run": 1.0},
-                approval_policy="auto",
+                approval_policy="require_approval",  # goals/milestones need founder sign-off to complete
             )
         tasks = _mission_task_tree(mission["id"], session_id, item, digest)
         mission = update_mission(

@@ -68,7 +68,8 @@ def _build_context(mission: dict) -> str:
                 parts.append(f"\nKEY KPIS:\n{kpi_lines}")
 
     tasks: list[dict] = mission.get("tasks") or []
-    open_tasks = [task for task in tasks if task.get("status") not in {"done"}]
+    # awaiting_approval = agent already finished it, waiting on the founder — not open work.
+    open_tasks = [task for task in tasks if task.get("status") not in {"done", "awaiting_approval"}]
     if open_tasks:
         task_lines = "\n".join(
             f"  - [{task.get('status', 'pending')}] {task.get('title')} :: {task.get('notes', '')}".strip()
@@ -102,23 +103,28 @@ def _build_context(mission: dict) -> str:
 def _reconcile_tasks(mission: dict, result: Any, session_id: str) -> list[dict[str, Any]]:
     existing = list(mission.get("tasks") or [])
     by_id = {str(task.get("id")): dict(task) for task in existing if task.get("id")}
-    open_ids = [str(task.get("id")) for task in existing if task.get("status") not in {"done"} and task.get("id")]
+    open_ids = [str(task.get("id")) for task in existing if task.get("status") not in {"done", "awaiting_approval"} and task.get("id")]
 
     completed_ids = [str(item) for item in (result.get("completed_tasks") or [])] if isinstance(result, dict) else []
     blocked_map = result.get("blocked_tasks") or {} if isinstance(result, dict) else {}
     new_tasks = result.get("next_tasks") or [] if isinstance(result, dict) else []
     summary = _extract_summary(result, mission.get("department", "mission"))
 
+    # Milestones the agent finished don't count as "done" until a human signs off —
+    # they wait in "awaiting_approval". Auto-policy missions skip the gate.
+    _done_status = "done" if mission.get("approval_policy") == "auto" else "awaiting_approval"
+
     if completed_ids:
         for task_id in completed_ids:
             if task_id in by_id:
-                by_id[task_id]["status"] = "done"
+                by_id[task_id]["status"] = _done_status
                 by_id[task_id]["updated_at"] = mission.get("last_run_at") or ""
                 by_id[task_id]["last_run_id"] = session_id
+                by_id[task_id]["notes"] = (by_id[task_id].get("notes", "") + f"\nAgent finished in run {session_id}: {summary}").strip()
     elif open_ids:
         first = open_ids[0]
-        by_id[first]["status"] = "done"
-        by_id[first]["notes"] = (by_id[first].get("notes", "") + f"\nCompleted in run {session_id}: {summary}").strip()
+        by_id[first]["status"] = _done_status
+        by_id[first]["notes"] = (by_id[first].get("notes", "") + f"\nAgent finished in run {session_id}: {summary}").strip()
         by_id[first]["last_run_id"] = session_id
 
     if isinstance(blocked_map, dict):
@@ -223,6 +229,16 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
     if mission is None:
         logger.error("run_mission: mission %s not found", mission_id)
         return {"success": False, "session_id": session_id, "summary": "Mission not found", "cost_usd": 0.0}
+
+    # Don't run if the only outstanding work is awaiting the founder's approval — the
+    # mission is blocked on a human decision, not on the agent.
+    _tasks = mission.get("tasks") or []
+    if _tasks:
+        _actionable = [t for t in _tasks if str(t.get("status")) in ("pending", "in_progress", "blocked")]
+        _awaiting = [t for t in _tasks if str(t.get("status")) == "awaiting_approval"]
+        if not _actionable and _awaiting:
+            logger.info("run_mission: mission %s blocked on %d approval(s) — skipping run", mission_id, len(_awaiting))
+            return {"success": True, "session_id": session_id, "summary": f"Waiting on founder approval for {len(_awaiting)} milestone(s).", "cost_usd": 0.0, "skipped": "awaiting_approval"}
 
     founder_id: str = mission["founder_id"]
     department: str = mission["department"]

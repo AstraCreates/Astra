@@ -2040,7 +2040,7 @@ export function sortAgentNamesByOrder(agentNames: string[]): string[] {
 export interface MissionTask {
   id: string;
   title: string;
-  status: "pending" | "in_progress" | "done" | "blocked";
+  status: "pending" | "in_progress" | "awaiting_approval" | "done" | "blocked";
   parent_id: string | null;
   notes: string;
   owner_agent: string;
@@ -2137,6 +2137,27 @@ export async function getCompanyGoal(founderId: string): Promise<CompanyGoal | n
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   return data.company_goal ?? null;
+}
+
+// Founder decision on a milestone the agent finished (awaiting_approval).
+// approved → done (+ planner may assign the next milestones); rejected → reopened.
+export async function approveMissionTask(
+  missionId: string, taskId: string, founderId: string, approved: boolean, note = ""
+): Promise<{ ok: boolean; next_milestones_scheduled: boolean }> {
+  const res = await apiFetch(`${BASE}/api/missions/${encodeURIComponent(missionId)}/tasks/${encodeURIComponent(taskId)}/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: founderId, approved, note }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getPendingApprovals(founderId: string): Promise<{ mission_id: string; mission_name: string; department: string; task: MissionTask }[]> {
+  const res = await apiFetch(`${BASE}/api/missions/pending-approvals?founder_id=${encodeURIComponent(founderId)}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.pending ?? [];
 }
 
 export async function updateMissionTask(
