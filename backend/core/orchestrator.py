@@ -1436,20 +1436,27 @@ class Orchestrator:
         logger.info("Starting non-research agents: %s", [t["agent"] for t in remaining])
         in_flight: set[str] = set()
         import os as _os
-        # Per-agent hard cap so a hung agent can't block forever. Build agents (web /
-        # technical) legitimately run far longer — run_mvp_loop chains many openclaude
-        # passes (build + 3 completion rounds + fix + build-error heal ≈ up to ~100min),
-        # so 60min cut real builds off mid-pass. Give them 3h; everyone else 1h.
+        # Build agents (web / technical) run with NO outer kill — run_mvp_loop is a
+        # never-ending chain of openclaude passes, each already bounded by its own
+        # timeout (build 30m, rounds 15m, …), so the build can take as long as it needs
+        # without hanging forever. Non-build agents keep a 1h guard against true hangs.
         _AGENT_TIMEOUT = int(_os.environ.get("ASTRA_AGENT_TIMEOUT", "3600"))
-        _BUILD_AGENT_TIMEOUT = int(_os.environ.get("ASTRA_BUILD_AGENT_TIMEOUT", "10800"))
 
-        def _timeout_for(agent: str) -> int:
-            a = (agent or "").lower()
-            return _BUILD_AGENT_TIMEOUT if a.startswith(("web", "technical")) else _AGENT_TIMEOUT
+        def _is_build_agent(agent: str) -> bool:
+            return (agent or "").lower().startswith(("web", "technical"))
 
         async def _run_task_guarded(t: dict) -> None:
-            """Run a task with a hard timeout so a hung agent never blocks the wave."""
-            _to = _timeout_for(t["agent"])
+            """Run a task. Build agents run unguarded (per-pass timeouts bound them);
+            others get a hard timeout so a hung agent never blocks the wave."""
+            if _is_build_agent(t["agent"]):
+                try:
+                    await _run_task(t)
+                except Exception as _be:
+                    logger.error("Build agent %s raised: %s", t["agent"], _be)
+                    if t["id"] not in completed:
+                        completed[t["id"]] = {"error": str(_be), "agent": t["agent"]}
+                return
+            _to = _AGENT_TIMEOUT
             try:
                 await asyncio.wait_for(_run_task(t), timeout=_to)
             except asyncio.TimeoutError:

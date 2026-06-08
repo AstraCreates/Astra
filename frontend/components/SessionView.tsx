@@ -27,7 +27,16 @@ type SState = {
   liveUrl: string;
   operating: { count: number; summary: string } | null;
   parentId: string;
+  startedAt: number;
 };
+
+function fmtElapsed(ms: number): string {
+  if (ms <= 0) return "0:00";
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const mm = String(m).padStart(2, "0"), ss = String(sec).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+}
 
 function safeText(v: unknown): string {
   if (typeof v === "string") return v;
@@ -186,7 +195,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const S = useRef<SState>({
     status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
     decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false,
-    revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "",
+    revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0,
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
   const sseRef = useRef<EventSource | null>(null);
@@ -331,7 +340,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     if (cached) {
       S.current = cached;
     } else {
-      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "" };
+      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0 };
       cacheSession(sessionId, S.current);
     }
     force();
@@ -352,6 +361,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             S.current.company = meta.company_name || "";
             S.current.stackId = meta.stack_id || "";
             S.current.parentId = meta.parent_session_id || "";
+            if (meta.created_at) { const t = Date.parse(meta.created_at); if (!Number.isNaN(t)) S.current.startedAt = t; }
           }
         }
       } catch {}
@@ -407,6 +417,15 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
     return () => { alive = false; sseRef.current?.close(); sseRef.current = null; };
   }, [sessionId, founderId, handleEvent]);
+
+  // Run timer — tick every second while running so the elapsed clock counts up.
+  useEffect(() => {
+    const id = setInterval(() => {
+      const cur = S.current;
+      if ((cur.status === "running" || cur.status === "loading") && cur.startedAt > 0) force();
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const decide = async (key: string, decision: "approved" | "skipped" | "rejected", note?: string) => {
     if (!key) { alert("This approval is missing its gate key — refresh the page (Cmd+Shift+R) and try again."); return; }
@@ -570,6 +589,11 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
              style={{ flexShrink: 0, textDecoration: "none", background: "var(--green)", border: "1px solid var(--green)", color: "#fff", display: "inline-flex", alignItems: "center", gap: 5 }}>
             ↗ Live site
           </a>
+        )}
+        {(st.status === "running" || st.status === "loading") && st.startedAt > 0 && (
+          <span title="Elapsed run time" style={{ flexShrink: 0, fontFamily: "var(--font-ibm-mono), monospace", fontSize: 11, color: "var(--blue)", fontVariantNumeric: "tabular-nums" }}>
+            ⏱ {fmtElapsed(Date.now() - st.startedAt)}
+          </span>
         )}
         {statusPill(st.status)}
         {(st.status === "running" || st.status === "loading") && <>

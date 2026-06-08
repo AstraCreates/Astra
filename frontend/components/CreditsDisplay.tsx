@@ -271,11 +271,12 @@ export default function CreditsDisplay() {
     }
   }, [founderId]);
 
-  // Initial load when user resolves
+  // Initial load + background poll so "used" counts up live (every 30s).
   useEffect(() => {
-    if (founderId) {
-      fetchBalance();
-    }
+    if (!founderId) return;
+    fetchBalance();
+    const t = setInterval(fetchBalance, 30_000);
+    return () => clearInterval(t);
   }, [founderId, fetchBalance]);
 
   // Poll every 30 s when modal is open
@@ -386,7 +387,7 @@ export default function CreditsDisplay() {
             <span>Credits</span>
           )
         ) : (
-          <span>{balance.balance.toLocaleString()} credits</span>
+          <span>{balance.total_used.toLocaleString()} used</span>
         )}
         {isLow && (
           <span
@@ -409,7 +410,7 @@ export default function CreditsDisplay() {
       {/* Price / spend tracker */}
       {balance !== null && (
         <div style={{ marginTop: 5, paddingLeft: 2, fontSize: 9.5, color: "#9CA3AF", fontFamily: "var(--font-ibm-mono), monospace", lineHeight: 1.5 }}>
-          spent {balance.total_used.toLocaleString()} cr · ~${(balance.total_used * 0.0998).toFixed(2)}
+          {balance.balance.toLocaleString()} credits left · ~${(balance.total_used * 0.0998).toFixed(2)} used
         </div>
       )}
 

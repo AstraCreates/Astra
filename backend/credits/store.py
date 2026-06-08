@@ -215,6 +215,20 @@ def check_credits(founder_id: str, required: int = 10) -> bool:
         return data["balance"] >= required
 
 
+def reset_credits(founder_id: str) -> dict[str, Any]:
+    """Reset the founder to a fresh 10T balance with usage counting from 0."""
+    lock = _get_lock(founder_id)
+    with lock:
+        data = _load(founder_id)
+        data["balance"] = _INITIAL_CREDITS
+        data["total_granted"] = _INITIAL_CREDITS
+        data["total_purchased"] = 0
+        data["total_used"] = 0
+        data["transactions"] = [_make_tx("grant", _INITIAL_CREDITS, "Reset — 10T credits")]
+        _save(data)
+        return data
+
+
 def get_balance(founder_id: str) -> int:
     """Return the current credit balance for the founder."""
     lock = _get_lock(founder_id)
