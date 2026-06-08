@@ -62,23 +62,20 @@ def _budget_allows(mission: dict) -> bool:
 
 
 async def _scheduler_tick() -> int:
-    """Run one company operating cycle per founder that is due and within budget.
+    """Safety-net only. The goal loop is EVENT-DRIVEN: agent_done events tick tasks,
+    and a completed goal auto-chains to the next one (goal_engine.after_run). This
+    tick just recovers STALLED goals — a current goal with open, non-postponed tasks
+    whose last operating run is older than the safety interval (e.g. a run crashed
+    before chaining). It re-dispatches the current goal; it never decides goal-done
+    on a timer. Budget-gated.
 
-    Streamlined model: a company has ONE goal and ONE unified milestone list. Each
-    cycle runs the WHOLE agent system (Orchestrator.continue_run) toward the north
-    star as a child session linked to the parent launch session — not one isolated
-    specialist run per department. require_approval gates milestone COMPLETION, not
-    execution, so cycles run autonomously and finished milestones wait for sign-off.
-
-    Returns the number of operating cycles dispatched in this tick.
+    Returns the number of stalled goals re-dispatched.
     """
     import os
-    from backend.missions.company_goal import (
-        list_company_goals, budget_allows, is_due,
-    )
-    from backend.missions.operating import run_operating_cycle
+    from backend.missions.company_goal import list_company_goals, budget_allows, is_due, current_goal
+    from backend.missions.goal_engine import dispatch_current_goal
 
-    min_interval = max(60, int(os.environ.get("ASTRA_MISSION_MIN_INTERVAL_SECONDS", "3600")))
+    safety_interval = max(300, int(os.environ.get("ASTRA_GOAL_SAFETY_INTERVAL_SECONDS", "1800")))
 
     try:
         goals: list[dict] = await asyncio.to_thread(list_company_goals)
@@ -89,28 +86,23 @@ async def _scheduler_tick() -> int:
     dispatched = 0
     for goal in goals:
         founder_id = goal.get("founder_id", "")
-        if not founder_id or goal.get("status") == "paused":
+        if not founder_id or goal.get("status") in ("paused", "completed"):
             continue
-        if not is_due(goal, min_interval):
-            continue
+        cg = await asyncio.to_thread(current_goal, founder_id)
+        open_tasks = [t for t in (cg or {}).get("tasks", []) if not t.get("postponed") and t.get("status") != "done"]
+        if not cg or not open_tasks:
+            continue  # nothing open — event chain handles completed goals
+        if not is_due(goal, safety_interval):
+            continue  # a run started recently — not stalled
         if not budget_allows(goal):
-            logger.info("missions_scheduler: founder=%s daily operating budget exhausted", founder_id)
             continue
-        # Skip if there's nothing open to advance AND the planner can't add more —
-        # run_operating_cycle handles assigning next milestones itself, so only skip
-        # when the goal is explicitly done/completed.
-        if goal.get("status") == "completed":
-            continue
-
-        logger.info("missions_scheduler: dispatching operating cycle founder=%s", founder_id)
+        logger.info("missions_scheduler: recovering stalled goal founder=%s (%d open tasks)", founder_id, len(open_tasks))
         try:
-            result = await run_operating_cycle(founder_id)
+            result = await dispatch_current_goal(founder_id)
             if result.get("ok") and result.get("session_id"):
                 dispatched += 1
-            logger.info("missions_scheduler: founder=%s cycle ok=%s summary=%r",
-                        founder_id, result.get("ok"), (result.get("summary") or result.get("skipped") or result.get("reason") or "")[:120])
         except Exception as exc:
-            logger.error("missions_scheduler: operating cycle failed founder=%s: %s", founder_id, exc, exc_info=True)
+            logger.error("missions_scheduler: stalled-goal recovery failed founder=%s: %s", founder_id, exc, exc_info=True)
 
     return dispatched
 

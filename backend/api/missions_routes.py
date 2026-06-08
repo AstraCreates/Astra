@@ -140,7 +140,11 @@ async def get_company_goal(founder_id: str = ""):
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id query param required")
     goal = load_company_goal(founder_id)
-    return {"company_goal": goal}
+    cur = None
+    if goal:
+        from backend.missions.company_goal import current_goal as _cur
+        cur = _cur(founder_id)
+    return {"company_goal": goal, "current_goal": cur}
 
 
 class CompanyTaskPatch(BaseModel):
@@ -150,72 +154,59 @@ class CompanyTaskPatch(BaseModel):
     notes: Optional[str] = None
 
 
-class CompanyTaskDecision(BaseModel):
+class PostponeBody(BaseModel):
     founder_id: str
-    approved: bool = True
-    note: str = ""
+    postponed: bool = True
 
 
 @router.patch("/missions/company-goal/tasks/{task_id}")
 async def patch_company_task(task_id: str, body: CompanyTaskPatch):
-    """Founder edits a company milestone (status/title/notes)."""
-    from backend.missions.company_goal import update_task
+    """Founder edits a current-goal task's status (e.g. manually mark done)."""
+    from backend.missions.company_goal import set_goal_task_status
     if not body.founder_id:
         raise HTTPException(status_code=400, detail="founder_id is required")
-    updates = {k: v for k, v in (("title", body.title), ("status", body.status), ("notes", body.notes)) if v is not None}
     if body.status is not None:
-        valid = {"pending", "in_progress", "awaiting_approval", "done", "blocked"}
+        valid = {"pending", "in_progress", "done", "blocked"}
         if body.status not in valid:
             raise HTTPException(status_code=400, detail=f"status must be one of: {', '.join(sorted(valid))}")
+        try:
+            task = set_goal_task_status(body.founder_id, task_id, body.status)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Task not found")
+        return {"ok": True, "task": task}
+    raise HTTPException(status_code=400, detail="status is required")
+
+
+@router.post("/missions/company-goal/tasks/{task_id}/postpone")
+async def postpone_company_task(task_id: str, body: PostponeBody):
+    """Postpone (or un-postpone) a task so it no longer blocks goal completion."""
+    from backend.missions.company_goal import postpone_task
+    if not body.founder_id:
+        raise HTTPException(status_code=400, detail="founder_id is required")
     try:
-        task = update_task(body.founder_id, task_id, **updates)
+        task = postpone_task(body.founder_id, task_id, postponed=body.postponed)
     except KeyError:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"ok": True, "task": task}
 
 
-@router.post("/missions/company-goal/tasks/{task_id}/approve")
-async def approve_company_task(task_id: str, body: CompanyTaskDecision, background_tasks: BackgroundTasks):
-    """Founder sign-off on a company milestone. Approving clears it; if no open work
-    remains the planner assigns the next milestones (continuous operation)."""
-    from backend.missions.company_goal import decide_task, has_open_work
-    if not body.founder_id:
-        raise HTTPException(status_code=400, detail="founder_id is required")
-    try:
-        task = decide_task(body.founder_id, task_id, approved=body.approved, note=body.note)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    scheduled = False
-    if body.approved and not has_open_work(body.founder_id):
-        from backend.missions.operating import assign_next_milestones
-        background_tasks.add_task(assign_next_milestones, body.founder_id)
-        scheduled = True
-    try:
-        from backend.tools.notion_sync import sync_founder_operating_system
-        background_tasks.add_task(sync_founder_operating_system, body.founder_id)
-    except Exception:
-        pass
-    return {"ok": True, "task": task, "next_milestones_scheduled": scheduled}
-
-
 @router.post("/missions/company-goal/run")
 async def run_company_cycle(founder_id: str, background_tasks: BackgroundTasks):
-    """Trigger one company operating cycle now (runs the whole agent system toward
-    the north star in a child session)."""
-    from backend.missions.company_goal import get_company_goal as load_company_goal
-    from backend.missions.operating import run_operating_cycle
-    from backend.core.session_ids import new_session_id
+    """Run the current goal now — dispatch the whole agent system on its open tasks
+    in a child session linked to the launch session."""
+    from backend.missions.company_goal import get_company_goal as load_company_goal, current_goal
+    from backend.missions.goal_engine import dispatch_current_goal
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id is required")
     goal = load_company_goal(founder_id)
     if goal is None:
-        raise HTTPException(status_code=404, detail="No company goal yet — run a launch first")
+        raise HTTPException(status_code=404, detail="No company goal yet — start a run first")
     if goal.get("status") == "paused":
         raise HTTPException(status_code=409, detail="Operating is paused — resume it first")
-    session_id = new_session_id()
-    background_tasks.add_task(run_operating_cycle, founder_id, session_id)
-    return {"ok": True, "session_id": session_id, "parent_session_id": goal.get("root_session_id", "")}
+    if not current_goal(founder_id):
+        raise HTTPException(status_code=409, detail="No active goal to run")
+    background_tasks.add_task(dispatch_current_goal, founder_id)
+    return {"ok": True, "parent_session_id": goal.get("root_session_id", "")}
 
 
 @router.patch("/missions/company-goal/status")

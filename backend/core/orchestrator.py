@@ -166,34 +166,32 @@ class Orchestrator:
         return any(marker in h for marker in fallback_markers)
 
     async def _bootstrap_operating_after_run(self, session_id: str, founder_id: str, goal: str) -> None:
+        """End of a run → drive the sequential goal engine: finalize the north star,
+        and if the current goal is complete, plan + dispatch the next one (auto-chain)."""
+        if not founder_id:
+            return
         try:
             from backend.core.events import _event_log, publish
             from backend.workflow_state import build_session_state, save_session_state
-            from backend.missions.bootstrap import bootstrap_company_operating_system
+            from backend.missions.goal_engine import after_run
+            from backend.missions.company_goal import get_company_goal, current_goal
 
             events = _event_log.get(session_id, [])
             state = build_session_state(session_id, events)
-            result = await asyncio.to_thread(
-                bootstrap_company_operating_system,
-                session_id,
-                founder_id,
-                goal=goal,
-                state=state,
-            )
+            await after_run(founder_id, session_id, state)
+            goal_rec = get_company_goal(founder_id)
             await publish(
                 session_id,
                 {
                     "type": "company_operating",
-                    "company_goal": result.get("company_goal"),
-                    "summary": result.get("summary", ""),
-                    "mission_count": result.get("mission_count", 0),
-                    "missions": result.get("missions", []),
-                    "notion": result.get("notion", {}),
+                    "company_goal": goal_rec,
+                    "current_goal": current_goal(founder_id),
+                    "summary": (current_goal(founder_id) or {}).get("title", "Company operating"),
                 },
             )
             save_session_state(session_id, _event_log.get(session_id, []))
         except Exception as exc:
-            logger.warning("Operating bootstrap failed for session %s: %s", session_id, exc)
+            logger.warning("Goal engine after-run failed for session %s: %s", session_id, exc)
 
     async def _parse_tasks(self, raw: str) -> list[dict]:
         import json, re
@@ -971,11 +969,19 @@ class Orchestrator:
         ]
 
         # Emit initial plan
+        _planned_agents = [t["agent"] for t in parallel_research_tasks + other_agents_initial]
         await publish(session_id, {
             "type": "plan_done",
             "tasks": [{"id": t["id"], "agent": t["agent"], "instruction": t["instruction"]} for t in parallel_research_tasks + other_agents_initial],
             "planner_model": self.planner.model,
         })
+        # Seed the launch goal NOW so it's visible from run start (one major task per
+        # workstream in the plan). Idempotent — only seeds if no current goal exists.
+        try:
+            from backend.missions.goal_engine import ensure_launch_goal
+            await asyncio.to_thread(ensure_launch_goal, founder_id, session_id, _planned_agents, goal)
+        except Exception as _ge:
+            logger.debug("launch goal seed skipped: %s", _ge)
 
         # Step 2: execute tasks in dependency order
         completed: dict[str, dict] = {}

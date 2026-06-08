@@ -59,7 +59,9 @@ async def startup_background_jobs():
     from backend.tools.company_brain_scheduler import start_company_brain_scheduler
     start_company_brain_scheduler(interval_seconds=60)
     from backend.missions.scheduler import start_missions_scheduler
-    start_missions_scheduler(interval_seconds=3600)
+    # Goal loop is event-driven (agent_done → tasks; complete goal → auto-chain).
+    # This scheduler is only a 30-min safety net to recover stalled goals.
+    start_missions_scheduler(interval_seconds=1800)
     asyncio.create_task(_resume_interrupted_sessions())
     asyncio.create_task(_platform_alert_loop())
     asyncio.create_task(_pii_purge_loop())

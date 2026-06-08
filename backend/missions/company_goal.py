@@ -80,6 +80,8 @@ def upsert_company_goal(
             current["notion_url"] = notion_url
         # Preserve the operating substructure across upserts.
         current.setdefault("root_session_id", "")
+        current.setdefault("goals", [])
+        current.setdefault("current_goal_id", "")
         current.setdefault("tasks", [])
         current.setdefault("operating_sessions", [])
         current.setdefault("budget", {"max_runs_per_day": 3, "max_cost_usd_per_run": 1.0})
@@ -226,6 +228,158 @@ def decide_task(founder_id: str, task_id: str, approved: bool, note: str = "") -
                 fields["notes"] = (t.get("notes", "") + f"\n[{verb}]: {note}").strip()[:1000]
                 break
     return update_task(founder_id, task_id, **fields)
+
+
+# ── Sequential goals (each goal = overall objective + per-workstream major tasks) ──
+# A company works one goal at a time. Tasks are owned by specific agents and tick to
+# "done" as those agents finish (event-driven, not on a timer). When all non-postponed
+# tasks of the current goal are done, the goal is complete → the planner makes the next.
+
+def _new_goal_task(title: str, owner_agents: list[str], notes: str = "") -> dict[str, Any]:
+    now = _now_iso()
+    return {
+        "id": str(uuid.uuid4()),
+        "title": str(title)[:200],
+        "status": "pending",
+        "owner_agents": [str(a) for a in (owner_agents or [])],
+        "done_agents": [],
+        "postponed": False,
+        "notes": str(notes or "")[:600],
+        "created_at": now,
+        "updated_at": now,
+        "last_run_id": None,
+    }
+
+
+def current_goal(founder_id: str) -> dict[str, Any] | None:
+    g = _read(founder_id)
+    if not g:
+        return None
+    cid = g.get("current_goal_id")
+    for go in g.get("goals") or []:
+        if go.get("id") == cid:
+            return go
+    return None
+
+
+def get_goals(founder_id: str) -> list[dict[str, Any]]:
+    g = _read(founder_id)
+    return list(g.get("goals") or []) if g else []
+
+
+def start_goal(founder_id: str, title: str, tasks: list[dict[str, Any]], kind: str = "planner") -> dict[str, Any] | None:
+    """Create a new active goal (marking the prior current goal done) and make it current.
+    ``tasks`` items: {title, owner_agents:[...], notes}."""
+    with _lock:
+        g = _read(founder_id)
+        if g is None:
+            return None
+        for go in g.get("goals") or []:
+            if go.get("id") == g.get("current_goal_id") and go.get("status") != "done":
+                go["status"] = "done"
+                go["completed_at"] = _now_iso()
+        goal = {
+            "id": str(uuid.uuid4()),
+            "title": str(title)[:200],
+            "status": "active",
+            "kind": kind,
+            "tasks": [_new_goal_task(t.get("title", "Task"), t.get("owner_agents") or [], t.get("notes", "")) for t in tasks],
+            "created_at": _now_iso(),
+            "completed_at": None,
+        }
+        g.setdefault("goals", []).append(goal)
+        g["current_goal_id"] = goal["id"]
+        _save(g)
+        return goal
+
+
+def _goal_is_complete(goal: dict[str, Any] | None) -> bool:
+    if not goal:
+        return False
+    actionable = [t for t in goal.get("tasks") or [] if not t.get("postponed")]
+    return bool(actionable) and all(t.get("status") == "done" for t in actionable)
+
+
+def goal_is_complete(founder_id: str) -> bool:
+    return _goal_is_complete(current_goal(founder_id))
+
+
+def complete_agent_workstream(founder_id: str, agent: str, run_id: str = "", summary: str = "") -> dict[str, Any]:
+    """Mark ``agent`` as having delivered on the current goal's tasks it owns. A task
+    is done once ALL its owner agents have delivered. Returns {changed, goal_complete}."""
+    with _lock:
+        g = _read(founder_id)
+        if g is None:
+            return {"changed": False, "goal_complete": False}
+        cg = next((go for go in g.get("goals") or [] if go.get("id") == g.get("current_goal_id")), None)
+        if cg is None or cg.get("status") == "done":
+            return {"changed": False, "goal_complete": False}
+        changed = False
+        for t in cg.get("tasks") or []:
+            if t.get("postponed"):
+                continue
+            owners = t.get("owner_agents") or []
+            if agent in owners and agent not in t.get("done_agents", []):
+                t.setdefault("done_agents", []).append(agent)
+                t["updated_at"] = _now_iso()
+                t["last_run_id"] = run_id
+                if summary:
+                    t["notes"] = (t.get("notes", "") + f"\n[{agent}] {summary}").strip()[:1000]
+                changed = True
+                if all(o in t["done_agents"] for o in owners):
+                    t["status"] = "done"
+                elif t.get("status") == "pending":
+                    t["status"] = "in_progress"
+        complete = _goal_is_complete(cg)
+        if complete and cg.get("status") != "done":
+            cg["status"] = "done"
+            cg["completed_at"] = _now_iso()
+        if changed:
+            _save(g)
+        return {"changed": changed, "goal_complete": complete}
+
+
+def postpone_task(founder_id: str, task_id: str, postponed: bool = True) -> dict[str, Any]:
+    with _lock:
+        g = _read(founder_id)
+        if g is None:
+            raise KeyError("no company goal")
+        cg = next((go for go in g.get("goals") or [] if go.get("id") == g.get("current_goal_id")), None)
+        if cg is None:
+            raise KeyError("no current goal")
+        for t in cg.get("tasks") or []:
+            if str(t.get("id")) == str(task_id):
+                t["postponed"] = bool(postponed)
+                t["updated_at"] = _now_iso()
+                # Postponing the last blocker can complete the goal.
+                if _goal_is_complete(cg) and cg.get("status") != "done":
+                    cg["status"] = "done"
+                    cg["completed_at"] = _now_iso()
+                _save(g)
+                return t
+        raise KeyError(f"task not found: {task_id}")
+
+
+def set_goal_task_status(founder_id: str, task_id: str, status: str) -> dict[str, Any]:
+    with _lock:
+        g = _read(founder_id)
+        if g is None:
+            raise KeyError("no company goal")
+        cg = next((go for go in g.get("goals") or [] if go.get("id") == g.get("current_goal_id")), None)
+        if cg is None:
+            raise KeyError("no current goal")
+        for t in cg.get("tasks") or []:
+            if str(t.get("id")) == str(task_id):
+                t["status"] = status
+                t["updated_at"] = _now_iso()
+                if status == "done":
+                    t["done_agents"] = list(t.get("owner_agents") or [])
+                if _goal_is_complete(cg) and cg.get("status") != "done":
+                    cg["status"] = "done"
+                    cg["completed_at"] = _now_iso()
+                _save(g)
+                return t
+        raise KeyError(f"task not found: {task_id}")
 
 
 def delete_company_goal(founder_id: str) -> bool:

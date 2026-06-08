@@ -1006,6 +1006,9 @@ _BUILD_PLAN_SYSTEM = (
     "6. AUTH: NextAuth.js v5 or Supabase Auth (NEVER Clerk).\n"
     "7. FILES: the concrete file tree to create/extend, each with a one-line purpose.\n"
     "8. ACCEPTANCE: a checklist of what 'done and working' means.\n\n"
+    "HONESTY: never plan fake testimonials, customer quotes/logos, user counts, ratings, revenue, "
+    "or press mentions. A new product has no customers yet — plan honest copy and real features, "
+    "with neutral placeholders (no invented specifics) where real data doesn't exist yet.\n\n"
     "This is a real product, not a landing page. The landing page already exists — plan the "
     "actual APP (auth, dashboard, the core feature set). Output clear markdown."
 )
@@ -1159,7 +1162,10 @@ def run_mvp_loop(
             + "Rules: no stubs, no TODOs, no placeholders — every function, route, and component fully "
               "implemented and runnable. Build the ENTIRE product (auth + dashboard + the core features "
               "from the plan), file by file, using your Write/Edit/Bash tools. Keep working until the whole "
-              "product is complete and matches the plan; do not stop after one file or build only a landing page."
+              "product is complete and matches the plan; do not stop after one file or build only a landing page.\n"
+              "HONESTY: do NOT fabricate testimonials, customer quotes/names/photos, company logos, user "
+              "counts, ratings, revenue, or press mentions — a new product has no customers yet. Use honest "
+              "copy and neutral placeholders (no invented specifics) instead of fake social proof."
         )
         logger.info("Pass 1: holistic MVP build (%d target files, plan=%s)", len(required_files), bool(build_plan))
         _phase("Pass 1/4 — building the full product" + (" from plan" if build_plan else ""))

@@ -2082,12 +2082,24 @@ export interface MissionTask {
 export interface CompanyTask {
   id: string;
   title: string;
-  status: "pending" | "in_progress" | "awaiting_approval" | "done" | "blocked";
+  status: "pending" | "in_progress" | "done" | "blocked";
+  owner_agents?: string[];
+  done_agents?: string[];
+  postponed?: boolean;
   notes: string;
   created_at: string;
   updated_at: string;
   last_run_id?: string | null;
-  approval?: { approved: boolean; note: string; at: string } | null;
+}
+
+export interface CompanyGoalEntry {
+  id: string;
+  title: string;
+  status: "active" | "done";
+  kind: "launch" | "planner";
+  tasks: CompanyTask[];
+  created_at: string;
+  completed_at?: string | null;
 }
 
 export interface OperatingRun {
@@ -2105,36 +2117,35 @@ export interface CompanyGoal {
   root_session_id?: string;
   status: "operating" | "blocked" | "paused" | "completed";
   kpis: Array<{ key?: string; label?: string; target?: string }>;
-  tasks?: CompanyTask[];
+  goals?: CompanyGoalEntry[];
+  current_goal_id?: string;
   operating_sessions?: OperatingRun[];
   updated_at: string;
   notion_database_id?: string | null;
   notion_url?: string | null;
 }
 
-export async function approveCompanyTask(
-  founderId: string, taskId: string, approved: boolean, note = ""
-): Promise<{ ok: boolean; next_milestones_scheduled: boolean }> {
-  const res = await apiFetch(`${BASE}/api/missions/company-goal/tasks/${encodeURIComponent(taskId)}/approve`, {
+export async function postponeCompanyTask(
+  founderId: string, taskId: string, postponed = true
+): Promise<{ ok: boolean; task: CompanyTask }> {
+  const res = await apiFetch(`${BASE}/api/missions/company-goal/tasks/${encodeURIComponent(taskId)}/postpone`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ founder_id: founderId, approved, note }),
+    body: JSON.stringify({ founder_id: founderId, postponed }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
-export async function updateCompanyTask(
-  founderId: string, taskId: string, data: Partial<Pick<CompanyTask, "title" | "status" | "notes">>
-): Promise<CompanyTask> {
+export async function markCompanyTaskDone(founderId: string, taskId: string): Promise<CompanyTask> {
   const res = await apiFetch(`${BASE}/api/missions/company-goal/tasks/${encodeURIComponent(taskId)}`, {
     method: "PATCH", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ founder_id: founderId, ...data }),
+    body: JSON.stringify({ founder_id: founderId, status: "done" }),
   });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()).task;
 }
 
-export async function runCompanyCycle(founderId: string): Promise<{ ok: boolean; session_id: string; parent_session_id: string }> {
+export async function runCompanyCycle(founderId: string): Promise<{ ok: boolean; parent_session_id: string }> {
   const res = await apiFetch(`${BASE}/api/missions/company-goal/run?founder_id=${encodeURIComponent(founderId)}`, { method: "POST" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();

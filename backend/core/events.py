@@ -250,6 +250,14 @@ async def publish(session_id: str, event: dict) -> None:
     # Strip base64 before putting into SSE queue to prevent browser crashes
     sse_event = _strip_base64(event)
     await _get_queue(session_id).put((event_id, sse_event))
+    # Event-driven goal ticking: when an agent finishes, mark the company goal's
+    # tasks it owns (no timer). Cheap + best-effort; offloaded so it never blocks.
+    if event.get("type") == "agent_done" and event.get("agent"):
+        try:
+            from backend.missions.goal_engine import tick_from_agent
+            loop.run_in_executor(None, tick_from_agent, session_id, str(event.get("agent")))
+        except Exception:
+            pass
 
 
 _main_loop: asyncio.AbstractEventLoop | None = None
