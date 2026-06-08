@@ -54,10 +54,15 @@ def obsidian_read(agent: str = "", max_notes: int = 5, founder_id: str | None = 
     # Collect all <agent>.md files from session dirs, sorted newest first
     matches = sorted(root.glob(f"*/{agent}.md"), reverse=True)[:max_notes]
 
+    # Cap each note so repeated obsidian_read calls can't blow the model context
+    # window (agents were hitting 290k+ tokens by re-reading large notes).
+    _PER_NOTE_CAP = 4000
     results = []
     for note in matches:
         try:
             text = note.read_text()
+            if len(text) > _PER_NOTE_CAP:
+                text = text[:_PER_NOTE_CAP] + f"\n…[truncated, {len(text)} chars total]"
             results.append({"file": f"{note.parent.name}/{note.name}", "content": text})
         except Exception:
             pass

@@ -29,7 +29,7 @@ _TOOL_RESULT_CHAR_CAP = 80_000
 # 262,144 tokens ≈ ~940k chars, so 4_000_000 (the old value) was ~4x over and let
 # long tool-heavy loops (design/technical, 40+ iters) overflow. Kept comfortably
 # below the limit to leave room for the system prompt and the response.
-_HISTORY_CHAR_BUDGET = 800_000
+_HISTORY_CHAR_BUDGET = 450_000  # ~110k tokens; + shared + system stays under the 262k model window
 
 
 def _trim_message_history(messages: list[dict]) -> list[dict]:
@@ -38,8 +38,18 @@ def _trim_message_history(messages: list[dict]) -> list[dict]:
     (messages[1]); drop the OLDEST middle turns first, inserting a marker so the
     model knows context was elided. Recent turns (the live working set) are kept."""
     try:
-        total = sum(len(m.get("content", "")) for m in messages)
-        if total <= _HISTORY_CHAR_BUDGET or len(messages) <= 4:
+        # First hard-cap any single oversized tool result (i>=2) so one giant payload
+        # can't blow the window even when there are only a few messages.
+        _PER_MSG_CAP = 120_000
+        capped: list[dict] = []
+        for i, m in enumerate(messages):
+            c = m.get("content", "")
+            if i >= 2 and isinstance(c, str) and len(c) > _PER_MSG_CAP:
+                m = {**m, "content": c[:_PER_MSG_CAP] + f"\n…[truncated {len(c)} chars to fit context]"}
+            capped.append(m)
+        messages = capped
+        total = sum(len(m.get("content", "")) for m in messages if isinstance(m.get("content"), str))
+        if total <= _HISTORY_CHAR_BUDGET:
             return messages
         head = messages[:2]
         tail = messages[2:]
@@ -97,7 +107,7 @@ def _format_tool_result(tool_name: str, result: Any) -> str:
 # very FIRST LLM call fails before any trimming can help (observed: marketing at
 # 276,256 tokens vs the 262,144 limit, with 3 research results + brain + genome +
 # manifests accumulated in shared). Bound it here, keeping every key visible.
-_SHARED_CONTEXT_CHAR_CAP = 350_000
+_SHARED_CONTEXT_CHAR_CAP = 200_000  # ~50k tokens
 _SHARED_VALUE_CHAR_CAP = 50_000
 
 
