@@ -1,10 +1,9 @@
 /* ════════════════════════════════════════════════════════════════
-   ASTRA REDESIGN — ported from mockup/feat-mockup-frontend-redesign
-   Light mode · Geist (body) + Syne (display) · square corners · #002EFF
+   ASTRA REDESIGN — Fraunces (headings) · DM Sans (body/UI) · #002EFF
    Loaded after globals.css so it remaps the design tokens app-wide.
    ════════════════════════════════════════════════════════════════ */
 
-/* ── Token remap (light theme is the redesign baseline) ───────── */
+/* ── Token remap ──────────────────────────────────────────────── */
 :root,
 [data-theme="light"] {
   --bg:           #FEFFF6;
@@ -14,21 +13,16 @@
   --s2:           #f7f8f0;
   --s3:           #eeefe8;
 
-  --text:         #0a0a0a;
-  --text-2:       #1b1b1b;
-  --text-3:       #555555;
-  --text-muted:   #aaaaaa;
   --fg:           #0a0a0a;
-  --fd:           #555555;
-  --fm:           #aaaaaa;
+  --fd:           #4a4a4a;
+  --fm:           #999999;
 
   --accent:       #002EFF;
   --accent-hover: #0024CC;
-  --accent-light: rgba(0, 46, 255, 0.08);
   --blue:         #002EFF;
-  --bdim:         rgba(0, 46, 255, 0.08);
-  --bb:           rgba(0, 46, 255, 0.30);
-  --bglow:        rgba(0, 46, 255, 0.15);
+  --bdim:         rgba(0, 46, 255, 0.07);
+  --bb:           rgba(0, 46, 255, 0.28);
+  --bglow:        rgba(0, 46, 255, 0.18);
 
   --mint:         #7CFFC6;
   --mint-dim:     rgba(124, 255, 198, 0.12);
@@ -38,35 +32,30 @@
   --amber:#d97706; --adim:rgba(217,119,6,.08); --ab:rgba(217,119,6,.25);
   --red:#dc2626;   --rdim:rgba(220,38,38,.07); --rb:rgba(220,38,38,.25);
 
-  --border:        rgba(0, 0, 0, 0.09);
-  --border-strong: rgba(0, 0, 0, 0.15);
-  --bd:            rgba(0, 0, 0, 0.09);
-  --bd2:           rgba(0, 0, 0, 0.15);
+  --bd:  rgba(0, 0, 0, 0.08);
+  --bd2: rgba(0, 0, 0, 0.13);
 
-  /* Square corners everywhere */
-  --radius:       0px;
-  --radius-sm:    0px;
-  --radius-lg:    0px;
+  --radius: 0px; --radius-sm: 0px; --radius-lg: 0px;
 
-  /* Fonts — body Geist, display/headings Syne */
-  --font-display: var(--font-syne), "Syne", sans-serif;
-  /* Alias so existing inline style var(--font-chakra) refs resolve to Syne */
-  --font-chakra: var(--font-syne), "Syne", sans-serif;
-  --font-jetbrains-mono: var(--font-ibm-mono), "IBM Plex Mono", monospace;
+  /* Fonts */
+  --font-heading:  var(--font-fraunces), "Fraunces", serif;
+  --font-display:  var(--font-dm-sans),  "DM Sans",  sans-serif;
+  /* alias — inline TSX refs using var(--font-chakra) resolve to DM Sans */
+  --font-chakra:   var(--font-dm-sans),  "DM Sans",  sans-serif;
+  --font-syne:     var(--font-dm-sans),  "DM Sans",  sans-serif;
+  --font-geist-sans: var(--font-dm-sans),"DM Sans",  sans-serif;
 }
 
 body {
-  font-family: var(--font-geist-sans), "Geist", sans-serif;
+  font-family: var(--font-dm-sans), "DM Sans", sans-serif;
   background-color: var(--bg);
-  background-image:
-    radial-gradient(ellipse at 12% 0%, rgba(0,46,255,0.055) 0%, transparent 42%),
-    radial-gradient(ellipse at 88% 95%, rgba(124,255,198,0.07) 0%, transparent 38%);
   color: var(--fg);
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-display);
-  letter-spacing: 0.03em;
+  font-family: var(--font-heading);
+  letter-spacing: -0.01em;
+  font-weight: 500;
 }
 
 /* Kill rounded corners from existing inline/utility styles where feasible */

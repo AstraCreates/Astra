@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Syne, JetBrains_Mono, IBM_Plex_Mono } from "next/font/google";
+import { Fraunces, DM_Sans, IBM_Plex_Mono } from "next/font/google";
 import ApiAuthBridge from "@/components/ApiAuthBridge";
 import CookieNotice from "@/components/CookieNotice";
 import SessionWrapper from "@/components/SessionWrapper";
@@ -8,10 +8,8 @@ import StarField from "./components/StarField";
 import "./globals.css";
 import "./astra-redesign.css";
 
-const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
-const jetBrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains-mono" });
-// Display font — Syne (headings, labels, nav). Body is Geist.
-const syne = Syne({ subsets: ["latin"], weight: ["400", "500", "600", "700", "800"], variable: "--font-syne" });
+const fraunces = Fraunces({ subsets: ["latin"], weight: ["300", "400", "500", "600", "700"], style: ["normal", "italic"], variable: "--font-fraunces" });
+const dmSans = DM_Sans({ subsets: ["latin"], weight: ["300", "400", "500", "600", "700"], variable: "--font-dm-sans" });
 const ibmPlexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["300", "400", "500"], variable: "--font-ibm-mono" });
 
 export const metadata: Metadata = {
@@ -21,7 +19,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geist.variable} ${jetBrainsMono.variable} ${syne.variable} ${ibmPlexMono.variable} antialiased`} data-theme="light" suppressHydrationWarning>
+    <html lang="en" className={`${fraunces.variable} ${dmSans.variable} ${ibmPlexMono.variable} antialiased`} data-theme="light" suppressHydrationWarning>
       <head>
         {/* Redesign baseline is light. Honour a saved preference, default light. */}
         <script

@@ -1,16 +1,7 @@
 "use client";
 
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-
-function AstraTriquetra({ size = 56 }: { size?: number }) {
-  const h = size;
-  const w = Math.round(size * 224 / 290);
-  return (
-    <svg width={w} height={h} viewBox="48 2 224 290" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M 113 192 A 95 95 0 1 1 207 192 A 95 95 0 1 1 160 110 A 95 95 0 1 1 113 192 Z" stroke="white" strokeWidth="20" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
 
 export default function WelcomeScreen() {
   const router = useRouter();
@@ -19,70 +10,87 @@ export default function WelcomeScreen() {
     <>
       <style>{`
         @keyframes ws-up {
-          from { opacity: 0; transform: translateY(22px); }
+          from { opacity: 0; transform: translateY(24px); }
           to   { opacity: 1; transform: translateY(0); }
         }
         .ws-logo {
           opacity: 0;
           animation: ws-up 0.7s cubic-bezier(0.22,1,0.36,1) 0.1s forwards;
-          will-change: opacity, transform;
         }
         .ws-h1 {
           opacity: 0;
-          animation: ws-up 0.8s cubic-bezier(0.22,1,0.36,1) 0.28s forwards;
-          will-change: opacity, transform;
+          animation: ws-up 0.8s cubic-bezier(0.22,1,0.36,1) 0.3s forwards;
         }
         .ws-cta {
           opacity: 0;
-          animation: ws-up 0.7s cubic-bezier(0.22,1,0.36,1) 0.62s forwards;
-          will-change: opacity, transform;
+          animation: ws-up 0.7s cubic-bezier(0.22,1,0.36,1) 0.58s forwards;
         }
         .ws-btn {
-          padding: 13px 38px;
+          padding: 13px 40px;
           font-size: 13px;
-          font-weight: 600;
-          letter-spacing: 0.04em;
-          color: rgba(255,255,255,0.90);
-          background: rgba(0,46,255,0.15);
-          border: 1.5px solid rgba(0,46,255,0.55);
-          border-radius: 10px;
+          font-weight: 500;
+          letter-spacing: 0.02em;
+          color: #002EFF;
+          background: #ffffff;
+          border: none;
+          border-radius: 100px;
           cursor: pointer;
-          transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+          transition: opacity 0.18s ease, transform 0.18s ease;
+          font-family: var(--font-dm-sans), "DM Sans", sans-serif;
         }
         .ws-btn:hover {
-          background: rgba(0,46,255,0.28);
-          border-color: rgba(0,46,255,0.9);
-          color: #fff;
+          opacity: 0.88;
+          transform: translateY(-1px);
         }
       `}</style>
+
+      {/* Grain overlay via SVG filter */}
+      <svg width="0" height="0" style={{ position: "absolute" }}>
+        <filter id="ws-grain">
+          <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
+          <feColorMatrix type="saturate" values="0"/>
+          <feBlend in="SourceGraphic" mode="overlay" result="blend"/>
+          <feComposite in="blend" in2="SourceGraphic"/>
+        </filter>
+      </svg>
 
       <div style={{
         minHeight: "100vh",
         display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
-        background: "linear-gradient(160deg, #020511 0%, #001040 42%, #000d35 65%, #020714 100%)",
+        position: "relative", overflow: "hidden",
+        background: "linear-gradient(145deg, #002EFF 0%, #0048FF 30%, #1a72ff 60%, #7CFFC6 100%)",
       }}>
-        <div style={{ textAlign: "center", padding: "0 24px", display: "flex", flexDirection: "column", alignItems: "center", gap: 28 }}>
+        {/* Grain texture */}
+        <div style={{
+          position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1,
+          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='1'/%3E%3C/svg%3E")`,
+          backgroundRepeat: "repeat",
+          backgroundSize: "128px 128px",
+          opacity: 0.18,
+          mixBlendMode: "overlay",
+        }} />
+
+        <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 32px", display: "flex", flexDirection: "column", alignItems: "center", gap: 32 }}>
           <div className="ws-logo">
-            <AstraTriquetra size={64} />
+            <Image src="/logo.png" alt="Astra" width={72} height={72} style={{ filter: "brightness(0) invert(1)", objectFit: "contain" }} />
           </div>
 
           <h1 className="ws-h1" style={{
-            fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-            fontSize: "clamp(42px, 8vw, 72px)",
-            fontWeight: 700,
+            fontFamily: "var(--font-fraunces), 'Fraunces', serif",
+            fontSize: "clamp(48px, 9vw, 80px)",
+            fontWeight: 400,
             color: "#ffffff",
             letterSpacing: "-0.02em",
-            lineHeight: 1.06,
+            lineHeight: 1.05,
             margin: 0,
           }}>
-            Welcome to<br />
-            <span style={{ color: "#002EFF" }}>Astra</span>
+            Welcome to Astra
           </h1>
 
           <div className="ws-cta">
             <button className="ws-btn" onClick={() => router.push("/onboarding")}>
-              Get Started →
+              Get Started
             </button>
           </div>
         </div>

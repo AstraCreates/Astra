@@ -34,9 +34,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
     <nav onClick={(e) => { if (mobile && (e.target as HTMLElement).closest("a")) closeOnNav?.(); }} style={navStyle}>
       <div style={{ padding: "20px 16px 16px", borderBottom: "1px solid var(--bd)" }}>
         <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, textDecoration: "none" }}>
-          <svg width="24" height="30" viewBox="48 2 224 290" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M 113 192 A 95 95 0 1 1 207 192 A 95 95 0 1 1 160 110 A 95 95 0 1 1 113 192 Z" stroke="var(--blue)" strokeWidth="20" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+          <div style={{ width: 28, height: 28, background: "var(--blue)", flexShrink: 0, WebkitMask: "url('/logo.png') center/contain no-repeat", mask: "url('/logo.png') center/contain no-repeat" }} />
           <div>
             <div className="nav-wordmark">Astra</div>
             <div style={{ fontSize: 9, color: "var(--blue)", letterSpacing: ".06em", textTransform: "uppercase" }}>ready</div>
