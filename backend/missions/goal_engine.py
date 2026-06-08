@@ -20,6 +20,7 @@ Workstreams (one major task each, when the run includes its agents):
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -302,6 +303,6 @@ async def after_run(founder_id: str, session_id: str, state: dict[str, Any]) -> 
             nxt = plan_next_goal(founder_id)
             if nxt:
                 logger.info("goal_engine: founder=%s chained to next goal %r", founder_id, nxt.get("title"))
-                await dispatch_current_goal(founder_id)
+                asyncio.create_task(dispatch_current_goal(founder_id))
     except Exception as e:
         logger.warning("goal_engine.after_run failed for %s: %s", founder_id, e)

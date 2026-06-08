@@ -2003,6 +2003,8 @@ export async function publishDeployment(
 }
 
 export const AGENT_LABELS: Record<string, string> = {
+  planner: "Planner",
+  strategy: "Strategy",
   research: "Market Research",
   research_competitors: "Competitor Intel",
   research_execution: "Execution Strategy",
@@ -2025,15 +2027,18 @@ export const AGENT_LABELS: Record<string, string> = {
   legal_entity: "Entity Formation",
   legal_ip: "IP & Patents",
   ops: "Ops & Fundraising",
+  operations: "Operations",
   sales: "Sales & Outreach",
   sales_pipeline: "Sales Pipeline",
   sales_enablement: "Sales Enablement",
   design: "Design & Brand",
+  finance: "Finance",
   finance_model: "Financial Model",
   finance_fundraise: "Fundraising",
 };
 
 export const AGENT_ORDER = [
+  "planner", "strategy",
   "research", "research_competitors", "research_execution", "research_market", "research_financial", "research_regulatory",
   "design",
   "technical", "technical_scaffold", "technical_infra", "technical_data",
@@ -2041,8 +2046,8 @@ export const AGENT_ORDER = [
   "marketing", "marketing_content", "marketing_outreach", "marketing_seo", "marketing_paid",
   "legal", "legal_docs", "legal_entity", "legal_ip",
   "sales", "sales_pipeline", "sales_enablement",
-  "finance_model", "finance_fundraise",
-  "ops",
+  "finance", "finance_model", "finance_fundraise",
+  "operations", "ops",
 ];
 
 const AGENT_ORDER_INDEX = new Map(AGENT_ORDER.map((agent, index) => [agent, index]));
@@ -2084,7 +2089,7 @@ export interface MissionTask {
 export interface CompanyTask {
   id: string;
   title: string;
-  status: "pending" | "in_progress" | "done" | "blocked";
+  status: "pending" | "in_progress" | "awaiting_approval" | "done" | "blocked";
   owner_agents?: string[];
   done_agents?: string[];
   postponed?: boolean;

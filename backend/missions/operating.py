@@ -79,8 +79,13 @@ def assign_next_milestones(founder_id: str, max_new: int = 3) -> list[dict[str, 
         items = []
 
     new_tasks = [
-        {"title": str(it["title"])[:200], "notes": str(it.get("notes", ""))[:600], "status": "pending"}
-        for it in items[:max_new]
+        {
+            "id": re.sub(r"[^a-z0-9]+", "_", str(it["title"]).strip().lower()).strip("_")[:80] or f"ms_{idx}",
+            "title": str(it["title"])[:200],
+            "notes": str(it.get("notes", ""))[:600],
+            "status": "pending",
+        }
+        for idx, it in enumerate(items[:max_new])
         if isinstance(it, dict) and it.get("title")
     ]
     if not new_tasks:
@@ -133,7 +138,8 @@ def _reconcile(founder_id: str, open_tasks: list[dict[str, Any]], result: Any, s
     if isinstance(next_tasks, list):
         for nt in next_tasks[:3]:
             if isinstance(nt, dict) and nt.get("title"):
-                updates.append({"title": str(nt["title"])[:200], "notes": str(nt.get("notes", ""))[:600], "status": "pending"})
+                nt_slug = re.sub(r"[^a-z0-9]+", "_", str(nt["title"]).strip().lower()).strip("_")[:80]
+                updates.append({"id": nt_slug or "nt_task", "title": str(nt["title"])[:200], "notes": str(nt.get("notes", ""))[:600], "status": "pending"})
 
     if updates:
         try:

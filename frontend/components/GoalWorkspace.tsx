@@ -13,6 +13,8 @@ import type { DeploymentRecord } from "@/lib/api";
 import type { AgentCatalogEntry } from "@/lib/api";
 import type { AgentDepartmentManifest, AgentStackTemplate, CompanyGoal, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
 import { saveSession, updateSession, getSessionSnapshot, subscribeSessions, deleteSession, clearAllSessions, setServerSessions, removeServerSession } from "@/lib/history";
+import { CHECKLIST_CATEGORIES } from "@/lib/checklist-data";
+import type { CLItem, CLCategory } from "@/lib/checklist-data";
 import type { SessionRecord } from "@/lib/history";
 import LiquidGlass from "@/components/LiquidGlass";
 import CompanyChat from "@/components/CompanyChat";
@@ -3548,10 +3550,8 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
 
 // ── Launch Checklist ─────────────────────────────────────────────────────────
 
-interface CLItem { id: string; label: string; autoAgent?: string; detail?: string; }
-interface CLCategory { id: string; label: string; icon: string; items: CLItem[]; }
-
-const CHECKLIST_CATEGORIES: CLCategory[] = [
+// Data lives in @/lib/checklist-data — imported above.
+const _CHECKLIST_CATEGORIES_UNUSED = [
   {
     id: "validation", label: "Customer Validation", icon: "🔎",
     items: [

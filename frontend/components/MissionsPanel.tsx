@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
+import { CHECKLIST_CATEGORIES } from "@/lib/checklist-data";
+import type { CLItem } from "@/lib/checklist-data";
 import {
   getCompanyGoal,
   postponeCompanyTask,
@@ -14,34 +16,7 @@ import {
   type CompanyTask,
 } from "@/lib/api";
 
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const c = {
-  bg: "#FFFFFF",
-  surface: "#F9FAFB",
-  border: "#E5E7EB",
-  text: "#111827",
-  textMuted: "#6B7280",
-  blue: "#002EFF",
-  blueHover: "#1f36e0",
-  blueTint: "#EFF6FF",
-  greenTint: "#F0FDF4",
-  greenText: "#16A34A",
-  amberTint: "#FFF7E6",
-  amberText: "#B45309",
-  radius: 12,
-};
-
-const STATUS_STYLE: Record<string, React.CSSProperties> = {
-  pending: { background: c.surface, color: c.textMuted },
-  in_progress: { background: c.blueTint, color: c.blue },
-  done: { background: c.greenTint, color: c.greenText },
-  blocked: { background: "#FEF2F2", color: "#DC2626" },
-  postponed: { background: c.amberTint, color: c.amberText },
-};
-
-function Badge({ label, kind }: { label: string; kind: string }) {
-  return <span style={{ ...(STATUS_STYLE[kind] || STATUS_STYLE.pending), fontSize: 11, padding: "2px 8px", borderRadius: 99, fontWeight: 600, whiteSpace: "nowrap" }}>{label}</span>;
-}
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function timeAgo(iso?: string | null): string {
   if (!iso) return "";
@@ -58,6 +33,295 @@ function currentGoalOf(goal: CompanyGoal | null): CompanyGoalEntry | null {
   return goal.goals.find((g) => g.id === goal.current_goal_id) || goal.goals.find((g) => g.status === "active") || null;
 }
 
+// Build the set of agents that have completed work across all goal history.
+function completedAgentsFromGoal(goal: CompanyGoal | null): Set<string> {
+  const out = new Set<string>();
+  for (const g of goal?.goals ?? []) {
+    for (const t of g.tasks ?? []) {
+      for (const a of t.done_agents ?? []) out.add(a);
+    }
+  }
+  return out;
+}
+
+// ── Design tokens ──────────────────────────────────────────────────────────────
+const C = {
+  bg: "#FFFFFF",
+  surface: "#F9FAFB",
+  surfaceHover: "#F3F4F6",
+  border: "#E5E7EB",
+  borderStrong: "#D1D5DB",
+  text: "#111827",
+  textMuted: "#6B7280",
+  textFaint: "#9CA3AF",
+  blue: "#002EFF",
+  blueHover: "#1f36e0",
+  blueTint: "#EFF6FF",
+  green: "#16A34A",
+  greenTint: "#F0FDF4",
+  amber: "#B45309",
+  amberTint: "#FFF7E6",
+  red: "#DC2626",
+  redTint: "#FEF2F2",
+};
+
+const TASK_STYLE: Record<string, { bg: string; color: string }> = {
+  pending:           { bg: C.surface,   color: C.textMuted },
+  in_progress:       { bg: C.blueTint,  color: C.blue },
+  awaiting_approval: { bg: C.amberTint, color: C.amber },
+  done:              { bg: C.greenTint, color: C.green },
+  blocked:           { bg: C.redTint,   color: C.red },
+  postponed:         { bg: C.amberTint, color: C.amber },
+};
+
+function Badge({ label, kind }: { label: string; kind: string }) {
+  const s = TASK_STYLE[kind] ?? TASK_STYLE.pending;
+  return (
+    <span style={{ ...s, fontSize: 11, padding: "2px 8px", borderRadius: 99, fontWeight: 600, whiteSpace: "nowrap" }}>
+      {label}
+    </span>
+  );
+}
+
+// ── Mini-button helper ─────────────────────────────────────────────────────────
+function Btn({ label, onClick, primary, disabled, small }: {
+  label: string; onClick: () => void; primary?: boolean; disabled?: boolean; small?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        padding: small ? "4px 10px" : "8px 16px",
+        borderRadius: 99,
+        border: primary ? "none" : `1px solid ${C.border}`,
+        background: primary ? C.blue : C.bg,
+        color: primary ? "#fff" : C.text,
+        fontSize: small ? 11 : 13,
+        fontWeight: 600,
+        cursor: disabled ? "wait" : "pointer",
+        whiteSpace: "nowrap",
+        opacity: disabled ? 0.65 : 1,
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+// ── Launch Checklist ───────────────────────────────────────────────────────────
+
+function LaunchChecklist({
+  founderId,
+  completedAgents,
+}: {
+  founderId: string;
+  completedAgents: Set<string>;
+}) {
+  const storageKey = `astra_cl_${founderId || "anon"}`;
+
+  const [manual, setManual] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem(storageKey) ?? "{}"); }
+    catch { return {}; }
+  });
+  const [openCats, setOpenCats] = useState<Record<string, boolean>>({});
+  const [listOpen, setListOpen] = useState(true);
+
+  useEffect(() => {
+    try { localStorage.setItem(storageKey, JSON.stringify(manual)); }
+    catch {}
+  }, [manual, storageKey]);
+
+  const isAutoChecked = (item: CLItem) =>
+    item.autoAgent ? completedAgents.has(item.autoAgent) : false;
+
+  const isChecked = (item: CLItem) =>
+    manual[item.id] ?? isAutoChecked(item);
+
+  const toggle = (id: string, current: boolean) =>
+    setManual((m) => ({ ...m, [id]: !current }));
+
+  const allItems = CHECKLIST_CATEGORIES.flatMap((c) => c.items);
+  const totalDone = allItems.filter(isChecked).length;
+  const total = allItems.length;
+  const pct = Math.round((totalDone / total) * 100);
+  const allDone = totalDone === total;
+
+  return (
+    <div style={{
+      borderRadius: 14,
+      border: `1px solid ${allDone ? "rgba(22,163,74,0.3)" : C.border}`,
+      background: allDone ? "rgba(22,163,74,0.04)" : C.bg,
+      overflow: "hidden",
+      marginBottom: 24,
+    }}>
+      {/* Header */}
+      <button
+        onClick={() => setListOpen((o) => !o)}
+        style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", background: "none", border: "none", cursor: "pointer", gap: 12 }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: C.text, letterSpacing: "-0.02em" }}>Launch checklist</span>
+          <span style={{
+            fontSize: 11, padding: "2px 9px", borderRadius: 99, fontWeight: 600,
+            background: allDone ? "rgba(22,163,74,0.12)" : "rgba(0,46,255,0.08)",
+            color: allDone ? C.green : C.blue,
+          }}>
+            {totalDone}/{total}
+          </span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 100, height: 5, borderRadius: 999, background: C.border, overflow: "hidden" }}>
+            <div style={{
+              height: "100%", borderRadius: 999, transition: "width 0.5s",
+              width: `${pct}%`,
+              background: allDone ? C.green : C.blue,
+            }} />
+          </div>
+          <span style={{ fontSize: 12, color: C.textMuted, fontWeight: 600, minWidth: 32 }}>{pct}%</span>
+          <span style={{ fontSize: 10, color: C.textFaint }}>{listOpen ? "▲" : "▼"}</span>
+        </div>
+      </button>
+
+      {listOpen && (
+        <div style={{ borderTop: `1px solid ${C.border}` }}>
+          {/* Auto-completed notice */}
+          {completedAgents.size > 0 && (
+            <div style={{ padding: "8px 20px", fontSize: 11, color: C.blue, background: C.blueTint, borderBottom: `1px solid ${C.border}` }}>
+              ✦ Blue checkmarks were completed automatically by Astra agents
+            </div>
+          )}
+
+          {CHECKLIST_CATEGORIES.map((cat) => {
+            const catDone = cat.items.filter(isChecked).length;
+            const catOpen = openCats[cat.id] ?? false;
+            const catAllDone = catDone === cat.items.length;
+            return (
+              <div key={cat.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                <button
+                  onClick={() => setOpenCats((o) => ({ ...o, [cat.id]: !catOpen }))}
+                  style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 20px", background: "none", border: "none", cursor: "pointer", gap: 10 }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 14 }}>{cat.icon}</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: catAllDone ? C.green : C.text }}>{cat.label}</span>
+                    <span style={{ fontSize: 11, color: catAllDone ? C.green : C.textFaint }}>{catDone}/{cat.items.length}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 48, height: 3, borderRadius: 999, background: C.border, overflow: "hidden" }}>
+                      <div style={{ height: "100%", borderRadius: 999, width: `${Math.round((catDone / cat.items.length) * 100)}%`, background: catAllDone ? C.green : C.blue, transition: "width 0.4s" }} />
+                    </div>
+                    <span style={{ fontSize: 9, color: C.textFaint }}>{catOpen ? "▲" : "▼"}</span>
+                  </div>
+                </button>
+
+                {catOpen && (
+                  <div style={{ padding: "4px 20px 14px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px" }}>
+                    {cat.items.map((item) => {
+                      const checked = isChecked(item);
+                      const isAuto = isAutoChecked(item);
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => !isAuto && toggle(item.id, checked)}
+                          style={{ display: "flex", alignItems: item.detail ? "flex-start" : "center", gap: 8, background: "none", border: "none", cursor: isAuto ? "default" : "pointer", padding: "3px 0", textAlign: "left" }}
+                        >
+                          <div style={{
+                            width: 16, height: 16, borderRadius: 4, flexShrink: 0, marginTop: item.detail ? 2 : 0,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            background: checked ? (isAuto ? "rgba(0,46,255,0.12)" : "rgba(22,163,74,0.12)") : "transparent",
+                            border: `1.5px solid ${checked ? (isAuto ? C.blue : C.green) : C.borderStrong}`,
+                            transition: "all 0.15s",
+                          }}>
+                            {checked && <span style={{ fontSize: 8, color: isAuto ? C.blue : C.green, fontWeight: 800 }}>✓</span>}
+                          </div>
+                          <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                              <span style={{ fontSize: 12, color: checked ? C.textMuted : C.text, lineHeight: 1.4, textDecoration: checked && !isAuto ? "line-through" : "none", opacity: checked && !isAuto ? 0.55 : 1 }}>
+                                {item.label}
+                              </span>
+                              {isAuto && <span style={{ fontSize: 9, color: C.blue, fontWeight: 700, flexShrink: 0 }}>auto</span>}
+                            </span>
+                            {item.detail && (
+                              <span style={{ fontSize: 10.5, color: C.textFaint, lineHeight: 1.4, opacity: checked ? 0.5 : 0.8 }}>
+                                {item.detail}
+                              </span>
+                            )}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Task row (for the "what Astra is working on" section) ──────────────────────
+
+function TaskRow({
+  t, busy, onPostpone, onMarkDone,
+}: {
+  t: CompanyTask;
+  busy: string | null;
+  onPostpone: () => void;
+  onMarkDone: () => void;
+}) {
+  const kind = t.postponed ? "postponed" : t.status;
+  const label = t.postponed ? "postponed" : t.status === "awaiting_approval" ? "needs approval" : t.status.replace(/_/g, " ");
+  const owners = t.owner_agents ?? [];
+  const doneAgents = t.done_agents ?? [];
+  return (
+    <div style={{
+      display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px",
+      border: `1px solid ${C.border}`, borderRadius: 10,
+      background: t.status === "done" ? C.greenTint : C.surface,
+      opacity: t.postponed ? 0.6 : 1,
+    }}>
+      <span style={{ marginTop: 1, fontSize: 13 }}>
+        {t.status === "done" ? "✅" : t.postponed ? "⏸" : t.status === "awaiting_approval" ? "🔔" : "○"}
+      </span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: C.text, textDecoration: t.postponed ? "line-through" : "none" }}>{t.title}</span>
+          <Badge label={label} kind={kind} />
+          {owners.length > 0 && (
+            <span style={{ fontSize: 11, color: C.textFaint }}>
+              {owners.map((o) => (doneAgents.includes(o) ? `✓${o}` : o)).join(" · ")}
+            </span>
+          )}
+        </div>
+        {t.notes && <div style={{ fontSize: 11.5, color: C.textMuted, marginTop: 4, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{t.notes.slice(0, 200)}</div>}
+        {t.status !== "done" && (
+          <div style={{ display: "flex", gap: 7, marginTop: 7 }}>
+            <Btn
+              label={t.postponed ? "Resume" : "Postpone"}
+              onClick={onPostpone}
+              disabled={!!busy}
+              small
+            />
+            {!t.postponed && (
+              <Btn
+                label={t.status === "awaiting_approval" ? "Approve ✓" : "Mark done"}
+                onClick={onMarkDone}
+                disabled={!!busy}
+                small
+              />
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
 export default function MissionsPanel() {
   const { userId } = useDevUser();
   const founderId = userId === "anon" ? "" : userId;
@@ -66,6 +330,7 @@ export default function MissionsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [operatingOpen, setOperatingOpen] = useState(true);
 
   const load = useCallback(async () => {
     if (!founderId) return;
@@ -80,192 +345,223 @@ export default function MissionsPanel() {
   }, [founderId]);
 
   useEffect(() => {
-    if (!founderId) return;
+    if (!founderId) { setLoading(false); return; }
     load();
-    const t = setInterval(load, 15000); // live-ish: tasks tick as agents finish
+    const t = setInterval(load, 15000);
     return () => clearInterval(t);
   }, [founderId, load]);
 
   const cg = currentGoalOf(goal);
   const tasks = cg?.tasks ?? [];
   const doneGoals = (goal?.goals ?? []).filter((g) => g.status === "done").reverse();
-  const runs = (goal?.operating_sessions ?? []).slice().reverse();
+  const runs = (goal?.operating_sessions ?? []).slice().reverse().slice(0, 8);
   const paused = goal?.status === "paused";
+  const completedAgents = completedAgentsFromGoal(goal);
 
   const postpone = async (t: CompanyTask) => {
     setBusy(t.id);
     try { await postponeCompanyTask(founderId, t.id, !t.postponed); await load(); }
     finally { setBusy(null); }
   };
+
   const markDone = async (t: CompanyTask) => {
     setBusy(t.id);
     try { await markCompanyTaskDone(founderId, t.id); await load(); }
     finally { setBusy(null); }
   };
+
   const runNow = async () => {
     setBusy("run");
-    try { const r = await runCompanyCycle(founderId); if (r.parent_session_id) window.location.assign(`/?session=${r.parent_session_id}`); else await load(); }
-    catch (e) { alert(e instanceof Error ? e.message : String(e)); }
+    try {
+      const r = await runCompanyCycle(founderId);
+      if (r.parent_session_id) window.location.assign(`/?session=${r.parent_session_id}`);
+      else await load();
+    } catch (e) { alert(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(null); }
   };
+
   const togglePause = async () => {
     setBusy("pause");
     try { await setCompanyGoalStatus(founderId, paused ? "operating" : "paused"); await load(); }
     finally { setBusy(null); }
   };
 
-  const btn = (label: string, onClick: () => void, opts: { primary?: boolean; disabled?: boolean } = {}) => (
-    <button onClick={onClick} disabled={opts.disabled || !!busy}
-      style={{ padding: "8px 16px", borderRadius: 99, border: opts.primary ? "none" : `1px solid ${c.border}`,
-        background: opts.primary ? c.blue : c.bg, color: opts.primary ? "#fff" : c.text,
-        fontSize: 13, fontWeight: 600, cursor: busy ? "wait" : "pointer", whiteSpace: "nowrap", opacity: busy ? 0.7 : 1 }}>{label}</button>
-  );
-
-  const TaskRow = ({ t }: { t: CompanyTask }) => {
-    const owners = t.owner_agents || [];
-    const doneAgents = t.done_agents || [];
-    const kind = t.postponed ? "postponed" : t.status;
-    const label = t.postponed ? "postponed" : t.status.replace("_", " ");
+  if (!founderId) {
     return (
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 14px",
-        border: `1px solid ${c.border}`, borderRadius: 10, background: t.status === "done" ? c.greenTint : c.surface, opacity: t.postponed ? 0.6 : 1 }}>
-        <span style={{ marginTop: 1, fontSize: 14 }}>{t.status === "done" ? "✅" : t.postponed ? "⏸️" : "○"}</span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 13.5, fontWeight: 600, color: c.text, textDecoration: t.postponed ? "line-through" : "none" }}>{t.title}</span>
-            <Badge label={label} kind={kind} />
-            {owners.length > 0 && (
-              <span style={{ fontSize: 11, color: c.textMuted }}>
-                {owners.map((o) => (doneAgents.includes(o) ? `✓${o}` : o)).join(" · ")}
+      <div style={{ padding: 40, color: C.textMuted, textAlign: "center" }}>
+        Sign in to track your launch progress.
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div style={{ padding: "60px 0", textAlign: "center", color: C.textMuted }}>Loading…</div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: 24, background: C.redTint, border: `1px solid #FECACA`, borderRadius: 12, color: C.red, margin: "32px 36px" }}>
+        {error}{" "}
+        <button onClick={load} style={{ marginLeft: 8, textDecoration: "underline", background: "none", border: "none", color: C.red, cursor: "pointer" }}>Retry</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ background: C.bg, minHeight: "100%", padding: "32px 36px", maxWidth: 860, margin: "0 auto" }}>
+
+      {/* ── Page header ── */}
+      <div style={{ marginBottom: 28 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, margin: "0 0 6px", letterSpacing: "-0.025em" }}>
+          Launch Progress
+        </h1>
+        <p style={{ fontSize: 14, color: C.textMuted, margin: 0 }}>
+          Track every step to launch. Astra auto-completes items as agents finish — check off the rest yourself.
+        </p>
+      </div>
+
+      {/* ── Launch checklist (the primary content) ── */}
+      <LaunchChecklist founderId={founderId} completedAgents={completedAgents} />
+
+      {/* ── What Astra is doing ── */}
+      {goal && (
+        <div style={{ borderRadius: 14, border: `1px solid ${C.border}`, overflow: "hidden", marginBottom: 24 }}>
+          {/* Section header */}
+          <button
+            onClick={() => setOperatingOpen((o) => !o)}
+            style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", background: "none", border: "none", cursor: "pointer" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>What Astra is working on</span>
+              <span style={{
+                fontSize: 11, padding: "2px 8px", borderRadius: 99, fontWeight: 600,
+                background: paused ? C.amberTint : C.blueTint,
+                color: paused ? C.amber : C.blue,
+              }}>
+                {paused ? "paused" : "operating"}
               </span>
-            )}
-          </div>
-          {t.notes && <div style={{ fontSize: 12, color: c.textMuted, marginTop: 4, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{t.notes}</div>}
-          {t.status !== "done" && (
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <button disabled={!!busy} onClick={() => postpone(t)}
-                style={{ fontSize: 11, fontWeight: 600, padding: "4px 10px", borderRadius: 8, border: `1px solid ${c.border}`, background: c.bg, color: c.text, cursor: "pointer" }}>
-                {t.postponed ? "Resume task" : "Postpone"}
-              </button>
-              {!t.postponed && (
-                <button disabled={!!busy} onClick={() => markDone(t)}
-                  style={{ fontSize: 11, fontWeight: 600, padding: "4px 10px", borderRadius: 8, border: `1px solid ${c.border}`, background: c.bg, color: c.greenText, cursor: "pointer" }}>
-                  Mark done
-                </button>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {goal && (
+                <>
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <Btn
+                      label={busy === "run" ? "Starting…" : "▶ Run now"}
+                      onClick={runNow}
+                      primary
+                      disabled={paused || !cg || !!busy}
+                    />
+                  </span>
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <Btn
+                      label={paused ? "Resume" : "Pause"}
+                      onClick={togglePause}
+                      disabled={!!busy}
+                    />
+                  </span>
+                </>
+              )}
+              <span style={{ fontSize: 10, color: C.textFaint }}>{operatingOpen ? "▲" : "▼"}</span>
+            </div>
+          </button>
+
+          {operatingOpen && (
+            <div style={{ borderTop: `1px solid ${C.border}`, padding: "16px 20px" }}>
+              {/* North star */}
+              <div style={{ marginBottom: 18, padding: "12px 16px", borderRadius: 10, background: C.blueTint, border: `1px solid rgba(0,46,255,0.1)` }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: C.blue, letterSpacing: "0.07em", textTransform: "uppercase", marginBottom: 5 }}>North Star</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: C.text, lineHeight: 1.5 }}>{goal.north_star}</div>
+                {goal.notion_url && (
+                  <a href={goal.notion_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: C.blue, marginTop: 8, display: "inline-block" }}>
+                    Open in Notion →
+                  </a>
+                )}
+              </div>
+
+              {/* Current goal */}
+              {cg ? (
+                <div style={{ marginBottom: 18 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10 }}>
+                    Current goal{cg.kind === "launch" ? " · launch" : ""}
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginBottom: 12 }}>{cg.title}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {tasks.map((t) => (
+                      <TaskRow key={t.id} t={t} busy={busy} onPostpone={() => postpone(t)} onMarkDone={() => markDone(t)} />
+                    ))}
+                    {tasks.length === 0 && <p style={{ fontSize: 13, color: C.textMuted }}>No tasks on this goal yet.</p>}
+                  </div>
+                </div>
+              ) : (
+                <p style={{ fontSize: 13, color: C.textMuted, marginBottom: 18 }}>
+                  No active goal — the planner will set the next one when the current run finishes.
+                </p>
+              )}
+
+              {/* Sync Notion */}
+              <div style={{ marginTop: 4 }}>
+                <Btn
+                  label="Sync Notion"
+                  onClick={async () => { setBusy("notion"); try { await syncMissionNotion(founderId); await load(); } finally { setBusy(null); } }}
+                  disabled={!!busy}
+                />
+              </div>
+
+              {/* Runs */}
+              {runs.length > 0 && (
+                <div style={{ marginTop: 18 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                    Recent runs · {runs.length}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {runs.map((r) => (
+                      <a key={r.session_id} href={`/?session=${r.session_id}`}
+                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", border: `1px solid ${C.border}`, borderRadius: 9, background: C.surface, textDecoration: "none" }}>
+                        <Badge label={r.status} kind={r.status === "done" ? "done" : r.status === "error" ? "blocked" : "in_progress"} />
+                        <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.summary || "Operating run"}</span>
+                        <span style={{ fontSize: 11, color: C.textFaint, whiteSpace: "nowrap" }}>{timeAgo(r.started_at)}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Completed goals */}
+              {doneGoals.length > 0 && (
+                <div style={{ marginTop: 18 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+                    Completed goals · {doneGoals.length}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {doneGoals.map((g) => (
+                      <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", fontSize: 13, color: C.textMuted }}>
+                        <span style={{ color: C.green }}>✓</span>
+                        <span style={{ textDecoration: "line-through" }}>{g.title}</span>
+                        <span style={{ marginLeft: "auto", fontSize: 11 }}>{timeAgo(g.completed_at)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}
         </div>
-      </div>
-    );
-  };
+      )}
 
-  const Section = ({ title, count, children }: { title: string; count?: number; children: React.ReactNode }) => (
-    <div style={{ marginBottom: 26 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: c.textMuted, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
-        {title}{count != null ? ` · ${count}` : ""}
-      </div>
-      {children}
-    </div>
-  );
-
-  if (!founderId) return <div style={{ padding: 40, color: c.textMuted }}>Sign in to view your company goal.</div>;
-
-  return (
-    <div style={{ background: c.bg, minHeight: "100%", padding: "32px 36px", maxWidth: 820, margin: "0 auto" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: c.text, margin: "0 0 6px", letterSpacing: "-0.02em" }}>Company Goal</h1>
-          <p style={{ fontSize: 14, color: c.textMuted, margin: 0 }}>One goal at a time. Tasks tick as agents finish; the planner sets the next goal.</p>
-        </div>
-        {goal && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {btn(busy === "run" ? "Starting…" : "▶ Run goal now", runNow, { primary: true, disabled: paused || !cg })}
-            {btn(paused ? "Resume" : "Pause", togglePause)}
-            {btn("Sync Notion", async () => { setBusy("notion"); try { await syncMissionNotion(founderId); await load(); } finally { setBusy(null); } })}
-          </div>
-        )}
-      </div>
-
-      {loading ? (
-        <div style={{ padding: "60px 0", textAlign: "center", color: c.textMuted }}>Loading…</div>
-      ) : error ? (
-        <div style={{ padding: 24, background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: c.radius, color: "#DC2626" }}>
-          {error} <button onClick={load} style={{ marginLeft: 8, textDecoration: "underline", background: "none", border: "none", color: "#DC2626", cursor: "pointer" }}>Retry</button>
-        </div>
-      ) : !goal ? (
-        <div style={{ padding: "72px 24px", textAlign: "center", border: `1px dashed ${c.border}`, borderRadius: 16 }}>
-          <div style={{ fontSize: 34, marginBottom: 14 }}>◎</div>
-          <div style={{ fontSize: 16, fontWeight: 600, color: c.text, marginBottom: 8 }}>No company goal yet</div>
-          <p style={{ fontSize: 14, color: c.textMuted, maxWidth: 380, margin: "0 auto" }}>
-            Start a run from the home screen — your launch goal and its tasks appear here the moment the agents start.
+      {/* ── Empty state (no goal yet) ── */}
+      {!goal && !loading && (
+        <div style={{ padding: "48px 24px", textAlign: "center", border: `1px dashed ${C.border}`, borderRadius: 16, marginTop: 8 }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>◎</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 8 }}>No run started yet</div>
+          <p style={{ fontSize: 13, color: C.textMuted, maxWidth: 360, margin: "0 auto 16px" }}>
+            Start a run from the home screen — Astra will auto-complete checklist items as it works.
           </p>
+          <a href="/" style={{ display: "inline-block", padding: "9px 20px", borderRadius: 99, background: C.blue, color: "#fff", fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+            Start a run →
+          </a>
         </div>
-      ) : (
-        <>
-          {/* North star */}
-          <div style={{ marginBottom: 24, padding: "18px 20px", borderRadius: 12, border: `1px solid ${c.border}`, background: c.blueTint }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: c.blue, letterSpacing: "0.06em", textTransform: "uppercase" }}>North Star</span>
-              <Badge label={paused ? "paused" : "operating"} kind={paused ? "blocked" : "in_progress"} />
-            </div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: c.text, lineHeight: 1.45, marginBottom: 6 }}>{goal.north_star}</div>
-            <div style={{ fontSize: 13, color: c.textMuted, lineHeight: 1.5 }}>{goal.company_goal}</div>
-            {goal.notion_url && <a href={goal.notion_url} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: c.blue, marginTop: 10, display: "inline-block" }}>Open operating mirror in Notion →</a>}
-          </div>
-
-          {/* Current goal + tasks */}
-          {cg ? (
-            <Section title={`Current goal${cg.kind === "launch" ? " · launch" : ""}`}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                <div style={{ fontSize: 17, fontWeight: 700, color: c.text }}>{cg.title}</div>
-                {tasks.some((t) => t.status === "in_progress") && !paused
-                  ? <Badge label="● running" kind="in_progress" />
-                  : tasks.length > 0 && tasks.every((t) => t.postponed || t.status === "done")
-                    ? <Badge label="done" kind="done" />
-                    : null}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {tasks.map((t) => <TaskRow key={t.id} t={t} />)}
-              </div>
-              {tasks.length === 0 && <p style={{ fontSize: 13, color: c.textMuted }}>No tasks on this goal.</p>}
-            </Section>
-          ) : (
-            <Section title="Current goal">
-              <p style={{ fontSize: 13, color: c.textMuted }}>No active goal — the planner sets the next one when the current run finishes.</p>
-            </Section>
-          )}
-
-          {/* Operating runs */}
-          {runs.length > 0 && (
-            <Section title="Runs" count={runs.length}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {runs.map((r) => (
-                  <a key={r.session_id} href={`/?session=${r.session_id}`}
-                    style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", border: `1px solid ${c.border}`, borderRadius: 10, background: c.surface, textDecoration: "none" }}>
-                    <Badge label={r.status} kind={r.status === "done" ? "done" : r.status === "error" ? "blocked" : "in_progress"} />
-                    <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: c.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.summary || "Operating run"}</span>
-                    <span style={{ fontSize: 11, color: c.textMuted, whiteSpace: "nowrap" }}>{timeAgo(r.started_at)}</span>
-                  </a>
-                ))}
-              </div>
-            </Section>
-          )}
-
-          {/* Completed goals */}
-          {doneGoals.length > 0 && (
-            <Section title="Completed goals" count={doneGoals.length}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {doneGoals.map((g) => (
-                  <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", fontSize: 13, color: c.textMuted }}>
-                    <span style={{ color: c.greenText }}>✓</span> <span style={{ textDecoration: "line-through" }}>{g.title}</span>
-                    <span style={{ marginLeft: "auto", fontSize: 11 }}>{timeAgo(g.completed_at)}</span>
-                  </div>
-                ))}
-              </div>
-            </Section>
-          )}
-        </>
       )}
     </div>
   );

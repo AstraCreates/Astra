@@ -164,7 +164,8 @@ def bootstrap_company_operating_system(
         if not t or key in seen:
             return
         seen.add(key)
-        unified.append({"title": t[:200], "status": status, "notes": notes[:600], "last_run_id": session_id})
+        tid = _slug(t, f"task_{len(unified) + 1}")
+        unified.append({"id": tid, "title": t[:200], "status": status, "notes": notes[:600], "last_run_id": session_id})
 
     for item in workboard.get("items") or []:
         item_status = _task_status_from_item(item)

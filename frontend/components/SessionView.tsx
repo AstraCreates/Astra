@@ -736,7 +736,11 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                             <span style={{ fontSize: 11, color: "var(--fg)", fontWeight: 600 }}>{art.title || art.key}</span>
                             <span style={{ fontSize: 9, color: "var(--blue)", marginLeft: "auto" }}>View full ↗</span>
                           </div>
-                          {art.preview && <div style={{ padding: "0 8px 8px", fontSize: 10.5, color: "var(--fd)", lineHeight: 1.55, borderTop: "1px solid var(--bd)", paddingTop: 6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{art.preview}</div>}
+                          {art.preview && (
+                            <div style={{ padding: "0 8px 8px", borderTop: "1px solid var(--bd)", paddingTop: 6 }}>
+                              <RichText text={art.preview} />
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
