@@ -122,7 +122,9 @@ def _generate_doc_body(doc_type: str, company_name: str, context: str) -> str:
     prompt = prompt_template.format(company_name=company_name, context=context or "a technology company")
     try:
         from backend.tools._llm import generate
-        body = generate(prompt)
+        # Cap output — an unbounded legal doc took ~2 min each on the heavy model, so
+        # legal (3+ docs) blew past timeouts. ~3k tokens is a complete policy/agreement.
+        body = generate(prompt, max_tokens=3000)
         if body and len(body) > 200:
             return body
         logger.warning("LLM legal doc output too short (%d chars) — using raw content", len(body))
