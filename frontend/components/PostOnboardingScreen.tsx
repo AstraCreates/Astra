@@ -74,9 +74,9 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
           </p>
 
           <h1 style={{
-            fontFamily: "var(--font-fraunces), 'Fraunces', serif",
-            fontSize: "clamp(52px, 10vw, 88px)",
-            fontWeight: 400,
+            fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif",
+            fontSize: "clamp(48px, 9vw, 80px)",
+            fontWeight: 700,
             color: "#ffffff",
             lineHeight: 1.05,
             letterSpacing: "-0.02em",

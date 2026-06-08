@@ -87,9 +87,9 @@ export default function WelcomeScreen() {
           </div>
 
           <h1 className="ws-h1" style={{
-            fontFamily: "var(--font-fraunces), 'Fraunces', serif",
+            fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif",
             fontSize: "clamp(48px, 9vw, 80px)",
-            fontWeight: 400,
+            fontWeight: 700,
             color: "#ffffff",
             letterSpacing: "-0.02em",
             lineHeight: 1.05,

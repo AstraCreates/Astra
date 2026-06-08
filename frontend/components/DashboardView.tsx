@@ -114,8 +114,8 @@ export default function DashboardView() {
           <div
             className="greeting-text"
             style={{
-              fontFamily: "var(--font-fraunces), 'Fraunces', serif",
-              fontSize: 28, fontWeight: 400,
+              fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif",
+              fontSize: 26, fontWeight: 700,
               letterSpacing: "-0.02em",
               color: "var(--fg)", marginBottom: 4,
             }}
