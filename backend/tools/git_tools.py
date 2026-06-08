@@ -696,9 +696,10 @@ def _planner_review(local: str, goal: str, files: list[str]) -> dict:
             model=model,
             messages=[
                 {"role": "system", "content": _PLANNER_REVIEW_SYSTEM},
-                {"role": "user", "content": user_msg},
+                # hy3-preview has no provider supporting response_format — ask for JSON
+                # in the prompt instead of using json mode (which 404s/400s).
+                {"role": "user", "content": user_msg + "\n\nRespond with ONLY a single valid JSON object — no prose, no markdown."},
             ],
-            response_format={"type": "json_object"},
             temperature=0.1,
             timeout=60.0,
             extra_body={"provider": {"require_parameters": True, "allow_fallbacks": True}},

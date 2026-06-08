@@ -54,18 +54,21 @@ def generate(prompt: str, max_tokens: int | None = None, json_mode: bool = False
         selected = _NEMOTRON_MODEL
     else:
         selected = _FAST_MODEL
+    # json mode: our build/agent models (hy3-preview etc.) have NO OpenRouter
+    # provider that supports response_format — requesting it 404s/400s. Ask for JSON
+    # in the prompt instead; callers parse leniently.
+    content_prompt = prompt
+    if json_mode:
+        content_prompt = prompt + "\n\nRespond with ONLY a single valid JSON object. No prose, no markdown fences."
     kwargs: dict = dict(
         model=selected,
-        messages=[{"role": "user", "content": prompt}],
+        messages=[{"role": "user", "content": content_prompt}],
         temperature=temperature,
     )
     if max_tokens:
         kwargs["max_tokens"] = max_tokens
-    if json_mode:
-        kwargs["response_format"] = {"type": "json_object"}
-    # Route only to providers that support the request params (json mode) and let
-    # OpenRouter fall back across providers — avoids SiliconFlow's "json mode not
-    # supported" 400s and GMICloud rate-limit/malformed bodies.
+    # Let OpenRouter fall back across providers on error/rate-limit instead of
+    # handing back a malformed body.
     kwargs["extra_body"] = _provider_routing(json_mode)
     resp = client.chat.completions.create(**kwargs, timeout=300.0)
     if not getattr(resp, "choices", None):
