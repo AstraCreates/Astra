@@ -7,7 +7,7 @@ import { apiFetch, saveServiceCredential, getComposioOAuthUrls, getSetupStatus, 
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-// â”€â”€ Design tokens â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Design tokens ─────────────────────────────────────────────────────────────
 const c = {
   bg: "#FFFFFF",
   surface: "#F8F9FA",
@@ -35,7 +35,7 @@ const SERVICES = [
     key: "github",
     credKey: "token",
     label: "GitHub",
-    icon: "ðŸ™",
+    icon: "🐙",
     desc: "Scaffold repos, push code, open PRs",
     placeholder: "ghp_xxxxxxxxxxxx",
     createUrl: "https://github.com/settings/tokens/new?description=Astra&scopes=repo,workflow",
@@ -46,7 +46,7 @@ const SERVICES = [
     key: "vercel",
     credKey: "token",
     label: "Vercel",
-    icon: "â–²",
+    icon: "▲",
     desc: "Deploy landing pages and apps",
     placeholder: "xxxxxxxxxxxxxxxxxxxxxxxx",
     createUrl: "https://vercel.com/account/tokens",
@@ -57,7 +57,7 @@ const SERVICES = [
     key: "sendgrid",
     credKey: "api_key",
     label: "SendGrid",
-    icon: "âœ‰ï¸",
+    icon: "✉️",
     desc: "Send email campaigns",
     placeholder: "SG.xxxxxxxxxxxxxxxx",
     createUrl: "https://app.sendgrid.com/settings/api_keys",
@@ -67,15 +67,15 @@ const SERVICES = [
 ] as const;
 
 const COMPOSIO_APPS = [
-  { key: "gmail", label: "Gmail", icon: "ðŸ“§", desc: "Send from your inbox" },
-  { key: "linkedin", label: "LinkedIn", icon: "ðŸ’¼", desc: "Post announcements" },
-  { key: "googlecalendar", label: "Calendar", icon: "ðŸ“…", desc: "Schedule meetings" },
-  { key: "notion", label: "Notion", icon: "ðŸ“", desc: "Update wiki" },
-  { key: "linear", label: "Linear", icon: "ðŸ“‹", desc: "Track issues" },
-  { key: "github", label: "GitHub PRs", icon: "ðŸ”€", desc: "Open PRs via Composio" },
+  { key: "gmail", label: "Gmail", icon: "📧", desc: "Send from your inbox" },
+  { key: "linkedin", label: "LinkedIn", icon: "💼", desc: "Post announcements" },
+  { key: "googlecalendar", label: "Calendar", icon: "📅", desc: "Schedule meetings" },
+  { key: "notion", label: "Notion", icon: "📝", desc: "Update wiki" },
+  { key: "linear", label: "Linear", icon: "📋", desc: "Track issues" },
+  { key: "github", label: "GitHub PRs", icon: "🔀", desc: "Open PRs via Composio" },
 ];
 
-// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Types ──────────────────────────────────────────────────────────────────
 
 interface FilingField {
   name: string;
@@ -89,7 +89,7 @@ interface FilingField {
 
 type ModalPhase = "connecting" | "running" | "user_control" | "interaction_needed" | "bot_filling" | "done" | "error";
 
-// â”€â”€ Shared card style helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Shared card style helper ───────────────────────────────────────────────
 
 function cardStyle(connected: boolean, active = false): React.CSSProperties {
   return {
@@ -102,7 +102,7 @@ function cardStyle(connected: boolean, active = false): React.CSSProperties {
   };
 }
 
-// â”€â”€ StatusDot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── StatusDot ────────────────────────────────────────────────────────────────
 
 function StatusDot({ connected }: { connected: boolean }) {
   return (
@@ -114,7 +114,7 @@ function StatusDot({ connected }: { connected: boolean }) {
   );
 }
 
-// â”€â”€ IntegrationModal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── IntegrationModal ───────────────────────────────────────────────────────
 
 function IntegrationModal({
   serviceKey, label, icon, stepCount, founderId, onConnected, onClose,
@@ -130,7 +130,7 @@ function IntegrationModal({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [phase, setPhase] = useState<ModalPhase>("connecting");
-  const [stepName, setStepName] = useState("Startingâ€¦");
+  const [stepName, setStepName] = useState("Starting…");
   const [stepNum, setStepNum] = useState(0);
   const [message, setMessage] = useState("");
   const [fields, setFields] = useState<FilingField[]>([]);
@@ -175,7 +175,7 @@ function IntegrationModal({
         setFields(msg.fields || []); setFormValues({});
         setFormError(""); setPhase("interaction_needed");
       } else if (msg.type === "bot_filling") {
-        setPhase("bot_filling"); setMessage("Filling your informationâ€¦");
+        setPhase("bot_filling"); setMessage("Filling your information…");
       } else if (msg.type === "done") {
         setPhase("done"); onConnected();
       } else if (msg.type === "error") {
@@ -254,7 +254,7 @@ function IntegrationModal({
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ fontSize: 12, color: c.textMuted }}>
-              {stepNum > 0 ? `Step ${stepNum}/${stepCount} â€” ${stepName}` : stepName}
+              {stepNum > 0 ? `Step ${stepNum}/${stepCount} — ${stepName}` : stepName}
             </span>
             {phase !== "done" && (
               <button
@@ -309,7 +309,7 @@ function IntegrationModal({
             }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: c.blue, flexShrink: 0 }} />
               <span style={{ fontSize: 12, color: c.blue, whiteSpace: "nowrap" }}>
-                {message || "Sign in â€” click and type directly in the browser"}
+                {message || "Sign in — click and type directly in the browser"}
               </span>
             </div>
           )}
@@ -317,21 +317,21 @@ function IntegrationModal({
           {phase === "connecting" && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
               <div style={{ width: 28, height: 28, border: "3px solid rgba(255,255,255,0.15)", borderTopColor: c.blue, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-              <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>Connectingâ€¦</span>
+              <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>Connecting…</span>
             </div>
           )}
 
           {(phase === "running" || phase === "bot_filling") && (
             <div style={{ position: "absolute", bottom: 12, left: "50%", transform: "translateX(-50%)", padding: "8px 20px", borderRadius: 20, background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", gap: 8, zIndex: 20, whiteSpace: "nowrap" }}>
               <div style={{ width: 8, height: 8, borderRadius: "50%", background: c.blue, animation: "spin 0.8s linear infinite" }} />
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{stepName || "Workingâ€¦"}</span>
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>{stepName || "Working…"}</span>
             </div>
           )}
 
           {phase === "done" && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20, background: "rgba(0,0,0,0.5)" }}>
               <div style={{ padding: "28px 40px", borderRadius: 16, background: c.bg, border: `1px solid ${c.greenBorder}`, textAlign: "center", boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}>
-                <div style={{ width: 48, height: 48, borderRadius: "50%", background: c.greenTint, border: `1px solid ${c.greenBorder}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 20 }}>âœ“</div>
+                <div style={{ width: 48, height: 48, borderRadius: "50%", background: c.greenTint, border: `1px solid ${c.greenBorder}`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 20 }}>✓</div>
                 <p style={{ margin: 0, fontSize: 16, fontWeight: 600, color: c.green }}>{label} Connected!</p>
                 <button
                   onClick={onClose}
@@ -344,7 +344,7 @@ function IntegrationModal({
           {phase === "error" && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 20, background: "rgba(0,0,0,0.5)" }}>
               <div style={{ padding: "24px 32px", borderRadius: 16, background: c.bg, border: `1px solid ${c.redBorder}`, textAlign: "center", maxWidth: 400, boxShadow: "0 10px 40px rgba(0,0,0,0.2)" }}>
-                <div style={{ fontSize: 24, marginBottom: 8, color: c.red }}>âš </div>
+                <div style={{ fontSize: 24, marginBottom: 8, color: c.red }}>⚠</div>
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: c.red }}>Connection failed</p>
                 <p style={{ margin: "6px 0 0", fontSize: 13, color: c.grey }}>{message}</p>
                 <button
@@ -371,7 +371,7 @@ function IntegrationModal({
                       style={{ padding: "8px 12px", fontSize: 13, borderRadius: 8, border: `1px solid ${c.border}`, background: c.bg, color: c.text, outline: "none" }}
                     >
                       {f.options.map(o => (
-                        <option key={o.value} value={o.value}>{o.label}{o.description ? ` â€” ${o.description}` : ""}</option>
+                        <option key={o.value} value={o.value}>{o.label}{o.description ? ` — ${o.description}` : ""}</option>
                       ))}
                     </select>
                   ) : (
@@ -400,7 +400,7 @@ function IntegrationModal({
               disabled={submitting}
               style={{ alignSelf: "flex-start", padding: "8px 20px", borderRadius: 8, background: c.blue, color: "#FFFFFF", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 500 }}
             >
-              {submitting ? "â€¦" : "Continue â†’"}
+              {submitting ? "…" : "Continue →"}
             </button>
           </div>
         )}
@@ -410,7 +410,7 @@ function IntegrationModal({
   );
 }
 
-// â”€â”€ ServiceCard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── ServiceCard ────────────────────────────────────────────────────────────
 
 function ServiceCard({
   svc, connected, founderId, onSaved,
@@ -524,7 +524,7 @@ function ServiceCard({
             cursor: connecting ? "wait" : "pointer",
           }}
         >
-          {connecting ? "Redirectingâ€¦" : isConnected ? "Reconnect â†—" : "Connect â†—"}
+          {connecting ? "Redirecting…" : isConnected ? "Reconnect ↗" : "Connect ↗"}
         </button>
       </div>
 
@@ -542,7 +542,7 @@ function ServiceCard({
         }}>
           <p style={{ margin: 0, fontSize: 13, color: c.textSecondary, lineHeight: 1.6 }}>
             Create a token in the popup, then paste it here.{" "}
-            <span style={{ color: c.blue, fontWeight: 500 }}>The popup is open â†—</span>
+            <span style={{ color: c.blue, fontWeight: 500 }}>The popup is open ↗</span>
           </p>
           <div style={{ display: "flex", gap: 8 }}>
             <input
@@ -569,7 +569,7 @@ function ServiceCard({
                 opacity: saving || !value.trim() ? 0.6 : 1,
               }}
             >
-              {saving ? "â€¦" : "Save"}
+              {saving ? "…" : "Save"}
             </button>
           </div>
           {error && <p style={{ fontSize: 12, color: c.red, margin: 0 }}>{error}</p>}
@@ -579,7 +579,7 @@ function ServiceCard({
   );
 }
 
-// â”€â”€ StripeCard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── StripeCard ─────────────────────────────────────────────────────────────
 
 function StripeCard({ founderId, email }: { founderId: string; email: string }) {
   const [stripeStatus, setStripeStatus] = useState<{ connected: boolean; charges_enabled?: boolean; email?: string; livemode?: boolean } | null>(null);
@@ -625,7 +625,7 @@ function StripeCard({ founderId, email }: { founderId: string; email: string }) 
             {!loading && <StatusDot connected={!!isConnected} />}
             {isConnected && <span style={{ fontSize: 11, color: c.green, fontWeight: 500 }}>Connected</span>}
             {isConnected && stripeStatus?.livemode === false && (
-              <span style={{ fontSize: 11, color: c.textMuted }}>Â· Test mode</span>
+              <span style={{ fontSize: 11, color: c.textMuted }}>· Test mode</span>
             )}
           </div>
           <span style={{ fontSize: 12, color: c.grey }}>
@@ -633,7 +633,7 @@ function StripeCard({ founderId, email }: { founderId: string; email: string }) 
           </span>
         </div>
         {loading ? (
-          <span style={{ fontSize: 13, color: c.textMuted }}>â€¦</span>
+          <span style={{ fontSize: 13, color: c.textMuted }}>…</span>
         ) : isConnected ? (
           <span style={{ fontSize: 12, color: c.green, fontWeight: 500, flexShrink: 0 }}>Ready for stack runs</span>
         ) : (
@@ -645,7 +645,7 @@ function StripeCard({ founderId, email }: { founderId: string; email: string }) 
               background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer",
             }}
           >
-            {connecting ? "Redirectingâ€¦" : "Connect â†’"}
+            {connecting ? "Redirecting…" : "Connect →"}
           </button>
         )}
       </div>
@@ -653,7 +653,7 @@ function StripeCard({ founderId, email }: { founderId: string; email: string }) 
   );
 }
 
-// â”€â”€ ComposioKeyCard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── ComposioKeyCard ────────────────────────────────────────────────────────
 
 function ComposioKeyCard({ connected, saving, error, onSave }: {
   connected: boolean;
@@ -704,7 +704,7 @@ function ComposioKeyCard({ connected, saving, error, onSave }: {
   return (
     <div style={cardStyle(connected, popupOpen && !connected)}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: connected ? c.greenTint : c.bg }}>
-        <span style={{ fontSize: 22, flexShrink: 0 }}>ðŸ”—</span>
+        <span style={{ fontSize: 22, flexShrink: 0 }}>🔗</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 14, fontWeight: 600, color: c.text }}>Composio</span>
@@ -724,7 +724,7 @@ function ComposioKeyCard({ connected, saving, error, onSave }: {
             cursor: "pointer",
           }}
         >
-          {connected ? "Update key â†—" : "Connect â†—"}
+          {connected ? "Update key ↗" : "Connect ↗"}
         </button>
       </div>
 
@@ -735,8 +735,8 @@ function ComposioKeyCard({ connected, saving, error, onSave }: {
           display: "flex", flexDirection: "column", gap: 10,
         }}>
           <p style={{ margin: 0, fontSize: 13, color: c.textSecondary, lineHeight: 1.6 }}>
-            Copy your API key from the popup (Settings â†’ API Keys), then paste it here.{" "}
-            <span style={{ color: c.blue, fontWeight: 500 }}>Popup is open â†—</span>
+            Copy your API key from the popup (Settings → API Keys), then paste it here.{" "}
+            <span style={{ color: c.blue, fontWeight: 500 }}>Popup is open ↗</span>
           </p>
           <div style={{ display: "flex", gap: 8 }}>
             <input
@@ -763,7 +763,7 @@ function ComposioKeyCard({ connected, saving, error, onSave }: {
                 opacity: saving || !value.trim() ? 0.6 : 1,
               }}
             >
-              {saving ? "â€¦" : "Save"}
+              {saving ? "…" : "Save"}
             </button>
           </div>
           {(localError || error) && <p style={{ fontSize: 12, color: c.red, margin: 0 }}>{localError || error}</p>}
@@ -773,7 +773,7 @@ function ComposioKeyCard({ connected, saving, error, onSave }: {
   );
 }
 
-// â”€â”€ ComposioAppCard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── ComposioAppCard ────────────────────────────────────────────────────────
 
 function ComposioAppCard({
   app, oauthUrl, founderId, initialConnected,
@@ -834,7 +834,7 @@ function ComposioAppCard({
             <span style={{ fontSize: 13, fontWeight: 600, color: c.text }}>{app.label}</span>
             <StatusDot connected={isConnected} />
             {isConnected && <span style={{ fontSize: 11, color: c.green, fontWeight: 500 }}>Connected</span>}
-            {popupOpen && !isConnected && <span style={{ fontSize: 11, color: c.blue, fontWeight: 500 }}>Authorizingâ€¦</span>}
+            {popupOpen && !isConnected && <span style={{ fontSize: 11, color: c.blue, fontWeight: 500 }}>Authorizing…</span>}
           </div>
           <span style={{ fontSize: 12, color: c.grey }}>{isError ? "Requires Composio API key" : app.desc}</span>
         </div>
@@ -849,7 +849,7 @@ function ComposioAppCard({
             cursor: isError || popupOpen ? "not-allowed" : "pointer",
           }}
         >
-          {popupOpen ? "Waitingâ€¦" : isConnected ? "Reconnect â†—" : "Connect â†—"}
+          {popupOpen ? "Waiting…" : isConnected ? "Reconnect ↗" : "Connect ↗"}
         </button>
       </div>
     </div>
@@ -881,7 +881,7 @@ function ComposioAppGrid({ founderId, composioUrls }: { founderId: string; compo
   );
 }
 
-// â”€â”€ Section label â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Section label ──────────────────────────────────────────────────────────
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -891,7 +891,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-// â”€â”€ Main page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Main page ──────────────────────────────────────────────────────────────
 
 export default function SetupPage() {
   const { userId } = useDevUser();
@@ -994,14 +994,14 @@ export default function SetupPage() {
             background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`,
             textDecoration: "none", fontWeight: 500,
           }}>
-            â† Back
+            ← Back
           </Link>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: c.text, letterSpacing: "-0.02em" }}>
               Integrations
             </h1>
             <p style={{ fontSize: 13, color: c.grey, margin: "3px 0 0" }}>
-              Connect services once â€” agents use them everywhere
+              Connect services once — agents use them everywhere
             </p>
           </div>
         </div>
@@ -1056,7 +1056,7 @@ export default function SetupPage() {
 
       {/* Composio */}
       <div>
-        <SectionLabel>Composio â€” Gmail Â· LinkedIn Â· Calendar Â· Notion Â· Linear</SectionLabel>
+        <SectionLabel>Composio — Gmail · LinkedIn · Calendar · Notion · Linear</SectionLabel>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <ComposioKeyCard
             connected={!!composioUrls && Object.keys(composioUrls).length > 0}
@@ -1091,24 +1091,24 @@ export default function SetupPage() {
                 background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer", fontWeight: 500,
               }}
             >
-              Load OAuth links â†’
+              Load OAuth links →
             </button>
           )}
         </div>
       </div>
 
-      {/* Social â€” manual */}
+      {/* Social — manual */}
       <div>
-        <SectionLabel>Social accounts â€” manual OAuth</SectionLabel>
+        <SectionLabel>Social accounts — manual OAuth</SectionLabel>
         <div style={{
           borderRadius: 12, border: `1px solid ${c.border}`,
           background: c.bg, boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
           padding: "14px 18px", display: "flex", gap: 10, flexWrap: "wrap",
         }}>
           {[
-            { key: "instagram", label: "Instagram", icon: "ðŸ“¸", connected: status?.instagram },
-            { key: "tiktok", label: "TikTok", icon: "ðŸŽµ", connected: status?.tiktok },
-            { key: "meta_ads", label: "Meta Ads", icon: "ðŸ“¢", connected: status?.meta_ads },
+            { key: "instagram", label: "Instagram", icon: "📸", connected: status?.instagram },
+            { key: "tiktok", label: "TikTok", icon: "🎵", connected: status?.tiktok },
+            { key: "meta_ads", label: "Meta Ads", icon: "📢", connected: status?.meta_ads },
           ].map(svc => (
             <div key={svc.key} style={{
               display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
@@ -1132,7 +1132,7 @@ export default function SetupPage() {
           style={{ background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 6, marginBottom: showAutoProvision ? 12 : 0 }}
         >
           <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.textMuted, fontWeight: 600 }}>
-            Auto-provision (advanced) {showAutoProvision ? "â–¾" : "â–¸"}
+            Auto-provision (advanced) {showAutoProvision ? "▾" : "▸"}
           </span>
         </button>
 
@@ -1144,7 +1144,7 @@ export default function SetupPage() {
           }}>
             <p style={{ fontSize: 13, color: c.grey, margin: 0, lineHeight: 1.6 }}>
               Astra can auto-create GitHub, Vercel, SendGrid, and Composio accounts using Playwright.
-              Provide the email/password for a <strong style={{ color: c.text }}>new dedicated</strong> account â€” not your personal one.
+              Provide the email/password for a <strong style={{ color: c.text }}>new dedicated</strong> account — not your personal one.
             </p>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <input
@@ -1176,12 +1176,12 @@ export default function SetupPage() {
                 opacity: autoProvisioning || !autoEmail.trim() || !autoPassword.trim() ? 0.6 : 1,
               }}
             >
-              {autoProvisioning ? "Provisioningâ€¦ (2â€“5 min)" : "Auto-provision â†’"}
+              {autoProvisioning ? "Provisioning… (2–5 min)" : "Auto-provision →"}
             </button>
             {autoResult && (
               <div style={{ borderRadius: 8, background: c.surface, border: `1px solid ${c.border}`, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 5 }}>
                 {autoResult.map((line, i) => (
-                  <p key={i} style={{ margin: 0, fontSize: 13, color: line.startsWith("âœ“") ? c.green : line.startsWith("âœ—") ? c.red : c.text, lineHeight: 1.5 }}>
+                  <p key={i} style={{ margin: 0, fontSize: 13, color: line.startsWith("✓") ? c.green : line.startsWith("✗") ? c.red : c.text, lineHeight: 1.5 }}>
                     {line}
                   </p>
                 ))}
@@ -1201,7 +1201,7 @@ export default function SetupPage() {
             display: "inline-block",
           }}
         >
-          Back to app â†’
+          Back to app →
         </Link>
       </div>
     </div>

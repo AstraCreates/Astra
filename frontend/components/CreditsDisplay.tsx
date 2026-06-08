@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import { getCredits, purchaseCredits, CreditBalance } from "@/lib/api";
 
-// â”€â”€ Pack definitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Pack definitions ──────────────────────────────────────────────────────────
 
 const PACKS: {
   id: "starter" | "pro" | "scale";
@@ -38,7 +38,7 @@ const PACKS: {
   },
 ];
 
-// â”€â”€ Coin icon â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Coin icon ─────────────────────────────────────────────────────────────────
 
 function CoinIcon({ size = 16 }: { size?: number }) {
   return (
@@ -66,7 +66,7 @@ function CoinIcon({ size = 16 }: { size?: number }) {
   );
 }
 
-// â”€â”€ Transaction row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Transaction row ───────────────────────────────────────────────────────────
 
 function TxRow({
   tx,
@@ -120,7 +120,7 @@ function TxRow({
   );
 }
 
-// â”€â”€ Pack card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Pack card ─────────────────────────────────────────────────────────────────
 
 function PackCard({
   pack,
@@ -244,7 +244,7 @@ function PackCard({
   );
 }
 
-// â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Main component ────────────────────────────────────────────────────────────
 
 export default function CreditsDisplay() {
   const { userId } = useDevUser();
@@ -265,7 +265,7 @@ export default function CreditsDisplay() {
       const data = await getCredits(founderId);
       setBalance(data);
     } catch {
-      // silently ignore â€” balance may not exist yet
+      // silently ignore — balance may not exist yet
     } finally {
       setLoadingBalance(false);
     }
@@ -409,7 +409,7 @@ export default function CreditsDisplay() {
       {/* Price / spend tracker */}
       {balance !== null && (
         <div style={{ marginTop: 5, paddingLeft: 2, fontSize: 9.5, color: "#9CA3AF", fontFamily: "var(--font-ibm-mono), monospace", lineHeight: 1.5 }}>
-          spent {balance.total_used.toLocaleString()} cr Â· ~${(balance.total_used * 0.0998).toFixed(2)}
+          spent {balance.total_used.toLocaleString()} cr · ~${(balance.total_used * 0.0998).toFixed(2)}
         </div>
       )}
 
@@ -542,7 +542,7 @@ export default function CreditsDisplay() {
                     fontVariantNumeric: "tabular-nums",
                   }}
                 >
-                  {balance?.balance.toLocaleString() ?? "â€”"}
+                  {balance?.balance.toLocaleString() ?? "—"}
                 </span>
                 <span style={{ fontSize: 15, color: "#3B82F6", fontWeight: 500 }}>
                   credits

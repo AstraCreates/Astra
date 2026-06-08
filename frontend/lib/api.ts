@@ -2004,16 +2004,44 @@ export const AGENT_LABELS: Record<string, string> = {
   research: "Market Research",
   research_competitors: "Competitor Intel",
   research_execution: "Execution Strategy",
+  research_market: "Market Analysis",
+  research_financial: "Financial Research",
+  research_regulatory: "Regulatory Research",
   web: "Web & Landing Page",
+  web_navigator: "Web Navigator",
   marketing: "Marketing & Social",
+  marketing_content: "Content Creation",
+  marketing_outreach: "Outreach Campaigns",
+  marketing_seo: "SEO Strategy",
+  marketing_paid: "Paid Advertising",
   technical: "Technical Architecture",
+  technical_scaffold: "Code Scaffold",
+  technical_infra: "Infrastructure",
+  technical_data: "Data Architecture",
   legal: "Legal & Compliance",
+  legal_docs: "Legal Documents",
+  legal_entity: "Entity Formation",
+  legal_ip: "IP & Patents",
   ops: "Ops & Fundraising",
   sales: "Sales & Outreach",
+  sales_pipeline: "Sales Pipeline",
+  sales_enablement: "Sales Enablement",
   design: "Design & Brand",
+  finance_model: "Financial Model",
+  finance_fundraise: "Fundraising",
 };
 
-export const AGENT_ORDER = ["research", "research_competitors", "research_execution", "web", "marketing", "technical", "legal", "ops", "sales", "design"];
+export const AGENT_ORDER = [
+  "research", "research_competitors", "research_execution", "research_market", "research_financial", "research_regulatory",
+  "design",
+  "technical", "technical_scaffold", "technical_infra", "technical_data",
+  "web", "web_navigator",
+  "marketing", "marketing_content", "marketing_outreach", "marketing_seo", "marketing_paid",
+  "legal", "legal_docs", "legal_entity", "legal_ip",
+  "sales", "sales_pipeline", "sales_enablement",
+  "finance_model", "finance_fundraise",
+  "ops",
+];
 
 const AGENT_ORDER_INDEX = new Map(AGENT_ORDER.map((agent, index) => [agent, index]));
 

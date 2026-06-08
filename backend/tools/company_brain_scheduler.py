@@ -65,7 +65,7 @@ async def stop_company_brain_scheduler() -> dict[str, Any]:
     if _task:
         try:
             await asyncio.wait_for(_task, timeout=5)
-        except Exception:
+        except (Exception, asyncio.CancelledError):
             _task.cancel()
     _status["running"] = False
     return get_company_brain_scheduler_status()

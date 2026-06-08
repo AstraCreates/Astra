@@ -12,7 +12,7 @@ import {
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface StripeStatus {
   connected: boolean;
@@ -58,7 +58,7 @@ interface WebhookEvent {
   data: Record<string, unknown>;
 }
 
-// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmt(amount: number, currency = "usd") {
   return new Intl.NumberFormat("en-US", {
@@ -83,7 +83,7 @@ function statusColor(s: string) {
   return "#dc2626";
 }
 
-// â”€â”€ Chart data builders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Chart data builders ───────────────────────────────────────────────────────
 
 function buildRevenueByDay(charges: Charge[]) {
   const map: Record<string, number> = {};
@@ -119,7 +119,7 @@ function buildPayoutsByMonth(payouts: Payout[]) {
   return Object.entries(map).map(([month, amount]) => ({ month, amount }));
 }
 
-// â”€â”€ Sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function StatCard({ label, value, sub, accent, badge }: {
   label: string; value: string; sub?: string; accent?: string; badge?: string;
@@ -181,7 +181,7 @@ const tooltipStyle = {
   labelStyle: { color: "#9CA3AF", marginBottom: 4 },
 };
 
-// â”€â”€ Connect screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Connect screen ────────────────────────────────────────────────────────────
 
 function ConnectStripe({ founderId, email }: { founderId: string; email: string }) {
   const [loading, setLoading] = useState(false);
@@ -214,7 +214,7 @@ function ConnectStripe({ founderId, email }: { founderId: string; email: string 
           Click below to connect or create your Stripe account. Astra will securely link it so you can track revenue, balance, and payouts right here.
         </p>
         <p style={{ fontSize: 12, color: "#9CA3AF", marginTop: 10, lineHeight: 1.6 }}>
-          No EIN required â€” upgrade to a business account after your LLC is filed.
+          No EIN required — upgrade to a business account after your LLC is filed.
         </p>
       </div>
       {error && (
@@ -223,10 +223,10 @@ function ConnectStripe({ founderId, email }: { founderId: string; email: string 
         </div>
       )}
       <button onClick={connect} disabled={loading} className="site-btn site-btn-primary" style={{ minHeight: 44, padding: "0 36px", fontSize: 14, opacity: loading ? 0.7 : 1 }}>
-        {loading ? "Redirecting to Stripeâ€¦" : "Connect Stripe â†’"}
+        {loading ? "Redirecting to Stripe…" : "Connect Stripe →"}
       </button>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
-        {["Stripe opens â€” sign in or create a free account", "Authorize Astra to read your data", "You're redirected back here automatically"].map((s, i) => (
+        {["Stripe opens — sign in or create a free account", "Authorize Astra to read your data", "You're redirected back here automatically"].map((s, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "#6B7280" }}>
             <span style={{
               width: 20, height: 20, borderRadius: "50%",
@@ -345,16 +345,16 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
               opacity: (creating || !form.name || !form.amount) ? 0.6 : 1, fontWeight: 500,
             }}
           >
-            {creating ? "Creatingâ€¦" : "Create product + payment link â†’"}
+            {creating ? "Creating…" : "Create product + payment link →"}
           </button>
         </div>
       )}
 
       {loading ? (
-        <p style={{ padding: "20px", fontSize: 13, color: "#9CA3AF", margin: 0 }}>Loadingâ€¦</p>
+        <p style={{ padding: "20px", fontSize: 13, color: "#9CA3AF", margin: 0 }}>Loading…</p>
       ) : products.length === 0 ? (
         <p style={{ padding: "20px", fontSize: 13, color: "#9CA3AF", margin: 0 }}>
-          No products yet. Create one above â€” Astra will generate a shareable Stripe payment link instantly.
+          No products yet. Create one above — Astra will generate a shareable Stripe payment link instantly.
         </p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column" }}>
@@ -377,7 +377,7 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
                         </button>
                       )}
                       {pr.payment_link && (
-                        <a href={pr.payment_link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "#9CA3AF", textDecoration: "none" }}>â†—</a>
+                        <a href={pr.payment_link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "#9CA3AF", textDecoration: "none" }}>↗</a>
                       )}
                     </div>
                   ))}
@@ -419,12 +419,12 @@ function AlertsFeed({ founderId }: { founderId: string }) {
   };
 
   const alertIcon = (type: string) => {
-    if (type.includes("succeeded") || type.includes("paid")) return "âœ“";
-    if (type.includes("failed")) return "âœ—";
-    if (type.includes("subscription.deleted")) return "â†©";
-    if (type.includes("subscription")) return "â†»";
-    if (type.includes("refund")) return "â†²";
-    return "â—";
+    if (type.includes("succeeded") || type.includes("paid")) return "✓";
+    if (type.includes("failed")) return "✗";
+    if (type.includes("subscription.deleted")) return "↩";
+    if (type.includes("subscription")) return "↻";
+    if (type.includes("refund")) return "↲";
+    return "●";
   };
 
   const alertColor = (type: string) => {
@@ -446,7 +446,7 @@ function AlertsFeed({ founderId }: { founderId: string }) {
             border: "1px solid #E5E7EB", cursor: "pointer", fontWeight: 500,
           }}
         >
-          {registering ? "Registeringâ€¦" : "Enable alerts"}
+          {registering ? "Registering…" : "Enable alerts"}
         </button>
       ) : (
         <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>
@@ -458,7 +458,7 @@ function AlertsFeed({ founderId }: { founderId: string }) {
       {events.length === 0 ? (
         <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 8 }}>
           <p style={{ fontSize: 13, color: "#6B7280", margin: 0 }}>
-            {webhookRegistered ? "No events yet â€” alerts will appear here when payments come in." : "Enable alerts to get notified instantly when payments come in, subscriptions churn, or payouts complete."}
+            {webhookRegistered ? "No events yet — alerts will appear here when payments come in." : "Enable alerts to get notified instantly when payments come in, subscriptions churn, or payouts complete."}
           </p>
           {!webhookRegistered && (
             <p style={{ fontSize: 12, color: "#9CA3AF", margin: 0 }}>
@@ -486,7 +486,7 @@ function AlertsFeed({ founderId }: { founderId: string }) {
 
 function EINUpgradeSection({ upgraded, businessName }: { upgraded: boolean; businessName?: string }) {
   return (
-    <SectionCard title="Business Upgrade Â· EIN">
+    <SectionCard title="Business Upgrade · EIN">
       <div style={{ padding: "20px 24px", display: "flex", alignItems: "flex-start", gap: 16 }}>
         <div style={{ flex: 1 }}>
           {upgraded ? (
@@ -498,7 +498,7 @@ function EINUpgradeSection({ upgraded, businessName }: { upgraded: boolean; busi
             <>
               <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 600, color: "#111827" }}>Upgrade to LLC / Business</p>
               <p style={{ margin: "0 0 10px", fontSize: 13, color: "#6B7280", lineHeight: 1.6 }}>Once your LLC is filed via Astra and your EIN arrives from the IRS, you&apos;ll update your Stripe account to your business entity. Switches tax reporting from SSN to EIN.</p>
-              <p style={{ margin: 0, fontSize: 12, color: "#9CA3AF" }}><strong style={{ color: "#374151" }}>Timeline:</strong> File LLC â†’ IRS issues EIN in 1â€“4 weeks â†’ update Stripe â†’ done.</p>
+              <p style={{ margin: 0, fontSize: 12, color: "#9CA3AF" }}><strong style={{ color: "#374151" }}>Timeline:</strong> File LLC → IRS issues EIN in 1–4 weeks → update Stripe → done.</p>
             </>
           )}
         </div>
@@ -515,7 +515,7 @@ function EINUpgradeSection({ upgraded, businessName }: { upgraded: boolean; busi
   );
 }
 
-// â”€â”€ Main â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function PaymentsPage() {
   const { userId } = useDevUser();
@@ -582,7 +582,7 @@ export default function PaymentsPage() {
             fontSize: 13, padding: "6px 14px", borderRadius: 8,
             background: "#FFFFFF", color: "#374151",
             border: "1px solid #E5E7EB", textDecoration: "none", fontWeight: 500,
-          }}>â† Back</Link>
+          }}>← Back</Link>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: "#111827", letterSpacing: "-0.02em" }}>Payments</h1>
             <p style={{ fontSize: 13, color: "#6B7280", margin: "3px 0 0" }}>Revenue, balance, and transactions</p>
@@ -609,7 +609,7 @@ export default function PaymentsPage() {
                 border: "1px solid #E5E7EB", cursor: "pointer", fontWeight: 500,
               }}
             >
-              {loadingData ? "Loadingâ€¦" : "Refresh"}
+              {loadingData ? "Loading…" : "Refresh"}
             </button>
           </div>
         )}
@@ -624,7 +624,7 @@ export default function PaymentsPage() {
       {loadingStatus && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "48px 0", justifyContent: "center", color: "#9CA3AF", fontSize: 13 }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#9CA3AF", display: "inline-block" }} />
-          Checking Stripe connectionâ€¦
+          Checking Stripe connection…
         </div>
       )}
 
@@ -659,7 +659,7 @@ export default function PaymentsPage() {
               </div>
 
               {/* Revenue chart */}
-              <SectionCard title="Revenue â€” Last 14 Days">
+              <SectionCard title="Revenue — Last 14 Days">
                 <div style={{ padding: "24px 20px 16px" }}>
                   {hasActivity ? (
                     <ResponsiveContainer width="100%" height={220}>
@@ -680,7 +680,7 @@ export default function PaymentsPage() {
                   ) : (
                     <div style={{ height: 220, display: "flex", alignItems: "center", justifyContent: "center", color: "#9CA3AF", fontSize: 13, flexDirection: "column", gap: 8 }}>
                       <span style={{ fontSize: 28, color: "#D1D5DB" }}>$</span>
-                      No transactions yet â€” create a test payment in Stripe to see your chart
+                      No transactions yet — create a test payment in Stripe to see your chart
                     </div>
                   )}
                 </div>
@@ -745,8 +745,8 @@ export default function PaymentsPage() {
                         {data.charges.map((c, i) => (
                           <tr key={c.id} style={{ borderBottom: i < data.charges.length - 1 ? "1px solid #E5E7EB" : "none", background: i % 2 === 1 ? "#F9FAFB" : "#FFFFFF" }}>
                             <td style={{ padding: "11px 16px", color: "#6B7280", whiteSpace: "nowrap", fontSize: 12 }}>{fmtDate(c.created)}</td>
-                            <td style={{ padding: "11px 16px", color: "#374151" }}>{c.customer_email ?? "â€”"}</td>
-                            <td style={{ padding: "11px 16px", color: "#374151", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.description ?? "â€”"}</td>
+                            <td style={{ padding: "11px 16px", color: "#374151" }}>{c.customer_email ?? "—"}</td>
+                            <td style={{ padding: "11px 16px", color: "#374151", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.description ?? "—"}</td>
                             <td style={{ padding: "11px 16px", color: "#111827", fontWeight: 600, whiteSpace: "nowrap" }}>{fmt(c.amount, c.currency)}</td>
                             <td style={{ padding: "11px 16px" }}>
                               <span style={{

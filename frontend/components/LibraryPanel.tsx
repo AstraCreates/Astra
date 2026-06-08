@@ -10,7 +10,7 @@ import {
   deleteLibraryFile,
 } from "@/lib/api";
 
-// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 const DEPARTMENTS = ["All", "Research", "Marketing", "Technical", "Legal", "Ops", "Finance"] as const;
 type Department = (typeof DEPARTMENTS)[number];
@@ -42,7 +42,7 @@ function formatDate(iso: string): string {
   }
 }
 
-// â”€â”€ Sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Sub-components ─────────────────────────────────────────────────────────────
 
 function DeptBadge({ department }: { department: string }) {
   const cls = DEPT_COLORS[department] ?? "bg-gray-50 text-gray-700 border-gray-200";
@@ -104,7 +104,7 @@ function FileRow({ file, selected, onSelect, onDelete }: FileRowProps) {
   );
 }
 
-// â”€â”€ New File Form â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── New File Form ──────────────────────────────────────────────────────────────
 
 interface NewFileFormProps {
   founderId: string;
@@ -194,7 +194,7 @@ function NewFileForm({ founderId, onCreated, onCancel }: NewFileFormProps) {
           />
           <label htmlFor="is-canonical" className="text-sm text-[#111827] select-none">
             <span className="text-amber-500 mr-1">&#9733;</span>
-            Canonical â€” auto-inject into agent context
+            Canonical — auto-inject into agent context
           </label>
         </div>
         <div className="flex-1">
@@ -227,7 +227,7 @@ function NewFileForm({ founderId, onCreated, onCancel }: NewFileFormProps) {
   );
 }
 
-// â”€â”€ File Editor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── File Editor ────────────────────────────────────────────────────────────────
 
 interface FileEditorProps {
   file: LibraryFile;
@@ -363,7 +363,7 @@ function FileEditor({ file, founderId, onUpdated, onClose }: FileEditorProps) {
   );
 }
 
-// â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Main Component ─────────────────────────────────────────────────────────────
 
 interface LibraryPanelProps {
   founderId: string;

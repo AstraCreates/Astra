@@ -7,7 +7,7 @@ import {
   setModelOverride,
 } from "@/lib/api";
 
-// â”€â”€ Agent metadata â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Agent metadata ──────────────────────────────────────────────────────────
 
 type Department = "Research" | "Marketing" | "Technical" | "Legal" | "Sales" | "Finance" | "Ops";
 
@@ -65,13 +65,13 @@ const DEPARTMENT_ORDER: Department[] = [
 ];
 
 const DEPT_ICON: Record<Department, string> = {
-  Research:  "â—‹",
-  Marketing: "â—†",
-  Technical: "â—ˆ",
-  Legal:     "â—‰",
-  Sales:     "â—‡",
-  Finance:   "â—‘",
-  Ops:       "â—Ž",
+  Research:  "○",
+  Marketing: "◆",
+  Technical: "◈",
+  Legal:     "◉",
+  Sales:     "◇",
+  Finance:   "◑",
+  Ops:       "◎",
 };
 
 const DEPT_COLOR: Record<Department, string> = {
@@ -84,7 +84,7 @@ const DEPT_COLOR: Record<Department, string> = {
   Ops:       "#6B7280",
 };
 
-// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Helpers ─────────────────────────────────────────────────────────────────
 
 function shortModelName(model: string): string {
   // strip org prefix, shorten
@@ -92,7 +92,7 @@ function shortModelName(model: string): string {
   return parts[parts.length - 1] ?? model;
 }
 
-// â”€â”€ Sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Sub-components ──────────────────────────────────────────────────────────
 
 function ModelDropdown({
   value,
@@ -143,7 +143,7 @@ function ModelDropdown({
         }}
       >
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", maxWidth: 160 }}>{display}</span>
-        <span style={{ fontSize: 10, opacity: 0.6 }}>{open ? "â–²" : "â–¼"}</span>
+        <span style={{ fontSize: 10, opacity: 0.6 }}>{open ? "▲" : "▼"}</span>
       </button>
 
       {open && (
@@ -209,7 +209,7 @@ function ModelDropdown({
   );
 }
 
-// â”€â”€ Main Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Main Panel ───────────────────────────────────────────────────────────────
 
 interface Props {
   founderId: string;
@@ -507,7 +507,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
                         />
                       </div>
 
-                      {/* Reset button â€” only shown if override is active */}
+                      {/* Reset button — only shown if override is active */}
                       <div style={{ flexShrink: 0, width: 60, textAlign: "right" }}>
                         {(isOverridden) && (
                           <button
@@ -536,7 +536,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
         </div>
       )}
 
-      {/* Bottom save bar â€” sticky when there are changes */}
+      {/* Bottom save bar — sticky when there are changes */}
       {hasUnsavedChanges() && (
         <div
           style={{

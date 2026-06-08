@@ -109,7 +109,8 @@
   --color-background: var(--bg);
   --color-foreground: var(--text);
   --font-sans:  var(--font-geist-sans);
-  --font-mono:  var(--font-jetbrains-mono);
+  --font-mono:  var(--font-ibm-mono);
+  --font-jetbrains-mono: var(--font-ibm-mono);
 }
 
 /* ── Base reset ──────────────────────────────────────────────── */

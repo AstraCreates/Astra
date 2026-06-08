@@ -8,11 +8,11 @@ import type { AgentStackTemplate, AgentCatalogEntry, StackReadiness } from "@/li
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-// â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const STACK_ICONS: Record<string, string> = {
-  idea_to_revenue: "ðŸš€", sales: "ðŸ¤", marketing: "ðŸ“¢",
-  founder_ops: "ðŸ§­", support: "ðŸŽ§", product: "ðŸ“", custom: "âœ¨",
+  idea_to_revenue: "🚀", sales: "🤝", marketing: "📢",
+  founder_ops: "🧭", support: "🎧", product: "📐", custom: "✨",
 };
 
 const TOKEN_CONFIG: Record<string, { service: string; credKey: string; createUrl: string; placeholder: string }> = {
@@ -50,7 +50,7 @@ const COMPOSIO_APP_KEYS: Record<string, string> = {
   product_tracker: "linear",
 };
 
-// â”€â”€ Design tokens â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Design tokens ─────────────────────────────────────────────────────────────
 
 const T = {
   white: "#FFFFFF",
@@ -76,7 +76,7 @@ const T = {
   shadowMd: "0 4px 16px rgba(0,0,0,0.06)",
 };
 
-// â”€â”€ Shared style objects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Shared style objects ──────────────────────────────────────────────────────
 
 const CARD: React.CSSProperties = {
   borderRadius: 16,
@@ -151,7 +151,7 @@ const SECTION_LABEL: React.CSSProperties = {
   fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
 };
 
-// â”€â”€ Step dots â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Step dots ─────────────────────────────────────────────────────────────────
 
 function StepDots({ step, total = 4 }: { step: number; total?: number }) {
   return (
@@ -172,7 +172,7 @@ function StepDots({ step, total = 4 }: { step: number; total?: number }) {
   );
 }
 
-// â”€â”€ Step 2: Custom agent picker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Step 2: Custom agent picker ───────────────────────────────────────────────
 
 const GROUP_ORDER = ["research", "legal", "marketing", "sales", "technical", "finance", "ops", "web", "design"];
 const GROUP_LABELS: Record<string, string> = {
@@ -180,8 +180,8 @@ const GROUP_LABELS: Record<string, string> = {
   technical: "Technical", finance: "Finance", ops: "Ops", web: "Web", design: "Design",
 };
 const GROUP_EMOJI: Record<string, string> = {
-  research: "ðŸ”", legal: "âš–ï¸", marketing: "ðŸ“£", sales: "ðŸ’°",
-  technical: "âš™ï¸", finance: "ðŸ“Š", ops: "ðŸ§­", web: "ðŸŒ", design: "ðŸŽ¨",
+  research: "🔍", legal: "⚖️", marketing: "📣", sales: "💰",
+  technical: "⚙️", finance: "📊", ops: "🧭", web: "🌐", design: "🎨",
 };
 
 const _REQUIRED = new Set(["research"]);
@@ -248,10 +248,10 @@ function StepCustomStack({ selected, onToggle, onBack, onNext }: {
                       {agent.name}
                       {required
                         ? <span style={{ fontSize: 9, color: T.blue, textTransform: "uppercase", letterSpacing: "0.06em" }}>required</span>
-                        : active && <span style={{ color: T.blue, fontSize: 13 }}>âœ“</span>}
+                        : active && <span style={{ color: T.blue, fontSize: 13 }}>✓</span>}
                     </div>
                     <p style={{ fontSize: 10, color: T.textMuted, margin: "3px 0 0", lineHeight: 1.4 }}>
-                      {agent.description.slice(0, 55)}â€¦
+                      {agent.description.slice(0, 55)}…
                     </p>
                   </div>
                 );
@@ -266,20 +266,20 @@ function StepCustomStack({ selected, onToggle, onBack, onNext }: {
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <button style={BTN_GHOST} onClick={onBack}>â† Back</button>
+        <button style={BTN_GHOST} onClick={onBack}>← Back</button>
         <button
           style={{ ...BTN_PRIMARY, opacity: selected.length === 0 ? 0.4 : 1 }}
           onClick={onNext}
           disabled={selected.length === 0}
         >
-          Continue â†’
+          Continue →
         </button>
       </div>
     </div>
   );
 }
 
-// â”€â”€ Step 3: Connect integrations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Step 3: Connect integrations ──────────────────────────────────────────────
 
 function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, onBack, onNext }: {
   stackName: string; readiness: StackReadiness | null;
@@ -345,10 +345,10 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
   const hasComposioApp = [...required, ...optional].some(c => COMPOSIO_APPS.has(c.key));
 
   const ICONS: Record<string, string> = {
-    github: "ðŸ™", vercel: "â–²", supabase: "âš¡", clerk: "ðŸ”", gmail: "ðŸ“§",
-    google_drive: "ðŸ“", google_sheets: "ðŸ“Š", google_calendar: "ðŸ“…", slack: "ðŸ’¬",
-    notion: "ðŸ“", linear: "ðŸ“", crm: "ðŸ‘¥", linkedin: "ðŸ’¼", meta_ads: "ðŸ“±",
-    analytics: "ðŸ“ˆ", website_cms: "ðŸŒ", helpdesk: "ðŸŽ§", figma: "ðŸŽ¨", stripe: "ðŸ’³",
+    github: "🐙", vercel: "▲", supabase: "⚡", clerk: "🔐", gmail: "📧",
+    google_drive: "📁", google_sheets: "📊", google_calendar: "📅", slack: "💬",
+    notion: "📝", linear: "📐", crm: "👥", linkedin: "💼", meta_ads: "📱",
+    analytics: "📈", website_cms: "🌐", helpdesk: "🎧", figma: "🎨", stripe: "💳",
   };
 
   const cardBtnStyle: React.CSSProperties = {
@@ -519,19 +519,19 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
           </div>
           {!isConnected && (
             isGH ? (
-              <button style={cardBtnStyle} onClick={connectGitHub}>Connect â†—</button>
+              <button style={cardBtnStyle} onClick={connectGitHub}>Connect ↗</button>
             ) : isStripe ? (
-              <button style={cardBtnStyle} onClick={connectStripe}>Connect â†—</button>
+              <button style={cardBtnStyle} onClick={connectStripe}>Connect ↗</button>
             ) : isComp && composioConnected ? (
-              <button style={cardBtnStyle} onClick={() => connectComposioApp(key)}>Connect â†—</button>
+              <button style={cardBtnStyle} onClick={() => connectComposioApp(key)}>Connect ↗</button>
             ) : isComp ? (
               <span style={{ fontSize: 11, color: T.textMuted, flexShrink: 0 }}>Set up Composio first</span>
             ) : cfg ? (
               <button style={isExpanded ? expandedBtnStyle : cardBtnStyle} onClick={() => toggleExpand(key)}>
-                {isExpanded ? "Popup open â†—" : "Connect â†—"}
+                {isExpanded ? "Popup open ↗" : "Connect ↗"}
               </button>
             ) : (
-              <button style={cardBtnStyle} onClick={() => window.open("/integrations", "_blank")}>Connect â†—</button>
+              <button style={cardBtnStyle} onClick={() => window.open("/integrations", "_blank")}>Connect ↗</button>
             )
           )}
         </div>
@@ -560,7 +560,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
                 disabled={saving === key || !tokenValues[key]?.trim()}
                 style={{ ...cardBtnStyle, padding: "0 16px", opacity: (!tokenValues[key]?.trim() || saving === key) ? 0.5 : 1 }}
               >
-                {saving === key ? "â€¦" : "Save"}
+                {saving === key ? "…" : "Save"}
               </button>
             </div>
             {errors[key] && <p style={{ margin: 0, fontSize: 11, color: T.red }}>{errors[key]}</p>}
@@ -579,7 +579,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
       boxShadow: T.shadow,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px" }}>
-        <span style={{ fontSize: 20, lineHeight: 1, flexShrink: 0 }}>ðŸ”—</span>
+        <span style={{ fontSize: 20, lineHeight: 1, flexShrink: 0 }}>🔗</span>
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 13, fontWeight: 500, color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>Composio</span>
@@ -592,7 +592,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
             style={expandedKey === "__composio__" ? expandedBtnStyle : cardBtnStyle}
             onClick={() => toggleExpand("__composio__")}
           >
-            {expandedKey === "__composio__" ? "Popup open â†—" : "Connect â†—"}
+            {expandedKey === "__composio__" ? "Popup open ↗" : "Connect ↗"}
           </button>
         )}
       </div>
@@ -606,7 +606,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
           gap: 8,
         }}>
           <p style={{ margin: 0, fontSize: 11, color: T.textSecondary, lineHeight: 1.5 }}>
-            In the popup go to <strong>Settings â†’ API Keys</strong>, copy your key, paste here.
+            In the popup go to <strong>Settings → API Keys</strong>, copy your key, paste here.
           </p>
           <div style={{ display: "flex", gap: 8 }}>
             <input
@@ -621,7 +621,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
               disabled={saving === "__composio__" || !tokenValues["__composio__"]?.trim()}
               style={{ ...cardBtnStyle, padding: "0 16px", opacity: (!tokenValues["__composio__"]?.trim() || saving === "__composio__") ? 0.5 : 1 }}
             >
-              {saving === "__composio__" ? "â€¦" : "Save"}
+              {saving === "__composio__" ? "…" : "Save"}
             </button>
           </div>
           {errors["__composio__"] && <p style={{ margin: 0, fontSize: 11, color: T.red }}>{errors["__composio__"]}</p>}
@@ -662,7 +662,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
             onClick={runAutoProvision}
             disabled={autoProvisioning || !autoEmail.trim() || !autoPassword.trim()}
           >
-            {autoProvisioning ? "Connectingâ€¦" : "Auto-connect now"}
+            {autoProvisioning ? "Connecting…" : "Auto-connect now"}
           </button>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -699,31 +699,31 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
         {required.length > 0 && (
           <>
             <span style={{ ...SECTION_LABEL, marginTop: 12 }}>Required for {stackName}</span>
-            {required.map(c => card(c.key, ICONS[c.key] ?? "ðŸ”Œ", c.label, c.purpose, true))}
+            {required.map(c => card(c.key, ICONS[c.key] ?? "🔌", c.label, c.purpose, true))}
           </>
         )}
         {optional.length > 0 && (
           <>
             <span style={{ ...SECTION_LABEL, marginTop: 12 }}>Optional</span>
-            {optional.map(c => card(c.key, ICONS[c.key] ?? "ðŸ”Œ", c.label, c.purpose, false))}
+            {optional.map(c => card(c.key, ICONS[c.key] ?? "🔌", c.label, c.purpose, false))}
           </>
         )}
         <span style={{ ...SECTION_LABEL, marginTop: 12 }}>Payments</span>
-        {card("stripe", "ðŸ’³", "Stripe", "Accept payments and track revenue â€” optional", false)}
+        {card("stripe", "💳", "Stripe", "Accept payments and track revenue — optional", false)}
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <button style={BTN_GHOST} onClick={onBack}>â† Back</button>
+        <button style={BTN_GHOST} onClick={onBack}>← Back</button>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <button style={{ ...BTN_GHOST, fontSize: 12 }} onClick={onNext}>Skip for now</button>
-          <button style={BTN_PRIMARY} onClick={onNext}>Continue â†’</button>
+          <button style={BTN_PRIMARY} onClick={onNext}>Continue →</button>
         </div>
       </div>
     </div>
   );
 }
 
-// â”€â”€ Step 1: Welcome â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Step 1: Welcome ───────────────────────────────────────────────────────────
 
 function StepWelcome({ name, setName, company, setCompany, goal, setGoal, onNext }: {
   name: string; setName: (v: string) => void;
@@ -776,7 +776,7 @@ function StepWelcome({ name, setName, company, setCompany, goal, setGoal, onNext
             value={goal}
             onChange={e => setGoal(e.target.value)}
           />
-          <span style={{ fontSize: 11, color: T.textMuted }}>Be specific â€” agents tailor every artifact to your startup.</span>
+          <span style={{ fontSize: 11, color: T.textMuted }}>Be specific — agents tailor every artifact to your startup.</span>
         </div>
       </div>
 
@@ -786,14 +786,14 @@ function StepWelcome({ name, setName, company, setCompany, goal, setGoal, onNext
           onClick={onNext}
           disabled={goal.trim().length <= 10}
         >
-          Continue â†’
+          Continue →
         </button>
       </div>
     </div>
   );
 }
 
-// â”€â”€ Step 2: Choose stack â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Step 2: Choose stack ──────────────────────────────────────────────────────
 
 function StepChooseStack({ stacks, selectedStackId, onSelect, recommendation, onBack, onNext }: {
   stacks: AgentStackTemplate[]; selectedStackId: string;
@@ -833,7 +833,7 @@ function StepChooseStack({ stacks, selectedStackId, onSelect, recommendation, on
           color: T.textSecondary,
           lineHeight: 1.5,
         }}>
-          <span style={{ fontWeight: 600, color: T.blue }}>Suggested for you</span> â€” {recommendation.reason}
+          <span style={{ fontWeight: 600, color: T.blue }}>Suggested for you</span> — {recommendation.reason}
         </div>
       )}
 
@@ -843,7 +843,7 @@ function StepChooseStack({ stacks, selectedStackId, onSelect, recommendation, on
           return (
             <div key={stack.stack_id} style={selected ? CARD_SELECTED : CARD} onClick={() => onSelect(stack.stack_id)}>
               <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                <span style={{ fontSize: 22, lineHeight: 1 }}>{STACK_ICONS[stack.stack_id] ?? "ðŸ“¦"}</span>
+                <span style={{ fontSize: 22, lineHeight: 1 }}>{STACK_ICONS[stack.stack_id] ?? "📦"}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>
@@ -877,21 +877,21 @@ function StepChooseStack({ stacks, selectedStackId, onSelect, recommendation, on
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <button style={BTN_GHOST} onClick={onBack}>â† Back</button>
-        <button style={BTN_PRIMARY} onClick={onNext}>Continue â†’</button>
+        <button style={BTN_GHOST} onClick={onBack}>← Back</button>
+        <button style={BTN_PRIMARY} onClick={onNext}>Continue →</button>
       </div>
     </div>
   );
 }
 
-// â”€â”€ Step 4: Done â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Step 4: Done ──────────────────────────────────────────────────────────────
 
 function StepDone({ name, company, stackName, onLaunch }: {
   name: string; company: string; stackName: string; onLaunch: () => void;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 28, alignItems: "center", textAlign: "center" }}>
-      <div style={{ fontSize: 56, lineHeight: 1 }}>ðŸŽ‰</div>
+      <div style={{ fontSize: 56, lineHeight: 1 }}>🎉</div>
 
       <div>
         <h2 style={{ fontSize: 28, fontWeight: 700, margin: "0 0 10px", color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif", letterSpacing: "-0.02em" }}>
@@ -908,9 +908,9 @@ function StepDone({ name, company, stackName, onLaunch }: {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, width: "100%", maxWidth: 420 }}>
         {[
-          ["ðŸ¤–", "8 AI agents", "working in parallel"],
-          ["ðŸ“¦", "Artifacts", "docs, code, plans"],
-          ["âš¡", "Real actions", "deploy, send, file"],
+          ["🤖", "8 AI agents", "working in parallel"],
+          ["📦", "Artifacts", "docs, code, plans"],
+          ["⚡", "Real actions", "deploy, send, file"],
         ].map(([icon, label, desc]) => (
           <div key={label} style={{
             padding: "16px 12px",
@@ -931,13 +931,13 @@ function StepDone({ name, company, stackName, onLaunch }: {
       </div>
 
       <button style={{ ...BTN_PRIMARY, padding: "14px 44px", fontSize: 15 }} onClick={onLaunch}>
-        Launch workspace â†’
+        Launch workspace →
       </button>
     </div>
   );
 }
 
-// â”€â”€ Main wizard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Main wizard ───────────────────────────────────────────────────────────────
 
 export default function OnboardingWizard() {
   const router = useRouter();
@@ -986,7 +986,7 @@ export default function OnboardingWizard() {
   const [launching, setLaunching] = useState(false);
 
   // localStorage may be full (quota exceeded). A thrown setItem must never block
-  // navigation, AND the onboarding-done flag MUST persist â€” AppHome gates the whole
+  // navigation, AND the onboarding-done flag MUST persist — AppHome gates the whole
   // app on it, so if it doesn't save the user is stuck on the welcome screen. Try
   // increasingly aggressive eviction until the (tiny) write succeeds.
   function lsSet(key: string, val: string) {
@@ -1015,7 +1015,7 @@ export default function OnboardingWizard() {
     const g = goal.trim();
     const nm = (company.trim() || name.trim());
     const stack = selectedStackId || "idea_to_revenue";
-    // No goal yet â†’ land on the dashboard (now onboarded) so the user can start one.
+    // No goal yet → land on the dashboard (now onboarded) so the user can start one.
     if (!g) { router.push("/"); return; }
     setLaunching(true);
     try {
@@ -1027,7 +1027,7 @@ export default function OnboardingWizard() {
       if (!data.session_id) throw new Error("No session_id returned");
       window.location.assign(`/?session=${data.session_id}&founder=${encodeURIComponent(founderId)}`);
     } catch (e) {
-      // Never leave the button dead â€” fall back to the dashboard.
+      // Never leave the button dead — fall back to the dashboard.
       console.error("onboarding launch failed:", e);
       setLaunching(false);
       router.push("/");
