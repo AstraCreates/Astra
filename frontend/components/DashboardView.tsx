@@ -241,20 +241,25 @@ export default function DashboardView() {
                     {/* Delete */}
                     <button
                       title="Delete run"
+                      aria-label="Delete run"
                       disabled={deleting.has(s.session_id)}
                       onClick={(e) => del(e, s)}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onTouchStart={(e) => e.stopPropagation()}
                       style={{
-                        position: "absolute", top: 10, right: 10,
-                        width: 22, height: 22,
+                        position: "absolute", top: 6, right: 6,
+                        width: 36, height: 36,
                         display: "flex", alignItems: "center", justifyContent: "center",
                         background: "var(--surface)", border: "1px solid var(--bd)",
-                        color: "var(--fm)", cursor: "pointer", fontSize: 11, borderRadius: 5,
-                        opacity: deleting.has(s.session_id) ? 0.4 : 0.6,
+                        color: "var(--fm)", cursor: "pointer", fontSize: 14, borderRadius: 8,
+                        opacity: deleting.has(s.session_id) ? 0.4 : 0.75,
                         transition: "opacity .15s",
+                        touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
+                        zIndex: 3,
                       }}
                     >{deleting.has(s.session_id) ? "…" : "✕"}</button>
 
-                    <div style={{ flex: 1, paddingRight: 28 }}>
+                    <div style={{ flex: 1, paddingRight: 44 }}>
                       {/* Goal */}
                       <div style={{
                         fontSize: 12.5, fontWeight: 600, color: "var(--fg)",
