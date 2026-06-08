@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     # Model that drives openclaude for technical-agent MVP builds. Must be a
     # strong agentic/tool-use model (DeepSeek-V4-Flash chats instead of building).
     mvp_build_model: str = "tencent/hy3-preview"
+    # Model that produces the COMPLETE build spec (pages, data model, features, file
+    # plan) before web/technical agents build, so the build follows a real plan
+    # instead of a one-line goal. MiniMax-M3 = strong long-form planning/reasoning.
+    build_plan_model: str = "minimax/minimax-m3"
     # MVP builds (openclaude tool-use) are billed as separate, higher-rate
     # credits — this multiplier is applied to the build's token-based credit cost.
     mvp_credit_multiplier: float = 3.0

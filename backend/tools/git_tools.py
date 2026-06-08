@@ -993,6 +993,67 @@ def _file_prompt(rel_path: str, goal: str, context: str, local: str) -> str:
     )
 
 
+_BUILD_PLAN_SYSTEM = (
+    "You are a senior product engineer and architect. Given a product goal, produce a "
+    "COMPLETE, concrete build plan a coding agent can implement end-to-end with no further "
+    "decisions. Be specific and exhaustive — real features, not placeholders.\n\n"
+    "Cover, in order:\n"
+    "1. PRODUCT: one-paragraph description, the core value, and the primary user.\n"
+    "2. USER FLOWS: the key end-to-end flows (e.g. sign up → onboard → core action → result).\n"
+    "3. PAGES/ROUTES: every route with its purpose and main UI elements.\n"
+    "4. CORE FEATURES: each real feature with what it does and how it works (no vague items).\n"
+    "5. DATA MODEL: entities, fields, and relationships.\n"
+    "6. AUTH: NextAuth.js v5 or Supabase Auth (NEVER Clerk).\n"
+    "7. FILES: the concrete file tree to create/extend, each with a one-line purpose.\n"
+    "8. ACCEPTANCE: a checklist of what 'done and working' means.\n\n"
+    "This is a real product, not a landing page. The landing page already exists — plan the "
+    "actual APP (auth, dashboard, the core feature set). Output clear markdown."
+)
+
+
+def _generate_build_plan(goal: str, context: str = "", kind: str = "app") -> dict:
+    """Produce a complete build spec with MiniMax-M3 before the build runs, so
+    openclaude implements a real product instead of improvising from a one-liner.
+    Best-effort — returns {"plan": "", "files": []} on any failure (build still runs)."""
+    env = _make_env()
+    model = getattr(settings, "build_plan_model", "") or "minimax/minimax-m3"
+    try:
+        client = openai.OpenAI(base_url=env["OPENAI_BASE_URL"], api_key=env["OPENAI_API_KEY"])
+        user_msg = (
+            f"PRODUCT GOAL:\n{goal}\n\n"
+            + (f"RESEARCH / CONTEXT:\n{context[:6000]}\n\n" if context else "")
+            + f"Produce the complete build plan for the {kind}. End with a line "
+              "'FILES:' followed by a JSON array of the key files to create/extend, "
+              'e.g. FILES: ["app/dashboard/page.tsx", "app/api/auth/[...nextauth]/route.ts"].'
+        )
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": _BUILD_PLAN_SYSTEM},
+                {"role": "user", "content": user_msg},
+            ],
+            temperature=0.3,
+            timeout=120.0,
+            max_tokens=4000,
+            extra_body={"provider": {"allow_fallbacks": True}},
+        )
+        plan = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""
+        plan = re.sub(r"<think>.*?</think>", "", plan, flags=re.DOTALL).strip()
+        files: list[str] = []
+        m = re.search(r"FILES:\s*(\[.*?\])", plan, re.DOTALL)
+        if m:
+            try:
+                parsed = json.loads(m.group(1))
+                files = [str(f).strip() for f in parsed if isinstance(f, str) and f.strip()][:40]
+            except Exception:
+                files = []
+        logger.info("build plan generated (%d chars, %d files) via %s", len(plan), len(files), model)
+        return {"plan": plan, "files": files, "model": model}
+    except Exception as e:
+        logger.warning("build plan generation failed (%s) — building from goal only: %s", model, e)
+        return {"plan": "", "files": [], "model": model}
+
+
 def run_mvp_loop(
     repo_url: str,
     goal: str,
@@ -1040,22 +1101,48 @@ def run_mvp_loop(
         if is_github:
             _pull(local)
 
+        # Plan the product completely with MiniMax-M3 BEFORE building, so openclaude
+        # implements a real app from a concrete spec instead of improvising from a
+        # one-line goal (the reason builds came out as bare skeletons). Best-effort.
+        _phase("Planning the product (MiniMax-M3)…")
+        plan_info = _generate_build_plan(goal, context, kind=("website+app" if agent == "web" else "app"))
+        build_plan = plan_info.get("plan") or ""
+        if build_plan:
+            try:
+                from backend.core.events import publish_sync
+                publish_sync(session_id, {"type": "agent_build", "agent": agent, "kind": "plan",
+                                          "text": f"Build plan ready ({len(build_plan)} chars) — {plan_info.get('model','')}"})
+            except Exception:
+                pass
+            # Merge the plan's concrete file list into the build targets so the
+            # completion loop actually drives the product files into existence.
+            planned = [f for f in (plan_info.get("files") or []) if isinstance(f, str)]
+            if planned:
+                required_files = list(dict.fromkeys([*required_files, *planned]))
+            try:
+                (Path(local) / "BUILD_PLAN.md").write_text(build_plan)
+            except Exception:
+                pass
+
         # Pass 1: ONE autonomous build of the whole MVP in a persistent openclaude
         # session (it loops internally — writes every file, runs/tests, fixes),
         # then iterate until all required files exist. Not one-shot-per-file.
         build_sid = str(uuid.uuid4())
         manifest = "\n".join(f"- {f}" for f in required_files)
         build_prompt = (
-            f"Build a COMPLETE, working MVP for this product:\n{goal}\n\n"
+            f"Build a COMPLETE, working product for this goal:\n{goal}\n\n"
+            + (f"FOLLOW THIS BUILD PLAN EXACTLY — implement every page, feature, route, and data "
+               f"model in it. This is the spec, not a suggestion:\n\n{build_plan}\n\n" if build_plan else "")
             + (f"Context:\n{context}\n\n" if context else "")
             + "Create real, production-ready code for ALL of these files (and any others needed to run):\n"
             + manifest + "\n\n"
             + "Rules: no stubs, no TODOs, no placeholders — every function, route, and component fully "
-              "implemented and runnable. Build the ENTIRE app now, file by file, using your Write/Edit/Bash "
-              "tools. Keep working until the whole MVP is complete; do not stop after one file."
+              "implemented and runnable. Build the ENTIRE product (auth + dashboard + the core features "
+              "from the plan), file by file, using your Write/Edit/Bash tools. Keep working until the whole "
+              "product is complete and matches the plan; do not stop after one file or build only a landing page."
         )
-        logger.info("Pass 1: holistic MVP build (%d target files)", len(required_files))
-        _phase("Pass 1/4 — building the full MVP")
+        logger.info("Pass 1: holistic MVP build (%d target files, plan=%s)", len(required_files), bool(build_plan))
+        _phase("Pass 1/4 — building the full product" + (" from plan" if build_plan else ""))
         _run_claude(local, build_prompt, session_id=build_sid, timeout=1800,
                     founder_id=founder_id, app_session_id=session_id, agent=agent)
 
