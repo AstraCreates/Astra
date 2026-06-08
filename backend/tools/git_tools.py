@@ -567,6 +567,15 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
     openai_base = env.get("OPENAI_BASE_URL", settings.openrouter_base_url)
     openai_model = env.get("OPENAI_MODEL", model)
     if os.getuid() == 0:
+        # openclaude runs as `astra`, but the root backend process created the
+        # workspace + .git (and rewrites it between passes via _commit_and_push), so
+        # those files are root-owned and astra's `git commit` fails with exit 128
+        # ('.git' not writable). Hand the whole workspace to astra before each run.
+        try:
+            subprocess.run(["chown", "-R", "astra:astra", local], capture_output=True, timeout=120)
+            subprocess.run(["chmod", "-R", "u+rwX", local], capture_output=True, timeout=120)
+        except Exception:
+            pass
         cmd = [
             "sudo", "-u", "astra", "env",
             f"OPENAI_API_KEY={openai_key}",
