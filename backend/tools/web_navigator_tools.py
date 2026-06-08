@@ -246,7 +246,7 @@ def _vision_next_action(
                 ],
             }],
             max_tokens=512,
-            extra_body={"provider": {"require_parameters": True, "allow_fallbacks": True}},
+            extra_body={"provider": {"allow_fallbacks": True}},
         )
         raw = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""
         raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()

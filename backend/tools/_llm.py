@@ -29,7 +29,7 @@ _DI_BASE = settings.openrouter_base_url
 def _provider_routing(json_mode: bool = False) -> dict:
     """OpenRouter provider routing: only use providers that support the request
     params (json mode) and allow cross-provider fallback on error/rate-limit."""
-    return {"provider": {"require_parameters": True, "allow_fallbacks": True}}
+    return {"provider": {"allow_fallbacks": True}}
 
 
 def _api_key() -> str:

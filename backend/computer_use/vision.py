@@ -45,7 +45,7 @@ def describe_screenshot(screenshot_b64: str, context: str = "") -> str:
             }
         ],
         max_tokens=512,
-        extra_body={"provider": {"require_parameters": True, "allow_fallbacks": True}},
+        extra_body={"provider": {"allow_fallbacks": True}},
     )
     return (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""
 
@@ -77,7 +77,7 @@ def screenshot_to_action(screenshot_b64: str, goal: str, history: list[dict]) ->
             }
         ],
         max_tokens=512,
-        extra_body={"provider": {"require_parameters": True, "allow_fallbacks": True}},
+        extra_body={"provider": {"allow_fallbacks": True}},
     )
     import json, re
     raw = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""

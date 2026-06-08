@@ -30,18 +30,16 @@ def cacheable_messages(messages: list[dict[str, Any]], breakpoints: tuple[int, .
 
 def openrouter_extra_body(model: str, extra: dict[str, Any] | None = None) -> dict[str, Any] | None:
     body = dict(extra or {})
-    if "hy3" in model and "reasoning" not in body:
+    # Disable chain-of-thought reasoning tokens for our reasoning models — agents do
+    # their own JSON-structured reasoning, so the trace just burns tokens/latency
+    # (mimo/hy3 were spending most of each call generating reasoning → slow agents).
+    _m = (model or "").lower()
+    if ("hy3" in _m or "mimo" in _m or "qwen" in _m or "deepseek" in _m) and "reasoning" not in body:
         body["reasoning"] = {"effort": "none"}
-    # Provider routing — the real fix for the agent crashes. OpenRouter was load-
-    # balancing across providers, some of which 429'd (GMICloud) or returned a
-    # malformed body / rejected json mode (SiliconFlow → "Json mode is not
-    # supported"), which surfaced as 'NoneType object is not subscriptable'.
-    #   require_parameters: only route to providers that support the request params
-    #                       (e.g. response_format/json mode) → no more 400s.
-    #   allow_fallbacks:    transparently retry the next provider on error/rate-limit
-    #                       instead of handing back a broken response.
-    body.setdefault("provider", {
-        "require_parameters": True,
-        "allow_fallbacks": True,
-    })
+    # Provider routing: allow_fallbacks lets OpenRouter transparently retry the next
+    # provider on error/rate-limit instead of returning a broken body. We do NOT set
+    # require_parameters — it forces provider filtering that makes every call ~3x
+    # slower, and it's unnecessary now that we no longer send json-mode response_format
+    # (which is what some providers rejected).
+    body.setdefault("provider", {"allow_fallbacks": True})
     return body or None

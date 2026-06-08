@@ -297,7 +297,7 @@ async def mcp_http(request: Request):
                             {"role": "user", "content": args["question"]},
                         ],
                         max_tokens=1024,
-                        extra_body={"provider": {"require_parameters": True, "allow_fallbacks": True}},
+                        extra_body={"provider": {"allow_fallbacks": True}},
                     )
                     payload = {"ok": True, "agent": agent_name, "response": (resp.choices[0].message.content if getattr(resp, "choices", None) else "")}
                 result = _tool_result(payload)
