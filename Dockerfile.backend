@@ -10,7 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && echo "astra ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
+# setuptools/wheel are needed to build sdist-only deps (e.g. pyarrow); newer pip
+# no longer bundles pkg_resources, so install them explicitly first.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt && \
     playwright install chromium && \
     playwright install-deps chromium
 
