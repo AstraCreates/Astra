@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
@@ -51,7 +51,7 @@ const SOURCE_ORDER = [
 
 function statusColor(status: string): string {
   if (status === "connected") return "#3D9E5F";
-  if (status === "oauth_ready") return "#2b45ff";
+  if (status === "oauth_ready") return "#002EFF";
   if (status === "planned") return "#C58B37";
   return "var(--fg-mute)";
 }
@@ -87,7 +87,7 @@ function SourceCard({ source, active, onToggle }: { source: BrainSource; active:
         <span className="site-pill" style={{ letterSpacing: 0 }}>{source.record_count} records</span>
       </div>
       <p style={{ margin: "auto 0 0", color: "var(--fg-mute)", fontSize: 11, lineHeight: 1.45 }}>
-        {formatStatus(source.status)}{source.importer === false ? " · planned" : ""}
+        {formatStatus(source.status)}{source.importer === false ? " Â· planned" : ""}
       </p>
     </button>
   );
@@ -212,7 +212,7 @@ function ProposalCard({
   );
 }
 
-const GRAPH_COLORS = ["#2b45ff", "#3D9E5F", "#C58B37", "#B45EA4", "#0F766E", "#DC2626", "#7C3AED", "#64748B"];
+const GRAPH_COLORS = ["#002EFF", "#3D9E5F", "#C58B37", "#B45EA4", "#0F766E", "#DC2626", "#7C3AED", "#64748B"];
 
 function GraphRagPanel({
   graph,
@@ -724,10 +724,10 @@ export default function CompanyBrainPage() {
           <div>
             <div style={{ fontSize: 15, fontWeight: 650, color: "var(--fg)" }}>Continuous sync</div>
             <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>
-              Last {brain?.sync?.last_status ?? "idle"}{brain?.sync?.last_run_at ? ` at ${brain.sync.last_run_at}` : ""}{brain?.sync?.next_run_at ? ` · next ${brain.sync.next_run_at}` : ""}
+              Last {brain?.sync?.last_status ?? "idle"}{brain?.sync?.last_run_at ? ` at ${brain.sync.last_run_at}` : ""}{brain?.sync?.next_run_at ? ` Â· next ${brain.sync.next_run_at}` : ""}
             </div>
             <div style={{ fontSize: 11, color: "var(--fg-mute)", marginTop: 3 }}>
-              Scheduler {scheduler?.running ? "running" : "stopped"}{scheduler?.last_tick_at ? ` · tick ${scheduler.last_tick_at}` : ""}
+              Scheduler {scheduler?.running ? "running" : "stopped"}{scheduler?.last_tick_at ? ` Â· tick ${scheduler.last_tick_at}` : ""}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -826,7 +826,7 @@ export default function CompanyBrainPage() {
           <div style={{ borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", padding: "11px 12px", display: "grid", gap: 8 }}>
             <div style={{ color: "var(--fg)", fontSize: 13, lineHeight: 1.5 }}>{askAnswer}</div>
             <div style={{ color: "var(--fg-mute)", fontSize: 11 }}>
-              Confidence: {askConfidence !== null ? `${Math.round(askConfidence * 100)}%` : "n/a"} · Citations: {askCitations.length}
+              Confidence: {askConfidence !== null ? `${Math.round(askConfidence * 100)}%` : "n/a"} Â· Citations: {askCitations.length}
             </div>
             {askCitations.length > 0 && (
               <div style={{ display: "grid", gap: 6 }}>
@@ -851,3 +851,4 @@ export default function CompanyBrainPage() {
     </div>
   );
 }
+

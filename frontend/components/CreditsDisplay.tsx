@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import { getCredits, purchaseCredits, CreditBalance } from "@/lib/api";
 
-// ── Pack definitions ──────────────────────────────────────────────────────────
+// â”€â”€ Pack definitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const PACKS: {
   id: "starter" | "pro" | "scale";
@@ -38,7 +38,7 @@ const PACKS: {
   },
 ];
 
-// ── Coin icon ─────────────────────────────────────────────────────────────────
+// â”€â”€ Coin icon â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function CoinIcon({ size = 16 }: { size?: number }) {
   return (
@@ -49,15 +49,15 @@ function CoinIcon({ size = 16 }: { size?: number }) {
       fill="none"
       aria-hidden="true"
     >
-      <circle cx="8" cy="8" r="7.5" stroke="#2b45ff" strokeWidth="1" fill="#EFF6FF" />
-      <circle cx="8" cy="8" r="5" fill="#2b45ff" opacity="0.15" />
+      <circle cx="8" cy="8" r="7.5" stroke="#002EFF" strokeWidth="1" fill="#EFF6FF" />
+      <circle cx="8" cy="8" r="5" fill="#002EFF" opacity="0.15" />
       <text
         x="8"
         y="11.5"
         textAnchor="middle"
         fontSize="7"
         fontWeight="700"
-        fill="#2b45ff"
+        fill="#002EFF"
         fontFamily="ui-sans-serif, system-ui, sans-serif"
       >
         C
@@ -66,7 +66,7 @@ function CoinIcon({ size = 16 }: { size?: number }) {
   );
 }
 
-// ── Transaction row ───────────────────────────────────────────────────────────
+// â”€â”€ Transaction row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TxRow({
   tx,
@@ -120,7 +120,7 @@ function TxRow({
   );
 }
 
-// ── Pack card ─────────────────────────────────────────────────────────────────
+// â”€â”€ Pack card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function PackCard({
   pack,
@@ -149,7 +149,7 @@ function PackCard({
         gap: 6,
         padding: "16px 12px",
         border: pack.popular
-          ? "2px solid #2b45ff"
+          ? "2px solid #002EFF"
           : `1px solid ${hovered ? "#D1D5DB" : "#E5E7EB"}`,
         borderRadius: 12,
         background: pack.popular
@@ -176,7 +176,7 @@ function PackCard({
             top: -10,
             left: "50%",
             transform: "translateX(-50%)",
-            background: "#2b45ff",
+            background: "#002EFF",
             color: "#FFFFFF",
             fontSize: 10,
             fontWeight: 600,
@@ -194,7 +194,7 @@ function PackCard({
         style={{
           fontSize: 22,
           fontWeight: 700,
-          color: "#2b45ff",
+          color: "#002EFF",
           letterSpacing: "-0.02em",
           lineHeight: 1,
         }}
@@ -223,7 +223,7 @@ function PackCard({
             width: 16,
             height: 16,
             border: "2px solid #BFDBFE",
-            borderTopColor: "#2b45ff",
+            borderTopColor: "#002EFF",
             borderRadius: "50%",
             animation: "credits-spin 0.7s linear infinite",
           }}
@@ -234,7 +234,7 @@ function PackCard({
             marginTop: 6,
             fontSize: 12,
             fontWeight: 600,
-            color: pack.popular ? "#2b45ff" : "#374151",
+            color: pack.popular ? "#002EFF" : "#374151",
           }}
         >
           Buy
@@ -244,7 +244,7 @@ function PackCard({
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function CreditsDisplay() {
   const { userId } = useDevUser();
@@ -265,7 +265,7 @@ export default function CreditsDisplay() {
       const data = await getCredits(founderId);
       setBalance(data);
     } catch {
-      // silently ignore — balance may not exist yet
+      // silently ignore â€” balance may not exist yet
     } finally {
       setLoadingBalance(false);
     }
@@ -358,7 +358,7 @@ export default function CreditsDisplay() {
           borderRadius: 9999,
           border: isLow ? "1px solid #FCA5A5" : "1px solid #E5E7EB",
           background: isLow ? "#FEF2F2" : "#EFF6FF",
-          color: isLow ? "#DC2626" : "#2b45ff",
+          color: isLow ? "#DC2626" : "#002EFF",
           fontSize: 13,
           fontWeight: 600,
           cursor: "pointer",
@@ -409,7 +409,7 @@ export default function CreditsDisplay() {
       {/* Price / spend tracker */}
       {balance !== null && (
         <div style={{ marginTop: 5, paddingLeft: 2, fontSize: 9.5, color: "#9CA3AF", fontFamily: "var(--font-ibm-mono), monospace", lineHeight: 1.5 }}>
-          spent {balance.total_used.toLocaleString()} cr · ~${(balance.total_used * 0.0998).toFixed(2)}
+          spent {balance.total_used.toLocaleString()} cr Â· ~${(balance.total_used * 0.0998).toFixed(2)}
         </div>
       )}
 
@@ -536,13 +536,13 @@ export default function CreditsDisplay() {
                   style={{
                     fontSize: 36,
                     fontWeight: 800,
-                    color: "#2b45ff",
+                    color: "#002EFF",
                     letterSpacing: "-0.03em",
                     lineHeight: 1,
                     fontVariantNumeric: "tabular-nums",
                   }}
                 >
-                  {balance?.balance.toLocaleString() ?? "—"}
+                  {balance?.balance.toLocaleString() ?? "â€”"}
                 </span>
                 <span style={{ fontSize: 15, color: "#3B82F6", fontWeight: 500 }}>
                   credits
@@ -661,3 +661,4 @@ export default function CreditsDisplay() {
     </>
   );
 }
+

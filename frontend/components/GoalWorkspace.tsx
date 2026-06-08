@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useState, useRef, useSyncExternalStore, Component } from "react";
 import type { ReactNode } from "react";
@@ -158,14 +158,14 @@ const PREVIEW_HEADER: React.CSSProperties = {
 };
 
 const AGENT_ICONS: Record<string, string> = {
-  research: "🔬", research_competitors: "🏆", research_execution: "📋",
-  web: "🌐", marketing: "📢", technical: "⚙️",
-  legal: "⚖️", ops: "🚀", sales: "🤝", design: "🎨",
+  research: "ðŸ”¬", research_competitors: "ðŸ†", research_execution: "ðŸ“‹",
+  web: "ðŸŒ", marketing: "ðŸ“¢", technical: "âš™ï¸",
+  legal: "âš–ï¸", ops: "ðŸš€", sales: "ðŸ¤", design: "ðŸŽ¨",
 };
 
 const STATUS_COLOR = {
   waiting: "rgba(0,0,0,0.2)",
-  running: "#2b45ff",
+  running: "#002EFF",
   done: "#3D9E5F",
   error: "#C0392B",
 };
@@ -235,7 +235,7 @@ function extractHexFromObj(obj: unknown, depth = 0): string[] {
   });
 }
 
-// Find the first nested object that has ≥2 hex string values — that's the color palette
+// Find the first nested object that has â‰¥2 hex string values â€” that's the color palette
 function findPalette(obj: unknown, depth = 0): Record<string, string> | null {
   if (depth > 4 || !obj || typeof obj !== "object") return null;
   const entries = Object.entries(obj as Record<string, unknown>);
@@ -347,7 +347,7 @@ function extractAdImagesFromResult(obj: unknown, seen = new Set<string>()): Arra
   return results;
 }
 
-// ── Agent-specific preview panels ──────────────────────────────────────────
+// â”€â”€ Agent-specific preview panels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ResearchPreview({ state }: { state: AgentState }) {
   // Use the full source list (visitedUrls now includes every source the pipeline
@@ -381,7 +381,7 @@ function ResearchPreview({ state }: { state: AgentState }) {
               return (
                 <span key={d} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, padding: "3px 9px", borderRadius: 999, border: `1px solid hsla(${hue},60%,55%,0.25)`, background: `hsla(${hue},60%,55%,0.07)`, color: `hsla(${hue},60%,75%,0.9)` }}>
                   {faviconUrl("https://" + d) && <img src={faviconUrl("https://" + d)!} width={11} height={11} onError={e => (e.currentTarget.style.display = "none")} />}
-                  {d}{n > 1 ? <span style={{ opacity: 0.6, fontSize: 9, marginLeft: 2 }}>×{n}</span> : null}
+                  {d}{n > 1 ? <span style={{ opacity: 0.6, fontSize: 9, marginLeft: 2 }}>Ã—{n}</span> : null}
                 </span>
               );
             })}
@@ -393,7 +393,7 @@ function ResearchPreview({ state }: { state: AgentState }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", borderBottom: "1px solid rgba(0,0,0,0.07)", background: "rgba(180,205,228,0.10)" }}>
             {faviconUrl(current) && <img src={faviconUrl(current)!} width={12} height={12} style={{ opacity: 0.6 }} onError={e => (e.currentTarget.style.display = "none")} />}
             <span style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{current}</span>
-            <a href={current} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2b45ff", textDecoration: "none" }}>↗</a>
+            <a href={current} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#002EFF", textDecoration: "none" }}>â†—</a>
           </div>
           <div style={{ height: 280, position: "relative" }}>
             <iframe
@@ -415,7 +415,7 @@ function ResearchPreview({ state }: { state: AgentState }) {
           </a>
         ))}
         {urls.length === 0 && state.status === "running" && (
-          <LiveRunningLog state={state} label="Searching…" />
+          <LiveRunningLog state={state} label="Searchingâ€¦" />
         )}
       </div>
     </div>
@@ -448,7 +448,7 @@ function WebPreview({ state, sessionId, founderId }: { state: AgentState; sessio
               {["#ff5f57","#febc2e","#28c840"].map(c => <div key={c} style={{ width: 10, height: 10, borderRadius: "50%", background: c }} />)}
             </div>
             <span style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{url}</span>
-            <a href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2b45ff", textDecoration: "none" }}>↗</a>
+            <a href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#002EFF", textDecoration: "none" }}>â†—</a>
           </div>
           <div style={{ height: 340, background: "#FFFFFF" }}>
             <iframe src={url} style={{ width: "100%", height: "100%", border: "none" }} title="Site preview" />
@@ -470,13 +470,13 @@ function WebPreview({ state, sessionId, founderId }: { state: AgentState; sessio
           <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)" }}>Recent commits</span>
           {commits.map((c, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 6, background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
-              <span style={{ fontFamily: "var(--font-jetbrains-mono)", fontSize: 10, color: "#2b45ff" }}>●</span>
+              <span style={{ fontFamily: "var(--font-jetbrains-mono)", fontSize: 10, color: "#002EFF" }}>â—</span>
               <span style={{ fontSize: 11, color: "var(--fg-dim)" }}>{c}</span>
             </div>
           ))}
         </>
       ) : buildEvents.length === 0 && (
-        <LiveRunningLog state={state} label="Building Next.js landing…" />
+        <LiveRunningLog state={state} label="Building Next.js landingâ€¦" />
       )}
     </div>
   );
@@ -492,29 +492,29 @@ interface BuildEvent {
 function BuildStream({ events, files }: { events: BuildEvent[]; files: Record<string, { content: string; size: number }> }) {
   const [open, setOpen] = useState<string | null>(null);
   const fileList = Object.keys(files).sort();
-  const icon = (k: string) => k === "file" ? "📝" : k === "command" ? "▶" : k === "build_start" ? "🔨" : k === "done" ? "✅" : k === "deploy" ? "🚀" : k === "deploy_start" ? "☁️" : k === "tool" ? "⚙" : k === "phase" ? "◆" : k === "plan" ? "📋" : k === "output" ? "»" : k === "error" ? "⚠" : "·";
+  const icon = (k: string) => k === "file" ? "ðŸ“" : k === "command" ? "â–¶" : k === "build_start" ? "ðŸ”¨" : k === "done" ? "âœ…" : k === "deploy" ? "ðŸš€" : k === "deploy_start" ? "â˜ï¸" : k === "tool" ? "âš™" : k === "phase" ? "â—†" : k === "plan" ? "ðŸ“‹" : k === "output" ? "Â»" : k === "error" ? "âš " : "Â·";
   const lineText = (e: BuildEvent) =>
     e.kind === "file" ? `${e.verb ?? "wrote"} ${e.path} (${e.size ?? 0}b)` :
     e.kind === "command" ? `$ ${e.command}${e.desc ? `  # ${e.desc}` : ""}` :
     e.kind === "build_start" ? `Building MVP: ${e.goal ?? ""}` :
-    e.kind === "done" ? `Build step complete — ${(e.files?.length ?? 0)} files` :
-    e.kind === "deploy_start" ? "Deploying to Vercel…" :
-    e.kind === "deploy" ? `Deployed → ${e.url ?? ""}` :
+    e.kind === "done" ? `Build step complete â€” ${(e.files?.length ?? 0)} files` :
+    e.kind === "deploy_start" ? "Deploying to Vercelâ€¦" :
+    e.kind === "deploy" ? `Deployed â†’ ${e.url ?? ""}` :
     e.kind === "tool" ? `${e.tool ?? "tool"} ${e.target ?? ""}` :
-    e.kind === "output" ? `${e.command ? e.command + " → " : ""}${e.text ?? ""}` :
+    e.kind === "output" ? `${e.command ? e.command + " â†’ " : ""}${e.text ?? ""}` :
     e.kind === "error" ? `error: ${e.text ?? ""}` :
     (e.text ?? "");
   if (!events.length && !fileList.length) return null;
   return (
     <div style={{ display: "grid", gap: 10 }}>
       <div style={{ ...PREVIEW_CARD, padding: 0, overflow: "hidden" }}>
-        <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#2b45ff", padding: "8px 10px", borderBottom: "1px solid var(--line)" }}>openclaude build · live</div>
+        <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#002EFF", padding: "8px 10px", borderBottom: "1px solid var(--line)" }}>openclaude build Â· live</div>
         <div style={{ maxHeight: 200, overflowY: "auto", padding: "6px 10px", fontFamily: "var(--font-jetbrains-mono)", fontSize: 11, lineHeight: 1.5 }}>
           {events.slice(-120).map((e, i) => {
             const wrap = e.kind === "output" || e.kind === "error" || e.kind === "plan";
             const color = e.kind === "error" ? "#D14343"
               : e.kind === "file" ? "#3D9E5F"
-              : e.kind === "command" ? "#2b45ff"
+              : e.kind === "command" ? "#002EFF"
               : e.kind === "phase" ? "#7C3AED"
               : e.kind === "output" ? "var(--fg-mute)"
               : "var(--fg-dim)";
@@ -533,11 +533,11 @@ function BuildStream({ events, files }: { events: BuildEvent[]; files: Record<st
             {fileList.map((p) => (
               <div key={p} style={{ borderBottom: "1px solid var(--line-2)" }}>
                 <button onClick={() => setOpen(open === p ? null : p)} style={{ width: "100%", textAlign: "left", display: "flex", justifyContent: "space-between", gap: 8, padding: "6px 10px", background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--fg-dim)", fontFamily: "var(--font-jetbrains-mono)" }}>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{open === p ? "▾" : "▸"} {p}</span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{open === p ? "â–¾" : "â–¸"} {p}</span>
                   <span style={{ color: "var(--fg-mute)", flexShrink: 0 }}>{files[p].size}b</span>
                 </button>
                 {open === p && (
-                  <pre style={{ margin: 0, padding: "8px 12px", background: "rgba(0,0,0,0.03)", fontSize: 10.5, lineHeight: 1.45, overflowX: "auto", maxHeight: 280, color: "var(--fg)" }}>{files[p].content || "(streaming…)"}</pre>
+                  <pre style={{ margin: 0, padding: "8px 12px", background: "rgba(0,0,0,0.03)", fontSize: 10.5, lineHeight: 1.45, overflowX: "auto", maxHeight: 280, color: "var(--fg)" }}>{files[p].content || "(streamingâ€¦)"}</pre>
                 )}
               </div>
             ))}
@@ -565,12 +565,12 @@ function TechnicalPreview({ state }: { state: AgentState }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ ...PREVIEW_CARD, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px" }}>
         <span style={PREVIEW_HEADER}>Technical Build</span>
-        <span style={{ fontSize: 11, color: state.status === "done" ? "#3D9E5F" : "#2b45ff", fontWeight: 600 }}>
+        <span style={{ fontSize: 11, color: state.status === "done" ? "#3D9E5F" : "#002EFF", fontWeight: 600 }}>
           {state.status === "done" ? "Complete" : state.status === "running" ? "Running" : "Queued"}
         </span>
       </div>
       {(isBuilding || state.currentTool) && (() => {
-        // Friendly current step — prefer the latest live build event, else the tool.
+        // Friendly current step â€” prefer the latest live build event, else the tool.
         const last = buildEvents.length ? buildEvents[buildEvents.length - 1] : null;
         const fileCount = Object.keys(buildFiles).length;
         const stepText = last
@@ -578,21 +578,21 @@ function TechnicalPreview({ state }: { state: AgentState }) {
             : last.kind === "command" ? `Running ${last.desc || last.command}`
             : last.kind === "output" ? `Output: ${(last.text ?? "").slice(0, 100)}`
             : last.kind === "error" ? `Error: ${(last.text ?? "").slice(0, 100)}`
-            : last.kind === "plan" ? (last.text ?? "Planning…")
-            : last.kind === "phase" ? (last.text ?? "Building…")
+            : last.kind === "plan" ? (last.text ?? "Planningâ€¦")
+            : last.kind === "phase" ? (last.text ?? "Buildingâ€¦")
             : last.kind === "tool" ? `${last.tool} ${last.target ?? ""}`
-            : last.kind === "build_start" ? "Building the MVP…"
-            : last.kind === "done" ? "Finishing up…"
-            : last.text ? last.text.slice(0, 120) : "Building…")
-          : state.currentTool === "run_mvp_loop" ? "Building the MVP with openclaude…"
-          : state.currentTool === "github_create_repo" ? "Setting up the code repo…"
-          : state.currentTool ? `Running ${state.currentTool.replace(/_/g, " ")}…`
-          : "Preparing build pipeline…";
+            : last.kind === "build_start" ? "Building the MVPâ€¦"
+            : last.kind === "done" ? "Finishing upâ€¦"
+            : last.text ? last.text.slice(0, 120) : "Buildingâ€¦")
+          : state.currentTool === "run_mvp_loop" ? "Building the MVP with openclaudeâ€¦"
+          : state.currentTool === "github_create_repo" ? "Setting up the code repoâ€¦"
+          : state.currentTool ? `Running ${state.currentTool.replace(/_/g, " ")}â€¦`
+          : "Preparing build pipelineâ€¦";
         return (
           <div style={{ borderRadius: 12, border: "1px solid rgba(37,99,235,0.2)", background: "rgba(37,99,235,0.08)", padding: "8px 10px", display: "grid", gap: 4 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2b45ff" }} className="animate-pulse" />
-              <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#2b45ff" }}>Live build · {fileCount} file{fileCount === 1 ? "" : "s"}</span>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#002EFF" }} className="animate-pulse" />
+              <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "#002EFF" }}>Live build Â· {fileCount} file{fileCount === 1 ? "" : "s"}</span>
             </div>
             <div style={{ fontSize: 12, color: "var(--fg-dim)", fontFamily: "var(--font-jetbrains-mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stepText}</div>
           </div>
@@ -608,7 +608,7 @@ function TechnicalPreview({ state }: { state: AgentState }) {
               {["#ff5f57","#febc2e","#28c840"].map(c => <div key={c} style={{ width: 9, height: 9, borderRadius: "50%", background: c }} />)}
             </div>
             <span style={{ fontSize: 10, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deploy.replace(/^https?:\/\//, "")}</span>
-            <a href={deploy} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2b45ff", textDecoration: "none", flexShrink: 0 }}>↗</a>
+            <a href={deploy} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#002EFF", textDecoration: "none", flexShrink: 0 }}>â†—</a>
           </div>
           <iframe src={deploy} style={{ width: "100%", height: 280, border: "none", display: "block" }} title="Live MVP" />
         </div>
@@ -618,13 +618,13 @@ function TechnicalPreview({ state }: { state: AgentState }) {
       {(repo || filesCount || roundsRun || commits.length > 0) && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
           {[
-            { label: "Commits", val: commits.length || "—", color: "#4ADE80", bg: "rgba(74,222,128,0.08)", border: "rgba(74,222,128,0.2)" },
-            { label: "Files", val: filesCount ?? "—", color: "#60A5FA", bg: "rgba(96,165,250,0.08)", border: "rgba(96,165,250,0.2)" },
-            { label: "Rounds", val: roundsRun ?? "—", color: "#A78BFA", bg: "rgba(167,139,250,0.08)", border: "rgba(167,139,250,0.2)" },
+            { label: "Commits", val: commits.length || "â€”", color: "#4ADE80", bg: "rgba(74,222,128,0.08)", border: "rgba(74,222,128,0.2)" },
+            { label: "Files", val: filesCount ?? "â€”", color: "#60A5FA", bg: "rgba(96,165,250,0.08)", border: "rgba(96,165,250,0.2)" },
+            { label: "Rounds", val: roundsRun ?? "â€”", color: "#A78BFA", bg: "rgba(167,139,250,0.08)", border: "rgba(167,139,250,0.2)" },
           ].map(({ label, val, color, bg, border }) => (
-            <div key={label} style={{ padding: "10px 12px", borderRadius: 12, background: val !== "—" ? bg : "rgba(255,255,255,0.02)", border: `1px solid ${val !== "—" ? border : "rgba(255,255,255,0.06)"}`, textAlign: "center" as const }}>
-              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "var(--font-jetbrains-mono)", color: val !== "—" ? color : "var(--fg-mute)", lineHeight: 1.1 }}>{val}</div>
-              <div style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: val !== "—" ? color : "var(--fg-mute)", opacity: val !== "—" ? 0.7 : 0.4, marginTop: 3 }}>{label}</div>
+            <div key={label} style={{ padding: "10px 12px", borderRadius: 12, background: val !== "â€”" ? bg : "rgba(255,255,255,0.02)", border: `1px solid ${val !== "â€”" ? border : "rgba(255,255,255,0.06)"}`, textAlign: "center" as const }}>
+              <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "var(--font-jetbrains-mono)", color: val !== "â€”" ? color : "var(--fg-mute)", lineHeight: 1.1 }}>{val}</div>
+              <div style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: val !== "â€”" ? color : "var(--fg-mute)", opacity: val !== "â€”" ? 0.7 : 0.4, marginTop: 3 }}>{label}</div>
             </div>
           ))}
         </div>
@@ -632,10 +632,10 @@ function TechnicalPreview({ state }: { state: AgentState }) {
 
       {/* GitHub repo link */}
       {repo && (
-        <a href={repo} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 20, border: "1px solid rgba(0,0,0,0.1)", background: "rgba(0,0,0,0.03)", padding: "8px 14px", color: "#2b45ff", textDecoration: "none", fontSize: 12 }}>
-          <span>🐙</span>
+        <a href={repo} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 20, border: "1px solid rgba(0,0,0,0.1)", background: "rgba(0,0,0,0.03)", padding: "8px 14px", color: "#002EFF", textDecoration: "none", fontSize: 12 }}>
+          <span>ðŸ™</span>
           <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{repo.replace("https://github.com/", "")}</span>
-          <span style={{ opacity: 0.5, flexShrink: 0 }}>↗</span>
+          <span style={{ opacity: 0.5, flexShrink: 0 }}>â†—</span>
         </a>
       )}
 
@@ -645,7 +645,7 @@ function TechnicalPreview({ state }: { state: AgentState }) {
           <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)", marginBottom: 4 }}>Files built ({files.length})</span>
           {files.map((f, i) => (
             <div key={i} style={{ fontSize: 10, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", padding: "2px 6px", display: "flex", alignItems: "center", gap: 6 }}>
-              <span>{f.startsWith("frontend/") ? "🔷" : f.startsWith("backend/") ? "🔶" : "📄"}</span>
+              <span>{f.startsWith("frontend/") ? "ðŸ”·" : f.startsWith("backend/") ? "ðŸ”¶" : "ðŸ“„"}</span>
               <span>{f}</span>
             </div>
           ))}
@@ -658,7 +658,7 @@ function TechnicalPreview({ state }: { state: AgentState }) {
           <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--fg-mute)" }}>Build commits</span>
           {commits.slice(-5).map((c, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 6, background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.07)" }}>
-              <span style={{ fontFamily: "var(--font-jetbrains-mono)", fontSize: 10, color: "#2b45ff" }}>{c.slice(0, 7)}</span>
+              <span style={{ fontFamily: "var(--font-jetbrains-mono)", fontSize: 10, color: "#002EFF" }}>{c.slice(0, 7)}</span>
               <span style={{ fontSize: 10, color: "var(--fg-mute)" }}>committed</span>
             </div>
           ))}
@@ -677,7 +677,7 @@ function TechnicalPreview({ state }: { state: AgentState }) {
       )}
 
       {!repo && !deploy && !isBuilding && <GenericResultOutput result={state.result} />}
-      {!repo && !deploy && isBuilding && <LiveRunningLog state={state} label="Building MVP with openclaude…" />}
+      {!repo && !deploy && isBuilding && <LiveRunningLog state={state} label="Building MVP with openclaudeâ€¦" />}
     </div>
   );
 }
@@ -690,7 +690,7 @@ class PreviewErrorBoundary extends Component<{ children: ReactNode }, { hasError
     if (this.state.hasError) {
       return (
         <div style={{ padding: "18px 16px", fontSize: 13, color: "var(--fg-mute)", textAlign: "center", border: "1px solid var(--line)", borderRadius: 12 }}>
-          This preview couldn’t render, but the agent’s work is saved. Try the Log or Obsidian tab, or reload.
+          This preview couldnâ€™t render, but the agentâ€™s work is saved. Try the Log or Obsidian tab, or reload.
         </div>
       );
     }
@@ -848,7 +848,7 @@ function DesignPreview({ state, sessionId }: { state: AgentState; sessionId?: st
                     <img src={src} alt={label} style={{ display: "block", maxWidth: label === "Wordmark" ? 260 : 80, maxHeight: 80, objectFit: "contain" }} />
                   </div>
                   <span style={{ fontSize: 9, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</span>
-                  <a href={src} download={`logo-${label.toLowerCase()}.png`} style={{ fontSize: 9, color: "#3D9E5F", textDecoration: "none" }}>↓ download</a>
+                  <a href={src} download={`logo-${label.toLowerCase()}.png`} style={{ fontSize: 9, color: "#3D9E5F", textDecoration: "none" }}>â†“ download</a>
                 </div>
               );
             })}
@@ -867,10 +867,10 @@ function DesignPreview({ state, sessionId }: { state: AgentState; sessionId?: st
                   <img src={src} alt={img.prompt ?? `Brand image ${i + 1}`} style={{ display: "block", maxWidth: 320, maxHeight: 320, objectFit: "cover" }} />
                   {img.prompt && (
                     <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.6)", padding: "4px 8px" }}>
-                      <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)", lineHeight: 1.4 }}>{img.prompt.slice(0, 100)}{img.prompt.length > 100 ? "…" : ""}</span>
+                      <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)", lineHeight: 1.4 }}>{img.prompt.slice(0, 100)}{img.prompt.length > 100 ? "â€¦" : ""}</span>
                     </div>
                   )}
-                  <a href={src} target="_blank" rel="noopener noreferrer" style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.5)", borderRadius: 6, padding: "2px 6px", fontSize: 9, color: "#fff", textDecoration: "none" }}>↗</a>
+                  <a href={src} target="_blank" rel="noopener noreferrer" style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.5)", borderRadius: 6, padding: "2px 6px", fontSize: 9, color: "#fff", textDecoration: "none" }}>â†—</a>
                 </div>
               );
             })}
@@ -878,7 +878,7 @@ function DesignPreview({ state, sessionId }: { state: AgentState; sessionId?: st
         </div>
       )}
       {allColors.length === 0 && !spec && !brandImages.length && !logoWordmark && !logoIcon && isDone && <GenericResultOutput result={state.result} />}
-      {allColors.length === 0 && !spec && !brandImages.length && !logoWordmark && !logoIcon && !isDone && <LiveRunningLog state={state} label="Building design system…" />}
+      {allColors.length === 0 && !spec && !brandImages.length && !logoWordmark && !logoIcon && !isDone && <LiveRunningLog state={state} label="Building design systemâ€¦" />}
     </div>
   );
 }
@@ -918,7 +918,7 @@ function MarketingPreview({ state }: { state: AgentState }) {
   const isDone = state.status === "done";
 
   if (!hasContent) {
-    return isDone ? <GenericResultOutput result={state.result} /> : <LiveRunningLog state={state} label="Creating campaigns…" />;
+    return isDone ? <GenericResultOutput result={state.result} /> : <LiveRunningLog state={state} label="Creating campaignsâ€¦" />;
   }
 
   const SocialCard = ({ platform, icon, color, gradient, lines }: { platform: string; icon: string; color: string; gradient: string; lines: [string, string][] }) => (
@@ -956,10 +956,10 @@ function MarketingPreview({ state }: { state: AgentState }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 5 }}>
         {[
-          { label: "Reels", active: !!reelScript, icon: "📸", color: "#F472B6", bg: "rgba(244,114,182,0.08)", border: "rgba(244,114,182,0.2)" },
-          { label: "TikTok", active: !!tiktokScript, icon: "🎵", color: "#22D3EE", bg: "rgba(34,211,238,0.08)", border: "rgba(34,211,238,0.2)" },
-          { label: "Meta Ad", active: !!(adHeadline || adBody), icon: "📣", color: "#60A5FA", bg: "rgba(96,165,250,0.08)", border: "rgba(96,165,250,0.2)" },
-          { label: "Images", active: adImages.length > 0, icon: "🖼", color: "#A78BFA", bg: "rgba(167,139,250,0.08)", border: "rgba(167,139,250,0.2)" },
+          { label: "Reels", active: !!reelScript, icon: "ðŸ“¸", color: "#F472B6", bg: "rgba(244,114,182,0.08)", border: "rgba(244,114,182,0.2)" },
+          { label: "TikTok", active: !!tiktokScript, icon: "ðŸŽµ", color: "#22D3EE", bg: "rgba(34,211,238,0.08)", border: "rgba(34,211,238,0.2)" },
+          { label: "Meta Ad", active: !!(adHeadline || adBody), icon: "ðŸ“£", color: "#60A5FA", bg: "rgba(96,165,250,0.08)", border: "rgba(96,165,250,0.2)" },
+          { label: "Images", active: adImages.length > 0, icon: "ðŸ–¼", color: "#A78BFA", bg: "rgba(167,139,250,0.08)", border: "rgba(167,139,250,0.2)" },
         ].map(({ label, active, icon, color, bg, border }) => (
           <div key={label} style={{ padding: "8px 10px", borderRadius: 12, background: active ? bg : "rgba(255,255,255,0.02)", border: `1px solid ${active ? border : "rgba(255,255,255,0.06)"}`, textAlign: "center" as const, transition: "all 0.3s ease" }}>
             <div style={{ fontSize: 16, marginBottom: 3, opacity: active ? 1 : 0.25 }}>{icon}</div>
@@ -979,21 +979,21 @@ function MarketingPreview({ state }: { state: AgentState }) {
                   <img src={src} alt={img.prompt ?? `Ad image ${i + 1}`} style={{ display: "block", maxWidth: 280, maxHeight: 280, objectFit: "cover" }} />
                   {img.prompt && (
                     <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.6)", padding: "4px 8px" }}>
-                      <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)", lineHeight: 1.4 }}>{img.prompt.slice(0, 100)}{img.prompt.length > 100 ? "…" : ""}</span>
+                      <span style={{ fontSize: 9, color: "rgba(255,255,255,0.8)", lineHeight: 1.4 }}>{img.prompt.slice(0, 100)}{img.prompt.length > 100 ? "â€¦" : ""}</span>
                     </div>
                   )}
-                  <a href={src} target="_blank" rel="noopener noreferrer" style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.5)", borderRadius: 6, padding: "2px 6px", fontSize: 9, color: "#fff", textDecoration: "none" }}>↗</a>
+                  <a href={src} target="_blank" rel="noopener noreferrer" style={{ position: "absolute", top: 6, right: 6, background: "rgba(0,0,0,0.5)", borderRadius: 6, padding: "2px 6px", fontSize: 9, color: "#fff", textDecoration: "none" }}>â†—</a>
                 </div>
               );
             })}
           </div>
         </div>
       )}
-      {(reelScript || reelCaption) && <SocialCard platform="Instagram Reel" icon="📸" color="#E1306C" gradient="linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045)" lines={[["Script", reelScript], ["Caption", reelCaption], ["Hashtags", reelHashtags]]} />}
-      {tiktokScript && <SocialCard platform="TikTok" icon="🎵" color="#69C9D0" gradient="linear-gradient(135deg,#010101,#69C9D0)" lines={[["Script", tiktokScript]]} />}
-      {(adHeadline || adBody) && <SocialCard platform="Meta Ad" icon="📣" color="#1877F2" gradient="linear-gradient(135deg,#1877F2,#42a5f5)" lines={[["Headline", adHeadline], ["Body", adBody], ["CTA", adCta]]} />}
-      {(emailSubject || emailBody) && CARD("📧 Email", [["Subject", emailSubject], ["Body", typeof emailBody === "string" ? emailBody.replace(/<[^>]+>/g, "") : emailBody]])}
-      {linkedin && <SocialCard platform="LinkedIn" icon="💼" color="#0A66C2" gradient="linear-gradient(135deg,#0A66C2,#00a0dc)" lines={[["Post", linkedin]]} />}
+      {(reelScript || reelCaption) && <SocialCard platform="Instagram Reel" icon="ðŸ“¸" color="#E1306C" gradient="linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045)" lines={[["Script", reelScript], ["Caption", reelCaption], ["Hashtags", reelHashtags]]} />}
+      {tiktokScript && <SocialCard platform="TikTok" icon="ðŸŽµ" color="#69C9D0" gradient="linear-gradient(135deg,#010101,#69C9D0)" lines={[["Script", tiktokScript]]} />}
+      {(adHeadline || adBody) && <SocialCard platform="Meta Ad" icon="ðŸ“£" color="#1877F2" gradient="linear-gradient(135deg,#1877F2,#42a5f5)" lines={[["Headline", adHeadline], ["Body", adBody], ["CTA", adCta]]} />}
+      {(emailSubject || emailBody) && CARD("ðŸ“§ Email", [["Subject", emailSubject], ["Body", typeof emailBody === "string" ? emailBody.replace(/<[^>]+>/g, "") : emailBody]])}
+      {linkedin && <SocialCard platform="LinkedIn" icon="ðŸ’¼" color="#0A66C2" gradient="linear-gradient(135deg,#0A66C2,#00a0dc)" lines={[["Post", linkedin]]} />}
     </div>
   );
 }
@@ -1024,13 +1024,13 @@ function PdfEmbed({ path, label, height = 340 }: { path: string; label?: string;
   return (
     <div style={{ borderRadius: 16, overflow: "hidden", border: "1px solid rgba(0,0,0,0.10)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 14px", background: "rgba(180,205,228,0.10)", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
-        <span style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1 }}>📄 {label ?? filename}</span>
-        <a href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#2b45ff", textDecoration: "none", flexShrink: 0 }}>Download ↗</a>
+        <span style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1 }}>ðŸ“„ {label ?? filename}</span>
+        <a href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#002EFF", textDecoration: "none", flexShrink: 0 }}>Download â†—</a>
       </div>
       {isPdf
         ? <iframe src={url} style={{ width: "100%", height, border: "none", display: "block" }} title={label ?? filename} />
         : <div style={{ fontSize: 11, color: "var(--fg-dim)", padding: "10px 14px" }}>
-            <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "#2b45ff" }}>{filename} ↗</a>
+            <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "#002EFF" }}>{filename} â†—</a>
           </div>
       }
     </div>
@@ -1116,7 +1116,7 @@ function LegalPreview({ state, founderId, company }: { state: AgentState; founde
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", marginBottom: 3 }}>⚖️ File Your LLC</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", marginBottom: 3 }}>âš–ï¸ File Your LLC</div>
           <div style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.5 }}>
             Astra will automate the filing with Northwest Registered Agent. Takes ~5 min.
           </div>
@@ -1134,7 +1134,7 @@ function LegalPreview({ state, founderId, company }: { state: AgentState; founde
               background: "linear-gradient(135deg,#3b82f6,#6366f1)",
               color: "#fff", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap",
             }}>
-            Start Filing →
+            Start Filing â†’
           </button>
         </div>
       </div>
@@ -1153,7 +1153,7 @@ function LegalPreview({ state, founderId, company }: { state: AgentState; founde
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {LLCCard}
-        {state.status === "done" ? <GenericResultOutput result={state.result} /> : <LiveRunningLog state={state} label="Drafting documents…" />}
+        {state.status === "done" ? <GenericResultOutput result={state.result} /> : <LiveRunningLog state={state} label="Drafting documentsâ€¦" />}
       </div>
     );
   }
@@ -1199,7 +1199,7 @@ function SalesPreview({ state }: { state: AgentState }) {
   const crmContacts = (r?.crm_contacts ?? r?.contacts ?? []) as Array<Record<string, unknown>>;
   const sequences = (r?.sequences ?? []) as Array<Record<string, unknown>>;
   if (!r || !lead) {
-    return state.status === "done" ? <GenericResultOutput result={state.result} /> : <LiveRunningLog state={state} label="Finding leads & building outreach…" />;
+    return state.status === "done" ? <GenericResultOutput result={state.result} /> : <LiveRunningLog state={state} label="Finding leads & building outreachâ€¦" />;
   }
   const steps: unknown[] = Array.isArray(seq) ? seq : typeof seq === "string" ? (() => { try { return JSON.parse(seq); } catch { return []; } })() : [];
   return (
@@ -1239,14 +1239,14 @@ function SalesPreview({ state }: { state: AgentState }) {
       )}
       {steps.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <span style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "var(--fg-mute)" }}>Email Sequence — {steps.length} touch{steps.length !== 1 ? "es" : ""}</span>
+          <span style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "var(--fg-mute)" }}>Email Sequence â€” {steps.length} touch{steps.length !== 1 ? "es" : ""}</span>
           {(steps as Record<string, unknown>[]).slice(0, 4).map((s, i) => (
             <div key={i} style={{ padding: "10px 14px", borderRadius: 12, background: "rgba(167,139,250,0.05)", border: "1px solid rgba(167,139,250,0.15)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                 <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: "rgba(167,139,250,0.15)", color: "#A78BFA", letterSpacing: "0.08em" }}>Day {String(s.send_day ?? i + 1)}</span>
               </div>
               <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fg)" }}>{String(s.subject ?? "").slice(0, 60)}</div>
-              {!!s.body && <div style={{ fontSize: 10, color: "var(--fg-mute)", marginTop: 3, lineHeight: 1.5 }}>{String(s.body).slice(0, 100)}…</div>}
+              {!!s.body && <div style={{ fontSize: 10, color: "var(--fg-mute)", marginTop: 3, lineHeight: 1.5 }}>{String(s.body).slice(0, 100)}â€¦</div>}
             </div>
           ))}
         </div>
@@ -1291,7 +1291,7 @@ function OpsPreview({ state }: { state: AgentState }) {
   }
 
   if (!r || (allPaths.length === 0 && !sop)) {
-    return state.status === "done" ? <GenericResultOutput result={state.result} /> : <LiveRunningLog state={state} label="Handling operations…" />;
+    return state.status === "done" ? <GenericResultOutput result={state.result} /> : <LiveRunningLog state={state} label="Handling operationsâ€¦" />;
   }
 
   return (
@@ -1323,7 +1323,7 @@ function ResultDump({ result }: { result: Record<string, unknown> | null }) {
   );
 }
 
-// ── DeploymentCard ─────────────────────────────────────────────────────────────
+// â”€â”€ DeploymentCard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId: string }) {
   const [deployment, setDeployment] = useState<DeploymentRecord | null>(null);
@@ -1383,7 +1383,7 @@ function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId
     }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2b45ff", fontWeight: 600 }}>
+        <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#002EFF", fontWeight: 600 }}>
           Deployment
         </span>
         {isPublished && (
@@ -1397,7 +1397,7 @@ function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId
         {!isPublished && (
           <span style={{
             fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
-            color: "#2b45ff", background: "rgba(37,99,235,0.1)", borderRadius: 6, padding: "2px 8px",
+            color: "#002EFF", background: "rgba(37,99,235,0.1)", borderRadius: 6, padding: "2px 8px",
           }}>
             Staged
           </span>
@@ -1418,10 +1418,10 @@ function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId
             href={deployment.staging_url}
             target="_blank"
             rel="noopener noreferrer"
-            style={{ fontSize: 10, color: "#2b45ff", textDecoration: "none", flexShrink: 0 }}
+            style={{ fontSize: 10, color: "#002EFF", textDecoration: "none", flexShrink: 0 }}
             title="Open preview"
           >
-            ↗
+            â†—
           </a>
         </div>
       </div>
@@ -1445,7 +1445,7 @@ function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId
               style={{ fontSize: 10, color: "#3D9E5F", textDecoration: "none", flexShrink: 0 }}
               title="Open production site"
             >
-              ↗
+              â†—
             </a>
           </div>
         </div>
@@ -1457,7 +1457,7 @@ function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId
           onClick={() => setShowForm(true)}
           style={{
             padding: "8px 16px", borderRadius: 9, border: "none", cursor: "pointer",
-            background: "linear-gradient(135deg,#2b45ff,#1f36e0)",
+            background: "linear-gradient(135deg,#002EFF,#1f36e0)",
             color: "#fff", fontSize: 12, fontWeight: 600,
             alignSelf: "flex-start",
           }}
@@ -1502,11 +1502,11 @@ function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId
               style={{
                 flex: 1, padding: "8px 16px", borderRadius: 9, border: "none",
                 cursor: publishing || !tokenInput.trim() ? "not-allowed" : "pointer",
-                background: publishing || !tokenInput.trim() ? "rgba(37,99,235,0.3)" : "linear-gradient(135deg,#2b45ff,#1f36e0)",
+                background: publishing || !tokenInput.trim() ? "rgba(37,99,235,0.3)" : "linear-gradient(135deg,#002EFF,#1f36e0)",
                 color: "#fff", fontSize: 12, fontWeight: 600,
               }}
             >
-              {publishing ? "Publishing…" : "Confirm Publish"}
+              {publishing ? "Publishingâ€¦" : "Confirm Publish"}
             </button>
             <button
               onClick={() => { setShowForm(false); setPublishError(null); }}
@@ -1532,8 +1532,8 @@ function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId
 
 function renderResultValue(v: unknown): React.ReactNode {
   if (typeof v === "string") {
-    if (v.startsWith("http")) return <a href={v} target="_blank" rel="noreferrer" style={{ color: "#2b45ff", fontSize: 11, textDecoration: "none", wordBreak: "break-all" as const }}>{v.slice(0, 70)}</a>;
-    if (v.length > 160) return <div style={{ ...PREVIEW_CARD, fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.6, whiteSpace: "pre-wrap" as const }}>{v.slice(0, 420)}…</div>;
+    if (v.startsWith("http")) return <a href={v} target="_blank" rel="noreferrer" style={{ color: "#002EFF", fontSize: 11, textDecoration: "none", wordBreak: "break-all" as const }}>{v.slice(0, 70)}</a>;
+    if (v.length > 160) return <div style={{ ...PREVIEW_CARD, fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.6, whiteSpace: "pre-wrap" as const }}>{v.slice(0, 420)}â€¦</div>;
     return <span style={{ fontSize: 11, color: "var(--fg-dim)" }}>{v}</span>;
   }
   if (Array.isArray(v)) return (
@@ -1570,14 +1570,14 @@ function GenericResultOutput({ result }: { result: Record<string, unknown> | nul
   const dataRows = rows.filter(([, v]) => !(typeof v === "string" && (v as string).startsWith("http")));
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {/* URL outputs — prominent link cards */}
+      {/* URL outputs â€” prominent link cards */}
       {urlRows.map(([k, v]) => (
         <a key={k} href={v as string} target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 12, background: "linear-gradient(135deg,rgba(37,99,235,0.08),rgba(124,58,237,0.06))", border: "1px solid rgba(37,99,235,0.2)", textDecoration: "none" }}>
           <div style={{ width: 28, height: 28, borderRadius: 8, background: "rgba(37,99,235,0.12)", border: "1px solid rgba(37,99,235,0.2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <span style={{ fontSize: 12 }}>↗</span>
+            <span style={{ fontSize: 12 }}>â†—</span>
           </div>
           <div style={{ flex: 1, overflow: "hidden" }}>
-            <div style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "#2b45ff", marginBottom: 2 }}>{k.replace(/_/g, " ")}</div>
+            <div style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "#002EFF", marginBottom: 2 }}>{k.replace(/_/g, " ")}</div>
             <div style={{ fontSize: 11, color: "#60A5FA", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{(v as string).replace(/^https?:\/\//, "")}</div>
           </div>
         </a>
@@ -1601,12 +1601,12 @@ function BuildingIndicator({ label, tool }: { label: string; tool?: string | nul
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "18px 0" }}>
       <div style={{ height: 2, borderRadius: 999, background: "rgba(37,99,235,0.12)", overflow: "hidden" }}>
-        <div style={{ height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #2b45ff, #7C3AED, #2b45ff)", backgroundSize: "200% 100%", animation: "shimmer 1.8s linear infinite" }} />
+        <div style={{ height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #002EFF, #7C3AED, #002EFF)", backgroundSize: "200% 100%", animation: "shimmer 1.8s linear infinite" }} />
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#2b45ff", flexShrink: 0 }} className="animate-pulse" />
+        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#002EFF", flexShrink: 0 }} className="animate-pulse" />
         <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>{label}</span>
-        {tool && <span style={{ fontSize: 10, color: "#2b45ff", fontFamily: "var(--font-jetbrains-mono)", marginLeft: "auto", opacity: 0.8 }}>{tool.replace(/_/g, "_")}</span>}
+        {tool && <span style={{ fontSize: 10, color: "#002EFF", fontFamily: "var(--font-jetbrains-mono)", marginLeft: "auto", opacity: 0.8 }}>{tool.replace(/_/g, "_")}</span>}
       </div>
       <style>{`@keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }`}</style>
     </div>
@@ -1626,8 +1626,8 @@ function LiveRunningLog({ state, label }: { state: AgentState; label: string }) 
     : state.currentAction ?? label;
 
   const lineColor = (entry: LogEntry): string => {
-    if (entry.type === "error" || entry.text.startsWith("✗")) return "#F87171";
-    if (entry.type === "result" || entry.text.startsWith("✓")) return "#4ADE80";
+    if (entry.type === "error" || entry.text.startsWith("âœ—")) return "#F87171";
+    if (entry.type === "result" || entry.text.startsWith("âœ“")) return "#4ADE80";
     if (entry.text.startsWith("Thinking")) return "#94A3B8";
     if (entry.text.includes("https://")) return "#38BDF8";
     if (entry.text.toLowerCase().startsWith("search")) return "#60A5FA";
@@ -1635,13 +1635,13 @@ function LiveRunningLog({ state, label }: { state: AgentState; label: string }) 
     return "#CBD5E1";
   };
   const linePrefix = (entry: LogEntry): string => {
-    if (entry.type === "error" || entry.text.startsWith("✗")) return "✗";
-    if (entry.type === "result" || entry.text.startsWith("✓")) return "✓";
-    if (entry.text.startsWith("Thinking")) return "◈";
-    if (entry.text === "Started") return "▶";
-    return "·";
+    if (entry.type === "error" || entry.text.startsWith("âœ—")) return "âœ—";
+    if (entry.type === "result" || entry.text.startsWith("âœ“")) return "âœ“";
+    if (entry.text.startsWith("Thinking")) return "â—ˆ";
+    if (entry.text === "Started") return "â–¶";
+    return "Â·";
   };
-  const lineText = (entry: LogEntry) => entry.text.replace(/^[✓✗] /, "").slice(0, 160);
+  const lineText = (entry: LogEntry) => entry.text.replace(/^[âœ“âœ—] /, "").slice(0, 160);
 
   return (
     <div style={{ borderRadius: 14, overflow: "hidden", border: "1px solid rgba(255,255,255,0.07)", background: "rgba(9,11,17,0.96)" }}>
@@ -1653,7 +1653,7 @@ function LiveRunningLog({ state, label }: { state: AgentState; label: string }) 
           ))}
         </div>
         <span style={{ flex: 1, fontSize: 10.5, fontFamily: "var(--font-jetbrains-mono)", color: "#64748B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          astra — {stepLabel}
+          astra â€” {stepLabel}
         </span>
         {isRunning && (
           <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: "0.14em", color: "#4ADE80", background: "rgba(74,222,128,0.10)", border: "1px solid rgba(74,222,128,0.22)", borderRadius: 4, padding: "2px 7px" }}>
@@ -1675,8 +1675,8 @@ function LiveRunningLog({ state, label }: { state: AgentState; label: string }) 
       <div ref={logRef} style={{ maxHeight: 230, overflowY: "auto", padding: "10px 14px 12px", display: "flex", flexDirection: "column", gap: 1 }}>
         {log.length === 0 && isRunning && (
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <span style={{ color: "#A78BFA", fontSize: 10, fontFamily: "var(--font-jetbrains-mono)" }}>▶</span>
-            <span style={{ color: "#64748B", fontSize: 10, fontFamily: "var(--font-jetbrains-mono)" }}>initializing…</span>
+            <span style={{ color: "#A78BFA", fontSize: 10, fontFamily: "var(--font-jetbrains-mono)" }}>â–¶</span>
+            <span style={{ color: "#64748B", fontSize: 10, fontFamily: "var(--font-jetbrains-mono)" }}>initializingâ€¦</span>
           </div>
         )}
         {log.map((entry, i) => {
@@ -1703,7 +1703,7 @@ function LiveRunningLog({ state, label }: { state: AgentState; label: string }) 
       {/* Animated progress line */}
       {isRunning && (
         <div style={{ height: 2, background: "rgba(0,0,0,0.4)" }}>
-          <div style={{ height: "100%", background: "linear-gradient(90deg,#2b45ff,#7C3AED,#4ADE80,#2b45ff)", backgroundSize: "300% 100%", animation: "termShimmer 2.4s linear infinite" }} />
+          <div style={{ height: "100%", background: "linear-gradient(90deg,#002EFF,#7C3AED,#4ADE80,#002EFF)", backgroundSize: "300% 100%", animation: "termShimmer 2.4s linear infinite" }} />
         </div>
       )}
       <style>{`
@@ -1723,19 +1723,19 @@ function GenericAgentPreview({ state }: { state: AgentState }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {state.status !== "done" && state.status !== "waiting" && (
-        <LiveRunningLog state={state} label="Working…" />
+        <LiveRunningLog state={state} label="Workingâ€¦" />
       )}
       {isDone && (
         <>
           {/* Completion banner */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 12, background: "linear-gradient(135deg,rgba(74,222,128,0.08),rgba(37,99,235,0.06))", border: "1px solid rgba(74,222,128,0.18)" }}>
             <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(74,222,128,0.15)", border: "1px solid rgba(74,222,128,0.3)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <span style={{ fontSize: 13 }}>✓</span>
+              <span style={{ fontSize: 13 }}>âœ“</span>
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)" }}>Complete</div>
               <div style={{ fontSize: 10, color: "var(--fg-mute)", marginTop: 1 }}>
-                {toolCount} tool{toolCount !== 1 ? "s" : ""} used{elapsed !== null ? ` · ${elapsed < 60 ? elapsed + "s" : Math.round(elapsed / 60) + "m"}` : ""}
+                {toolCount} tool{toolCount !== 1 ? "s" : ""} used{elapsed !== null ? ` Â· ${elapsed < 60 ? elapsed + "s" : Math.round(elapsed / 60) + "m"}` : ""}
               </div>
             </div>
           </div>
@@ -1745,7 +1745,7 @@ function GenericAgentPreview({ state }: { state: AgentState }) {
       {state.status === "waiting" && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "14px", borderRadius: 12, border: "1px solid var(--line)", background: "rgba(255,255,255,0.02)" }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: "rgba(148,163,184,0.4)" }} />
-          <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>Waiting for upstream agents…</span>
+          <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>Waiting for upstream agentsâ€¦</span>
         </div>
       )}
       {state.status === "error" && !!state.result?.error && (
@@ -1798,7 +1798,7 @@ function AgentPreview({ state, founderId, company, sessionId }: { state: AgentSt
   }
 }
 
-// ── Agent chat ─────────────────────────────────────────────────────────────
+// â”€â”€ Agent chat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface AgentChatMsg { role: "user" | "agent"; text: string; }
 
@@ -1851,7 +1851,7 @@ function AgentChat({ agentKey, founderId, sessionId, company, goal }: { agentKey
       setMsgs(m => [...m, { role: "agent", text: reply }]);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
-      setMsgs(m => [...m, { role: "agent", text: `⚠ ${msg}` }]);
+      setMsgs(m => [...m, { role: "agent", text: `âš  ${msg}` }]);
     } finally {
       setLoading(false);
     }
@@ -1917,7 +1917,7 @@ function AgentChat({ agentKey, founderId, sessionId, company, goal }: { agentKey
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-          placeholder={`Ask ${label} something…`}
+          placeholder={`Ask ${label} somethingâ€¦`}
           disabled={loading}
           style={{
             flex: 1, padding: "9px 14px", borderRadius: 10,
@@ -1933,7 +1933,7 @@ function AgentChat({ agentKey, founderId, sessionId, company, goal }: { agentKey
             color: "#fff", fontSize: 12, fontWeight: 600, cursor: loading ? "wait" : "pointer",
             transition: "background 0.2s",
           }}>
-          {loading ? "…" : "Send"}
+          {loading ? "â€¦" : "Send"}
         </button>
       </div>
       <style>{`@keyframes blink{0%,100%{opacity:0.2}50%{opacity:1}}`}</style>
@@ -1941,7 +1941,7 @@ function AgentChat({ agentKey, founderId, sessionId, company, goal }: { agentKey
   );
 }
 
-// ── Agent detail panel ──────────────────────────────────────────────────────
+// â”€â”€ Agent detail panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type DetailTab = "preview" | "plan" | "log" | "obsidian";
 
@@ -2037,7 +2037,7 @@ function AgentDetail({
     <div style={{ display: "flex", flexDirection: "column", gap: 14, flex: 1 }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <span style={{ fontSize: 20 }}>{AGENT_ICONS[state.agent] ?? "🤖"}</span>
+        <span style={{ fontSize: 20 }}>{AGENT_ICONS[state.agent] ?? "ðŸ¤–"}</span>
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)" }}>{AGENT_LABELS[state.agent] ?? state.agent}</span>
@@ -2047,7 +2047,7 @@ function AgentDetail({
             <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.4 }}>{state.instruction.slice(0, 100)}</p>
           )}
         </div>
-        {/* Rerun button — shown when done or errored */}
+        {/* Rerun button â€” shown when done or errored */}
         {(isDone || state.status === "error") && (
           <button
             onClick={handleRerun}
@@ -2057,20 +2057,20 @@ function AgentDetail({
               display: "flex", alignItems: "center", gap: 5, padding: "5px 10px",
               borderRadius: 8, border: "1px solid rgba(180,205,228,0.25)",
               background: rerunning ? "rgba(37,99,235,0.12)" : "rgba(255,255,255,0.04)",
-              color: rerunning ? "#2b45ff" : "var(--fg-dim)", cursor: rerunning ? "default" : "pointer",
+              color: rerunning ? "#002EFF" : "var(--fg-dim)", cursor: rerunning ? "default" : "pointer",
               fontSize: 11, fontWeight: 500, flexShrink: 0,
               transition: "all 0.15s",
             }}
           >
-            <span style={{ fontSize: 13 }}>{rerunning ? "⟳" : "↺"}</span>
-            {rerunning ? "Running…" : "Rerun"}
+            <span style={{ fontSize: 13 }}>{rerunning ? "âŸ³" : "â†º"}</span>
+            {rerunning ? "Runningâ€¦" : "Rerun"}
           </button>
         )}
         {/* % badge */}
         <div style={{ position: "relative", width: 40, height: 40, flexShrink: 0 }}>
           <svg viewBox="0 0 40 40" style={{ transform: "rotate(-90deg)" }}>
             <circle cx="20" cy="20" r="17" fill="none" stroke="rgba(0,0,0,0.08)" strokeWidth="3" />
-            <circle cx="20" cy="20" r="17" fill="none" stroke={isDone ? "#3D9E5F" : "#2b45ff"} strokeWidth="3"
+            <circle cx="20" cy="20" r="17" fill="none" stroke={isDone ? "#3D9E5F" : "#002EFF"} strokeWidth="3"
               strokeDasharray={`${2 * Math.PI * 17}`}
               strokeDashoffset={`${2 * Math.PI * 17 * (1 - p / 100)}`}
               style={{ transition: "stroke-dashoffset 0.6s" }} />
@@ -2081,16 +2081,16 @@ function AgentDetail({
 
       {/* Progress bar */}
       <div style={{ height: 3, borderRadius: 999, background: "rgba(0,0,0,0.08)", overflow: "hidden" }}>
-        <div style={{ height: "100%", borderRadius: 999, width: `${p}%`, background: isDone ? "#3D9E5F" : "#2b45ff", transition: "width 0.6s" }} />
+        <div style={{ height: "100%", borderRadius: 999, width: `${p}%`, background: isDone ? "#3D9E5F" : "#002EFF", transition: "width 0.6s" }} />
       </div>
 
       {/* Current action pill */}
       {isRunning && state.currentAction && (
         <div style={{ display: "flex", alignItems: "center", gap: 7, borderRadius: 24, background: "rgba(180,205,228,0.10)", padding: "6px 11px", fontSize: 11, color: "var(--fg-dim)", border: "1px solid rgba(180,205,228,0.22)" }}>
-          <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#2b45ff", flexShrink: 0 }} className="animate-pulse" />
+          <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#002EFF", flexShrink: 0 }} className="animate-pulse" />
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {state.currentTool ? `${state.currentTool.replace(/_/g, " ")}` : state.currentAction}
-            {state.currentUrl ? ` — ${state.currentUrl.replace(/^https?:\/\//, "").slice(0, 50)}` : ""}
+            {state.currentUrl ? ` â€” ${state.currentUrl.replace(/^https?:\/\//, "").slice(0, 50)}` : ""}
           </span>
         </div>
       )}
@@ -2134,7 +2134,7 @@ function AgentDetail({
 
         {tab === "log" && (
           <div ref={logRef} style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 380, overflowY: "auto" }}>
-            {state.log.length === 0 && <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>Waiting to start…</span>}
+            {state.log.length === 0 && <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>Waiting to startâ€¦</span>}
             {state.log.map((entry, i) => (
               <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 10, lineHeight: 1.5, padding: "2px 0" }}>
                 <span style={{ fontFamily: "var(--font-jetbrains-mono)", flexShrink: 0, color: "rgba(0,0,0,0.3)", minWidth: 56 }}>
@@ -2148,7 +2148,7 @@ function AgentDetail({
 
         {tab === "obsidian" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {obsidianLoading && <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>Loading Obsidian note…</span>}
+            {obsidianLoading && <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>Loading Obsidian noteâ€¦</span>}
             {!obsidianLoading && obsidianError && (
               <div style={{ borderRadius: 18, border: "1px solid rgba(192,57,43,0.22)", background: "rgba(192,57,43,0.06)", padding: "12px 14px", fontSize: 12, color: "#C97070", lineHeight: 1.6 }}>
                 {obsidianError}
@@ -2179,7 +2179,7 @@ function AgentDetail({
   );
 }
 
-// ── Sidebar agent list ──────────────────────────────────────────────────────
+// â”€â”€ Sidebar agent list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function useNow(intervalMs = 1000) {
   const [now, setNow] = useState(Date.now);
@@ -2223,33 +2223,33 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect, onRerun }: {
             padding: "6px 10px 6px 8px",
             minHeight: 52,
             borderRadius: 14,
-            border: `1px solid ${isActive ? "#2b45ff" : isRunning ? "rgba(37,99,235,0.35)" : "var(--line)"}`,
+            border: `1px solid ${isActive ? "#002EFF" : isRunning ? "rgba(37,99,235,0.35)" : "var(--line)"}`,
             background: isActive ? "rgba(37,99,235,0.10)" : isRunning ? "rgba(37,99,235,0.05)" : "rgba(255,255,255,0.03)",
             cursor: "pointer", transition: "background 0.15s, border-color 0.15s",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 13 }}>{AGENT_ICONS[name] ?? "🤖"}</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: isActive ? "#2b45ff" : isRunning ? "var(--fg)" : "var(--fg-mute)", whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: 13 }}>{AGENT_ICONS[name] ?? "ðŸ¤–"}</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: isActive ? "#002EFF" : isRunning ? "var(--fg)" : "var(--fg-mute)", whiteSpace: "nowrap" }}>
                 {AGENT_LABELS[name] ?? name}
               </span>
               <span style={{
                 width: 5, height: 5, borderRadius: "50%", flexShrink: 0,
-                background: status === "done" ? "#22C55E" : status === "running" ? "#2b45ff" : status === "error" ? "#EF4444" : "rgba(255,255,255,0.15)",
+                background: status === "done" ? "#22C55E" : status === "running" ? "#002EFF" : status === "error" ? "#EF4444" : "rgba(255,255,255,0.15)",
               }} className={status === "running" ? "animate-pulse" : ""} />
               {(status === "done" || status === "error") && onRerun && (
                 <span
                   title={`Rerun ${AGENT_LABELS[name] ?? name}`}
                   onClick={e => { e.stopPropagation(); onRerun(name); }}
                   style={{ fontSize: 11, color: "var(--fg-mute)", cursor: "pointer", lineHeight: 1, padding: "0 2px", borderRadius: 4, transition: "color 0.1s" }}
-                  onMouseEnter={e => (e.currentTarget.style.color = "#2b45ff")}
+                  onMouseEnter={e => (e.currentTarget.style.color = "#002EFF")}
                   onMouseLeave={e => (e.currentTarget.style.color = "var(--fg-mute)")}
-                >↺</span>
+                >â†º</span>
               )}
             </div>
             {/* Second row always rendered for uniform height */}
             <div style={{ display: "flex", alignItems: "center", gap: 4, paddingLeft: 19, minHeight: 13 }}>
               {modelShort ? (
-                <span style={{ fontSize: 9, color: "#2b45ff", whiteSpace: "nowrap", fontFamily: "var(--font-jetbrains-mono)", opacity: 0.8 }}>
+                <span style={{ fontSize: 9, color: "#002EFF", whiteSpace: "nowrap", fontFamily: "var(--font-jetbrains-mono)", opacity: 0.8 }}>
                   {modelShort}
                 </span>
               ) : <span style={{ minWidth: 1 }} />}
@@ -2260,7 +2260,7 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect, onRerun }: {
               )}
               {isRunning && toolLabel && (
                 <span style={{ fontSize: 9, color: "#6B7280", whiteSpace: "nowrap", maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis" }}>
-                  · {toolLabel}{agoLabel ? ` ${agoLabel}` : ""}
+                  Â· {toolLabel}{agoLabel ? ` ${agoLabel}` : ""}
                 </span>
               )}
             </div>
@@ -2271,7 +2271,7 @@ function AgentSidebar({ agentList, agents, activeAgent, onSelect, onRerun }: {
   );
 }
 
-// ── Agent Input Request Modal ───────────────────────────────────────────────
+// â”€â”€ Agent Input Request Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface InputField {
   name: string;
@@ -2332,10 +2332,10 @@ function AgentInputModal({ sessionId, request, onDone }: {
       }}>
         {/* Header */}
         <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--line-2)", display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 20 }}>⚖️</span>
+          <span style={{ fontSize: 20 }}>âš–ï¸</span>
           <div>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--fg)", letterSpacing: "-0.02em" }}>{request.title}</h2>
-            <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--fg-mute)" }}>Required to complete your LLC filing — stays in memory only, never stored.</p>
+            <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--fg-mute)" }}>Required to complete your LLC filing â€” stays in memory only, never stored.</p>
           </div>
         </div>
 
@@ -2369,12 +2369,12 @@ function AgentInputModal({ sessionId, request, onDone }: {
               className="site-btn site-btn-primary"
               style={{ flex: 1, minHeight: 42, fontSize: 14 }}
             >
-              {submitting ? "Submitting…" : "Continue filing →"}
+              {submitting ? "Submittingâ€¦" : "Continue filing â†’"}
             </button>
           </div>
 
           <p style={{ margin: 0, fontSize: 10, color: "var(--fg-mute)", textAlign: "center", lineHeight: 1.5 }}>
-            🔒 Your SSN and personal info are used only for this filing and never written to disk.
+            ðŸ”’ Your SSN and personal info are used only for this filing and never written to disk.
           </p>
         </div>
       </div>
@@ -2382,7 +2382,7 @@ function AgentInputModal({ sessionId, request, onDone }: {
   );
 }
 
-// ── LLC Filing Modal — live browser stream ───────────────────────────────────
+// â”€â”€ LLC Filing Modal â€” live browser stream â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type FilingPhase = "connecting" | "running" | "interaction_needed" | "bot_filling" | "payment_filling" | "done" | "error";
 
@@ -2395,7 +2395,7 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [phase, setPhase] = useState<FilingPhase>("connecting");
-  const [stepName, setStepName] = useState("Starting…");
+  const [stepName, setStepName] = useState("Startingâ€¦");
   const [stepNum, setStepNum] = useState(0);
   const [message, setMessage] = useState("");
   const [fields, setFields] = useState<FilingField[]>([]);
@@ -2441,9 +2441,9 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
         setStepName(msg.step); setMessage(msg.message);
         setFields(msg.fields || []); setPhase("interaction_needed");
       } else if (msg.type === "bot_filling") {
-        setPhase("running"); setMessage("Bot is filling your information…");
+        setPhase("running"); setMessage("Bot is filling your informationâ€¦");
       } else if (msg.type === "payment_filling") {
-        setPhase("payment_filling"); setMessage(msg.message || "Filling payment securely…");
+        setPhase("payment_filling"); setMessage(msg.message || "Filling payment securelyâ€¦");
       } else if (msg.type === "done") {
         setPhase("done");
         setConfirmationUrl(msg.confirmation_url || "");
@@ -2496,16 +2496,16 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid var(--line-2)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 16 }}>⚖️</span>
+            <span style={{ fontSize: 16 }}>âš–ï¸</span>
             <div>
-              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>Filing LLC — {companyName}</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>Filing LLC â€” {companyName}</span>
               <span style={{ fontSize: 11, color: "var(--fg-mute)", marginLeft: 10, fontFamily: "var(--font-mono)" }}>{state}</span>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {/* Step indicator */}
             <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-mono)" }}>
-              {stepNum > 0 ? `Step ${stepNum}/${STEPS_TOTAL} — ${stepName}` : stepName}
+              {stepNum > 0 ? `Step ${stepNum}/${STEPS_TOTAL} â€” ${stepName}` : stepName}
             </span>
             {phase !== "done" && (
               <button onClick={() => { wsRef.current?.close(); onClose(); }}
@@ -2538,7 +2538,7 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
             }}
           />
 
-          {/* Lock overlay — blocks interaction when bot is running */}
+          {/* Lock overlay â€” blocks interaction when bot is running */}
           {isLocked && phase !== "done" && phase !== "error" && (
             <div style={{
               position: "absolute", inset: 0,
@@ -2552,7 +2552,7 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
           {phase === "connecting" && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
               <div style={{ width: 32, height: 32, border: "3px solid rgba(255,255,255,0.15)", borderTopColor: "#60a5fa", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-              <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>Connecting to browser…</span>
+              <span style={{ fontSize: 13, color: "rgba(255,255,255,0.5)" }}>Connecting to browserâ€¦</span>
             </div>
           )}
 
@@ -2560,7 +2560,7 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
           {phase === "payment_filling" && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, zIndex: 20 }}>
               <div style={{ padding: "20px 32px", borderRadius: 20, background: "rgba(0,0,0,0.7)", border: "1px solid rgba(255,255,255,0.1)", textAlign: "center" }}>
-                <div style={{ fontSize: 28, marginBottom: 10 }}>🔒</div>
+                <div style={{ fontSize: 28, marginBottom: 10 }}>ðŸ”’</div>
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "#fff" }}>Filling payment securely</p>
                 <p style={{ margin: "6px 0 0", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>Astra is paying for your LLC filing. Browser hidden for security.</p>
               </div>
@@ -2571,7 +2571,7 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
           {phase === "done" && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16, zIndex: 20, background: "rgba(0,0,0,0.6)" }}>
               <div style={{ padding: "24px 36px", borderRadius: 24, background: "rgba(0,0,0,0.8)", border: "1px solid rgba(74,222,128,0.3)", textAlign: "center", maxWidth: 420 }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>🎉</div>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>ðŸŽ‰</div>
                 <p style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#4ade80" }}>LLC Filed!</p>
                 <p style={{ margin: "8px 0 0", fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.6 }}>
                   {confirmationUrl ? `Confirmation: ${confirmationUrl}` : message || "Your LLC has been submitted to Northwest Registered Agent."}
@@ -2587,7 +2587,7 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
           {phase === "error" && (
             <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, zIndex: 20, background: "rgba(0,0,0,0.6)" }}>
               <div style={{ padding: "20px 28px", borderRadius: 20, background: "rgba(0,0,0,0.8)", border: "1px solid rgba(248,113,113,0.3)", textAlign: "center", maxWidth: 400 }}>
-                <div style={{ fontSize: 28, marginBottom: 8 }}>⚠</div>
+                <div style={{ fontSize: 28, marginBottom: 8 }}>âš </div>
                 <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#f87171" }}>Filing error</p>
                 <p style={{ margin: "6px 0 0", fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{message}</p>
                 <button onClick={onClose} className="site-btn" style={{ marginTop: 12, fontSize: 12, padding: "0 16px", color: "#f87171", background: "rgba(248,113,113,0.1)", borderColor: "rgba(248,113,113,0.2)" }}>
@@ -2598,7 +2598,7 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
           )}
         </div>
 
-        {/* Interaction needed — bottom panel slides up */}
+        {/* Interaction needed â€” bottom panel slides up */}
         {phase === "interaction_needed" && (
           <div style={{
             borderTop: "2px solid rgba(96,165,250,0.4)",
@@ -2608,7 +2608,7 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
               <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#60a5fa", flexShrink: 0, animation: "blink 1.2s infinite" }} />
-              <span style={{ fontSize: 13, fontWeight: 600, color: "#60a5fa" }}>Your turn — {message}</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "#60a5fa" }}>Your turn â€” {message}</span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               {fields.map((field, i) => {
@@ -2682,7 +2682,7 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
                   color: "#fff", fontSize: 13, fontWeight: 600,
                   cursor: submitting ? "wait" : "pointer",
                 }}>
-                {submitting ? "Submitting…" : "Submit & continue →"}
+                {submitting ? "Submittingâ€¦" : "Submit & continue â†’"}
               </button>
             </div>
           </div>
@@ -2698,7 +2698,7 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
 }
 
 
-// ── Steer + Ask panels ─────────────────────────────────────────────────────
+// â”€â”€ Steer + Ask panels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface UChatMsg { id: string; role: "user" | "agent" | "system"; agent?: string; text: string; }
 
@@ -2742,7 +2742,7 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
     if ((!q && !chatAttachments.length) || loading) return;
     const block = buildAttachmentBlock(chatAttachments);
     setInput(""); setMentionOpen(false);
-    const fileNote = chatAttachments.filter(a => !a.error).length ? ` 📎 ${chatAttachments.filter(a => !a.error).length} file(s)` : "";
+    const fileNote = chatAttachments.filter(a => !a.error).length ? ` ðŸ“Ž ${chatAttachments.filter(a => !a.error).length} file(s)` : "";
     const userMsg: UChatMsg = { id: Date.now().toString(), role: "user", text: (q || "(attached files)") + fileNote };
     setMsgs(m => [...m, userMsg]);
     setChatAttachments([]);
@@ -2762,7 +2762,7 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: q + block }),
         });
-        setMsgs(m => [...m, { id: Date.now().toString(), role: "system", text: "↑ Sent to all running agents" }]);
+        setMsgs(m => [...m, { id: Date.now().toString(), role: "system", text: "â†‘ Sent to all running agents" }]);
       } else {
         const res = await apiFetch(`${BASE}/sessions/${sessionId}/ask`, {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -2772,14 +2772,14 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
         setMsgs(m => [...m, { id: Date.now().toString(), role: "agent", agent: "astra", text: data.answer ?? data.response ?? "No response" }]);
       }
     } catch (e) {
-      setMsgs(m => [...m, { id: Date.now().toString(), role: "agent", text: `⚠ ${e instanceof Error ? e.message : "Error"}` }]);
+      setMsgs(m => [...m, { id: Date.now().toString(), role: "agent", text: `âš  ${e instanceof Error ? e.message : "Error"}` }]);
     } finally { setLoading(false); }
   };
 
   const filteredAgents = agents.filter(a => a.toLowerCase().includes(mentionQ));
-  const placeholder = !connected && !done ? "Waiting for session…"
-    : done ? "Ask about results… or @research what was the TAM?"
-    : "Steer all agents… or @legal what entity should I form?";
+  const placeholder = !connected && !done ? "Waiting for sessionâ€¦"
+    : done ? "Ask about resultsâ€¦ or @research what was the TAM?"
+    : "Steer all agentsâ€¦ or @legal what entity should I form?";
 
   return (
     <div data-tour="unified-chat" style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 16, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -2788,7 +2788,7 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
           {done ? "Ask Astra" : "Chat"}
         </span>
         <span style={{ fontSize: 11, color: "#9CA3AF" }}>
-          @agent to route · plain message {done ? "asks about results" : "steers all agents"}
+          @agent to route Â· plain message {done ? "asks about results" : "steers all agents"}
         </span>
       </div>
 
@@ -2798,19 +2798,19 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
             <div key={m.id} style={{ display: "flex", gap: 8, justifyContent: m.role === "user" ? "flex-end" : "flex-start", alignItems: "flex-end" }}>
               {m.role !== "user" && (
                 <span style={{ fontSize: 10, color: "#6B7280", fontWeight: 700, whiteSpace: "nowrap", marginBottom: 2 }}>
-                  {m.agent ? `@${m.agent}` : "·"}
+                  {m.agent ? `@${m.agent}` : "Â·"}
                 </span>
               )}
               <div style={{
                 maxWidth: "75%", padding: "8px 12px", borderRadius: 12, fontSize: 13, lineHeight: 1.6, wordBreak: "break-word", whiteSpace: "pre-wrap",
-                background: m.role === "user" ? "#2b45ff" : m.role === "system" ? "#EFF6FF" : "#F8F9FA",
+                background: m.role === "user" ? "#002EFF" : m.role === "system" ? "#EFF6FF" : "#F8F9FA",
                 color: m.role === "user" ? "#fff" : m.role === "system" ? "#1f36e0" : "#111827",
                 border: m.role === "user" ? "none" : "1px solid #E5E7EB",
                 fontStyle: m.role === "system" ? "italic" : "normal",
               }}>{m.text}</div>
             </div>
           ))}
-          {loading && <div style={{ fontSize: 12, color: "#9CA3AF", display: "flex", alignItems: "center", gap: 6 }}><span className="animate-pulse" style={{ color: "#2b45ff" }}>●</span> Thinking…</div>}
+          {loading && <div style={{ fontSize: 12, color: "#9CA3AF", display: "flex", alignItems: "center", gap: 6 }}><span className="animate-pulse" style={{ color: "#002EFF" }}>â—</span> Thinkingâ€¦</div>}
           <div ref={bottomRef} />
         </div>
       )}
@@ -2841,8 +2841,8 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
             style={{ flex: 1, padding: "10px 16px", fontSize: 13, borderRadius: 999, border: "1px solid #E5E7EB", background: "#F8F9FA", color: "#111827", outline: "none" }}
           />
           <button onClick={send} disabled={loading || (!input.trim() && !chatAttachments.length)}
-            style={{ padding: "0 20px", borderRadius: 999, fontSize: 13, background: loading || (!input.trim() && !chatAttachments.length) ? "#E5E7EB" : "#2b45ff", color: loading || (!input.trim() && !chatAttachments.length) ? "#9CA3AF" : "#fff", border: "none", cursor: loading || (!input.trim() && !chatAttachments.length) ? "default" : "pointer", fontWeight: 600 }}>
-            {loading ? "…" : "↑"}
+            style={{ padding: "0 20px", borderRadius: 999, fontSize: 13, background: loading || (!input.trim() && !chatAttachments.length) ? "#E5E7EB" : "#002EFF", color: loading || (!input.trim() && !chatAttachments.length) ? "#9CA3AF" : "#fff", border: "none", cursor: loading || (!input.trim() && !chatAttachments.length) ? "default" : "pointer", fontWeight: 600 }}>
+            {loading ? "â€¦" : "â†‘"}
           </button>
         </div>
       </div>
@@ -2867,7 +2867,7 @@ function TaskWorkboardTable({
     const task = planTasks.find(t => t.agent === agentName);
     const lane = stackOperatingPlan?.lanes.find(item => item.agent === agentName || item.id === task?.id);
     const state = agents[agentName];
-    const title = lane?.title || (task?.instruction ? task.instruction.split(/[.;—-]/)[0].slice(0, 84) : AGENT_LABELS[agentName] ?? agentName);
+    const title = lane?.title || (task?.instruction ? task.instruction.split(/[.;â€”-]/)[0].slice(0, 84) : AGENT_LABELS[agentName] ?? agentName);
     const expectedArtifacts = lane?.artifacts ?? [];
     return {
       id: task?.id ?? agentName,
@@ -2923,7 +2923,7 @@ function TaskWorkboardTable({
           </span>
         </div>
         <span className="site-pill" data-status={counts?.blocked ? "warning" : counts?.running ? "running" : "idle"} style={{ whiteSpace: "nowrap" }}>
-          {counts ? `${counts.done}/${counts.total} done · ${counts.founder_next} founder next` : `${rows.length} lanes`}
+          {counts ? `${counts.done}/${counts.total} done Â· ${counts.founder_next} founder next` : `${rows.length} lanes`}
         </span>
       </div>
 
@@ -2932,7 +2932,7 @@ function TaskWorkboardTable({
           const isDone = row.status === "done" || row.status === "completed";
           const isRunning = row.status === "running";
           const isBlocked = row.blockers.length > 0 || row.status === "blocked" || row.status === "error";
-          const statusColor = isDone ? "#10B981" : isBlocked ? "#D97706" : isRunning ? "#2b45ff" : "var(--text-muted)";
+          const statusColor = isDone ? "#10B981" : isBlocked ? "#D97706" : isRunning ? "#002EFF" : "var(--text-muted)";
           const actorLabel = row.nextActor.replace("_", " ");
           return (
             <button
@@ -2961,7 +2961,7 @@ function TaskWorkboardTable({
                   fontWeight: 800,
                 }}
               >
-                {isDone ? "✓" : ""}
+                {isDone ? "âœ“" : ""}
               </span>
 
               <span style={{ display: "grid", gap: 6, minWidth: 0 }}>
@@ -3037,7 +3037,7 @@ function AskPanel({ sessionId, founderId }: { sessionId: string; founderId: stri
           className="site-input"
           style={{ flex: 1, padding: "7px 12px", fontSize: 12 }} />
         <button onClick={ask} className="site-btn site-btn-primary" style={{ padding: "0 14px", fontSize: 12 }}>
-          {loading ? "…" : "Ask"}
+          {loading ? "â€¦" : "Ask"}
         </button>
       </div>
       {reply && <div style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.6, padding: "8px 10px", background: "rgba(180,205,228,0.10)", border: "1px solid rgba(180,205,228,0.22)", borderRadius: 12 }}>{reply}</div>}
@@ -3045,7 +3045,7 @@ function AskPanel({ sessionId, founderId }: { sessionId: string; founderId: stri
   );
 }
 
-// ── Continue panel ──────────────────────────────────────────────────────────
+// â”€â”€ Continue panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ContinuePanel({ sessionId, founderId, company }: { sessionId: string; founderId: string; company: string }) {
   const router = useRouter();
@@ -3089,7 +3089,7 @@ function ContinuePanel({ sessionId, founderId, company }: { sessionId: string; f
         <textarea
           value={instruction}
           onChange={e => setInstruction(e.target.value)}
-          placeholder="Update the landing page, write LinkedIn posts, add Stripe payments, build a dashboard…"
+          placeholder="Update the landing page, write LinkedIn posts, add Stripe payments, build a dashboardâ€¦"
           rows={3}
           className="site-textarea"
           style={{ padding: "12px 14px", fontSize: 14, lineHeight: 1.6, resize: "none" }}
@@ -3098,7 +3098,7 @@ function ContinuePanel({ sessionId, founderId, company }: { sessionId: string; f
         <AttachBar attachments={attachments} setAttachments={setAttachments} disabled={loading} founderId={founderId} />
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button type="submit" disabled={loading || !instruction.trim()} className="site-btn site-btn-primary" style={{ padding: "0 22px" }}>
-            {loading ? "Launching…" : "Run agents"} <span aria-hidden>→</span>
+            {loading ? "Launchingâ€¦" : "Run agents"} <span aria-hidden>â†’</span>
           </button>
         </div>
         {error && <p style={{ fontSize: 12, color: "#f87171", margin: 0 }}>{error}</p>}
@@ -3326,7 +3326,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
                       color: "var(--fg)", padding: "10px 11px", cursor: "pointer",
                     }}
                   >
-                    <span style={{ fontSize: 12, fontWeight: 650 }}>🚀 Full Stack</span>
+                    <span style={{ fontSize: 12, fontWeight: 650 }}>ðŸš€ Full Stack</span>
                     <span style={{ fontSize: 10, color: active ? "#a855f7" : "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                       {active ? `${allAgentNames.length} agents` : "All agents"}
                     </span>
@@ -3348,7 +3348,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
                       color: "var(--fg)", padding: "10px 11px", cursor: "pointer",
                     }}
                   >
-                    <span style={{ fontSize: 12, fontWeight: 650 }}>✨ Custom</span>
+                    <span style={{ fontSize: 12, fontWeight: 650 }}>âœ¨ Custom</span>
                     <span style={{ fontSize: 10, color: active ? "#818cf8" : "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                       {active ? `${customAgents.length} agents` : "Pick your own"}
                     </span>
@@ -3372,13 +3372,13 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
                   <span style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-dim)" }}>
                     {customAgents.length} agent{customAgents.length === 1 ? "" : "s"} selected
                   </span>
-                  <span style={{ fontSize: 11, color: "#818cf8" }}>{customPickerOpen ? "▲ collapse" : "▼ edit agents"}</span>
+                  <span style={{ fontSize: 11, color: "#818cf8" }}>{customPickerOpen ? "â–² collapse" : "â–¼ edit agents"}</span>
                 </div>
               );
               if (!customPickerOpen) return <div style={{ padding: "4px 0" }}>{header}</div>;
               const GROUP_EMOJI: Record<string, string> = {
-                research: "🔍", legal: "⚖️", marketing: "📣", sales: "💰",
-                technical: "⚙️", finance: "📊", ops: "🧭", web: "🌐", design: "🎨",
+                research: "ðŸ”", legal: "âš–ï¸", marketing: "ðŸ“£", sales: "ðŸ’°",
+                technical: "âš™ï¸", finance: "ðŸ“Š", ops: "ðŸ§­", web: "ðŸŒ", design: "ðŸŽ¨",
               };
               const grouped: Record<string, AgentCatalogEntry[]> = {};
               agentCatalog.forEach(agent => {
@@ -3413,9 +3413,9 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
                               }}
                             >
                               <span style={{ fontSize: 11, fontWeight: 600, color: on ? "#a5b4fc" : "var(--fg)" }}>
-                                {agent.name}{required ? <span style={{ marginLeft: 5, fontSize: 9, color: "#818cf8", textTransform: "uppercase", letterSpacing: "0.06em" }}>required</span> : on && <span style={{ marginLeft: 5, color: "#818cf8" }}>✓</span>}
+                                {agent.name}{required ? <span style={{ marginLeft: 5, fontSize: 9, color: "#818cf8", textTransform: "uppercase", letterSpacing: "0.06em" }}>required</span> : on && <span style={{ marginLeft: 5, color: "#818cf8" }}>âœ“</span>}
                               </span>
-                              <span style={{ fontSize: 10, color: "var(--fg-mute)", lineHeight: 1.35 }}>{agent.description.slice(0, 60)}…</span>
+                              <span style={{ fontSize: 10, color: "var(--fg-mute)", lineHeight: 1.35 }}>{agent.description.slice(0, 60)}â€¦</span>
                             </button>
                           );
                         })}
@@ -3432,7 +3432,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
                       disabled={customAgents.length === 0}
                       style={{ padding: "5px 14px", borderRadius: 999, background: "#6366f1", color: "#fff", border: "none", fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: customAgents.length === 0 ? 0.4 : 1 }}
                     >
-                      Done →
+                      Done â†’
                     </button>
                   </div>
                 </div>
@@ -3448,7 +3448,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
                 <span style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.45 }}>{stackRecommendation.reason}</span>
                 {stackRecommendation.matched_signals.length > 0 && (
                   <span style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.45 }}>
-                    Signals: {stackRecommendation.matched_signals.join(" · ")}
+                    Signals: {stackRecommendation.matched_signals.join(" Â· ")}
                   </span>
                 )}
               </div>
@@ -3463,7 +3463,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
                 </div>
                 <span style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.45 }}>
                   {stackReadiness.connected_required}/{stackReadiness.required_total} required connectors ready
-                  {stackReadiness.missing_required > 0 ? ` · ${stackReadiness.missing_required} missing` : " · ready to operate"}
+                  {stackReadiness.missing_required > 0 ? ` Â· ${stackReadiness.missing_required} missing` : " Â· ready to operate"}
                 </span>
                 {stackReadiness.next_actions.slice(0, 2).map(action => (
                   <span key={action} style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.45 }}>- {action}</span>
@@ -3488,7 +3488,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
             <textarea
               value={instruction}
               onChange={e => setInstruction(e.target.value)}
-              placeholder="Build a SaaS for indie hackers to track MRR — landing page, GitHub repo, Supabase backend, Clerk auth, Vercel deploy."
+              placeholder="Build a SaaS for indie hackers to track MRR â€” landing page, GitHub repo, Supabase backend, Clerk auth, Vercel deploy."
               rows={5}
               disabled={loading}
               className="site-textarea astra-goal-textarea"
@@ -3511,7 +3511,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
           <div style={{ border: "1px solid var(--line)", borderRadius: 24, padding: "10px 14px" }}>
             <button type="button" onClick={() => setShowStack(v => !v)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
               <span className="site-label">Tech stack</span>
-              <span style={{ fontSize: 10, color: "var(--fg-mute)" }}>{showStack ? "▲" : "▼"}</span>
+              <span style={{ fontSize: 10, color: "var(--fg-mute)" }}>{showStack ? "â–²" : "â–¼"}</span>
             </button>
             {showStack && (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 14 }}>
@@ -3546,16 +3546,16 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
   );
 }
 
-// ── Launch Checklist ─────────────────────────────────────────────────────────
+// â”€â”€ Launch Checklist â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface CLItem { id: string; label: string; autoAgent?: string; detail?: string; }
 interface CLCategory { id: string; label: string; icon: string; items: CLItem[]; }
 
 const CHECKLIST_CATEGORIES: CLCategory[] = [
   {
-    id: "validation", label: "Customer Validation", icon: "🔎",
+    id: "validation", label: "Customer Validation", icon: "ðŸ”Ž",
     items: [
-      { id: "problem_interviews", label: "Run 10+ customer discovery interviews", autoAgent: "research", detail: "Talk to real buyers before building — validate the pain, not the solution." },
+      { id: "problem_interviews", label: "Run 10+ customer discovery interviews", autoAgent: "research", detail: "Talk to real buyers before building â€” validate the pain, not the solution." },
       { id: "competitor_teardown", label: "Map competitors & differentiation", autoAgent: "research_competitors", detail: "Feature, pricing, and positioning teardown of the top 5 alternatives." },
       { id: "market_sizing",      label: "Size the market (TAM / SAM / SOM)", autoAgent: "research", detail: "Bottom-up estimate you can defend to investors." },
       { id: "value_prop",         label: "Write a one-line value proposition", autoAgent: "marketing", detail: "Who it's for, the pain it kills, and why you're 10x better." },
@@ -3564,14 +3564,14 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
     ],
   },
   {
-    id: "legal", label: "Legal & Entity", icon: "⚖️",
+    id: "legal", label: "Legal & Entity", icon: "âš–ï¸",
     items: [
       { id: "form_entity",       label: "Form LLC or Delaware C-Corp",          autoAgent: "legal", detail: "C-Corp if you'll raise venture capital; LLC for bootstrapped." },
       { id: "founders_agmt",     label: "Draft founders' agreement",            autoAgent: "legal", detail: "Equity split, roles, decision rights, and exit terms in writing." },
       { id: "vesting",           label: "Set founder vesting schedules (4yr/1yr)", detail: "Protects the company if a co-founder leaves early." },
       { id: "ip_assign",         label: "Assign all IP to the company",         autoAgent: "legal", detail: "Every founder and contractor signs an IP assignment." },
-      { id: "ein",               label: "Get an EIN from the IRS", detail: "Free, takes minutes online — needed for banking and payroll." },
-      { id: "83b",               label: "File 83(b) election within 30 days", detail: "Hard deadline — missing it creates a large future tax bill." },
+      { id: "ein",               label: "Get an EIN from the IRS", detail: "Free, takes minutes online â€” needed for banking and payroll." },
+      { id: "83b",               label: "File 83(b) election within 30 days", detail: "Hard deadline â€” missing it creates a large future tax bill." },
       { id: "trademark",         label: "Register trademark for brand name", detail: "Clear the name first; file once you commit to it." },
       { id: "nda",               label: "Draft NDA template",                   autoAgent: "legal" },
       { id: "privacy_tos",       label: "Publish Privacy Policy & Terms of Service", autoAgent: "legal", detail: "Required before collecting any user data or payments." },
@@ -3581,12 +3581,12 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
     ],
   },
   {
-    id: "technical", label: "Technical / Product", icon: "🛠️",
+    id: "technical", label: "Technical / Product", icon: "ðŸ› ï¸",
     items: [
       { id: "mvp_scope",         label: "Define and scope MVP features",        autoAgent: "research", detail: "Cut to the single workflow that delivers the core value." },
       { id: "github_setup",      label: "Set up GitHub repo & version control", autoAgent: "technical", detail: "Branch protection, PR reviews, and a clear README." },
       { id: "mvp_deploy",        label: "Deploy MVP to staging",                autoAgent: "web" },
-      { id: "beta_testing",      label: "Run beta user testing & fix bugs", detail: "Ship to 10–20 friendly users and instrument everything." },
+      { id: "beta_testing",      label: "Run beta user testing & fix bugs", detail: "Ship to 10â€“20 friendly users and instrument everything." },
       { id: "error_monitoring",  label: "Configure error monitoring (Sentry)",  autoAgent: "technical", detail: "Catch production exceptions before users report them." },
       { id: "ci_cd",             label: "Set up automated CI/CD pipeline",      autoAgent: "technical", detail: "Tests + lint on every PR, one-click deploy to prod." },
       { id: "automated_tests",   label: "Write tests for critical paths", autoAgent: "technical", detail: "Cover auth, payments, and data-loss-risk flows first." },
@@ -3598,7 +3598,7 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
     ],
   },
   {
-    id: "infra", label: "Domain & Infrastructure", icon: "🌐",
+    id: "infra", label: "Domain & Infrastructure", icon: "ðŸŒ",
     items: [
       { id: "domain_primary",    label: "Purchase primary domain name" },
       { id: "domain_variants",   label: "Buy brand-protecting domain variants", detail: "Common misspellings and .com/.io/.ai to prevent squatting." },
@@ -3607,12 +3607,12 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
       { id: "cloud_hosting",     label: "Configure cloud hosting provider",     autoAgent: "technical" },
       { id: "cdn_setup",         label: "Put a CDN in front of static assets", detail: "Faster global loads and DDoS absorption." },
       { id: "staging_prod",      label: "Set up staging vs. production envs",   autoAgent: "technical" },
-      { id: "backups",           label: "Configure automated backups", detail: "Test a restore — an untested backup is not a backup." },
+      { id: "backups",           label: "Configure automated backups", detail: "Test a restore â€” an untested backup is not a backup." },
       { id: "uptime_monitoring", label: "Add uptime monitoring & status page", detail: "Alerting (e.g. BetterStack) so you know before customers do." },
     ],
   },
   {
-    id: "security", label: "Security & Data", icon: "🔐",
+    id: "security", label: "Security & Data", icon: "ðŸ”",
     items: [
       { id: "secrets_mgmt",      label: "Move secrets out of code into a vault", detail: "No API keys in the repo; rotate anything ever committed." },
       { id: "mfa_admin",         label: "Enforce MFA on all admin accounts" },
@@ -3624,7 +3624,7 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
     ],
   },
   {
-    id: "marketing", label: "Marketing & Brand", icon: "📢",
+    id: "marketing", label: "Marketing & Brand", icon: "ðŸ“¢",
     items: [
       { id: "icp",               label: "Define ICP (ideal customer profile)",  autoAgent: "research", detail: "Be specific enough to name 50 real target accounts." },
       { id: "brand_identity",    label: "Create brand identity (logo, colors)", autoAgent: "design" },
@@ -3636,14 +3636,14 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
       { id: "blog_post",         label: "Write and publish first blog post",    autoAgent: "marketing" },
       { id: "product_hunt",      label: "Create Product Hunt launch page", detail: "Line up hunters and supporters a week ahead." },
       { id: "press_kit",         label: "Draft press kit and founder bio",      autoAgent: "marketing" },
-      { id: "demo_video",        label: "Record a 60–90s product demo video", detail: "Single highest-converting asset on most landing pages." },
+      { id: "demo_video",        label: "Record a 60â€“90s product demo video", detail: "Single highest-converting asset on most landing pages." },
     ],
   },
   {
-    id: "social", label: "Social Media", icon: "📱",
+    id: "social", label: "Social Media", icon: "ðŸ“±",
     items: [
       { id: "claim_handles",     label: "Claim handles on all major platforms" },
-      { id: "focus_channels",    label: "Choose 2–3 primary channels to focus on", detail: "Go deep where your ICP actually hangs out." },
+      { id: "focus_channels",    label: "Choose 2â€“3 primary channels to focus on", detail: "Go deep where your ICP actually hangs out." },
       { id: "linkedin_page",     label: "Set up LinkedIn company page" },
       { id: "content_calendar",  label: "Create 30-day pre-launch content calendar", autoAgent: "marketing" },
       { id: "community_engage",  label: "Engage in niche communities (Reddit, X, Slack)" },
@@ -3652,7 +3652,7 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
     ],
   },
   {
-    id: "finance", label: "Finance & Payments", icon: "💳",
+    id: "finance", label: "Finance & Payments", icon: "ðŸ’³",
     items: [
       { id: "accounting",        label: "Set up accounting software (QuickBooks/Xero)" },
       { id: "stripe_setup",      label: "Integrate Stripe or payment processor", detail: "Test mode end-to-end before going live." },
@@ -3666,21 +3666,21 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
     ],
   },
   {
-    id: "sales", label: "Sales & CRM", icon: "🤝",
+    id: "sales", label: "Sales & CRM", icon: "ðŸ¤",
     items: [
       { id: "crm_setup",         label: "Set up CRM (HubSpot / Pipedrive)",     autoAgent: "sales" },
       { id: "sales_pipeline",    label: "Define sales pipeline stages",         autoAgent: "sales_pipeline" },
       { id: "icp_target_list",   label: "Build a list of 50 target accounts", autoAgent: "sales", detail: "Named companies and buyers, not a vague segment." },
       { id: "cold_outreach",     label: "Write cold outreach email templates",  autoAgent: "sales" },
       { id: "sales_deck",        label: "Create a sales deck & demo script", autoAgent: "sales_enablement" },
-      { id: "design_partners",   label: "Close first 5–10 design partner customers", detail: "Discounted access in exchange for feedback and a logo." },
+      { id: "design_partners",   label: "Close first 5â€“10 design partner customers", detail: "Discounted access in exchange for feedback and a logo." },
       { id: "testimonials",      label: "Collect and publish first testimonials" },
       { id: "lead_capture",      label: "Build lead capture form on website",   autoAgent: "web" },
       { id: "follow_up_cadence", label: "Set up a follow-up cadence / sequence", autoAgent: "sales" },
     ],
   },
   {
-    id: "analytics", label: "Growth & Analytics", icon: "📈",
+    id: "analytics", label: "Growth & Analytics", icon: "ðŸ“ˆ",
     items: [
       { id: "product_analytics", label: "Install product analytics (PostHog / Mixpanel)" },
       { id: "web_analytics",     label: "Set up Google Analytics or Plausible" },
@@ -3693,7 +3693,7 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
     ],
   },
   {
-    id: "support", label: "Customer Support & Success", icon: "💬",
+    id: "support", label: "Customer Support & Success", icon: "ðŸ’¬",
     items: [
       { id: "support_inbox",     label: "Set up a support inbox / help desk", detail: "Intercom, Help Scout, or a shared inbox to start." },
       { id: "help_docs",         label: "Write a starter help center / FAQ", autoAgent: "technical" },
@@ -3704,12 +3704,12 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
     ],
   },
   {
-    id: "ops", label: "Team & Operations", icon: "🧭",
+    id: "ops", label: "Team & Operations", icon: "ðŸ§­",
     items: [
       { id: "gsuite",            label: "Set up G Suite / Microsoft 365",       autoAgent: "ops" },
       { id: "slack_setup",       label: "Set up Slack or team comms tool" },
       { id: "wiki_docs",         label: "Document core processes in a wiki",    autoAgent: "ops" },
-      { id: "password_manager",  label: "Roll out a team password manager", detail: "1Password / Bitwarden — kill shared-credentials risk." },
+      { id: "password_manager",  label: "Roll out a team password manager", detail: "1Password / Bitwarden â€” kill shared-credentials risk." },
       { id: "esop",              label: "Create employee option pool (ESOP)" },
       { id: "hiring_plan",       label: "Draft a 12-month hiring plan", autoAgent: "ops" },
       { id: "valuation_409a",    label: "Get 409A independent valuation", detail: "Required before granting priced stock options." },
@@ -3717,7 +3717,7 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
     ],
   },
   {
-    id: "launch_day", label: "Launch Day", icon: "🎬",
+    id: "launch_day", label: "Launch Day", icon: "ðŸŽ¬",
     items: [
       { id: "launch_checklist_qa", label: "Final QA pass across core flows", detail: "Sign-up, payment, and onboarding on mobile and desktop." },
       { id: "launch_assets",     label: "Stage launch assets & copy", autoAgent: "marketing", detail: "PH post, tweets, email, and screenshots ready to fire." },
@@ -3728,9 +3728,9 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
     ],
   },
   {
-    id: "post_launch", label: "Post-Launch Growth", icon: "🌱",
+    id: "post_launch", label: "Post-Launch Growth", icon: "ðŸŒ±",
     items: [
-      { id: "weekly_review",     label: "Run a weekly metrics & growth review", detail: "Same metrics, same time, every week — compounding clarity." },
+      { id: "weekly_review",     label: "Run a weekly metrics & growth review", detail: "Same metrics, same time, every week â€” compounding clarity." },
       { id: "referral_loop",     label: "Add a referral / invite loop", autoAgent: "marketing" },
       { id: "case_studies",      label: "Publish first customer case studies", autoAgent: "marketing" },
       { id: "roadmap_public",    label: "Share a public roadmap & changelog" },
@@ -3739,10 +3739,10 @@ const CHECKLIST_CATEGORIES: CLCategory[] = [
     ],
   },
   {
-    id: "fundraising", label: "Investor / Fundraising", icon: "🚀",
+    id: "fundraising", label: "Investor / Fundraising", icon: "ðŸš€",
     items: [
-      { id: "pitch_deck",        label: "Build 10–12 slide pitch deck",         autoAgent: "research" },
-      { id: "narrative",         label: "Craft the fundraising narrative", autoAgent: "marketing", detail: "Why now, why this, why you — in one tight story." },
+      { id: "pitch_deck",        label: "Build 10â€“12 slide pitch deck",         autoAgent: "research" },
+      { id: "narrative",         label: "Craft the fundraising narrative", autoAgent: "marketing", detail: "Why now, why this, why you â€” in one tight story." },
       { id: "cap_table",         label: "Create a clean cap table" },
       { id: "data_room",         label: "Set up a fundraising data room", detail: "Metrics, legal, financials, and product in one shareable place." },
       { id: "investor_list",     label: "Build target investor list (CRM)" },
@@ -3809,15 +3809,15 @@ function LaunchChecklist({ sessionId, done, operating, agents, agentList, select
           <span style={{
             fontSize: 11, padding: "2px 9px", borderRadius: 999, fontWeight: 600,
             background: allDone ? "rgba(61,158,95,0.12)" : "rgba(37,99,235,0.10)",
-            color: allDone ? "#3D9E5F" : "#2b45ff",
+            color: allDone ? "#3D9E5F" : "#002EFF",
           }}>{totalDone + runDone}/{total + runItems.length}</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 80, height: 4, borderRadius: 999, background: "var(--line-2)", overflow: "hidden" }}>
-            <div style={{ height: "100%", borderRadius: 999, transition: "width 0.5s", width: `${Math.round(((totalDone + runDone) / (total + runItems.length)) * 100)}%`, background: allDone ? "#3D9E5F" : "#2b45ff" }} />
+            <div style={{ height: "100%", borderRadius: 999, transition: "width 0.5s", width: `${Math.round(((totalDone + runDone) / (total + runItems.length)) * 100)}%`, background: allDone ? "#3D9E5F" : "#002EFF" }} />
           </div>
           <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{Math.round(((totalDone + runDone) / (total + runItems.length)) * 100)}%</span>
-          <span style={{ fontSize: 10, color: "var(--fg-mute)" }}>{listOpen ? "▲" : "▼"}</span>
+          <span style={{ fontSize: 10, color: "var(--fg-mute)" }}>{listOpen ? "â–²" : "â–¼"}</span>
         </div>
       </button>
 
@@ -3833,7 +3833,7 @@ function LaunchChecklist({ sessionId, done, operating, agents, agentList, select
                   background: item.done ? "rgba(16,185,129,0.15)" : "transparent",
                   border: `1.5px solid ${item.done ? "#10B981" : "var(--border-strong)"}`,
                 }}>
-                  {item.done && <span style={{ fontSize: 7, color: "#10B981", fontWeight: 800 }}>✓</span>}
+                  {item.done && <span style={{ fontSize: 7, color: "#10B981", fontWeight: 800 }}>âœ“</span>}
                 </div>
                 <span style={{ fontSize: 11, color: item.done ? "var(--fg)" : "var(--text-3)" }}>{item.label}</span>
               </div>
@@ -3858,9 +3858,9 @@ function LaunchChecklist({ sessionId, done, operating, agents, agentList, select
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <div style={{ width: 40, height: 3, borderRadius: 999, background: "var(--line-2)", overflow: "hidden" }}>
-                      <div style={{ height: "100%", borderRadius: 999, width: `${Math.round((catDone / cat.items.length) * 100)}%`, background: catAllDone ? "#3D9E5F" : "#2b45ff", transition: "width 0.4s" }} />
+                      <div style={{ height: "100%", borderRadius: 999, width: `${Math.round((catDone / cat.items.length) * 100)}%`, background: catAllDone ? "#3D9E5F" : "#002EFF", transition: "width 0.4s" }} />
                     </div>
-                    <span style={{ fontSize: 9, color: "var(--fg-mute)" }}>{catOpen ? "▲" : "▼"}</span>
+                    <span style={{ fontSize: 9, color: "var(--fg-mute)" }}>{catOpen ? "â–²" : "â–¼"}</span>
                   </div>
                 </button>
                 {catOpen && (
@@ -3877,17 +3877,17 @@ function LaunchChecklist({ sessionId, done, operating, agents, agentList, select
                             width: 15, height: 15, borderRadius: 4, flexShrink: 0, marginTop: item.detail ? 2 : 0,
                             display: "flex", alignItems: "center", justifyContent: "center",
                             background: checked ? (isAuto ? "rgba(37,99,235,0.15)" : "rgba(61,158,95,0.15)") : "transparent",
-                            border: `1.5px solid ${checked ? (isAuto ? "#2b45ff" : "#3D9E5F") : "rgba(255,255,255,0.18)"}`,
+                            border: `1.5px solid ${checked ? (isAuto ? "#002EFF" : "#3D9E5F") : "rgba(255,255,255,0.18)"}`,
                             transition: "all 0.15s",
                           }}>
-                            {checked && <span style={{ fontSize: 7, color: isAuto ? "#2b45ff" : "#3D9E5F", fontWeight: 800 }}>✓</span>}
+                            {checked && <span style={{ fontSize: 7, color: isAuto ? "#002EFF" : "#3D9E5F", fontWeight: 800 }}>âœ“</span>}
                           </div>
                           <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
                             <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                               <span style={{ fontSize: 11, color: checked ? "var(--fg)" : "var(--fg-mute)", lineHeight: 1.35, textDecoration: checked && !isAuto ? "line-through" : "none", opacity: checked && !isAuto ? 0.6 : 1 }}>
                                 {item.label}
                               </span>
-                              {isAuto && <span style={{ fontSize: 9, color: "#2b45ff", flexShrink: 0 }}>auto</span>}
+                              {isAuto && <span style={{ fontSize: 9, color: "#002EFF", flexShrink: 0 }}>auto</span>}
                             </span>
                             {item.detail && <span style={{ fontSize: 9.5, color: "var(--text-3)", lineHeight: 1.3, opacity: checked ? 0.5 : 0.85 }}>{item.detail}</span>}
                           </span>
@@ -3938,14 +3938,14 @@ function AttachBar({ attachments, setAttachments, disabled, compact, founderId }
       <button type="button" onClick={() => inputRef.current?.click()} disabled={disabled || busy}
         title="Attach text, CSV, code, PDF, or image files"
         style={{ display: "flex", alignItems: "center", gap: 5, fontSize: compact ? 12 : 12, color: "var(--fg-mute)", background: "none", border: "1px dashed var(--border)", borderRadius: 8, padding: compact ? "4px 8px" : "5px 10px", cursor: (disabled || busy) ? "default" : "pointer" }}>
-        <span aria-hidden style={{ fontSize: 13 }}>📎</span>{busy ? "Reading…" : attachments.length ? "Add file" : "Attach files"}
+        <span aria-hidden style={{ fontSize: 13 }}>ðŸ“Ž</span>{busy ? "Readingâ€¦" : attachments.length ? "Add file" : "Attach files"}
       </button>
       {attachments.map((a, i) => (
         <span key={i} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, padding: "3px 8px", borderRadius: 999, border: `1px solid ${a.error ? "rgba(248,113,113,0.4)" : "var(--border)"}`, background: a.error ? "rgba(248,113,113,0.08)" : "rgba(255,255,255,0.03)", color: a.error ? "#f87171" : "var(--fg-dim)" }}
           title={a.error || (a.truncated ? "Truncated to 20k chars" : a.name)}>
-          {a.name}{a.truncated ? " ·trimmed" : ""}{a.error ? " ·error" : ""}
+          {a.name}{a.truncated ? " Â·trimmed" : ""}{a.error ? " Â·error" : ""}
           <button type="button" onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
-            style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0, lineHeight: 1, fontSize: 12 }}>✕</button>
+            style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0, lineHeight: 1, fontSize: 12 }}>âœ•</button>
         </span>
       ))}
     </div>
@@ -4017,13 +4017,13 @@ function WorkspaceSidebar({
 
       {isSignedIn || authLoading ? (
         <button data-tour="new-goal-btn" type="button" onClick={onNewGoal} disabled={authLoading} className="site-btn site-btn-primary" style={{ width: "100%", minHeight: 42, justifyContent: "flex-start", padding: "0 14px", fontSize: 13 }}>
-          <span aria-hidden="true">＋</span>
+          <span aria-hidden="true">ï¼‹</span>
           New goal
         </button>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <button data-tour="new-goal-btn" type="button" onClick={onNewGoal} className="site-btn site-btn-primary" style={{ width: "100%", minHeight: 42, justifyContent: "flex-start", padding: "0 14px", fontSize: 13, opacity: 0.5, cursor: "not-allowed" }} disabled>
-            <span aria-hidden="true">＋</span>
+            <span aria-hidden="true">ï¼‹</span>
             New goal
           </button>
           <span style={{ fontSize: 11, color: "var(--text-3)", padding: "0 2px" }}>Sign in below to start a goal.</span>
@@ -4032,23 +4032,23 @@ function WorkspaceSidebar({
 
       <div data-tour="workspace-sidebar" style={{ display: "grid", gap: 8 }}>
         <a href="#current-run" style={{ ...navItemStyle, color: "var(--fg)" }}>
-          <span aria-hidden="true">●</span>
+          <span aria-hidden="true">â—</span>
           Current run
         </a>
         <button type="button" onClick={onOpenPlan} style={navItemStyle}>
-          <span aria-hidden="true">▣</span>
+          <span aria-hidden="true">â–£</span>
           Plan
         </button>
         <Link href="/brain" style={navItemStyle}>
-          <span aria-hidden="true">◈</span>
+          <span aria-hidden="true">â—ˆ</span>
           Brain
         </Link>
         <Link data-tour="nav-integrations" href="/integrations" style={navItemStyle}>
-          <span aria-hidden="true">⌘</span>
+          <span aria-hidden="true">âŒ˜</span>
           Integrations
         </Link>
         <Link data-tour="nav-outreach" href="/outreach" style={navItemStyle}>
-          <span aria-hidden="true">✉</span>
+          <span aria-hidden="true">âœ‰</span>
           Outreach
         </Link>
         <Link data-tour="nav-payments" href="/payments" style={navItemStyle}>
@@ -4056,11 +4056,11 @@ function WorkspaceSidebar({
           Payments
         </Link>
         <Link href="/settings" style={navItemStyle}>
-          <span aria-hidden="true">⚙</span>
+          <span aria-hidden="true">âš™</span>
           Settings
         </Link>
         <a href="https://astracreates.com/" style={navItemStyle}>
-          <span aria-hidden="true">↗</span>
+          <span aria-hidden="true">â†—</span>
           About
         </a>
       </div>
@@ -4119,7 +4119,7 @@ function SessionHistory({ currentSessionId }: { currentSessionId: string }) {
           artifacts: [],
         })));
       } catch {
-        // ignore — fall back to local history
+        // ignore â€” fall back to local history
       }
     };
     load();
@@ -4128,7 +4128,7 @@ function SessionHistory({ currentSessionId }: { currentSessionId: string }) {
   }, [isSignedIn, userId]);
   if (!mounted || sessions.length === 0) return null;
   const statusDot = (s: SessionRecord["status"]) =>
-    s === "done" ? "#3D9E5F" : s === "running" ? "#2b45ff" : "#C0392B";
+    s === "done" ? "#3D9E5F" : s === "running" ? "#002EFF" : "#C0392B";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -4161,7 +4161,7 @@ function SessionHistory({ currentSessionId }: { currentSessionId: string }) {
               }}
               style={{ fontSize: 11, color: "var(--fg-mute)", background: "none", border: "none", cursor: "pointer", padding: "0 2px", lineHeight: 1, flexShrink: 0 }}
               title="Delete session"
-            >✕</button>
+            >âœ•</button>
           </div>
         ))}
       </div>
@@ -4195,9 +4195,9 @@ function PlanTreeNode({
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingDesc, setEditingDesc] = useState(false);
 
-  const statusColor = agentStatus === "done" ? "#3D9E5F" : agentStatus === "running" ? "#2b45ff" : agentStatus === "error" ? "#C0392B" : "rgba(176,180,186,0.3)";
+  const statusColor = agentStatus === "done" ? "#3D9E5F" : agentStatus === "running" ? "#002EFF" : agentStatus === "error" ? "#C0392B" : "rgba(176,180,186,0.3)";
   const statusBg = agentStatus === "done" ? "rgba(61,158,95,0.12)" : agentStatus === "running" ? "rgba(37,99,235,0.12)" : "rgba(255,255,255,0.03)";
-  const icon = AGENT_ICONS[node.agent] ?? "◆";
+  const icon = AGENT_ICONS[node.agent] ?? "â—†";
   const completedSteps = agentStatus === "done" ? node.steps.length : agentStatus === "running" ? Math.ceil(node.steps.length * 0.5) : 0;
 
   return (
@@ -4233,7 +4233,7 @@ function PlanTreeNode({
           <div style={{ width: 60, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.08)", flexShrink: 0, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${node.steps.length ? (completedSteps / node.steps.length) * 100 : 0}%`, background: statusColor, borderRadius: 2, transition: "width 0.4s" }} />
           </div>
-          <span style={{ fontSize: 12, color: "var(--fg-mute)", flexShrink: 0 }}>{expanded ? "▾" : "▸"}</span>
+          <span style={{ fontSize: 12, color: "var(--fg-mute)", flexShrink: 0 }}>{expanded ? "â–¾" : "â–¸"}</span>
         </div>
 
         {expanded && (
@@ -4256,7 +4256,7 @@ function PlanTreeNode({
               {node.steps.map((step, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
                   <div style={{ width: 16, height: 16, borderRadius: 4, border: `1.5px solid ${i < completedSteps ? statusColor : "rgba(176,180,186,0.25)"}`, background: i < completedSteps ? statusColor : "transparent", flexShrink: 0, marginTop: 1, display: "grid", placeItems: "center" }}>
-                    {i < completedSteps && <span style={{ fontSize: 9, color: "#fff" }}>✓</span>}
+                    {i < completedSteps && <span style={{ fontSize: 9, color: "#fff" }}>âœ“</span>}
                   </div>
                   {editingStep === i ? (
                     <input
@@ -4344,9 +4344,9 @@ function PlanOverlay({
             {nodes.length > 0 && (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ width: 120, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${overallPct}%`, background: "#2b45ff", borderRadius: 2, transition: "width 0.4s" }} />
+                  <div style={{ height: "100%", width: `${overallPct}%`, background: "#002EFF", borderRadius: 2, transition: "width 0.4s" }} />
                 </div>
-                <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{doneCount}/{nodes.length} agents · {overallPct}%</span>
+                <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{doneCount}/{nodes.length} agents Â· {overallPct}%</span>
               </div>
             )}
             <button type="button" onClick={onClose} className="site-btn site-btn-ghost" style={{ minHeight: 32, padding: "0 14px", fontSize: 12 }}>Close</button>
@@ -4363,7 +4363,7 @@ function PlanOverlay({
           ) : planTasks.length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ padding: "12px 16px", borderRadius: 12, background: "rgba(37,99,235,0.08)", border: "1px solid rgba(37,99,235,0.2)", fontSize: 12, color: "var(--fg-dim)" }}>
-                ⏳ Detailed plan generates after research completes…
+                â³ Detailed plan generates after research completesâ€¦
               </div>
               {planTasks.map((task, i) => (
                 <div key={task.id} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "10px 14px", borderRadius: 12, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)" }}>
@@ -4383,14 +4383,14 @@ function PlanOverlay({
         </div>
 
         <div style={{ fontSize: 10, color: "var(--fg-mute)", borderTop: "1px solid rgba(176,180,186,0.08)", paddingTop: 10 }}>
-          Double-click any title, description, or step to edit · Progress updates live as agents complete
+          Double-click any title, description, or step to edit Â· Progress updates live as agents complete
         </div>
       </LiquidGlass>
     </div>
   );
 }
 
-// ── Main page ───────────────────────────────────────────────────────────────
+// â”€â”€ Main page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function GoalWorkspace({
   sessionId,
@@ -4406,7 +4406,7 @@ export function GoalWorkspace({
   startNew?: boolean;
 }) {
 
-  // ── Persistent session cache ──────────────────────────────────────────────
+  // â”€â”€ Persistent session cache â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const CACHE_KEY = `astra_session_${sessionId}`;
 
   const saveCache = useCallback((a: Record<string, AgentState>, p: AgentTask[], d: boolean, cn?: string, stack?: AgentStackTemplate | null, artifacts?: RunArtifactState[], saferun?: SafeRunActionState[], outcomeEvents?: OutcomeLedgerEvent[], genome?: CompanyGenomeState | null, approvals?: ApprovalQueueItemState[], operatingPlan?: StackOperatingPlan | null, manifest?: AgentDepartmentManifest | null, goalState?: CompanyGoal | null) => {
@@ -4466,7 +4466,7 @@ export function GoalWorkspace({
       const firstAgent = cached.planTasks?.[0]?.agent ?? Object.keys(cached.agents ?? {})[0] ?? "";
       queueMicrotask(() => {
         if (cached.agents && Object.keys(cached.agents).length > 0) {
-          // Agents stuck "running" after a refresh will never get done — downgrade to "waiting"
+          // Agents stuck "running" after a refresh will never get done â€” downgrade to "waiting"
           const fixedAgents: Record<string, AgentState> = {};
           for (const [k, a] of Object.entries(cached.agents)) {
             fixedAgents[k] = a.status === "running" ? { ...a, status: "waiting" } : a;
@@ -4640,7 +4640,7 @@ export function GoalWorkspace({
       if (done) { es.close(); return; }
       errorCount.current += 1;
       if (errorCount.current >= 10) {
-        setError(everConnected.current ? "Connection lost — refresh to reconnect." : "Could not connect. Is the backend running?");
+        setError(everConnected.current ? "Connection lost â€” refresh to reconnect." : "Could not connect. Is the backend running?");
       } else {
         // Debounce: only show "reconnecting" after 3s of sustained errors
         if (!reconnectTimer) {
@@ -4713,7 +4713,7 @@ export function GoalWorkspace({
       }
       if (event.type === "session_expired") { setDone(true); es.close(); return; }
 
-      // Live MVP build stream — accumulate onto the technical agent's state.
+      // Live MVP build stream â€” accumulate onto the technical agent's state.
       if (event.type === "agent_build") {
         const buildAgent = (event.agent as string) || "technical";
         setAgents((prev) => {
@@ -4731,7 +4731,7 @@ export function GoalWorkspace({
         const SEARCH_TOOLS = new Set(["web_search", "search_and_read", "news_search", "fetch_page", "patent_search", "search_and_fetch", "fetch_and_read", "research_papers"]);
 
         if (event.type === "plan_done") {
-          // Merge into existing planTasks — second plan_done only carries non-research agents
+          // Merge into existing planTasks â€” second plan_done only carries non-research agents
           setPlanTasks(prev => {
             const incomingAgents = new Set(event.tasks.map((t: AgentTask) => t.agent));
             const kept = prev.filter(t => !incomingAgents.has(t.agent));
@@ -4782,13 +4782,13 @@ export function GoalWorkspace({
           let newUrl: string | undefined;
           let srcUrls: string[] = [];
           if (!ok) {
-            text = `✗ ${event.tool}: ${event.result?.error ?? "failed"}`;
+            text = `âœ— ${event.tool}: ${event.result?.error ?? "failed"}`;
           } else if (event.tool === "generate_landing_page_html" && typeof event.result === "string") {
             text = event.result.includes("astra-fallback-template")
-              ? "⚠ generate_landing_page_html used fallback template"
-              : "✓ generate_landing_page_html produced custom HTML";
+              ? "âš  generate_landing_page_html used fallback template"
+              : "âœ“ generate_landing_page_html produced custom HTML";
           } else if (SEARCH_TOOLS.has(event.tool)) {
-            // Pull ALL source URLs — run_research_pipeline/batch_search/search_and_fetch
+            // Pull ALL source URLs â€” run_research_pipeline/batch_search/search_and_fetch
             // fetch dozens of sources internally and return a `sources`/`results` array.
             const res = event.result as Record<string, unknown> | string | undefined;
             const pickUrls = (arr: unknown): string[] =>
@@ -4805,10 +4805,10 @@ export function GoalWorkspace({
             srcUrls = [...new Set(srcUrls)];
             newUrl = srcUrls[0];
             text = srcUrls.length > 1
-              ? `✓ ${(event.tool ?? "search").replace(/_/g, " ")}: ${srcUrls.length} sources`
-              : (newUrl ? `✓ Read ${newUrl.slice(0, 70)}…` : `✓ ${resultStr.slice(0, 80).replace(/\n/g, " ")}`);
+              ? `âœ“ ${(event.tool ?? "search").replace(/_/g, " ")}: ${srcUrls.length} sources`
+              : (newUrl ? `âœ“ Read ${newUrl.slice(0, 70)}â€¦` : `âœ“ ${resultStr.slice(0, 80).replace(/\n/g, " ")}`);
           } else {
-            text = `✓ ${TOOL_DESCRIPTIONS[event.tool] ?? event.tool ?? "Done"}`;
+            text = `âœ“ ${TOOL_DESCRIPTIONS[event.tool] ?? event.tool ?? "Done"}`;
           }
           const newVisited = (srcUrls.length || newUrl)
             ? [...new Set([...(cur.visitedUrls ?? []), ...(srcUrls.length ? srcUrls : newUrl ? [newUrl] : [])])]
@@ -4832,7 +4832,7 @@ export function GoalWorkspace({
           if (ok && event.result && typeof event.result === "object") {
             const r = event.result as Record<string, unknown>;
             const tool = event.tool as string;
-            // Map tool name → result key used by preview components
+            // Map tool name â†’ result key used by preview components
             if (tool === "generate_color_palette") liveResult = { ...liveResult, color_palette: r };
             else if (tool === "generate_design_spec") liveResult = { ...liveResult, design_spec: r };
             else if (tool === "generate_wireframe") {
@@ -4875,7 +4875,7 @@ export function GoalWorkspace({
               }
             }
             else if (tool === "enrich_lead") {
-              // Each enriched lead — update the leads list if present
+              // Each enriched lead â€” update the leads list if present
               if (r.company ?? r.name) {
                 const existingLeads = (liveResult.leads as unknown[]) ?? [];
                 liveResult = { ...liveResult, lead: r.company ?? r.name, leads: [...existingLeads, r] };
@@ -4891,7 +4891,7 @@ export function GoalWorkspace({
         } else if (event.type === "model_stats") {
           next[agent] = { ...cur, model: event.model ?? null, tks: event.tks ?? null };
         } else if (event.type === "agent_thinking") {
-          next[agent] = { ...cur, log: addLog("info", `Thinking… (step ${event.iteration})`) };
+          next[agent] = { ...cur, log: addLog("info", `Thinkingâ€¦ (step ${event.iteration})`) };
         } else if (event.type === "agent_done") {
           const result = event.result ?? {};
           const hasOutput = hasStructuredOutput(result);
@@ -4999,7 +4999,7 @@ export function GoalWorkspace({
     if (!done || notified.current) return;
     notified.current = true;
     if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-      new Notification("Astra — launch run complete", { body: companyGoal ? "The company is now operating." : "Your company is live.", icon: "/favicon.ico" });
+      new Notification("Astra â€” launch run complete", { body: companyGoal ? "The company is now operating." : "Your company is live.", icon: "/favicon.ico" });
     }
   }, [companyGoal, done, sessionId]);
 
@@ -5155,7 +5155,7 @@ export function GoalWorkspace({
                 display: "flex", alignItems: "center", gap: 6,
               }}>
               <span style={{ width: 8, height: 8, borderRadius: 2, background: "#fff", display: "inline-block" }} />
-              {killing ? "Stopping…" : "Kill run"}
+              {killing ? "Stoppingâ€¦" : "Kill run"}
             </button>
           )}
         </div>
@@ -5183,14 +5183,14 @@ export function GoalWorkspace({
         {total === 0 && connected && !error && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "rgba(255,255,255,0.82)" }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#FFFFFF" }} className="animate-pulse" />
-            Planner building task graph…
+            Planner building task graphâ€¦
           </div>
         )}
         {error && <p style={{ borderRadius: 8, border: "1px solid rgba(192,57,43,0.25)", background: "rgba(192,57,43,0.06)", padding: "8px 14px", fontSize: 12, color: "#C0392B", margin: 0 }}>{error}</p>}
         {companyGoal && (
           <div style={{ borderRadius: 10, border: "1px solid rgba(37,99,235,0.18)", background: "rgba(37,99,235,0.07)", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2b45ff" }}>Operating</span>
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#002EFF" }}>Operating</span>
               <span style={{ fontSize: 12, color: "var(--fg-dim)" }}>{companyGoal.status}</span>
             </div>
             <div style={{ fontSize: 14, color: "var(--fg)", fontWeight: 600 }}>{companyGoal.company_goal}</div>
@@ -5221,14 +5221,14 @@ export function GoalWorkspace({
             activeAgent={selected}
             onSelect={setActiveAgent}
             onRerun={async (agentName) => {
-              setAgents(prev => ({ ...prev, [agentName]: { ...prev[agentName], status: "running", currentAction: "Rerunning…" } }));
+              setAgents(prev => ({ ...prev, [agentName]: { ...prev[agentName], status: "running", currentAction: "Rerunningâ€¦" } }));
               setActiveAgent(agentName);
               const { rerunAgent } = await import("@/lib/api");
               rerunAgent(sessionId, agentName, founderId).catch(console.error);
             }}
           />
 
-          {/* Detail panel — full width */}
+          {/* Detail panel â€” full width */}
           {selectedState && (
             <div className="site-card astra-panel-white" style={{ minWidth: 0, padding: "20px 24px", display: "flex", flexDirection: "column" }}>
               <AgentDetail
@@ -5239,7 +5239,7 @@ export function GoalWorkspace({
                 company={company || autoCompanyName}
                 goal={instruction}
                 onRerun={async (agentName) => {
-                  setAgents(prev => ({ ...prev, [agentName]: { ...prev[agentName], status: "running", currentAction: "Rerunning…" } }));
+                  setAgents(prev => ({ ...prev, [agentName]: { ...prev[agentName], status: "running", currentAction: "Rerunningâ€¦" } }));
                   const { rerunAgent } = await import("@/lib/api");
                   rerunAgent(sessionId, agentName, founderId).catch(console.error);
                 }}
@@ -5273,11 +5273,11 @@ export function GoalWorkspace({
               {sessionCost && (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                   {[
-                    ["Credits", sessionCost.total_credits_used?.toLocaleString() ?? sessionCost.total_tokens != null ? Math.floor(sessionCost.total_tokens / 10).toLocaleString() : "—"],
-                    ["Cost", sessionCost.total_cost_usd != null ? `$${sessionCost.total_cost_usd.toFixed(4)}` : "—"],
+                    ["Credits", sessionCost.total_credits_used?.toLocaleString() ?? sessionCost.total_tokens != null ? Math.floor(sessionCost.total_tokens / 10).toLocaleString() : "â€”"],
+                    ["Cost", sessionCost.total_cost_usd != null ? `$${sessionCost.total_cost_usd.toFixed(4)}` : "â€”"],
                     ["Cached", sessionCost.cached_tokens != null && sessionCost.total_tokens > 0
                       ? `${Math.round(sessionCost.cached_tokens / sessionCost.total_tokens * 100)}%`
-                      : "—"],
+                      : "â€”"],
                   ].map(([label, value]) => (
                     <div key={label} className="astra-mini-slab" style={{ padding: "11px 10px", borderRadius: 0, display: "grid", gap: 4 }}>
                       <span style={{ fontSize: 15, color: "var(--fg)", fontFamily: "var(--font-jetbrains-mono)" }}>{value}</span>
@@ -5292,7 +5292,7 @@ export function GoalWorkspace({
                   <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{total ? Math.round((doneCount / total) * 100) : 0}%</span>
                 </div>
                 <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(176,180,186,0.10)", overflow: "hidden" }}>
-                  <div style={{ width: `${total ? (doneCount / total) * 100 : 0}%`, height: "100%", borderRadius: 999, background: done ? "#3D9E5F" : "#2b45ff", transition: "width 0.4s ease" }} />
+                  <div style={{ width: `${total ? (doneCount / total) * 100 : 0}%`, height: "100%", borderRadius: 999, background: done ? "#3D9E5F" : "#002EFF", transition: "width 0.4s ease" }} />
                 </div>
               </div>
               {completionAudit && (
@@ -5309,7 +5309,7 @@ export function GoalWorkspace({
                       const agent = String(laneRecord.agent || laneRecord.lane_id || `lane_${index}`);
                       const laneStatus = String(laneRecord.status || "missing");
                       const ok = laneRecord.ok === true || laneStatus === "done";
-                      const color = ok ? "#3D9E5F" : laneStatus === "running" ? "#2b45ff" : "#C0392B";
+                      const color = ok ? "#3D9E5F" : laneStatus === "running" ? "#002EFF" : "#C0392B";
                       return (
                         <button
                           key={`${agent}-${index}`}
@@ -5333,11 +5333,11 @@ export function GoalWorkspace({
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div className="astra-mini-slab astra-mini-slab-wide" style={{ padding: "12px 13px", borderRadius: 0, display: "grid", gap: 3 }}>
                   <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Active lanes</span>
-                  <span style={{ fontSize: 13, color: "var(--fg)", lineHeight: 1.45 }}>{activeAgents.length ? activeAgents.map(a => AGENT_LABELS[a] ?? a).join(" · ") : "No agents running"}</span>
+                  <span style={{ fontSize: 13, color: "var(--fg)", lineHeight: 1.45 }}>{activeAgents.length ? activeAgents.map(a => AGENT_LABELS[a] ?? a).join(" Â· ") : "No agents running"}</span>
                 </div>
                 <div className="astra-mini-slab astra-mini-slab-wide" style={{ padding: "12px 13px", borderRadius: 0, display: "grid", gap: 3 }}>
                   <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Captured activity</span>
-                  <span style={{ fontSize: 13, color: "var(--fg)", lineHeight: 1.45 }}>{totalVisitedUrls} sites visited · {totalCommits} commits · {outcomes.length} outcomes</span>
+                  <span style={{ fontSize: 13, color: "var(--fg)", lineHeight: 1.45 }}>{totalVisitedUrls} sites visited Â· {totalCommits} commits Â· {outcomes.length} outcomes</span>
                 </div>
               </div>
               <div style={{ display: "grid", gap: 8 }}>
@@ -5396,7 +5396,7 @@ export function GoalWorkspace({
                 </div>
                 {sessionAnswer && (
                   <div style={{ padding: "11px 12px", borderRadius: 16, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)", display: "grid", gap: 6 }}>
-                    <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{sessionAnswer.answer_type.replace("_", " ")} · {Math.round(sessionAnswer.confidence * 100)}%</span>
+                    <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{sessionAnswer.answer_type.replace("_", " ")} Â· {Math.round(sessionAnswer.confidence * 100)}%</span>
                     {sessionAnswer.answer.split("\n").slice(0, 4).map(line => (
                       <span key={line} style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.45 }}>{line}</span>
                     ))}
@@ -5417,7 +5417,7 @@ export function GoalWorkspace({
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 12, color: "var(--fg)", fontWeight: 600 }}>{stackOperatingPlan.stack_name}</span>
                     <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                      {stackOperatingPlan.lanes.length} lanes · {stackOperatingPlan.artifact_contract.length} artifacts
+                      {stackOperatingPlan.lanes.length} lanes Â· {stackOperatingPlan.artifact_contract.length} artifacts
                     </span>
                   </div>
                   <span style={{ fontSize: 12, color: "var(--fg-dim)", lineHeight: 1.45 }}>{stackOperatingPlan.operator_contract}</span>
@@ -5433,13 +5433,13 @@ export function GoalWorkspace({
                     <div style={{ display: "grid", gap: 3, padding: "9px 10px", borderRadius: 14, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)" }}>
                       <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Connectors</span>
                       <span style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.4 }}>
-                        {stackOperatingPlan.connector_plan.required.length ? stackOperatingPlan.connector_plan.required.map(c => c.label).join(" · ") : "No required connectors"}
+                        {stackOperatingPlan.connector_plan.required.length ? stackOperatingPlan.connector_plan.required.map(c => c.label).join(" Â· ") : "No required connectors"}
                       </span>
                     </div>
                     <div style={{ display: "grid", gap: 3, padding: "9px 10px", borderRadius: 14, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)" }}>
                       <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Approvals</span>
                       <span style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.4 }}>
-                        {stackOperatingPlan.approval_policy.length ? stackOperatingPlan.approval_policy.map(g => g.title).slice(0, 2).join(" · ") : "No approval gates"}
+                        {stackOperatingPlan.approval_policy.length ? stackOperatingPlan.approval_policy.map(g => g.title).slice(0, 2).join(" Â· ") : "No approval gates"}
                       </span>
                     </div>
                   </div>
@@ -5453,14 +5453,14 @@ export function GoalWorkspace({
                       <span style={{ fontSize: 12, color: "var(--fg)", fontWeight: 600 }}>{stackManifest.department_name}</span>
                     </div>
                     <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em", whiteSpace: "nowrap" }}>
-                      {stackManifest.workflow.nodes.length} lanes · {stackManifest.dashboards.length} views
+                      {stackManifest.workflow.nodes.length} lanes Â· {stackManifest.dashboards.length} views
                     </span>
                   </div>
                   <span style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.45 }}>{stackManifest.positioning}</span>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                     <div style={{ display: "grid", gap: 4, padding: "9px 10px", borderRadius: 14, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)" }}>
                       <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Memory</span>
-                      <span style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.4 }}>{stackManifest.memory_policy.canonical_records.slice(0, 3).join(" · ")}</span>
+                      <span style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.4 }}>{stackManifest.memory_policy.canonical_records.slice(0, 3).join(" Â· ")}</span>
                     </div>
                     <div style={{ display: "grid", gap: 4, padding: "9px 10px", borderRadius: 14, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)" }}>
                       <span style={{ fontSize: 10, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Operator model</span>
@@ -5500,7 +5500,7 @@ export function GoalWorkspace({
                       ))}
                     </div>
                     <span style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.45 }}>
-                      {companyGenome.operating_model.agent_lanes.length} lanes · {companyGenome.operating_model.expected_artifacts.length} artifacts · {companyGenome.operating_model.approval_gates.length} approval gates
+                      {companyGenome.operating_model.agent_lanes.length} lanes Â· {companyGenome.operating_model.expected_artifacts.length} artifacts Â· {companyGenome.operating_model.approval_gates.length} approval gates
                     </span>
                   </div>
                 </div>
@@ -5517,7 +5517,7 @@ export function GoalWorkspace({
                       {SUBTEAM_OPTIONS.map(team => <option key={team} value={team} style={{ background: "#0b0e14" }}>{team}</option>)}
                     </select>
                     <span style={{ fontSize: 11, color: subteamReport.blockers.length ? "#D97706" : "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                      {subteamReport.completed.length} done · {subteamReport.active.length} active
+                      {subteamReport.completed.length} done Â· {subteamReport.active.length} active
                     </span>
                   </div>
                   <div style={{ padding: "12px 13px", borderRadius: 18, background: "rgba(255,255,255,0.025)", border: "1px solid rgba(176,180,186,0.10)", display: "grid", gap: 8 }}>
@@ -5561,7 +5561,7 @@ export function GoalWorkspace({
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                     <span className="site-label">Connectors</span>
                     <span style={{ fontSize: 11, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                      {connectorSetup ? `${connectorSetup.missing_required} missing · ${connectorSetup.connected_needs_sync} sync` : connectorCoverage ? `${connectorCoverage.coverage_score}% covered` : stackReadiness ? `${stackReadiness.connected_required}/${stackReadiness.required_total} ready` : `${stackConnectorRequirements.filter(connector => connector.required).length} required`}
+                      {connectorSetup ? `${connectorSetup.missing_required} missing Â· ${connectorSetup.connected_needs_sync} sync` : connectorCoverage ? `${connectorCoverage.coverage_score}% covered` : stackReadiness ? `${stackReadiness.connected_required}/${stackReadiness.required_total} ready` : `${stackConnectorRequirements.filter(connector => connector.required).length} required`}
                     </span>
                   </div>
                   {stackConnectorRequirements.slice(0, 5).map(connector => {
@@ -5582,10 +5582,10 @@ export function GoalWorkspace({
                         {setup ? (
                           <div style={{ display: "grid", gap: 2, fontSize: 10, color: "var(--fg-mute)", lineHeight: 1.35 }}>
                             <span>Credentials: {setup.missing_fields.length ? setup.missing_fields.join(", ") : "complete"}</span>
-                            <span>Memory: {setup.sync.brain_record_count} records · webhook {setup.webhook.supported ? (setup.webhook.secret_configured ? "secured" : "needs secret") : "not required"}</span>
+                            <span>Memory: {setup.sync.brain_record_count} records Â· webhook {setup.webhook.supported ? (setup.webhook.secret_configured ? "secured" : "needs secret") : "not required"}</span>
                             {setup.validation && (
                               <span>
-                                Validation: {setup.validation.status.replaceAll("_", " ")} · provider {setup.validation.provider.status.replaceAll("_", " ")}
+                                Validation: {setup.validation.status.replaceAll("_", " ")} Â· provider {setup.validation.provider.status.replaceAll("_", " ")}
                               </span>
                             )}
                           </div>
@@ -5691,7 +5691,7 @@ export function GoalWorkspace({
         </div>
       )}
 
-      {/* Unified chat — always shown once session exists */}
+      {/* Unified chat â€” always shown once session exists */}
       {sessionId && (
         <UnifiedChat
           sessionId={sessionId}
@@ -5705,7 +5705,7 @@ export function GoalWorkspace({
       )}
 
 
-      {/* Agent Input Request Modal — shown when agent needs founder info */}
+      {/* Agent Input Request Modal â€” shown when agent needs founder info */}
       {inputRequest && (
         <AgentInputModal
           sessionId={sessionId}
@@ -5717,3 +5717,4 @@ export function GoalWorkspace({
     </div>
   );
 }
+

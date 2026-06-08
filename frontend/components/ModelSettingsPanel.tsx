@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import {
@@ -7,7 +7,7 @@ import {
   setModelOverride,
 } from "@/lib/api";
 
-// ── Agent metadata ──────────────────────────────────────────────────────────
+// â”€â”€ Agent metadata â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type Department = "Research" | "Marketing" | "Technical" | "Legal" | "Sales" | "Finance" | "Ops";
 
@@ -65,17 +65,17 @@ const DEPARTMENT_ORDER: Department[] = [
 ];
 
 const DEPT_ICON: Record<Department, string> = {
-  Research:  "○",
-  Marketing: "◆",
-  Technical: "◈",
-  Legal:     "◉",
-  Sales:     "◇",
-  Finance:   "◑",
-  Ops:       "◎",
+  Research:  "â—‹",
+  Marketing: "â—†",
+  Technical: "â—ˆ",
+  Legal:     "â—‰",
+  Sales:     "â—‡",
+  Finance:   "â—‘",
+  Ops:       "â—Ž",
 };
 
 const DEPT_COLOR: Record<Department, string> = {
-  Research:  "#2b45ff",
+  Research:  "#002EFF",
   Marketing: "#7C3AED",
   Technical: "#059669",
   Legal:     "#DC2626",
@@ -84,7 +84,7 @@ const DEPT_COLOR: Record<Department, string> = {
   Ops:       "#6B7280",
 };
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function shortModelName(model: string): string {
   // strip org prefix, shorten
@@ -92,7 +92,7 @@ function shortModelName(model: string): string {
   return parts[parts.length - 1] ?? model;
 }
 
-// ── Sub-components ──────────────────────────────────────────────────────────
+// â”€â”€ Sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ModelDropdown({
   value,
@@ -132,7 +132,7 @@ function ModelDropdown({
           borderRadius: 8,
           border: "1px solid #E5E7EB",
           background: value ? "#EFF6FF" : "#F9FAFB",
-          color: value ? "#2b45ff" : "#6B7280",
+          color: value ? "#002EFF" : "#6B7280",
           fontSize: 12,
           fontWeight: value ? 600 : 400,
           cursor: disabled ? "default" : "pointer",
@@ -143,7 +143,7 @@ function ModelDropdown({
         }}
       >
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", maxWidth: 160 }}>{display}</span>
-        <span style={{ fontSize: 10, opacity: 0.6 }}>{open ? "▲" : "▼"}</span>
+        <span style={{ fontSize: 10, opacity: 0.6 }}>{open ? "â–²" : "â–¼"}</span>
       </button>
 
       {open && (
@@ -170,7 +170,7 @@ function ModelDropdown({
               textAlign: "left",
               padding: "9px 14px",
               fontSize: 12,
-              color: value === null ? "#2b45ff" : "#111827",
+              color: value === null ? "#002EFF" : "#111827",
               fontWeight: value === null ? 600 : 400,
               background: value === null ? "#EFF6FF" : "transparent",
               border: "none",
@@ -190,7 +190,7 @@ function ModelDropdown({
                 textAlign: "left",
                 padding: "9px 14px",
                 fontSize: 12,
-                color: value === m ? "#2b45ff" : "#111827",
+                color: value === m ? "#002EFF" : "#111827",
                 fontWeight: value === m ? 600 : 400,
                 background: value === m ? "#EFF6FF" : "transparent",
                 border: "none",
@@ -209,7 +209,7 @@ function ModelDropdown({
   );
 }
 
-// ── Main Panel ───────────────────────────────────────────────────────────────
+// â”€â”€ Main Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface Props {
   founderId: string;
@@ -317,7 +317,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
           <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6B7280", lineHeight: 1.5 }}>
             Override which model each agent uses. Saved overrides apply on the next run.
             {overrideCount > 0 && (
-              <span style={{ marginLeft: 8, color: "#2b45ff", fontWeight: 500 }}>
+              <span style={{ marginLeft: 8, color: "#002EFF", fontWeight: 500 }}>
                 {overrideCount} override{overrideCount === 1 ? "" : "s"} active
               </span>
             )}
@@ -350,7 +350,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
               padding: "8px 20px",
               borderRadius: 8,
               border: "none",
-              background: hasUnsavedChanges() ? "#2b45ff" : "#E5E7EB",
+              background: hasUnsavedChanges() ? "#002EFF" : "#E5E7EB",
               color: hasUnsavedChanges() ? "#fff" : "#9CA3AF",
               fontSize: 13,
               fontWeight: 600,
@@ -442,7 +442,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
                         padding: "2px 7px",
                         borderRadius: 999,
                         background: "#EFF6FF",
-                        color: "#2b45ff",
+                        color: "#002EFF",
                         fontWeight: 600,
                       }}
                     >
@@ -490,7 +490,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
                       {/* Current model badge (saved) */}
                       <div style={{ flexShrink: 0, minWidth: 100, textAlign: "right" }}>
                         {isOverridden ? (
-                          <span style={{ fontSize: 11, color: "#2b45ff", fontWeight: 600, background: "#EFF6FF", padding: "2px 8px", borderRadius: 5 }}>
+                          <span style={{ fontSize: 11, color: "#002EFF", fontWeight: 600, background: "#EFF6FF", padding: "2px 8px", borderRadius: 5 }}>
                             {shortModelName(currentModel!)}
                           </span>
                         ) : (
@@ -507,7 +507,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
                         />
                       </div>
 
-                      {/* Reset button — only shown if override is active */}
+                      {/* Reset button â€” only shown if override is active */}
                       <div style={{ flexShrink: 0, width: 60, textAlign: "right" }}>
                         {(isOverridden) && (
                           <button
@@ -536,7 +536,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
         </div>
       )}
 
-      {/* Bottom save bar — sticky when there are changes */}
+      {/* Bottom save bar â€” sticky when there are changes */}
       {hasUnsavedChanges() && (
         <div
           style={{
@@ -565,7 +565,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
             <button
               onClick={handleSave}
               disabled={saving}
-              style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: "#2b45ff", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+              style={{ padding: "7px 18px", borderRadius: 8, border: "none", background: "#002EFF", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}
             >
               {saving ? "Saving..." : "Save Changes"}
             </button>
@@ -575,3 +575,4 @@ export default function ModelSettingsPanel({ founderId }: Props) {
     </div>
   );
 }
+

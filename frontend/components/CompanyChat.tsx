@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import LiquidGlass from "@/components/LiquidGlass";
@@ -7,9 +7,9 @@ import { AGENT_LABELS, apiFetch, askCompanyBrain } from "@/lib/api";
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const AGENT_ICONS: Record<string, string> = {
-  research: "🔬", research_competitors: "🏆", research_execution: "📋",
-  web: "🌐", marketing: "📢", technical: "⚙️",
-  legal: "⚖️", ops: "🚀", sales: "🤝", design: "🎨",
+  research: "ðŸ”¬", research_competitors: "ðŸ†", research_execution: "ðŸ“‹",
+  web: "ðŸŒ", marketing: "ðŸ“¢", technical: "âš™ï¸",
+  legal: "âš–ï¸", ops: "ðŸš€", sales: "ðŸ¤", design: "ðŸŽ¨",
 };
 
 const SUGGESTIONS = [
@@ -92,7 +92,7 @@ export default function CompanyChat({
     if (!text.trim() || busy) return;
     const userMsg: Message = { id: crypto.randomUUID(), role: "user", text, timestamp: Date.now() };
     if (isReportQuestion(text)) {
-      const reportMsg: Message = { id: crypto.randomUUID(), role: "report", text: "Checking Company Brain…", timestamp: Date.now(), done: false };
+      const reportMsg: Message = { id: crypto.randomUUID(), role: "report", text: "Checking Company Brainâ€¦", timestamp: Date.now(), done: false };
       setMessages(prev => [...prev, userMsg, reportMsg]);
       setInput("");
       setBusy(true);
@@ -164,7 +164,7 @@ export default function CompanyChat({
     <LiquidGlass contentStyle={{ padding: "0", display: "flex", flexDirection: "column", height: 560 }}>
       {/* Header */}
       <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 16 }}>💬</span>
+        <span style={{ fontSize: 16 }}>ðŸ’¬</span>
         <div>
           <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{company || "Your company"}</div>
           <div style={{ fontSize: 11, color: "var(--text-2)" }}>Tell the team what to do next</div>
@@ -212,7 +212,7 @@ export default function CompanyChat({
                     <div style={{ display: "grid", gap: 5, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
                       {msg.citations.map(citation => (
                         <span key={`${citation.index}-${citation.title}`} style={{ fontSize: 11, color: "var(--text-2)", lineHeight: 1.4 }}>
-                          [{citation.index}] {citation.title} · {citation.source}{citation.canonical ? " · canonical" : ""}
+                          [{citation.index}] {citation.title} Â· {citation.source}{citation.canonical ? " Â· canonical" : ""}
                         </span>
                       ))}
                     </div>
@@ -227,7 +227,7 @@ export default function CompanyChat({
                     borderRadius: 12, border: "1px solid var(--line)",
                     background: run.status === "done" ? "rgba(61,158,95,0.05)" : run.status === "error" ? "rgba(192,57,43,0.05)" : "rgba(37,99,235,0.05)",
                   }}>
-                    <span style={{ fontSize: 16, lineHeight: 1.2, flexShrink: 0 }}>{AGENT_ICONS[run.agent] ?? "⚙️"}</span>
+                    <span style={{ fontSize: 16, lineHeight: 1.2, flexShrink: 0 }}>{AGENT_ICONS[run.agent] ?? "âš™ï¸"}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
@@ -235,10 +235,10 @@ export default function CompanyChat({
                         </span>
                         <span style={{
                           fontSize: 10, padding: "1px 8px", borderRadius: 999,
-                          color: run.status === "done" ? "#3D9E5F" : run.status === "error" ? "#C0392B" : "#2b45ff",
+                          color: run.status === "done" ? "#3D9E5F" : run.status === "error" ? "#C0392B" : "#002EFF",
                           background: run.status === "done" ? "rgba(61,158,95,0.12)" : run.status === "error" ? "rgba(192,57,43,0.12)" : "rgba(37,99,235,0.12)",
                         }}>
-                          {run.status === "running" ? "working…" : run.status}
+                          {run.status === "running" ? "workingâ€¦" : run.status}
                         </span>
                       </div>
                       {run.summary && <p style={{ fontSize: 12, color: "var(--text-2)", margin: "3px 0 0", lineHeight: 1.5 }}>{run.summary}</p>}
@@ -247,13 +247,13 @@ export default function CompanyChat({
                 ))}
                 {!msg.done && (msg.runs ?? []).length === 0 && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-2)", padding: "6px 0" }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#2b45ff", flexShrink: 0 }} className="animate-pulse" />
-                    Dispatching agents…
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#002EFF", flexShrink: 0 }} className="animate-pulse" />
+                    Dispatching agentsâ€¦
                   </div>
                 )}
                 {msg.done && (msg.runs ?? []).length > 0 && (
                   <p style={{ fontSize: 11, color: "var(--text-2)", margin: 0 }}>
-                    ✓ {(msg.runs ?? []).filter(r => r.status === "done").length} agent{(msg.runs ?? []).filter(r => r.status === "done").length !== 1 ? "s" : ""} completed
+                    âœ“ {(msg.runs ?? []).filter(r => r.status === "done").length} agent{(msg.runs ?? []).filter(r => r.status === "done").length !== 1 ? "s" : ""} completed
                   </p>
                 )}
               </div>
@@ -270,17 +270,18 @@ export default function CompanyChat({
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}
-            placeholder="Update the landing page, write blog posts, add payments…"
+            placeholder="Update the landing page, write blog posts, add paymentsâ€¦"
             rows={2}
             className="site-textarea"
             style={{ flex: 1, padding: "10px 14px", fontSize: 14, lineHeight: 1.5, resize: "none" }}
             disabled={busy}
           />
           <button type="submit" disabled={busy || !input.trim()} className="site-btn site-btn-primary" style={{ padding: "0 20px", height: 42, flexShrink: 0 }}>
-            {busy ? "…" : "→"}
+            {busy ? "â€¦" : "â†’"}
           </button>
         </form>
       </div>
     </LiquidGlass>
   );
 }
+

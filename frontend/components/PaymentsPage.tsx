@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
@@ -12,7 +12,7 @@ import {
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface StripeStatus {
   connected: boolean;
@@ -58,7 +58,7 @@ interface WebhookEvent {
   data: Record<string, unknown>;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function fmt(amount: number, currency = "usd") {
   return new Intl.NumberFormat("en-US", {
@@ -83,7 +83,7 @@ function statusColor(s: string) {
   return "#dc2626";
 }
 
-// ── Chart data builders ───────────────────────────────────────────────────────
+// â”€â”€ Chart data builders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function buildRevenueByDay(charges: Charge[]) {
   const map: Record<string, number> = {};
@@ -119,7 +119,7 @@ function buildPayoutsByMonth(payouts: Payout[]) {
   return Object.entries(map).map(([month, amount]) => ({ month, amount }));
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// â”€â”€ Sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function StatCard({ label, value, sub, accent, badge }: {
   label: string; value: string; sub?: string; accent?: string; badge?: string;
@@ -167,7 +167,7 @@ function SectionCard({ title, children, action }: { title: string; children: Rea
   );
 }
 
-const CHART_COLORS = ["#2b45ff", "#16a34a", "#d97706", "#dc2626", "#7c3aed"];
+const CHART_COLORS = ["#002EFF", "#16a34a", "#d97706", "#dc2626", "#7c3aed"];
 
 const tooltipStyle = {
   contentStyle: {
@@ -181,7 +181,7 @@ const tooltipStyle = {
   labelStyle: { color: "#9CA3AF", marginBottom: 4 },
 };
 
-// ── Connect screen ────────────────────────────────────────────────────────────
+// â”€â”€ Connect screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ConnectStripe({ founderId, email }: { founderId: string; email: string }) {
   const [loading, setLoading] = useState(false);
@@ -207,14 +207,14 @@ function ConnectStripe({ founderId, email }: { founderId: string; email: string 
           width: 56, height: 56, borderRadius: 14,
           background: "#EFF6FF", border: "1px solid #BFDBFE",
           display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 24, margin: "0 auto 20px", color: "#2b45ff",
+          fontSize: 24, margin: "0 auto 20px", color: "#002EFF",
         }}>$</div>
         <h2 style={{ fontSize: 18, fontWeight: 600, color: "#111827", margin: "0 0 10px", letterSpacing: "-0.02em" }}>Connect your Stripe account</h2>
         <p style={{ fontSize: 13, color: "#6B7280", margin: 0, lineHeight: 1.7 }}>
           Click below to connect or create your Stripe account. Astra will securely link it so you can track revenue, balance, and payouts right here.
         </p>
         <p style={{ fontSize: 12, color: "#9CA3AF", marginTop: 10, lineHeight: 1.6 }}>
-          No EIN required — upgrade to a business account after your LLC is filed.
+          No EIN required â€” upgrade to a business account after your LLC is filed.
         </p>
       </div>
       {error && (
@@ -223,16 +223,16 @@ function ConnectStripe({ founderId, email }: { founderId: string; email: string 
         </div>
       )}
       <button onClick={connect} disabled={loading} className="site-btn site-btn-primary" style={{ minHeight: 44, padding: "0 36px", fontSize: 14, opacity: loading ? 0.7 : 1 }}>
-        {loading ? "Redirecting to Stripe…" : "Connect Stripe →"}
+        {loading ? "Redirecting to Stripeâ€¦" : "Connect Stripe â†’"}
       </button>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
-        {["Stripe opens — sign in or create a free account", "Authorize Astra to read your data", "You're redirected back here automatically"].map((s, i) => (
+        {["Stripe opens â€” sign in or create a free account", "Authorize Astra to read your data", "You're redirected back here automatically"].map((s, i) => (
           <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "#6B7280" }}>
             <span style={{
               width: 20, height: 20, borderRadius: "50%",
               background: "#EFF6FF", border: "1px solid #BFDBFE",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 10, flexShrink: 0, color: "#2b45ff", fontWeight: 600,
+              fontSize: 10, flexShrink: 0, color: "#002EFF", fontWeight: 600,
             }}>{i + 1}</span>
             {s}
           </div>
@@ -285,9 +285,9 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
         onClick={() => setShowForm(v => !v)}
         style={{
           fontSize: 12, padding: "4px 12px", borderRadius: 8,
-          background: showForm ? "#F3F4F6" : "#2b45ff",
+          background: showForm ? "#F3F4F6" : "#002EFF",
           color: showForm ? "#374151" : "#FFFFFF",
-          border: showForm ? "1px solid #E5E7EB" : "1px solid #2b45ff",
+          border: showForm ? "1px solid #E5E7EB" : "1px solid #002EFF",
           cursor: "pointer", fontWeight: 500,
         }}
       >
@@ -314,7 +314,7 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
                     border: "1px solid #E5E7EB", background: "#FFFFFF",
                     color: "#111827", outline: "none",
                   }}
-                  onFocus={e => (e.target.style.borderColor = "#2b45ff")}
+                  onFocus={e => (e.target.style.borderColor = "#002EFF")}
                   onBlur={e => (e.target.style.borderColor = "#E5E7EB")}
                 />
               </div>
@@ -341,20 +341,20 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
             disabled={creating || !form.name || !form.amount}
             style={{
               alignSelf: "flex-start", fontSize: 13, padding: "8px 20px", borderRadius: 8,
-              background: "#2b45ff", color: "#FFFFFF", border: "none", cursor: "pointer",
+              background: "#002EFF", color: "#FFFFFF", border: "none", cursor: "pointer",
               opacity: (creating || !form.name || !form.amount) ? 0.6 : 1, fontWeight: 500,
             }}
           >
-            {creating ? "Creating…" : "Create product + payment link →"}
+            {creating ? "Creatingâ€¦" : "Create product + payment link â†’"}
           </button>
         </div>
       )}
 
       {loading ? (
-        <p style={{ padding: "20px", fontSize: 13, color: "#9CA3AF", margin: 0 }}>Loading…</p>
+        <p style={{ padding: "20px", fontSize: 13, color: "#9CA3AF", margin: 0 }}>Loadingâ€¦</p>
       ) : products.length === 0 ? (
         <p style={{ padding: "20px", fontSize: 13, color: "#9CA3AF", margin: 0 }}>
-          No products yet. Create one above — Astra will generate a shareable Stripe payment link instantly.
+          No products yet. Create one above â€” Astra will generate a shareable Stripe payment link instantly.
         </p>
       ) : (
         <div style={{ display: "flex", flexDirection: "column" }}>
@@ -371,13 +371,13 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
                       {pr.payment_link && (
                         <button
                           onClick={() => copy(pr.payment_link!)}
-                          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: copied === pr.payment_link ? "#16a34a" : "#2b45ff", padding: "0 4px", fontWeight: 500 }}
+                          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: copied === pr.payment_link ? "#16a34a" : "#002EFF", padding: "0 4px", fontWeight: 500 }}
                         >
                           {copied === pr.payment_link ? "Copied!" : "Copy link"}
                         </button>
                       )}
                       {pr.payment_link && (
-                        <a href={pr.payment_link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "#9CA3AF", textDecoration: "none" }}>↗</a>
+                        <a href={pr.payment_link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "#9CA3AF", textDecoration: "none" }}>â†—</a>
                       )}
                     </div>
                   ))}
@@ -419,19 +419,19 @@ function AlertsFeed({ founderId }: { founderId: string }) {
   };
 
   const alertIcon = (type: string) => {
-    if (type.includes("succeeded") || type.includes("paid")) return "✓";
-    if (type.includes("failed")) return "✗";
-    if (type.includes("subscription.deleted")) return "↩";
-    if (type.includes("subscription")) return "↻";
-    if (type.includes("refund")) return "↲";
-    return "●";
+    if (type.includes("succeeded") || type.includes("paid")) return "âœ“";
+    if (type.includes("failed")) return "âœ—";
+    if (type.includes("subscription.deleted")) return "â†©";
+    if (type.includes("subscription")) return "â†»";
+    if (type.includes("refund")) return "â†²";
+    return "â—";
   };
 
   const alertColor = (type: string) => {
     if (type.includes("succeeded") || type.includes("paid")) return "#16a34a";
     if (type.includes("failed")) return "#dc2626";
     if (type.includes("deleted")) return "#d97706";
-    return "#2b45ff";
+    return "#002EFF";
   };
 
   return (
@@ -446,7 +446,7 @@ function AlertsFeed({ founderId }: { founderId: string }) {
             border: "1px solid #E5E7EB", cursor: "pointer", fontWeight: 500,
           }}
         >
-          {registering ? "Registering…" : "Enable alerts"}
+          {registering ? "Registeringâ€¦" : "Enable alerts"}
         </button>
       ) : (
         <span style={{ fontSize: 11, color: "#16a34a", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>
@@ -458,7 +458,7 @@ function AlertsFeed({ founderId }: { founderId: string }) {
       {events.length === 0 ? (
         <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 8 }}>
           <p style={{ fontSize: 13, color: "#6B7280", margin: 0 }}>
-            {webhookRegistered ? "No events yet — alerts will appear here when payments come in." : "Enable alerts to get notified instantly when payments come in, subscriptions churn, or payouts complete."}
+            {webhookRegistered ? "No events yet â€” alerts will appear here when payments come in." : "Enable alerts to get notified instantly when payments come in, subscriptions churn, or payouts complete."}
           </p>
           {!webhookRegistered && (
             <p style={{ fontSize: 12, color: "#9CA3AF", margin: 0 }}>
@@ -486,7 +486,7 @@ function AlertsFeed({ founderId }: { founderId: string }) {
 
 function EINUpgradeSection({ upgraded, businessName }: { upgraded: boolean; businessName?: string }) {
   return (
-    <SectionCard title="Business Upgrade · EIN">
+    <SectionCard title="Business Upgrade Â· EIN">
       <div style={{ padding: "20px 24px", display: "flex", alignItems: "flex-start", gap: 16 }}>
         <div style={{ flex: 1 }}>
           {upgraded ? (
@@ -498,7 +498,7 @@ function EINUpgradeSection({ upgraded, businessName }: { upgraded: boolean; busi
             <>
               <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 600, color: "#111827" }}>Upgrade to LLC / Business</p>
               <p style={{ margin: "0 0 10px", fontSize: 13, color: "#6B7280", lineHeight: 1.6 }}>Once your LLC is filed via Astra and your EIN arrives from the IRS, you&apos;ll update your Stripe account to your business entity. Switches tax reporting from SSN to EIN.</p>
-              <p style={{ margin: 0, fontSize: 12, color: "#9CA3AF" }}><strong style={{ color: "#374151" }}>Timeline:</strong> File LLC → IRS issues EIN in 1–4 weeks → update Stripe → done.</p>
+              <p style={{ margin: 0, fontSize: 12, color: "#9CA3AF" }}><strong style={{ color: "#374151" }}>Timeline:</strong> File LLC â†’ IRS issues EIN in 1â€“4 weeks â†’ update Stripe â†’ done.</p>
             </>
           )}
         </div>
@@ -515,7 +515,7 @@ function EINUpgradeSection({ upgraded, businessName }: { upgraded: boolean; busi
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// â”€â”€ Main â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function PaymentsPage() {
   const { userId } = useDevUser();
@@ -582,7 +582,7 @@ export default function PaymentsPage() {
             fontSize: 13, padding: "6px 14px", borderRadius: 8,
             background: "#FFFFFF", color: "#374151",
             border: "1px solid #E5E7EB", textDecoration: "none", fontWeight: 500,
-          }}>← Back</Link>
+          }}>â† Back</Link>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: "#111827", letterSpacing: "-0.02em" }}>Payments</h1>
             <p style={{ fontSize: 13, color: "#6B7280", margin: "3px 0 0" }}>Revenue, balance, and transactions</p>
@@ -609,7 +609,7 @@ export default function PaymentsPage() {
                 border: "1px solid #E5E7EB", cursor: "pointer", fontWeight: 500,
               }}
             >
-              {loadingData ? "Loading…" : "Refresh"}
+              {loadingData ? "Loadingâ€¦" : "Refresh"}
             </button>
           </div>
         )}
@@ -624,7 +624,7 @@ export default function PaymentsPage() {
       {loadingStatus && (
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "48px 0", justifyContent: "center", color: "#9CA3AF", fontSize: 13 }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#9CA3AF", display: "inline-block" }} />
-          Checking Stripe connection…
+          Checking Stripe connectionâ€¦
         </div>
       )}
 
@@ -648,7 +648,7 @@ export default function PaymentsPage() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 14 }}>
                 <StatCard label="Available Balance" value={fmt(data.balance.available, data.currency)} sub="Ready to pay out" accent="#16a34a" />
                 <StatCard label="Pending Balance" value={fmt(data.balance.pending, data.currency)} sub="Processing" />
-                <StatCard label="MRR" value={fmt(data.mrr, data.currency)} sub="This calendar month" accent="#2b45ff" />
+                <StatCard label="MRR" value={fmt(data.mrr, data.currency)} sub="This calendar month" accent="#002EFF" />
                 <StatCard label="Total Revenue" value={fmt(data.total_revenue, data.currency)} sub={`${data.charges.filter(c => c.status === "succeeded").length} successful charges`} />
               </div>
 
@@ -659,28 +659,28 @@ export default function PaymentsPage() {
               </div>
 
               {/* Revenue chart */}
-              <SectionCard title="Revenue — Last 14 Days">
+              <SectionCard title="Revenue â€” Last 14 Days">
                 <div style={{ padding: "24px 20px 16px" }}>
                   {hasActivity ? (
                     <ResponsiveContainer width="100%" height={220}>
                       <AreaChart data={revenueData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                         <defs>
                           <linearGradient id="revenueGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#2b45ff" stopOpacity={0.12} />
-                            <stop offset="95%" stopColor="#2b45ff" stopOpacity={0} />
+                            <stop offset="5%" stopColor="#002EFF" stopOpacity={0.12} />
+                            <stop offset="95%" stopColor="#002EFF" stopOpacity={0} />
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#F3F4F6" />
                         <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9CA3AF" }} tickLine={false} axisLine={false} interval={2} />
                         <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: "#9CA3AF" }} tickLine={false} axisLine={false} width={44} />
                         <Tooltip {...tooltipStyle} formatter={(v) => [fmt(Number(v)), "Revenue"]} />
-                        <Area type="monotone" dataKey="revenue" stroke="#2b45ff" strokeWidth={2} fill="url(#revenueGrad)" dot={false} activeDot={{ r: 4, fill: "#2b45ff" }} />
+                        <Area type="monotone" dataKey="revenue" stroke="#002EFF" strokeWidth={2} fill="url(#revenueGrad)" dot={false} activeDot={{ r: 4, fill: "#002EFF" }} />
                       </AreaChart>
                     </ResponsiveContainer>
                   ) : (
                     <div style={{ height: 220, display: "flex", alignItems: "center", justifyContent: "center", color: "#9CA3AF", fontSize: 13, flexDirection: "column", gap: 8 }}>
                       <span style={{ fontSize: 28, color: "#D1D5DB" }}>$</span>
-                      No transactions yet — create a test payment in Stripe to see your chart
+                      No transactions yet â€” create a test payment in Stripe to see your chart
                     </div>
                   )}
                 </div>
@@ -697,7 +697,7 @@ export default function PaymentsPage() {
                           <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9CA3AF" }} tickLine={false} axisLine={false} />
                           <YAxis tickFormatter={fmtShort} tick={{ fontSize: 11, fill: "#9CA3AF" }} tickLine={false} axisLine={false} width={44} />
                           <Tooltip {...tooltipStyle} formatter={(v) => [fmt(Number(v)), "Payout"]} />
-                          <Bar dataKey="amount" fill="#2b45ff" radius={[6, 6, 0, 0]} />
+                          <Bar dataKey="amount" fill="#002EFF" radius={[6, 6, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     ) : (
@@ -745,8 +745,8 @@ export default function PaymentsPage() {
                         {data.charges.map((c, i) => (
                           <tr key={c.id} style={{ borderBottom: i < data.charges.length - 1 ? "1px solid #E5E7EB" : "none", background: i % 2 === 1 ? "#F9FAFB" : "#FFFFFF" }}>
                             <td style={{ padding: "11px 16px", color: "#6B7280", whiteSpace: "nowrap", fontSize: 12 }}>{fmtDate(c.created)}</td>
-                            <td style={{ padding: "11px 16px", color: "#374151" }}>{c.customer_email ?? "—"}</td>
-                            <td style={{ padding: "11px 16px", color: "#374151", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.description ?? "—"}</td>
+                            <td style={{ padding: "11px 16px", color: "#374151" }}>{c.customer_email ?? "â€”"}</td>
+                            <td style={{ padding: "11px 16px", color: "#374151", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.description ?? "â€”"}</td>
                             <td style={{ padding: "11px 16px", color: "#111827", fontWeight: 600, whiteSpace: "nowrap" }}>{fmt(c.amount, c.currency)}</td>
                             <td style={{ padding: "11px 16px" }}>
                               <span style={{
@@ -810,3 +810,4 @@ export default function PaymentsPage() {
     </div>
   );
 }
+

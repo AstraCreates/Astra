@@ -90,15 +90,20 @@ export default function DashboardView() {
       <style>{`
         @keyframes dv-fade { from { opacity: 0; } to { opacity: 1; } }
         .greeting-text { transition: opacity 0.3s ease; }
-        .sc-row { cursor: pointer; padding: 14px 16px; border-radius: 10px; border: 1.5px solid var(--bd); background: var(--surface); display: flex; align-items: flex-start; gap: 14; transition: border-color .15s, box-shadow .15s; }
-        .sc-row:hover { border-color: var(--blue) !important; box-shadow: 0 0 0 3px rgba(59,130,246,.08); }
-        .sc-row.stalled { border-color: rgba(245,158,11,0.4) !important; background: rgba(245,158,11,0.04) !important; }
-        .sc-row.running { border-color: rgba(59,130,246,0.3) !important; }
+        .sc-row { cursor: pointer; padding: 14px 16px; border: 1px solid var(--bd); background: var(--surface); display: flex; align-items: flex-start; gap: 14; transition: border-color .15s, box-shadow .15s; position: relative; overflow: hidden; }
+        .sc-row::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--bd); transition: background .15s; }
+        .sc-row:hover { border-color: var(--bb) !important; box-shadow: 0 4px 16px rgba(0,46,255,.07); }
+        .sc-row:hover::before { background: linear-gradient(90deg, var(--blue), var(--mint)); }
+        .sc-row.stalled { border-color: var(--ab) !important; background: var(--adim) !important; }
+        .sc-row.stalled::before { background: var(--amber); }
+        .sc-row.running { border-color: var(--bb) !important; }
+        .sc-row.running::before { background: linear-gradient(90deg, var(--blue), var(--mint)); animation: sc-shimmer 2s ease-in-out infinite; }
+        @keyframes sc-shimmer { 0%,100% { opacity: 1; } 50% { opacity: .6; } }
       `}</style>
 
       <div style={{ flex: 1, overflowY: "auto" }}>
         {/* Header */}
-        <div style={{ padding: "28px 24px 20px", borderBottom: "1px solid var(--bd)" }}>
+        <div style={{ padding: "28px 24px 20px", borderBottom: "1px solid var(--bd)", background: "linear-gradient(160deg, rgba(0,46,255,0.035) 0%, rgba(124,255,198,0.015) 100%)" }}>
           {company && (
             <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--bd)", background: "var(--surface)", fontSize: 10.5, color: "var(--fd)", marginBottom: 14 }}>
               <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)" }} />
@@ -109,7 +114,9 @@ export default function DashboardView() {
           <div
             className="greeting-text"
             style={{
-              fontFamily: "var(--font-chakra)", fontSize: 22, fontWeight: 700,
+              fontFamily: "var(--font-fraunces), 'Fraunces', serif",
+              fontSize: 28, fontWeight: 400,
+              letterSpacing: "-0.02em",
               color: "var(--fg)", marginBottom: 4,
             }}
           >
@@ -234,12 +241,12 @@ export default function DashboardView() {
                           {["diagnose", "design", "deploy", "govern", "operate"].map((ph) => (
                             <div key={ph} style={{
                               width: 28, height: 3, borderRadius: 2,
-                              background: "rgba(59,130,246,0.25)",
+                              background: "rgba(0,46,255,0.25)",
                               position: "relative", overflow: "hidden",
                             }}>
                               <div style={{
                                 position: "absolute", inset: 0,
-                                background: "rgba(59,130,246,0.7)",
+                                background: "rgba(0,46,255,0.7)",
                                 animation: "dv-fade 1.5s ease-in-out infinite alternate",
                               }} />
                             </div>

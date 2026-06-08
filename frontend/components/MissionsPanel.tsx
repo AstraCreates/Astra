@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
@@ -17,14 +17,14 @@ import {
   type MissionTask,
 } from "@/lib/api";
 
-// ── Design tokens ──────────────────────────────────────────────────────────────
+// â”€â”€ Design tokens â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const c = {
   bg: "#FFFFFF",
   surface: "#F9FAFB",
   border: "#E5E7EB",
   text: "#111827",
   textMuted: "#6B7280",
-  blue: "#2b45ff",
+  blue: "#002EFF",
   blueHover: "#1f36e0",
   blueTint: "#EFF6FF",
   greenTint: "#F0FDF4",
@@ -32,7 +32,7 @@ const c = {
   radius: 12,
 };
 
-// ── Department config ──────────────────────────────────────────────────────────
+// â”€â”€ Department config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const DEPARTMENTS = [
   "research",
   "marketing",
@@ -46,13 +46,13 @@ const DEPARTMENTS = [
 type Department = (typeof DEPARTMENTS)[number];
 
 const DEPT_ICON: Record<Department, string> = {
-  research: "🔍",
-  marketing: "📢",
-  sales: "💰",
-  technical: "⚙️",
-  legal: "⚖️",
-  ops: "🧭",
-  finance: "📊",
+  research: "ðŸ”",
+  marketing: "ðŸ“¢",
+  sales: "ðŸ’°",
+  technical: "âš™ï¸",
+  legal: "âš–ï¸",
+  ops: "ðŸ§­",
+  finance: "ðŸ“Š",
 };
 
 const DEPT_LABEL: Record<Department, string> = {
@@ -65,7 +65,7 @@ const DEPT_LABEL: Record<Department, string> = {
   finance: "Finance",
 };
 
-// ── Status badge ───────────────────────────────────────────────────────────────
+// â”€â”€ Status badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function StatusBadge({ status }: { status: Mission["status"] }) {
   const styles: Record<Mission["status"], React.CSSProperties> = {
     active: { background: c.blueTint, color: c.blue },
@@ -90,7 +90,7 @@ function StatusBadge({ status }: { status: Mission["status"] }) {
   );
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function formatDate(iso: string | null): string {
   if (!iso) return "Never";
   const d = new Date(iso);
@@ -201,7 +201,7 @@ function MissionTaskTree({ mission, onRefresh }: { mission: Mission; onRefresh: 
   return <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{roots.map((task) => renderTask(task))}</div>;
 }
 
-// ── MissionCard ────────────────────────────────────────────────────────────────
+// â”€â”€ MissionCard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface MissionCardProps {
   mission: Mission;
   onRefresh: () => void;
@@ -291,7 +291,7 @@ function MissionCard({ mission, onRefresh }: MissionCardProps) {
       {/* Header row */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
         <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0, marginTop: 2 }}>
-          {DEPT_ICON[mission.department as Department] ?? "🤖"}
+          {DEPT_ICON[mission.department as Department] ?? "ðŸ¤–"}
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -354,7 +354,7 @@ function MissionCard({ mission, onRefresh }: MissionCardProps) {
               opacity: running ? 0.6 : 1,
             }}
           >
-            {running ? "Running…" : "Run now"}
+            {running ? "Runningâ€¦" : "Run now"}
           </button>
           <button
             onClick={handleToggle}
@@ -388,7 +388,7 @@ function MissionCard({ mission, onRefresh }: MissionCardProps) {
             }}
             title="Delete mission"
           >
-            ✕
+            âœ•
           </button>
         </div>
       </div>
@@ -494,7 +494,7 @@ function MissionCard({ mission, onRefresh }: MissionCardProps) {
   );
 }
 
-// ── CreateMissionModal ─────────────────────────────────────────────────────────
+// â”€â”€ CreateMissionModal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface CreateMissionModalProps {
   founderId: string;
   onClose: () => void;
@@ -624,7 +624,7 @@ function CreateMissionModal({ founderId, onClose, onCreated }: CreateMissionModa
               padding: 4,
             }}
           >
-            ✕
+            âœ•
           </button>
         </div>
 
@@ -677,7 +677,7 @@ function CreateMissionModal({ founderId, onClose, onCreated }: CreateMissionModa
             <label style={labelStyle}>Goal</label>
             <textarea
               style={{ ...inputStyle, minHeight: 80, resize: "vertical", fontFamily: "inherit" }}
-              placeholder="Describe what this mission should accomplish…"
+              placeholder="Describe what this mission should accomplishâ€¦"
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
               required
@@ -723,7 +723,7 @@ function CreateMissionModal({ founderId, onClose, onCreated }: CreateMissionModa
                         fontSize: 14,
                       }}
                     >
-                      ✕
+                      âœ•
                     </button>
                   )}
                 </div>
@@ -752,7 +752,7 @@ function CreateMissionModal({ founderId, onClose, onCreated }: CreateMissionModa
           <div style={{ display: "flex", gap: 20 }}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>
-                Max runs/day — <strong style={{ color: c.text }}>{maxRuns}</strong>
+                Max runs/day â€” <strong style={{ color: c.text }}>{maxRuns}</strong>
               </label>
               <input
                 type="range"
@@ -766,7 +766,7 @@ function CreateMissionModal({ founderId, onClose, onCreated }: CreateMissionModa
             </div>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>
-                Max $/run — <strong style={{ color: c.text }}>${maxCost.toFixed(2)}</strong>
+                Max $/run â€” <strong style={{ color: c.text }}>${maxCost.toFixed(2)}</strong>
               </label>
               <input
                 type="range"
@@ -848,7 +848,7 @@ function CreateMissionModal({ founderId, onClose, onCreated }: CreateMissionModa
                 cursor: saving ? "not-allowed" : "pointer",
               }}
             >
-              {saving ? "Creating…" : "Create Mission"}
+              {saving ? "Creatingâ€¦" : "Create Mission"}
             </button>
           </div>
         </form>
@@ -857,7 +857,7 @@ function CreateMissionModal({ founderId, onClose, onCreated }: CreateMissionModa
   );
 }
 
-// ── MissionsPanel ──────────────────────────────────────────────────────────────
+// â”€â”€ MissionsPanel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function MissionsPanel() {
   const { userId } = useDevUser();
   const founderId = userId === "anon" ? "" : userId;
@@ -990,7 +990,7 @@ export default function MissionsPanel() {
             whiteSpace: "nowrap",
           }}
         >
-          {syncingNotion ? "Syncing…" : "Sync Notion"}
+          {syncingNotion ? "Syncingâ€¦" : "Sync Notion"}
         </button>
       </div>
 
@@ -1057,7 +1057,7 @@ export default function MissionsPanel() {
             fontSize: 14,
           }}
         >
-          Loading missions…
+          Loading missionsâ€¦
         </div>
       ) : error ? (
         <div
@@ -1097,7 +1097,7 @@ export default function MissionsPanel() {
             borderRadius: 16,
           }}
         >
-          <div style={{ fontSize: 36, marginBottom: 16 }}>🤖</div>
+          <div style={{ fontSize: 36, marginBottom: 16 }}>ðŸ¤–</div>
           <div
             style={{
               fontSize: 16,
@@ -1141,7 +1141,7 @@ export default function MissionsPanel() {
                 }}
               >
                 <span style={{ fontSize: 16 }}>
-                  {DEPT_ICON[dept as Department] ?? "🤖"}
+                  {DEPT_ICON[dept as Department] ?? "ðŸ¤–"}
                 </span>
                 <span
                   style={{
@@ -1189,3 +1189,4 @@ export default function MissionsPanel() {
     </div>
   );
 }
+
