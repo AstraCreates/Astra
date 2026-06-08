@@ -1296,7 +1296,12 @@ class Agent:
             if wireframes:
                 out["wireframes"] = wireframes
         elif self.name in ("legal", "legal_docs"):
-            docs = out.get("documents") if isinstance(out.get("documents"), list) else []
+            # Build docs from the tool results (these always carry real path/text) and
+            # put them FIRST, then keep only model-emitted entries that actually have
+            # path or text. Previously the model's raw (often malformed) documents array
+            # seeded index 0, so _missing_required_output's documents[0] check failed
+            # forever → legal re-generated everything each loop → 10min timeout.
+            tool_docs: list[dict[str, Any]] = []
             current_doc: dict[str, Any] | None = None
             for tool_name, result in tool_results:
                 if tool_name == "format_legal_document":
@@ -1309,8 +1314,15 @@ class Agent:
                     if current_doc is None:
                         current_doc = {"doc_type": "document", "title": "document"}
                     current_doc["path"] = result.get("path") or result.get("filename")
-                    docs.append(current_doc)
+                    tool_docs.append(current_doc)
                     current_doc = None
+            if current_doc is not None and current_doc.get("text"):
+                tool_docs.append(current_doc)
+            model_docs = [
+                d for d in (out.get("documents") or [])
+                if isinstance(d, dict) and (d.get("path") or d.get("text"))
+            ] if isinstance(out.get("documents"), list) else []
+            docs = tool_docs + model_docs
             if docs:
                 out["documents"] = docs
         elif self.name == "marketing_content":
