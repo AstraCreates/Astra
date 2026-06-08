@@ -251,6 +251,28 @@ def _new_goal_task(title: str, owner_agents: list[str], notes: str = "") -> dict
     }
 
 
+def reset_for_new_launch(founder_id: str, session_id: str, north_star: str, company_goal: str) -> dict[str, Any]:
+    """A fresh launch run = a new company → wipe the prior goal/runs and start clean,
+    so the /goals view tracks the LATEST session, not a stale earlier one."""
+    with _lock:
+        data = _read(founder_id) or {"founder_id": founder_id, "created_at": _now_iso()}
+        data.update({
+            "founder_id": founder_id,
+            "north_star": north_star,
+            "company_goal": company_goal,
+            "source_session_id": session_id,
+            "root_session_id": session_id,
+            "status": "operating",
+            "goals": [],
+            "current_goal_id": "",
+            "operating_sessions": [],
+            "kpis": data.get("kpis") or [],
+        })
+        data.setdefault("budget", {"max_runs_per_day": 12, "max_cost_usd_per_run": 1.0})
+        _save(data)
+        return data
+
+
 def current_goal(founder_id: str) -> dict[str, Any] | None:
     g = _read(founder_id)
     if not g:

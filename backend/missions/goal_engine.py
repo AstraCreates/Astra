@@ -72,11 +72,14 @@ def ensure_launch_goal(founder_id: str, session_id: str, agents: list[str], goal
     if not founder_id:
         return
     from backend.missions.company_goal import (
-        get_company_goal, upsert_company_goal, set_root_session, start_goal, current_goal,
+        get_company_goal, reset_for_new_launch, start_goal, current_goal,
     )
     try:
-        if current_goal(founder_id):
-            return  # already operating on a goal — don't reseed
+        goal = get_company_goal(founder_id)
+        # Re-entrant: this exact session already seeded the current goal → no-op
+        # (avoids reseeding on replans within the same launch run).
+        if goal and goal.get("root_session_id") == session_id and current_goal(founder_id):
+            return
         # Group the planned agents by workstream, preserving exact agent names so
         # task-done detection matches the agent_done events exactly.
         by_ws: dict[str, list[str]] = {}
@@ -93,17 +96,15 @@ def ensure_launch_goal(founder_id: str, session_id: str, agents: list[str], goal
         if not tasks:
             tasks = [{"title": "Launch the company", "owner_agents": list(agents or [])}]
 
-        if get_company_goal(founder_id) is None:
-            upsert_company_goal(
-                founder_id,
-                north_star=(goal_text or "Get the company on its feet")[:400],
-                company_goal="Get the company launched and operating — all departments working together.",
-                source_session_id=session_id,
-                status="operating",
-            )
-        set_root_session(founder_id, session_id)
+        # Fresh launch run = a new company → reset to a clean slate rooted at THIS
+        # session, so /goals tracks the latest launch (not a stale earlier company).
+        reset_for_new_launch(
+            founder_id, session_id,
+            north_star=(goal_text or "Get the company on its feet")[:400],
+            company_goal="Get the company launched and operating — all departments working together.",
+        )
         start_goal(founder_id, title="Launch the company", tasks=tasks, kind="launch")
-        logger.info("goal_engine: seeded launch goal for %s (%d tasks)", founder_id, len(tasks))
+        logger.info("goal_engine: reset+seeded launch goal for %s session=%s (%d tasks)", founder_id, session_id, len(tasks))
     except Exception as e:
         logger.warning("goal_engine.ensure_launch_goal failed for %s: %s", founder_id, e)
 
