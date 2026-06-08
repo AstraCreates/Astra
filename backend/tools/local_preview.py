@@ -184,13 +184,16 @@ def start_local_preview(local: str, session_id: str) -> str | None:
         env = os.environ.copy()
         env["PORT"] = str(port)
         env["HOST"] = "0.0.0.0"
+        npm_cache = os.environ.get("ASTRA_NPM_CACHE", "/data/npm-cache")
         log = f"/tmp/preview_{session_id[:8]}_{port}.log"
         # Install deps (quietly) then start the dev server, detached. As the astra
         # user when running as root (npm/next dislike running as root in some setups).
-        inner = f"cd {local!r} && npm install --no-audit --no-fund >{log} 2>&1; {run} >>{log} 2>&1"
+        inner = f"cd {local!r} && npm install --no-audit --no-fund --prefer-offline >{log} 2>&1; {run} >>{log} 2>&1"
         if os.getuid() == 0:
             subprocess.run(["chmod", "-R", "777", local], capture_output=True)
-            cmd = ["sudo", "-u", "astra", "env", f"PORT={port}", "HOST=0.0.0.0", "HOME=/home/astra", "sh", "-c", inner]
+            cmd = ["sudo", "-u", "astra", "env", f"PORT={port}", "HOST=0.0.0.0", "HOME=/home/astra",
+                   f"npm_config_cache={npm_cache}", "npm_config_prefer_offline=true",
+                   "sh", "-c", inner]
         else:
             cmd = ["sh", "-c", inner]
         try:

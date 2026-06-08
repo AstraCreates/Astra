@@ -387,6 +387,28 @@ def _make_env() -> dict:
     env["OPENAI_BASE_URL"] = getattr(settings, "openrouter_base_url", "") or "https://openrouter.ai/api/v1"
     env["OPENAI_API_KEY"] = or_key
     env["OPENAI_MODEL"] = getattr(settings, "mvp_build_model", "") or "tencent/hy3-preview"
+    # Persistent, shared npm cache so `npm install` (run by every build pass and every
+    # session) pulls packages from local disk instead of re-downloading — the biggest
+    # chunk of build time. prefer-offline = use the cache whenever possible.
+    _apply_npm_cache_env(env)
+    return env
+
+
+_NPM_CACHE_DIR = os.environ.get("ASTRA_NPM_CACHE", "/data/npm-cache")
+
+
+def _apply_npm_cache_env(env: dict) -> dict:
+    """Point npm at a persistent shared cache + offline-first. Best-effort mkdir."""
+    try:
+        Path(_NPM_CACHE_DIR).mkdir(parents=True, exist_ok=True)
+        if os.getuid() == 0:
+            subprocess.run(["chmod", "-R", "777", _NPM_CACHE_DIR], capture_output=True, timeout=15)
+    except Exception:
+        pass
+    env["npm_config_cache"] = _NPM_CACHE_DIR
+    env["npm_config_prefer_offline"] = "true"
+    env["npm_config_audit"] = "false"
+    env["npm_config_fund"] = "false"
     return env
 
 
@@ -607,6 +629,11 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
             f"OPENAI_BASE_URL={openai_base}",
             f"OPENAI_MODEL={openai_model}",
             "HOME=/home/astra",
+            # Persistent shared npm cache (sudo's env reset drops these unless listed).
+            f"npm_config_cache={env.get('npm_config_cache', _NPM_CACHE_DIR)}",
+            "npm_config_prefer_offline=true",
+            "npm_config_audit=false",
+            "npm_config_fund=false",
         ] + oc_args + [full_prompt]
     else:
         cmd = oc_args + [full_prompt]
@@ -767,7 +794,7 @@ If everything is already correct, just say OK."""
 _BUILD_CHECK_PROMPT = """Run the Next.js production build and fix every error until it passes.
 
 1. Find package.json: check `ls frontend/package.json` first, then root `package.json`.
-2. cd into that directory and run: npm install --legacy-peer-deps && npm run build 2>&1 | tail -150
+2. cd into that directory and run: npm install --legacy-peer-deps --prefer-offline --no-audit --no-fund && npm run build 2>&1 | tail -150
 3. If the build PASSES (exit 0), say OK and stop.
 4. If it FAILS, read every error carefully and fix all of them. Common patterns to fix:
    - Any @clerk/* import → remove it; replace auth with NextAuth.js (next-auth@beta) or Supabase Auth
