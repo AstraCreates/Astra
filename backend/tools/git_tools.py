@@ -1047,6 +1047,15 @@ def _generate_build_plan(goal: str, context: str = "", kind: str = "app") -> dic
                 files = [str(f).strip() for f in parsed if isinstance(f, str) and f.strip()][:40]
             except Exception:
                 files = []
+        if not files:
+            # Model wrote the file plan as markdown (not the FILES: JSON line) — scan
+            # for real source paths so the completion loop still targets them.
+            seen: set[str] = set()
+            for raw in re.findall(r"[\w@./\[\]-]+\.(?:tsx?|jsx?|css|json|prisma|sql|mjs)", plan):
+                p = raw.strip().lstrip("./")
+                if p and "/" in p and p not in seen and not p.startswith("node_modules"):
+                    seen.add(p)
+            files = list(seen)[:40]
         logger.info("build plan generated (%d chars, %d files) via %s", len(plan), len(files), model)
         return {"plan": plan, "files": files, "model": model}
     except Exception as e:
