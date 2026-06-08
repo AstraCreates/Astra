@@ -60,7 +60,7 @@ export default function NewGoalView() {
       if (!data.session_id) throw new Error("No session_id returned");
       // Hard navigation — router.push (soft nav: same pathname, only query changes) can
       // fail to re-render in some in-app webviews, leaving the button stuck on "Launching…".
-      window.location.assign(`/?session=${data.session_id}&founder=${encodeURIComponent(userId)}`);
+      window.location.assign(`/s/${data.session_id}`);
     } catch (e) {
       setBusy(false);
       setErr(`⚠ ${e instanceof Error ? e.message : String(e)}`);

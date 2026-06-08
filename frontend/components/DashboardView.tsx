@@ -181,7 +181,7 @@ export default function DashboardView() {
                   style={{ marginLeft: 8, background: "none", border: "none", color: "inherit", cursor: "pointer", fontWeight: 600, textDecoration: "underline", padding: 0, fontSize: 12 }}
                   onClick={() => {
                     const first = (sessions || []).find((s) => s.status === "stalled");
-                    if (first) router.push(`/?session=${first.session_id}&founder=${encodeURIComponent(userId)}`);
+                    if (first) router.push(`/s/${first.session_id}`);
                   }}
                 >
                   Review →
@@ -235,7 +235,7 @@ export default function DashboardView() {
                   <div
                     key={s.session_id}
                     className={`sc-row${isStalled ? " stalled" : isRunning ? " running" : ""}`}
-                    onClick={() => router.push(`/?session=${s.session_id}&founder=${encodeURIComponent(userId)}`)}
+                    onClick={() => router.push(`/s/${s.session_id}`)}
                     style={{ position: "relative", marginLeft: child ? 28 : 0, borderLeft: child ? "2px solid var(--bd)" : undefined }}
                   >
                     {/* Delete */}

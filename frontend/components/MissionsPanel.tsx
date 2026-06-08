@@ -208,7 +208,7 @@ export default function MissionsPanel() {
     setBusy("run");
     try {
       const r = await runCompanyCycle(founderId);
-      if (r.parent_session_id) window.location.assign(`/?session=${r.parent_session_id}`);
+      if (r.parent_session_id) window.location.assign(`/s/${r.parent_session_id}`);
       else await load();
     } catch (e) { alert(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(null); }
@@ -348,7 +348,7 @@ export default function MissionsPanel() {
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {runs.map((r) => (
-                      <a key={r.session_id} href={`/?session=${r.session_id}`}
+                      <a key={r.session_id} href={`/s/${r.session_id}`}
                         style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", border: `1px solid ${C.border}`, borderRadius: 9, background: C.surface, textDecoration: "none" }}>
                         <Badge label={r.status} kind={r.status === "done" ? "done" : r.status === "error" ? "blocked" : "in_progress"} />
                         <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.summary || "Operating run"}</span>

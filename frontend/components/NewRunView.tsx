@@ -51,7 +51,7 @@ export default function NewRunView({ workspaceId }: { workspaceId: string }) {
       const data = await submitGoal(userId, instruction, {}, selStack || workspace?.stack_id || "idea_to_revenue", workspaceId);
       if (!data.session_id) throw new Error("No session_id returned");
       // Open the live session (AppHome is session-based). Hard nav so it always lands.
-      window.location.assign(`/?session=${data.session_id}&founder=${encodeURIComponent(userId)}`);
+      window.location.assign(`/s/${data.session_id}`);
     } catch (e) {
       setBusy(false);
       setErr(`⚠ ${e instanceof Error ? e.message : String(e)}`);

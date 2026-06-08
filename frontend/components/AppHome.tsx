@@ -18,6 +18,12 @@ export default function AppHome() {
   const showWelcome = searchParams.get("welcome") === "1";
   const welcomeName = searchParams.get("name") ?? "";
 
+  // Back-compat: old links used /?session=<id>(&founder=…). Redirect to the clean
+  // shareable /s/<id> route (drops the founder param).
+  useEffect(() => {
+    if (sessionId) router.replace(`/s/${sessionId}`);
+  }, [sessionId, router]);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       setOnboarded(!!localStorage.getItem("astra_onboarding_done"));

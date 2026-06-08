@@ -230,10 +230,30 @@ def _ensure_clone(repo_url: str, session_id: str = "default") -> str:
     return str(workspace)
 
 
+def _root_session_id(session_id: str) -> str:
+    """Walk parent_session_id up to the launch session so continuation/operating runs
+    build in the SAME workspace as the launch (extend the same repo, no re-clone, no
+    accidental new repo per goal)."""
+    try:
+        from backend.core.session_store import get_session_meta
+        sid, seen = session_id, set()
+        for _ in range(12):
+            parent = (get_session_meta(sid) or {}).get("parent_session_id") or ""
+            if not parent or parent in seen:
+                break
+            seen.add(parent)
+            sid = parent
+        return sid
+    except Exception:
+        return session_id
+
+
 def _get_workspace(repo_url: str, session_id: str) -> tuple[str, bool]:
     """Return (local_path, is_github). Clones from GitHub when a repo + token are
     available, otherwise builds in a fresh local git workspace so MVPs can be
-    built and previewed with NO GitHub required."""
+    built and previewed with NO GitHub required. Continuation runs reuse the launch
+    session's workspace (resolved via the parent chain)."""
+    session_id = _root_session_id(session_id)
     if repo_url and settings.github_token:
         try:
             return _ensure_clone(repo_url, session_id), True

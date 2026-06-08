@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, type SessionImages } from "@/lib/api";
+import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, type SessionImages } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import SessionTour from "@/components/SessionTour";
@@ -191,6 +191,9 @@ function cacheSession(id: string, state: SState) {
 export default function SessionView({ sessionId }: { sessionId: string }) {
   const { userId } = useDevUser();
   const founderId = userId;
+  // Founder resolved from the session's own meta (so a /s/<id> link works without
+  // login / without the founder in the URL). Falls back to the logged-in user.
+  const sessFounder = useRef<string>("");
   const router = useRouter();
   const S = useRef<SState>({
     status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
@@ -343,7 +346,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
   // Load meta + state, then connect SSE.
   useEffect(() => {
-    if (!sessionId || !founderId) return;
+    if (!sessionId) return;
     let alive = true;
     // Restore from cache (keeps logs + selected agent across nav) — else start fresh.
     const cached = SV_CACHE.get(sessionId);
@@ -357,23 +360,20 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     force();
 
     (async () => {
-      // goal + status from sessions list (state has no goal)
+      // Session header by id (public, no founder in URL, works logged-out).
       try {
-        const r = await apiFetch(`${API}/sessions?founder_id=${encodeURIComponent(founderId)}`);
-        if (r.ok) {
-          const d = await r.json();
-          const meta = (d.sessions || d || []).find((s: any) => s.session_id === sessionId);
-          if (meta && alive) {
-            const rawGoal = meta.goal || meta.instruction || "";
-            const { projectName, cleanGoal } = extractProjectName(rawGoal);
-            S.current.goal = cleanGoal;
-            S.current.projectName = projectName;
-            S.current.status = meta.status || "running";
-            S.current.company = meta.company_name || "";
-            S.current.stackId = meta.stack_id || "";
-            S.current.parentId = meta.parent_session_id || "";
-            if (meta.created_at) { const t = Date.parse(meta.created_at); if (!Number.isNaN(t)) S.current.startedAt = t; }
-          }
+        const meta = await getSessionMeta(sessionId);
+        if (meta && alive) {
+          if (meta.founder_id) sessFounder.current = meta.founder_id;
+          const rawGoal = meta.goal || "";
+          const { projectName, cleanGoal } = extractProjectName(rawGoal);
+          S.current.goal = cleanGoal;
+          S.current.projectName = projectName;
+          S.current.status = meta.status || "running";
+          S.current.company = meta.company_name || "";
+          S.current.stackId = meta.stack_id || "";
+          S.current.parentId = meta.parent_session_id || "";
+          if (meta.created_at) { const t = Date.parse(meta.created_at); if (!Number.isNaN(t)) S.current.startedAt = t; }
         }
       } catch {}
       // rich state (404 normal)
@@ -478,7 +478,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       const instruction = company ? `Company/project name: ${company}\n\n${goal}` : goal;
       const data = await submitGoal(founderId, instruction, {}, stack);
       if (!data.session_id) throw new Error("No session_id returned");
-      router.push(`/?session=${data.session_id}&founder=${encodeURIComponent(founderId)}`);
+      window.location.assign(`/s/${data.session_id}`);
     } catch (e) {
       alert(`Restart failed: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -589,7 +589,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       <div style={{ height: 44, display: "flex", alignItems: "center", gap: 10, padding: "0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
         <div className="topbar-title" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName || shortGoal}</div>
         {st.parentId && (
-          <a href={`/?session=${st.parentId}`} className="btn sm" title="This is an operating run continuing the launch session"
+          <a href={`/s/${st.parentId}`} className="btn sm" title="This is an operating run continuing the launch session"
              style={{ flexShrink: 0, textDecoration: "none", background: "var(--surface)", border: "1px solid var(--bd)", color: "var(--fd)" }}>
             ↩ Continuation
           </a>

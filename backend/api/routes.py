@@ -681,6 +681,29 @@ async def session_completion_audit(session_id: str, request: Request):
     return build_run_completion_audit(session_id, state)
 
 
+@router.get("/sessions/{session_id}/meta")
+async def session_meta_public(session_id: str):
+    """Lightweight, UNAUTHENTICATED session header (goal, company, stack, parent,
+    status, founder) — so a session is reachable by a clean /s/<id> link without
+    the founder in the URL or being logged in. The full /state stays auth-gated; the
+    event stream is already public and replays history, so the view reconstructs."""
+    from backend.core.session_store import get_session_meta
+    meta = get_session_meta(session_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="session not found")
+    return {
+        "session_id": session_id,
+        "founder_id": meta.get("founder_id", ""),
+        "goal": meta.get("goal", ""),
+        "company_name": meta.get("company_name", ""),
+        "stack_id": meta.get("stack_id", ""),
+        "status": meta.get("status", ""),
+        "created_at": meta.get("created_at", ""),
+        "parent_session_id": meta.get("parent_session_id", ""),
+        "kind": meta.get("kind", ""),
+    }
+
+
 @router.get("/sessions/{session_id}/state")
 async def session_state(session_id: str, request: Request):
     from backend.workflow_state import build_session_state, load_session_state

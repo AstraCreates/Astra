@@ -1230,6 +1230,26 @@ export interface SessionIndexEntry {
   kind?: string;
 }
 
+export interface SessionMeta {
+  session_id: string;
+  founder_id: string;
+  goal: string;
+  company_name: string;
+  stack_id: string;
+  status: string;
+  created_at: string;
+  parent_session_id: string;
+  kind: string;
+}
+
+/** Public, unauthenticated session header — lets /s/<id> links work without the
+ *  founder in the URL or being logged in. */
+export async function getSessionMeta(sessionId: string): Promise<SessionMeta | null> {
+  const res = await apiFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/meta`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
 /** List a founder's sessions persisted server-side (for cross-device sync). */
 export async function listSessions(founderId: string, limit = 50): Promise<SessionIndexEntry[]> {
   const res = await apiFetch(`${BASE}/sessions?founder_id=${encodeURIComponent(founderId)}&limit=${limit}`);
