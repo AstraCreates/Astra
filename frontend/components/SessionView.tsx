@@ -698,8 +698,18 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               const files = new Map<string, string>();
               const scanFiles = (val: unknown) => {
                 if (typeof val === "string") {
-                  const m = val.match(/[\w./\-]+\.(pdf|png|jpe?g|docx?|csv|md|html?)\b/gi);
-                  if (m) for (const p of m) { const base = p.split("/").pop()!; files.set(base, `${API}/files/${encodeURIComponent(base)}`); }
+                  // Real generated deliverables live under the /files/ dir. Link those
+                  // (or a bare logical filename the endpoint can resolve) — but NOT
+                  // source URLs, READMEs, repo files, or session .md notes, which aren't
+                  // downloadable and 404 ("File not found").
+                  const m = val.match(/[\w./\-]+\.(?:pdf|png|jpe?g|docx?|pptx?|csv|xlsx?)\b/gi);
+                  if (m) for (const tok of m) {
+                    const base = tok.split("/").pop();
+                    if (!base || base.toLowerCase().startsWith("readme")) continue;
+                    const hasSlash = tok.includes("/");
+                    if (hasSlash && !tok.includes("/files/")) continue; // URL or other path
+                    files.set(base, `${API}/files/${encodeURIComponent(base)}`);
+                  }
                 } else if (Array.isArray(val)) { val.forEach(scanFiles); }
                 else if (val && typeof val === "object") { Object.values(val as Record<string, unknown>).forEach(scanFiles); }
               };
