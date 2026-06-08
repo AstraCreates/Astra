@@ -26,14 +26,21 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   const [showTour, setShowTour] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const shouldShow = localStorage.getItem("astra_show_tour") === "1"
-        && !localStorage.getItem("astra_tour_done");
-      if (shouldShow) {
-        // Small delay so sidebar is fully mounted before tour measures elements
-        const t = setTimeout(() => setShowTour(true), 600);
-        return () => clearTimeout(t);
+    if (typeof window === "undefined") return;
+    // Tour spotlights the desktop sidebar, which is an off-canvas drawer on phones —
+    // skip on mobile and consume the flag so it doesn't linger.
+    if (window.matchMedia("(max-width: 768px)").matches) {
+      if (localStorage.getItem("astra_show_tour") === "1") {
+        try { localStorage.removeItem("astra_show_tour"); localStorage.setItem("astra_tour_done", "1"); } catch {}
       }
+      return;
+    }
+    const shouldShow = localStorage.getItem("astra_show_tour") === "1"
+      && !localStorage.getItem("astra_tour_done");
+    if (shouldShow) {
+      // Small delay so sidebar is fully mounted before tour measures elements
+      const t = setTimeout(() => setShowTour(true), 600);
+      return () => clearTimeout(t);
     }
   }, []);
 

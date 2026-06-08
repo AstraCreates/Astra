@@ -161,8 +161,9 @@ export default function SessionTour({ onDone }: { onDone: () => void }) {
         .st-ring { animation: st-ring 2s ease-in-out infinite; transition: top .32s cubic-bezier(0.22,1,0.36,1), left .32s cubic-bezier(0.22,1,0.36,1), width .32s cubic-bezier(0.22,1,0.36,1), height .32s cubic-bezier(0.22,1,0.36,1); }
       `}</style>
 
-      {/* Overlay */}
-      <div style={{ position: "fixed", inset: 0, zIndex: 9000, pointerEvents: "auto" }} onClick={e => e.stopPropagation()}>
+      {/* Overlay — tapping the dark backdrop dismisses the tour (safety net so it
+          can always be closed, e.g. on mobile where the card buttons may be cramped). */}
+      <div style={{ position: "fixed", inset: 0, zIndex: 9000, pointerEvents: "auto", touchAction: "manipulation" }} onClick={onDone}>
         <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
           <defs>
             <mask id="st-mask">

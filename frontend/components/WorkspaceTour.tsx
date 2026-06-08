@@ -198,10 +198,10 @@ export default function WorkspaceTour({ onDone }: { onDone: () => void }) {
         }
       `}</style>
 
-      {/* Overlay */}
+      {/* Overlay — tap backdrop to dismiss (safety net for cramped mobile cards) */}
       <div
-        style={{ position: "fixed", inset: 0, zIndex: 9000, pointerEvents: "auto" }}
-        onClick={(e) => e.stopPropagation()}
+        style={{ position: "fixed", inset: 0, zIndex: 9000, pointerEvents: "auto", touchAction: "manipulation" }}
+        onClick={onDone}
       >
         <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}>
           <defs>
