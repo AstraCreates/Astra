@@ -310,10 +310,20 @@ class Agent:
         import openai as _openai
         import random as _random
         import json as _json
+        import os as _os
         _max_attempts = 5
+        # After a couple of failures on the primary model (e.g. hy3-preview rate-limited
+        # upstream), switch to a reliable fallback for the remaining attempts so the run
+        # keeps moving instead of stalling/erroring.
+        _fallback_model = (getattr(settings, "fallback_model", "") or
+                           _os.environ.get("ASTRA_FALLBACK_MODEL", "google/gemini-2.5-flash"))
         _t0 = _time.monotonic()
         resp = None
         for _attempt in range(_max_attempts):
+            if _attempt >= 2 and _fallback_model and kwargs.get("model") != _fallback_model:
+                logger.warning("%s falling back to %s after %d failed attempts on %s",
+                               self.name, _fallback_model, _attempt, kwargs.get("model"))
+                kwargs["model"] = _fallback_model
             try:
                 resp = self._get_llm().chat.completions.create(**kwargs)
                 # Some providers return a 200 with choices=None on an internal error
@@ -336,7 +346,12 @@ class Agent:
                 # no status code. That is a transient provider glitch, not a fatal bug —
                 # retrying usually succeeds. Without this, one bad response killed the
                 # entire run (every downstream agent orphaned).
-                _is_badbody = isinstance(_e, (_json.JSONDecodeError, _openai.APIResponseValidationError)) or (
+                # The OpenAI SDK itself raises raw TypeError/KeyError/IndexError while
+                # parsing a malformed/empty provider body (e.g. hy3-preview returns a
+                # response with no `choices`, and `_process_response` subscripts None →
+                # 'NoneType' object is not subscriptable). Treat those as a transient
+                # bad body and retry rather than letting them kill the agent.
+                _is_badbody = isinstance(_e, (_json.JSONDecodeError, _openai.APIResponseValidationError, TypeError, KeyError, IndexError)) or (
                     isinstance(_e, _openai.APIError) and _status is None
                 )
                 _is_transient = (
@@ -344,8 +359,14 @@ class Agent:
                     or (isinstance(_status, int) and _status >= 500)
                     or _is_badbody
                 )
-                if _attempt == _max_attempts - 1 or not (_is_rate or _is_transient):
+                if not (_is_rate or _is_transient):
                     raise
+                if _attempt == _max_attempts - 1:
+                    # Exhausted retries on a flaky provider — return empty so the agent
+                    # loop handles it (re-prompt / finish) instead of crashing the run.
+                    logger.warning("%s LLM call failed after %d attempts (%s) — returning empty",
+                                   self.name, _max_attempts, type(_e).__name__)
+                    return ""
                 # Prefer the provider's Retry-After; else exponential backoff + jitter.
                 _retry_after = None
                 _r = getattr(_e, "response", None)
