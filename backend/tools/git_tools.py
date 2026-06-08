@@ -1067,19 +1067,31 @@ def _generate_build_plan(goal: str, context: str = "", kind: str = "app", founde
               "'FILES:' followed by a JSON array of the key files to create/extend, "
               'e.g. FILES: ["app/dashboard/page.tsx", "app/api/auth/[...nextauth]/route.ts"].'
         )
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": _BUILD_PLAN_SYSTEM},
-                {"role": "user", "content": user_msg},
-            ],
-            temperature=0.3,
-            timeout=120.0,
-            max_tokens=4000,
-            extra_body={"provider": {"allow_fallbacks": True}},
-        )
-        plan = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""
-        plan = re.sub(r"<think>.*?</think>", "", plan, flags=re.DOTALL).strip()
+        def _ask(max_toks: int) -> str:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": _BUILD_PLAN_SYSTEM},
+                    {"role": "user", "content": user_msg},
+                ],
+                temperature=0.3,
+                timeout=180.0,
+                max_tokens=max_toks,
+                # minimax-m3 is a reasoning model — disable reasoning so the token
+                # budget goes to the actual plan, not <think> that gets stripped to "".
+                extra_body={"provider": {"allow_fallbacks": True}, "reasoning": {"effort": "none"}},
+            )
+            raw = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""
+            # Drop complete think blocks; if that empties it, drop only the trailing
+            # unclosed think prefix so a truncated reasoning dump still yields the plan.
+            stripped = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
+            if not stripped and raw:
+                stripped = re.sub(r"^.*?</think>", "", raw, flags=re.DOTALL).strip() or raw.strip()
+            return stripped
+
+        plan = _ask(8000)
+        if len(plan) < 400:
+            plan = _ask(12000) or plan  # retry with a bigger budget if it came back thin
         files: list[str] = []
         m = re.search(r"FILES:\s*(\[.*?\])", plan, re.DOTALL)
         if m:

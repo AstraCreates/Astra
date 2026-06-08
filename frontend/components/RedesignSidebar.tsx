@@ -46,9 +46,19 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
 
       <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "10px 8px", flex: 1, overflowY: "auto" }}>
         {LINKS.map((l) => (
-          <Link key={l.href} href={l.href} data-tour={`nav-${l.label.toLowerCase().replace(/\s+/g, "-")}`} className={`nl${l.match(pathname) ? " on" : ""}`} style={{ textDecoration: "none" }}>
-            <span style={{ width: 18, textAlign: "center" }}>{l.ic}</span>{l.label}
-          </Link>
+          l.href === "/" ? (
+            // Dashboard: hard-navigate to the clean site root so it ALWAYS resets to
+            // the dashboard (a Next <Link href="/"> from /?session=x stays put).
+            <a key={l.href} href="/" data-tour="nav-dashboard"
+               onClick={(e) => { e.preventDefault(); window.location.assign("/"); }}
+               className={`nl${l.match(pathname) ? " on" : ""}`} style={{ textDecoration: "none" }}>
+              <span style={{ width: 18, textAlign: "center" }}>{l.ic}</span>{l.label}
+            </a>
+          ) : (
+            <Link key={l.href} href={l.href} data-tour={`nav-${l.label.toLowerCase().replace(/\s+/g, "-")}`} className={`nl${l.match(pathname) ? " on" : ""}`} style={{ textDecoration: "none" }}>
+              <span style={{ width: 18, textAlign: "center" }}>{l.ic}</span>{l.label}
+            </Link>
+          )
         ))}
       </div>
 
