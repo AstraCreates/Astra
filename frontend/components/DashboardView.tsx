@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { listSessions, deleteSessionRemote, killSession, type SessionIndexEntry } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
+import AstraGradient from "./AstraGradient";
 
 const GREETINGS = [
   "Welcome back",
@@ -102,51 +103,64 @@ export default function DashboardView() {
       `}</style>
 
       <div style={{ flex: 1, overflowY: "auto" }}>
-        {/* Header */}
-        <div style={{ padding: "28px 24px 20px", borderBottom: "1px solid var(--bd)", background: "linear-gradient(160deg, rgba(0,46,255,0.035) 0%, rgba(124,255,198,0.015) 100%)" }}>
-          {company && (
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--bd)", background: "var(--surface)", fontSize: 10.5, color: "var(--fd)", marginBottom: 14 }}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)" }} />
-              <span style={{ fontWeight: 600, color: "var(--fg)" }}>{company}</span>
-            </div>
-          )}
+        {/* Header hero */}
+        <div style={{ padding: "28px 24px 24px", borderBottom: "1px solid var(--bd)", position: "relative", overflow: "hidden", background: "#001aff", minHeight: 140 }}>
+          <AstraGradient />
+          {/* Scrim so text stays readable over the animated gradient */}
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.18)", pointerEvents: "none", zIndex: 1 }} />
 
-          <div
-            className="greeting-text"
-            style={{
-              fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-              fontSize: 26, fontWeight: 700,
-              letterSpacing: "-0.02em",
-              color: "var(--fg)", marginBottom: 4,
-            }}
-          >
-            {headline || "Sessions"}
-          </div>
-
-          {/* Stats row */}
-          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18 }}>
-            {sessions !== null && (
-              <>
-                <span style={{ fontSize: 11, color: "var(--fm)" }}>
-                  {sessions.length} session{sessions.length !== 1 ? "s" : ""}
-                </span>
-                {running > 0 && (
-                  <span style={{ fontSize: 11, color: "var(--blue)", fontWeight: 600 }}>
-                    ● {running} running
-                  </span>
-                )}
-                {stalled > 0 && (
-                  <span style={{ fontSize: 11, color: "rgba(245,158,11,1)", fontWeight: 600 }}>
-                    ⚠ {stalled} need{stalled === 1 ? "s" : ""} attention
-                  </span>
-                )}
-              </>
+          <div style={{ position: "relative", zIndex: 2 }}>
+            {company && (
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", borderRadius: 20, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.12)", fontSize: 10.5, color: "rgba(255,255,255,0.8)", marginBottom: 14 }}>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#7cffe6" }} />
+                <span style={{ fontWeight: 600, color: "#fff" }}>{company}</span>
+              </div>
             )}
-          </div>
 
-          <div style={{ display: "flex", gap: 9 }}>
-            <button data-tour="dash-new-run" className="btn pri" onClick={() => router.push("/?new=1")}>＋ New run</button>
-            <button className="btn" onClick={load}>Refresh</button>
+            <div
+              className="greeting-text"
+              style={{
+                fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
+                fontSize: 26, fontWeight: 700,
+                letterSpacing: "-0.02em",
+                color: "#fff", marginBottom: 4,
+              }}
+            >
+              {headline || "Sessions"}
+            </div>
+
+            {/* Stats row */}
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18 }}>
+              {sessions !== null && (
+                <>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.65)" }}>
+                    {sessions.length} session{sessions.length !== 1 ? "s" : ""}
+                  </span>
+                  {running > 0 && (
+                    <span style={{ fontSize: 11, color: "#7cffe6", fontWeight: 600 }}>
+                      ● {running} running
+                    </span>
+                  )}
+                  {stalled > 0 && (
+                    <span style={{ fontSize: 11, color: "rgba(255,210,80,1)", fontWeight: 600 }}>
+                      ⚠ {stalled} need{stalled === 1 ? "s" : ""} attention
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 9 }}>
+              <button
+                data-tour="dash-new-run"
+                onClick={() => router.push("/?new=1")}
+                style={{ padding: "9px 20px", fontSize: 12, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", borderRadius: 100, cursor: "pointer", letterSpacing: "0.01em" }}
+              >＋ New run</button>
+              <button
+                onClick={load}
+                style={{ padding: "9px 16px", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.85)", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 100, cursor: "pointer" }}
+              >Refresh</button>
+            </div>
           </div>
         </div>
 
