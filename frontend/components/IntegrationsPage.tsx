@@ -1,6 +1,41 @@
 ﻿"use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+
+const LOGOS: Record<string, string> = {
+  github:        "https://cdn.simpleicons.org/github/181717",
+  vercel:        "https://cdn.simpleicons.org/vercel/000000",
+  sendgrid:      "https://cdn.simpleicons.org/sendgrid/009BDE",
+  gmail:         "https://cdn.simpleicons.org/gmail/EA4335",
+  linkedin:      "https://cdn.simpleicons.org/linkedin/0A66C2",
+  googlecalendar:"https://cdn.simpleicons.org/googlecalendar/4285F4",
+  notion:        "https://cdn.simpleicons.org/notion/000000",
+  linear:        "https://cdn.simpleicons.org/linear/5E6AD2",
+  instagram:     "https://cdn.simpleicons.org/instagram/E4405F",
+  tiktok:        "https://cdn.simpleicons.org/tiktok/000000",
+  meta_ads:      "https://cdn.simpleicons.org/meta/0082FB",
+};
+
+function ServiceLogo({ serviceKey, label, size = 24 }: { serviceKey: string; label: string; size?: number }) {
+  const [err, setErr] = useState(false);
+  const src = LOGOS[serviceKey];
+  if (!src || err) {
+    return (
+      <div style={{
+        width: size, height: size, flexShrink: 0,
+        background: "#f3f4f6", display: "flex", alignItems: "center",
+        justifyContent: "center", fontSize: size * 0.45, fontWeight: 700, color: "#6b7280",
+      }}>
+        {label[0]}
+      </div>
+    );
+  }
+  return (
+    <img src={src} alt={label} width={size} height={size}
+      onError={() => setErr(true)}
+      style={{ objectFit: "contain", flexShrink: 0, display: "block" }} />
+  );
+}
 import { useDevUser } from "@/lib/use-dev-user";
 import Link from "next/link";
 import { apiFetch, saveServiceCredential, getComposioOAuthUrls, getSetupStatus, SetupStatus } from "@/lib/api";
@@ -249,7 +284,7 @@ function IntegrationModal({
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: `1px solid ${c.border}`, background: c.surface }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 18 }}>{icon}</span>
+            <ServiceLogo serviceKey={serviceKey} label={label} size={20} />
             <span style={{ fontSize: 14, fontWeight: 600, color: c.text }}>Connecting {label}</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -503,7 +538,7 @@ function ServiceCard({
   return (
     <div style={cardStyle(isConnected, popupOpen && !isConnected)}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: isConnected ? c.greenTint : c.bg }}>
-        <span style={{ fontSize: 22, flexShrink: 0 }}>{svc.icon}</span>
+        <ServiceLogo serviceKey={svc.key} label={svc.label} size={26} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 14, fontWeight: 600, color: c.text }}>{svc.label}</span>
@@ -704,7 +739,7 @@ function ComposioKeyCard({ connected, saving, error, onSave }: {
   return (
     <div style={cardStyle(connected, popupOpen && !connected)}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: connected ? c.greenTint : c.bg }}>
-        <span style={{ fontSize: 22, flexShrink: 0 }}>🔗</span>
+        <ServiceLogo serviceKey="composio" label="Composio" size={26} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 14, fontWeight: 600, color: c.text }}>Composio</span>
@@ -828,7 +863,7 @@ function ComposioAppCard({
   return (
     <div style={{ ...cardStyle(isConnected, popupOpen && !isConnected), opacity: isError ? 0.45 : 1 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", background: isConnected ? c.greenTint : c.bg }}>
-        <span style={{ fontSize: 20, flexShrink: 0 }}>{app.icon}</span>
+        <ServiceLogo serviceKey={app.key} label={app.label} size={24} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 600, color: c.text }}>{app.label}</span>
@@ -1114,7 +1149,7 @@ export default function SetupPage() {
               display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
               borderRadius: 8, background: c.surface, border: `1px solid ${c.border}`,
             }}>
-              <span style={{ fontSize: 16 }}>{svc.icon}</span>
+              <ServiceLogo serviceKey={svc.key} label={svc.label} size={18} />
               <span style={{ fontSize: 13, color: c.text, fontWeight: 500 }}>{svc.label}</span>
               <StatusDot connected={!!svc.connected} />
               <span style={{ fontSize: 11, color: c.textMuted }}>
