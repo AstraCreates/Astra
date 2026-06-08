@@ -682,11 +682,11 @@ async def session_completion_audit(session_id: str, request: Request):
 
 
 @router.get("/sessions/{session_id}/meta")
-async def session_meta_public(session_id: str):
-    """Lightweight, UNAUTHENTICATED session header (goal, company, stack, parent,
-    status, founder) — so a session is reachable by a clean /s/<id> link without
-    the founder in the URL or being logged in. The full /state stays auth-gated; the
-    event stream is already public and replays history, so the view reconstructs."""
+async def session_meta_public(session_id: str, request: Request):
+    """Lightweight session header (goal, company, stack, parent, status, founder) for
+    the clean /s/<id> link. AUTH-GATED — you must be logged in and authorized for the
+    session's owner; the URL just drops the founder param, it is not public."""
+    await _require_session_access(request, session_id, min_role="viewer")
     from backend.core.session_store import get_session_meta, _load_index
     meta = get_session_meta(session_id)
     if not meta:

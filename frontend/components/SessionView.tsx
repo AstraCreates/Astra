@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, type SessionImages } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
+import { signIn } from "next-auth/react";
 import SessionTour from "@/components/SessionTour";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -189,7 +190,7 @@ function cacheSession(id: string, state: SState) {
 }
 
 export default function SessionView({ sessionId }: { sessionId: string }) {
-  const { userId } = useDevUser();
+  const { userId, isSignedIn, isLoading: authLoading } = useDevUser();
   const founderId = userId;
   // Founder resolved from the session's own meta (so a /s/<id> link works without
   // login / without the founder in the URL). Falls back to the logged-in user.
@@ -205,6 +206,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const steerRef = useRef<HTMLInputElement>(null);
   const [showSessionTour, setShowSessionTour] = useState(false);
   const [designImages, setDesignImages] = useState<SessionImages>({ logos: {}, brand_images: [] });
+  const [accessDenied, setAccessDenied] = useState(false);
   const imgsFetched = useRef(false);
 
   useEffect(() => {
@@ -346,8 +348,9 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
   // Load meta + state, then connect SSE.
   useEffect(() => {
-    if (!sessionId) return;
+    if (!sessionId || !isSignedIn) return;
     let alive = true;
+    setAccessDenied(false);
     // Restore from cache (keeps logs + selected agent across nav) — else start fresh.
     const cached = SV_CACHE.get(sessionId);
     const fromCache = !!cached;
@@ -360,22 +363,29 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     force();
 
     (async () => {
-      // Session header by id (public, no founder in URL, works logged-out).
-      try {
-        const meta = await getSessionMeta(sessionId);
-        if (meta && alive) {
-          if (meta.founder_id) sessFounder.current = meta.founder_id;
-          const rawGoal = meta.goal || "";
-          const { projectName, cleanGoal } = extractProjectName(rawGoal);
-          S.current.goal = cleanGoal;
-          S.current.projectName = projectName;
-          S.current.status = meta.status || "running";
-          S.current.company = meta.company_name || "";
-          S.current.stackId = meta.stack_id || "";
-          S.current.parentId = meta.parent_session_id || "";
-          if (meta.created_at) { const t = Date.parse(meta.created_at); if (!Number.isNaN(t)) S.current.startedAt = t; }
-        }
-      } catch {}
+      // Session header by id (auth-gated). meta is null when the server denies access
+      // (not your session) or it doesn't exist → block and don't open the stream, so
+      // you can only ever view your OWN sessions.
+      let meta = null;
+      try { meta = await getSessionMeta(sessionId); } catch {}
+      if (!alive) return;
+      const myFounder = (sessFounder.current || founderId || "").toString();
+      if (!meta || (meta.founder_id && myFounder && meta.founder_id !== myFounder)) {
+        setAccessDenied(true);
+        return;
+      }
+      if (meta.founder_id) sessFounder.current = meta.founder_id;
+      {
+        const rawGoal = meta.goal || "";
+        const { projectName, cleanGoal } = extractProjectName(rawGoal);
+        S.current.goal = cleanGoal;
+        S.current.projectName = projectName;
+        S.current.status = meta.status || "running";
+        S.current.company = meta.company_name || "";
+        S.current.stackId = meta.stack_id || "";
+        S.current.parentId = meta.parent_session_id || "";
+        if (meta.created_at) { const t = Date.parse(meta.created_at); if (!Number.isNaN(t)) S.current.startedAt = t; }
+      }
       // rich state (404 normal)
       try {
         const r = await apiFetch(`${API}/sessions/${sessionId}/state`);
@@ -427,7 +437,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     })();
 
     return () => { alive = false; sseRef.current?.close(); sseRef.current = null; };
-  }, [sessionId, founderId, handleEvent]);
+  }, [sessionId, founderId, handleEvent, isSignedIn]);
 
   // Run timer — tick every second while running so the elapsed clock counts up.
   useEffect(() => {
@@ -582,6 +592,30 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     const [cls, txt] = map[s] || ["", s];
     return <span className={`pill ${cls}`}>{txt}</span>;
   };
+
+  // Sessions require login — no anonymous access by URL.
+  if (!authLoading && !isSignedIn) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 16, background: "var(--bg)", padding: 24, textAlign: "center" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "var(--fg)" }}>Sign in to view this session</div>
+        <div style={{ fontSize: 13, color: "var(--fd)", maxWidth: 360 }}>Sessions are private to your account. Sign in to continue.</div>
+        <button className="btn" onClick={() => signIn("google", { callbackUrl: typeof window !== "undefined" ? window.location.href : "/" })}
+          style={{ padding: "10px 20px" }}>Sign in with Google</button>
+      </div>
+    );
+  }
+
+  // You can only view your own sessions.
+  if (accessDenied) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 14, background: "var(--bg)", padding: 24, textAlign: "center" }}>
+        <div style={{ fontSize: 30 }}>🔒</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "var(--fg)" }}>You don&apos;t have access to this session</div>
+        <div style={{ fontSize: 13, color: "var(--fd)", maxWidth: 360 }}>It belongs to another account, or it doesn&apos;t exist.</div>
+        <a href="/" className="btn" style={{ padding: "10px 20px", textDecoration: "none" }}>← Back to dashboard</a>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg)" }}>
