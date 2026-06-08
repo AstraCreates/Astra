@@ -493,16 +493,23 @@ def increment_run_count(mission_id: str, cost_usd: float) -> None:
 
 
 def get_missions_due_for_run() -> list[dict]:
-    """Return active missions that have not been run in the last 24 hours.
+    """Return active missions eligible to run now.
 
-    A mission is considered due when:
+    A mission is due when:
     - ``status == "active"``
-    - ``last_run_at`` is ``None``  **or**  more than 86 400 seconds ago.
+    - ``last_run_at`` is ``None``  **or**  older than the minimum re-run interval.
+
+    The interval defaults to 1 hour (``ASTRA_MISSION_MIN_INTERVAL_SECONDS``) so a
+    mission can run several times a day up to its ``budget.max_runs_per_day`` cap —
+    the budget, not a hard 24h gate, is the real limiter. (The old 24h gate fired
+    before the budget ever could, capping every mission at one run/day and making the
+    continuous-operating loop barely move.)
 
     Returns:
         List of full mission dicts that are eligible to be run now.
     """
-    cutoff_epoch = time.time() - 86_400  # 24 hours ago
+    min_interval = max(60, int(os.environ.get("ASTRA_MISSION_MIN_INTERVAL_SECONDS", "3600")))
+    cutoff_epoch = time.time() - min_interval
 
     def _parse_epoch(iso: str | None) -> float:
         """Convert an ISO-8601 UTC string to a POSIX timestamp."""

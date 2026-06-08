@@ -25,6 +25,7 @@ type SState = {
   selDept: string | null; selArt: string | null; tab: string; paused: boolean;
   revisionGate: string | null; revisionNote: string;
   liveUrl: string;
+  operating: { count: number; summary: string } | null;
 };
 
 function safeText(v: unknown): string {
@@ -168,7 +169,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const S = useRef<SState>({
     status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
     decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false,
-    revisionGate: null, revisionNote: "", liveUrl: "",
+    revisionGate: null, revisionNote: "", liveUrl: "", operating: null,
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
   const sseRef = useRef<EventSource | null>(null);
@@ -291,7 +292,9 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         if (ev.gate_key) st.decidedKeys.add(ev.gate_key);
         st.approvals = st.approvals.filter((a) => a.gate_key !== ev.gate_key); break;
       case "company_operating":
-        st.status = "done"; break;
+        st.status = "done";
+        st.operating = { count: Number(ev.mission_count || (ev.missions?.length ?? 0)), summary: String(ev.summary || "") };
+        break;
       case "goal_done":
         st.status = "done"; sseRef.current?.close(); break;
       case "goal_error":
@@ -305,7 +308,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!sessionId || !founderId) return;
     let alive = true;
-    S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "" };
+    S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null };
     force();
 
     (async () => {
@@ -561,9 +564,19 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         );
       })()}
 
-      {/* done banner */}
+      {/* done / operating banner */}
       {st.status === "done" && (
-        <div className="done-bar"><div><div className="done-title">✓ Run complete</div><div className="done-sub">All agents finished. Deliverables are in the vault.</div></div></div>
+        st.operating ? (
+          <div className="done-bar" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div className="done-title">◎ Now operating — {st.operating.count} mission{st.operating.count !== 1 ? "s" : ""} running</div>
+              <div className="done-sub">{st.operating.summary || "Departments keep working the next milestone toward your north star. Approve milestones to mark them complete."}</div>
+            </div>
+            <a href="/goals" className="btn sm" style={{ flexShrink: 0, textDecoration: "none", background: "var(--blue)", border: "1px solid var(--blue)", color: "#fff" }}>View missions →</a>
+          </div>
+        ) : (
+          <div className="done-bar"><div><div className="done-title">✓ Run complete</div><div className="done-sub">All agents finished. Deliverables are in the vault.</div></div></div>
+        )
       )}
 
       {/* phase bar */}

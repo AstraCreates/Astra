@@ -84,13 +84,21 @@ async def _scheduler_tick() -> int:
     for mission in due_missions:
         mission_id: str = mission.get("id", "<unknown>")
         mission_name: str = mission.get("name", mission_id)
-        approval_policy: str = mission.get("approval_policy", "auto")
 
-        # Respect approval policy — require_approval missions must be triggered manually
-        if approval_policy == "require_approval":
-            logger.debug(
-                "missions_scheduler: skipping mission=%s (require_approval)", mission_id
-            )
+        # NOTE: require_approval missions ARE run autonomously. approval_policy gates
+        # COMPLETION, not execution — the agent does the work and marks finished
+        # milestones "awaiting_approval" (runner._reconcile_tasks), which then wait for
+        # the founder's sign-off. The runner self-skips a mission whose only remaining
+        # work is awaiting approval, so this never spins. Skipping require_approval here
+        # was the bug that made the "never-ending" company never actually run.
+
+        # Skip missions with no actionable work — all milestones are either done or
+        # waiting on the founder's approval. Avoids re-dispatching (and re-logging)
+        # idle missions every tick; they resume once approval clears or new
+        # milestones are assigned.
+        tasks = mission.get("tasks") or []
+        if tasks and not any(str(t.get("status")) in ("pending", "in_progress", "blocked") for t in tasks):
+            logger.debug("missions_scheduler: skipping mission=%s — no actionable work", mission_id)
             continue
 
         # Respect daily budget

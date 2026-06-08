@@ -89,15 +89,24 @@ def _mission_task_tree(mission_id: str, session_id: str, item: dict[str, Any], d
                 "last_run_id": session_id,
             }
         )
-    for idx, action in enumerate((digest.get("next_actions") or [])[:3]):
-        action_slug = _slug(str(action), f"next_{idx + 1}")
+    # Seed open milestones from THIS mission's own steps (department-scoped and
+    # concrete) so the scheduler has real forward work to do. Previously every
+    # mission was sprayed with the same global digest.next_actions — e.g. the
+    # research mission got "Decide approval gate: Send outbound email" — which is the
+    # wrong department and just stale launch-gate decisions, not operating milestones.
+    done_titles = {str(t.get("title", "")).strip().lower() for t in tasks}
+    for idx, step in enumerate((item.get("steps") or [])[:5]):
+        title = str(step).strip()
+        if not title or title.lower() in done_titles:
+            continue
+        step_slug = _slug(title, f"step_{idx + 1}")
         tasks.append(
             {
-                "id": f"{mission_id}:next:{action_slug}",
-                "title": str(action)[:160],
+                "id": f"{mission_id}:milestone:{step_slug}",
+                "title": title[:160],
                 "status": "pending",
                 "parent_id": root_id,
-                "notes": "Derived from the launch-run operating digest.",
+                "notes": "Operating milestone for this department.",
                 "owner_agent": agent,
                 "last_run_id": session_id,
             }
