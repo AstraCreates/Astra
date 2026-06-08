@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
@@ -26,67 +26,77 @@ import {
   type CompanyBrain,
   type GraphRagVisualization,
 } from "@/lib/api";
-const Card = ({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) => (
-  <div style={{ background: "var(--surface)", border: "1px solid var(--bd)", padding: 18, display: "grid", gap: 14, ...style }}>
-    {children}
-  </div>
-);
+
+/* ─── helpers ─── */
 
 const DEFAULT_QUERY = "decisions product roadmap code customers";
 
 const SOURCE_ORDER = [
-  "discord",
-  "slack",
-  "github",
-  "linear",
-  "notion",
-  "google_drive",
-  "google_workspace",
-  "gmail",
-  "confluence",
-  "zendesk",
-  "granola",
-  "astra_vault",
+  "discord", "slack", "github", "linear", "notion",
+  "google_drive", "google_workspace", "gmail",
+  "confluence", "zendesk", "granola", "astra_vault",
 ];
+
+type Tab = "ask" | "sources" | "memory" | "settings";
 
 function statusColor(status: string): string {
   if (status === "connected") return "#3D9E5F";
   if (status === "oauth_ready") return "#002EFF";
   if (status === "planned") return "#C58B37";
-  return "var(--fg-mute)";
+  return "var(--fm)";
 }
 
 function formatStatus(status: string): string {
   return status.replace(/_/g, " ");
 }
 
-function SourceCard({ source, active, onToggle }: { source: BrainSource; active: boolean; onToggle: () => void }) {
+/* ─── sub-components ─── */
+
+function SourceCard({
+  source, active, focused, onToggle,
+}: {
+  source: BrainSource;
+  active: boolean;
+  focused: boolean;
+  onToggle: () => void;
+}) {
   return (
     <button
       type="button"
       onClick={onToggle}
       style={{
-        minHeight: 106,
+        minHeight: 100,
         textAlign: "left",
-        borderRadius: 8,
-        border: active ? "1px solid rgba(180,205,228,0.36)" : "1px solid var(--line)",
-        background: active ? "rgba(180,205,228,0.12)" : "rgba(255,255,255,0.03)",
+        border: focused
+          ? "1px solid var(--blue)"
+          : active
+            ? "1px solid rgba(124,255,198,0.35)"
+            : "1px solid var(--bd2)",
+        background: focused
+          ? "rgba(0,46,255,0.07)"
+          : active
+            ? "rgba(124,255,198,0.06)"
+            : "var(--surface)",
         padding: "12px 13px",
         display: "flex",
         flexDirection: "column",
-        gap: 8,
+        gap: 7,
         color: "var(--fg)",
+        cursor: "pointer",
+        transition: "all .12s",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <span style={{ fontSize: 13, fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{source.label}</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {source.label}
+        </span>
         <span style={{ width: 7, height: 7, borderRadius: 999, background: statusColor(source.status), flexShrink: 0 }} />
       </div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        <span className="site-pill" style={{ letterSpacing: 0 }}>{source.kind}</span>
-        <span className="site-pill" style={{ letterSpacing: 0 }}>{source.record_count} records</span>
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+        <span className="pill" style={{ letterSpacing: 0 }}>{source.kind}</span>
+        <span className="pill" style={{ letterSpacing: 0 }}>{source.record_count}</span>
       </div>
-      <p style={{ margin: "auto 0 0", color: "var(--fg-mute)", fontSize: 11, lineHeight: 1.45 }}>
+      <p style={{ margin: "auto 0 0", color: "var(--fm)", fontSize: 10, lineHeight: 1.4 }}>
         {formatStatus(source.status)}{source.importer === false ? " · planned" : ""}
       </p>
     </button>
@@ -94,11 +104,7 @@ function SourceCard({ source, active, onToggle }: { source: BrainSource; active:
 }
 
 function SourceConnectionPanel({
-  source,
-  values,
-  saving,
-  onChange,
-  onSave,
+  source, values, saving, onChange, onSave,
 }: {
   source: BrainSource | null;
   values: Record<string, string>;
@@ -108,29 +114,35 @@ function SourceConnectionPanel({
 }) {
   if (!source) {
     return (
-      <div style={{ borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", padding: "12px 13px", color: "var(--fg-mute)", fontSize: 12 }}>
-        Select a source to see connection requirements.
+      <div style={{ border: "1px solid var(--bd)", background: "var(--s2)", padding: "14px 16px", color: "var(--fm)", fontSize: 12 }}>
+        Select a source to configure its connection.
       </div>
     );
   }
   const fields = source.credential_fields ?? [];
-  const canSave = fields.length > 0 && fields.every(field => values[field]?.trim());
+  const canSave = fields.length > 0 && fields.every(f => values[f]?.trim());
   return (
-    <div style={{ borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", padding: "12px 13px", display: "grid", gap: 10 }}>
+    <div style={{ border: "1px solid var(--bd2)", background: "var(--s2)", padding: "16px", display: "grid", gap: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 13, fontWeight: 650, color: "var(--fg)" }}>{source.label}</span>
         <span style={{ width: 7, height: 7, borderRadius: 999, background: statusColor(source.status) }} />
-        <span style={{ color: "var(--fg-mute)", fontSize: 11 }}>{formatStatus(source.status)}</span>
+        <span style={{ color: "var(--fm)", fontSize: 11 }}>{formatStatus(source.status)}</span>
+        {(source.status === "connected" || source.status === "oauth_ready") && (
+          <span style={{ marginLeft: "auto", color: "#3D9E5F", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+            Connected
+          </span>
+        )}
       </div>
-      <p style={{ color: "var(--fg-dim)", fontSize: 12, lineHeight: 1.5, margin: 0 }}>
+      <p style={{ color: "var(--fd)", fontSize: 12, lineHeight: 1.55, margin: 0 }}>
         {source.notes || source.setup_hint || "Ready to connect."}
       </p>
       {source.setup_hint && source.notes !== source.setup_hint && (
-        <p style={{ color: "var(--fg-mute)", fontSize: 11, lineHeight: 1.45, margin: 0 }}>{source.setup_hint}</p>
+        <p style={{ color: "var(--fm)", fontSize: 11, lineHeight: 1.45, margin: 0 }}>{source.setup_hint}</p>
       )}
       {source.setup_url && (
-        <a href={source.setup_url} target="_blank" rel="noopener noreferrer" style={{ color: "#7EA6E8", fontSize: 11, width: "fit-content" }}>
-          Setup docs
+        <a href={source.setup_url} target="_blank" rel="noopener noreferrer"
+          style={{ color: "var(--blue)", fontSize: 11, width: "fit-content" }}>
+          Setup docs →
         </a>
       )}
       {fields.length > 0 && (
@@ -138,21 +150,22 @@ function SourceConnectionPanel({
           {fields.map(field => (
             <input
               key={field}
-              className="site-input"
+              className="f-input"
               value={values[field] ?? ""}
               onChange={e => onChange(field, e.target.value)}
               placeholder={field}
-              type={field.includes("token") || field.includes("key") ? "password" : "text"}
-              style={{ padding: "8px 10px", fontSize: 12, fontFamily: "var(--font-jetbrains-mono)" }}
+              type={field.includes("token") || field.includes("key") || field.includes("secret") ? "password" : "text"}
             />
           ))}
-          <button type="button" onClick={onSave} disabled={saving || !canSave} className="site-btn site-btn-primary" style={{ minHeight: 34, fontSize: 12 }}>
+          <button type="button" onClick={onSave} disabled={saving || !canSave} className="btn pri" style={{ minHeight: 34, fontSize: 12 }}>
             {saving ? "Saving..." : "Save credentials"}
           </button>
         </div>
       )}
       {fields.length === 0 && source.importer === false && (
-        <div style={{ color: "var(--fg-mute)", fontSize: 11 }}>Direct import is not implemented yet; manual records can still use this source.</div>
+        <div style={{ color: "var(--fm)", fontSize: 11, padding: "10px 12px", background: "var(--surface)", border: "1px solid var(--bd)" }}>
+          Direct import is not implemented yet for this source. Manual records can still reference it.
+        </div>
       )}
     </div>
   );
@@ -160,19 +173,22 @@ function SourceConnectionPanel({
 
 function RecordRow({ record }: { record: BrainRecord }) {
   return (
-    <div style={{ borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", padding: "12px 14px", display: "grid", gap: 7 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span className="site-pill" style={{ letterSpacing: 0 }}>{record.source}</span>
-        <span style={{ color: record.canonical ? "#3D9E5F" : "var(--fg-mute)", fontSize: 11 }}>{record.canonical ? "canonical" : record.kind}</span>
-        {record.domain && <span style={{ color: "var(--fg-mute)", fontSize: 11 }}>{record.domain}</span>}
-        <span style={{ marginLeft: "auto", color: "var(--fg-mute)", fontSize: 10, fontFamily: "var(--font-jetbrains-mono)" }}>{record.stale_risk} drift</span>
+    <div style={{ border: "1px solid var(--bd)", background: "var(--surface)", padding: "12px 14px", display: "grid", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+        <span className="pill" style={{ letterSpacing: 0 }}>{record.source}</span>
+        <span style={{ color: record.canonical ? "#3D9E5F" : "var(--fm)", fontSize: 10, fontWeight: record.canonical ? 700 : 400 }}>
+          {record.canonical ? "canonical" : record.kind}
+        </span>
+        {record.domain && <span style={{ color: "var(--fm)", fontSize: 10 }}>{record.domain}</span>}
+        <span style={{ marginLeft: "auto", color: "var(--fm)", fontSize: 10 }}>{record.stale_risk} drift</span>
       </div>
       <div style={{ fontSize: 13, fontWeight: 650, color: "var(--fg)" }}>{record.title}</div>
-      <p style={{ color: "var(--fg-dim)", fontSize: 12, lineHeight: 1.55, margin: 0 }}>
-        {(record.snippet ?? record.content).slice(0, 460)}
+      <p style={{ color: "var(--fd)", fontSize: 12, lineHeight: 1.55, margin: 0 }}>
+        {(record.snippet ?? record.content).slice(0, 360)}
       </p>
       {record.url && (
-        <a href={record.url.startsWith("/") ? undefined : record.url} target="_blank" rel="noopener noreferrer" style={{ color: "#7EA6E8", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <a href={record.url.startsWith("/") ? undefined : record.url} target="_blank" rel="noopener noreferrer"
+          style={{ color: "var(--blue)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {record.url}
         </a>
       )}
@@ -181,32 +197,32 @@ function RecordRow({ record }: { record: BrainRecord }) {
 }
 
 function ProposalCard({
-  proposal,
-  recordsById,
-  onUpdate,
+  proposal, recordsById, onUpdate,
 }: {
   proposal: BrainProposal;
   recordsById: Map<string, BrainRecord>;
-  onUpdate: (proposalId: string, status: "resolved" | "dismissed") => void;
+  onUpdate: (id: string, status: "resolved" | "dismissed") => void;
 }) {
   const linked = proposal.record_ids.map(id => recordsById.get(id)).filter(Boolean) as BrainRecord[];
   return (
-    <div style={{ borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", padding: "12px 14px", display: "grid", gap: 8 }}>
+    <div style={{ border: "1px solid var(--bd2)", background: "var(--surface)", padding: "13px 14px", display: "grid", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span className="site-pill" style={{ letterSpacing: 0 }}>{proposal.kind.replace(/_/g, " ")}</span>
-        <span style={{ color: "#C58B37", fontSize: 11 }}>{proposal.status}</span>
+        <span className="pill" style={{ letterSpacing: 0 }}>{proposal.kind.replace(/_/g, " ")}</span>
+        <span style={{ color: "#C58B37", fontSize: 10, fontWeight: 700 }}>{proposal.status}</span>
       </div>
       <div style={{ fontSize: 13, fontWeight: 650, color: "var(--fg)" }}>{proposal.title}</div>
-      <p style={{ color: "var(--fg-dim)", fontSize: 12, lineHeight: 1.55, margin: 0 }}>{proposal.reason}</p>
-      <p style={{ color: "var(--fg-mute)", fontSize: 11, lineHeight: 1.5, margin: 0 }}>{proposal.suggested_update}</p>
+      <p style={{ color: "var(--fd)", fontSize: 12, lineHeight: 1.55, margin: 0 }}>{proposal.reason}</p>
+      <p style={{ color: "var(--fm)", fontSize: 11, lineHeight: 1.45, margin: 0 }}>{proposal.suggested_update}</p>
       {linked.length > 0 && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {linked.map(record => <span key={record.id} className="site-pill" style={{ letterSpacing: 0 }}>{record.source}: {record.title.slice(0, 28)}</span>)}
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+          {linked.map(r => (
+            <span key={r.id} className="pill" style={{ letterSpacing: 0 }}>{r.source}: {r.title.slice(0, 26)}</span>
+          ))}
         </div>
       )}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-        <button type="button" onClick={() => onUpdate(proposal.id, "dismissed")} className="site-btn site-btn-ghost" style={{ minHeight: 30, fontSize: 11 }}>Dismiss</button>
-        <button type="button" onClick={() => onUpdate(proposal.id, "resolved")} className="site-btn site-btn-primary" style={{ minHeight: 30, fontSize: 11 }}>Mark resolved</button>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 7 }}>
+        <button type="button" onClick={() => onUpdate(proposal.id, "dismissed")} className="btn" style={{ minHeight: 30, fontSize: 11 }}>Dismiss</button>
+        <button type="button" onClick={() => onUpdate(proposal.id, "resolved")} className="btn pri" style={{ minHeight: 30, fontSize: 11 }}>Mark resolved</button>
       </div>
     </div>
   );
@@ -215,11 +231,7 @@ function ProposalCard({
 const GRAPH_COLORS = ["#002EFF", "#3D9E5F", "#C58B37", "#B45EA4", "#0F766E", "#DC2626", "#7C3AED", "#64748B"];
 
 function GraphRagPanel({
-  graph,
-  loading,
-  rebuilding,
-  onReload,
-  onRebuild,
+  graph, loading, rebuilding, onReload, onRebuild,
 }: {
   graph: GraphRagVisualization | null;
   loading: boolean;
@@ -231,30 +243,30 @@ function GraphRagPanel({
   const nodes = useMemo(() => graph?.nodes ?? [], [graph]);
   const edges = useMemo(() => graph?.edges ?? [], [graph]);
   const visibleNodes = useMemo(() => nodes.slice(0, 80), [nodes]);
-  const visibleIds = useMemo(() => new Set(visibleNodes.map(node => node.id)), [visibleNodes]);
+  const visibleIds = useMemo(() => new Set(visibleNodes.map(n => n.id)), [visibleNodes]);
   const visibleEdges = useMemo(
-    () => edges.filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target)).slice(0, 180),
+    () => edges.filter(e => visibleIds.has(e.source) && visibleIds.has(e.target)).slice(0, 180),
     [edges, visibleIds]
   );
-  const selected = visibleNodes.find(node => node.id === selectedId) ?? visibleNodes[0] ?? null;
+  const selected = visibleNodes.find(n => n.id === selectedId) ?? visibleNodes[0] ?? null;
   const layout = useMemo(() => {
     const width = 720;
     const height = 360;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const communities = Array.from(new Set(visibleNodes.map(node => node.community_id || "unassigned")));
+    const cx = width / 2;
+    const cy = height / 2;
+    const communities = Array.from(new Set(visibleNodes.map(n => n.community_id || "unassigned")));
     const positions = new Map<string, { x: number; y: number; color: string; radius: number }>();
-    visibleNodes.forEach((node, index) => {
-      const communityIndex = Math.max(0, communities.indexOf(node.community_id || "unassigned"));
-      const bandAngle = (communityIndex / Math.max(1, communities.length)) * Math.PI * 2;
-      const localAngle = bandAngle + ((index % 13) - 6) * 0.105 + (Math.floor(index / 13) * 0.035);
-      const ring = 78 + (communityIndex % 3) * 54 + (index % 5) * 10;
-      const importance = Number(node.importance || 1);
+    visibleNodes.forEach((node, i) => {
+      const ci = Math.max(0, communities.indexOf(node.community_id || "unassigned"));
+      const ba = (ci / Math.max(1, communities.length)) * Math.PI * 2;
+      const la = ba + ((i % 13) - 6) * 0.105 + (Math.floor(i / 13) * 0.035);
+      const ring = 78 + (ci % 3) * 54 + (i % 5) * 10;
+      const imp = Number(node.importance || 1);
       positions.set(node.id, {
-        x: centerX + Math.cos(localAngle) * ring,
-        y: centerY + Math.sin(localAngle) * ring * 0.72,
-        color: GRAPH_COLORS[communityIndex % GRAPH_COLORS.length],
-        radius: Math.max(5, Math.min(15, 5 + importance * 1.4)),
+        x: cx + Math.cos(la) * ring,
+        y: cy + Math.sin(la) * ring * 0.72,
+        color: GRAPH_COLORS[ci % GRAPH_COLORS.length],
+        radius: Math.max(5, Math.min(15, 5 + imp * 1.4)),
       });
     });
     return { width, height, positions };
@@ -265,46 +277,43 @@ function GraphRagPanel({
   );
 
   return (
-    <Card>
+    <div style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: 15, fontWeight: 650, color: "var(--fg)" }}>GraphRAG v2 map</div>
-          <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>
-            {nodes.length} entities, {edges.length} SQL relationships, {new Set(nodes.map(node => node.community_id || "unassigned")).size} communities
+          <div style={{ fontSize: 12, fontWeight: 650, color: "var(--fg)" }}>GraphRAG entity map</div>
+          <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 2 }}>
+            {nodes.length} entities · {edges.length} relationships · {new Set(nodes.map(n => n.community_id || "unassigned")).size} communities
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button type="button" onClick={onReload} disabled={loading || rebuilding} className="site-btn site-btn-ghost" style={{ minHeight: 34, fontSize: 12 }}>
+        <div style={{ display: "flex", gap: 7 }}>
+          <button type="button" onClick={onReload} disabled={loading || rebuilding} className="btn" style={{ minHeight: 32, fontSize: 11 }}>
             {loading ? "Loading..." : "Refresh"}
           </button>
-          <button type="button" onClick={onRebuild} disabled={rebuilding} className="site-btn site-btn-primary" style={{ minHeight: 34, fontSize: 12 }}>
+          <button type="button" onClick={onRebuild} disabled={rebuilding} className="btn pri" style={{ minHeight: 32, fontSize: 11 }}>
             {rebuilding ? "Rebuilding..." : "Rebuild graph"}
           </button>
         </div>
       </div>
 
-      <div style={{ borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", overflow: "hidden" }}>
+      <div style={{ border: "1px solid var(--bd)", background: "var(--surface)", overflow: "hidden" }}>
         {visibleNodes.length === 0 ? (
-          <div style={{ minHeight: 310, display: "grid", placeItems: "center", padding: 18, color: "var(--fg-mute)", fontSize: 12, textAlign: "center" }}>
-            Add records, then rebuild the graph to create the SQLite entity map.
+          <div style={{ minHeight: 280, display: "grid", placeItems: "center", padding: 18, color: "var(--fm)", fontSize: 12, textAlign: "center" }}>
+            Add records, then rebuild to create the entity map.
           </div>
         ) : (
-          <svg viewBox={`0 0 ${layout.width} ${layout.height}`} role="img" aria-label="GraphRAG entity relationship map" style={{ width: "100%", height: 360, display: "block" }}>
-            <rect width={layout.width} height={layout.height} fill="rgba(11,18,32,0.18)" />
+          <svg viewBox={`0 0 ${layout.width} ${layout.height}`} role="img" aria-label="GraphRAG entity map"
+            style={{ width: "100%", height: 320, display: "block" }}>
+            <rect width={layout.width} height={layout.height} fill="rgba(0,0,0,0.02)" />
             {visibleEdges.map(edge => {
-              const source = layout.positions.get(edge.source);
-              const target = layout.positions.get(edge.target);
-              if (!source || !target) return null;
+              const src = layout.positions.get(edge.source);
+              const tgt = layout.positions.get(edge.target);
+              if (!src || !tgt) return null;
               const active = selectedId === edge.source || selectedId === edge.target;
               return (
-                <line
-                  key={edge.id}
-                  x1={source.x}
-                  y1={source.y}
-                  x2={target.x}
-                  y2={target.y}
-                  stroke={active ? "rgba(255,255,255,0.74)" : "rgba(180,205,228,0.20)"}
-                  strokeWidth={active ? Math.min(4, 1.2 + Number(edge.weight || 1)) : Math.min(2.8, 0.6 + Number(edge.weight || 1) * 0.35)}
+                <line key={edge.id}
+                  x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
+                  stroke={active ? "rgba(0,46,255,0.6)" : "rgba(0,0,0,0.10)"}
+                  strokeWidth={active ? Math.min(3, 1.2 + Number(edge.weight || 1)) : Math.min(2, 0.6 + Number(edge.weight || 1) * 0.35)}
                 />
               );
             })}
@@ -313,12 +322,14 @@ function GraphRagPanel({
               if (!pos) return null;
               const active = selected?.id === node.id;
               return (
-                <g key={node.id} transform={`translate(${pos.x} ${pos.y})`} onClick={() => setSelectedId(node.id)} style={{ cursor: "pointer" }}>
-                  <circle r={pos.radius + (active ? 6 : 2)} fill={active ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.06)"} />
-                  <circle r={pos.radius} fill={pos.color} stroke={active ? "#FFFFFF" : "rgba(255,255,255,0.55)"} strokeWidth={active ? 2 : 1} />
+                <g key={node.id} transform={`translate(${pos.x} ${pos.y})`}
+                  onClick={() => setSelectedId(node.id)} style={{ cursor: "pointer" }}>
+                  <circle r={pos.radius + (active ? 5 : 2)} fill={active ? "rgba(0,46,255,0.12)" : "rgba(0,0,0,0.04)"} />
+                  <circle r={pos.radius} fill={pos.color}
+                    stroke={active ? "#002EFF" : "rgba(255,255,255,0.8)"} strokeWidth={active ? 2 : 1} />
                   {(active || Number(node.importance || 0) >= 3) && (
-                    <text x={pos.radius + 6} y={4} fill="var(--fg)" fontSize="10" fontFamily="var(--font-jetbrains-mono)">
-                      {node.name.slice(0, 24)}
+                    <text x={pos.radius + 5} y={4} fill="var(--fg)" fontSize="9" fontFamily="var(--font-ibm-mono)">
+                      {node.name.slice(0, 22)}
                     </text>
                   )}
                 </g>
@@ -329,46 +340,52 @@ function GraphRagPanel({
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-        <div style={{ borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", padding: "11px 12px", minHeight: 94 }}>
-          <div style={{ color: "var(--fg-mute)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 7 }}>Selected entity</div>
+        <div style={{ border: "1px solid var(--bd)", background: "var(--s2)", padding: "12px 13px", minHeight: 88 }}>
+          <div className="sec-label" style={{ marginBottom: 7 }}>Selected entity</div>
           {selected ? (
             <div style={{ display: "grid", gap: 5 }}>
               <div style={{ color: "var(--fg)", fontSize: 13, fontWeight: 650 }}>{selected.name}</div>
-              <div style={{ color: "var(--fg-dim)", fontSize: 12, lineHeight: 1.45 }}>{selected.description || selected.type}</div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <span className="site-pill" style={{ letterSpacing: 0 }}>{selected.type}</span>
-                <span className="site-pill" style={{ letterSpacing: 0 }}>importance {Math.round(Number(selected.importance || 0))}</span>
+              <div style={{ color: "var(--fd)", fontSize: 11, lineHeight: 1.45 }}>{selected.description || selected.type}</div>
+              <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                <span className="pill" style={{ letterSpacing: 0 }}>{selected.type}</span>
+                <span className="pill" style={{ letterSpacing: 0 }}>importance {Math.round(Number(selected.importance || 0))}</span>
               </div>
             </div>
           ) : (
-            <div style={{ color: "var(--fg-mute)", fontSize: 12 }}>No entity selected.</div>
+            <div style={{ color: "var(--fm)", fontSize: 12 }}>Click a node to inspect it.</div>
           )}
         </div>
-        <div style={{ borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", padding: "11px 12px" }}>
-          <div style={{ color: "var(--fg-mute)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>Top entities</div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {topEntities.length === 0 && <span style={{ color: "var(--fg-mute)", fontSize: 12 }}>None yet.</span>}
+        <div style={{ border: "1px solid var(--bd)", background: "var(--s2)", padding: "12px 13px" }}>
+          <div className="sec-label" style={{ marginBottom: 8 }}>Top entities</div>
+          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+            {topEntities.length === 0 && <span style={{ color: "var(--fm)", fontSize: 12 }}>None yet.</span>}
             {topEntities.map(node => (
-              <button
-                type="button"
-                key={node.id}
+              <button type="button" key={node.id}
                 onClick={() => setSelectedId(node.id)}
-                className="site-pill"
-                style={{ letterSpacing: 0, cursor: "pointer", borderColor: selected?.id === node.id ? "rgba(255,255,255,0.42)" : undefined }}
-              >
-                {node.name.slice(0, 26)}
+                className="pill"
+                style={{
+                  letterSpacing: 0, cursor: "pointer",
+                  borderColor: selected?.id === node.id ? "var(--blue)" : undefined,
+                  background: selected?.id === node.id ? "rgba(0,46,255,0.07)" : undefined,
+                }}>
+                {node.name.slice(0, 24)}
               </button>
             ))}
           </div>
         </div>
       </div>
-    </Card>
+    </div>
   );
 }
+
+/* ─── main page ─── */
 
 export default function CompanyBrainPage() {
   const { userId } = useDevUser();
   const founderId = userId === "anon" ? "founder_001" : userId;
+
+  /* ── state ── */
+  const [tab, setTab] = useState<Tab>("ask");
   const [brain, setBrain] = useState<CompanyBrain | null>(null);
   const [selectedSources, setSelectedSources] = useState<string[]>(["github", "notion", "linear", "gmail", "google_drive", "slack", "discord"]);
   const [query, setQuery] = useState(DEFAULT_QUERY);
@@ -392,9 +409,11 @@ export default function CompanyBrainPage() {
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphRebuilding, setGraphRebuilding] = useState(false);
   const [draft, setDraft] = useState({ source: "manual", title: "", content: "", canonical: true });
+  const [pinOpen, setPinOpen] = useState(false);
   const [focusedSourceKey, setFocusedSourceKey] = useState("github");
   const [credentialValues, setCredentialValues] = useState<Record<string, Record<string, string>>>({});
 
+  /* ── data loaders ── */
   const loadBrain = useCallback(async () => {
     setError(null);
     try {
@@ -425,22 +444,19 @@ export default function CompanyBrainPage() {
   }, [founderId]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadBrain();
-    }, 0);
-    return () => window.clearTimeout(timer);
+    const t = window.setTimeout(() => { void loadBrain(); }, 0);
+    return () => window.clearTimeout(t);
   }, [loadBrain]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void loadGraph();
-    }, 0);
-    return () => window.clearTimeout(timer);
+    const t = window.setTimeout(() => { void loadGraph(); }, 0);
+    return () => window.clearTimeout(t);
   }, [loadGraph]);
 
+  /* ── derived ── */
   const sources = useMemo(() => {
-    const values = Object.values(brain?.sources ?? {});
-    return values.sort((a, b) => {
+    const vals = Object.values(brain?.sources ?? {});
+    return vals.sort((a, b) => {
       const ai = SOURCE_ORDER.indexOf(a.key);
       const bi = SOURCE_ORDER.indexOf(b.key);
       return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi) || a.label.localeCompare(b.label);
@@ -448,9 +464,13 @@ export default function CompanyBrainPage() {
   }, [brain]);
 
   const records = useMemo(() => brain?.records ?? [], [brain]);
-  const focusedSource = sources.find(source => source.key === focusedSourceKey) ?? sources[0] ?? null;
-  const recordsById = useMemo(() => new Map(records.map(record => [record.id, record])), [records]);
+  const focusedSource = sources.find(s => s.key === focusedSourceKey) ?? sources[0] ?? null;
+  const recordsById = useMemo(() => new Map(records.map(r => [r.id, r])), [records]);
   const openProposals = useMemo(() => (brain?.proposals ?? []).filter(p => p.status === "open"), [brain]);
+  const connected = sources.filter(s => s.status === "connected" || s.status === "oauth_ready").length;
+  const displayResults = results.length ? results : records.slice(0, 8);
+
+  /* ── actions ── */
   async function sync() {
     setSyncing(true);
     setError(null);
@@ -488,7 +508,7 @@ export default function CompanyBrainPage() {
     setError(null);
     try {
       await saveServiceCredential(founderId, focusedSource.key, credentialValues[focusedSource.key] ?? {});
-      setCredentialValues(values => ({ ...values, [focusedSource.key]: {} }));
+      setCredentialValues(v => ({ ...v, [focusedSource.key]: {} }));
       await syncCompanyBrain(founderId, [focusedSource.key]);
       await loadBrain();
     } catch (err) {
@@ -502,11 +522,7 @@ export default function CompanyBrainPage() {
     setContinuousSyncing(true);
     setError(null);
     try {
-      await configureCompanyBrainSync(founderId, {
-        enabled,
-        sources: selectedSources,
-        interval_minutes: syncInterval,
-      });
+      await configureCompanyBrainSync(founderId, { enabled, sources: selectedSources, interval_minutes: syncInterval });
       await loadBrain();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update sync settings.");
@@ -575,6 +591,7 @@ export default function CompanyBrainPage() {
         stale_risk: draft.canonical ? "low" : "medium",
       });
       setDraft({ source: "manual", title: "", content: "", canonical: true });
+      setPinOpen(false);
       await loadBrain();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save record.");
@@ -619,236 +636,414 @@ export default function CompanyBrainPage() {
     }
   }
 
-  const displayResults = results.length ? results : records.slice(0, 8);
-  const connected = sources.filter(s => s.status === "connected" || s.status === "oauth_ready").length;
-
+  /* ─── render ─── */
   return (
-    <div style={{ width: "100%", maxWidth: 1180, margin: "0 auto", display: "grid", gap: 22 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <span className="site-label">Company brain</span>
-          <h1 style={{ marginTop: 4, fontSize: 30 }}>Live context layer for people and agents</h1>
-        </div>
-        <Link href="/integrations" className="site-btn site-btn-ghost" style={{ minHeight: 36, fontSize: 12 }}>Connect tools</Link>
-        <Link href="/" className="site-btn site-btn-primary" style={{ minHeight: 36, fontSize: 12 }}>Run agents</Link>
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
-        {[
-          ["Records", String(records.length)],
-          ["Open proposals", String(openProposals.length)],
-          ["Stale", String(brain?.maintenance?.stale_count ?? 0)],
-          ["Conflicts", String(brain?.maintenance?.contradiction_count ?? 0)],
-        ].map(([label, value]) => (
-          <div key={label} style={{ borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", padding: "10px 12px" }}>
-            <div style={{ color: "var(--fg-mute)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</div>
-            <div style={{ color: "var(--fg)", fontSize: 20, fontWeight: 700, fontFamily: "var(--font-jetbrains-mono)", lineHeight: 1.2 }}>{value}</div>
+      {/* ── page header ── */}
+      <div style={{ padding: "18px 24px 0", borderBottom: "1px solid var(--bd)", flexShrink: 0, background: "var(--surface)" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 14 }}>
+          <div>
+            <div className="sec-label">Company brain</div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, margin: "4px 0 6px", color: "var(--fg)" }}>
+              Live context for your team and agents
+            </h1>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {[
+                ["Records", String(records.length)],
+                ["Sources", `${connected} connected`],
+                ["Proposals", String(openProposals.length)],
+                ["Stale", String(brain?.maintenance?.stale_count ?? 0)],
+              ].map(([label, value]) => (
+                <div key={label} style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                  <span style={{ fontSize: 10, color: "var(--fm)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--fg)", fontFamily: "var(--font-ibm-mono)" }}>{value}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        ))}
+          <div style={{ display: "flex", gap: 8, flexShrink: 0, marginTop: 4 }}>
+            <Link href="/integrations" className="btn" style={{ minHeight: 34, fontSize: 11 }}>Integrations</Link>
+            <Link href="/" className="btn pri" style={{ minHeight: 34, fontSize: 11 }}>Run agents</Link>
+          </div>
+        </div>
+
+        {/* tab bar */}
+        <div className="dtabs" style={{ padding: 0, borderBottom: "none" }}>
+          {(["ask", "sources", "memory", "settings"] as Tab[]).map(t => (
+            <button
+              key={t}
+              type="button"
+              className={`dtab${tab === t ? " on" : ""}`}
+              onClick={() => setTab(t)}
+            >
+              {t === "ask" ? "Ask" : t === "sources" ? "Sources" : t === "memory" ? "Memory" : "Settings"}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {/* ── error banner ── */}
       {error && (
-        <div style={{ borderRadius: 8, border: "1px solid rgba(192,57,43,0.32)", background: "rgba(192,57,43,0.10)", padding: "10px 12px", color: "#fca5a5", fontSize: 12 }}>
+        <div style={{ flexShrink: 0, padding: "10px 24px", borderBottom: "1px solid rgba(192,57,43,0.22)", background: "rgba(192,57,43,0.07)", color: "#c0392b", fontSize: 12 }}>
           {error}
+          <button type="button" onClick={() => setError(null)} style={{ marginLeft: 10, color: "inherit", background: "none", border: "none", cursor: "pointer", fontSize: 11 }}>×</button>
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.25fr 0.75fr", gap: 18 }}>
-        <Card style={{ gap: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 650, color: "var(--fg)" }}>Sources</div>
-              <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>{connected} ready, {records.length} records, {brain?.relationships.length ?? 0} relationships</div>
-            </div>
-            <button type="button" onClick={sync} disabled={syncing} className="site-btn site-btn-primary" style={{ minHeight: 36, fontSize: 12 }}>
-              {syncing ? "Syncing..." : "Sync selected"}
-            </button>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <button type="button" onClick={importSources} disabled={importing} className="site-btn site-btn-ghost" style={{ minHeight: 34, fontSize: 12 }}>
-              {importing ? "Importing..." : "Import connected records"}
-            </button>
-            {importSummary && <span style={{ color: "var(--fg-mute)", fontSize: 12 }}>{importSummary}</span>}
-          </div>
+      {/* ── tab content ── */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "22px 24px 32px" }}>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(154px, 1fr))", gap: 10 }}>
-            {sources.map(source => (
-              <SourceCard
-                key={source.key}
-                source={source}
-                active={selectedSources.includes(source.key)}
-                onToggle={() => {
-                  setFocusedSourceKey(source.key);
-                  setSelectedSources(prev => prev.includes(source.key) ? prev.filter(s => s !== source.key) : [...prev, source.key]);
-                }}
-              />
-            ))}
-          </div>
-          <SourceConnectionPanel
-            source={focusedSource}
-            values={focusedSource ? credentialValues[focusedSource.key] ?? {} : {}}
-            saving={savingCredential}
-            onChange={(field, value) => {
-              if (!focusedSource) return;
-              setCredentialValues(prev => ({
-                ...prev,
-                [focusedSource.key]: { ...(prev[focusedSource.key] ?? {}), [field]: value },
-              }));
-            }}
-            onSave={saveFocusedCredential}
-          />
-        </Card>
+        {/* ━━━ ASK TAB ━━━ */}
+        {tab === "ask" && (
+          <div style={{ display: "grid", gap: 18, maxWidth: 860 }}>
+            <div style={{ border: "1px solid var(--bd2)", background: "var(--surface)", padding: "20px 20px 16px" }}>
+              <div className="sec-label" style={{ marginBottom: 10 }}>Ask the brain</div>
+              <form onSubmit={ask} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <input
+                  className="f-input"
+                  value={askQuestion}
+                  onChange={e => setAskQuestion(e.target.value)}
+                  placeholder="What do we know about onboarding strategy?"
+                  style={{ fontSize: 14, padding: "11px 14px" }}
+                />
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button type="submit" disabled={asking || !askQuestion.trim()} className="btn pri" style={{ minHeight: 36, fontSize: 12, paddingInline: 22 }}>
+                    {asking ? "Thinking..." : "Ask"}
+                  </button>
+                </div>
+              </form>
 
-        <Card style={{ gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 650, color: "var(--fg)" }}>Manual memory</div>
-            <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>Pin decisions, facts, customer notes, or architecture context.</div>
-          </div>
-          <form onSubmit={addRecord} style={{ display: "grid", gap: 9 }}>
-            <input className="site-input" value={draft.source} onChange={e => setDraft(d => ({ ...d, source: e.target.value }))} placeholder="source" style={{ padding: "9px 12px", fontSize: 12 }} />
-            <input className="site-input" value={draft.title} onChange={e => setDraft(d => ({ ...d, title: e.target.value }))} placeholder="Decision title" style={{ padding: "9px 12px", fontSize: 12 }} />
-            <textarea className="site-textarea" value={draft.content} onChange={e => setDraft(d => ({ ...d, content: e.target.value }))} placeholder="What should everyone and every agent know?" rows={5} style={{ padding: "10px 12px", fontSize: 12, resize: "none" }} />
-            <label style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--fg-dim)", fontSize: 12 }}>
-              <input type="checkbox" checked={draft.canonical} onChange={e => setDraft(d => ({ ...d, canonical: e.target.checked }))} />
-              Canonical source of truth
-            </label>
-            <button type="submit" disabled={loading || !draft.title.trim() || !draft.content.trim()} className="site-btn site-btn-primary" style={{ minHeight: 36, fontSize: 12 }}>
-              Save to brain
-            </button>
-          </form>
-        </Card>
-      </div>
-
-      <Card>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 650, color: "var(--fg)" }}>Continuous sync</div>
-            <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>
-              Last {brain?.sync?.last_status ?? "idle"}{brain?.sync?.last_run_at ? ` at ${brain.sync.last_run_at}` : ""}{brain?.sync?.next_run_at ? ` · next ${brain.sync.next_run_at}` : ""}
-            </div>
-            <div style={{ fontSize: 11, color: "var(--fg-mute)", marginTop: 3 }}>
-              Scheduler {scheduler?.running ? "running" : "stopped"}{scheduler?.last_tick_at ? ` · tick ${scheduler.last_tick_at}` : ""}
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <input
-              type="number"
-              min={5}
-              max={1440}
-              value={syncInterval}
-              onChange={e => setSyncInterval(Number(e.target.value))}
-              className="site-input"
-              style={{ width: 92, padding: "7px 10px", fontSize: 12 }}
-              aria-label="Sync interval minutes"
-            />
-            <span style={{ color: "var(--fg-mute)", fontSize: 12 }}>minutes</span>
-            <button type="button" onClick={() => configureContinuousSync(!(brain?.sync?.enabled))} disabled={continuousSyncing} className="site-btn site-btn-ghost" style={{ minHeight: 34, fontSize: 12 }}>
-              {brain?.sync?.enabled ? "Pause" : "Enable"}
-            </button>
-            <button type="button" onClick={runContinuousSyncNow} disabled={continuousSyncing} className="site-btn site-btn-primary" style={{ minHeight: 34, fontSize: 12 }}>
-              {continuousSyncing ? "Running..." : "Run now"}
-            </button>
-          </div>
-        </div>
-        {brain?.sync?.last_error && (
-          <div style={{ borderRadius: 8, border: "1px solid rgba(192,57,43,0.32)", background: "rgba(192,57,43,0.10)", padding: "9px 11px", color: "#fca5a5", fontSize: 12 }}>
-            {brain.sync.last_error}
-          </div>
-        )}
-        {(brain?.sync?.history?.length ?? 0) > 0 && (
-          <div style={{ display: "grid", gap: 6 }}>
-            {brain!.sync.history.slice(0, 4).map((entry, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--fg-mute)", borderTop: i === 0 ? "none" : "1px solid var(--line)", paddingTop: i === 0 ? 0 : 6 }}>
-                <span className="site-pill" style={{ letterSpacing: 0 }}>{String(entry.status ?? "run")}</span>
-                <span>{String(entry.finished_at ?? entry.started_at ?? "")}</span>
-                <span style={{ marginLeft: "auto" }}>{Array.isArray(entry.imported_sources) ? `imported ${(entry.imported_sources as string[]).join(", ") || "none"}` : ""}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-
-      <Card>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 650, color: "var(--fg)" }}>Maintenance</div>
-            <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>
-              Detect stale records, contradictory source material, and missing canonical docs.
-            </div>
-          </div>
-          <button type="button" onClick={maintain} disabled={maintaining} className="site-btn site-btn-primary" style={{ minHeight: 36, fontSize: 12 }}>
-            {maintaining ? "Scanning..." : "Run scan"}
-          </button>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
-          {openProposals.length === 0 && <p style={{ color: "var(--fg-mute)", fontSize: 12 }}>No open maintenance proposals.</p>}
-          {openProposals.slice(0, 6).map(proposal => (
-            <ProposalCard key={proposal.id} proposal={proposal} recordsById={recordsById} onUpdate={updateProposal} />
-          ))}
-        </div>
-      </Card>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-        <Card>
-          <form onSubmit={search} style={{ display: "flex", gap: 10 }}>
-            <input className="site-input" value={query} onChange={e => setQuery(e.target.value)} placeholder="Ask across Slack, GitHub, Notion, Google, and agent memory" style={{ padding: "10px 13px", fontSize: 13 }} />
-            <button type="submit" disabled={loading || !query.trim()} className="site-btn site-btn-primary" style={{ minHeight: 40, fontSize: 12 }}>
-              {loading ? "..." : "Search"}
-            </button>
-          </form>
-          <div style={{ display: "grid", gap: 10 }}>
-            {displayResults.length === 0 && <p style={{ color: "var(--fg-mute)", fontSize: 12 }}>Sync sources or add a manual memory to start the graph.</p>}
-            {displayResults.map(record => <RecordRow key={record.id} record={record} />)}
-          </div>
-        </Card>
-
-        <GraphRagPanel
-          graph={graph}
-          loading={graphLoading}
-          rebuilding={graphRebuilding}
-          onReload={loadGraph}
-          onRebuild={rebuildGraph}
-        />
-      </div>
-
-      <Card style={{ gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 15, fontWeight: 650, color: "var(--fg)" }}>Ask the brain</div>
-          <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>Returns an answer grounded in synced records with citations.</div>
-        </div>
-        <form onSubmit={ask} style={{ display: "flex", gap: 10 }}>
-          <input className="site-input" value={askQuestion} onChange={e => setAskQuestion(e.target.value)} placeholder="What do we know about onboarding strategy?" style={{ padding: "10px 13px", fontSize: 13 }} />
-          <button type="submit" disabled={asking || !askQuestion.trim()} className="site-btn site-btn-primary" style={{ minHeight: 40, fontSize: 12 }}>
-            {asking ? "..." : "Ask"}
-          </button>
-        </form>
-        {askAnswer && (
-          <div style={{ borderRadius: 8, border: "1px solid var(--line)", background: "rgba(255,255,255,0.03)", padding: "11px 12px", display: "grid", gap: 8 }}>
-            <div style={{ color: "var(--fg)", fontSize: 13, lineHeight: 1.5 }}>{askAnswer}</div>
-            <div style={{ color: "var(--fg-mute)", fontSize: 11 }}>
-              Confidence: {askConfidence !== null ? `${Math.round(askConfidence * 100)}%` : "n/a"} · Citations: {askCitations.length}
-            </div>
-            {askCitations.length > 0 && (
-              <div style={{ display: "grid", gap: 6 }}>
-                {askCitations.slice(0, 6).map(citation => (
-                  <div key={citation.record_id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 11, color: "var(--fg-dim)" }}>
-                    <span className="site-pill" style={{ letterSpacing: 0 }}>[{citation.index}] {citation.source}</span>
-                    {citation.url ? (
-                      <a href={citation.url} target="_blank" rel="noopener noreferrer" style={{ color: "#7EA6E8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {citation.title}
-                      </a>
-                    ) : (
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{citation.title}</span>
-                    )}
-                    {citation.canonical && <span style={{ color: "#3D9E5F" }}>canonical</span>}
+              {askAnswer && (
+                <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+                  <div style={{ borderTop: "1px solid var(--bd)", paddingTop: 14, color: "var(--fg)", fontSize: 13, lineHeight: 1.65 }}>
+                    {askAnswer}
                   </div>
-                ))}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span className="pill" style={{ letterSpacing: 0 }}>
+                      {askConfidence !== null ? `${Math.round(askConfidence * 100)}% confidence` : "confidence n/a"}
+                    </span>
+                    {askCitations.length > 0 && (
+                      <span style={{ color: "var(--fm)", fontSize: 11 }}>{askCitations.length} citations</span>
+                    )}
+                  </div>
+                  {askCitations.length > 0 && (
+                    <div style={{ display: "grid", gap: 5 }}>
+                      {askCitations.slice(0, 6).map(cit => (
+                        <div key={cit.record_id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 11, color: "var(--fd)" }}>
+                          <span className="pill" style={{ letterSpacing: 0, flexShrink: 0 }}>[{cit.index}] {cit.source}</span>
+                          {cit.url ? (
+                            <a href={cit.url} target="_blank" rel="noopener noreferrer"
+                              style={{ color: "var(--blue)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {cit.title}
+                            </a>
+                          ) : (
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cit.title}</span>
+                          )}
+                          {cit.canonical && <span style={{ color: "#3D9E5F", flexShrink: 0 }}>canonical</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* semantic search */}
+            <div>
+              <div className="sec-label" style={{ marginBottom: 8 }}>Search records</div>
+              <form onSubmit={search} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                <input
+                  className="f-input"
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  placeholder="decisions, roadmap, customers..."
+                  style={{ fontSize: 12 }}
+                />
+                <button type="submit" disabled={loading || !query.trim()} className="btn" style={{ minHeight: 36, fontSize: 12, whiteSpace: "nowrap", flexShrink: 0 }}>
+                  {loading ? "..." : "Search"}
+                </button>
+              </form>
+              <div style={{ display: "grid", gap: 8 }}>
+                {displayResults.length === 0 && (
+                  <div style={{ color: "var(--fm)", fontSize: 12, padding: "14px 0" }}>
+                    No records yet. Sync sources or pin a note in the Memory tab.
+                  </div>
+                )}
+                {displayResults.map(r => <RecordRow key={r.id} record={r} />)}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ━━━ SOURCES TAB ━━━ */}
+        {tab === "sources" && (
+          <div style={{ display: "grid", gap: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 650, color: "var(--fg)" }}>
+                  {connected} connected · {records.length} records · {brain?.relationships.length ?? 0} relationships
+                </div>
+                <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 3 }}>
+                  Select sources, then sync or import their records.
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button type="button" onClick={importSources} disabled={importing} className="btn" style={{ minHeight: 34, fontSize: 12 }}>
+                  {importing ? "Importing..." : "Import records"}
+                </button>
+                <button type="button" onClick={sync} disabled={syncing} className="btn pri" style={{ minHeight: 34, fontSize: 12 }}>
+                  {syncing ? "Syncing..." : "Sync selected"}
+                </button>
+              </div>
+            </div>
+
+            {importSummary && (
+              <div style={{ fontSize: 12, color: "var(--fd)", padding: "9px 12px", border: "1px solid var(--bd)", background: "var(--s2)" }}>
+                {importSummary}
               </div>
             )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 16, alignItems: "start" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(148px, 1fr))", gap: 8 }}>
+                {sources.map(source => (
+                  <SourceCard
+                    key={source.key}
+                    source={source}
+                    active={selectedSources.includes(source.key)}
+                    focused={focusedSource?.key === source.key}
+                    onToggle={() => {
+                      setFocusedSourceKey(source.key);
+                      setSelectedSources(prev =>
+                        prev.includes(source.key)
+                          ? prev.filter(s => s !== source.key)
+                          : [...prev, source.key]
+                      );
+                    }}
+                  />
+                ))}
+              </div>
+
+              <SourceConnectionPanel
+                source={focusedSource}
+                values={focusedSource ? credentialValues[focusedSource.key] ?? {} : {}}
+                saving={savingCredential}
+                onChange={(field, value) => {
+                  if (!focusedSource) return;
+                  setCredentialValues(prev => ({
+                    ...prev,
+                    [focusedSource.key]: { ...(prev[focusedSource.key] ?? {}), [field]: value },
+                  }));
+                }}
+                onSave={saveFocusedCredential}
+              />
+            </div>
           </div>
         )}
-      </Card>
+
+        {/* ━━━ MEMORY TAB ━━━ */}
+        {tab === "memory" && (
+          <div style={{ display: "grid", gap: 16, maxWidth: 780 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 650, color: "var(--fg)" }}>
+                  {records.length} {records.length === 1 ? "record" : "records"}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 2 }}>
+                  Decisions, facts, and customer context.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPinOpen(v => !v)}
+                className={`btn${pinOpen ? "" : " pri"}`}
+                style={{ minHeight: 34, fontSize: 12 }}
+              >
+                {pinOpen ? "Cancel" : "+ Pin a note"}
+              </button>
+            </div>
+
+            {/* pin a note form */}
+            {pinOpen && (
+              <form onSubmit={addRecord}
+                style={{ border: "1px solid var(--bd2)", background: "var(--s2)", padding: 16, display: "grid", gap: 10 }}>
+                <div className="sec-label">New note</div>
+                <input
+                  className="f-input"
+                  value={draft.title}
+                  onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
+                  placeholder="Give it a title..."
+                  style={{ fontSize: 13 }}
+                  autoFocus
+                />
+                <textarea
+                  className="f-input f-ta"
+                  value={draft.content}
+                  onChange={e => setDraft(d => ({ ...d, content: e.target.value }))}
+                  placeholder="What should everyone and every agent know?"
+                  rows={4}
+                  style={{ resize: "none", minHeight: 100, fontSize: 12 }}
+                />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 12, color: "var(--fd)" }}>
+                    <input
+                      type="checkbox"
+                      checked={draft.canonical}
+                      onChange={e => setDraft(d => ({ ...d, canonical: e.target.checked }))}
+                      style={{ accentColor: "var(--blue)" }}
+                    />
+                    Canonical source of truth
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={loading || !draft.title.trim() || !draft.content.trim()}
+                    className="btn pri"
+                    style={{ minHeight: 34, fontSize: 12 }}
+                  >
+                    {loading ? "Saving..." : "Pin to brain"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* search */}
+            <form onSubmit={search} style={{ display: "flex", gap: 8 }}>
+              <input
+                className="f-input"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search records..."
+                style={{ fontSize: 12 }}
+              />
+              <button type="submit" disabled={loading || !query.trim()} className="btn" style={{ minHeight: 36, fontSize: 12, flexShrink: 0 }}>
+                {loading ? "..." : "Search"}
+              </button>
+            </form>
+
+            {/* records */}
+            <div style={{ display: "grid", gap: 8 }}>
+              {displayResults.length === 0 && (
+                <div style={{ color: "var(--fm)", fontSize: 12, padding: "12px 0" }}>
+                  No records yet. Pin a note above or sync a source.
+                </div>
+              )}
+              {displayResults.map(r => <RecordRow key={r.id} record={r} />)}
+            </div>
+          </div>
+        )}
+
+        {/* ━━━ SETTINGS TAB ━━━ */}
+        {tab === "settings" && (
+          <div style={{ display: "grid", gap: 18, maxWidth: 900 }}>
+
+            {/* continuous sync */}
+            <div style={{ border: "1px solid var(--bd2)", background: "var(--surface)", padding: 18, display: "grid", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 650, color: "var(--fg)", marginBottom: 3 }}>Continuous sync</div>
+                  <div style={{ fontSize: 11, color: "var(--fm)" }}>
+                    Status: {brain?.sync?.last_status ?? "idle"}
+                    {brain?.sync?.last_run_at ? ` · last run ${brain.sync.last_run_at}` : ""}
+                    {brain?.sync?.next_run_at ? ` · next ${brain.sync.next_run_at}` : ""}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 2 }}>
+                    Scheduler {scheduler?.running ? "running" : "stopped"}
+                    {scheduler?.last_tick_at ? ` · tick ${scheduler.last_tick_at}` : ""}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 7, alignItems: "center", flexWrap: "wrap" }}>
+                  <input
+                    type="number" min={5} max={1440}
+                    value={syncInterval}
+                    onChange={e => setSyncInterval(Number(e.target.value))}
+                    className="f-input"
+                    style={{ width: 80 }}
+                    aria-label="Sync interval minutes"
+                  />
+                  <span style={{ color: "var(--fm)", fontSize: 12 }}>min</span>
+                  <button type="button" onClick={() => configureContinuousSync(!(brain?.sync?.enabled))}
+                    disabled={continuousSyncing} className="btn" style={{ minHeight: 32, fontSize: 11 }}>
+                    {brain?.sync?.enabled ? "Pause" : "Enable"}
+                  </button>
+                  <button type="button" onClick={runContinuousSyncNow}
+                    disabled={continuousSyncing} className="btn pri" style={{ minHeight: 32, fontSize: 11 }}>
+                    {continuousSyncing ? "Running..." : "Run now"}
+                  </button>
+                </div>
+              </div>
+
+              {brain?.sync?.last_error && (
+                <div style={{ border: "1px solid rgba(192,57,43,0.25)", background: "rgba(192,57,43,0.06)", padding: "9px 12px", color: "#c0392b", fontSize: 12 }}>
+                  {brain.sync.last_error}
+                </div>
+              )}
+
+              {(brain?.sync?.history?.length ?? 0) > 0 && (
+                <div style={{ borderTop: "1px solid var(--bd)", paddingTop: 10, display: "grid", gap: 5 }}>
+                  <div className="sec-label" style={{ marginBottom: 5 }}>Recent runs</div>
+                  {brain!.sync.history.slice(0, 4).map((entry, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--fm)" }}>
+                      <span className="pill" style={{ letterSpacing: 0 }}>{String(entry.status ?? "run")}</span>
+                      <span>{String(entry.finished_at ?? entry.started_at ?? "")}</span>
+                      <span style={{ marginLeft: "auto" }}>
+                        {Array.isArray(entry.imported_sources)
+                          ? `imported ${(entry.imported_sources as string[]).join(", ") || "none"}`
+                          : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* maintenance */}
+            <div style={{ border: "1px solid var(--bd2)", background: "var(--surface)", padding: 18, display: "grid", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 650, color: "var(--fg)", marginBottom: 3 }}>Maintenance scan</div>
+                  <div style={{ fontSize: 11, color: "var(--fm)" }}>
+                    Detects stale records, contradictions, and missing canonical docs.
+                    {brain?.maintenance?.stale_count ? ` ${brain.maintenance.stale_count} stale,` : ""}
+                    {brain?.maintenance?.contradiction_count ? ` ${brain.maintenance.contradiction_count} conflicts.` : ""}
+                  </div>
+                </div>
+                <button type="button" onClick={maintain} disabled={maintaining} className="btn pri" style={{ minHeight: 34, fontSize: 12 }}>
+                  {maintaining ? "Scanning..." : "Run scan"}
+                </button>
+              </div>
+
+              {openProposals.length > 0 && (
+                <div>
+                  <div className="sec-label" style={{ marginBottom: 8 }}>
+                    Open proposals ({openProposals.length})
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 10 }}>
+                    {openProposals.slice(0, 6).map(p => (
+                      <ProposalCard key={p.id} proposal={p} recordsById={recordsById} onUpdate={updateProposal} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {openProposals.length === 0 && (
+                <div style={{ color: "var(--fm)", fontSize: 12 }}>No open maintenance proposals.</div>
+              )}
+            </div>
+
+            {/* graphrag */}
+            <div style={{ border: "1px solid var(--bd2)", background: "var(--surface)", padding: 18 }}>
+              <GraphRagPanel
+                graph={graph}
+                loading={graphLoading}
+                rebuilding={graphRebuilding}
+                onReload={loadGraph}
+                onRebuild={rebuildGraph}
+              />
+            </div>
+
+          </div>
+        )}
+      </div>
     </div>
   );
 }
-
