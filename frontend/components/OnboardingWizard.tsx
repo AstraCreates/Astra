@@ -1024,7 +1024,7 @@ export default function OnboardingWizard() {
         ? { custom_agents: customAgents } : {};
       const data = await submitGoal(founderId, instruction, constraints, stack);
       if (!data.session_id) throw new Error("No session_id returned");
-      router.push(`/?session=${data.session_id}&founder=${encodeURIComponent(founderId)}`);
+      window.location.assign(`/?session=${data.session_id}&founder=${encodeURIComponent(founderId)}`);
     } catch (e) {
       // Never leave the button dead — fall back to the dashboard.
       console.error("onboarding launch failed:", e);

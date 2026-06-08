@@ -49,8 +49,9 @@ export default function NewRunView({ workspaceId }: { workspaceId: string }) {
         instruction += "\n\nAdditional context for this run:\n" + attachments.map((a) => `--- ${a.name} ---\n${a.content.slice(0, 6000)}`).join("\n\n");
       }
       const data = await submitGoal(userId, instruction, {}, selStack || workspace?.stack_id || "idea_to_revenue", workspaceId);
-      const chapterParam = data.chapter_id ? `&chapter=${data.chapter_id}` : "";
-      router.push(`/?workspace=${workspaceId}${chapterParam}&founder=${encodeURIComponent(userId)}`);
+      if (!data.session_id) throw new Error("No session_id returned");
+      // Open the live session (AppHome is session-based). Hard nav so it always lands.
+      window.location.assign(`/?session=${data.session_id}&founder=${encodeURIComponent(userId)}`);
     } catch (e) {
       setBusy(false);
       setErr(`⚠ ${e instanceof Error ? e.message : String(e)}`);

@@ -58,7 +58,9 @@ export default function NewGoalView() {
       }
       const data = await submitGoal(userId, instruction, {}, selStack || "idea_to_revenue");
       if (!data.session_id) throw new Error("No session_id returned");
-      router.push(`/?session=${data.session_id}&founder=${encodeURIComponent(userId)}`);
+      // Hard navigation — router.push (soft nav: same pathname, only query changes) can
+      // fail to re-render in some in-app webviews, leaving the button stuck on "Launching…".
+      window.location.assign(`/?session=${data.session_id}&founder=${encodeURIComponent(userId)}`);
     } catch (e) {
       setBusy(false);
       setErr(`⚠ ${e instanceof Error ? e.message : String(e)}`);
