@@ -41,7 +41,7 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
 
         <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 32px" }}>
           <p style={{
-            fontSize: 15, fontWeight: 400, color: "rgba(255,255,255,0.7)",
+            fontSize: 15, fontWeight: 400, color: "rgba(0,0,0,0.55)",
             marginBottom: 16, letterSpacing: "0.01em",
             opacity: phase >= 1 ? 1 : 0,
             animation: phase >= 1 ? "pos-up 0.6s cubic-bezier(0.22,1,0.36,1) forwards" : "none",
@@ -54,7 +54,7 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
             fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
             fontSize: "clamp(48px, 9vw, 80px)",
             fontWeight: 700,
-            color: "#ffffff",
+            color: "#0a0a0a",
             lineHeight: 1.05,
             letterSpacing: "-0.02em",
             margin: "0 0 36px",
@@ -73,7 +73,7 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
               style={{
                 padding: "12px 36px", fontSize: 13, fontWeight: 500,
                 fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-                color: "#002EFF", background: "#ffffff",
+                color: "#ffffff", background: "#0a0a0a",
                 border: "none", borderRadius: 100, cursor: "pointer",
                 transition: "opacity 0.18s",
               }}
@@ -86,8 +86,8 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
         </div>
 
         {phase >= 3 && (
-          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "rgba(255,255,255,0.15)", zIndex: 2 }}>
-            <div style={{ height: "100%", background: "rgba(255,255,255,0.6)", animation: "pos-progress 2.3s linear forwards" }} />
+          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "rgba(0,0,0,0.1)", zIndex: 2 }}>
+            <div style={{ height: "100%", background: "rgba(0,30,255,0.5)", animation: "pos-progress 2.3s linear forwards" }} />
           </div>
         )}
       </div>

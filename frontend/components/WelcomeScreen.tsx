@@ -29,10 +29,10 @@ export default function WelcomeScreen() {
         .ws-btn {
           padding: 13px 40px;
           font-size: 13px;
-          font-weight: 500;
+          font-weight: 600;
           letter-spacing: 0.02em;
-          color: #002EFF;
-          background: #ffffff;
+          color: #ffffff;
+          background: #0a0a0a;
           border: none;
           border-radius: 100px;
           cursor: pointer;
@@ -63,7 +63,7 @@ export default function WelcomeScreen() {
             fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
             fontSize: "clamp(48px, 9vw, 80px)",
             fontWeight: 700,
-            color: "#ffffff",
+            color: "#0a0a0a",
             letterSpacing: "-0.02em",
             lineHeight: 1.05,
             margin: 0,
