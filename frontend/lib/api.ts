@@ -1282,6 +1282,17 @@ export async function deleteSessionRemote(sessionId: string): Promise<boolean> {
   }
 }
 
+export type SessionImages = { logos: Record<string, string>; brand_images: { base64: string; prompt?: string }[] };
+export async function getSessionImages(sessionId: string): Promise<SessionImages> {
+  try {
+    const res = await apiFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/images`);
+    if (!res.ok) return { logos: {}, brand_images: [] };
+    return await res.json();
+  } catch {
+    return { logos: {}, brand_images: [] };
+  }
+}
+
 export async function getSessionDigest(sessionId: string): Promise<SessionDigest> {
   const res = await apiFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/digest`);
   if (!res.ok) throw new Error(await res.text());

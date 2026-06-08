@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal } from "@/lib/api";
+import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, type SessionImages } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import SessionTour from "@/components/SessionTour";
@@ -118,6 +118,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const sseRef = useRef<EventSource | null>(null);
   const steerRef = useRef<HTMLInputElement>(null);
   const [showSessionTour, setShowSessionTour] = useState(false);
+  const [designImages, setDesignImages] = useState<SessionImages>({ logos: {}, brand_images: [] });
+  const imgsFetched = useRef(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -703,6 +705,18 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               };
               for (const ag of Object.values(st.agents)) if (ag.result) scanFiles(ag.result);
               const fileList = Array.from(files.entries());
+              // Design showcase: palette swatches + generated logos/brand images.
+              const isDesign = art.owner_agent === "design" || /palette|logo|brand|design|color|visual|wordmark/i.test((art.key || "") + (art.title || ""));
+              if (isDesign && !imgsFetched.current) { imgsFetched.current = true; getSessionImages(sessionId).then(setDesignImages).catch(() => {}); }
+              const palette: { hex: string; name?: string }[] = [];
+              if (isDesign) {
+                const seen = new Set<string>();
+                const blob = JSON.stringify(st.agents["design"]?.result ?? {}) + (art.content || "") + (art.preview || "");
+                const hexes = blob.match(/#[0-9a-fA-F]{6}\b/g) || [];
+                for (const h of hexes) { const u = h.toUpperCase(); if (!seen.has(u)) { seen.add(u); palette.push({ hex: u }); } }
+              }
+              const logoEntries = isDesign ? Object.entries(designImages.logos || {}) : [];
+              const brandImgs = isDesign ? (designImages.brand_images || []) : [];
               return <>
                 <div style={{ fontFamily: "var(--font-chakra)", fontSize: 13, fontWeight: 700, color: "var(--fg)" }}>{art.title || art.key}</div>
                 <div style={{ fontSize: 9, color: art.status === "ready" ? "var(--green)" : "var(--amber)", marginBottom: 10 }}>{art.status === "ready" ? "✓ ready" : "⋯ being written"}</div>
@@ -713,9 +727,38 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                     ))}
                   </div>
                 )}
+                {palette.length > 0 && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 9, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 6 }}>Color palette</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {palette.slice(0, 12).map((c) => (
+                        <div key={c.hex} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                          <div style={{ width: 46, height: 46, background: c.hex, border: "1px solid var(--bd)", borderRadius: 6 }} />
+                          <div style={{ fontSize: 8.5, color: "var(--fd)", fontFamily: "var(--font-ibm-mono)" }}>{c.hex}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {(logoEntries.length > 0 || brandImgs.length > 0) && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 9, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 6 }}>Logos & brand</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                      {logoEntries.map(([name, b64]) => (
+                        <div key={name} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                          <img src={`data:image/png;base64,${b64}`} alt={name} style={{ width: 96, height: 96, objectFit: "contain", border: "1px solid var(--bd)", borderRadius: 8, background: "#fff", padding: 4 }} />
+                          <div style={{ fontSize: 8.5, color: "var(--fm)" }}>{name}</div>
+                        </div>
+                      ))}
+                      {brandImgs.slice(0, 6).map((b, i) => (
+                        <img key={i} src={`data:image/png;base64,${b.base64}`} alt={b.prompt || "brand"} title={b.prompt} style={{ width: 130, height: 96, objectFit: "cover", border: "1px solid var(--bd)", borderRadius: 8 }} />
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {displayContent
                   ? <pre className="art-pre" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", maxHeight: "none", fontFamily: "inherit", fontSize: 12, lineHeight: 1.7 }}>{displayContent}</pre>
-                  : fileList.length === 0 && <div style={{ color: "var(--fm)", fontSize: 10.5, fontStyle: "italic" }}>Agent hasn't produced output yet — check back when it completes.</div>}
+                  : fileList.length === 0 && palette.length === 0 && logoEntries.length === 0 && brandImgs.length === 0 && <div style={{ color: "var(--fm)", fontSize: 10.5, fontStyle: "italic" }}>Agent hasn't produced output yet — check back when it completes.</div>}
               </>;
             })()}
 

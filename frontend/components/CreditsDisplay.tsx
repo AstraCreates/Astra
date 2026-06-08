@@ -406,6 +406,13 @@ export default function CreditsDisplay() {
         )}
       </button>
 
+      {/* Price / spend tracker */}
+      {balance !== null && (
+        <div style={{ marginTop: 5, paddingLeft: 2, fontSize: 9.5, color: "#9CA3AF", fontFamily: "var(--font-ibm-mono), monospace", lineHeight: 1.5 }}>
+          spent {balance.total_used.toLocaleString()} cr · ~${(balance.total_used * 0.0998).toFixed(2)}
+        </div>
+      )}
+
       {/* Modal overlay */}
       {open && (
         <div
