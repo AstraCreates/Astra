@@ -10,15 +10,21 @@ Run inside the backend container:
     python -u -m backend._premade_test ALL
 """
 import asyncio
+import logging
 import sys
 import time
 import traceback
+
+# Surface agent iteration logs ([agent] iter=N action=...) so progress is visible.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", stream=sys.stdout)
+for _noisy in ("httpx", "openai", "urllib3"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 FOUNDER = "premade_test_founder"
 COMPANY = "ClearNotes"
 GOAL = ("Company/project name: ClearNotes\n\nBuild ClearNotes, a SaaS that turns meeting "
         "recordings into action items and email drafts for solo founders and small teams.")
-PER_AGENT_TIMEOUT = 600
+PER_AGENT_TIMEOUT = 360
 
 # ── Premade research / upstream outputs (what a normal session would have) ──────
 MARKET_BRIEF = (
