@@ -68,13 +68,13 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
             marginBottom: 16, letterSpacing: "0.01em",
             opacity: phase >= 1 ? 1 : 0,
             animation: phase >= 1 ? "pos-up 0.6s cubic-bezier(0.22,1,0.36,1) forwards" : "none",
-            fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif",
+            fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
           }}>
             You&rsquo;re all set.
           </p>
 
           <h1 style={{
-            fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif",
+            fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
             fontSize: "clamp(48px, 9vw, 80px)",
             fontWeight: 700,
             color: "#ffffff",
@@ -95,7 +95,7 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
               onClick={() => router.replace("/")}
               style={{
                 padding: "12px 36px", fontSize: 13, fontWeight: 500,
-                fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif",
+                fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
                 color: "#002EFF", background: "#ffffff",
                 border: "none", borderRadius: 100, cursor: "pointer",
                 transition: "opacity 0.18s",

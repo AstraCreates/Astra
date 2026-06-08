@@ -104,7 +104,7 @@ const BTN_PRIMARY: React.CSSProperties = {
   fontWeight: 600,
   cursor: "pointer",
   letterSpacing: "0.02em",
-  fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif",
+  fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
 };
 
 const BTN_GHOST: React.CSSProperties = {
@@ -115,7 +115,7 @@ const BTN_GHOST: React.CSSProperties = {
   border: `1px solid ${T.border}`,
   fontSize: 13,
   cursor: "pointer",
-  fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif",
+  fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
 };
 
 const INPUT: React.CSSProperties = {
@@ -128,7 +128,7 @@ const INPUT: React.CSSProperties = {
   fontSize: 14,
   outline: "none",
   boxSizing: "border-box",
-  fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif",
+  fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
   transition: "border-color 0.15s",
 };
 
@@ -138,7 +138,7 @@ const LABEL: React.CSSProperties = {
   textTransform: "uppercase" as const,
   color: T.textMuted,
   fontWeight: 600,
-  fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif",
+  fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
 };
 
 const SECTION_LABEL: React.CSSProperties = {
@@ -148,7 +148,7 @@ const SECTION_LABEL: React.CSSProperties = {
   color: T.textMuted,
   fontWeight: 600,
   marginBottom: 6,
-  fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif",
+  fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
 };
 
 // â”€â”€ Step dots â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -202,7 +202,7 @@ function StepCustomStack({ selected, onToggle, onBack, onNext }: {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div>
-        <h2 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 6px", color: T.textPrimary, fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif", letterSpacing: "-0.02em" }}>
+        <h2 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 6px", color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif", letterSpacing: "-0.02em" }}>
           Build your stack
         </h2>
         <p style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>
@@ -243,7 +243,7 @@ function StepCustomStack({ selected, onToggle, onBack, onNext }: {
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
-                      fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif",
+                      fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
                     }}>
                       {agent.name}
                       {required
@@ -362,7 +362,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
     color: T.white,
     border: "none",
     cursor: "pointer",
-    fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif",
+    fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
   };
 
   const expandedBtnStyle: React.CSSProperties = {
@@ -502,7 +502,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
           <span style={{ fontSize: 20, lineHeight: 1, flexShrink: 0 }}>{icon}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 13, fontWeight: 500, color: T.textPrimary, fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif" }}>{label}</span>
+              <span style={{ fontSize: 13, fontWeight: 500, color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>{label}</span>
               {isRequired && !isConnected && (
                 <span style={{
                   fontSize: 9, padding: "2px 6px", borderRadius: 999,
@@ -582,7 +582,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
         <span style={{ fontSize: 20, lineHeight: 1, flexShrink: 0 }}>ðŸ”—</span>
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 13, fontWeight: 500, color: T.textPrimary, fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif" }}>Composio</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>Composio</span>
             {composioConnected && <span style={{ fontSize: 10, color: T.green, fontWeight: 600 }}>Connected</span>}
           </div>
           <span style={{ fontSize: 11, color: T.textMuted }}>Enables Gmail, LinkedIn, Notion, Calendar</span>
@@ -633,7 +633,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <div>
-        <h2 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 6px", color: T.textPrimary, fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif", letterSpacing: "-0.02em" }}>
+        <h2 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 6px", color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif", letterSpacing: "-0.02em" }}>
           Connect your tools
         </h2>
         <p style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>
@@ -670,14 +670,14 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
             value={autoEmail}
             onChange={e => setAutoEmail(e.target.value)}
             placeholder="Email"
-            style={{ ...pasteInputStyle, minWidth: 220, fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif" }}
+            style={{ ...pasteInputStyle, minWidth: 220, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}
           />
           <input
             type="password"
             value={autoPassword}
             onChange={e => setAutoPassword(e.target.value)}
             placeholder="Password"
-            style={{ ...pasteInputStyle, minWidth: 220, fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif" }}
+            style={{ ...pasteInputStyle, minWidth: 220, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}
           />
         </div>
         {autoSummary.length > 0 && (
@@ -734,7 +734,7 @@ function StepWelcome({ name, setName, company, setCompany, goal, setGoal, onNext
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
       <div>
-        <h1 style={{ fontSize: 32, fontWeight: 700, margin: "0 0 8px", color: T.textPrimary, fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif", letterSpacing: "-0.02em" }}>
+        <h1 style={{ fontSize: 32, fontWeight: 700, margin: "0 0 8px", color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif", letterSpacing: "-0.02em" }}>
           Welcome to Astra
         </h1>
         <p style={{ fontSize: 14, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>
@@ -815,7 +815,7 @@ function StepChooseStack({ stacks, selectedStackId, onSelect, recommendation, on
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div>
-        <h2 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 6px", color: T.textPrimary, fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif", letterSpacing: "-0.02em" }}>
+        <h2 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 6px", color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif", letterSpacing: "-0.02em" }}>
           Choose your agent stack
         </h2>
         <p style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>
@@ -846,7 +846,7 @@ function StepChooseStack({ stacks, selectedStackId, onSelect, recommendation, on
                 <span style={{ fontSize: 22, lineHeight: 1 }}>{STACK_ICONS[stack.stack_id] ?? "ðŸ“¦"}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif" }}>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>
                       {stack.name}
                     </span>
                     {recommendation?.stack_id === stack.stack_id && (
@@ -894,7 +894,7 @@ function StepDone({ name, company, stackName, onLaunch }: {
       <div style={{ fontSize: 56, lineHeight: 1 }}>ðŸŽ‰</div>
 
       <div>
-        <h2 style={{ fontSize: 28, fontWeight: 700, margin: "0 0 10px", color: T.textPrimary, fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif", letterSpacing: "-0.02em" }}>
+        <h2 style={{ fontSize: 28, fontWeight: 700, margin: "0 0 10px", color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif", letterSpacing: "-0.02em" }}>
           You're all set{name ? `, ${name.split(" ")[0]}` : ""}!
         </h2>
         <p style={{ fontSize: 14, color: T.textMuted, margin: 0, lineHeight: 1.7 }}>
@@ -924,7 +924,7 @@ function StepDone({ name, company, stackName, onLaunch }: {
             boxShadow: T.shadow,
           }}>
             <span style={{ fontSize: 22 }}>{icon}</span>
-            <span style={{ fontSize: 12, fontWeight: 600, color: T.textPrimary, fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif" }}>{label}</span>
+            <span style={{ fontSize: 12, fontWeight: 600, color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>{label}</span>
             <span style={{ fontSize: 10, color: T.textMuted }}>{desc}</span>
           </div>
         ))}
@@ -1047,7 +1047,7 @@ export default function OnboardingWizard() {
       justifyContent: "center",
       padding: "48px 16px",
       background: "linear-gradient(160deg, rgba(0,46,255,0.04) 0%, #FEFFF6 40%)",
-      fontFamily: "var(--font-dm-sans), 'DM Sans', sans-serif",
+      fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
     }}>
       {/* Logo */}
       <div style={{ position: "fixed", top: 24, left: 28, display: "flex", alignItems: "center", gap: 8 }}>
@@ -1127,5 +1127,6 @@ export default function OnboardingWizard() {
     </div>
   );
 }
+
 
 
