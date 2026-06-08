@@ -198,7 +198,23 @@ export default function DashboardView() {
             </div>
           ) : (
             <div data-tour="dash-sessions" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {sessions.map((s) => {
+              {(() => {
+                // Nest operating/continuation runs UNDER their launch session, indented,
+                // to show the hierarchy (parent run → the goals it spawned).
+                const ids = new Set(sessions.map((x) => x.session_id));
+                const kids: Record<string, SessionIndexEntry[]> = {};
+                const roots: SessionIndexEntry[] = [];
+                for (const s of sessions) {
+                  const p = s.parent_session_id;
+                  if (p && ids.has(p)) (kids[p] ||= []).push(s);
+                  else roots.push(s);
+                }
+                const ordered: { s: SessionIndexEntry; child: boolean }[] = [];
+                for (const r of roots) {
+                  ordered.push({ s: r, child: false });
+                  for (const k of kids[r.session_id] || []) ordered.push({ s: k, child: true });
+                }
+                return ordered.map(({ s, child }) => {
                 const isStalled = s.status === "stalled";
                 const isRunning = s.status === "running";
                 return (
@@ -206,7 +222,7 @@ export default function DashboardView() {
                     key={s.session_id}
                     className={`sc-row${isStalled ? " stalled" : isRunning ? " running" : ""}`}
                     onClick={() => router.push(`/?session=${s.session_id}&founder=${encodeURIComponent(userId)}`)}
-                    style={{ position: "relative" }}
+                    style={{ position: "relative", marginLeft: child ? 28 : 0, borderLeft: child ? "2px solid var(--bd)" : undefined }}
                   >
                     {/* Delete */}
                     <button
@@ -268,7 +284,8 @@ export default function DashboardView() {
                     </div>
                   </div>
                 );
-              })}
+                });
+              })()}
             </div>
           )}
         </div>

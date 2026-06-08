@@ -84,7 +84,7 @@ def upsert_company_goal(
         current.setdefault("current_goal_id", "")
         current.setdefault("tasks", [])
         current.setdefault("operating_sessions", [])
-        current.setdefault("budget", {"max_runs_per_day": 3, "max_cost_usd_per_run": 1.0})
+        current.setdefault("budget", {"max_runs_per_day": 12, "max_cost_usd_per_run": 1.0})
         current.setdefault("approval_policy", "require_approval")
         path.write_text(json.dumps(current, indent=2, sort_keys=True))
         return current
@@ -339,6 +339,29 @@ def complete_agent_workstream(founder_id: str, agent: str, run_id: str = "", sum
         return {"changed": changed, "goal_complete": complete}
 
 
+def mark_workstream_running(founder_id: str, agent: str) -> bool:
+    """An owner agent started → flip its current-goal task(s) pending → in_progress
+    so the goal reads as 'running' the moment a run starts. Returns True if changed."""
+    with _lock:
+        g = _read(founder_id)
+        if g is None:
+            return False
+        cg = next((go for go in g.get("goals") or [] if go.get("id") == g.get("current_goal_id")), None)
+        if cg is None or cg.get("status") == "done":
+            return False
+        changed = False
+        for t in cg.get("tasks") or []:
+            if t.get("postponed") or t.get("status") != "pending":
+                continue
+            if agent in (t.get("owner_agents") or []):
+                t["status"] = "in_progress"
+                t["updated_at"] = _now_iso()
+                changed = True
+        if changed:
+            _save(g)
+        return changed
+
+
 def postpone_task(founder_id: str, task_id: str, postponed: bool = True) -> dict[str, Any]:
     with _lock:
         g = _read(founder_id)
@@ -440,8 +463,21 @@ def _runs_today(goal: dict[str, Any]) -> int:
 
 
 def budget_allows(goal: dict[str, Any]) -> bool:
-    max_runs = int((goal.get("budget") or {}).get("max_runs_per_day") or 3)
+    max_runs = max(12, int((goal.get("budget") or {}).get("max_runs_per_day") or 12))
     return _runs_today(goal) < max_runs
+
+
+def chained_goals_today(goal: dict[str, Any]) -> int:
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    return sum(1 for g in goal.get("goals") or []
+               if g.get("kind") == "planner" and str(g.get("created_at", "")).startswith(today))
+
+
+def chain_allowed(goal: dict[str, Any]) -> bool:
+    """Goal completion → chain to the next goal is genuine progress, not a retry, so it
+    is gated separately from the per-run budget. Cap new planner goals/day to bound cost."""
+    cap = int(os.environ.get("ASTRA_MAX_CHAINED_GOALS_PER_DAY", "8"))
+    return chained_goals_today(goal) < cap
 
 
 def is_due(goal: dict[str, Any], min_interval_seconds: int) -> bool:

@@ -252,10 +252,12 @@ async def publish(session_id: str, event: dict) -> None:
     await _get_queue(session_id).put((event_id, sse_event))
     # Event-driven goal ticking: when an agent finishes, mark the company goal's
     # tasks it owns (no timer). Cheap + best-effort; offloaded so it never blocks.
-    if event.get("type") == "agent_done" and event.get("agent"):
+    _etype = event.get("type")
+    if _etype in ("agent_done", "agent_start") and event.get("agent"):
         try:
-            from backend.missions.goal_engine import tick_from_agent
-            loop.run_in_executor(None, tick_from_agent, session_id, str(event.get("agent")))
+            from backend.missions.goal_engine import tick_from_agent, mark_running
+            fn = tick_from_agent if _etype == "agent_done" else mark_running
+            loop.run_in_executor(None, fn, session_id, str(event.get("agent")))
         except Exception:
             pass
 

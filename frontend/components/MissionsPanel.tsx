@@ -217,7 +217,14 @@ export default function MissionsPanel() {
           {/* Current goal + tasks */}
           {cg ? (
             <Section title={`Current goal${cg.kind === "launch" ? " · launch" : ""}`}>
-              <div style={{ fontSize: 17, fontWeight: 700, color: c.text, marginBottom: 12 }}>{cg.title}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                <div style={{ fontSize: 17, fontWeight: 700, color: c.text }}>{cg.title}</div>
+                {tasks.some((t) => t.status === "in_progress") && !paused
+                  ? <Badge label="● running" kind="in_progress" />
+                  : tasks.length > 0 && tasks.every((t) => t.postponed || t.status === "done")
+                    ? <Badge label="done" kind="done" />
+                    : null}
+              </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {tasks.map((t) => <TaskRow key={t.id} t={t} />)}
               </div>

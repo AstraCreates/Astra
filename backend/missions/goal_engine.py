@@ -109,6 +109,21 @@ def ensure_launch_goal(founder_id: str, session_id: str, agents: list[str], goal
 
 # ── Event-driven task ticking (agent_done) ──────────────────────────────────────
 
+def mark_running(session_id: str, agent: str) -> None:
+    """An agent started — flip its current-goal task(s) to in_progress so the goal
+    reads as running immediately. Called from the central publisher on agent_start."""
+    try:
+        founder_id = _founder_for_session(session_id)
+        if not founder_id or not agent:
+            return
+        from backend.missions.company_goal import current_goal, mark_workstream_running
+        cg = current_goal(founder_id)
+        if cg and any(agent in (t.get("owner_agents") or []) for t in cg.get("tasks") or []):
+            mark_workstream_running(founder_id, agent)
+    except Exception as e:
+        logger.debug("goal_engine.mark_running skipped: %s", e)
+
+
 def tick_from_agent(session_id: str, agent: str) -> None:
     """An agent finished — mark the current goal's tasks it owns. Called from the
     central event publisher for every agent_done, so it must be cheap and safe."""
@@ -243,7 +258,7 @@ async def after_run(founder_id: str, session_id: str, state: dict[str, Any]) -> 
     if not founder_id:
         return
     from backend.missions.company_goal import (
-        get_company_goal, upsert_company_goal, current_goal, budget_allows, _goal_is_complete,
+        get_company_goal, upsert_company_goal, current_goal, chain_allowed, _goal_is_complete,
     )
     try:
         goal = get_company_goal(founder_id)
@@ -281,8 +296,8 @@ async def after_run(founder_id: str, session_id: str, state: dict[str, Any]) -> 
         # Auto-chain: goal complete → next goal → dispatch immediately.
         goal = get_company_goal(founder_id)
         if goal and goal.get("status") != "paused" and _goal_is_complete(current_goal(founder_id)):
-            if not budget_allows(goal):
-                logger.info("goal_engine: founder=%s goal complete but daily budget exhausted — not chaining", founder_id)
+            if not chain_allowed(goal):
+                logger.info("goal_engine: founder=%s goal complete but daily new-goal cap hit — not chaining", founder_id)
                 return
             nxt = plan_next_goal(founder_id)
             if nxt:

@@ -1226,6 +1226,8 @@ export interface SessionIndexEntry {
   status: "running" | "done" | "error" | "stalled" | string;
   created_at: string;
   completed_at: string | null;
+  parent_session_id?: string;
+  kind?: string;
 }
 
 /** List a founder's sessions persisted server-side (for cross-device sync). */

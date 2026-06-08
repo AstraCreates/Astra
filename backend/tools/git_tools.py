@@ -1090,8 +1090,10 @@ def _generate_build_plan(goal: str, context: str = "", kind: str = "app", founde
             return stripped
 
         plan = _ask(8000)
-        if len(plan) < 400:
-            plan = _ask(12000) or plan  # retry with a bigger budget if it came back thin
+        # One quick retry only if it came back essentially empty (avoid doubling
+        # latency on the technical agent, which has a hard 3600s budget).
+        if len(plan) < 200:
+            plan = _ask(8000) or plan
         files: list[str] = []
         m = re.search(r"FILES:\s*(\[.*?\])", plan, re.DOTALL)
         if m:
