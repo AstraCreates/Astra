@@ -769,6 +769,64 @@ MVP_REQUIRED = [
 ]
 
 
+def _ensure_tailwind_setup(repo_dir: str) -> None:
+    """Deterministically fix Tailwind so styles actually compile, no matter what the
+    LLM scaffolded. The common failure (blank/unstyled site) is Tailwind v4 installed
+    against v3-style @tailwind/@apply CSS, a missing postcss config, or content globs
+    that purge every utility — all yield raw @tailwind directives and zero styling."""
+    import json as _json, re as _re
+    root = Path(repo_dir)
+    POSTCSS = "module.exports = { plugins: { tailwindcss: {}, autoprefixer: {} } };\n"
+    TW_CFG = (
+        "/** @type {import('tailwindcss').Config} */\n"
+        "module.exports = { content: ["
+        "'./app/**/*.{js,ts,jsx,tsx,mdx}','./components/**/*.{js,ts,jsx,tsx,mdx}',"
+        "'./pages/**/*.{js,ts,jsx,tsx,mdx}','./src/**/*.{js,ts,jsx,tsx,mdx}'"
+        "], theme: { extend: {} }, plugins: [] };\n"
+    )
+    for pkg in root.rglob("package.json"):
+        if "node_modules" in str(pkg):
+            continue
+        try:
+            data = _json.loads(pkg.read_text())
+        except Exception:
+            continue
+        deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+        if "next" not in deps and "tailwindcss" not in deps:
+            continue
+        app_dir = pkg.parent
+        try:
+            # 1. Pin Tailwind v3 toolchain in devDependencies; purge v4 bits.
+            data.get("dependencies", {}).pop("tailwindcss", None)
+            data.get("dependencies", {}).pop("@tailwindcss/postcss", None)
+            dev = data.setdefault("devDependencies", {})
+            dev.pop("@tailwindcss/postcss", None)
+            dev["tailwindcss"] = "^3.4.17"
+            dev["postcss"] = "^8.4.49"
+            dev["autoprefixer"] = "^10.4.20"
+            pkg.write_text(_json.dumps(data, indent=2) + "\n")
+            # 2. Correct postcss config (drop v4/ESM variants).
+            for f in ("postcss.config.mjs", "postcss.config.ts"):
+                (app_dir / f).unlink(missing_ok=True)
+            (app_dir / "postcss.config.js").write_text(POSTCSS)
+            # 3. Ensure a tailwind config with real content globs exists.
+            if not (app_dir / "tailwind.config.js").exists() and not (app_dir / "tailwind.config.ts").exists():
+                (app_dir / "tailwind.config.js").write_text(TW_CFG)
+            # 4. globals.css must use v3 @tailwind directives (not v4 @import).
+            for css in app_dir.rglob("globals.css"):
+                if "node_modules" in str(css):
+                    continue
+                try:
+                    txt = css.read_text()
+                except Exception:
+                    continue
+                if "@tailwind base" not in txt:
+                    txt = _re.sub(r'@import\s+["\']tailwindcss["\'];?\s*', "", txt)
+                    css.write_text("@tailwind base;\n@tailwind components;\n@tailwind utilities;\n\n" + txt)
+        except Exception as e:
+            logger.warning("tailwind setup fixup failed for %s: %s", app_dir, e)
+
+
 def _sanitize_package_json(repo_dir: str) -> None:
     frontend = Path(repo_dir) / "frontend"
 
@@ -851,10 +909,36 @@ def _file_prompt(rel_path: str, goal: str, context: str, local: str) -> str:
     # File-specific guidance
     hints = {
         "frontend/package.json": (
-            "Use ONLY these real packages: next@15.3.3, react@19, react-dom@19, typescript, tailwindcss, "
+            "Use ONLY these real packages with these EXACT versions for Tailwind so the "
+            "CSS actually compiles (Tailwind v4 has a different setup and breaks @tailwind/@apply): "
+            "\"tailwindcss\": \"^3.4.17\", \"postcss\": \"^8.4.49\", \"autoprefixer\": \"^10.4.20\" "
+            "(all in devDependencies). Plus: next@15.3.3, react@19, react-dom@19, typescript, "
             "@tailwindcss/forms, clsx, lucide-react, next-auth@beta, @supabase/supabase-js, @supabase/ssr, "
             "framer-motion, zod, react-hook-form. "
-            "NEVER use @clerk/nextjs or any @clerk/* package. NEVER use @next/font (use next/font/google). NEVER use @radix-ui/react-badge."
+            "NEVER use tailwindcss v4 / @tailwindcss/postcss. NEVER @clerk/*. NEVER @next/font (use next/font/google). NEVER @radix-ui/react-badge."
+        ),
+        # These three MUST be correct or Tailwind emits raw @tailwind/@apply (no styles).
+        "frontend/postcss.config.js": (
+            "REQUIRED for Tailwind to compile. Exactly:\n"
+            "module.exports = { plugins: { tailwindcss: {}, autoprefixer: {} } };"
+        ),
+        "frontend/postcss.config.mjs": (
+            "REQUIRED for Tailwind to compile. Exactly:\n"
+            "export default { plugins: { tailwindcss: {}, autoprefixer: {} } };"
+        ),
+        "frontend/tailwind.config.ts": (
+            "Tailwind v3 config. The `content` globs MUST cover every dir with classes or all utilities get purged "
+            "(blank styling). Use: content: ['./app/**/*.{js,ts,jsx,tsx,mdx}','./components/**/*.{js,ts,jsx,tsx,mdx}',"
+            "'./src/**/*.{js,ts,jsx,tsx,mdx}']. Define any custom colors as nested objects with real shades "
+            "(e.g. sky: {500:'#0ea5e9'}) — NEVER use a bare 'DEFAULT'-only color and reference it as `sky-DEFAULT`."
+        ),
+        "frontend/tailwind.config.js": (
+            "Same as tailwind.config.ts: content globs must cover ./app, ./components, ./src; custom colors need real shades."
+        ),
+        "frontend/app/globals.css": (
+            "Tailwind v3 entry. MUST start with exactly these three lines:\n"
+            "@tailwind base;\n@tailwind components;\n@tailwind utilities;\n"
+            "Then any @layer/@apply rules. Do NOT use Tailwind v4 syntax (@import 'tailwindcss')."
         ),
         "frontend/next.config.js": "Use .js extension ONLY. Never next.config.ts or .mjs.",
         "frontend/middleware.ts": "Use next-auth (NOT Clerk). Protect /dashboard/* routes with NextAuth middleware.",
@@ -986,6 +1070,10 @@ def run_mvp_loop(
         else:
             _stage_all(local)
 
+        # Deterministically fix the Tailwind toolchain so the site actually has styles
+        # (LLM scaffolds frequently install Tailwind v4 against v3 CSS → blank styling).
+        _ensure_tailwind_setup(local)
+
         # Pass 2b: build-error self-healing — run `npm run build`, fix any errors, repeat
         logger.info("Pass 2b: build-error self-healing pass")
         _phase("Pass 3/4 — build-error self-healing (npm run build)")
@@ -1014,6 +1102,8 @@ def run_mvp_loop(
             else:
                 _stage_all(local)
 
+        # Final guard — re-assert the Tailwind toolchain in case a later pass touched it.
+        _ensure_tailwind_setup(local)
         _stage_all(local)
         all_files = _list_built_files(local)
         _phase(f"Build complete — {len(all_files)} files written", files_total=len(all_files))
