@@ -435,6 +435,13 @@ async def delete_session_route(session_id: str, request: Request):
         pass
     # Shut down the live preview + delete the workspace before dropping the session.
     await _teardown_session_artifacts(session_id)
+    # Clean up any company goal this session spawned (so deleted sessions don't
+    # leave stale goals/operating-runs in the /goals view).
+    try:
+        from backend.missions.company_goal import handle_session_deleted
+        await asyncio.to_thread(handle_session_deleted, session_id)
+    except Exception as e:
+        logger.warning("company goal cleanup failed for %s: %s", session_id, e)
     removed = _del(session_id)
     return {"ok": True, "deleted": removed}
 

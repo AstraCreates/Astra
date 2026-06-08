@@ -163,6 +163,22 @@ function RichText({ text }: { text: string }) {
   return <div style={{ background: "var(--surface)", border: "1px solid var(--bd)", borderRadius: 8, padding: "14px 16px", maxHeight: 460, overflowY: "auto" }}>{blocks}</div>;
 }
 
+// Per-session client cache so the updates panel (agent logs, selected tab,
+// artifacts) survives navigating between sidebar pages / agent tabs WITHOUT
+// re-streaming from the server. The cached object is the same reference held by
+// S.current, so in-place updates from the live SSE stream are reflected
+// automatically. Capped to a few sessions to bound memory.
+const SV_CACHE = new Map<string, SState>();
+const SV_CACHE_MAX = 8;
+function cacheSession(id: string, state: SState) {
+  SV_CACHE.set(id, state);
+  while (SV_CACHE.size > SV_CACHE_MAX) {
+    const oldest = SV_CACHE.keys().next().value;
+    if (oldest === undefined) break;
+    SV_CACHE.delete(oldest);
+  }
+}
+
 export default function SessionView({ sessionId }: { sessionId: string }) {
   const { userId } = useDevUser();
   const founderId = userId;
@@ -309,7 +325,15 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!sessionId || !founderId) return;
     let alive = true;
-    S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "" };
+    // Restore from cache (keeps logs + selected agent across nav) — else start fresh.
+    const cached = SV_CACHE.get(sessionId);
+    const fromCache = !!cached;
+    if (cached) {
+      S.current = cached;
+    } else {
+      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "" };
+      cacheSession(sessionId, S.current);
+    }
     force();
 
     (async () => {
@@ -345,20 +369,28 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           else if (d.stack?.stack_id && !S.current.stackId) S.current.stackId = d.stack.stack_id;
           if (d.previewUrl) S.current.liveUrl = d.previewUrl;
           S.current.status = d.status || S.current.status;
-          S.current.artifacts = Array.isArray(d.artifacts) ? d.artifacts : [];
-          S.current.approvals = Array.isArray(d.approvals)
-            ? d.approvals
-                .filter((a: any) => PENDING.has(a.status) && (a.gate_key || a.key))
-                .map((a: any) => ({ ...a, gate_key: a.gate_key || a.key }))
-            : [];
+          if (Array.isArray(d.artifacts) && d.artifacts.length) S.current.artifacts = d.artifacts;
+          else if (!fromCache) S.current.artifacts = [];
+          if (Array.isArray(d.approvals)) {
+            S.current.approvals = d.approvals
+              .filter((a: any) => PENDING.has(a.status) && (a.gate_key || a.key))
+              .map((a: any) => ({ ...a, gate_key: a.gate_key || a.key }));
+          }
           if (d.agents && typeof d.agents === "object") {
             for (const [k, ag] of Object.entries<any>(d.agents)) {
               const rawLog: any[] = ag.log || [];
+              const mapped = rawLog.map((e) => ({ ts: e.ts ?? Date.now(), type: String(e.type || ""), text: safeText(e.text) }));
+              const existing = S.current.agents[k];
+              // When restoring from cache, the cached log may already hold live
+              // updates newer than the snapshot — keep whichever is longer so we
+              // never drop streamed lines on remount.
+              const log = (fromCache && existing && existing.log.length >= mapped.length) ? existing.log : mapped;
               S.current.agents[k] = {
-                key: k, status: ag.status || "waiting",
-                log: rawLog.map((e) => ({ ts: e.ts ?? Date.now(), type: String(e.type || ""), text: safeText(e.text) })),
-                visitedUrls: ag.visitedUrls || ag.visited_urls || [],
-                currentTool: null, result: ag.result || null, instruction: ag.instruction || "",
+                key: k, status: ag.status || existing?.status || "waiting",
+                log,
+                visitedUrls: ag.visitedUrls || ag.visited_urls || existing?.visitedUrls || [],
+                currentTool: existing?.currentTool ?? null, result: ag.result || existing?.result || null,
+                instruction: ag.instruction || existing?.instruction || "",
               };
             }
           }

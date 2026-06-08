@@ -228,6 +228,47 @@ def decide_task(founder_id: str, task_id: str, approved: bool, note: str = "") -
     return update_task(founder_id, task_id, **fields)
 
 
+def delete_company_goal(founder_id: str) -> bool:
+    with _lock:
+        path = _goal_path(founder_id)
+        if path.exists():
+            path.unlink()
+            logger.info("company_goal: deleted goal for %s", founder_id)
+            return True
+        return False
+
+
+def handle_session_deleted(session_id: str) -> dict[str, Any]:
+    """When a session is deleted, clean up company goals tied to it.
+
+    - If the session is a company goal's launch/source/root session, the whole goal
+      is removed (the company it spawned is gone).
+    - Otherwise, drop any operating-run record that points at the deleted session.
+    Returns a small summary of what changed."""
+    if not session_id:
+        return {"deleted_goals": 0, "detached_runs": 0}
+    deleted = 0
+    detached = 0
+    for goal in list_company_goals():
+        founder_id = goal.get("founder_id")
+        if not founder_id:
+            continue
+        if session_id in (goal.get("root_session_id"), goal.get("source_session_id")):
+            if delete_company_goal(founder_id):
+                deleted += 1
+            continue
+        runs = goal.get("operating_sessions") or []
+        kept = [r for r in runs if r.get("session_id") != session_id]
+        if len(kept) != len(runs):
+            with _lock:
+                g = _read(founder_id)
+                if g is not None:
+                    g["operating_sessions"] = [r for r in (g.get("operating_sessions") or []) if r.get("session_id") != session_id]
+                    _save(g)
+                    detached += 1
+    return {"deleted_goals": deleted, "detached_runs": detached}
+
+
 def list_company_goals() -> list[dict[str, Any]]:
     """Every founder's company goal (one file each)."""
     out: list[dict[str, Any]] = []
