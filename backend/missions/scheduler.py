@@ -72,8 +72,10 @@ async def _scheduler_tick() -> int:
     Returns the number of stalled goals re-dispatched.
     """
     import os
-    from backend.missions.company_goal import list_company_goals, budget_allows, is_due, current_goal
-    from backend.missions.goal_engine import dispatch_current_goal
+    from backend.missions.company_goal import (
+        list_company_goals, budget_allows, is_due, current_goal, chain_allowed, _goal_is_complete,
+    )
+    from backend.missions.goal_engine import dispatch_current_goal, plan_next_goal
 
     safety_interval = max(300, int(os.environ.get("ASTRA_GOAL_SAFETY_INTERVAL_SECONDS", "1800")))
 
@@ -90,8 +92,25 @@ async def _scheduler_tick() -> int:
             continue
         cg = await asyncio.to_thread(current_goal, founder_id)
         open_tasks = [t for t in (cg or {}).get("tasks", []) if not t.get("postponed") and t.get("status") != "done"]
+
+        # Completed goal with no chained successor → recover the auto-chain (the
+        # event-driven chain in after_run can miss if a run crashed or the planner
+        # call failed). Plan the next goal + dispatch it.
+        if cg and not open_tasks and _goal_is_complete(cg):
+            if not chain_allowed(goal):
+                continue
+            logger.info("missions_scheduler: chaining completed goal founder=%s", founder_id)
+            try:
+                if await asyncio.to_thread(plan_next_goal, founder_id):
+                    res = await dispatch_current_goal(founder_id)
+                    if res.get("ok") and res.get("session_id"):
+                        dispatched += 1
+            except Exception as exc:
+                logger.error("missions_scheduler: chain recovery failed founder=%s: %s", founder_id, exc, exc_info=True)
+            continue
+
         if not cg or not open_tasks:
-            continue  # nothing open — event chain handles completed goals
+            continue  # nothing actionable
         if not is_due(goal, safety_interval):
             continue  # a run started recently — not stalled
         if not budget_allows(goal):

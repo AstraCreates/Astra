@@ -1791,7 +1791,33 @@ class Orchestrator:
             await self._publish_outcomes(session_id, task, result)
             logger.info("Continue task %s (%s) done", tid, agent_name)
 
-        await asyncio.gather(*[_run_task(t) for t in tasks])
+        # Guard non-build agents with a hard timeout so a hung operating-run agent
+        # can't run for hours and block goal_done (which is what drives the next-goal
+        # auto-chain). Build agents (web/technical) are bounded by their per-pass
+        # openclaude timeouts, so they run unguarded.
+        import os as _os
+        _CONT_TIMEOUT = int(_os.environ.get("ASTRA_AGENT_TIMEOUT", "3600"))
+
+        async def _run_task_guarded(t: dict) -> None:
+            if (t.get("agent") or "").lower().startswith(("web", "technical")):
+                try:
+                    await _run_task(t)
+                except Exception as e:
+                    completed.setdefault(t["id"], {"error": str(e), "agent": t["agent"]})
+                return
+            try:
+                await asyncio.wait_for(_run_task(t), timeout=_CONT_TIMEOUT)
+            except asyncio.TimeoutError:
+                logger.error("Continue agent %s timed out after %ds", t["agent"], _CONT_TIMEOUT)
+                completed[t["id"]] = {"error": f"timed_out_after_{_CONT_TIMEOUT}s", "agent": t["agent"], "timed_out": True}
+                try:
+                    await publish(session_id, {"type": "agent_error", "agent": t["agent"], "task_id": t["id"], "error": f"agent timed out after {_CONT_TIMEOUT}s"})
+                except Exception:
+                    pass
+            except Exception as e:
+                completed.setdefault(t["id"], {"error": str(e), "agent": t["agent"]})
+
+        await asyncio.gather(*[_run_task_guarded(t) for t in tasks])
         await publish(session_id, {"type": "goal_done", "results": completed})
         asyncio.create_task(self._bootstrap_operating_after_run(session_id, founder_id, instruction))
         try:

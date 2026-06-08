@@ -368,10 +368,26 @@ def _commit_and_push(local: str, message: str) -> str | None:
         ahead = "1"
     if ahead == "0":
         return None
-    push = subprocess.run(["git", "push"], cwd=local, capture_output=True, text=True, timeout=60)
-    if push.returncode != 0:
-        raise RuntimeError(f"git push failed: {push.stderr[:200]}")
-    return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=local, capture_output=True, text=True).stdout.strip()
+    # Web + technical agents share the repo and push concurrently, so a push can be
+    # rejected (non-fast-forward / fetch first). Integrate the remote with a rebase and
+    # retry instead of failing the whole build.
+    branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=local, capture_output=True, text=True).stdout.strip() or "main"
+    last_err = ""
+    for attempt in range(3):
+        push = subprocess.run(["git", "push"], cwd=local, capture_output=True, text=True, timeout=60)
+        if push.returncode == 0:
+            return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=local, capture_output=True, text=True).stdout.strip()
+        last_err = (push.stderr or "")[:200]
+        # Rejected — pull the remote in, rebasing our commits on top, then retry.
+        subprocess.run(["git", "fetch", "origin"], cwd=local, capture_output=True, text=True, timeout=60)
+        rb = subprocess.run(["git", "pull", "--rebase", "--autostash", "origin", branch],
+                            cwd=local, capture_output=True, text=True, timeout=120)
+        if rb.returncode != 0:
+            # Rebase conflict — abort and prefer the remote so the build doesn't wedge.
+            subprocess.run(["git", "rebase", "--abort"], cwd=local, capture_output=True, text=True)
+            subprocess.run(["git", "reset", "--soft", f"origin/{branch}"], cwd=local, capture_output=True, text=True)
+            subprocess.run(["git", "commit", "-m", message, "--allow-empty"], cwd=local, capture_output=True, text=True)
+    raise RuntimeError(f"git push failed after retries: {last_err}")
 
 
 def _make_env() -> dict:
@@ -1192,14 +1208,17 @@ def run_mvp_loop(
         if is_github:
             _pull(local)
 
-        # Plan the product completely with MiniMax-M3 BEFORE building, so openclaude
-        # implements a real app from a concrete spec instead of improvising from a
-        # one-line goal (the reason builds came out as bare skeletons). Best-effort.
-        _phase("Planning the product (MiniMax-M3)…")
-        plan_info = _generate_build_plan(goal, context, kind=("website+app" if agent == "web" else "app"), founder_id=founder_id)
+        # Plan the product with MiniMax-M3 BEFORE building (the MVP planner), so
+        # openclaude implements a real app from a concrete spec instead of improvising.
+        # Only for the product build (technical) — the web/landing agent skips it (no
+        # separate website planner).
+        plan_info = {"plan": "", "files": [], "model": ""}
+        if agent != "web":
+            _phase("Planning the product (MiniMax-M3)…")
+            plan_info = _generate_build_plan(goal, context, kind="app", founder_id=founder_id)
         build_plan = plan_info.get("plan") or ""
         if build_plan:
-            plan_title = "Website plan" if agent == "web" else "Product build plan"
+            plan_title = "Product build plan"
             try:
                 from backend.core.events import publish_sync
                 publish_sync(session_id, {"type": "agent_build", "agent": agent, "kind": "plan",
