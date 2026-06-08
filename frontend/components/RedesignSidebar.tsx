@@ -63,7 +63,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
       </div>
 
       <div style={{ height: 1, background: "var(--bd)", margin: "6px 8px" }} />
-      <div style={{ padding: "6px 12px 4px" }}><CreditsDisplay /></div>
+      <div style={{ padding: "6px 12px 10px", display: "flex", justifyContent: "center" }}><CreditsDisplay /></div>
       <div style={{ padding: "0 8px 14px", display: "flex", flexDirection: "column", gap: 1 }}>
         <Link href="/settings" className={`nl${pathname.startsWith("/settings") ? " on" : ""}`} style={{ textDecoration: "none" }}><span style={{ width: 18, textAlign: "center" }}>⚙</span>Settings</Link>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px" }}>

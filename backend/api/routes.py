@@ -2914,7 +2914,7 @@ async def save_outreach_contacts(founder_id: str, body: dict, request: Request):
     result = db.table("outreach_contacts").upsert(
         rows, on_conflict="founder_id,email", ignore_duplicates=False
     ).execute()
-    return {"saved": len(rows), "founder_id": founder_id}
+    return {"saved": len(result.data), "contacts": result.data, "founder_id": founder_id}
 
 
 @router.get("/outreach/contacts/{founder_id}")
@@ -3255,7 +3255,15 @@ async def create_campaign(founder_id: str, body: dict, request: Request):
         "daily_limit": body.get("daily_limit", 50),
         "send_provider": body.get("send_provider", "gmail"),
     }
-    result = db.table("outreach_campaigns").insert(row).execute()
+    # target_audience: audience targeting criteria for Apollo search.
+    # Requires column: ALTER TABLE outreach_campaigns ADD COLUMN IF NOT EXISTS target_audience JSONB DEFAULT '{}'::jsonb;
+    if body.get("target_audience"):
+        row["target_audience"] = body["target_audience"]
+    try:
+        result = db.table("outreach_campaigns").insert(row).execute()
+    except Exception:
+        row.pop("target_audience", None)
+        result = db.table("outreach_campaigns").insert(row).execute()
     return result.data[0]
 
 
@@ -3265,7 +3273,8 @@ async def update_campaign(founder_id: str, campaign_id: str, body: dict, request
     db = get_outreach_db()
     allowed = {k: v for k, v in body.items() if k in (
         "name", "status", "from_name", "from_email", "reply_to",
-        "steps", "product_name", "value_prop", "daily_limit", "send_provider"
+        "steps", "product_name", "value_prop", "daily_limit", "send_provider",
+        "target_audience",
     )}
     result = db.table("outreach_campaigns").update(allowed).eq("id", campaign_id).eq("founder_id", founder_id).execute()
     return result.data[0] if result.data else {}

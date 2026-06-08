@@ -5,36 +5,54 @@ import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const MAX_CONFIRM = 10;
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-interface Contact {
-  id?: string;
-  apollo_id?: string;
-  first_name: string;
-  last_name: string;
-  email: string;
-  title: string;
-  company_name: string;
-  company_domain?: string;
-  company_industry?: string;
-  company_size?: string;
-  funding_stage?: string;
-  company_funding_stage?: string;
-  seniority?: string;
-  linkedin_url?: string;
-  city?: string;
-  country?: string;
-  status?: string;
-  source?: string;
+interface TargetAudience {
+  titles: string;
+  locations: string;
+  industries: string;
+  keywords: string;
+  seniorities: string[];
+  company_sizes: string[];
 }
 
-interface ContactList {
+interface ApolloContact {
+  apollo_id: string;
+  first_name: string;
+  last_name: string;
+  title: string;
+  company_name: string;
+  has_email: boolean;
+  has_phone: boolean;
+  city?: string;
+  country?: string;
+  email?: string;
+  enriched?: boolean;
+}
+
+interface EnrolledContact {
   id: string;
-  name: string;
-  description: string;
-  contact_count: number;
-  created_at: string;
+  contact_id: string;
+  status: string;
+  current_step: number;
+  last_sent_at?: string;
+  next_send_at?: string;
+  outreach_contacts?: {
+    first_name: string;
+    last_name: string;
+    email: string;
+    company_name: string;
+    title: string;
+  };
+}
+
+interface CampaignStep {
+  subject: string;
+  body: string;
+  send_day: number;
+  type?: string;
 }
 
 interface Campaign {
@@ -48,14 +66,8 @@ interface Campaign {
   steps: CampaignStep[];
   daily_limit: number;
   send_provider: string;
+  target_audience?: TargetAudience;
   created_at: string;
-}
-
-interface CampaignStep {
-  subject: string;
-  body: string;
-  send_day: number;
-  type?: string;
 }
 
 interface CampaignStats {
@@ -68,7 +80,7 @@ interface CampaignStats {
   reply_rate: number;
 }
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function glass(extra?: React.CSSProperties): React.CSSProperties {
   return {
@@ -76,34 +88,22 @@ function glass(extra?: React.CSSProperties): React.CSSProperties {
     backdropFilter: "var(--blur)",
     WebkitBackdropFilter: "var(--blur)",
     border: "1px solid var(--line)",
-    borderRadius: 20,
+    borderRadius: 16,
     ...extra,
   };
 }
 
 const PILL: React.CSSProperties = {
-  padding: "4px 12px", borderRadius: 20, fontSize: 11,
+  padding: "3px 10px", borderRadius: 20, fontSize: 11,
   fontFamily: "var(--font-mono)", display: "inline-block",
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  new: "rgba(255,255,255,0.15)",
-  contacted: "rgba(96,165,250,0.25)",
-  replied: "rgba(52,211,153,0.25)",
-  meeting: "rgba(167,139,250,0.25)",
-  won: "rgba(74,222,128,0.25)",
-  lost: "rgba(248,113,113,0.2)",
-  unsubscribed: "rgba(255,255,255,0.08)",
-};
-
-const CAMPAIGN_STATUS_COLORS: Record<string, string> = {
-  draft: "rgba(255,255,255,0.12)",
-  active: "rgba(52,211,153,0.25)",
-  paused: "rgba(251,191,36,0.25)",
+  draft:     "rgba(255,255,255,0.12)",
+  active:    "rgba(52,211,153,0.25)",
+  paused:    "rgba(251,191,36,0.25)",
   completed: "rgba(96,165,250,0.2)",
 };
-
-// ── Filter options ────────────────────────────────────────────────────────────
 
 const SENIORITY_OPTIONS = [
   { value: "c_suite", label: "C-Suite" },
@@ -124,28 +124,17 @@ const COMPANY_SIZE_OPTIONS = [
   { value: "5001,10000", label: "5K+" },
 ];
 
-const FUNDING_OPTIONS = [
-  { value: "seed", label: "Seed" },
-  { value: "series_a", label: "Series A" },
-  { value: "series_b", label: "Series B" },
-  { value: "series_c", label: "Series C" },
-  { value: "series_d_plus", label: "Series D+" },
-  { value: "bootstrapped", label: "Bootstrapped" },
-];
-
-// ── Checkbox group ────────────────────────────────────────────────────────────
+// ── Sub-components ─────────────────────────────────────────────────────────────
 
 function CheckGroup({ label, options, selected, onChange }: {
-  label: string;
-  options: { value: string; label: string }[];
-  selected: string[];
-  onChange: (v: string[]) => void;
+  label: string; options: { value: string; label: string }[];
+  selected: string[]; onChange: (v: string[]) => void;
 }) {
   const toggle = (v: string) =>
     onChange(selected.includes(v) ? selected.filter(x => x !== v) : [...selected, v]);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--fg-mute)" }}>{label}</span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--fg-mute)", fontWeight: 600 }}>{label}</span>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
         {options.map(o => (
           <button key={o.value} onClick={() => toggle(o.value)} style={{
@@ -161,198 +150,178 @@ function CheckGroup({ label, options, selected, onChange }: {
   );
 }
 
-// ── Stat badge ────────────────────────────────────────────────────────────────
+function ProgressBar({ label }: { label: string }) {
+  return (
+    <div style={{ padding: "36px 24px", textAlign: "center" }}>
+      <div style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 16 }}>{label}</div>
+      <div style={{ height: 3, background: "rgba(255,255,255,0.07)", overflow: "hidden", borderRadius: 2, maxWidth: 320, margin: "0 auto" }}>
+        <div style={{
+          height: "100%",
+          background: "linear-gradient(90deg, transparent 0%, #60a5fa 40%, #a78bfa 70%, transparent 100%)",
+          backgroundSize: "200% 100%",
+          animation: "outreach-sweep 1.8s ease-in-out infinite",
+        }} />
+      </div>
+    </div>
+  );
+}
 
 function StatBadge({ label, value, color }: { label: string; value: string | number; color?: string }) {
   return (
-    <div style={{ textAlign: "center", padding: "8px 12px", ...glass({ borderRadius: 12 }) }}>
+    <div style={{ textAlign: "center", padding: "8px 12px", ...glass({ borderRadius: 10 }) }}>
       <div style={{ fontSize: 16, fontWeight: 700, color: color || "var(--fg)", fontFamily: "var(--font-mono)" }}>{value}</div>
       <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--fg-mute)", marginTop: 2 }}>{label}</div>
     </div>
   );
 }
 
-// ── Contact row ───────────────────────────────────────────────────────────────
-
-function ContactRow({ contact, selected, onSelect }: {
-  contact: Contact; selected: boolean; onSelect: (c: Contact) => void;
-}) {
-  return (
-    <div
-      onClick={() => onSelect(contact)}
-      style={{
-        display: "grid", gridTemplateColumns: "28px 1fr 1fr 120px 100px 80px",
-        alignItems: "center", gap: 12, padding: "10px 14px",
-        borderRadius: 12, cursor: "pointer",
-        background: selected ? "rgba(96,165,250,0.08)" : "transparent",
-        border: `1px solid ${selected ? "rgba(96,165,250,0.2)" : "transparent"}`,
-        transition: "all 0.1s",
-      }}
-      onMouseEnter={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.03)"; }}
-      onMouseLeave={e => { if (!selected) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-    >
-      <div
-        onClick={e => { e.stopPropagation(); onSelect(contact); }}
-        style={{
-          width: 16, height: 16, borderRadius: 4,
-          border: `1.5px solid ${selected ? "#60a5fa" : "rgba(255,255,255,0.2)"}`,
-          background: selected ? "#60a5fa" : "transparent",
-          display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
-        }}
-      >
-        {selected && <span style={{ fontSize: 10, color: "#000", fontWeight: 700 }}>✓</span>}
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {contact.first_name} {contact.last_name}
-        </div>
-        <div style={{ fontSize: 11, color: "var(--fg-mute)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {contact.email || "email hidden"}
-        </div>
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 12, color: "var(--fg-dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {contact.title}
-        </div>
-        <div style={{ fontSize: 11, color: "var(--fg-mute)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {contact.company_name}
-        </div>
-      </div>
-      <div style={{ fontSize: 11, color: "var(--fg-mute)" }}>
-        {contact.company_industry || contact.company_size || "—"}
-      </div>
-      <div style={{ fontSize: 11, color: "var(--fg-mute)" }}>
-        {contact.city || contact.country || "—"}
-      </div>
-      <div>
-        <span style={{
-          ...PILL,
-          background: STATUS_COLORS[contact.status || "new"] || "rgba(255,255,255,0.1)",
-          color: "var(--fg-dim)", fontSize: 10,
-        }}>{contact.status || "new"}</span>
-      </div>
-    </div>
-  );
-}
-
-// ── Campaign card ─────────────────────────────────────────────────────────────
+// ── Campaign card ──────────────────────────────────────────────────────────────
 
 function CampaignCard({ campaign, stats, onClick }: {
   campaign: Campaign; stats?: CampaignStats; onClick: () => void;
 }) {
+  const audience = campaign.target_audience;
+  const hasAudience = audience && (audience.titles || audience.industries || audience.locations);
   return (
     <div onClick={onClick} style={{
-      ...glass({ padding: "16px 18px", cursor: "pointer" }),
+      ...glass({ padding: "18px 20px", cursor: "pointer", borderRadius: 14 }),
       transition: "border-color 0.15s",
     }}
-      onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.18)"}
+      onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.2)"}
       onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = "var(--line)"}
     >
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>{campaign.name}</div>
-          <div style={{ fontSize: 11, color: "var(--fg-mute)", marginTop: 2 }}>{campaign.from_email || "no sender set"}</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)" }}>{campaign.name}</div>
+          <div style={{ fontSize: 11, color: "var(--fg-mute)", marginTop: 2 }}>{campaign.from_email || "no sender"}</div>
         </div>
-        <span style={{
-          ...PILL,
-          background: CAMPAIGN_STATUS_COLORS[campaign.status] || "rgba(255,255,255,0.1)",
-          color: "var(--fg-dim)",
-        }}>{campaign.status}</span>
+        <span style={{ ...PILL, background: STATUS_COLORS[campaign.status] || "rgba(255,255,255,0.1)", color: "var(--fg-dim)", flexShrink: 0 }}>
+          {campaign.status}
+        </span>
       </div>
-      {stats && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 6, marginTop: 8 }}>
+      {hasAudience && (
+        <div style={{ fontSize: 11, color: "var(--fg-mute)", marginBottom: 8 }}>
+          {[audience.titles, audience.industries, audience.locations].filter(Boolean).join(" · ")}
+        </div>
+      )}
+      {stats && stats.sent > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
           <StatBadge label="Sent" value={stats.sent} />
           <StatBadge label="Opens" value={`${stats.open_rate}%`} color="#60a5fa" />
           <StatBadge label="Replies" value={`${stats.reply_rate}%`} color="#4ade80" />
         </div>
       )}
-      <div style={{ marginTop: 10, fontSize: 11, color: "var(--fg-mute)" }}>
-        {campaign.steps?.length || 0} steps · {campaign.daily_limit}/day · {campaign.send_provider}
+      <div style={{ marginTop: 8, fontSize: 10, color: "var(--fg-mute)" }}>
+        {campaign.steps?.length || 0} email steps · {campaign.daily_limit}/day
       </div>
     </div>
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// ── Apollo contact card ────────────────────────────────────────────────────────
 
-type Tab = "search" | "contacts" | "campaigns" | "lists";
+function ContactCard({ contact, selected, onToggle, disabled }: {
+  contact: ApolloContact; selected: boolean; onToggle: () => void; disabled: boolean;
+}) {
+  return (
+    <div
+      onClick={disabled && !selected ? undefined : onToggle}
+      style={{
+        padding: "12px 14px", borderRadius: 12, cursor: disabled && !selected ? "not-allowed" : "pointer",
+        background: selected ? "rgba(96,165,250,0.1)" : "rgba(255,255,255,0.03)",
+        border: `1px solid ${selected ? "rgba(96,165,250,0.3)" : "rgba(255,255,255,0.07)"}`,
+        transition: "all 0.1s", opacity: disabled && !selected ? 0.5 : 1,
+        display: "flex", gap: 10, alignItems: "flex-start",
+      }}
+      onMouseEnter={e => { if (!disabled || selected) (e.currentTarget as HTMLElement).style.background = selected ? "rgba(96,165,250,0.14)" : "rgba(255,255,255,0.05)"; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = selected ? "rgba(96,165,250,0.1)" : "rgba(255,255,255,0.03)"; }}
+    >
+      <div style={{
+        width: 16, height: 16, flexShrink: 0, marginTop: 2, borderRadius: 4,
+        border: `1.5px solid ${selected ? "#60a5fa" : "rgba(255,255,255,0.2)"}`,
+        background: selected ? "#60a5fa" : "transparent",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        {selected && <span style={{ fontSize: 9, color: "#000", fontWeight: 700 }}>✓</span>}
+      </div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)" }}>
+            {contact.first_name} {contact.last_name}
+          </span>
+          {contact.has_email && (
+            <span style={{ ...PILL, background: "rgba(52,211,153,0.15)", color: "#34d399", fontSize: 9, padding: "1px 6px" }}>
+              email available
+            </span>
+          )}
+          {contact.email && (
+            <span style={{ ...PILL, background: "rgba(96,165,250,0.15)", color: "#93c5fd", fontSize: 9, padding: "1px 6px" }}>
+              ✓ revealed
+            </span>
+          )}
+        </div>
+        <div style={{ fontSize: 11, color: "var(--fg-mute)", marginTop: 2 }}>{contact.title}</div>
+        <div style={{ fontSize: 11, color: "var(--fg-dim)" }}>{contact.company_name}</div>
+        {contact.email && <div style={{ fontSize: 10, color: "#93c5fd", marginTop: 2, fontFamily: "var(--font-mono)" }}>{contact.email}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
+type View = "campaigns" | "detail";
+type DetailTab = "find" | "enrolled" | "emails";
 
 export default function OutreachPage() {
   const { userId } = useDevUser();
   const founderId = userId === "anon" ? "founder_001" : userId;
 
-  const [tab, setTab] = useState<Tab>("search");
+  const [view, setView] = useState<View>("campaigns");
+  const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
+  const [detailTab, setDetailTab] = useState<DetailTab>("find");
 
-  // ── Find contacts state ───────────────────────────────────────────────────
-  const [targetAudience, setTargetAudience] = useState("");
-  const [findingContacts, setFindingContacts] = useState(false);
-  const [findResult, setFindResult] = useState<{ contacts_found: number; contacts_stored: number; domains_searched: string[]; error?: string } | null>(null);
-  const [csvImporting, setCsvImporting] = useState(false);
-  const [csvResult, setCsvResult] = useState<{ imported: number; skipped: number; error?: string } | null>(null);
-  const csvInputRef = useRef<HTMLInputElement | null>(null);
-  const [gmailImporting, setGmailImporting] = useState(false);
-  const [gmailResult, setGmailResult] = useState<{ imported?: number; note?: string; error?: string } | null>(null);
-
-  // ── Search / filter state ─────────────────────────────────────────────────
-  const [searchTitles, setSearchTitles] = useState("");
-  const [searchLocations, setSearchLocations] = useState("");
-  const [searchIndustries, setSearchIndustries] = useState("");
-  const [selectedSeniorities, setSelectedSeniorities] = useState<string[]>([]);
-  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
-  const [searchResults, setSearchResults] = useState<Contact[]>([]);
-  const [searchTotal, setSearchTotal] = useState(0);
-  const [searchPage, setSearchPage] = useState(1);
-  const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState("");
-  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
-
-  // ── Contacts state ────────────────────────────────────────────────────────
-  const [savedContacts, setSavedContacts] = useState<Contact[]>([]);
-  const [contactsLoading, setContactsLoading] = useState(false);
-  const [contactStatusFilter, setContactStatusFilter] = useState("");
-
-  // ── Lists state ───────────────────────────────────────────────────────────
-  const [lists, setLists] = useState<ContactList[]>([]);
-  const [newListName, setNewListName] = useState("");
-  const [creatingList, setCreatingList] = useState(false);
-
-  // ── Campaigns state ───────────────────────────────────────────────────────
+  // ── Campaigns list ─────────────────────────────────────────────────────────
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [campaignStats, setCampaignStats] = useState<Record<string, CampaignStats>>({});
-  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
-  const [showNewCampaign, setShowNewCampaign] = useState(false);
   const [campaignsLoading, setCampaignsLoading] = useState(false);
+  const [showNewCampaign, setShowNewCampaign] = useState(false);
+
+  const defaultAudience = (): TargetAudience => ({
+    titles: "", locations: "", industries: "", keywords: "", seniorities: [], company_sizes: [],
+  });
+
   const [newCampaign, setNewCampaign] = useState({
     name: "", from_name: "", from_email: "", product_name: "", value_prop: "", daily_limit: 50,
   });
-  const [generatingSteps, setGeneratingSteps] = useState(false);
+  const [newAudience, setNewAudience] = useState<TargetAudience>(defaultAudience());
+  const [creatingCampaign, setCreatingCampaign] = useState(false);
+
+  // ── Find contacts tab ──────────────────────────────────────────────────────
+  const [apolloResults, setApolloResults] = useState<ApolloContact[]>([]);
+  const [apolloTotal, setApolloTotal] = useState(0);
+  const [apolloSearching, setApolloSearching] = useState(false);
+  const [apolloError, setApolloError] = useState("");
+  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
+  const [enrolling, setEnrolling] = useState(false);
+  const [enrollResult, setEnrollResult] = useState<{ enrolled: number; credits_used: number } | null>(null);
+  // Local audience refinement (editable from the campaign's target_audience)
+  const [findAudience, setFindAudience] = useState<TargetAudience>(defaultAudience());
+  const [showRefine, setShowRefine] = useState(false);
+  const apolloFetchedForRef = useRef<string>("");
+
+  // ── Enrolled tab ───────────────────────────────────────────────────────────
+  const [enrolled, setEnrolled] = useState<EnrolledContact[]>([]);
+  const [enrolledLoading, setEnrolledLoading] = useState(false);
+
+  // ── Emails tab ─────────────────────────────────────────────────────────────
   const [editingSteps, setEditingSteps] = useState<CampaignStep[]>([]);
   const [savingSteps, setSavingSteps] = useState(false);
+  const [generatingSteps, setGeneratingSteps] = useState(false);
   const [sendingBatch, setSendingBatch] = useState(false);
   const [batchResult, setBatchResult] = useState<{ sent: number; failed: number } | null>(null);
 
-
-  // ── Load data ─────────────────────────────────────────────────────────────
-
-  const loadContacts = useCallback(async () => {
-    setContactsLoading(true);
-    try {
-      const params = new URLSearchParams({ founder_id: founderId });
-      if (contactStatusFilter) params.set("status", contactStatusFilter);
-      const res = await apiFetch(`${BASE}/outreach/contacts/${founderId}?${params}`);
-      const data = await res.json();
-      setSavedContacts(data.contacts || []);
-    } catch { /* ignore */ }
-    finally { setContactsLoading(false); }
-  }, [founderId, contactStatusFilter]);
-
-  const loadLists = useCallback(async () => {
-    try {
-      const res = await apiFetch(`${BASE}/outreach/lists/${founderId}`);
-      const data = await res.json();
-      setLists(data.lists || []);
-    } catch { /* ignore */ }
-  }, [founderId]);
+  // ── Load campaigns ─────────────────────────────────────────────────────────
 
   const loadCampaigns = useCallback(async () => {
     setCampaignsLoading(true);
@@ -361,7 +330,6 @@ export default function OutreachPage() {
       const data = await res.json();
       const camps: Campaign[] = data.campaigns || [];
       setCampaigns(camps);
-      // Load stats for each campaign in parallel
       const statsEntries = await Promise.all(
         camps.map(async c => {
           try {
@@ -377,257 +345,180 @@ export default function OutreachPage() {
     finally { setCampaignsLoading(false); }
   }, [founderId]);
 
-  useEffect(() => {
-    if (tab === "contacts") loadContacts();
-    if (tab === "lists") loadLists();
-    if (tab === "campaigns") loadCampaigns();
-  }, [tab, loadContacts, loadLists, loadCampaigns]);
+  useEffect(() => { loadCampaigns(); }, [loadCampaigns]);
 
+  // ── Enter campaign detail ──────────────────────────────────────────────────
 
-  // ── Search ────────────────────────────────────────────────────────────────
+  const enterCampaign = (c: Campaign) => {
+    setActiveCampaign(c);
+    setView("detail");
+    setDetailTab("find");
+    setSelectedContacts(new Set());
+    setEnrollResult(null);
+    setBatchResult(null);
+    setApolloResults([]);
+    setApolloError("");
+    apolloFetchedForRef.current = "";
+    const audience = c.target_audience ?? defaultAudience();
+    setFindAudience(audience);
+    setEditingSteps(c.steps ? JSON.parse(JSON.stringify(c.steps)) : []);
+  };
 
-  const runSearch = async (page = 1) => {
-    setSearching(true);
-    setSearchError("");
-    setSearchPage(page);
+  // ── Apollo search ──────────────────────────────────────────────────────────
+
+  const runApolloSearch = useCallback(async (audience: TargetAudience) => {
+    setApolloSearching(true);
+    setApolloError("");
+    setSelectedContacts(new Set());
     try {
-      const params = new URLSearchParams({
-        founder_id: founderId,
-        page: String(page),
-        per_page: "25",
-      });
-      if (searchTitles) params.set("titles", searchTitles);
-      if (searchLocations) params.set("locations", searchLocations);
-      if (searchIndustries) params.set("industries", searchIndustries);
-      if (selectedSeniorities.length) params.set("seniorities", selectedSeniorities.join(","));
-      if (selectedSizes.length) params.set("company_sizes", selectedSizes.join(","));
-
+      const params = new URLSearchParams({ founder_id: founderId, page: "1", per_page: "100" });
+      if (audience.titles) params.set("titles", audience.titles);
+      if (audience.locations) params.set("locations", audience.locations);
+      if (audience.industries) params.set("industries", audience.industries);
+      if (audience.keywords) params.set("keywords", audience.keywords);
+      if (audience.seniorities.length) params.set("seniorities", audience.seniorities.join(","));
+      if (audience.company_sizes.length) params.set("company_sizes", audience.company_sizes.join(","));
       const res = await apiFetch(`${BASE}/outreach/search/people?${params}`);
       const data = await res.json();
-      if (data.error) { setSearchError(JSON.stringify(data.error)); return; }
-      setSearchResults(data.contacts || []);
-      setSearchTotal(data.total || 0);
-      setSelectedContacts(new Set());
+      if (data.error) { setApolloError(JSON.stringify(data.error)); return; }
+      setApolloResults(data.contacts || []);
+      setApolloTotal(data.total || 0);
     } catch (e) {
-      setSearchError(e instanceof Error ? e.message : "Search failed");
+      setApolloError(e instanceof Error ? e.message : "Search failed");
     } finally {
-      setSearching(false);
+      setApolloSearching(false);
     }
-  };
+  }, [founderId]);
 
-  const findContacts = async () => {
-    if (!targetAudience.trim()) return;
-    setFindingContacts(true);
-    setFindResult(null);
-    setSearchError("");
+  // Auto-search when entering the Find tab for a campaign
+  useEffect(() => {
+    if (view !== "detail" || detailTab !== "find" || !activeCampaign) return;
+    const cacheKey = `${activeCampaign.id}-${JSON.stringify(findAudience)}`;
+    if (apolloFetchedForRef.current === cacheKey) return;
+    apolloFetchedForRef.current = cacheKey;
+    runApolloSearch(findAudience);
+  }, [view, detailTab, activeCampaign, findAudience, runApolloSearch]);
+
+  // ── Load enrolled contacts ─────────────────────────────────────────────────
+
+  const loadEnrolled = useCallback(async () => {
+    if (!activeCampaign) return;
+    setEnrolledLoading(true);
     try {
-      const res = await apiFetch(`${BASE}/outreach/find-contacts/${founderId}`, {
+      const res = await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${activeCampaign.id}/contacts`);
+      const data = await res.json();
+      setEnrolled(data.contacts || []);
+    } catch { /* ignore */ }
+    finally { setEnrolledLoading(false); }
+  }, [founderId, activeCampaign]);
+
+  useEffect(() => {
+    if (view === "detail" && detailTab === "enrolled") loadEnrolled();
+  }, [view, detailTab, loadEnrolled]);
+
+  // ── Confirm contacts (enrich + save + enroll) ──────────────────────────────
+
+  const confirmContacts = async () => {
+    if (!activeCampaign || selectedContacts.size === 0) return;
+    setEnrolling(true);
+    setEnrollResult(null);
+    try {
+      const toEnrich = apolloResults.filter(c => selectedContacts.has(c.apollo_id)).slice(0, MAX_CONFIRM);
+
+      // Phase 1: enrich to reveal emails
+      const enrichRes = await apiFetch(`${BASE}/outreach/enrich/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ target_audience: targetAudience.trim(), limit: 8 }),
+        body: JSON.stringify({ founder_id: founderId, contacts: toEnrich }),
       });
-      const data = await res.json();
-      setFindResult(data);
-      // Display contacts directly from API response — no Supabase needed
-      if (data.contacts && data.contacts.length > 0) {
-        setSearchResults(data.contacts);
-        setSearchTotal(data.contacts.length);
-        setSelectedContacts(new Set());
-      }
-    } catch (e) {
-      setSearchError(e instanceof Error ? e.message : "Failed to find contacts");
-    } finally {
-      setFindingContacts(false);
-    }
-  };
+      const enrichData = await enrichRes.json();
+      const enriched: ApolloContact[] = enrichData.enriched || [];
+      const creditsUsed: number = enrichData.credits_used || 0;
 
-  const importCsv = async (file: File) => {
-    setCsvImporting(true);
-    setCsvResult(null);
-    try {
-      const text = await file.text();
-      const res = await apiFetch(`${BASE}/outreach/import-csv/${founderId}`, {
+      // Phase 2: save contacts to DB, get IDs back
+      const saveRes = await apiFetch(`${BASE}/outreach/contacts/${founderId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ csv: text }),
+        body: JSON.stringify({ contacts: enriched }),
       });
-      const raw = await res.text();
-      let data: { imported?: number; skipped?: number; error?: string; detail?: string };
-      try {
-        data = JSON.parse(raw);
-      } catch {
-        if (res.status === 413) {
-          setCsvResult({ imported: 0, skipped: 0, error: "That file is too large to upload. Split it into smaller CSVs and try again." });
-        } else {
-          setCsvResult({ imported: 0, skipped: 0, error: `Upload failed (HTTP ${res.status}). Please try again.` });
-        }
-        return;
-      }
-      if (!res.ok) {
-        setCsvResult({ imported: 0, skipped: 0, error: data.detail || data.error || `Upload failed (HTTP ${res.status}).` });
-        return;
-      }
-      setCsvResult({ imported: data.imported ?? 0, skipped: data.skipped ?? 0, error: data.error });
-      if ((data.imported ?? 0) > 0) {
-        setTab("contacts");
-        loadContacts();
-      }
-    } catch (e) {
-      setCsvResult({ imported: 0, skipped: 0, error: e instanceof Error ? e.message : "Import failed" });
-    } finally {
-      setCsvImporting(false);
-      if (csvInputRef.current) csvInputRef.current.value = "";
-    }
-  };
+      const saveData = await saveRes.json();
+      const savedContacts: { id: string }[] = saveData.contacts || [];
+      const contactIds = savedContacts.map(c => c.id).filter(Boolean);
 
-  const importGmail = async () => {
-    setGmailImporting(true);
-    setGmailResult(null);
-    try {
-      const sess = await fetch("/api/auth/session").then(r => r.json()).catch(() => null);
-      const token = sess?.accessToken;
-      if (!token) {
-        setGmailResult({ error: "Sign in with Google first (and grant contacts access) to import from Gmail." });
-        return;
-      }
-      const res = await apiFetch(`${BASE}/outreach/import-gmail/${founderId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_token: token }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setGmailResult({ error: data?.detail || "Gmail import failed" });
-        return;
-      }
-      setGmailResult(data);
-      if (data.imported > 0) {
-        setTab("contacts");
-        loadContacts();
-      }
-    } catch (e) {
-      setGmailResult({ error: e instanceof Error ? e.message : "Gmail import failed" });
-    } finally {
-      setGmailImporting(false);
-    }
-  };
-
-  const [smartQuery, setSmartQuery] = useState("");
-  const smartSearch = async () => {
-    if (!smartQuery.trim()) return;
-    setSearching(true);
-    setSearchError("");
-    try {
-      const res = await apiFetch(`${BASE}/outreach/contacts/${founderId}/semantic?q=${encodeURIComponent(smartQuery.trim())}&limit=50`);
-      const data = await res.json();
-      setSearchResults(data.contacts || []);
-      setSearchTotal((data.contacts || []).length);
-      setSelectedContacts(new Set());
-    } catch (e) {
-      setSearchError(e instanceof Error ? e.message : "Smart search failed");
-    } finally {
-      setSearching(false);
-    }
-  };
-
-  const toggleContact = (c: Contact) => {
-    const key = c.apollo_id || c.email;
-    setSelectedContacts(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  const selectAll = () => {
-    if (selectedContacts.size === searchResults.length) {
-      setSelectedContacts(new Set());
-    } else {
-      setSelectedContacts(new Set(searchResults.map(c => c.apollo_id || c.email)));
-    }
-  };
-
-  const saveSelected = async (listName?: string) => {
-    const toSave = searchResults.filter(c => selectedContacts.has(c.apollo_id || c.email));
-    if (!toSave.length) return;
-    try {
-      const res = await apiFetch(`${BASE}/outreach/contacts/${founderId}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contacts: toSave }),
-      });
-      const data = await res.json();
-      if (listName) {
-        // Also create a list
-        const savedRes = await apiFetch(`${BASE}/outreach/contacts/${founderId}`);
-        const savedData = await savedRes.json();
-        const ids = (savedData.contacts || [])
-          .filter((c: Contact) => toSave.some(s => s.email === c.email))
-          .map((c: Contact) => c.id);
-        await apiFetch(`${BASE}/outreach/lists/${founderId}`, {
+      // Phase 3: enroll in campaign
+      if (contactIds.length > 0) {
+        await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${activeCampaign.id}/contacts`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: listName, contact_ids: ids }),
+          body: JSON.stringify({ contact_ids: contactIds }),
         });
-        await loadLists();
       }
-      alert(`Saved ${data.saved} contacts`);
+
+      setEnrollResult({ enrolled: contactIds.length, credits_used: creditsUsed });
+      setSelectedContacts(new Set());
+      // Update apollo results to show revealed emails
+      setApolloResults(prev => prev.map(c => {
+        const match = enriched.find(e => e.apollo_id === c.apollo_id);
+        return match ? { ...c, ...match } : c;
+      }));
+      // Switch to enrolled tab to show results
+      setDetailTab("enrolled");
     } catch (e) {
-      alert("Save failed: " + (e instanceof Error ? e.message : e));
+      setApolloError(e instanceof Error ? e.message : "Confirm failed");
+    } finally {
+      setEnrolling(false);
     }
   };
 
-  // ── Create campaign ───────────────────────────────────────────────────────
+  // ── Campaign CRUD ──────────────────────────────────────────────────────────
 
   const createCampaign = async () => {
+    setCreatingCampaign(true);
     try {
       const res = await apiFetch(`${BASE}/outreach/campaigns/${founderId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newCampaign),
+        body: JSON.stringify({ ...newCampaign, target_audience: newAudience }),
       });
       const data = await res.json();
       setShowNewCampaign(false);
       setNewCampaign({ name: "", from_name: "", from_email: "", product_name: "", value_prop: "", daily_limit: 50 });
+      setNewAudience(defaultAudience());
       await loadCampaigns();
-      setSelectedCampaign(data);
+      enterCampaign(data);
     } catch (e) {
       alert("Failed: " + (e instanceof Error ? e.message : e));
+    } finally {
+      setCreatingCampaign(false);
     }
   };
 
-  const openCampaign = (c: Campaign) => {
-    setSelectedCampaign(c);
-    setEditingSteps(c.steps ? JSON.parse(JSON.stringify(c.steps)) : []);
-    setBatchResult(null);
-  };
+  // ── Email sequence ─────────────────────────────────────────────────────────
 
-  const generateSteps = async (campaignId: string) => {
+  const generateSteps = async () => {
+    if (!activeCampaign) return;
     setGeneratingSteps(true);
     try {
-      const res = await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${campaignId}/generate-steps`, {
+      const res = await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${activeCampaign.id}/generate-steps`, {
         method: "POST",
       });
       const data = await res.json();
-      setSelectedCampaign(prev => prev ? { ...prev, steps: data.steps } : prev);
       setEditingSteps(data.steps ? JSON.parse(JSON.stringify(data.steps)) : []);
-      await loadCampaigns();
+      setActiveCampaign(prev => prev ? { ...prev, steps: data.steps } : prev);
     } catch { /* ignore */ }
     finally { setGeneratingSteps(false); }
   };
 
   const saveSteps = async () => {
-    if (!selectedCampaign) return;
+    if (!activeCampaign) return;
     setSavingSteps(true);
     try {
-      await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${selectedCampaign.id}`, {
+      await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${activeCampaign.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ steps: editingSteps }),
       });
-      setSelectedCampaign(prev => prev ? { ...prev, steps: editingSteps } : prev);
-      await loadCampaigns();
+      setActiveCampaign(prev => prev ? { ...prev, steps: editingSteps } : prev);
     } catch (e) {
       alert("Save failed: " + (e instanceof Error ? e.message : e));
     } finally {
@@ -636,16 +527,15 @@ export default function OutreachPage() {
   };
 
   const sendBatch = async () => {
-    if (!selectedCampaign) return;
+    if (!activeCampaign) return;
     setSendingBatch(true);
     setBatchResult(null);
     try {
-      const res = await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${selectedCampaign.id}/send-batch`, {
+      const res = await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${activeCampaign.id}/send-batch`, {
         method: "POST",
       });
       const data = await res.json();
       setBatchResult({ sent: data.sent, failed: data.failed });
-      await loadCampaigns();
     } catch (e) {
       alert("Send failed: " + (e instanceof Error ? e.message : e));
     } finally {
@@ -653,599 +543,506 @@ export default function OutreachPage() {
     }
   };
 
-  const launchCampaign = async (campaignId: string) => {
-    await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${campaignId}`, {
+  const updateCampaignStatus = async (status: string) => {
+    if (!activeCampaign) return;
+    await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${activeCampaign.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "active" }),
+      body: JSON.stringify({ status }),
     });
-    setSelectedCampaign(prev => prev ? { ...prev, status: "active" } : prev);
+    setActiveCampaign(prev => prev ? { ...prev, status } : prev);
     await loadCampaigns();
   };
 
-  // ── Tab navigation ────────────────────────────────────────────────────────
+  // ── Toggle contact selection ───────────────────────────────────────────────
 
-  const TABS: { key: Tab; label: string; icon: string }[] = [
-    { key: "search", label: "Find Contacts", icon: "🔍" },
-    { key: "contacts", label: "Contacts", icon: "👥" },
-    { key: "lists", label: "Lists", icon: "📋" },
-    { key: "campaigns", label: "Campaigns", icon: "📨" },
+  const toggleContact = (apolloId: string) => {
+    setSelectedContacts(prev => {
+      const next = new Set(prev);
+      if (next.has(apolloId)) {
+        next.delete(apolloId);
+      } else if (next.size < MAX_CONFIRM) {
+        next.add(apolloId);
+      }
+      return next;
+    });
+  };
+
+  const stats = activeCampaign ? campaignStats[activeCampaign.id] : null;
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // RENDER
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── Campaign list view ─────────────────────────────────────────────────────
+
+  if (view === "campaigns") return (
+    <div style={{ width: "100%", maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
+      <style>{`@keyframes outreach-sweep{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, color: "var(--fg)", letterSpacing: "-0.02em" }}>Outreach</h1>
+          <p style={{ fontSize: 13, color: "var(--fg-mute)", margin: "4px 0 0" }}>Create a campaign, find contacts from Apollo, send personalized emails</p>
+        </div>
+        <button onClick={() => setShowNewCampaign(true)} style={{
+          padding: "0 20px", height: 38, fontSize: 13, fontWeight: 600,
+          background: "rgba(96,165,250,0.15)", border: "1px solid rgba(96,165,250,0.3)",
+          color: "#93c5fd", cursor: "pointer", borderRadius: 20, transition: "all .12s",
+          whiteSpace: "nowrap",
+        }}>
+          + New Campaign
+        </button>
+      </div>
+
+      {campaignsLoading ? (
+        <ProgressBar label="Loading campaigns…" />
+      ) : campaigns.length === 0 ? (
+        <div style={{ ...glass({ padding: "60px 24px", textAlign: "center" }) }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>📨</div>
+          <p style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)", margin: "0 0 6px" }}>No campaigns yet</p>
+          <p style={{ fontSize: 13, color: "var(--fg-mute)", margin: "0 0 20px" }}>Create one to start finding contacts and sending emails</p>
+          <button onClick={() => setShowNewCampaign(true)} style={{
+            padding: "8px 24px", fontSize: 13, fontWeight: 600,
+            background: "rgba(96,165,250,0.15)", border: "1px solid rgba(96,165,250,0.3)",
+            color: "#93c5fd", cursor: "pointer", borderRadius: 20,
+          }}>Create first campaign</button>
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
+          {campaigns.map(c => (
+            <CampaignCard key={c.id} campaign={c} stats={campaignStats[c.id]} onClick={() => enterCampaign(c)} />
+          ))}
+        </div>
+      )}
+
+      {/* New campaign modal */}
+      {showNewCampaign && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, overflowY: "auto" }}>
+          <div style={{ ...glass({ padding: "28px 24px", width: "100%", maxWidth: 560, display: "flex", flexDirection: "column", gap: 0 }), maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <span style={{ fontSize: 17, fontWeight: 700, color: "var(--fg)" }}>New Campaign</span>
+              <button onClick={() => setShowNewCampaign(false)} style={{ background: "none", border: "none", color: "var(--fg-mute)", cursor: "pointer", fontSize: 18 }}>✕</button>
+            </div>
+
+            {/* Campaign basics */}
+            <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--fg-mute)", fontWeight: 600, marginBottom: 12 }}>Campaign basics</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+              {[
+                { label: "Campaign Name", key: "name", placeholder: "Q1 SaaS Outreach" },
+                { label: "From Name", key: "from_name", placeholder: "Alex from Astra" },
+                { label: "From Email", key: "from_email", placeholder: "alex@yourcompany.com" },
+                { label: "Product Name", key: "product_name", placeholder: "Astra" },
+                { label: "Value Proposition", key: "value_prop", placeholder: "Helps founders build startups 10x faster" },
+              ].map(f => (
+                <div key={f.key}>
+                  <label style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)", marginBottom: 4, display: "block" }}>{f.label}</label>
+                  <input
+                    value={(newCampaign as Record<string, string | number>)[f.key] as string}
+                    onChange={e => setNewCampaign(p => ({ ...p, [f.key]: e.target.value }))}
+                    placeholder={f.placeholder}
+                    className="site-input"
+                    style={{ padding: "8px 12px", fontSize: 13, width: "100%", boxSizing: "border-box" }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Target audience */}
+            <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--fg-mute)", fontWeight: 600, marginBottom: 12 }}>Target audience (for Apollo search)</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+              {[
+                { label: "Job Titles", key: "titles", placeholder: "CEO, CTO, Founder, Head of Growth" },
+                { label: "Locations", key: "locations", placeholder: "United States, United Kingdom" },
+                { label: "Industries", key: "industries", placeholder: "SaaS, Fintech, E-commerce" },
+                { label: "Keywords", key: "keywords", placeholder: "startup, growth, scale" },
+              ].map(f => (
+                <div key={f.key}>
+                  <label style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)", marginBottom: 4, display: "block" }}>{f.label}</label>
+                  <input
+                    value={(newAudience as unknown as Record<string, string>)[f.key] ?? ""}
+                    onChange={e => setNewAudience(a => ({ ...a, [f.key]: e.target.value }))}
+                    placeholder={f.placeholder}
+                    className="site-input"
+                    style={{ padding: "8px 12px", fontSize: 13, width: "100%", boxSizing: "border-box" }}
+                  />
+                </div>
+              ))}
+              <CheckGroup label="Seniority" options={SENIORITY_OPTIONS} selected={newAudience.seniorities} onChange={v => setNewAudience(a => ({ ...a, seniorities: v }))} />
+              <CheckGroup label="Company Size" options={COMPANY_SIZE_OPTIONS} selected={newAudience.company_sizes} onChange={v => setNewAudience(a => ({ ...a, company_sizes: v }))} />
+            </div>
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setShowNewCampaign(false)} style={{ padding: "0 16px", height: 36, fontSize: 13, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)", color: "var(--fg-mute)", cursor: "pointer", borderRadius: 10 }}>
+                Cancel
+              </button>
+              <button
+                onClick={createCampaign}
+                disabled={creatingCampaign || !newCampaign.name.trim()}
+                style={{ padding: "0 20px", height: 36, fontSize: 13, fontWeight: 600, background: "rgba(96,165,250,0.15)", border: "1px solid rgba(96,165,250,0.3)", color: "#93c5fd", cursor: "pointer", borderRadius: 10, opacity: creatingCampaign || !newCampaign.name.trim() ? 0.5 : 1 }}
+              >
+                {creatingCampaign ? "Creating…" : "Create & Find Contacts →"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // ── Campaign detail view ───────────────────────────────────────────────────
+
+  if (!activeCampaign) return null;
+
+  const DETAIL_TABS: { key: DetailTab; label: string }[] = [
+    { key: "find", label: "Find Contacts" },
+    { key: "enrolled", label: "Enrolled" },
+    { key: "emails", label: "Emails" },
   ];
 
-  const TAB_BTN = (t: typeof TABS[0]): React.CSSProperties => ({
-    display: "flex", alignItems: "center", gap: 7,
-    padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 500,
+  const TAB_BTN = (t: typeof DETAIL_TABS[0]): React.CSSProperties => ({
+    display: "flex", alignItems: "center", gap: 6,
+    padding: "7px 16px", borderRadius: 20, fontSize: 13, fontWeight: 500,
     cursor: "pointer", transition: "all 0.12s",
-    border: tab === t.key ? "1px solid rgba(96,165,250,0.35)" : "1px solid transparent",
-    background: tab === t.key ? "rgba(96,165,250,0.12)" : "transparent",
-    color: tab === t.key ? "#93c5fd" : "var(--fg-mute)",
+    border: detailTab === t.key ? "1px solid rgba(96,165,250,0.35)" : "1px solid transparent",
+    background: detailTab === t.key ? "rgba(96,165,250,0.12)" : "transparent",
+    color: detailTab === t.key ? "#93c5fd" : "var(--fg-mute)",
   });
 
   return (
-    <div style={{ width: "100%", maxWidth: 1200, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ width: "100%", maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
+      <style>{`@keyframes outreach-sweep{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
 
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 600, margin: 0, color: "var(--fg)", letterSpacing: "-0.02em" }}>Outreach</h1>
-          <p style={{ fontSize: 13, color: "var(--fg-mute)", margin: "4px 0 0" }}>
-            Find contacts, build lists, send personalized campaigns
-          </p>
+      {/* Detail header */}
+      <div>
+        <button
+          onClick={() => { setView("campaigns"); setActiveCampaign(null); loadCampaigns(); }}
+          style={{ background: "none", border: "none", color: "var(--fg-mute)", cursor: "pointer", fontSize: 12, padding: 0, marginBottom: 10, display: "flex", alignItems: "center", gap: 5 }}
+        >
+          ← All campaigns
+        </button>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: "var(--fg)", letterSpacing: "-0.02em" }}>{activeCampaign.name}</h1>
+              <span style={{ ...PILL, background: STATUS_COLORS[activeCampaign.status] || "rgba(255,255,255,0.1)", color: "var(--fg-dim)" }}>
+                {activeCampaign.status}
+              </span>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--fg-mute)", marginTop: 3 }}>
+              {activeCampaign.from_name} · {activeCampaign.from_email || "no sender set"} · {activeCampaign.daily_limit}/day
+            </div>
+          </div>
+          {stats && stats.sent > 0 && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <StatBadge label="Sent" value={stats.sent} />
+              <StatBadge label="Opens" value={`${stats.open_rate}%`} color="#60a5fa" />
+              <StatBadge label="Replies" value={`${stats.reply_rate}%`} color="#4ade80" />
+            </div>
+          )}
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {TABS.map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)} style={TAB_BTN(t)}>
-              <span>{t.icon}</span>{t.label}
-            </button>
-          ))}
+        <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
+          {DETAIL_TABS.map(t => <button key={t.key} onClick={() => setDetailTab(t.key)} style={TAB_BTN(t)}>{t.label}</button>)}
         </div>
       </div>
 
-      {/* ── Tab: Find Contacts ──────────────────────────────────────────────── */}
-      {tab === "search" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-
-          {/* Audience input — primary entry point */}
-          <div style={{ ...glass({ padding: "20px", display: "flex", flexDirection: "column", gap: 12 }) }}>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)", marginBottom: 4 }}>Who are you trying to reach?</div>
-              <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>Describe your target audience and our agents will scrape the web (sites, GitHub, Hacker News) for real contacts — no paid data provider needed.</div>
+      {/* ── Find Contacts tab ─────────────────────────────────────────────── */}
+      {detailTab === "find" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Audience summary + refine toggle */}
+          <div style={{ ...glass({ padding: "14px 18px" }), display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ fontSize: 13, color: "var(--fg-dim)" }}>
+              {[findAudience.titles, findAudience.industries, findAudience.locations, findAudience.keywords]
+                .filter(Boolean).join(" · ") || "No audience filters set — showing broad results"}
             </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <input
-                value={targetAudience}
-                onChange={e => setTargetAudience(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && !findingContacts && findContacts()}
-                placeholder='e.g. "restaurant owners in the US" or "SaaS startup CTOs" or "e-commerce store owners"'
-                className="site-input"
-                style={{ flex: 1, padding: "10px 14px", fontSize: 13 }}
-              />
-              <button
-                onClick={findContacts}
-                disabled={findingContacts || !targetAudience.trim()}
-                className="site-btn site-btn-primary"
-                style={{ padding: "0 24px", fontSize: 13, whiteSpace: "nowrap" }}
-              >
-                {findingContacts ? (
-                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ width: 12, height: 12, border: "2px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.8s linear infinite", display: "inline-block" }} />
-                    Finding contacts…
-                  </span>
-                ) : "Find Contacts →"}
-              </button>
-            </div>
+            <button
+              onClick={() => setShowRefine(r => !r)}
+              style={{ fontSize: 12, color: "#60a5fa", background: "none", border: "1px solid rgba(96,165,250,0.25)", padding: "4px 12px", borderRadius: 20, cursor: "pointer", flexShrink: 0 }}
+            >
+              {showRefine ? "Hide filters" : "Refine search"}
+            </button>
+          </div>
 
-            {findingContacts && (
-              <p style={{ fontSize: 12, color: "var(--fg-mute)", margin: 0 }}>
-                Scraping the web for matching contacts — this takes ~30s
-              </p>
-            )}
-
-            {findResult && (
-              <div style={{
-                padding: "10px 14px", borderRadius: 10,
-                background: findResult.error ? "rgba(248,113,113,0.08)" : "rgba(74,222,128,0.08)",
-                border: `1px solid ${findResult.error ? "rgba(248,113,113,0.2)" : "rgba(74,222,128,0.2)"}`,
-                fontSize: 12,
-              }}>
-                {findResult.error ? (
-                  <span style={{ color: "#f87171" }}>{findResult.error}</span>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <span style={{ color: "#4ade80", fontWeight: 600 }}>
-                      Found {findResult.contacts_found} contacts with verified emails
-                    </span>
-                    <span style={{ color: "var(--fg-mute)" }}>
-                      Searched {findResult.domains_searched?.length || 0} companies: {(findResult.domains_searched || []).slice(0, 6).join(", ")}{(findResult.domains_searched?.length || 0) > 6 ? "…" : ""}
-                    </span>
+          {/* Refine panel */}
+          {showRefine && (
+            <div style={{ ...glass({ padding: "16px 18px" }), display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {[
+                  { label: "Job Titles", key: "titles", placeholder: "CEO, CTO, Founder" },
+                  { label: "Locations", key: "locations", placeholder: "United States" },
+                  { label: "Industries", key: "industries", placeholder: "SaaS, Fintech" },
+                  { label: "Keywords", key: "keywords", placeholder: "startup, growth" },
+                ].map(f => (
+                  <div key={f.key}>
+                    <label style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)", marginBottom: 4, display: "block" }}>{f.label}</label>
+                    <input
+                      value={(findAudience as unknown as Record<string, string>)[f.key] ?? ""}
+                      onChange={e => setFindAudience(a => ({ ...a, [f.key]: e.target.value }))}
+                      placeholder={f.placeholder}
+                      className="site-input"
+                      style={{ padding: "7px 10px", fontSize: 12, width: "100%", boxSizing: "border-box" }}
+                    />
                   </div>
-                )}
+                ))}
               </div>
-            )}
-
-            {searchError && (
-              <p style={{ fontSize: 12, color: "#f87171", margin: 0 }}>{searchError}</p>
-            )}
-          </div>
-
-          {/* Bring your own contacts — Gmail + CSV */}
-          <div style={{ ...glass({ padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }) }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>Bring your own contacts</div>
-              <div style={{ fontSize: 12, color: "var(--fg-mute)" }}>Export your Gmail contacts at <span style={{ color: "var(--fg)" }}>contacts.google.com → Export → Google CSV</span> and upload here — Google's column format is recognized automatically. Or upload any CSV with email/name/title/company columns.</div>
-              {gmailResult && (
-                <div style={{ fontSize: 12, marginTop: 6, color: gmailResult.error ? "#f87171" : "#4ade80" }}>
-                  {gmailResult.error ? gmailResult.error : (gmailResult.note || `Imported ${gmailResult.imported} contact${gmailResult.imported === 1 ? "" : "s"} from Gmail.`)}
-                </div>
-              )}
-              {csvResult && (
-                <div style={{ fontSize: 12, marginTop: 6, color: csvResult.error ? "#f87171" : "#4ade80" }}>
-                  {csvResult.error ? csvResult.error : `Imported ${csvResult.imported} contact${csvResult.imported === 1 ? "" : "s"}${csvResult.skipped ? ` · skipped ${csvResult.skipped} without a valid email` : ""}.`}
-                </div>
-              )}
-            </div>
-            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-              <button onClick={importGmail} disabled={gmailImporting}
-                className="site-btn site-btn-ghost" style={{ padding: "0 18px", height: 36, fontSize: 13, whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 7 }}>
-                <svg width="15" height="15" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-                {gmailImporting ? "Importing…" : "Import from Gmail"}
-              </button>
-              <input ref={csvInputRef} type="file" accept=".csv,text/csv" style={{ display: "none" }}
-                onChange={e => { const f = e.target.files?.[0]; if (f) importCsv(f); }} />
-              <button onClick={() => csvInputRef.current?.click()} disabled={csvImporting}
-                className="site-btn site-btn-ghost" style={{ padding: "0 18px", height: 36, fontSize: 13, whiteSpace: "nowrap" }}>
-                {csvImporting ? "Importing…" : "Upload CSV"}
+              <CheckGroup label="Seniority" options={SENIORITY_OPTIONS} selected={findAudience.seniorities} onChange={v => setFindAudience(a => ({ ...a, seniorities: v }))} />
+              <CheckGroup label="Company Size" options={COMPANY_SIZE_OPTIONS} selected={findAudience.company_sizes} onChange={v => setFindAudience(a => ({ ...a, company_sizes: v }))} />
+              <button
+                onClick={() => {
+                  apolloFetchedForRef.current = ""; // clear cache so search runs
+                  runApolloSearch(findAudience);
+                  setShowRefine(false);
+                }}
+                disabled={apolloSearching}
+                style={{ alignSelf: "flex-end", padding: "6px 20px", fontSize: 13, fontWeight: 600, background: "rgba(96,165,250,0.15)", border: "1px solid rgba(96,165,250,0.3)", color: "#93c5fd", cursor: "pointer", borderRadius: 20 }}
+              >
+                {apolloSearching ? "Searching…" : "Re-search →"}
               </button>
             </div>
-          </div>
+          )}
 
-          {/* Filter + results — shown once contacts exist */}
-          <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 14, alignItems: "start" }}>
-            <div style={{ ...glass({ padding: "14px", display: "flex", flexDirection: "column", gap: 12 }) }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Smart search</span>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                <input value={smartQuery} onChange={e => setSmartQuery(e.target.value)}
-                  placeholder='e.g. "fintech founders in NYC"'
-                  onKeyDown={e => e.key === "Enter" && smartSearch()} className="site-input" style={{ padding: "6px 10px", fontSize: 12 }} />
-                <button onClick={smartSearch} disabled={searching || !smartQuery.trim()} className="site-btn site-btn-ghost"
-                  style={{ height: 30, fontSize: 11, width: "100%" }}>{searching ? "Searching…" : "Smart search →"}</button>
-              </div>
-              <span style={{ fontSize: 11, fontWeight: 600, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 4 }}>Filter saved contacts</span>
-              {[
-                { label: "Job Title", value: searchTitles, set: setSearchTitles, placeholder: "CEO, CTO, Founder" },
-                { label: "Location", value: searchLocations, set: setSearchLocations, placeholder: "United States" },
-                { label: "Industry", value: searchIndustries, set: setSearchIndustries, placeholder: "SaaS, Fintech" },
-              ].map(f => (
-                <div key={f.label} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                  <span style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--fg-mute)" }}>{f.label}</span>
-                  <input value={f.value} onChange={e => f.set(e.target.value)} placeholder={f.placeholder}
-                    onKeyDown={e => e.key === "Enter" && runSearch(1)} className="site-input" style={{ padding: "6px 10px", fontSize: 12 }} />
-                </div>
-              ))}
-              <CheckGroup label="Seniority" options={SENIORITY_OPTIONS} selected={selectedSeniorities} onChange={setSelectedSeniorities} />
-              <CheckGroup label="Company Size" options={COMPANY_SIZE_OPTIONS} selected={selectedSizes} onChange={setSelectedSizes} />
-              <button onClick={() => runSearch(1)} disabled={searching} className="site-btn site-btn-ghost"
-                style={{ height: 34, fontSize: 12, width: "100%" }}>
-                {searching ? "Filtering…" : "Filter →"}
-              </button>
+          {/* Error */}
+          {apolloError && (
+            <div style={{ padding: "10px 14px", background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)", borderRadius: 10, fontSize: 12, color: "#f87171" }}>
+              {apolloError}
             </div>
+          )}
+
+          {/* Enroll result banner */}
+          {enrollResult && (
+            <div style={{ padding: "10px 14px", background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.2)", borderRadius: 10, fontSize: 12, color: "#34d399" }}>
+              ✓ Enrolled {enrollResult.enrolled} contacts · used {enrollResult.credits_used} credits
+            </div>
+          )}
+
+          {/* Searching state */}
+          {apolloSearching && (
+            <div style={{ ...glass() }}>
+              <ProgressBar label="Searching Apollo for matching contacts…" />
+            </div>
+          )}
 
           {/* Results */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {searchResults.length > 0 && (
-              <>
-                {/* Results header */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 13, color: "var(--fg-mute)" }}>
-                      {selectedContacts.size > 0 ? `${selectedContacts.size} selected` : `${searchTotal.toLocaleString()} results`}
-                    </span>
-                    <button onClick={selectAll} style={{
-                      fontSize: 11, color: "#60a5fa", background: "none", border: "none", cursor: "pointer", padding: 0,
-                    }}>
-                      {selectedContacts.size === searchResults.length ? "Deselect all" : "Select all"}
-                    </button>
-                  </div>
+          {!apolloSearching && apolloResults.length > 0 && (
+            <>
+              {/* Selection header */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 13, color: "var(--fg-mute)" }}>
+                  {apolloTotal.toLocaleString()} contacts found · {selectedContacts.size}/{MAX_CONFIRM} selected
+                </span>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   {selectedContacts.size > 0 && (
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        onClick={() => saveSelected()}
-                        className="site-btn site-btn-ghost"
-                        style={{ fontSize: 12, padding: "0 14px", height: 32 }}
-                      >
-                        Save {selectedContacts.size} contacts
-                      </button>
-                      <button
-                        onClick={() => {
-                          const name = prompt("List name:");
-                          if (name) saveSelected(name);
-                        }}
-                        className="site-btn site-btn-primary"
-                        style={{ fontSize: 12, padding: "0 14px", height: 32 }}
-                      >
-                        Save to list →
-                      </button>
-                    </div>
+                    <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>
+                      Uses {selectedContacts.size} credit{selectedContacts.size !== 1 ? "s" : ""} to reveal emails
+                    </span>
                   )}
-                </div>
-
-                {/* Column headers */}
-                <div style={{
-                  display: "grid", gridTemplateColumns: "28px 1fr 1fr 120px 100px 80px",
-                  gap: 12, padding: "6px 14px",
-                  fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)",
-                }}>
-                  <div />
-                  <div>Contact</div><div>Role</div><div>Industry</div><div>Location</div><div>Status</div>
-                </div>
-
-                {/* Rows */}
-                <div style={{ ...glass({ padding: "8px" }), display: "flex", flexDirection: "column", gap: 2 }}>
-                  {searchResults.map((c, i) => (
-                    <ContactRow
-                      key={c.apollo_id || c.email || i}
-                      contact={c}
-                      selected={selectedContacts.has(c.apollo_id || c.email)}
-                      onSelect={toggleContact}
-                    />
-                  ))}
-                </div>
-
-                {/* Pagination */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                   <button
-                    onClick={() => runSearch(searchPage - 1)}
-                    disabled={searchPage <= 1 || searching}
-                    className="site-btn site-btn-ghost"
-                    style={{ fontSize: 12, padding: "0 14px", height: 32 }}
-                  >← Prev</button>
-                  <span style={{ fontSize: 12, color: "var(--fg-mute)" }}>Page {searchPage}</span>
-                  <button
-                    onClick={() => runSearch(searchPage + 1)}
-                    disabled={searching || searchResults.length < 25}
-                    className="site-btn site-btn-ghost"
-                    style={{ fontSize: 12, padding: "0 14px", height: 32 }}
-                  >Next →</button>
+                    onClick={confirmContacts}
+                    disabled={enrolling || selectedContacts.size === 0}
+                    style={{
+                      padding: "6px 20px", fontSize: 13, fontWeight: 600,
+                      background: selectedContacts.size > 0 ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.05)",
+                      border: `1px solid ${selectedContacts.size > 0 ? "rgba(52,211,153,0.3)" : "rgba(255,255,255,0.1)"}`,
+                      color: selectedContacts.size > 0 ? "#34d399" : "var(--fg-mute)",
+                      cursor: enrolling || selectedContacts.size === 0 ? "not-allowed" : "pointer",
+                      borderRadius: 20, opacity: enrolling ? 0.7 : 1,
+                    }}
+                  >
+                    {enrolling ? "Enriching & enrolling…" : selectedContacts.size > 0 ? `Confirm ${selectedContacts.size} contact${selectedContacts.size !== 1 ? "s" : ""} →` : "Select contacts below"}
+                  </button>
                 </div>
-              </>
-            )}
-
-            {searchResults.length === 0 && !searching && (
-              <div style={{ ...glass({ padding: "60px 20px" }), textAlign: "center" }}>
-                <div style={{ fontSize: 32, marginBottom: 12 }}>👆</div>
-                <p style={{ fontSize: 14, color: "var(--fg-dim)", margin: "0 0 6px", fontWeight: 500 }}>
-                  Describe your target audience above
-                </p>
-                <p style={{ fontSize: 12, color: "var(--fg-mute)", margin: 0 }}>
-                  We'll search our contact database and return verified emails for that audience
-                </p>
               </div>
-            )}
 
-            {searching && (
-              <div style={{ ...glass({ padding: "60px 20px" }), textAlign: "center" }}>
-                <div style={{ width: 28, height: 28, border: "3px solid rgba(255,255,255,0.1)", borderTopColor: "#60a5fa", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 12px" }} />
-                <p style={{ fontSize: 13, color: "var(--fg-mute)", margin: 0 }}>Filtering…</p>
+              {/* Contact grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 8 }}>
+                {apolloResults.map(c => (
+                  <ContactCard
+                    key={c.apollo_id}
+                    contact={c}
+                    selected={selectedContacts.has(c.apollo_id)}
+                    onToggle={() => toggleContact(c.apollo_id)}
+                    disabled={selectedContacts.size >= MAX_CONFIRM && !selectedContacts.has(c.apollo_id)}
+                  />
+                ))}
               </div>
-            )}
-          </div>
-          {/* end inner results col */}
-          </div>
-          {/* end filter+results grid */}
+
+              {selectedContacts.size >= MAX_CONFIRM && (
+                <div style={{ textAlign: "center", fontSize: 12, color: "var(--fg-mute)", padding: "4px 0" }}>
+                  Max {MAX_CONFIRM} contacts selected. Confirm these or deselect to pick different ones.
+                </div>
+              )}
+            </>
+          )}
+
+          {!apolloSearching && apolloResults.length === 0 && !apolloError && (
+            <div style={{ ...glass({ padding: "60px 20px", textAlign: "center" }) }}>
+              <p style={{ fontSize: 14, color: "var(--fg-mute)", margin: 0 }}>
+                No contacts found. Try refining your search filters above.
+              </p>
+            </div>
+          )}
         </div>
-        /* end search tab */
       )}
 
-      {/* ── Tab: Contacts ───────────────────────────────────────────────────── */}
-      {tab === "contacts" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {/* Status filter */}
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {["", "new", "contacted", "replied", "meeting", "won", "lost"].map(s => (
-              <button key={s} onClick={() => { setContactStatusFilter(s); loadContacts(); }} style={{
-                ...PILL,
-                background: contactStatusFilter === s ? "rgba(96,165,250,0.15)" : "rgba(255,255,255,0.05)",
-                border: `1px solid ${contactStatusFilter === s ? "rgba(96,165,250,0.3)" : "rgba(255,255,255,0.1)"}`,
-                color: contactStatusFilter === s ? "#93c5fd" : "var(--fg-mute)",
-                cursor: "pointer",
-              }}>{s || "All"}</button>
-            ))}
-          </div>
-
-          {contactsLoading ? (
-            <div style={{ textAlign: "center", padding: 40, color: "var(--fg-mute)", fontSize: 13 }}>Loading…</div>
-          ) : savedContacts.length === 0 ? (
-            <div style={{ ...glass({ padding: "60px 20px" }), textAlign: "center" }}>
-              <p style={{ fontSize: 14, color: "var(--fg-mute)", margin: 0 }}>No contacts yet. Go to Find Contacts, describe your target audience, and we'll pull verified emails.</p>
+      {/* ── Enrolled tab ────────────────────────────────────────────────── */}
+      {detailTab === "enrolled" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {enrolledLoading ? (
+            <ProgressBar label="Loading enrolled contacts…" />
+          ) : enrolled.length === 0 ? (
+            <div style={{ ...glass({ padding: "60px 20px", textAlign: "center" }) }}>
+              <p style={{ fontSize: 14, color: "var(--fg-mute)", margin: 0 }}>
+                No contacts enrolled yet. Go to Find Contacts, select up to {MAX_CONFIRM}, and confirm.
+              </p>
             </div>
           ) : (
             <>
-              <div style={{
-                display: "grid", gridTemplateColumns: "28px 1fr 1fr 120px 100px 80px",
-                gap: 12, padding: "6px 14px",
-                fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)",
-              }}>
-                <div /><div>Contact</div><div>Role</div><div>Industry</div><div>Location</div><div>Status</div>
-              </div>
-              <div style={{ ...glass({ padding: "8px" }), display: "flex", flexDirection: "column", gap: 2 }}>
-                {savedContacts.map((c, i) => (
-                  <ContactRow key={c.id || i} contact={c} selected={false} onSelect={() => {}} />
-                ))}
-              </div>
+              <div style={{ fontSize: 13, color: "var(--fg-mute)" }}>{enrolled.length} contacts enrolled</div>
+              {enrolled.map(cc => {
+                const c = cc.outreach_contacts;
+                return (
+                  <div key={cc.id} style={{
+                    ...glass({ padding: "12px 16px", borderRadius: 12 }),
+                    display: "grid", gridTemplateColumns: "1fr 140px 120px 110px", alignItems: "center", gap: 12,
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)" }}>
+                        {c?.first_name} {c?.last_name}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--fg-mute)" }}>{c?.email || "—"}</div>
+                      <div style={{ fontSize: 11, color: "var(--fg-dim)" }}>{c?.title} · {c?.company_name}</div>
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--fg-mute)" }}>
+                      Step {(cc.current_step || 0) + 1} of {activeCampaign.steps?.length || "?"}
+                    </div>
+                    <div>
+                      <span style={{ ...PILL, background: STATUS_COLORS[cc.status] || "rgba(255,255,255,0.1)", color: "var(--fg-dim)" }}>
+                        {cc.status}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--fg-mute)" }}>
+                      {cc.next_send_at ? `next: ${new Date(cc.next_send_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "—"}
+                    </div>
+                  </div>
+                );
+              })}
             </>
           )}
         </div>
       )}
 
-      {/* ── Tab: Lists ──────────────────────────────────────────────────────── */}
-      {tab === "lists" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              value={newListName}
-              onChange={e => setNewListName(e.target.value)}
-              placeholder="New list name…"
-              className="site-input"
-              style={{ padding: "8px 12px", fontSize: 13, flex: 1, maxWidth: 300 }}
-              onKeyDown={e => e.key === "Enter" && newListName.trim() && (setCreatingList(true), apiFetch(`${BASE}/outreach/lists/${founderId}`, {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name: newListName }),
-              }).then(() => { setNewListName(""); loadLists(); }).finally(() => setCreatingList(false)))}
-            />
-            <button
-              onClick={() => {
-                if (!newListName.trim()) return;
-                setCreatingList(true);
-                apiFetch(`${BASE}/outreach/lists/${founderId}`, {
-                  method: "POST", headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ name: newListName }),
-                }).then(() => { setNewListName(""); loadLists(); }).finally(() => setCreatingList(false));
-              }}
-              disabled={creatingList || !newListName.trim()}
-              className="site-btn site-btn-primary"
-              style={{ fontSize: 13, padding: "0 20px" }}
-            >
-              {creatingList ? "…" : "Create List"}
-            </button>
-          </div>
-
-          {lists.length === 0 ? (
-            <div style={{ ...glass({ padding: "60px 20px" }), textAlign: "center" }}>
-              <p style={{ fontSize: 14, color: "var(--fg-mute)", margin: 0 }}>No lists yet. Save contacts from the Search tab to create one.</p>
-            </div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
-              {lists.map(l => (
-                <div key={l.id} style={{ ...glass({ padding: "14px 16px" }) }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>{l.name}</div>
-                  {l.description && <div style={{ fontSize: 12, color: "var(--fg-mute)", marginTop: 3 }}>{l.description}</div>}
-                  <div style={{ marginTop: 8, fontSize: 11, color: "var(--fg-mute)" }}>
-                    {l.contact_count} contact{l.contact_count !== 1 ? "s" : ""}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Tab: Campaigns ─────────────────────────────────────────────────── */}
-      {tab === "campaigns" && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <button onClick={() => setShowNewCampaign(true)} className="site-btn site-btn-primary" style={{ fontSize: 13, padding: "0 20px" }}>
-              + New Campaign
-            </button>
-          </div>
-
-          {campaignsLoading ? (
-            <div style={{ textAlign: "center", padding: 40, color: "var(--fg-mute)" }}>Loading…</div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 12 }}>
-              {campaigns.map(c => (
-                <CampaignCard key={c.id} campaign={c} stats={campaignStats[c.id]} onClick={() => openCampaign(c)} />
-              ))}
-              {campaigns.length === 0 && (
-                <div style={{ ...glass({ padding: "60px 20px" }), textAlign: "center", gridColumn: "1/-1" }}>
-                  <p style={{ fontSize: 14, color: "var(--fg-mute)", margin: 0 }}>No campaigns yet. Create one to start sending.</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── New campaign modal ───────────────────────────────────────────────── */}
-      {showNewCampaign && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div style={{ ...glass({ padding: "24px", width: "100%", maxWidth: 480, display: "flex", flexDirection: "column", gap: 14 }) }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 16, fontWeight: 600, color: "var(--fg)" }}>New Campaign</span>
-              <button onClick={() => setShowNewCampaign(false)} style={{ background: "none", border: "none", color: "var(--fg-mute)", cursor: "pointer", fontSize: 18 }}>✕</button>
-            </div>
-
-            {[
-              { label: "Campaign Name", key: "name", placeholder: "Q1 Outreach" },
-              { label: "From Name", key: "from_name", placeholder: "Alex from Astra" },
-              { label: "From Email", key: "from_email", placeholder: "alex@yourcompany.com" },
-              { label: "Product Name", key: "product_name", placeholder: "Astra" },
-              { label: "Value Proposition", key: "value_prop", placeholder: "Helps founders build startups 10x faster" },
-            ].map(f => (
-              <div key={f.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <label style={{ fontSize: 11, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{f.label}</label>
-                <input
-                  value={(newCampaign as Record<string, string | number>)[f.key] as string}
-                  onChange={e => setNewCampaign(p => ({ ...p, [f.key]: e.target.value }))}
-                  placeholder={f.placeholder}
-                  className="site-input"
-                  style={{ padding: "8px 12px", fontSize: 13 }}
-                />
-              </div>
-            ))}
-
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button onClick={() => setShowNewCampaign(false)} className="site-btn site-btn-ghost" style={{ fontSize: 13, padding: "0 16px" }}>Cancel</button>
-              <button onClick={createCampaign} className="site-btn site-btn-primary" style={{ fontSize: 13, padding: "0 20px" }}>Create →</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Campaign detail modal ─────────────────────────────────────────────── */}
-      {selectedCampaign && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(12px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div style={{ ...glass({ padding: "24px", width: "100%", maxWidth: 640, maxHeight: "80vh", overflow: "auto", display: "flex", flexDirection: "column", gap: 16 }) }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 600, color: "var(--fg)" }}>{selectedCampaign.name}</div>
-                <div style={{ fontSize: 12, color: "var(--fg-mute)", marginTop: 3 }}>
-                  {selectedCampaign.from_name} · {selectedCampaign.from_email}
-                </div>
-              </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <span style={{
-                  ...PILL,
-                  background: CAMPAIGN_STATUS_COLORS[selectedCampaign.status] || "rgba(255,255,255,0.1)",
-                  color: "var(--fg-dim)",
-                }}>{selectedCampaign.status}</span>
-                <button onClick={() => setSelectedCampaign(null)} style={{ background: "none", border: "none", color: "var(--fg-mute)", cursor: "pointer", fontSize: 18 }}>✕</button>
-              </div>
-            </div>
-
-            {/* Stats */}
-            {campaignStats[selectedCampaign.id] && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
-                <StatBadge label="Sent" value={campaignStats[selectedCampaign.id].sent} />
-                <StatBadge label="Open Rate" value={`${campaignStats[selectedCampaign.id].open_rate}%`} color="#60a5fa" />
-                <StatBadge label="Click Rate" value={`${campaignStats[selectedCampaign.id].click_rate}%`} color="#a78bfa" />
-                <StatBadge label="Reply Rate" value={`${campaignStats[selectedCampaign.id].reply_rate}%`} color="#4ade80" />
-              </div>
-            )}
-
-            {/* Steps */}
-            <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)" }}>Email Sequence ({selectedCampaign.steps?.length || 0} steps)</span>
-                <button
-                  onClick={() => generateSteps(selectedCampaign.id)}
-                  disabled={generatingSteps}
-                  className="site-btn site-btn-ghost"
-                  style={{ fontSize: 11, padding: "0 12px", height: 28 }}
-                >
-                  {generatingSteps ? "Generating…" : selectedCampaign.steps?.length ? "Regenerate" : "Generate with AI →"}
-                </button>
-              </div>
-              {editingSteps.length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {editingSteps.map((step, i) => (
-                    <div key={i} style={{ ...glass({ padding: "12px 14px", borderRadius: 12 }), display: "flex", flexDirection: "column", gap: 8 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ ...PILL, background: "rgba(96,165,250,0.15)", color: "#93c5fd", flexShrink: 0 }}>Day {step.send_day}</span>
-                        <input
-                          value={step.subject}
-                          onChange={e => setEditingSteps(prev => prev.map((s, idx) => idx === i ? { ...s, subject: e.target.value } : s))}
-                          placeholder="Subject line…"
-                          className="site-input"
-                          style={{ flex: 1, padding: "5px 10px", fontSize: 12, fontWeight: 500 }}
-                        />
-                      </div>
-                      <textarea
-                        value={step.body}
-                        onChange={e => setEditingSteps(prev => prev.map((s, idx) => idx === i ? { ...s, body: e.target.value } : s))}
-                        placeholder="Email body… Use {{first_name}}, {{company_name}}, {{title}}"
-                        className="site-input"
-                        rows={6}
-                        style={{ fontSize: 11, lineHeight: 1.6, resize: "vertical", padding: "8px 10px", fontFamily: "var(--font-mono)" }}
-                      />
-                    </div>
-                  ))}
-                  <button
-                    onClick={saveSteps}
-                    disabled={savingSteps}
-                    className="site-btn site-btn-ghost"
-                    style={{ fontSize: 12, height: 32, alignSelf: "flex-end", padding: "0 16px" }}
-                  >
-                    {savingSteps ? "Saving…" : "Save edits"}
-                  </button>
-                </div>
-              ) : (
-                <div style={{ ...glass({ padding: "20px", textAlign: "center", borderRadius: 12 }) }}>
-                  <p style={{ margin: 0, fontSize: 12, color: "var(--fg-mute)" }}>No steps yet. Generate an AI sequence above.</p>
-                </div>
-              )}
-            </div>
-
-            {/* Batch send result */}
-            {batchResult && (
-              <div style={{ padding: "8px 12px", borderRadius: 10, background: batchResult.failed > 0 ? "rgba(251,191,36,0.08)" : "rgba(74,222,128,0.08)", border: `1px solid ${batchResult.failed > 0 ? "rgba(251,191,36,0.2)" : "rgba(74,222,128,0.2)"}`, fontSize: 12 }}>
-                <span style={{ color: "#4ade80" }}>{batchResult.sent} sent via Gmail</span>
-                {batchResult.failed > 0 && <span style={{ color: "#fbbf24", marginLeft: 10 }}>{batchResult.failed} failed — check Gmail is connected</span>}
-              </div>
-            )}
-
-            {/* Actions */}
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-              {selectedCampaign.status === "draft" && editingSteps.length > 0 && (
-                <button
-                  onClick={async () => {
-                    await launchCampaign(selectedCampaign.id);
-                    // Fire first batch immediately after launch
-                    await sendBatch();
-                  }}
-                  className="site-btn site-btn-primary"
-                  style={{ fontSize: 13, padding: "0 20px" }}
-                >
-                  Launch &amp; Send →
+      {/* ── Emails tab ──────────────────────────────────────────────────── */}
+      {detailTab === "emails" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Actions row */}
+          <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={generateSteps} disabled={generatingSteps} style={{
+                padding: "0 18px", height: 36, fontSize: 13, fontWeight: 500,
+                background: "rgba(167,139,250,0.12)", border: "1px solid rgba(167,139,250,0.25)",
+                color: "#a78bfa", cursor: "pointer", borderRadius: 20,
+                opacity: generatingSteps ? 0.7 : 1,
+              }}>
+                {generatingSteps ? "Generating…" : editingSteps.length ? "✦ Regenerate with AI" : "✦ Generate sequence with AI"}
+              </button>
+              {editingSteps.length > 0 && (
+                <button onClick={saveSteps} disabled={savingSteps} style={{
+                  padding: "0 18px", height: 36, fontSize: 13,
+                  background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)",
+                  color: "var(--fg-mute)", cursor: "pointer", borderRadius: 20,
+                  opacity: savingSteps ? 0.7 : 1,
+                }}>
+                  {savingSteps ? "Saving…" : "Save edits"}
                 </button>
               )}
-              {selectedCampaign.status === "active" && (
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {activeCampaign.status === "draft" && editingSteps.length > 0 && (
+                <button onClick={async () => { await updateCampaignStatus("active"); await sendBatch(); }} style={{
+                  padding: "0 20px", height: 36, fontSize: 13, fontWeight: 600,
+                  background: "rgba(52,211,153,0.15)", border: "1px solid rgba(52,211,153,0.3)",
+                  color: "#34d399", cursor: "pointer", borderRadius: 20,
+                }}>
+                  Launch & Send →
+                </button>
+              )}
+              {activeCampaign.status === "active" && (
                 <>
-                  <button
-                    onClick={sendBatch}
-                    disabled={sendingBatch}
-                    className="site-btn site-btn-primary"
-                    style={{ fontSize: 13, padding: "0 20px" }}
-                  >
-                    {sendingBatch ? "Sending…" : "Send Next Batch →"}
+                  <button onClick={sendBatch} disabled={sendingBatch} style={{
+                    padding: "0 20px", height: 36, fontSize: 13, fontWeight: 600,
+                    background: "rgba(52,211,153,0.15)", border: "1px solid rgba(52,211,153,0.3)",
+                    color: "#34d399", cursor: sendingBatch ? "not-allowed" : "pointer", borderRadius: 20, opacity: sendingBatch ? 0.7 : 1,
+                  }}>
+                    {sendingBatch ? "Sending…" : "Send next batch →"}
                   </button>
-                  <button
-                    onClick={async () => {
-                      await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${selectedCampaign.id}`, {
-                        method: "PATCH", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ status: "paused" }),
-                      });
-                      setSelectedCampaign(null);
-                      loadCampaigns();
-                    }}
-                    className="site-btn"
-                    style={{ fontSize: 13, padding: "0 20px", color: "#fbbf24", borderColor: "rgba(251,191,36,0.3)", background: "rgba(251,191,36,0.08)" }}
-                  >
-                    Pause
-                  </button>
+                  <button onClick={() => updateCampaignStatus("paused")} style={{
+                    padding: "0 16px", height: 36, fontSize: 13,
+                    background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.25)",
+                    color: "#fbbf24", cursor: "pointer", borderRadius: 20,
+                  }}>Pause</button>
                 </>
               )}
-              {selectedCampaign.status === "paused" && (
-                <button
-                  onClick={async () => {
-                    await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${selectedCampaign.id}`, {
-                      method: "PATCH", headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ status: "active" }),
-                    });
-                    await loadCampaigns();
-                    await sendBatch();
-                  }}
-                  className="site-btn site-btn-primary"
-                  style={{ fontSize: 13, padding: "0 20px" }}
-                >
-                  Resume &amp; Send →
+              {activeCampaign.status === "paused" && (
+                <button onClick={async () => { await updateCampaignStatus("active"); await sendBatch(); }} style={{
+                  padding: "0 20px", height: 36, fontSize: 13, fontWeight: 600,
+                  background: "rgba(52,211,153,0.15)", border: "1px solid rgba(52,211,153,0.3)",
+                  color: "#34d399", cursor: "pointer", borderRadius: 20,
+                }}>
+                  Resume & Send →
                 </button>
               )}
             </div>
           </div>
+
+          {/* Batch send result */}
+          {batchResult && (
+            <div style={{ padding: "10px 14px", borderRadius: 10, background: batchResult.failed > 0 ? "rgba(251,191,36,0.08)" : "rgba(52,211,153,0.08)", border: `1px solid ${batchResult.failed > 0 ? "rgba(251,191,36,0.2)" : "rgba(52,211,153,0.2)"}`, fontSize: 12 }}>
+              <span style={{ color: "#4ade80" }}>{batchResult.sent} sent via Gmail</span>
+              {batchResult.failed > 0 && <span style={{ color: "#fbbf24", marginLeft: 10 }}>{batchResult.failed} failed — check Gmail is connected in Integrations</span>}
+            </div>
+          )}
+
+          {/* Email steps */}
+          {generatingSteps && <ProgressBar label="Generating email sequence with AI…" />}
+
+          {!generatingSteps && editingSteps.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {editingSteps.map((step, i) => (
+                <div key={i} style={{ ...glass({ padding: "16px 18px", borderRadius: 12 }), display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ ...PILL, background: "rgba(96,165,250,0.15)", color: "#93c5fd", flexShrink: 0 }}>
+                      Day {step.send_day}
+                    </span>
+                    <input
+                      value={step.subject}
+                      onChange={e => setEditingSteps(prev => prev.map((s, idx) => idx === i ? { ...s, subject: e.target.value } : s))}
+                      placeholder="Subject line…"
+                      className="site-input"
+                      style={{ flex: 1, padding: "6px 12px", fontSize: 13, fontWeight: 500 }}
+                    />
+                  </div>
+                  <textarea
+                    value={step.body}
+                    onChange={e => setEditingSteps(prev => prev.map((s, idx) => idx === i ? { ...s, body: e.target.value } : s))}
+                    placeholder="Email body… Use {{first_name}}, {{company_name}}, {{title}} for personalization"
+                    className="site-input"
+                    rows={7}
+                    style={{ fontSize: 12, lineHeight: 1.7, resize: "vertical", padding: "10px 12px", fontFamily: "var(--font-mono)" }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!generatingSteps && editingSteps.length === 0 && (
+            <div style={{ ...glass({ padding: "60px 20px", textAlign: "center" }) }}>
+              <p style={{ fontSize: 14, color: "var(--fg-mute)", margin: 0 }}>
+                No email steps yet. Click "Generate sequence with AI" above.
+              </p>
+            </div>
+          )}
         </div>
       )}
-
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }

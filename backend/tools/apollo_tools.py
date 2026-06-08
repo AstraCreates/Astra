@@ -345,10 +345,10 @@ def apollo_search_companies(
     technologies: list[str] | None = None,
     domains_include: list[str] | None = None,
     page: int = 1,
-    per_page: int = MAX_PER_PULL,
+    per_page: int = MAX_SEARCH_RESULTS,
 ) -> dict:
     """Search Apollo's company database. Does not consume credits."""
-    body: dict[str, Any] = {"page": page, "per_page": min(per_page, MAX_PER_PULL)}
+    body: dict[str, Any] = {"page": page, "per_page": min(per_page, MAX_SEARCH_RESULTS)}
 
     if locations:
         body["organization_locations"] = locations

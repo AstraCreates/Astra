@@ -645,8 +645,8 @@ export default function CompanyBrainPage() {
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 14 }}>
           <div>
             <div className="sec-label">Company brain</div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, margin: "4px 0 6px", color: "var(--fg)" }}>
-              Live context for your team and agents
+            <h1 style={{ fontSize: 20, fontWeight: 700, margin: "4px 0 6px", color: "var(--fg)", fontFamily: "var(--font-chakra)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+              Company Brain
             </h1>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               {[
@@ -692,7 +692,7 @@ export default function CompanyBrainPage() {
       )}
 
       {/* ── tab content ── */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "22px 24px 32px" }}>
+      <div style={{ flex: 1, overflowY: "auto", padding: "22px 24px 32px", fontFamily: "var(--font-dm-sans), sans-serif" }}>
 
         {/* ━━━ ASK TAB ━━━ */}
         {tab === "ask" && (
