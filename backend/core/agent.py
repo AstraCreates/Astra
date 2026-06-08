@@ -312,9 +312,21 @@ class Agent:
         import json as _json
         _max_attempts = 5
         _t0 = _time.monotonic()
+        resp = None
         for _attempt in range(_max_attempts):
             try:
                 resp = self._get_llm().chat.completions.create(**kwargs)
+                # Some providers return a 200 with choices=None on an internal error
+                # (e.g. rate limit, 'json mode not supported'). Treat as transient and
+                # retry instead of crashing on resp.choices[0] later.
+                if getattr(resp, "choices", None):
+                    break
+                if _attempt < _max_attempts - 1:
+                    logger.warning("%s LLM returned no choices (attempt %d/%d) — rotating key + retry",
+                                   self.name, _attempt + 1, _max_attempts)
+                    self._llm = None
+                    _time.sleep(min(2.0 * (2 ** _attempt), 20.0))
+                    continue
                 break
             except Exception as _e:
                 _status = getattr(_e, "status_code", None)
@@ -355,7 +367,7 @@ class Agent:
                 _time.sleep(_delay)
         _elapsed = _time.monotonic() - _t0
         # Track token usage and deduct credits per call
-        if resp.usage and ctx:
+        if resp and getattr(resp, "usage", None) and ctx:
             from backend.core.usage import record_usage
             cached = getattr(resp.usage, "prompt_tokens_details", None)
             cached_tokens = getattr(cached, "cached_tokens", 0) if cached else 0
@@ -387,6 +399,11 @@ class Agent:
                                    f"{self.name} call ({total_t:,} tokens)", ctx.session_id)
                 except Exception as _ce:
                     logger.warning("Per-call credit deduction failed: %s", _ce)
+        if not resp or not getattr(resp, "choices", None):
+            # Provider never returned a usable completion after all retries — return
+            # empty so the agent loop handles it (re-prompt / finish) instead of crashing.
+            logger.warning("%s LLM produced no choices after %d attempts — returning empty", self.name, _max_attempts)
+            return ""
         msg = resp.choices[0].message
         content = msg.content or ""
         # Strip DeepSeek-R1 <think> blocks
