@@ -64,8 +64,9 @@ def describe_image(data: bytes, mime: str) -> str:
         }],
         temperature=0.1,
         timeout=120.0,
+        extra_body={"provider": {"require_parameters": True, "allow_fallbacks": True}},
     )
-    return (resp.choices[0].message.content or "").strip()
+    return ((resp.choices[0].message.content if getattr(resp, "choices", None) else "") or "").strip()
 
 
 def ingest_attachment(filename: str, mime: str, data: bytes) -> dict:

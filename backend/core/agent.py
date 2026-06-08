@@ -310,20 +310,10 @@ class Agent:
         import openai as _openai
         import random as _random
         import json as _json
-        import os as _os
         _max_attempts = 5
-        # After a couple of failures on the primary model (e.g. hy3-preview rate-limited
-        # upstream), switch to a reliable fallback for the remaining attempts so the run
-        # keeps moving instead of stalling/erroring.
-        _fallback_model = (getattr(settings, "fallback_model", "") or
-                           _os.environ.get("ASTRA_FALLBACK_MODEL", "google/gemini-2.5-flash"))
         _t0 = _time.monotonic()
         resp = None
         for _attempt in range(_max_attempts):
-            if _attempt >= 2 and _fallback_model and kwargs.get("model") != _fallback_model:
-                logger.warning("%s falling back to %s after %d failed attempts on %s",
-                               self.name, _fallback_model, _attempt, kwargs.get("model"))
-                kwargs["model"] = _fallback_model
             try:
                 resp = self._get_llm().chat.completions.create(**kwargs)
                 # Some providers return a 200 with choices=None on an internal error

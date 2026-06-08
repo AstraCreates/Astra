@@ -229,8 +229,9 @@ async def _custom_deep_research(query: str) -> dict:
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2,
             max_tokens=2000,
+            extra_body={"provider": {"require_parameters": True, "allow_fallbacks": True}},
         )
-        report = resp.choices[0].message.content or ""
+        report = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""
     except Exception as e:
         logger.error("Custom synthesis LLM call failed: %s", e)
         report = combined[:4000]

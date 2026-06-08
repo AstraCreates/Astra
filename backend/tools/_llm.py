@@ -26,6 +26,12 @@ _IMAGE_BASE = "https://api.deepinfra.com/v1/openai"
 _DI_BASE = settings.openrouter_base_url
 
 
+def _provider_routing(json_mode: bool = False) -> dict:
+    """OpenRouter provider routing: only use providers that support the request
+    params (json mode) and allow cross-provider fallback on error/rate-limit."""
+    return {"provider": {"require_parameters": True, "allow_fallbacks": True}}
+
+
 def _api_key() -> str:
     from backend.core.key_rotator import get_openrouter_key
     return get_openrouter_key() or settings.openrouter_api_key or settings.planner_model_api_key
@@ -57,7 +63,13 @@ def generate(prompt: str, max_tokens: int | None = None, json_mode: bool = False
         kwargs["max_tokens"] = max_tokens
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
+    # Route only to providers that support the request params (json mode) and let
+    # OpenRouter fall back across providers — avoids SiliconFlow's "json mode not
+    # supported" 400s and GMICloud rate-limit/malformed bodies.
+    kwargs["extra_body"] = _provider_routing(json_mode)
     resp = client.chat.completions.create(**kwargs, timeout=300.0)
+    if not getattr(resp, "choices", None):
+        return ""
     content = resp.choices[0].message.content or ""
     return re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
 
@@ -175,8 +187,9 @@ def generate_image(description: str, width: int = 1024, height: int = 1024, foun
         max_tokens=120,
         temperature=0.6,
         timeout=30.0,
+        extra_body=_provider_routing(),
     )
-    image_prompt = (prompt_resp.choices[0].message.content or description).strip()
+    image_prompt = ((prompt_resp.choices[0].message.content if getattr(prompt_resp, "choices", None) else "") or description).strip()
     # Strip any accidental quotes or prefixes the model adds
     import re as _re
     image_prompt = _re.sub(r'^["\'`]|["\'`]$', '', image_prompt).strip()

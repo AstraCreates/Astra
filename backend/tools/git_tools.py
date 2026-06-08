@@ -634,8 +634,9 @@ def _pm_respond(agent_output: str, goal: str, context: str, missing: list[str]) 
         ],
         temperature=0.2,
         timeout=30.0,
+        extra_body={"provider": {"require_parameters": True, "allow_fallbacks": True}},
     )
-    reply = resp.choices[0].message.content or ""
+    reply = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""
     reply = re.sub(r"<think>.*?</think>", "", reply, flags=re.DOTALL).strip()
     if reply.strip().upper() == "DONE":
         return None
@@ -700,8 +701,9 @@ def _planner_review(local: str, goal: str, files: list[str]) -> dict:
             response_format={"type": "json_object"},
             temperature=0.1,
             timeout=60.0,
+            extra_body={"provider": {"require_parameters": True, "allow_fallbacks": True}},
         )
-        raw = resp.choices[0].message.content or "{}"
+        raw = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or "{}"
         raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
         result = json.loads(raw)
         return {
