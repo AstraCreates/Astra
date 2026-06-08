@@ -13,19 +13,6 @@ export default function WelcomeScreen() {
           from { opacity: 0; transform: translateY(24px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        @keyframes grain-shift {
-          0%   { transform: translate(0px,   0px)  scale(1.05); }
-          10%  { transform: translate(-6px, -4px)  scale(1.05); }
-          20%  { transform: translate(4px,   7px)  scale(1.05); }
-          30%  { transform: translate(-3px,  3px)  scale(1.05); }
-          40%  { transform: translate(6px,  -6px)  scale(1.05); }
-          50%  { transform: translate(-5px,  5px)  scale(1.05); }
-          60%  { transform: translate(7px,  -3px)  scale(1.05); }
-          70%  { transform: translate(-4px,  6px)  scale(1.05); }
-          80%  { transform: translate(3px,  -7px)  scale(1.05); }
-          90%  { transform: translate(-6px,  2px)  scale(1.05); }
-          100% { transform: translate(0px,   0px)  scale(1.05); }
-        }
         .ws-logo {
           opacity: 0;
           animation: ws-up 0.7s cubic-bezier(0.22,1,0.36,1) 0.1s forwards;
@@ -57,9 +44,7 @@ export default function WelcomeScreen() {
         }
         .ws-grain {
           position: absolute;
-          inset: -10%;
-          width: 120%;
-          height: 120%;
+          inset: 0;
           pointer-events: none;
           z-index: 1;
           background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='1' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -68,7 +53,6 @@ export default function WelcomeScreen() {
           image-rendering: pixelated;
           opacity: 0.42;
           mix-blend-mode: overlay;
-          animation: grain-shift 0.65s steps(10) infinite;
         }
       `}</style>
 

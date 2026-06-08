@@ -28,19 +28,6 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
           from { width: 0%; }
           to   { width: 100%; }
         }
-        @keyframes pos-grain {
-          0%   { transform: translate(0px,   0px)  scale(1.05); }
-          10%  { transform: translate(-6px, -4px)  scale(1.05); }
-          20%  { transform: translate(4px,   7px)  scale(1.05); }
-          30%  { transform: translate(-3px,  3px)  scale(1.05); }
-          40%  { transform: translate(6px,  -6px)  scale(1.05); }
-          50%  { transform: translate(-5px,  5px)  scale(1.05); }
-          60%  { transform: translate(7px,  -3px)  scale(1.05); }
-          70%  { transform: translate(-4px,  6px)  scale(1.05); }
-          80%  { transform: translate(3px,  -7px)  scale(1.05); }
-          90%  { transform: translate(-6px,  2px)  scale(1.05); }
-          100% { transform: translate(0px,   0px)  scale(1.05); }
-        }
       `}</style>
 
       <div style={{
@@ -49,9 +36,9 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
         position: "relative", overflow: "hidden",
         background: "linear-gradient(145deg, #002EFF 0%, #0040FF 25%, #1a6aff 55%, #5DFFB8 85%, #7CFFC6 100%)",
       }}>
-        {/* Animated pixelated grain */}
+        {/* Grain texture */}
         <div style={{
-          position: "absolute", top: "-10%", left: "-10%", width: "120%", height: "120%",
+          position: "absolute", inset: 0,
           pointerEvents: "none", zIndex: 1,
           backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='1' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
           backgroundRepeat: "repeat",
@@ -59,7 +46,6 @@ export default function PostOnboardingScreen({ name }: { name: string }) {
           imageRendering: "pixelated",
           opacity: 0.42,
           mixBlendMode: "overlay",
-          animation: "pos-grain 0.65s steps(10) infinite",
         } as React.CSSProperties} />
 
         <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 32px" }}>
