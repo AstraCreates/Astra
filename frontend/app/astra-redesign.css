@@ -6,23 +6,23 @@
 /* ── Token remap ──────────────────────────────────────────────── */
 :root,
 [data-theme="light"] {
-  --bg:           #FEFFF6;
-  --bg-surface:   #ffffff;
-  --bg-sunken:    #f5f6ee;
-  --surface:      #ffffff;
-  --s2:           #f7f8f0;
-  --s3:           #eeefe8;
+  --bg:           #07070d;
+  --bg-surface:   #f8f8f2;
+  --bg-sunken:    #071fff;
+  --surface:      rgba(248, 248, 242, 0.96);
+  --s2:           rgba(255, 255, 255, 0.86);
+  --s3:           rgba(224, 245, 255, 0.64);
 
-  --fg:           #0a0a0a;
-  --fd:           #4a4a4a;
-  --fm:           #999999;
+  --fg:           #052cff;
+  --fd:           #111116;
+  --fm:           rgba(17, 17, 22, 0.52);
 
-  --accent:       #002EFF;
-  --accent-hover: #0024CC;
-  --blue:         #002EFF;
-  --bdim:         rgba(0, 46, 255, 0.07);
-  --bb:           rgba(0, 46, 255, 0.28);
-  --bglow:        rgba(0, 46, 255, 0.18);
+  --accent:       #0437ff;
+  --accent-hover: #001fe0;
+  --blue:         #0437ff;
+  --bdim:         rgba(4, 55, 255, 0.11);
+  --bb:           rgba(4, 55, 255, 0.34);
+  --bglow:        rgba(26, 91, 255, 0.36);
 
   --mint:         #7CFFC6;
   --mint-dim:     rgba(124, 255, 198, 0.12);
@@ -32,8 +32,8 @@
   --amber:#d97706; --adim:rgba(217,119,6,.08); --ab:rgba(217,119,6,.25);
   --red:#dc2626;   --rdim:rgba(220,38,38,.07); --rb:rgba(220,38,38,.25);
 
-  --bd:  rgba(0, 0, 0, 0.08);
-  --bd2: rgba(0, 0, 0, 0.13);
+  --bd:  rgba(255, 255, 255, 0.22);
+  --bd2: rgba(4, 55, 255, 0.30);
 
   --radius: 0px; --radius-sm: 0px; --radius-lg: 0px;
 
@@ -47,7 +47,24 @@
 
 body {
   font-family: var(--font-dm-sans), "DM Sans", sans-serif;
+  background:
+    radial-gradient(ellipse at 66% 6%, rgba(255, 255, 255, 0.22), transparent 17%),
+    radial-gradient(ellipse at 78% 84%, rgba(116, 255, 227, 0.42), transparent 30%),
+    radial-gradient(ellipse at 22% 76%, rgba(255, 105, 230, 0.22), transparent 28%),
+    linear-gradient(180deg, #05050b 0 9%, #0018dc 44%, #0a44ff 70%, #2ee8ff 100%);
+  background-attachment: fixed;
   background-color: var(--bg);
+  color: var(--fg);
+}
+
+[data-theme="light"] body,
+[data-theme="dark"] body {
+  background:
+    radial-gradient(ellipse at 66% 6%, rgba(255, 255, 255, 0.22), transparent 17%),
+    radial-gradient(ellipse at 78% 84%, rgba(116, 255, 227, 0.42), transparent 30%),
+    radial-gradient(ellipse at 22% 76%, rgba(255, 105, 230, 0.22), transparent 28%),
+    linear-gradient(180deg, #05050b 0 9%, #0018dc 44%, #0a44ff 70%, #2ee8ff 100%);
+  background-attachment: fixed;
   color: var(--fg);
 }
 
@@ -239,6 +256,128 @@ h1, h2, h3, h4, h5, h6 {
    (settings/brain/integrations/payments/outreach) that can't be reached via
    token remap alone. */
 * { border-radius: 0 !important; }
+
+/* ── 2026 visual refresh: electric-blue print grain + orbital linework ── */
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+body::before {
+  z-index: 0;
+  opacity: 0.62;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 96 96' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.92' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.95'/%3E%3C/svg%3E");
+  background-size: 118px 118px;
+  image-rendering: pixelated;
+}
+
+body::after {
+  z-index: 1;
+  opacity: 0.58;
+  background:
+    radial-gradient(130% 74% at 96% 13%, transparent 42%, rgba(255,255,255,0.82) 42.15% 42.45%, transparent 42.65%),
+    radial-gradient(110% 80% at 87% 18%, transparent 38%, rgba(255,255,255,0.78) 38.15% 38.42%, transparent 38.62%),
+    radial-gradient(92% 70% at 74% 43%, transparent 48%, rgba(255,255,255,0.72) 48.18% 48.48%, transparent 48.68%),
+    radial-gradient(150% 48% at 0% 102%, transparent 56%, rgba(255,255,255,0.66) 56.16% 56.42%, transparent 56.62%),
+    linear-gradient(149deg, transparent 0 56%, rgba(255,255,255,0.72) 56.08% 56.24%, transparent 56.46%);
+  filter: drop-shadow(0 0 7px rgba(255,255,255,0.68));
+}
+
+body > * {
+  position: relative;
+  z-index: 2;
+}
+
+.brand-sigil,
+.nav-hex,
+.an-logo {
+  position: relative;
+  background: transparent !important;
+  clip-path: none;
+  box-shadow: none;
+}
+
+.brand-sigil::before,
+.nav-hex::before,
+.an-logo::before {
+  content: "";
+  position: absolute;
+  inset: 8%;
+  border: 3px solid currentColor;
+  border-bottom-color: transparent;
+  border-left-color: transparent;
+  transform: rotate(-45deg);
+}
+
+.brand-sigil::after,
+.nav-hex::after,
+.an-logo::after {
+  content: "";
+  position: absolute;
+  inset: 30% 12% 8%;
+  border: 3px solid currentColor;
+  border-top-color: transparent;
+  border-right-color: transparent;
+  transform: rotate(45deg);
+}
+
+.nav-wordmark,
+.topbar-title {
+  color: #ffffff;
+  text-shadow: 0 0 9px rgba(255,255,255,0.55);
+}
+
+nav {
+  color: #ffffff;
+}
+
+.nl {
+  color: rgba(255,255,255,0.72);
+  text-shadow: 0 0 6px rgba(255,255,255,0.28);
+}
+
+.nl:hover,
+.nl.on {
+  color: #ffffff;
+  background: rgba(255,255,255,0.08);
+}
+
+.nl.on {
+  border-left-color: #ffffff;
+}
+
+.sc,
+.dept-card,
+.dc,
+.art-pre,
+.apv,
+.steer-wrap,
+.sk {
+  box-shadow: 0 18px 48px rgba(0, 9, 90, 0.16);
+}
+
+.btn.pri,
+.btn.primary,
+.steer-send,
+.btn-ok {
+  color: #fff;
+  background: #0437ff;
+  border-color: rgba(255,255,255,0.54);
+  box-shadow: 0 0 22px rgba(4,55,255,0.28);
+}
+
+@media (max-width: 768px) {
+  body::after {
+    opacity: 0.34;
+    background:
+      radial-gradient(130% 70% at 96% 5%, transparent 44%, rgba(255,255,255,0.62) 44.15% 44.52%, transparent 44.72%),
+      radial-gradient(116% 88% at 74% 44%, transparent 52%, rgba(255,255,255,0.46) 52.18% 52.48%, transparent 52.68%);
+  }
+}
 
 /* ── Mobile / responsive ──────────────────────────────────────────────────
    The fixed sidebar is an off-canvas drawer on phones (AppChrome handles the
