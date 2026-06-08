@@ -169,6 +169,7 @@ export default function WorkspaceTour({ onDone }: { onDone: () => void }) {
 
   function finish() {
     localStorage.setItem("astra_tour_done", "1");
+    window.dispatchEvent(new CustomEvent("astra:workspace-tour-done"));
     onDone();
   }
 

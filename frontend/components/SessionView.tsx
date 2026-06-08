@@ -206,16 +206,27 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    // The tour spotlights desktop sidebar elements that live in the (closed)
-    // off-canvas drawer on phones — skip it on mobile and mark it done.
     const isMobile = window.matchMedia("(max-width: 768px)").matches;
     if (isMobile) { try { localStorage.setItem("astra_session_tour_done", "1"); } catch {} return; }
-    if (localStorage.getItem("astra_onboarding_done") === "1"
-      && !localStorage.getItem("astra_session_tour_done")) {
-      // Wait for session elements to render before starting tour
-      const t = setTimeout(() => setShowSessionTour(true), 1200);
-      return () => clearTimeout(t);
+    if (localStorage.getItem("astra_onboarding_done") !== "1") return;
+    if (localStorage.getItem("astra_session_tour_done")) return;
+
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const schedule = () => { t = setTimeout(() => setShowSessionTour(true), 1200); };
+
+    if (localStorage.getItem("astra_tour_done")) {
+      // Workspace tour already finished — start session tour normally
+      schedule();
+      return () => { if (t) clearTimeout(t); };
     }
+
+    // Workspace tour still in progress — wait for it to finish first
+    const onWorkspaceDone = () => schedule();
+    window.addEventListener("astra:workspace-tour-done", onWorkspaceDone);
+    return () => {
+      window.removeEventListener("astra:workspace-tour-done", onWorkspaceDone);
+      if (t) clearTimeout(t);
+    };
   }, []);
 
   const ensureAg = (key: string) => {
