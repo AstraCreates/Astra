@@ -62,7 +62,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   // ── Mobile: full-width content, hamburger, off-canvas drawer ────────────────
   if (isMobile) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", minHeight: "100dvh", background: "transparent", position: "relative" }}>
+      <div style={{ display: "flex", flexDirection: "column", minHeight: "100dvh", background: "var(--bg)" }}>
         {tour}
         <RedesignSidebar mobile open={drawerOpen} onClose={() => setDrawerOpen(false)} />
         {/* Backdrop */}
@@ -73,7 +73,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
         <button
           aria-label="Open menu"
           onClick={() => setDrawerOpen((v) => !v)}
-          style={{ position: "fixed", top: 8, left: 8, zIndex: 65, width: 42, height: 42, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(7,7,13,.72)", border: "1px solid rgba(255,255,255,.42)", color: "#fff", fontSize: 17, lineHeight: 1, cursor: "pointer", boxShadow: "0 0 20px rgba(255,255,255,.18)" }}
+          style={{ position: "fixed", top: 8, left: 8, zIndex: 65, width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface)", border: "1px solid var(--bd)", color: "var(--fg)", fontSize: 17, lineHeight: 1, cursor: "pointer", boxShadow: "0 1px 6px rgba(0,0,0,.12)" }}
         >
           ☰
         </button>
@@ -81,7 +81,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
           <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>{children}</main>
         ) : (
           <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-            <div style={{ height: 46, display: "flex", alignItems: "center", padding: "0 14px", borderBottom: "1px solid rgba(255,255,255,.18)", background: "rgba(7,7,13,.78)", flexShrink: 0 }}>
+            <div style={{ height: 46, display: "flex", alignItems: "center", padding: "0 14px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
               <div className="topbar-title">{title || "Astra"}</div>
             </div>
             <div style={{ flex: 1, padding: "18px 16px 64px" }}>{children}</div>
@@ -93,14 +93,14 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
 
   // ── Desktop: fixed sidebar + main ───────────────────────────────────────────
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "transparent", position: "relative" }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg)" }}>
       {tour}
       <RedesignSidebar />
       {isHome ? (
         <main style={{ flex: 1, minWidth: 0, height: "100vh", overflow: "hidden" }}>{children}</main>
       ) : (
         <main style={{ flex: 1, minWidth: 0, height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 18px", borderBottom: "1px solid rgba(255,255,255,.18)", background: "rgba(7,7,13,.78)", flexShrink: 0 }}>
+          <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
             <div className="topbar-title">{title || "Astra"}</div>
           </div>
           <div style={{ flex: 1, overflowY: "auto", padding: "24px 22px 48px" }}>{children}</div>

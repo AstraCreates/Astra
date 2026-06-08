@@ -25,20 +25,20 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
   // On mobile the sidebar is an off-canvas drawer (fixed, slides in over content);
   // on desktop it's the usual sticky in-flow column.
   const navStyle: React.CSSProperties = mobile
-    ? { width: 240, maxWidth: "82vw", display: "flex", flexDirection: "column", background: "rgba(7,7,13,.88)", borderRight: "1px solid rgba(255,255,255,.22)", height: "100dvh", boxShadow: "2px 0 28px rgba(0,0,0,.34)", position: "fixed", top: 0, left: 0, zIndex: 60, transform: open ? "translateX(0)" : "translateX(-104%)", transition: "transform .22s ease", backdropFilter: "blur(6px)" }
-    : { width: 210, flexShrink: 0, display: "flex", flexDirection: "column", background: "rgba(7,7,13,.72)", borderRight: "1px solid rgba(255,255,255,.18)", height: "100vh", boxShadow: "2px 0 24px rgba(0,0,0,.22)", position: "sticky", top: 0, backdropFilter: "blur(4px)" };
+    ? { width: 240, maxWidth: "82vw", display: "flex", flexDirection: "column", background: "var(--surface)", borderRight: "1px solid var(--bd)", height: "100dvh", boxShadow: "2px 0 24px rgba(0,0,0,.18)", position: "fixed", top: 0, left: 0, zIndex: 60, transform: open ? "translateX(0)" : "translateX(-104%)", transition: "transform .22s ease" }
+    : { width: 210, flexShrink: 0, display: "flex", flexDirection: "column", background: "var(--surface)", borderRight: "1px solid var(--bd)", height: "100vh", boxShadow: "2px 0 12px rgba(0,0,0,.04)", position: "sticky", top: 0 };
 
   // Close the drawer after any in-drawer navigation on mobile.
   const closeOnNav = mobile ? onClose : undefined;
 
   return (
     <nav onClick={(e) => { if (mobile && (e.target as HTMLElement).closest("a")) closeOnNav?.(); }} style={navStyle}>
-      <div style={{ padding: "20px 16px 16px", borderBottom: "1px solid rgba(255,255,255,.16)" }}>
+      <div style={{ padding: "20px 16px 16px", borderBottom: "1px solid var(--bd)" }}>
         <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, textDecoration: "none" }}>
-          <div className="brand-sigil" style={{ width: 28, height: 28, color: "#fff", flexShrink: 0 }} />
+          <div style={{ width: 28, height: 28, background: "var(--blue)", flexShrink: 0, WebkitMask: "url('/logo.png') center/contain no-repeat", mask: "url('/logo.png') center/contain no-repeat" }} />
           <div>
             <div className="nav-wordmark">Astra</div>
-            <div style={{ fontSize: 9, color: "rgba(255,255,255,.68)", letterSpacing: ".06em", textTransform: "uppercase" }}>ready</div>
+            <div style={{ fontSize: 9, color: "var(--blue)", letterSpacing: ".06em", textTransform: "uppercase" }}>ready</div>
           </div>
         </Link>
         <Link data-tour="new-goal-btn" href="/?new=1" className="btn" style={{ display: "flex", justifyContent: "center", gap: 7, width: "100%", textDecoration: "none" }}>＋ New goal</Link>
@@ -52,7 +52,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
         ))}
       </div>
 
-      <div style={{ height: 1, background: "rgba(255,255,255,.16)", margin: "6px 8px" }} />
+      <div style={{ height: 1, background: "var(--bd)", margin: "6px 8px" }} />
       <div style={{ padding: "6px 12px 4px" }}><CreditsDisplay /></div>
       <div style={{ padding: "0 8px 14px", display: "flex", flexDirection: "column", gap: 1 }}>
         <Link href="/settings" className={`nl${pathname.startsWith("/settings") ? " on" : ""}`} style={{ textDecoration: "none" }}><span style={{ width: 18, textAlign: "center" }}>⚙</span>Settings</Link>
