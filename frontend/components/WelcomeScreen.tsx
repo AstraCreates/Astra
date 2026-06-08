@@ -3,11 +3,11 @@
 import { useRouter } from "next/navigation";
 
 function AstraTriquetra({ size = 56 }: { size?: number }) {
+  const h = size;
+  const w = Math.round(size * 224 / 290);
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <ellipse cx="50" cy="50" rx="3.5" ry="44" stroke="white" strokeWidth="8.5"/>
-      <ellipse cx="50" cy="50" rx="3.5" ry="44" transform="rotate(120 50 50)" stroke="white" strokeWidth="8.5"/>
-      <ellipse cx="50" cy="50" rx="3.5" ry="44" transform="rotate(240 50 50)" stroke="white" strokeWidth="8.5"/>
+    <svg width={w} height={h} viewBox="48 2 224 290" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M 113 192 A 95 95 0 1 1 207 192 A 95 95 0 1 1 160 110 A 95 95 0 1 1 113 192 Z" stroke="white" strokeWidth="20" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   );
 }
