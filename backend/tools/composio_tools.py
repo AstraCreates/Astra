@@ -11,19 +11,24 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 _toolset = None
+_toolset_failed = False  # cache init failure so we don't re-hit a dead API every call
 
 
 def _reset_toolset() -> None:
     """Force re-initialization on next call — use after auto-provisioning injects a new API key."""
-    global _toolset
+    global _toolset, _toolset_failed
     _toolset = None
+    _toolset_failed = False
 
 
 def _get_toolset():
-    global _toolset
+    global _toolset, _toolset_failed
+    if _toolset_failed:
+        return None
     if _toolset is None:
         api_key = _resolve_composio_key()
         if not api_key:
+            _toolset_failed = True
             return None
         try:
             from composio import ComposioToolSet
@@ -34,9 +39,13 @@ def _get_toolset():
             _toolset = ComposioToolSet(api_key=api_key)
         except ImportError:
             logger.warning("composio-core not installed — composio tools disabled")
+            _toolset_failed = True
             return None
         except Exception as e:
-            logger.error("ComposioToolSet init failed: %s", e)
+            # Composio's API can be gone (HTTP 410). Cache the failure so we don't
+            # re-attempt (slow round-trip + log spam) on every tool call.
+            logger.warning("ComposioToolSet init failed — composio tools disabled: %s", str(e)[:140])
+            _toolset_failed = True
             return None
     return _toolset
 
