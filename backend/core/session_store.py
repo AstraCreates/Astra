@@ -97,6 +97,8 @@ def register_session(
     agents: list[str] | None = None,
     workspace_id: str | None = None,
     chapter_id: str | None = None,
+    parent_session_id: str = "",
+    kind: str = "",
 ) -> None:
     meta = {
         "session_id": session_id,
@@ -111,12 +113,16 @@ def register_session(
         "artifact_count": 0,
         "workspace_id": workspace_id or "",
         "chapter_id": chapter_id or "",
+        # parent_session_id links an operating/continuation run back to its launch
+        # session; kind is "launch" | "operating" | "" so the UI can nest them.
+        "parent_session_id": parent_session_id or "",
+        "kind": kind or "",
     }
     with _session_lock(session_id):
         meta_path(session_id).write_text(json.dumps(meta, indent=2))
     with _index_lock:
         index = _load_index()
-        index[session_id] = {k: meta[k] for k in ("session_id", "founder_id", "goal", "stack_id", "status", "created_at", "completed_at")}
+        index[session_id] = {k: meta[k] for k in ("session_id", "founder_id", "goal", "stack_id", "status", "created_at", "completed_at", "parent_session_id", "kind")}
         _save_index(index)
 
 

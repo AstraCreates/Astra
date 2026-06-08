@@ -121,13 +121,8 @@ def bootstrap_company_operating_system(
     goal: str,
     state: dict[str, Any],
 ) -> dict[str, Any]:
-    from backend.missions.company_goal import upsert_company_goal
-    from backend.missions.store import (
-        bulk_upsert_tasks,
-        create_mission,
-        find_mission,
-        list_missions,
-        update_mission,
+    from backend.missions.company_goal import (
+        upsert_company_goal, set_root_session, set_tasks, get_tasks,
     )
     from backend.tools.notion_sync import sync_founder_operating_system
 
@@ -141,8 +136,9 @@ def bootstrap_company_operating_system(
     company_name = ((state.get("company_genome") or {}).get("company_name") or "").strip()
     north_star = execution_contract.get("north_star") or operating_plan.get("outcome") or goal
     company_goal_text = (
-        f"Operate {company_name or 'the company'} continuously against the current north star, "
-        f"turn launch outputs into weekly execution, and keep every department working the next highest-leverage task."
+        f"Operate {company_name or 'the company'} continuously toward the north star — all "
+        f"departments work together to expand and launch the product, advancing the next "
+        f"highest-leverage milestones each cycle."
     )
     goal_record = upsert_company_goal(
         founder_id,
@@ -152,46 +148,53 @@ def bootstrap_company_operating_system(
         status="operating",
         kpis=list(execution_contract.get("kpis") or []),
     )
+    # The launch session is the durable parent every operating run continues from.
+    set_root_session(founder_id, session_id)
 
-    desired_names: set[str] = set()
-    created_or_updated: list[dict[str, Any]] = []
+    # Build ONE unified, company-level milestone list (not per-department missions).
+    # Launch work that's already complete is recorded as done; open steps + the
+    # digest's prioritized next actions become the forward operating milestones the
+    # whole team advances together.
+    unified: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def _add(title: str, status: str, notes: str = "") -> None:
+        t = (title or "").strip()
+        key = t.lower()
+        if not t or key in seen:
+            return
+        seen.add(key)
+        unified.append({"title": t[:200], "status": status, "notes": notes[:600], "last_run_id": session_id})
+
     for item in workboard.get("items") or []:
-        mission_name = item.get("title") or item.get("agent") or "Mission"
-        desired_names.add(mission_name)
-        department = _department_for_agent(item.get("agent", ""))
-        mission = find_mission(founder_id, department, mission_name)
-        if mission is None:
-            mission = create_mission(
-                founder_id=founder_id,
-                department=department,  # type: ignore[arg-type]
-                name=mission_name,
-                goal=item.get("mission") or item.get("summary") or mission_name,
-                primary_metric=(execution_contract.get("kpis") or [{}])[0].get("label", "Operating progress"),
-                objectives=[str(step) for step in (item.get("steps") or [])[:5]],
-                budget={"max_runs_per_day": 3, "max_cost_usd_per_run": 1.0},
-                approval_policy="require_approval",  # goals/milestones need founder sign-off to complete
-            )
-        tasks = _mission_task_tree(mission["id"], session_id, item, digest)
-        mission = update_mission(
-            mission["id"],
-            goal=item.get("mission") or mission.get("goal") or mission_name,
-            objectives=[str(step) for step in (item.get("steps") or [])[:5]] or mission.get("objectives") or [],
-            status=_mission_status_from_items(tasks),
-            company_goal_id=f"company_goal:{founder_id}",
-        )
-        bulk_upsert_tasks(mission["id"], tasks)
-        created_or_updated.append(mission)
+        item_status = _task_status_from_item(item)
+        title = item.get("title") or (item.get("agent") or "Workstream").replace("_", " ").title()
+        _add(title, "done" if item_status == "done" else "pending",
+             item.get("mission") or item.get("summary") or "")
+        for step in (item.get("steps") or [])[:3]:
+            _add(str(step), "pending", "Operating step from the launch plan.")
 
-    for existing in list_missions(founder_id):
-        if existing.get("name") not in desired_names and existing.get("status") == "active":
-            update_mission(existing["id"], status="paused", company_goal_id=f"company_goal:{founder_id}")
+    for action in (digest.get("next_actions") or [])[:6]:
+        title = str(action)
+        # Strip stale launch-gate phrasing so milestones read as forward work.
+        title = re.sub(r"^(decide approval gate:|approve:)\s*", "", title, flags=re.I).strip()
+        _add(title, "pending", "Prioritized next action from the launch run.")
 
+    # Keep existing open milestones if we're re-bootstrapping (idempotent), else seed.
+    if get_tasks(founder_id):
+        from backend.missions.company_goal import upsert_tasks
+        upsert_tasks(founder_id, [t for t in unified if t["status"] == "pending"][:14])
+    else:
+        set_tasks(founder_id, unified[:16])
+
+    open_count = sum(1 for t in get_tasks(founder_id) if str(t.get("status")) in ("pending", "in_progress", "blocked"))
     notion = sync_founder_operating_system(founder_id)
     return {
         "ok": True,
         "company_goal": goal_record,
-        "summary": f"{len(created_or_updated)} missions are now operating against the founder north star.",
-        "mission_count": len(created_or_updated),
-        "missions": [{"id": mission["id"], "name": mission["name"], "department": mission["department"]} for mission in created_or_updated],
+        "summary": f"Company operating toward the north star — {open_count} open milestone(s) for the team to advance.",
+        "mission_count": 1,
+        "open_milestones": open_count,
+        "missions": [],
         "notion": notion,
     }

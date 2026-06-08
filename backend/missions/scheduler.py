@@ -62,74 +62,55 @@ def _budget_allows(mission: dict) -> bool:
 
 
 async def _scheduler_tick() -> int:
-    """Run all missions that are due and within budget.
+    """Run one company operating cycle per founder that is due and within budget.
 
-    Returns:
-        Number of missions dispatched in this tick.
+    Streamlined model: a company has ONE goal and ONE unified milestone list. Each
+    cycle runs the WHOLE agent system (Orchestrator.continue_run) toward the north
+    star as a child session linked to the parent launch session — not one isolated
+    specialist run per department. require_approval gates milestone COMPLETION, not
+    execution, so cycles run autonomously and finished milestones wait for sign-off.
+
+    Returns the number of operating cycles dispatched in this tick.
     """
-    from backend.missions.store import get_missions_due_for_run
-    from backend.missions.runner import run_mission
+    import os
+    from backend.missions.company_goal import (
+        list_company_goals, budget_allows, is_due,
+    )
+    from backend.missions.operating import run_operating_cycle
+
+    min_interval = max(60, int(os.environ.get("ASTRA_MISSION_MIN_INTERVAL_SECONDS", "3600")))
 
     try:
-        due_missions: list[dict] = await asyncio.to_thread(get_missions_due_for_run)
+        goals: list[dict] = await asyncio.to_thread(list_company_goals)
     except Exception as exc:
-        logger.warning("missions_scheduler: failed to load due missions: %s", exc)
-        return 0
-
-    if not due_missions:
-        logger.debug("missions_scheduler: no missions due for execution")
+        logger.warning("missions_scheduler: failed to load company goals: %s", exc)
         return 0
 
     dispatched = 0
-    for mission in due_missions:
-        mission_id: str = mission.get("id", "<unknown>")
-        mission_name: str = mission.get("name", mission_id)
-
-        # NOTE: require_approval missions ARE run autonomously. approval_policy gates
-        # COMPLETION, not execution — the agent does the work and marks finished
-        # milestones "awaiting_approval" (runner._reconcile_tasks), which then wait for
-        # the founder's sign-off. The runner self-skips a mission whose only remaining
-        # work is awaiting approval, so this never spins. Skipping require_approval here
-        # was the bug that made the "never-ending" company never actually run.
-
-        # Skip missions with no actionable work — all milestones are either done or
-        # waiting on the founder's approval. Avoids re-dispatching (and re-logging)
-        # idle missions every tick; they resume once approval clears or new
-        # milestones are assigned.
-        tasks = mission.get("tasks") or []
-        if tasks and not any(str(t.get("status")) in ("pending", "in_progress", "blocked") for t in tasks):
-            logger.debug("missions_scheduler: skipping mission=%s — no actionable work", mission_id)
+    for goal in goals:
+        founder_id = goal.get("founder_id", "")
+        if not founder_id or goal.get("status") == "paused":
+            continue
+        if not is_due(goal, min_interval):
+            continue
+        if not budget_allows(goal):
+            logger.info("missions_scheduler: founder=%s daily operating budget exhausted", founder_id)
+            continue
+        # Skip if there's nothing open to advance AND the planner can't add more —
+        # run_operating_cycle handles assigning next milestones itself, so only skip
+        # when the goal is explicitly done/completed.
+        if goal.get("status") == "completed":
             continue
 
-        # Respect daily budget
-        if not _budget_allows(mission):
-            logger.info(
-                "missions_scheduler: skipping mission=%s name=%r — daily budget exhausted",
-                mission_id, mission_name,
-            )
-            continue
-
-        logger.info(
-            "missions_scheduler: dispatching mission=%s name=%r department=%s",
-            mission_id, mission_name, mission.get("department"),
-        )
-
+        logger.info("missions_scheduler: dispatching operating cycle founder=%s", founder_id)
         try:
-            result = await run_mission(mission_id)
-            success = result.get("success", False)
-            summary = (result.get("summary") or "")[:200]
-            cost = result.get("cost_usd", 0.0)
-            logger.info(
-                "missions_scheduler: mission=%s success=%s cost_usd=%.4f summary=%r",
-                mission_id, success, cost, summary,
-            )
-            dispatched += 1
+            result = await run_operating_cycle(founder_id)
+            if result.get("ok") and result.get("session_id"):
+                dispatched += 1
+            logger.info("missions_scheduler: founder=%s cycle ok=%s summary=%r",
+                        founder_id, result.get("ok"), (result.get("summary") or result.get("skipped") or result.get("reason") or "")[:120])
         except Exception as exc:
-            # Never let a single bad mission crash the scheduler
-            logger.error(
-                "missions_scheduler: unhandled error running mission=%s: %s",
-                mission_id, exc, exc_info=True,
-            )
+            logger.error("missions_scheduler: operating cycle failed founder=%s: %s", founder_id, exc, exc_info=True)
 
     return dispatched
 

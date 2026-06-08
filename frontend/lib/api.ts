@@ -2079,16 +2079,71 @@ export interface MissionTask {
   notion_page_url?: string | null;
 }
 
+export interface CompanyTask {
+  id: string;
+  title: string;
+  status: "pending" | "in_progress" | "awaiting_approval" | "done" | "blocked";
+  notes: string;
+  created_at: string;
+  updated_at: string;
+  last_run_id?: string | null;
+  approval?: { approved: boolean; note: string; at: string } | null;
+}
+
+export interface OperatingRun {
+  session_id: string;
+  started_at: string;
+  status: string;
+  summary?: string;
+}
+
 export interface CompanyGoal {
   founder_id: string;
   north_star: string;
   company_goal: string;
   source_session_id: string;
-  status: "operating" | "blocked" | "paused";
+  root_session_id?: string;
+  status: "operating" | "blocked" | "paused" | "completed";
   kpis: Array<{ key?: string; label?: string; target?: string }>;
+  tasks?: CompanyTask[];
+  operating_sessions?: OperatingRun[];
   updated_at: string;
   notion_database_id?: string | null;
   notion_url?: string | null;
+}
+
+export async function approveCompanyTask(
+  founderId: string, taskId: string, approved: boolean, note = ""
+): Promise<{ ok: boolean; next_milestones_scheduled: boolean }> {
+  const res = await apiFetch(`${BASE}/api/missions/company-goal/tasks/${encodeURIComponent(taskId)}/approve`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: founderId, approved, note }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function updateCompanyTask(
+  founderId: string, taskId: string, data: Partial<Pick<CompanyTask, "title" | "status" | "notes">>
+): Promise<CompanyTask> {
+  const res = await apiFetch(`${BASE}/api/missions/company-goal/tasks/${encodeURIComponent(taskId)}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: founderId, ...data }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()).task;
+}
+
+export async function runCompanyCycle(founderId: string): Promise<{ ok: boolean; session_id: string; parent_session_id: string }> {
+  const res = await apiFetch(`${BASE}/api/missions/company-goal/run?founder_id=${encodeURIComponent(founderId)}`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function setCompanyGoalStatus(founderId: string, status: "operating" | "paused" | "completed"): Promise<{ ok: boolean; status: string }> {
+  const res = await apiFetch(`${BASE}/api/missions/company-goal/status?founder_id=${encodeURIComponent(founderId)}&status=${status}`, { method: "PATCH" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
 }
 
 export interface Mission {

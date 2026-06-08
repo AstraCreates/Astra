@@ -26,6 +26,7 @@ type SState = {
   revisionGate: string | null; revisionNote: string;
   liveUrl: string;
   operating: { count: number; summary: string } | null;
+  parentId: string;
 };
 
 function safeText(v: unknown): string {
@@ -169,7 +170,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const S = useRef<SState>({
     status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
     decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false,
-    revisionGate: null, revisionNote: "", liveUrl: "", operating: null,
+    revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "",
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
   const sseRef = useRef<EventSource | null>(null);
@@ -308,7 +309,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   useEffect(() => {
     if (!sessionId || !founderId) return;
     let alive = true;
-    S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null };
+    S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "" };
     force();
 
     (async () => {
@@ -326,6 +327,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             S.current.status = meta.status || "running";
             S.current.company = meta.company_name || "";
             S.current.stackId = meta.stack_id || "";
+            S.current.parentId = meta.parent_session_id || "";
           }
         }
       } catch {}
@@ -524,6 +526,12 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       {/* topbar */}
       <div style={{ height: 44, display: "flex", alignItems: "center", gap: 10, padding: "0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
         <div className="topbar-title" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName || shortGoal}</div>
+        {st.parentId && (
+          <a href={`/?session=${st.parentId}`} className="btn sm" title="This is an operating run continuing the launch session"
+             style={{ flexShrink: 0, textDecoration: "none", background: "var(--surface)", border: "1px solid var(--bd)", color: "var(--fd)" }}>
+            ↩ Continuation
+          </a>
+        )}
         {st.liveUrl && (
           <a href={st.liveUrl} target="_blank" rel="noopener noreferrer" className="btn sm"
              title={st.liveUrl}
