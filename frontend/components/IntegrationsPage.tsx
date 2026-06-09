@@ -308,8 +308,10 @@ function IntegrationModal({
         {/* Progress bar */}
         <div style={{ height: 3, background: c.border }}>
           <div style={{
-            height: "100%", borderRadius: 999, transition: "width 0.6s",
-            width: `${phase === "done" ? 100 : stepPercent}%`,
+            height: "100%", borderRadius: 999, width: "100%",
+            transform: `scaleX(${(phase === "done" ? 100 : stepPercent) / 100})`,
+            transformOrigin: "left",
+            transition: "transform 0.6s cubic-bezier(0.22,1,0.36,1)",
             background: phase === "done" ? c.green : c.blue,
           }} />
         </div>

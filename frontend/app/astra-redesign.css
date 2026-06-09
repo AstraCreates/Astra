@@ -324,6 +324,11 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   outline-offset: 2px;
 }
 
+/* ── Blink ────────────────────────────────────────────────────────────────
+   Used on the alert-dot in urgent approval banners. */
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.blink { animation: blink 1s ease-in-out infinite; }
+
 /* ── Reduced motion ───────────────────────────────────────────────────────
    State-indicator animations (live dot, running shimmer) become static.
    Entrance animations skip immediately to final state. */
@@ -334,6 +339,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   .sc.running::before { animation: none; background: var(--blue); }
   .sc-row, .dv-hero, .err-banner { animation: none; opacity: 1; transform: none; }
   .btn:active, .btn.pri:active, .btn.primary:active { transform: none; }
+  .blink { animation: none; opacity: 1; }
 }
 
 /* ── Mobile / responsive ──────────────────────────────────────────────────

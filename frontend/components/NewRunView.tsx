@@ -63,7 +63,7 @@ export default function NewRunView({ workspaceId }: { workspaceId: string }) {
       <div className="new-wrap" style={{ maxWidth: 580 }}>
         {/* Company context chip */}
         {workspace && (
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 20, border: "1px solid var(--bd)", background: "var(--surface)", marginBottom: 20, fontSize: 11, color: "var(--fd)" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 12px", border: "1px solid var(--bd)", background: "var(--surface)", marginBottom: 20, fontSize: 11, color: "var(--fd)" }}>
             <div style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--blue)", flexShrink: 0 }} />
             <span style={{ fontWeight: 600, color: "var(--fg)" }}>{workspace.company_name || workspace.name}</span>
             <span style={{ color: "var(--fm)" }}>· New run</span>

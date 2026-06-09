@@ -295,7 +295,7 @@ export default function DashboardView() {
                         <StatusPill status={s.status} />
                         <span style={{ fontSize: 10, color: "var(--fm)" }}>{ago(s.created_at)}</span>
                         {s.stack_id && (
-                          <span style={{ fontSize: 9, color: "var(--fm)", fontFamily: "var(--font-ibm-mono)", marginLeft: "auto" }}>
+                          <span style={{ fontSize: 9, color: "var(--fm)", fontFamily: "var(--font-code)", marginLeft: "auto" }}>
                             {s.stack_id}
                           </span>
                         )}

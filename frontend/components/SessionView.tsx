@@ -92,13 +92,13 @@ const PHASE_PLANS: Record<string, { name: string; groups: string[] }[]> = {
 };
 
 const DEPTS: Record<string, { n: string; ic: string; ags: string[] }> = {
-  research:  { n: "Research",  ic: "🔬", ags: ["research", "research_competitors", "research_market", "research_execution", "research_financial", "research_regulatory"] },
-  design:    { n: "Design",    ic: "🎨", ags: ["design"] },
-  technical: { n: "Technical", ic: "⚙️", ags: ["technical", "technical_scaffold", "technical_infra", "technical_data", "web", "web_navigator"] },
-  marketing: { n: "Marketing", ic: "📣", ags: ["marketing", "marketing_content", "marketing_outreach", "marketing_seo", "marketing_paid"] },
-  legal:     { n: "Legal",     ic: "⚖️", ags: ["legal", "legal_docs", "legal_entity", "legal_ip"] },
-  sales:     { n: "Sales",     ic: "💼", ags: ["sales", "sales_pipeline", "sales_enablement", "ops"] },
-  finance:   { n: "Finance",   ic: "💰", ags: ["finance_model", "finance_fundraise"] },
+  research:  { n: "Research",  ic: "◉", ags: ["research", "research_competitors", "research_market", "research_execution", "research_financial", "research_regulatory"] },
+  design:    { n: "Design",    ic: "◈", ags: ["design"] },
+  technical: { n: "Technical", ic: "⊞", ags: ["technical", "technical_scaffold", "technical_infra", "technical_data", "web", "web_navigator"] },
+  marketing: { n: "Marketing", ic: "◎", ags: ["marketing", "marketing_content", "marketing_outreach", "marketing_seo", "marketing_paid"] },
+  legal:     { n: "Legal",     ic: "⊡", ags: ["legal", "legal_docs", "legal_entity", "legal_ip"] },
+  sales:     { n: "Sales",     ic: "◇", ags: ["sales", "sales_pipeline", "sales_enablement", "ops"] },
+  finance:   { n: "Finance",   ic: "◆", ags: ["finance_model", "finance_fundraise"] },
 };
 // Actionable = an agent actually hit the gate and is blocked waiting on the founder.
 // "armed" is NOT actionable: it's a pre-configured gate slot that exists from the
@@ -127,7 +127,7 @@ function inlineFmt(text: string, keyBase: string): React.ReactNode[] {
   while ((m = re.exec(text)) !== null) {
     if (m.index > last) out.push(text.slice(last, m.index));
     if (m[1]) out.push(<strong key={`${keyBase}-b${i}`} style={{ fontWeight: 700, color: "var(--fg)" }}>{m[1]}</strong>);
-    else if (m[2]) out.push(<code key={`${keyBase}-c${i}`} style={{ fontFamily: "var(--font-ibm-mono),monospace", fontSize: "0.92em", background: "var(--s2)", padding: "1px 4px", borderRadius: 3 }}>{m[2]}</code>);
+    else if (m[2]) out.push(<code key={`${keyBase}-c${i}`} style={{ fontFamily: "var(--font-code)", fontSize: "0.92em", background: "var(--s2)", padding: "1px 4px" }}>{m[2]}</code>);
     else if (m[3]) out.push(<a key={`${keyBase}-l${i}`} href={m[4]} target="_blank" rel="noreferrer" style={{ color: "var(--blue)" }}>{m[3]}</a>);
     last = re.lastIndex; i++;
   }
@@ -170,7 +170,7 @@ function RichText({ text }: { text: string }) {
     blocks.push(<p key={`p${idx}`} style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--fd)", margin: "0 0 7px" }}>{inlineFmt(t, `p${idx}`)}</p>);
   });
   flush();
-  return <div style={{ background: "var(--surface)", border: "1px solid var(--bd)", borderRadius: 8, padding: "14px 16px", maxHeight: 460, overflowY: "auto" }}>{blocks}</div>;
+  return <div style={{ background: "var(--surface)", border: "1px solid var(--bd)", padding: "14px 16px", maxHeight: 460, overflowY: "auto" }}>{blocks}</div>;
 }
 
 // Per-session client cache so the updates panel (agent logs, selected tab,
@@ -207,6 +207,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [showSessionTour, setShowSessionTour] = useState(false);
   const [designImages, setDesignImages] = useState<SessionImages>({ logos: {}, brand_images: [] });
   const [accessDenied, setAccessDenied] = useState(false);
+  const [toastErr, setToastErr] = useState("");
+  const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
   const imgsFetched = useRef(false);
 
   useEffect(() => {
@@ -449,7 +451,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   }, []);
 
   const decide = async (key: string, decision: "approved" | "skipped" | "rejected", note?: string) => {
-    if (!key) { alert("This approval is missing its gate key — refresh the page (Cmd+Shift+R) and try again."); return; }
+    if (!key) { showErr("Approval missing gate key — refresh the page and try again."); return; }
     const snapshot = S.current.approvals;
     S.current.decidedKeys.add(key);
     S.current.approvals = S.current.approvals.filter((a) => a.gate_key !== key);
@@ -461,7 +463,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       S.current.decidedKeys.delete(key);
       S.current.approvals = snapshot;
       force();
-      alert(`Approval failed: ${e instanceof Error ? e.message : String(e)}`);
+      showErr(`Approval failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
   const sendSteer = async () => {
@@ -477,7 +479,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     const goal = S.current.goal;
     const company = S.current.company || S.current.projectName;
     const stack = S.current.stackId || "idea_to_revenue";
-    if (!goal) { alert("Can't restart yet — the original goal hasn't loaded. Try again in a moment."); return; }
+    if (!goal) { showErr("Original goal hasn't loaded yet — try again in a moment."); return; }
     // No window.confirm — suppressed in mobile webviews.
     S.current.status = "killed"; force();
     try {
@@ -490,7 +492,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       if (!data.session_id) throw new Error("No session_id returned");
       window.location.assign(`/s/${data.session_id}`);
     } catch (e) {
-      alert(`Restart failed: ${e instanceof Error ? e.message : String(e)}`);
+      showErr(`Restart failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
   const pauseToggle = async () => {
@@ -620,34 +622,51 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg)" }}>
       {/* topbar */}
-      <div style={{ height: 44, display: "flex", alignItems: "center", gap: 10, padding: "0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
-        <div className="topbar-title" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName || shortGoal}</div>
+      <div style={{ height: 44, display: "flex", alignItems: "center", gap: 7, padding: "0 14px 0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
+        <div className="topbar-title" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{displayName || shortGoal}</div>
         {st.parentId && (
-          <a href={`/s/${st.parentId}`} className="btn sm" title="This is an operating run continuing the launch session"
-             style={{ flexShrink: 0, textDecoration: "none", background: "var(--surface)", border: "1px solid var(--bd)", color: "var(--fd)" }}>
-            ↩ Continuation
+          <a href={`/s/${st.parentId}`} className="btn sm" title="View parent session"
+             style={{ flexShrink: 0, textDecoration: "none" }}>
+            ↩ Parent
           </a>
         )}
         {st.liveUrl && (
           <a href={st.liveUrl} target="_blank" rel="noopener noreferrer" className="btn sm"
              title={st.liveUrl}
-             style={{ flexShrink: 0, textDecoration: "none", background: "var(--green)", border: "1px solid var(--green)", color: "#fff", display: "inline-flex", alignItems: "center", gap: 5 }}>
-            ↗ Live site
+             style={{ flexShrink: 0, textDecoration: "none", background: "var(--green)", border: "1px solid var(--green)", color: "#fff", display: "inline-flex", alignItems: "center", gap: 4 }}>
+            ↗ Live
           </a>
         )}
-        {(st.status === "running" || st.status === "loading") && st.startedAt > 0 && (
-          <span title="Elapsed run time" style={{ flexShrink: 0, fontFamily: "var(--font-ibm-mono), monospace", fontSize: 11, color: "var(--blue)", fontVariantNumeric: "tabular-nums" }}>
-            ⏱ {fmtElapsed(Date.now() - st.startedAt)}
-          </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+          {(st.status === "running" || st.status === "loading") && st.startedAt > 0 && (
+            <span style={{ fontFamily: "var(--font-code)", fontSize: 10, color: "var(--fm)", fontVariantNumeric: "tabular-nums" }}>
+              {fmtElapsed(Date.now() - st.startedAt)}
+            </span>
+          )}
+          {statusPill(st.status)}
+        </div>
+        {(st.status === "running" || st.status === "loading") && (
+          <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, borderLeft: "1px solid var(--bd)", paddingLeft: 7 }}>
+            <button className="btn sm" aria-label={st.paused ? "Resume run" : "Pause run"}
+              style={{ touchAction: "manipulation", background: st.paused ? "var(--green)" : "var(--surface)", border: "1px solid var(--bd)", color: st.paused ? "#fff" : "var(--fg)", padding: "4px 8px" }}
+              onClick={pauseToggle}>{st.paused ? "▶" : "⏸"}</button>
+            <button className="btn danger sm" aria-label="Stop run"
+              style={{ touchAction: "manipulation" }} onClick={stop}>Stop</button>
+          </div>
         )}
-        {statusPill(st.status)}
-        {(st.status === "running" || st.status === "loading") && <>
-          <button className="btn sm" style={{ flexShrink: 0, touchAction: "manipulation", background: st.paused ? "var(--green)" : "var(--surface)", border: "1px solid var(--bd)", color: st.paused ? "#fff" : "var(--fg)" }} onClick={pauseToggle}>{st.paused ? "▶ Resume" : "⏸ Pause"}</button>
-          <button className="btn danger sm" style={{ flexShrink: 0, touchAction: "manipulation" }} onClick={stop}>Stop</button>
-        </>}
-        {/* TEMP debug control — kill, delete, and restart the same goal fresh. */}
-        <button className="btn sm" title="Kill + delete this run and restart the same goal" style={{ flexShrink: 0, touchAction: "manipulation", background: "var(--surface)", border: "1px solid var(--bd)", color: "var(--fg)" }} onClick={killClearRestart}>↻ Restart</button>
+        <button className="btn sm" title="Restart this run" aria-label="Restart run"
+          style={{ flexShrink: 0, touchAction: "manipulation" }}
+          onClick={killClearRestart}>↻ Restart</button>
       </div>
+
+      {/* inline error toast — replaces all alert() calls */}
+      {toastErr && (
+        <div style={{ background: "var(--rdim)", borderBottom: "1px solid var(--rb)", padding: "7px 18px", display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "var(--red)", fontFamily: "var(--font-code)", flexShrink: 0, animation: "astraSlideDown 0.22s var(--ease-out-quint, cubic-bezier(0.22,1,0.36,1)) both" }}>
+          <span>✗</span>
+          <span style={{ flex: 1 }}>{toastErr}</span>
+          <button onClick={() => setToastErr("")} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 14, padding: 0, lineHeight: 1 }}>✕</button>
+        </div>
+      )}
 
       {/* urgent banner */}
       {st.approvals.length > 0 && (() => {
@@ -760,7 +779,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             {/* approval cards always first */}
             {st.approvals.map((ap) => ap.is_phase_gate ? (
               /* ── Phase checkpoint card ── */
-              <div key={ap.gate_key} style={{ borderRadius: 12, border: "1.5px solid var(--blue)", background: "rgba(59,130,246,.06)", padding: "16px 16px 12px", marginBottom: 8 }}>
+              <div key={ap.gate_key} style={{ border: "1.5px solid var(--blue)", background: "rgba(59,130,246,.06)", padding: "16px 16px 12px", marginBottom: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                   <span style={{ fontSize: 18 }}>✅</span>
                   <div>
@@ -774,7 +793,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                     <div style={{ fontSize: 9, fontWeight: 700, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".1em", marginBottom: 5 }}>Deliverables to review</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {ap.artifacts.map((art, i) => (
-                        <div key={i} style={{ borderRadius: 7, background: "var(--surface)", border: "1px solid var(--bd)", overflow: "hidden" }}>
+                        <div key={i} style={{ background: "var(--surface)", border: "1px solid var(--bd)", overflow: "hidden" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 8px", cursor: "pointer" }}
                             onClick={() => sel(null, art.key || null)}>
                             <span style={{ fontSize: 10, color: "var(--green)" }}>✓</span>
@@ -798,14 +817,14 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                       value={st.revisionNote}
                       onChange={(e) => { st.revisionNote = e.target.value; force(); }}
                       placeholder={`Tell the ${ap.phase} team what to redo — be specific. E.g. "The ICP analysis missed SMB segment, focus on companies 10-50 employees."`}
-                      style={{ width: "100%", minHeight: 72, padding: "8px 10px", borderRadius: 7, border: "1.5px solid var(--blue)", background: "var(--bg)", color: "var(--fg)", fontSize: 11.5, lineHeight: 1.55, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }}
+                      style={{ width: "100%", minHeight: 72, padding: "8px 10px", border: "1.5px solid var(--blue)", background: "var(--bg)", color: "var(--fg)", fontSize: 11.5, lineHeight: 1.55, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }}
                     />
                     <div style={{ display: "flex", gap: 7 }}>
-                      <button style={{ flex: 1, padding: "7px 0", borderRadius: 7, border: "1.5px solid var(--red)", background: "rgba(239,68,68,.08)", color: "var(--red)", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}
+                      <button style={{ flex: 1, padding: "7px 0", border: "1.5px solid var(--red)", background: "rgba(239,68,68,.08)", color: "var(--red)", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}
                         onClick={() => decide(ap.gate_key, "rejected", st.revisionNote)}>
                         Send revision request
                       </button>
-                      <button style={{ padding: "7px 12px", borderRadius: 7, border: "1px solid var(--bd)", background: "var(--surface)", color: "var(--fm)", fontSize: 11, cursor: "pointer" }}
+                      <button style={{ padding: "7px 12px", border: "1px solid var(--bd)", background: "var(--surface)", color: "var(--fm)", fontSize: 11, cursor: "pointer" }}
                         onClick={() => { st.revisionGate = null; st.revisionNote = ""; force(); }}>
                         Cancel
                       </button>
@@ -813,11 +832,11 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                   </div>
                 ) : (
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button style={{ flex: 1, padding: "9px 0", borderRadius: 8, border: "none", background: "var(--blue)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                    <button style={{ flex: 1, padding: "9px 0", border: "none", background: "var(--blue)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                       onClick={() => decide(ap.gate_key, "approved")}>
                       Approve → Continue to {ap.next_phase || "next phase"}
                     </button>
-                    <button style={{ padding: "9px 14px", borderRadius: 8, border: "1.5px solid var(--red)", background: "rgba(239,68,68,.07)", color: "var(--red)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                    <button style={{ padding: "9px 14px", border: "1.5px solid var(--red)", background: "rgba(239,68,68,.07)", color: "var(--red)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
                       onClick={() => { st.revisionGate = ap.gate_key; st.revisionNote = ""; force(); }}>
                       Request revisions
                     </button>
@@ -1106,9 +1125,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       {/* steer bar */}
       <div data-tour="session-steerbar" className="steerbar">
         <div className="steer-wrap">
-          <input ref={steerRef} className="steer-inp" placeholder='Steer Astra — "focus more on pricing" · "skip legal" · "make it B2B"'
+          <input ref={steerRef} className="steer-inp" aria-label="Steer Astra — redirect or expand the current run"
+            placeholder='Steer Astra — "focus more on pricing" · "skip legal" · "make it B2B"'
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendSteer(); } }} />
-          <button className="steer-send" onClick={sendSteer}>↑</button>
+          <button className="steer-send" aria-label="Send steer message" onClick={sendSteer}>↑</button>
         </div>
       </div>
 
