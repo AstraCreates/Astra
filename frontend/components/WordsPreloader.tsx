@@ -3,14 +3,21 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 
+// Correct punctuation per language
 const WORDS = [
-  "Hello!",
-  "Hola!",
-  "Bonjour!",
-  "こんにちは！",
-  "你好！",
-  "Ciao!",
+  "Hello!",       // English
+  "¡Hola!",       // Spanish
+  "Bonjour !",    // French (space before !)
+  "Ciao!",        // Italian
+  "Olá!",         // Portuguese
+  "Hallo!",       // German
+  "こんにちは！",   // Japanese (full-width)
+  "你好！",        // Chinese (full-width)
+  "안녕하세요!",   // Korean
 ];
+
+// Progressive acceleration: slow → fast
+const HOLDS = [1100, 850, 660, 500, 370, 270, 190, 140, 110];
 
 interface Props {
   children: React.ReactNode;
@@ -29,14 +36,19 @@ export default function WordsPreloader({ children, onExitStart }: Props) {
         onExitStart?.();
         setDone(true);
         setTimeout(() => { document.body.style.overflow = ""; }, 900);
-      }, 650);
+      }, 300);
       return () => clearTimeout(finish);
     }
 
-    const t = setTimeout(() => setIndex((p) => p + 1), 900);
+    const t = setTimeout(() => setIndex((p) => p + 1), HOLDS[index] ?? 200);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index]);
+
+  // Animate duration also shrinks as index grows
+  const progress = index / (WORDS.length - 1);
+  const enterDur = 0.48 - progress * 0.34; // 0.48 → 0.14
+  const exitDur  = 0.28 - progress * 0.18; // 0.28 → 0.10
 
   return (
     <>
@@ -79,10 +91,10 @@ export default function WordsPreloader({ children, onExitStart }: Props) {
             <AnimatePresence mode="wait">
               <motion.span
                 key={index}
-                initial={{ opacity: 0, y: 18, filter: "blur(10px)" }}
+                initial={{ opacity: 0, y: 16, filter: "blur(8px)" }}
                 animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                exit={{ opacity: 0, y: -18, filter: "blur(10px)" }}
-                transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+                exit={{ opacity: 0, y: -14, filter: "blur(6px)" }}
+                transition={{ duration: enterDur, ease: [0.22, 1, 0.36, 1] }}
                 style={{
                   position: "absolute",
                   fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
