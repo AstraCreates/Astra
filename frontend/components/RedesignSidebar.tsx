@@ -74,8 +74,8 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
             </div>
           </div>
           {isSignedIn
-            ? <button onClick={() => signOut({ callbackUrl: "/" })} style={{ background: "none", border: "none", fontSize: 9, color: "var(--fm)", cursor: "pointer", fontFamily: "var(--font-ibm-mono)" }}>sign out</button>
-            : <button onClick={() => signIn("google", { callbackUrl: "/" })} style={{ background: "none", border: "none", fontSize: 9, color: "var(--blue)", cursor: "pointer", fontFamily: "var(--font-ibm-mono)" }}>sign in</button>}
+            ? <button onClick={() => signOut({ callbackUrl: "/" })} style={{ background: "none", border: "none", fontSize: 9, color: "var(--fm)", cursor: "pointer", fontFamily: "var(--font-code)" }}>sign out</button>
+            : <button onClick={() => signIn("google", { callbackUrl: "/" })} style={{ background: "none", border: "none", fontSize: 9, color: "var(--blue)", cursor: "pointer", fontFamily: "var(--font-code)" }}>sign in</button>}
         </div>
       </div>
     </nav>
