@@ -122,8 +122,10 @@ def set_root_session(founder_id: str, session_id: str) -> None:
             _save(goal)
 
 
-def add_operating_session(founder_id: str, session_id: str, summary: str = "") -> None:
-    """Append a child operating-run record (traceable back to root_session_id)."""
+def add_operating_session(founder_id: str, session_id: str, summary: str = "", goal_id: str = "") -> None:
+    """Append a child operating-run record (traceable back to root_session_id).
+    ``goal_id`` ties the run to the goal it was dispatched for so the UI can group
+    every sub-run under its goal instead of showing a flat, confusing list."""
     with _lock:
         goal = _read(founder_id)
         if goal is None:
@@ -134,6 +136,7 @@ def add_operating_session(founder_id: str, session_id: str, summary: str = "") -
             "started_at": _now_iso(),
             "status": "running",
             "summary": summary,
+            "goal_id": goal_id or goal.get("current_goal_id", ""),
         })
         goal["operating_sessions"] = runs[-50:]
         _save(goal)
@@ -313,21 +316,23 @@ def get_goals(founder_id: str) -> list[dict[str, Any]]:
     return list(g.get("goals") or []) if g else []
 
 
-def start_goal(founder_id: str, title: str, tasks: list[dict[str, Any]], kind: str = "planner") -> dict[str, Any] | None:
-    """Create a new active goal (marking the prior current goal done) and make it current.
-    ``tasks`` items: {title, owner_agents:[...], notes}."""
+def start_goal(founder_id: str, title: str, tasks: list[dict[str, Any]], kind: str = "planner", status: str = "active") -> dict[str, Any] | None:
+    """Create a new goal (marking the prior current goal done) and make it current.
+    ``tasks`` items: {title, owner_agents:[...], notes}. ``status`` is "active" for the
+    launch goal (runs immediately) or "proposed" for planner-chained goals (the founder
+    must approve before the team works it — goals need human sign-off)."""
     with _lock:
         g = _read(founder_id)
         if g is None:
             return None
         for go in g.get("goals") or []:
-            if go.get("id") == g.get("current_goal_id") and go.get("status") != "done":
+            if go.get("id") == g.get("current_goal_id") and go.get("status") not in ("done", "proposed"):
                 go["status"] = "done"
                 go["completed_at"] = _now_iso()
         goal = {
             "id": str(uuid.uuid4()),
             "title": str(title)[:200],
-            "status": "active",
+            "status": status,
             "kind": kind,
             "tasks": [_new_goal_task(t.get("title", "Task"), t.get("owner_agents") or [], t.get("notes", "")) for t in tasks],
             "created_at": _now_iso(),
@@ -337,6 +342,40 @@ def start_goal(founder_id: str, title: str, tasks: list[dict[str, Any]], kind: s
         g["current_goal_id"] = goal["id"]
         _save(g)
         return goal
+
+
+def approve_current_goal(founder_id: str) -> dict[str, Any] | None:
+    """Founder sign-off on a proposed next goal → flip it active so it can be dispatched.
+    Returns the now-active goal, or None if there's nothing proposed."""
+    with _lock:
+        g = _read(founder_id)
+        if g is None:
+            return None
+        cg = next((go for go in g.get("goals") or [] if go.get("id") == g.get("current_goal_id")), None)
+        if cg is None or cg.get("status") != "proposed":
+            return None
+        cg["status"] = "active"
+        cg["approved_at"] = _now_iso()
+        _save(g)
+        return cg
+
+
+def reject_current_goal(founder_id: str) -> bool:
+    """Founder rejects the proposed next goal → drop it; the planner can propose another.
+    Restores the most recent done goal as current so the view isn't empty."""
+    with _lock:
+        g = _read(founder_id)
+        if g is None:
+            return False
+        goals = g.get("goals") or []
+        cg = next((go for go in goals if go.get("id") == g.get("current_goal_id")), None)
+        if cg is None or cg.get("status") != "proposed":
+            return False
+        g["goals"] = [go for go in goals if go.get("id") != cg.get("id")]
+        done = [go for go in g["goals"] if go.get("status") == "done"]
+        g["current_goal_id"] = done[-1]["id"] if done else ""
+        _save(g)
+        return True
 
 
 def _goal_is_complete(goal: dict[str, Any] | None) -> bool:

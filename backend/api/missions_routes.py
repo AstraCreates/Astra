@@ -204,13 +204,49 @@ async def run_company_cycle(founder_id: str, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=404, detail="No company goal yet — start a run first")
     if goal.get("status") == "paused":
         raise HTTPException(status_code=409, detail="Operating is paused — resume it first")
-    if not current_goal(founder_id):
+    cg = current_goal(founder_id)
+    if not cg:
         raise HTTPException(status_code=409, detail="No active goal to run")
+    if cg.get("status") == "proposed":
+        raise HTTPException(status_code=409, detail="This goal is proposed — approve it first to start the team")
     reconcile_operating_sessions(founder_id)
     if has_active_run(founder_id):
         raise HTTPException(status_code=409, detail="A run is already in progress — wait for it to finish")
     background_tasks.add_task(dispatch_current_goal, founder_id)
     return {"ok": True, "parent_session_id": goal.get("root_session_id", "")}
+
+
+class ApproveNextGoalBody(BaseModel):
+    founder_id: str
+    approved: bool = True
+
+
+@router.post("/missions/company-goal/approve-next")
+async def approve_next_goal(body: ApproveNextGoalBody, background_tasks: BackgroundTasks):
+    """Founder sign-off on the planner's PROPOSED next goal. approved → goal goes active
+    and the team starts working it; rejected → it's dropped (planner proposes another
+    after the next run)."""
+    from backend.missions.company_goal import (
+        approve_current_goal, reject_current_goal, reconcile_operating_sessions,
+    )
+    from backend.missions.goal_engine import dispatch_current_goal, plan_next_goal
+    from backend.core.session_store import has_active_run
+    if not body.founder_id:
+        raise HTTPException(status_code=400, detail="founder_id is required")
+    if not body.approved:
+        if not reject_current_goal(body.founder_id):
+            raise HTTPException(status_code=404, detail="No proposed goal to reject")
+        # Re-plan immediately so the founder gets a different proposal to consider,
+        # rather than being stuck with a done goal and no way to move forward.
+        nxt = plan_next_goal(body.founder_id)
+        return {"ok": True, "rejected": True, "proposed": nxt}
+    goal = approve_current_goal(body.founder_id)
+    if goal is None:
+        raise HTTPException(status_code=404, detail="No proposed goal awaiting approval")
+    reconcile_operating_sessions(body.founder_id)
+    if not has_active_run(body.founder_id):
+        background_tasks.add_task(dispatch_current_goal, body.founder_id)
+    return {"ok": True, "goal": goal}
 
 
 @router.patch("/missions/company-goal/status")

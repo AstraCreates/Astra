@@ -62,20 +62,20 @@ def _budget_allows(mission: dict) -> bool:
 
 
 async def _scheduler_tick() -> int:
-    """Safety-net only. The goal loop is EVENT-DRIVEN: agent_done events tick tasks,
-    and a completed goal auto-chains to the next one (goal_engine.after_run). This
-    tick just recovers STALLED goals — a current goal with open, non-postponed tasks
-    whose last operating run is older than the safety interval (e.g. a run crashed
-    before chaining). It re-dispatches the current goal; it never decides goal-done
-    on a timer. Budget-gated.
+    """Safety-net only. The goal loop is EVENT-DRIVEN: agent_done events tick tasks.
+    When a goal completes, the planner PROPOSES the next goal and waits for the founder
+    to approve it (no auto-chain). This tick only recovers a STALLED *active* (approved)
+    goal — open, non-postponed tasks whose last run is older than the safety interval
+    (e.g. a run crashed). It re-dispatches that goal; it never decides goal-done on a
+    timer and never starts a proposed goal. Budget-gated.
 
     Returns the number of stalled goals re-dispatched.
     """
     import os
     from backend.missions.company_goal import (
-        list_company_goals, budget_allows, is_due, current_goal, chain_allowed, _goal_is_complete,
+        list_company_goals, budget_allows, is_due, current_goal,
     )
-    from backend.missions.goal_engine import dispatch_current_goal, plan_next_goal
+    from backend.missions.goal_engine import dispatch_current_goal
 
     safety_interval = max(300, int(os.environ.get("ASTRA_GOAL_SAFETY_INTERVAL_SECONDS", "1800")))
 
@@ -98,25 +98,13 @@ async def _scheduler_tick() -> int:
         if await asyncio.to_thread(has_active_run, founder_id):
             continue  # a run is genuinely in progress — don't start a duplicate
         cg = await asyncio.to_thread(current_goal, founder_id)
-        open_tasks = [t for t in (cg or {}).get("tasks", []) if not t.get("postponed") and t.get("status") != "done"]
-
-        # Completed goal with no chained successor → recover the auto-chain (the
-        # event-driven chain in after_run can miss if a run crashed or the planner
-        # call failed). Plan the next goal + dispatch it.
-        if cg and not open_tasks and _goal_is_complete(cg):
-            if not chain_allowed(goal):
-                continue
-            logger.info("missions_scheduler: chaining completed goal founder=%s", founder_id)
-            try:
-                if await asyncio.to_thread(plan_next_goal, founder_id):
-                    res = await dispatch_current_goal(founder_id)
-                    if res.get("ok") and res.get("session_id"):
-                        dispatched += 1
-            except Exception as exc:
-                logger.error("missions_scheduler: chain recovery failed founder=%s: %s", founder_id, exc, exc_info=True)
+        # Only an APPROVED (active) goal is the scheduler's business. Proposed goals
+        # wait for the founder's sign-off; completed goals wait for the next proposal.
+        # No auto-chaining here — that's a human decision now.
+        if not cg or cg.get("status") != "active":
             continue
-
-        if not cg or not open_tasks:
+        open_tasks = [t for t in cg.get("tasks", []) if not t.get("postponed") and t.get("status") != "done"]
+        if not open_tasks:
             continue  # nothing actionable
         if not is_due(goal, safety_interval):
             continue  # a run started recently — not stalled

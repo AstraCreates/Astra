@@ -5,9 +5,9 @@ import { useDevUser } from "@/lib/use-dev-user";
 import AstraGradient from "@/components/AstraGradient";
 import { CHECKLIST_CATEGORIES, type CLItem, type CLCategory } from "@/lib/checklist-data";
 import {
-  getCompanyGoal, runCompanyCycle, setCompanyGoalStatus, syncMissionNotion,
+  getCompanyGoal, runCompanyCycle, approveNextGoal, setCompanyGoalStatus, syncMissionNotion,
   AGENT_LABELS,
-  type CompanyGoal, type CompanyTask,
+  type CompanyGoal, type CompanyGoalEntry, type CompanyTask,
 } from "@/lib/api";
 
 // ── Storage ────────────────────────────────────────────────────────────────
@@ -282,7 +282,10 @@ export default function MissionsPanel() {
 
   const paused = goal?.status === "paused";
   const runs = (goal?.operating_sessions ?? []).slice().reverse().slice(0, 6);
-  const currentGoalTasks = goal?.goals?.find(g => g.id === goal.current_goal_id)?.tasks ?? [];
+  const currentGoalEntry: CompanyGoalEntry | null = goal?.goals?.find(g => g.id === goal.current_goal_id) ?? null;
+  const currentGoalTasks = currentGoalEntry?.tasks ?? [];
+  // A planner-proposed next goal awaits the founder's sign-off before the team runs it.
+  const proposed = currentGoalEntry?.status === "proposed";
 
   const runNow = async () => {
     setBusy("run"); setActionErr(null);
@@ -297,6 +300,16 @@ export default function MissionsPanel() {
   const togglePause = async () => {
     setBusy("pause");
     try { await setCompanyGoalStatus(founderId, paused ? "operating" : "paused"); await loadGoal(); }
+    finally { setBusy(null); }
+  };
+
+  const decideGoal = async (approved: boolean) => {
+    setBusy(approved ? "approve" : "reject"); setActionErr(null);
+    try {
+      await approveNextGoal(founderId, approved);
+      if (approved && goal?.root_session_id) window.location.assign(`/s/${goal.root_session_id}`);
+      else await loadGoal();
+    } catch (e) { setActionErr(e instanceof Error ? e.message : String(e)); setTimeout(() => setActionErr(null), 8000); }
     finally { setBusy(null); }
   };
 
@@ -357,10 +370,10 @@ export default function MissionsPanel() {
               <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>Launch Checklist</div>
               {goal && (
                 <span style={{ padding: "2px 9px", fontSize: 9, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", fontFamily: "var(--font-code)",
-                  border: paused ? "1px solid rgba(255,180,50,0.5)" : "1px solid rgba(124,255,198,0.5)",
-                  background: paused ? "rgba(255,180,50,0.14)" : "rgba(124,255,198,0.14)",
-                  color: paused ? "#FFCB50" : "#7CFFC6" }}>
-                  {paused ? "paused" : "operating"}
+                  border: (paused || proposed) ? "1px solid rgba(255,180,50,0.5)" : "1px solid rgba(124,255,198,0.5)",
+                  background: (paused || proposed) ? "rgba(255,180,50,0.14)" : "rgba(124,255,198,0.14)",
+                  color: (paused || proposed) ? "#FFCB50" : "#7CFFC6" }}>
+                  {paused ? "paused" : proposed ? "needs approval" : "operating"}
                 </span>
               )}
               <button type="button" onClick={() => setEditingCats(true)} style={{
@@ -380,14 +393,29 @@ export default function MissionsPanel() {
           </div>
           {goal && (
             <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-              <button onClick={runNow} disabled={paused || !!busy}
-                style={{ padding: "8px 18px", fontSize: 12, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", cursor: "pointer", opacity: (paused || !!busy) ? 0.5 : 1 }}>
-                {busy === "run" ? "Starting…" : "▶ Run now"}
-              </button>
-              <button onClick={togglePause} disabled={!!busy}
-                style={{ padding: "8px 14px", fontSize: 12, color: "rgba(255,255,255,0.88)", background: "rgba(255,255,255,0.13)", border: "1px solid rgba(255,255,255,0.28)", cursor: "pointer", opacity: !!busy ? 0.5 : 1 }}>
-                {paused ? "Resume" : "Pause"}
-              </button>
+              {proposed ? (
+                <>
+                  <button onClick={() => decideGoal(true)} disabled={paused || !!busy}
+                    style={{ padding: "8px 18px", fontSize: 12, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", cursor: "pointer", opacity: (paused || !!busy) ? 0.5 : 1 }}>
+                    {busy === "approve" ? "Starting…" : "✓ Approve & start"}
+                  </button>
+                  <button onClick={() => decideGoal(false)} disabled={!!busy}
+                    style={{ padding: "8px 14px", fontSize: 12, color: "rgba(255,255,255,0.88)", background: "rgba(255,255,255,0.13)", border: "1px solid rgba(255,255,255,0.28)", cursor: "pointer", opacity: !!busy ? 0.5 : 1 }}>
+                    {busy === "reject" ? "…" : "Reject"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={runNow} disabled={paused || !!busy}
+                    style={{ padding: "8px 18px", fontSize: 12, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", cursor: "pointer", opacity: (paused || !!busy) ? 0.5 : 1 }}>
+                    {busy === "run" ? "Starting…" : "▶ Run now"}
+                  </button>
+                  <button onClick={togglePause} disabled={!!busy}
+                    style={{ padding: "8px 14px", fontSize: 12, color: "rgba(255,255,255,0.88)", background: "rgba(255,255,255,0.13)", border: "1px solid rgba(255,255,255,0.28)", cursor: "pointer", opacity: !!busy ? 0.5 : 1 }}>
+                    {paused ? "Resume" : "Pause"}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -397,6 +425,34 @@ export default function MissionsPanel() {
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px 48px", display: "flex", flexDirection: "column", gap: 24 }}>
 
         {actionErr && <div className="err-banner">{actionErr}</div>}
+
+        {/* ── Proposed next goal (awaiting approval) ── */}
+        {proposed && currentGoalEntry && (
+          <div className="cl-enter" style={{ border: "1px solid var(--ab)", background: "var(--adim)" }}>
+            <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--ab)" }}>
+              <div className="sec-label" style={{ marginBottom: 4, color: "var(--amber)" }}>▲ Next goal proposed · awaiting approval</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "var(--fg)", lineHeight: 1.4 }}>{currentGoalEntry.title}</div>
+              <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 6, lineHeight: 1.5 }}>
+                The planner suggested this after your last goal completed. Review the tasks, then <strong>Approve &amp; start</strong> to put the team on it — or <strong>Reject</strong> for a different one.
+              </div>
+            </div>
+            <div>
+              {currentGoalEntry.tasks.map((t, i) => (
+                <div key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 16px", borderTop: i > 0 ? "1px solid var(--bd)" : "none" }}>
+                  <span style={{ marginTop: 5, width: 6, height: 6, flexShrink: 0, borderRadius: "50%", background: "var(--amber)" }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, color: "var(--fg)", lineHeight: 1.4 }}>{t.title}</div>
+                    {(t.owner_agents?.length ?? 0) > 0 && (
+                      <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 2, fontFamily: "var(--font-code)" }}>
+                        {t.owner_agents!.map(a => AGENT_LABELS[a] ?? a).join(" · ")}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Working on now ── */}
         <div className="cl-enter">

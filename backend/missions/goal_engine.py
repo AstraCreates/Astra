@@ -199,7 +199,9 @@ def plan_next_goal(founder_id: str) -> dict[str, Any] | None:
         tasks.append({"title": str(t["title"])[:200], "owner_agents": list(owners)})
     if not title or not tasks:
         return None
-    return start_goal(founder_id, title=title, tasks=tasks, kind="planner")
+    # Planner goals are PROPOSED, not active — the founder must approve before the
+    # team works them. (The launch goal is the only auto-active one.)
+    return start_goal(founder_id, title=title, tasks=tasks, kind="planner", status="proposed")
 
 
 # ── Dispatch the current goal (run the agents that own its tasks) ────────────────
@@ -216,6 +218,9 @@ async def dispatch_current_goal(founder_id: str) -> dict[str, Any]:
     cg = current_goal(founder_id)
     if not goal or not cg:
         return {"ok": False, "reason": "no current goal"}
+    # A proposed (not-yet-approved) goal must NOT run — the founder approves it first.
+    if cg.get("status") != "active":
+        return {"ok": True, "skipped": f"goal status {cg.get('status')!r} — needs approval"}
     if not budget_allows(goal):
         return {"ok": False, "reason": "operating budget exhausted"}
     open_tasks = [t for t in cg.get("tasks") or [] if not t.get("postponed") and t.get("status") != "done"]
@@ -236,7 +241,7 @@ async def dispatch_current_goal(founder_id: str) -> dict[str, Any]:
                          parent_session_id=root, kind="operating")
     except Exception:
         pass
-    add_operating_session(founder_id, session_id, summary=cg.get("title", ""))
+    add_operating_session(founder_id, session_id, summary=cg.get("title", ""), goal_id=cg.get("id", ""))
 
     try:
         from backend.core.factory import get_orchestrator
@@ -262,7 +267,7 @@ async def after_run(founder_id: str, session_id: str, state: dict[str, Any]) -> 
     if not founder_id:
         return
     from backend.missions.company_goal import (
-        get_company_goal, upsert_company_goal, current_goal, chain_allowed, budget_allows, _goal_is_complete,
+        get_company_goal, upsert_company_goal, current_goal, chain_allowed, _goal_is_complete,
     )
     try:
         goal = get_company_goal(founder_id)
@@ -297,18 +302,28 @@ async def after_run(founder_id: str, session_id: str, state: dict[str, Any]) -> 
         except Exception:
             pass
 
-        # Auto-chain: goal complete → next goal → dispatch immediately.
+        # Goal complete → PROPOSE the next goal (do NOT auto-run it). Goals need human
+        # sign-off: the planner writes the next objective, the founder approves it in the
+        # /goals view, then it dispatches. This stops the runaway full-auto chain that
+        # produced a pile of confusing back-to-back goals + sub-runs.
         goal = get_company_goal(founder_id)
-        if goal and goal.get("status") != "paused" and _goal_is_complete(current_goal(founder_id)):
-            if not budget_allows(goal):
-                logger.info("goal_engine: founder=%s goal complete but operating run budget hit — not chaining", founder_id)
-                return
+        cur = current_goal(founder_id)
+        if goal and goal.get("status") != "paused" and cur and cur.get("status") == "active" and _goal_is_complete(cur):
             if not chain_allowed(goal):
-                logger.info("goal_engine: founder=%s goal complete but daily new-goal cap hit — not chaining", founder_id)
+                logger.info("goal_engine: founder=%s goal complete but daily new-goal cap hit — not proposing", founder_id)
                 return
             nxt = plan_next_goal(founder_id)
             if nxt:
-                logger.info("goal_engine: founder=%s chained to next goal %r", founder_id, nxt.get("title"))
-                asyncio.create_task(dispatch_current_goal(founder_id))
+                logger.info("goal_engine: founder=%s proposed next goal %r (awaiting approval)", founder_id, nxt.get("title"))
+                try:
+                    from backend.core.events import publish
+                    await publish(session_id, {
+                        "type": "goal_proposed",
+                        "goal_id": nxt.get("id"),
+                        "title": nxt.get("title"),
+                        "tasks": [t.get("title") for t in nxt.get("tasks") or []],
+                    })
+                except Exception:
+                    pass
     except Exception as e:
         logger.warning("goal_engine.after_run failed for %s: %s", founder_id, e)

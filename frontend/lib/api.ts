@@ -2122,7 +2122,7 @@ export interface CompanyTask {
 export interface CompanyGoalEntry {
   id: string;
   title: string;
-  status: "active" | "done";
+  status: "active" | "done" | "proposed";
   kind: "launch" | "planner";
   tasks: CompanyTask[];
   created_at: string;
@@ -2134,6 +2134,7 @@ export interface OperatingRun {
   started_at: string;
   status: string;
   summary?: string;
+  goal_id?: string;
 }
 
 export interface CompanyGoal {
@@ -2174,6 +2175,17 @@ export async function markCompanyTaskDone(founderId: string, taskId: string): Pr
 
 export async function runCompanyCycle(founderId: string): Promise<{ ok: boolean; parent_session_id: string }> {
   const res = await apiFetch(`${BASE}/api/missions/company-goal/run?founder_id=${encodeURIComponent(founderId)}`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function approveNextGoal(
+  founderId: string, approved = true
+): Promise<{ ok: boolean; goal?: CompanyGoalEntry; rejected?: boolean }> {
+  const res = await apiFetch(`${BASE}/api/missions/company-goal/approve-next`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: founderId, approved }),
+  });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
