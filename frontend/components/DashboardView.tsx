@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { listSessions, deleteSessionRemote, killSession, type SessionIndexEntry } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
@@ -104,7 +104,7 @@ export default function DashboardView() {
 
       <div style={{ flex: 1, overflowY: "auto" }}>
         {/* Header hero */}
-        <div style={{ padding: "28px 24px 24px", borderBottom: "1px solid var(--bd)", position: "relative", overflow: "hidden", background: "#001aff", minHeight: 140 }}>
+        <div className="dv-hero" style={{ padding: "28px 24px 24px", borderBottom: "1px solid var(--bd)", position: "relative", overflow: "hidden", background: "#001aff", minHeight: 140 }}>
           <AstraGradient />
           {/* Scrim so text stays readable over the animated gradient */}
           <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.18)", pointerEvents: "none", zIndex: 1 }} />
@@ -228,7 +228,7 @@ export default function DashboardView() {
                   ordered.push({ s: r, child: false });
                   for (const k of kids[r.session_id] || []) ordered.push({ s: k, child: true });
                 }
-                return ordered.map(({ s, child }) => {
+                return ordered.map(({ s, child }, idx) => {
                 const isStalled = s.status === "stalled";
                 const isRunning = s.status === "running";
                 return (
@@ -236,7 +236,7 @@ export default function DashboardView() {
                     key={s.session_id}
                     className={`sc-row${isStalled ? " stalled" : isRunning ? " running" : ""}`}
                     onClick={() => router.push(`/s/${s.session_id}`)}
-                    style={{ position: "relative", marginLeft: child ? 28 : 0, borderLeft: child ? "2px solid var(--bd)" : undefined }}
+                    style={{ position: "relative", marginLeft: child ? 28 : 0, borderLeft: child ? "2px solid var(--bd)" : undefined, '--i': idx } as CSSProperties}
                   >
                     {/* Delete */}
                     <button

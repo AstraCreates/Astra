@@ -44,6 +44,10 @@
 
   --radius: 0px; --radius-sm: 0px; --radius-lg: 0px;
 
+  /* Motion easing */
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-expo:  cubic-bezier(0.16, 1, 0.3, 1);
+
   /* Fonts — Geist everywhere, JetBrains Mono for labels/code, Pixelify for accent */
   --font-heading:    var(--font-geist-sans), "Geist", sans-serif;
   --font-display:    var(--font-geist-sans), "Geist", sans-serif;
@@ -118,10 +122,13 @@ h1, h2, h3, h4, h5, h6 {
 
 .btn { font-family: var(--font-display); font-size: 10px; font-weight: 600;
   letter-spacing: .06em; text-transform: uppercase; padding: 6px 13px; cursor: pointer;
-  border: 1px solid var(--bd2); background: transparent; color: var(--fd); transition: all .12s; }
+  border: 1px solid var(--bd2); background: transparent; color: var(--fd);
+  transition: color .12s, background .12s, border-color .12s, box-shadow .12s, transform .08s; }
 .btn:hover { color: var(--fg); }
+.btn:active { transform: scale(0.97); }
 .btn.pri, .btn.primary { background: linear-gradient(135deg, #002EFF 0%, #1a4dff 100%); color: #fff; border-color: #002EFF; box-shadow: 0 2px 14px rgba(124,255,198,0.28); }
 .btn.pri:hover, .btn.primary:hover { background: linear-gradient(135deg, #0024CC 0%, #003eee 100%); box-shadow: 0 3px 20px rgba(124,255,198,0.42); }
+.btn.pri:active, .btn.primary:active { transform: scale(0.97); }
 .btn.danger { background: var(--rdim); color: var(--red); border-color: var(--rb); }
 .btn.success { background: var(--green); color: #fff; border-color: var(--green); }
 .btn.sm { padding: 4px 9px; font-size: 9px; }
@@ -156,9 +163,33 @@ h1, h2, h3, h4, h5, h6 {
   letter-spacing: .04em; color: var(--fd); }
 .err-banner { background: var(--rdim); border: 1px solid var(--rb); padding: 12px 16px;
   display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--red);
-  font-family: var(--font-code), monospace; }
+  font-family: var(--font-code), monospace;
+  animation: astraSlideDown 0.22s var(--ease-out-quint, cubic-bezier(0.22,1,0.36,1)) both; }
 
 @keyframes astraSlideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
+
+/* ── Entrance animations ────────────────────────────────────────────────── */
+
+@keyframes sc-enter {
+  from { opacity: 0; transform: translateY(7px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes dv-hero-enter {
+  from { opacity: 0; transform: translateY(-5px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Session row stagger — set --i on each row via inline style */
+.sc-row {
+  animation: sc-enter 0.30s var(--ease-out-quint, cubic-bezier(0.22,1,0.36,1))
+    calc(min(var(--i, 0), 8) * 38ms) both;
+}
+
+/* Dashboard hero header entrance */
+.dv-hero {
+  animation: dv-hero-enter 0.38s var(--ease-out-quint, cubic-bezier(0.22,1,0.36,1)) both;
+}
 
 /* ════════════ Full view component library (ported from mockup) ════════════ */
 
@@ -294,12 +325,15 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 }
 
 /* ── Reduced motion ───────────────────────────────────────────────────────
-   State-indicator animations (live dot, running shimmer) become static. */
+   State-indicator animations (live dot, running shimmer) become static.
+   Entrance animations skip immediately to final state. */
 @media (prefers-reduced-motion: reduce) {
   .live-dot,
   .v-dot.live { animation: none; opacity: 0.75; }
   .sc-row.running::before,
   .sc.running::before { animation: none; background: var(--blue); }
+  .sc-row, .dv-hero, .err-banner { animation: none; opacity: 1; transform: none; }
+  .btn:active, .btn.pri:active, .btn.primary:active { transform: none; }
 }
 
 /* ── Mobile / responsive ──────────────────────────────────────────────────

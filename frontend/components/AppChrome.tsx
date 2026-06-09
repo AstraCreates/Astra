@@ -5,6 +5,7 @@
    Bare (no sidebar) on auth/onboarding routes. */
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 import RedesignSidebar from "@/components/RedesignSidebar";
 import WorkspaceTour from "@/components/WorkspaceTour";
 import { useIsMobile } from "@/lib/use-is-mobile";
@@ -66,9 +67,19 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
         {tour}
         <RedesignSidebar mobile open={drawerOpen} onClose={() => setDrawerOpen(false)} />
         {/* Backdrop */}
-        {drawerOpen && (
-          <div onClick={() => setDrawerOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 55 }} />
-        )}
+        <AnimatePresence>
+          {drawerOpen && (
+            <motion.div
+              key="drawer-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              onClick={() => setDrawerOpen(false)}
+              style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 55 }}
+            />
+          )}
+        </AnimatePresence>
         {/* Floating hamburger — always reachable */}
         <button
           aria-label="Open menu"
