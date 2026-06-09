@@ -237,106 +237,79 @@ export default function MissionsPanel() {
 
   if (!founderId) {
     return (
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-        <GoalsHero goal={null} paused={false} cg={null} busy={null} runNow={() => {}} togglePause={() => {}} />
-        <div className="empty" style={{ flex: 1 }}>
-          <span style={{ fontSize: 22, fontFamily: "var(--font-code)", opacity: 0.25 }}>◎</span>
-          <span className="empty-title">Sign in to track your launch progress.</span>
-        </div>
+      <div className="empty" style={{ minHeight: 240 }}>
+        <span style={{ fontSize: 22, fontFamily: "var(--font-code)", opacity: 0.25 }}>◎</span>
+        <span className="empty-title">Sign in to track your launch progress.</span>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-        <GoalsHero goal={null} paused={false} cg={null} busy={null} runNow={() => {}} togglePause={() => {}} />
-        <div className="empty" style={{ flex: 1 }}>
-          <span style={{ fontSize: 11, fontFamily: "var(--font-code)", color: "var(--fm)" }}>Loading…</span>
-        </div>
+      <div className="empty" style={{ minHeight: 240 }}>
+        <span style={{ fontSize: 11, fontFamily: "var(--font-code)", color: "var(--fm)" }}>Loading…</span>
       </div>
     );
   }
 
+  const launchGoals = (goal?.goals ?? []).filter((g) => g.kind === "launch");
+  const launchDone = launchGoals.filter((g) => g.status === "done").length;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <style>{`
-        @keyframes goals-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-        .goal-row-enter { animation: goals-fade 0.24s cubic-bezier(0.22,1,0.36,1) both; }
+        @keyframes goals-fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+        @keyframes pulse-dot { 0%,100% { box-shadow: 0 0 0 0 rgba(0,46,255,0.5); } 50% { box-shadow: 0 0 0 5px rgba(0,46,255,0); } }
+        .gr-enter { animation: goals-fade 0.22s cubic-bezier(0.22,1,0.36,1) both; }
         .run-row:hover { border-color: var(--bb) !important; background: var(--bdim) !important; }
-        @media (prefers-reduced-motion: reduce) { .goal-row-enter { animation: none; opacity: 1; } }
+        .launch-item:hover { background: var(--bdim) !important; }
+        @media (prefers-reduced-motion: reduce) { .gr-enter { animation: none; } @keyframes pulse-dot {} }
       `}</style>
 
-      {/* ── Blue hero header ── */}
-      <div style={{
-        position: "relative", overflow: "hidden", flexShrink: 0,
-        background: "#001aff", minHeight: 148,
-        borderBottom: "1px solid var(--bd)",
-      }}>
+      {/* ── Blue hero ── */}
+      <div style={{ position: "relative", overflow: "hidden", flexShrink: 0, background: "#001aff", minHeight: 148, borderBottom: "1px solid var(--bd)" }}>
         <AstraGradient />
         <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.20)", pointerEvents: "none", zIndex: 1 }} />
-        <div style={{ position: "relative", zIndex: 2, padding: "28px 24px 22px" }}>
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em", marginBottom: 6 }}>
-                Company Goals
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                {goal ? (
-                  <>
-                    <span style={{
-                      padding: "3px 10px", fontSize: 10, fontWeight: 700, letterSpacing: ".06em",
-                      textTransform: "uppercase", fontFamily: "var(--font-code)",
-                      border: paused ? "1px solid rgba(255,180,50,0.45)" : "1px solid rgba(124,255,198,0.45)",
-                      background: paused ? "rgba(255,180,50,0.14)" : "rgba(124,255,198,0.14)",
-                      color: paused ? "#FFCB50" : "#7CFFC6",
-                    }}>
-                      {paused ? "paused" : "operating"}
-                    </span>
-                    {totalTasks > 0 && (
-                      <span style={{ fontSize: 11, color: "rgba(255,255,255,0.72)", fontFamily: "var(--font-code)" }}>
-                        {doneTasks}/{totalTasks} tasks done
-                      </span>
-                    )}
-                    {runs.length > 0 && (
-                      <span style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
-                        · {runs.length} operating run{runs.length !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>No active goal</span>
-                )}
-              </div>
+        <div style={{ position: "relative", zIndex: 2, padding: "24px 24px 20px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 24, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>Company Goals</div>
+              {goal && (
+                <span style={{
+                  padding: "3px 10px", fontSize: 9, fontWeight: 700, letterSpacing: ".07em",
+                  textTransform: "uppercase", fontFamily: "var(--font-code)",
+                  border: paused ? "1px solid rgba(255,180,50,0.5)" : "1px solid rgba(124,255,198,0.5)",
+                  background: paused ? "rgba(255,180,50,0.14)" : "rgba(124,255,198,0.14)",
+                  color: paused ? "#FFCB50" : "#7CFFC6",
+                }}>
+                  {paused ? "paused" : "operating"}
+                </span>
+              )}
             </div>
-            {goal && (
-              <div style={{ display: "flex", gap: 9, flexShrink: 0 }}>
-                <button
-                  onClick={runNow}
-                  disabled={paused || !cg || !!busy}
-                  style={{
-                    padding: "9px 20px", fontSize: 12, fontWeight: 600, color: "#002EFF",
-                    background: "#fff", border: "none", cursor: "pointer",
-                    letterSpacing: "0.01em", opacity: (paused || !cg || !!busy) ? 0.5 : 1,
-                  }}
-                >
-                  {busy === "run" ? "Starting…" : "▶ Run now"}
-                </button>
-                <button
-                  onClick={togglePause}
-                  disabled={!!busy}
-                  style={{
-                    padding: "9px 16px", fontSize: 12, fontWeight: 500,
-                    color: "rgba(255,255,255,0.88)", background: "rgba(255,255,255,0.13)",
-                    border: "1px solid rgba(255,255,255,0.28)", cursor: "pointer",
-                    opacity: !!busy ? 0.5 : 1,
-                  }}
-                >
-                  {paused ? "Resume" : "Pause"}
-                </button>
+            {goal?.north_star && (
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)", lineHeight: 1.5, maxWidth: 520 }}>
+                {goal.north_star}
+                {goal.notion_url && (
+                  <a href={goal.notion_url} target="_blank" rel="noreferrer"
+                    style={{ color: "rgba(124,255,198,0.85)", marginLeft: 10, fontFamily: "var(--font-code)", fontSize: 10 }}>
+                    Notion →
+                  </a>
+                )}
               </div>
             )}
           </div>
+          {goal && (
+            <div style={{ display: "flex", gap: 9, flexShrink: 0, alignItems: "flex-start" }}>
+              <button onClick={runNow} disabled={paused || !cg || !!busy}
+                style={{ padding: "9px 20px", fontSize: 12, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", cursor: "pointer", opacity: (paused || !cg || !!busy) ? 0.5 : 1 }}>
+                {busy === "run" ? "Starting…" : "▶ Run now"}
+              </button>
+              <button onClick={togglePause} disabled={!!busy}
+                style={{ padding: "9px 16px", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.88)", background: "rgba(255,255,255,0.13)", border: "1px solid rgba(255,255,255,0.28)", cursor: "pointer", opacity: !!busy ? 0.5 : 1 }}>
+                {paused ? "Resume" : "Pause"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -346,17 +319,12 @@ export default function MissionsPanel() {
         {error && (
           <div className="err-banner" style={{ marginBottom: 18 }}>
             {error}
-            <button onClick={load} style={{ marginLeft: 8, textDecoration: "underline", background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontFamily: "var(--font-code)", fontSize: 11 }}>
-              Retry
-            </button>
+            <button onClick={load} style={{ marginLeft: 8, textDecoration: "underline", background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontFamily: "var(--font-code)", fontSize: 11 }}>Retry</button>
           </div>
         )}
+        {actionErr && <div className="err-banner" style={{ marginBottom: 18 }}>{actionErr}</div>}
 
-        {actionErr && (
-          <div className="err-banner" style={{ marginBottom: 18 }}>{actionErr}</div>
-        )}
-
-        {/* ── Empty state ── */}
+        {/* Empty */}
         {!goal && !loading && (
           <div style={{ padding: "64px 24px", textAlign: "center", border: "1px dashed var(--bd2)" }}>
             <div style={{ fontSize: 28, marginBottom: 14, fontFamily: "var(--font-code)", color: "var(--fm)", opacity: 0.25 }}>◎</div>
@@ -369,149 +337,170 @@ export default function MissionsPanel() {
         )}
 
         {goal && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 820 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 20, alignItems: "start" }}>
 
-            {/* ── North star ── */}
-            {goal.north_star && (
-              <div className="goal-row-enter" style={{ padding: "14px 18px", background: "var(--bdim)", border: "1px solid var(--bb)" }}>
-                <div className="sec-label" style={{ color: "var(--blue)", marginBottom: 6 }}>North Star</div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)", lineHeight: 1.6 }}>
-                  {goal.north_star}
-                </div>
-                {goal.notion_url && (
-                  <a href={goal.notion_url} target="_blank" rel="noreferrer"
-                    style={{ fontSize: 11, color: "var(--blue)", marginTop: 8, display: "inline-block", fontFamily: "var(--font-code)" }}>
-                    Open in Notion →
-                  </a>
-                )}
-              </div>
-            )}
+            {/* ══ LEFT: active mission ══ */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-            {/* ── Current goal + tasks ── */}
-            {cg ? (
-              <div className="goal-row-enter" style={{ border: "1px solid var(--bd2)", background: "var(--surface)" }}>
-                <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--bd)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <div>
-                    <div className="sec-label" style={{ marginBottom: 5 }}>
-                      Current goal{cg.kind === "launch" ? " · launch" : ""}
+              {cg ? (
+                <div className="gr-enter" style={{ border: "1px solid var(--bd2)", background: "var(--surface)" }}>
+                  {/* Goal header */}
+                  <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--bd)" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: totalTasks > 0 ? 10 : 0 }}>
+                      <div>
+                        <div className="sec-label" style={{ marginBottom: 4 }}>
+                          Current goal{cg.kind === "launch" ? " · launch" : ""}
+                        </div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.01em" }}>{cg.title}</div>
+                      </div>
+                      {totalTasks > 0 && (
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontSize: 28, fontWeight: 800, color: doneTasks === totalTasks ? "var(--green)" : "var(--blue)", fontFamily: "var(--font-code)", lineHeight: 1 }}>{doneTasks}</div>
+                          <div style={{ fontSize: 9, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".08em" }}>of {totalTasks}</div>
+                        </div>
+                      )}
                     </div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.01em" }}>
-                      {cg.title}
-                    </div>
+                    {/* Progress bar */}
+                    {totalTasks > 0 && (
+                      <div style={{ height: 3, background: "var(--bd)", overflow: "hidden" }}>
+                        <div style={{
+                          height: "100%", transition: "width .4s ease",
+                          width: `${Math.round((doneTasks / totalTasks) * 100)}%`,
+                          background: doneTasks === totalTasks ? "var(--green)" : "var(--blue)",
+                        }} />
+                      </div>
+                    )}
                   </div>
-                  {totalTasks > 0 && (
-                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <div style={{ fontSize: 22, fontWeight: 700, color: doneTasks === totalTasks ? "var(--green)" : "var(--fg)", fontFamily: "var(--font-code)", lineHeight: 1 }}>{doneTasks}</div>
-                      <div style={{ fontSize: 9, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".08em" }}>of {totalTasks} done</div>
-                    </div>
-                  )}
+                  {/* Tasks */}
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    {tasks.map((t, i) => (
+                      <div key={t.id} className="gr-enter" style={{ animationDelay: `${i * 25}ms`, borderBottom: i < tasks.length - 1 ? "1px solid var(--bd)" : "none" }}>
+                        <TaskRow t={t} busy={busy} onPostpone={() => postpone(t)} onMarkDone={() => markDone(t)} />
+                      </div>
+                    ))}
+                    {tasks.length === 0 && (
+                      <div style={{ padding: "16px 18px", fontSize: 12, color: "var(--fm)" }}>No tasks yet.</div>
+                    )}
+                  </div>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                  {tasks.map((t, i) => (
-                    <div key={t.id} className="goal-row-enter" style={{ animationDelay: `${i * 30}ms`, borderBottom: i < tasks.length - 1 ? "1px solid var(--bd)" : "none" }}>
-                      <TaskRow
-                        t={t}
-                        busy={busy}
-                        onPostpone={() => postpone(t)}
-                        onMarkDone={() => markDone(t)}
-                      />
-                    </div>
-                  ))}
-                  {tasks.length === 0 && (
-                    <div style={{ padding: "16px 18px", fontSize: 12, color: "var(--fm)" }}>
-                      No tasks on this goal yet.
-                    </div>
-                  )}
+              ) : (
+                <div style={{ padding: "16px 18px", border: "1px solid var(--bd)", background: "var(--surface)", fontSize: 12, color: "var(--fm)" }}>
+                  No active goal — planner sets the next one after this run.
                 </div>
-              </div>
-            ) : (
-              <div style={{ padding: "16px 18px", border: "1px solid var(--bd)", background: "var(--s2)", fontSize: 12, color: "var(--fm)" }}>
-                No active goal — planner sets the next one when the current run finishes.
-              </div>
-            )}
+              )}
 
-            {/* ── Actions row ── */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <button
-                onClick={async () => {
+              {/* Actions */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <button onClick={async () => {
                   setBusy("notion");
                   try { await syncMissionNotion(founderId); await load(); }
                   catch (e) { setActionErr(e instanceof Error ? e.message : String(e)); setTimeout(() => setActionErr(null), 8000); }
                   finally { setBusy(null); }
-                }}
-                disabled={!!busy}
-                className="btn"
-              >
-                {busy === "notion" ? "Syncing…" : "Sync Notion"}
-              </button>
-              <button onClick={load} disabled={!!busy} className="btn" style={{ color: "var(--fm)" }}>Refresh</button>
+                }} disabled={!!busy} className="btn">
+                  {busy === "notion" ? "Syncing…" : "Sync Notion"}
+                </button>
+                <button onClick={load} disabled={!!busy} className="btn" style={{ color: "var(--fm)" }}>Refresh</button>
+              </div>
+
+              {/* Recent runs */}
+              {runs.length > 0 && (
+                <div className="gr-enter">
+                  <div className="sec-label" style={{ marginBottom: 8 }}>Recent runs</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                    {runs.map((r) => (
+                      <a key={r.session_id} href={`/s/${r.session_id}`} className="run-row"
+                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", border: "1px solid var(--bd)", background: "var(--surface)", textDecoration: "none", transition: "border-color .12s, background .12s" }}>
+                        <div style={{ width: 7, height: 7, flexShrink: 0, borderRadius: "50%", background: r.status === "done" ? "var(--green)" : r.status === "error" ? "var(--red)" : "var(--blue)" }} />
+                        <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {r.summary || "Operating run"}
+                        </span>
+                        <span style={{ fontSize: 10, color: "var(--fm)", whiteSpace: "nowrap", fontFamily: "var(--font-code)" }}>{timeAgo(r.started_at)}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* ── Recent runs ── */}
-            {runs.length > 0 && (
-              <div className="goal-row-enter">
-                <div className="sec-label" style={{ marginBottom: 10 }}>Recent runs · {runs.length}</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {runs.map((r) => (
-                    <a
-                      key={r.session_id}
-                      href={`/s/${r.session_id}`}
-                      className="run-row"
-                      style={{
-                        display: "flex", alignItems: "center", gap: 12,
-                        padding: "10px 14px",
-                        border: "1px solid var(--bd)",
-                        background: "var(--surface)",
-                        textDecoration: "none",
-                        transition: "border-color .12s, background .12s",
-                      }}
-                    >
-                      <div style={{
-                        width: 7, height: 7, flexShrink: 0,
-                        borderRadius: "50%",
-                        background: r.status === "done" ? "var(--green)" : r.status === "error" ? "var(--red)" : "var(--blue)",
-                      }} />
-                      <span style={{
-                        flex: 1, minWidth: 0, fontSize: 12, fontWeight: 500, color: "var(--fg)",
-                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                      }}>
-                        {r.summary || "Operating run"}
-                      </span>
-                      <Badge
-                        label={r.status}
-                        kind={r.status === "done" ? "done" : r.status === "error" ? "blocked" : "in_progress"}
-                      />
-                      <span style={{ fontSize: 10, color: "var(--fm)", whiteSpace: "nowrap", fontFamily: "var(--font-code)" }}>
-                        {timeAgo(r.started_at)}
-                      </span>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* ══ RIGHT: launch checklist + done goals ══ */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-            {/* ── Completed goals ── */}
-            {doneGoals.length > 0 && (
-              <div className="goal-row-enter">
-                <div className="sec-label" style={{ marginBottom: 10 }}>Completed goals · {doneGoals.length}</div>
+              {/* Launch checklist */}
+              <div className="gr-enter" style={{ animationDelay: "60ms" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                  <div className="sec-label">Launch checklist</div>
+                  {launchGoals.length > 0 && (
+                    <span style={{ fontSize: 11, fontFamily: "var(--font-code)", color: launchDone === launchGoals.length ? "var(--green)" : "var(--blue)", fontWeight: 700 }}>
+                      {launchDone}/{launchGoals.length}
+                    </span>
+                  )}
+                </div>
+
+                {/* Progress bar for launch */}
+                {launchGoals.length > 0 && (
+                  <div style={{ height: 2, background: "var(--bd)", marginBottom: 10, overflow: "hidden" }}>
+                    <div style={{
+                      height: "100%", transition: "width .4s ease",
+                      width: `${Math.round((launchDone / launchGoals.length) * 100)}%`,
+                      background: launchDone === launchGoals.length ? "var(--green)" : "var(--blue)",
+                    }} />
+                  </div>
+                )}
+
                 <div style={{ border: "1px solid var(--bd)", background: "var(--surface)" }}>
-                  {doneGoals.map((g, i) => (
-                    <div
-                      key={g.id}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 10,
-                        padding: "9px 14px", fontSize: 12, color: "var(--fm)",
-                        borderBottom: i < doneGoals.length - 1 ? "1px solid var(--bd)" : "none",
-                      }}
-                    >
-                      <span style={{ color: "var(--green)", fontFamily: "var(--font-code)", fontSize: 11, flexShrink: 0 }}>✓</span>
-                      <span style={{ textDecoration: "line-through", flex: 1, color: "var(--fd)" }}>{g.title}</span>
-                      <span style={{ fontSize: 10, fontFamily: "var(--font-code)", flexShrink: 0 }}>{timeAgo(g.completed_at)}</span>
+                  {launchGoals.length === 0 ? (
+                    <div style={{ padding: "16px 14px", fontSize: 11, color: "var(--fm)" }}>
+                      No launch goals yet — agents create them as the launch plan builds.
                     </div>
-                  ))}
+                  ) : launchGoals.map((lg, i) => {
+                    const isDone = lg.status === "done";
+                    const lgDone = lg.tasks.filter(t => t.status === "done").length;
+                    const lgTotal = lg.tasks.length;
+                    return (
+                      <div key={lg.id} className="launch-item"
+                        style={{ padding: "10px 14px", borderBottom: i < launchGoals.length - 1 ? "1px solid var(--bd)" : "none", display: "flex", alignItems: "flex-start", gap: 10, transition: "background .12s", cursor: "default" }}>
+                        <div style={{ marginTop: 2, flexShrink: 0 }}>
+                          {isDone ? (
+                            <div style={{ width: 16, height: 16, background: "var(--green)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              <span style={{ fontSize: 9, color: "#fff", fontWeight: 700 }}>✓</span>
+                            </div>
+                          ) : (
+                            <div style={{ width: 16, height: 16, border: `2px solid ${lg.id === goal.current_goal_id ? "var(--blue)" : "var(--bd2)"}`, background: lg.id === goal.current_goal_id ? "var(--bdim)" : "transparent" }} />
+                          )}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: isDone ? "var(--fm)" : "var(--fg)", textDecoration: isDone ? "line-through" : "none", lineHeight: 1.4 }}>
+                            {lg.title}
+                          </div>
+                          {lgTotal > 0 && !isDone && (
+                            <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 2, fontFamily: "var(--font-code)" }}>
+                              <span style={{ color: lgDone > 0 ? "var(--blue)" : "var(--fm)", fontWeight: lgDone > 0 ? 700 : 400 }}>{lgDone}</span>/{lgTotal} tasks
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            )}
+
+              {/* Completed goals */}
+              {doneGoals.length > 0 && (
+                <div className="gr-enter" style={{ animationDelay: "100ms" }}>
+                  <div className="sec-label" style={{ marginBottom: 8 }}>Completed goals</div>
+                  <div style={{ border: "1px solid var(--bd)", background: "var(--surface)" }}>
+                    {doneGoals.map((g, i) => (
+                      <div key={g.id}
+                        style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", fontSize: 11, borderBottom: i < doneGoals.length - 1 ? "1px solid var(--bd)" : "none" }}>
+                        <span style={{ color: "var(--green)", fontFamily: "var(--font-code)", fontSize: 10, flexShrink: 0 }}>✓</span>
+                        <span style={{ textDecoration: "line-through", flex: 1, color: "var(--fm)" }}>{g.title}</span>
+                        <span style={{ fontSize: 9, fontFamily: "var(--font-code)", color: "var(--fm)", flexShrink: 0 }}>{timeAgo(g.completed_at)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
           </div>
         )}
@@ -520,19 +509,3 @@ export default function MissionsPanel() {
   );
 }
 
-// Tiny helper component used in loading/unauthenticated states
-function GoalsHero({ goal, paused, cg, busy, runNow, togglePause }: {
-  goal: CompanyGoal | null; paused: boolean;
-  cg: CompanyGoalEntry | null; busy: string | null;
-  runNow: () => void; togglePause: () => void;
-}) {
-  return (
-    <div style={{ position: "relative", overflow: "hidden", flexShrink: 0, background: "#001aff", minHeight: 100, borderBottom: "1px solid var(--bd)" }}>
-      <AstraGradient />
-      <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.20)", pointerEvents: "none", zIndex: 1 }} />
-      <div style={{ position: "relative", zIndex: 2, padding: "24px 24px 20px" }}>
-        <div style={{ fontSize: 24, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>Company Goals</div>
-      </div>
-    </div>
-  );
-}

@@ -780,7 +780,7 @@ export default function OutreachPage() {
       </div>
 
       {/* Content area */}
-      <div style={{ flex: 1, padding: "20px 24px 48px", maxWidth: 1100, width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ flex: 1, padding: "20px 24px 48px", display: "flex", flexDirection: "column", gap: 20 }}>
 
       {campaignsLoading ? (
         <div style={{ ...section() }}>
@@ -980,7 +980,7 @@ export default function OutreachPage() {
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, maxWidth: 1100, width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: 18, padding: "18px 24px 48px" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 18, padding: "18px 24px 48px" }}>
 
       {/* ── Find Contacts tab ─────────────────────────────────────────────── */}
       {detailTab === "find" && (
