@@ -336,16 +336,25 @@ def _node_app_dir(local: str) -> Path | None:
     return None
 
 
-def _npm_build_passes(local: str, timeout: int = 300) -> tuple[bool, str]:
-    """Run the local production build once. This is cheaper than asking an LLM to
-    inspect the build, and lets us skip recovery passes when everything is already OK."""
+def _npm_build_passes(local: str, timeout: int = 900) -> tuple[bool | None, str]:
+    """Run the production build once (cheaper + more reliable than an LLM's opinion).
+    Returns (True=passed, False=ran-and-failed/timed-out, None=no Node app found).
+    Runs as the `astra` user when root so it doesn't leave root-owned node_modules/.next
+    that the astra build/preview passes then can't touch."""
     app_dir = _node_app_dir(local)
     if app_dir is None:
-        return True, "No package.json found; skipping npm build check."
-    cmd = ["bash", "-lc", "npm install --legacy-peer-deps --prefer-offline --no-audit --no-fund && npm run build"]
+        return None, "No package.json found — no Node app was produced."
+    cache = os.environ.get("ASTRA_NPM_CACHE", "/data/npm-cache")
+    inner = (f"cd {str(app_dir)!r} && npm install --legacy-peer-deps --prefer-offline "
+             "--no-audit --no-fund && npm run build")
     env = _apply_npm_cache_env(os.environ.copy())
+    if os.getuid() == 0:
+        cmd = ["sudo", "-u", "astra", "env", f"npm_config_cache={cache}",
+               "npm_config_prefer_offline=true", "HOME=/home/astra", "bash", "-lc", inner]
+    else:
+        cmd = ["bash", "-lc", inner]
     try:
-        r = subprocess.run(cmd, cwd=str(app_dir), capture_output=True, text=True, timeout=timeout, env=env)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
         out = "\n".join(part for part in (r.stdout, r.stderr) if part)
         return r.returncode == 0, out[-4000:]
     except subprocess.TimeoutExpired as e:
@@ -1413,10 +1422,19 @@ def run_mvp_loop(
         _ensure_tailwind_setup(local)
         _build_doctor(local)
         _sanitize_package_json(local)
+        # A web/technical build is expected to produce a Node app — if it didn't, that's
+        # a real failure (no package.json), not a pass.
+        _expects_node = any(str(f).endswith(("package.json", ".tsx", ".ts", ".jsx")) for f in (required_files or []))
         _phase("Pass 2/4 — deterministic build check")
-        build_ok, build_output = _npm_build_passes(local)
+        build_res, build_output = _npm_build_passes(local)
+        if build_res is None:  # no Node app found
+            build_ok = not _expects_node
+            if _expects_node:
+                build_output = "No package.json / Node app was produced — the build wrote no app."
+        else:
+            build_ok = bool(build_res)
         _phase("Build check: passed" if build_ok else "Build check: failed — starting recovery",
-               build_output=build_output[-1200:])
+               build_output=(build_output or "")[-1200:])
 
         deep_heal = bool(getattr(settings, "mvp_deep_heal_on_success", False))
         max_rounds = max(1, int(getattr(settings, "mvp_max_build_rounds", 3) or 3))
@@ -1424,7 +1442,9 @@ def run_mvp_loop(
         # Compiler-as-critic recovery loop: feed the REAL `npm run build` errors to
         # openclaude, re-apply deterministic fixes, then RE-VERIFY with the compiler.
         # Repeat until the build genuinely passes or we hit the round cap — so we never
-        # ship a build that only "passed" because the model said so.
+        # ship a build that only "passed" because the model said so. One persistent
+        # recovery session so each round remembers what the last one already tried.
+        recovery_sid = str(uuid.uuid4())
         round_i = 0
         while (not build_ok) and round_i < max_rounds:
             round_i += 1
@@ -1433,16 +1453,18 @@ def run_mvp_loop(
                 "The production build FAILS. Fix EVERY error below so `npm run build` passes "
                 "clean. Fix the actual cause (TypeScript types, bad imports, async Supabase "
                 "`createClient` → `await createClient()`, missing files, invented npm packages, "
-                "Next.js 15 App Router APIs). Do NOT start a dev server or curl-test.\n\n"
+                "Next.js 15 App Router APIs). Do NOT start a dev server or curl-test. If you "
+                "tried a fix last round and the same error persists, try a different approach.\n\n"
                 f"=== npm run build output ===\n{(build_output or '')[-4500:]}"
             )
-            _run_claude(local, fix_prompt, session_id=None, timeout=900,
+            _run_claude(local, fix_prompt, session_id=recovery_sid, timeout=900,
                         founder_id=founder_id, app_session_id=session_id, agent=agent)
             # Re-assert deterministic fixes so the LLM can't undo the known-good toolchain.
             _sanitize_package_json(local)
             _ensure_tailwind_setup(local)
             _build_doctor(local)
-            build_ok, build_output = _npm_build_passes(local)
+            _res, build_output = _npm_build_passes(local)
+            build_ok = (not _expects_node) if _res is None else bool(_res)
             _phase("Build now PASSES ✓" if build_ok else f"Build still failing after round {round_i}",
                    build_output=(build_output or "")[-1200:])
             if is_github:
@@ -1461,7 +1483,8 @@ def run_mvp_loop(
                 _run_claude(local, review["fix_instructions"], session_id=None, timeout=600,
                             founder_id=founder_id, app_session_id=session_id, agent=agent)
                 _sanitize_package_json(local); _ensure_tailwind_setup(local); _build_doctor(local)
-                build_ok, _ = _npm_build_passes(local)  # don't let polish break the build
+                _res, _ = _npm_build_passes(local)  # don't let polish break the build
+                build_ok = (not _expects_node) if _res is None else bool(_res)
                 if is_github:
                     sha3 = _commit_and_push(local, f"polish: {goal[:50]}")
                     if sha3:
@@ -1522,7 +1545,9 @@ def run_mvp_loop(
                 logger.warning("local preview failed: %s", e)
 
         return {
-            "success": True,
+            # success reflects the compiler when a Node app was expected, so callers
+            # don't ship a broken build as a success.
+            "success": bool(build_ok) if _expects_node else True,
             "build_passes": bool(build_ok),
             "repo_url": repo_url,
             "github_url": f"{repo_url}/tree/main" if is_github else "",

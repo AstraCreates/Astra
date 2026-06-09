@@ -3,6 +3,7 @@ Base agent. Local-first LLM via OpenAI-compatible endpoint (MLX/ollama).
 Each agent has: identity, tools, memory, P2P messaging, optional computer use.
 """
 import asyncio
+import difflib
 import json
 import logging
 import re
@@ -107,8 +108,6 @@ def fuzzy_resolve_tool(name: str, tool_names) -> str | None:
     """Best-effort map a hallucinated tool name to the closest real tool for THIS
     agent. Catches the whole class (generate_brand_identity → generate_brand_board)
     without a hardcoded alias for every variant. Returns the real name or None."""
-    import re as _re
-    import difflib as _dl
     if not name or not tool_names:
         return None
     keys = list(tool_names)
@@ -119,7 +118,7 @@ def fuzzy_resolve_tool(name: str, tool_names) -> str | None:
 
     def toks(s: str) -> set:
         out = set()
-        for t in _re.split(r"[^a-z0-9]+", s):
+        for t in re.split(r"[^a-z0-9]+", s):
             if not t or t in _GENERIC_TOOL_TOKENS:
                 continue
             out.add(t[:-1] if len(t) > 3 and t.endswith("s") else t)  # singularize: colors→color
@@ -139,7 +138,7 @@ def fuzzy_resolve_tool(name: str, tool_names) -> str | None:
         return best
     # 2) Close-match on the full string (typos / suffix swaps) at a strict cutoff so
     # near-misses like generate_colors→generate_logo don't slip through.
-    m = _dl.get_close_matches(n, list(low), n=1, cutoff=0.7)
+    m = difflib.get_close_matches(n, list(low), n=1, cutoff=0.7)
     return low[m[0]] if m else None
 
 
