@@ -16,8 +16,8 @@ const WORDS = [
   "안녕하세요!",   // Korean
 ];
 
-// Progressive acceleration: slow → fast (min 220ms so words render fully)
-const HOLDS = [1100, 850, 650, 480, 350, 280, 240, 220, 220];
+// Progressive acceleration: slow → fast (min 380ms so fast words are actually visible)
+const HOLDS = [1200, 920, 700, 530, 400, 380, 380, 380, 380];
 
 interface Props {
   children: React.ReactNode;

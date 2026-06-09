@@ -19,11 +19,11 @@ export default function WelcomeScreen() {
           to   { opacity: 1; transform: translateY(0);    filter: blur(0px); }
         }
         .ws-logo { opacity: 0; }
-        .ws-logo.go { animation: ws-up 0.7s cubic-bezier(0.22,1,0.36,1) 0.3s forwards; }
+        .ws-logo.go { animation: ws-up 0.65s cubic-bezier(0.22,1,0.36,1) 0.5s forwards; }
         .ws-h1  { opacity: 0; }
-        .ws-h1.go  { animation: ws-up 0.8s cubic-bezier(0.22,1,0.36,1) 0.45s forwards; }
+        .ws-h1.go  { animation: ws-up 0.75s cubic-bezier(0.22,1,0.36,1) 0.65s forwards; }
         .ws-cta { opacity: 0; }
-        .ws-cta.go { animation: ws-up 0.7s cubic-bezier(0.22,1,0.36,1) 0.62s forwards; }
+        .ws-cta.go { animation: ws-up 0.65s cubic-bezier(0.22,1,0.36,1) 0.82s forwards; }
         .ws-btn {
           padding: 13px 40px;
           font-size: 13px;
@@ -50,11 +50,12 @@ export default function WelcomeScreen() {
           alignItems: "center",
           justifyContent: "center",
           overflow: "hidden",
-          background: "#001aff",
+          /* CSS gradient fallback so no solid-blue flash before shader paints */
+          background: "radial-gradient(ellipse at 30% 40%, #002EFF 0%, #004FCC 40%, #7CFFC6 75%, #FEFFF6 100%)",
           clipPath: "circle(0% at 50% 50%)",
         }}
         animate={animate ? { clipPath: "circle(150% at 50% 50%)" } : {}}
-        transition={{ duration: 0.9, ease: [0.76, 0, 0.24, 1] }}
+        transition={{ duration: 1.0, ease: [0.65, 0, 0.35, 1], delay: 0.25 }}
       >
         <AstraGradient />
 
