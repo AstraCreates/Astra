@@ -326,6 +326,35 @@ def _vercel_root_dir(local: str) -> str:
     return ""
 
 
+def _node_app_dir(local: str) -> Path | None:
+    """Return the most likely Node/Next app directory for deterministic checks."""
+    root = Path(local)
+    for sub in ("frontend", "", "web", "app", "client"):
+        p = root / sub / "package.json" if sub else root / "package.json"
+        if p.exists():
+            return p.parent
+    return None
+
+
+def _npm_build_passes(local: str, timeout: int = 300) -> tuple[bool, str]:
+    """Run the local production build once. This is cheaper than asking an LLM to
+    inspect the build, and lets us skip recovery passes when everything is already OK."""
+    app_dir = _node_app_dir(local)
+    if app_dir is None:
+        return True, "No package.json found; skipping npm build check."
+    cmd = ["bash", "-lc", "npm install --legacy-peer-deps --prefer-offline --no-audit --no-fund && npm run build"]
+    env = _apply_npm_cache_env(os.environ.copy())
+    try:
+        r = subprocess.run(cmd, cwd=str(app_dir), capture_output=True, text=True, timeout=timeout, env=env)
+        out = "\n".join(part for part in (r.stdout, r.stderr) if part)
+        return r.returncode == 0, out[-4000:]
+    except subprocess.TimeoutExpired as e:
+        out = "\n".join(part for part in (e.stdout, e.stderr) if isinstance(part, str))
+        return False, (out or f"npm build timed out after {timeout}s")[-4000:]
+    except Exception as e:
+        return False, str(e)
+
+
 def _flatten_nested_repos(local: str) -> None:
     """Strip nested .git from scaffolded subprojects so they're tracked as normal
     files. Tools like create-next-app run their own `git init`, which turns the
@@ -829,6 +858,10 @@ files may live at the repo root (e.g. a root-level Next.js app) or in subfolders
 4. Find any file that is empty, contains only TODO/placeholder text, or has fewer than 5 lines of real code — rewrite it properly.
 5. Ensure every import references a file/module that actually exists in this project.
 
+Verify with `npx tsc --noEmit` / `npm run build` ONLY — do NOT start a dev server
+(`next dev`/`next start`) or curl endpoints. The sandbox blocks `sleep`, lacks `lsof`,
+and rate limiters trip your own requests; it wastes rounds. A clean build is the bar.
+
 Fix everything you find, then run: `git add -A && git commit -m "fix: verification pass"`.
 If everything is already correct, just say OK."""
 
@@ -845,7 +878,12 @@ _BUILD_CHECK_PROMPT = """Run the Next.js production build and fix every error un
    - `Cannot find module` → fix the import path or create the missing file
    - Outdated Next.js 14 API → update to Next.js 15 App Router pattern
 5. After fixing, run npm run build again. Repeat until it passes.
-6. Commit: `git add -A && git commit -m "fix: build errors resolved"`"""
+6. Commit: `git add -A && git commit -m "fix: build errors resolved"`
+
+VERIFY WITH `npm run build` ONLY. Do NOT start a dev/prod server (`next dev`/`next start`)
+and curl-test routes: this sandbox blocks `sleep`, has no `lsof`, and the app's own rate
+limiter will trip your test requests — it wastes rounds and proves nothing. A passing
+`npm run build` (and `npx tsc --noEmit`) is the bar. The live preview is started separately."""
 
 
 def _openclaude_test_pass(local: str, oc_session_id: str) -> str:
@@ -1325,15 +1363,21 @@ def run_mvp_loop(
               "product is complete and matches the plan; do not stop after one file or build only a landing page.\n"
               "HONESTY: do NOT fabricate testimonials, customer quotes/names/photos, company logos, user "
               "counts, ratings, revenue, or press mentions — a new product has no customers yet. Use honest "
-              "copy and neutral placeholders (no invented specifics) instead of fake social proof."
+              "copy and neutral placeholders (no invented specifics) instead of fake social proof.\n"
+              "VERIFY with `npm run build` / `npx tsc --noEmit` ONLY — do NOT run `next dev`/`next start` and "
+              "curl-test routes: the sandbox blocks `sleep`, has no `lsof`, and rate limiters trip your own "
+              "requests. A clean build is the bar; the live preview is started separately."
         )
         logger.info("Pass 1: holistic MVP build (%d target files, plan=%s)", len(required_files), bool(build_plan))
         _phase("Pass 1/4 — building the full product" + (" from plan" if build_plan else ""))
         _run_claude(local, build_prompt, session_id=build_sid, timeout=1800,
                     founder_id=founder_id, app_session_id=session_id, agent=agent)
 
-        # Completion loop: keep going until required files exist (up to 3 rounds).
-        for _round in range(3):
+        # Completion loop: keep going until required files exist. Default is one
+        # follow-up; extra rounds are configurable because each round is an
+        # expensive autonomous coding pass.
+        completion_rounds = max(0, int(getattr(settings, "mvp_max_completion_rounds", 1) or 1))
+        for _round in range(completion_rounds):
             _stage_all(local)
             missing = _missing_mvp_files(local, required_files)
             if not missing:
@@ -1364,44 +1408,56 @@ def run_mvp_loop(
         else:
             _stage_all(local)
 
-        # Pass 2: openclaude self-test + fix (fresh session, reads actual files on disk)
-        fix_session = str(uuid.uuid4())
-        logger.info("Pass 2: openclaude fix pass")
-        _phase("Pass 2/4 — self-test & fix")
-        _run_claude(local, _OC_TEST_PROMPT, session_id=None, timeout=600, founder_id=founder_id, app_session_id=session_id, agent=agent)
-        _sanitize_package_json(local)
-        if is_github:
-            sha2 = _commit_and_push(local, f"fix: verification pass — {goal[:45]}")
-            if sha2:
-                commits.append(sha2)
-        else:
-            _stage_all(local)
-
-        # Deterministically fix the Tailwind toolchain so the site actually has styles
-        # (LLM scaffolds frequently install Tailwind v4 against v3 CSS → blank styling).
+        # Deterministic fixes/checks come before any recovery LLM. If the app
+        # already builds, skip the costly self-test/build-heal/review passes by default.
         _ensure_tailwind_setup(local)
-        # Deterministic codemods for the most common build-breakers so openclaude's heal
-        # pass isn't flailing on them (and can't be derailed by a bad batch-sed).
         _build_doctor(local)
-
-        # Pass 2b: build-error self-healing — run `npm run build`, fix any errors, repeat
-        logger.info("Pass 2b: build-error self-healing pass")
-        _phase("Pass 3/4 — build-error self-healing (npm run build)")
-        _run_claude(local, _BUILD_CHECK_PROMPT, session_id=None, timeout=900, founder_id=founder_id, app_session_id=session_id, agent=agent)
         _sanitize_package_json(local)
-        if is_github:
-            sha2b = _commit_and_push(local, f"fix: build errors — {goal[:45]}")
-            if sha2b:
-                commits.append(sha2b)
-        else:
-            _stage_all(local)
+        _phase("Pass 2/4 — deterministic build check")
+        build_ok, build_output = _npm_build_passes(local)
+        _phase("Build check: passed" if build_ok else "Build check: failed — starting recovery",
+               build_output=build_output[-1200:])
 
-        # Pass 3: planner review → fix any remaining issues
+        deep_heal = bool(getattr(settings, "mvp_deep_heal_on_success", False))
+        if (not build_ok) or deep_heal:
+            # Pass 2: openclaude self-test + fix (fresh session, reads actual files on disk)
+            logger.info("Pass 2: openclaude fix pass")
+            _phase("Pass 2/4 — self-test & fix")
+            _run_claude(local, _OC_TEST_PROMPT, session_id=None, timeout=600, founder_id=founder_id, app_session_id=session_id, agent=agent)
+            _sanitize_package_json(local)
+            if is_github:
+                sha2 = _commit_and_push(local, f"fix: verification pass — {goal[:45]}")
+                if sha2:
+                    commits.append(sha2)
+            else:
+                _stage_all(local)
+
+            # Re-apply deterministic fixes so the LLM can't undo the known-good toolchain.
+            _ensure_tailwind_setup(local)
+            _build_doctor(local)
+
+            # Pass 2b: build-error self-healing — run `npm run build`, fix any errors, repeat
+            logger.info("Pass 2b: build-error self-healing pass")
+            _phase("Pass 3/4 — build-error self-healing (npm run build)")
+            _run_claude(local, _BUILD_CHECK_PROMPT, session_id=None, timeout=900, founder_id=founder_id, app_session_id=session_id, agent=agent)
+            _sanitize_package_json(local)
+            if is_github:
+                sha2b = _commit_and_push(local, f"fix: build errors — {goal[:45]}")
+                if sha2b:
+                    commits.append(sha2b)
+            else:
+                _stage_all(local)
+
+        # Pass 3: planner review → fix any remaining issues. Skip it when the
+        # deterministic build passed and deep healing is disabled.
         current_files = _staged_files(local)
-        _phase("Pass 4/4 — planner review")
-        review = _planner_review(local, goal, current_files)
+        review = {"pass": True, "issues": [], "fix_instructions": ""}
+        if (not build_ok) or deep_heal:
+            _phase("Pass 4/4 — planner review")
+            review = _planner_review(local, goal, current_files)
         logger.info("Planner review: pass=%s issues=%s", review["pass"], review["issues"])
-        _phase(f"Review: {'passed' if review['pass'] else 'needs fixes'} — {len(review.get('issues') or [])} issue(s)")
+        if (not build_ok) or deep_heal:
+            _phase(f"Review: {'passed' if review['pass'] else 'needs fixes'} — {len(review.get('issues') or [])} issue(s)")
         if not review["pass"] and review["fix_instructions"]:
             _run_claude(local, review["fix_instructions"], session_id=None, timeout=600, founder_id=founder_id, app_session_id=session_id, agent=agent)
             _sanitize_package_json(local)
