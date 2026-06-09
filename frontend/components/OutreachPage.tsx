@@ -187,21 +187,28 @@ function StatBadge({ label, value, color }: { label: string; value: string | num
 
 // ── Campaign card ──────────────────────────────────────────────────────────────
 
-function CampaignCard({ campaign, stats, onClick }: {
-  campaign: Campaign; stats?: CampaignStats; onClick: () => void;
+function CampaignCard({ campaign, stats, onClick, onDelete }: {
+  campaign: Campaign; stats?: CampaignStats; onClick: () => void; onDelete: () => void;
 }) {
   const audience = campaign.target_audience;
   const hasAudience = audience && (audience.titles || audience.industries || audience.locations);
   return (
     <div onClick={onClick} className="sc" style={{ cursor: "pointer" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-        <div>
+        <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>{campaign.name}</div>
           <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 2 }}>{campaign.from_email || "no sender"}</div>
         </div>
-        <span className={statusPillClass(campaign.status)} style={{ flexShrink: 0, marginLeft: 8 }}>
-          {campaign.status}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 8 }}>
+          <span className={statusPillClass(campaign.status)}>{campaign.status}</span>
+          <button
+            onClick={e => { e.stopPropagation(); onDelete(); }}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--fm)", fontSize: 13, lineHeight: 1, padding: "2px 4px", display: "flex", alignItems: "center" }}
+            title="Delete campaign"
+          >
+            ✕
+          </button>
+        </div>
       </div>
       {hasAudience && (
         <div style={{ fontSize: 11, color: "var(--fm)", marginBottom: 8 }}>
@@ -624,6 +631,18 @@ export default function OutreachPage() {
     finally { setSendingBatch(false); }
   };
 
+  const deleteCampaign = async (campaignId: string, campaignName: string) => {
+    if (!confirm(`Delete "${campaignName}"? This cannot be undone.`)) return;
+    try {
+      await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${campaignId}`, { method: "DELETE" });
+      if (activeCampaign?.id === campaignId) {
+        setView("campaigns");
+        setActiveCampaign(null);
+      }
+      await loadCampaigns();
+    } catch (e) { alert("Delete failed: " + (e instanceof Error ? e.message : e)); }
+  };
+
   const updateCampaignStatus = async (status: string) => {
     if (!activeCampaign) return;
     await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${activeCampaign.id}`, {
@@ -686,7 +705,7 @@ export default function OutreachPage() {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 10 }}>
           {campaigns.map(c => (
-            <CampaignCard key={c.id} campaign={c} stats={campaignStats[c.id]} onClick={() => enterCampaign(c)} />
+            <CampaignCard key={c.id} campaign={c} stats={campaignStats[c.id]} onClick={() => enterCampaign(c)} onDelete={() => deleteCampaign(c.id, c.name)} />
           ))}
         </div>
       )}
@@ -795,12 +814,17 @@ export default function OutreachPage() {
 
       {/* Detail header */}
       <div>
-        <button
-          onClick={() => { setView("campaigns"); setActiveCampaign(null); loadCampaigns(); }}
-          style={{ background: "none", border: "none", color: "var(--fm)", cursor: "pointer", fontSize: 12, padding: 0, marginBottom: 10, fontFamily: "var(--font-ibm-mono), monospace" }}
-        >
-          ← All campaigns
-        </button>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <button
+            onClick={() => { setView("campaigns"); setActiveCampaign(null); loadCampaigns(); }}
+            style={{ background: "none", border: "none", color: "var(--fm)", cursor: "pointer", fontSize: 12, padding: 0, fontFamily: "var(--font-ibm-mono), monospace" }}
+          >
+            ← All campaigns
+          </button>
+          <Btn variant="danger" onClick={() => deleteCampaign(activeCampaign.id, activeCampaign.name)}>
+            Delete campaign
+          </Btn>
+        </div>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

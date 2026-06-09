@@ -3327,6 +3327,14 @@ async def update_campaign(founder_id: str, campaign_id: str, body: dict, request
     return result.data[0] if result.data else {}
 
 
+@router.delete("/outreach/campaigns/{founder_id}/{campaign_id}")
+async def delete_campaign(founder_id: str, campaign_id: str, request: Request):
+    require_founder_access(request, founder_id, min_role="operator")
+    db = get_outreach_db()
+    db.table("outreach_campaigns").delete().eq("id", campaign_id).eq("founder_id", founder_id).execute()
+    return {"deleted": campaign_id}
+
+
 @router.post("/outreach/campaigns/{founder_id}/{campaign_id}/contacts")
 async def add_contacts_to_campaign(founder_id: str, campaign_id: str, body: dict, request: Request):
     """Enroll contacts from a list (or explicit IDs) into a campaign."""
