@@ -871,6 +871,43 @@ MVP_REQUIRED = [
 ]
 
 
+def _build_doctor(local: str) -> None:
+    """Deterministic fixes for the most common LLM build-breakers, applied per-file so
+    a bad batch command can't leave them half-fixed (the openclaude heal pass kept
+    failing on these). Currently: Supabase's server createClient() is ASYNC — every
+    `const x = createClient()` in a file that imports it from a `.../server` module
+    must be `await createClient()` (and its enclosing fn made async)."""
+    import re as _re
+    root = Path(local)
+    changed = 0
+    for p in list(root.rglob("*.ts")) + list(root.rglob("*.tsx")):
+        try:
+            if any(part in ("node_modules", ".next", ".git") for part in p.parts):
+                continue
+            text = p.read_text(errors="replace")
+        except Exception:
+            continue
+        if "createClient" not in text:
+            continue
+        # Only the SERVER supabase client is async (import from a path containing "server").
+        if not _re.search(r"import\s*\{[^}]*\bcreateClient\b[^}]*\}\s*from\s*['\"][^'\"]*server[^'\"]*['\"]", text):
+            continue
+        new = _re.sub(r"(=\s*)createClient\(\)", r"\1await createClient()", text)
+        if new == text:
+            continue
+        # Make the enclosing default export async if it isn't (server components/pages).
+        new = _re.sub(r"export default function (\w+)", r"export default async function \1", new)
+        new = _re.sub(r"export async function (GET|POST|PUT|PATCH|DELETE)\b", r"export async function \1", new)
+        new = _re.sub(r"export function (GET|POST|PUT|PATCH|DELETE)\b", r"export async function \1", new)
+        try:
+            p.write_text(new)
+            changed += 1
+        except Exception:
+            pass
+    if changed:
+        logger.info("build_doctor: awaited async supabase createClient in %d file(s)", changed)
+
+
 def _ensure_tailwind_setup(repo_dir: str) -> None:
     """Deterministically fix Tailwind so styles actually compile, no matter what the
     LLM scaffolded. The common failure (blank/unstyled site) is Tailwind v4 installed
@@ -1343,6 +1380,9 @@ def run_mvp_loop(
         # Deterministically fix the Tailwind toolchain so the site actually has styles
         # (LLM scaffolds frequently install Tailwind v4 against v3 CSS → blank styling).
         _ensure_tailwind_setup(local)
+        # Deterministic codemods for the most common build-breakers so openclaude's heal
+        # pass isn't flailing on them (and can't be derailed by a bad batch-sed).
+        _build_doctor(local)
 
         # Pass 2b: build-error self-healing — run `npm run build`, fix any errors, repeat
         logger.info("Pass 2b: build-error self-healing pass")
