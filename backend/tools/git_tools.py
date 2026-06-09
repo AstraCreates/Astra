@@ -345,20 +345,33 @@ def _npm_build_passes(local: str, timeout: int = 900) -> tuple[bool | None, str]
     if app_dir is None:
         return None, "No package.json found — no Node app was produced."
     cache = os.environ.get("ASTRA_NPM_CACHE", "/data/npm-cache")
-    inner = (f"cd {str(app_dir)!r} && npm install --legacy-peer-deps --prefer-offline "
-             "--no-audit --no-fund && npm run build")
     env = _apply_npm_cache_env(os.environ.copy())
-    if os.getuid() == 0:
-        cmd = ["sudo", "-u", "astra", "env", f"npm_config_cache={cache}",
-               "npm_config_prefer_offline=true", "HOME=/home/astra", "bash", "-lc", inner]
-    else:
-        cmd = ["bash", "-lc", inner]
+    install = "npm install --legacy-peer-deps --prefer-offline --no-audit --no-fund"
+
+    def _run(shell: str, t: int):
+        inner = f"cd {str(app_dir)!r} && {shell}"
+        if os.getuid() == 0:
+            c = ["sudo", "-u", "astra", "env", f"npm_config_cache={cache}",
+                 "npm_config_prefer_offline=true", "HOME=/home/astra", "bash", "-lc", inner]
+        else:
+            c = ["bash", "-lc", inner]
+        r = subprocess.run(c, capture_output=True, text=True, timeout=t, env=env)
+        return r.returncode, "\n".join(p for p in (r.stdout, r.stderr) if p)
+
+    # Speed: deps are installed once (by the build pass / a prior check). When
+    # node_modules already exists, run ONLY `npm run build` — skip the redundant
+    # re-install that was eating minutes on every recovery round. If the build then
+    # fails on a missing module (a dep was added), install once and rebuild.
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
-        out = "\n".join(part for part in (r.stdout, r.stderr) if part)
-        return r.returncode == 0, out[-4000:]
+        if (app_dir / "node_modules").is_dir():
+            rc, out = _run("npm run build", timeout)
+            if rc != 0 and re.search(r"Cannot find module|Module not found|Can't resolve|ERR_MODULE_NOT_FOUND", out):
+                rc, out = _run(f"{install} && npm run build", timeout)
+        else:
+            rc, out = _run(f"{install} && npm run build", timeout)
+        return rc == 0, out[-4000:]
     except subprocess.TimeoutExpired as e:
-        out = "\n".join(part for part in (e.stdout, e.stderr) if isinstance(part, str))
+        out = "\n".join(p for p in (e.stdout, e.stderr) if isinstance(p, str))
         return False, (out or f"npm build timed out after {timeout}s")[-4000:]
     except Exception as e:
         return False, str(e)
