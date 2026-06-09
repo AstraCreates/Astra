@@ -234,6 +234,115 @@ def _size_label(n: int | None) -> str:
 
 # ── Org search (free plan fallback) ───────────────────────────────────────────
 
+_STARTUP_SIGNALS = {"founder", "cofounder", "startup", "saas", "b2b", "software", "tech", "ceo", "cto", "entrepreneur"}
+
+
+def _yc_search(
+    keywords: list[str] | None = None,
+    industries: list[str] | None = None,
+    locations: list[str] | None = None,
+    limit: int = 25,
+) -> list[dict]:
+    """
+    Query the public YC companies API. Returns real B2B/SaaS startups with
+    company names, websites, descriptions. Far more relevant than Apollo orgs
+    for 'SaaS founders / startup founders' type queries.
+    """
+    try:
+        r = requests.get(
+            "https://yc-oss.github.io/api/companies/all.json",
+            timeout=15,
+        )
+        r.raise_for_status()
+        companies = r.json()
+    except Exception as e:
+        logger.warning("[YC] fetch failed: %s", e)
+        return []
+
+    all_lower = " ".join((keywords or []) + (industries or [])).lower()
+
+    # Build tag/keyword filter from user query
+    search_tags: set[str] = set()
+    _TAG_MAP = {
+        "saas": {"B2B", "SaaS"},
+        "b2b": {"B2B"},
+        "software": {"B2B", "SaaS", "Developer Tools"},
+        "developer": {"Developer Tools"},
+        "fintech": {"Fintech"},
+        "healthtech": {"Healthcare"},
+        "health": {"Healthcare"},
+        "ecommerce": {"E-Commerce"},
+        "marketplace": {"Marketplace"},
+        "ai": {"Artificial Intelligence", "Machine Learning"},
+        "machine learning": {"Machine Learning"},
+        "crypto": {"Crypto / Web3"},
+        "hr": {"HR Tech"},
+        "edtech": {"EdTech"},
+        "education": {"EdTech"},
+        "security": {"Security"},
+        "climate": {"Climate"},
+        "logistics": {"Supply Chain & Logistics"},
+        "real estate": {"Real Estate"},
+    }
+    for kw, tags in _TAG_MAP.items():
+        if kw in all_lower:
+            search_tags |= tags
+
+    # US filter — YC location is freeform text
+    us_filter = any(loc.lower() in ("united states", "us", "usa") for loc in (locations or []))
+
+    results = []
+    for co in companies:
+        tags = set(co.get("tags") or [])
+
+        # Tag filter: if we have specific tags, company must match at least one
+        if search_tags and not (tags & search_tags):
+            continue
+
+        # Location: YC batch location isn't always US; filter only if location was specified
+        if us_filter:
+            loc_str = (co.get("city") or "") + " " + (co.get("country") or "")
+            if loc_str.strip() and "United States" not in loc_str and "US" not in loc_str:
+                # Many YC companies don't have location — keep them (US is YC default)
+                if co.get("country") and co.get("country") not in ("", "US", "United States"):
+                    continue
+
+        name = (co.get("name") or "").strip()
+        website = (co.get("website") or "").strip().rstrip("/")
+        domain = website.replace("https://", "").replace("http://", "").split("/")[0] if website else ""
+        description = (co.get("one_liner") or co.get("long_description") or "").strip()
+        industry = ", ".join(list(tags)[:3]) if tags else "startup"
+        batch = co.get("batch") or ""
+
+        results.append({
+            "apollo_id": f"_yc_{co.get('id', name)}",
+            "first_name": name,
+            "last_name": "",
+            "title": f"YC {batch}" if batch else "YC-backed startup",
+            "company_name": name,
+            "has_email": False,
+            "has_phone": False,
+            "city": co.get("city", ""),
+            "state": "",
+            "country": co.get("country", "United States"),
+            "email": "",
+            "email_status": "unknown",
+            "linkedin_url": "",
+            "enriched": False,
+            "company_industry": industry,
+            "company_size": "",
+            "company_website": domain,
+            "company_description": description[:200] if description else f"{name} — {industry}",
+            "company_funding": "YC-backed",
+            "is_org": True,
+        })
+
+        if len(results) >= limit:
+            break
+
+    return results
+
+
 def _search_orgs_as_contacts(
     locations: list[str] | None = None,
     industries: list[str] | None = None,
@@ -244,30 +353,35 @@ def _search_orgs_as_contacts(
 ) -> dict:
     """
     When people search is blocked (free plan), return organizations instead.
-    Each org is shaped as a contact so the existing UI works unchanged.
+    For SaaS/startup queries uses the YC companies API (higher quality).
+    For other industries falls back to Apollo organization search.
     Upgrade Apollo plan to get real person-level results.
     """
-    _FOUNDER_SIGNALS = {"founder", "cofounder", "co-founder", "startup", "ceo", "cto", "owner", "entrepreneur"}
-    _SAAS_SIGNALS    = {"saas", "software", "tech", "b2b", "platform", "api", "developer", "cloud"}
-    _PERSON_WORDS    = {"founder", "ceo", "cto", "coo", "vp", "director", "manager", "owner", "president"}
+    _PERSON_WORDS = {"founder", "ceo", "cto", "coo", "vp", "director", "manager", "owner", "president"}
 
     all_lower = " ".join(k.lower() for k in (keywords or []) + (industries or []))
-    fetch_size = min(per_page, 25)   # 25 orgs — quality over quantity
-    body: dict[str, Any] = {"per_page": fetch_size, "page": page}
+    fetch_size = min(per_page, 25)
 
+    # Use YC data for startup/SaaS queries — far better quality than Apollo orgs
+    if any(s in all_lower for s in _STARTUP_SIGNALS):
+        yc = _yc_search(keywords=keywords, industries=industries, locations=locations, limit=fetch_size)
+        if yc:
+            return {
+                "contacts": yc,
+                "total": len(yc),
+                "page": page,
+                "per_page": fetch_size,
+                "has_more": False,
+                "source": "yc",
+            }
+
+    # Non-startup query → Apollo org search
+    body: dict[str, Any] = {"per_page": fetch_size, "page": page}
     if locations:
         body["organization_locations"] = locations
-
-    # Size filter: use explicit or infer from keywords
     if company_sizes:
         body["organization_num_employees_ranges"] = company_sizes
-    elif any(s in all_lower for s in _FOUNDER_SIGNALS):
-        body["organization_num_employees_ranges"] = ["1,10", "11,50", "51,200"]
-
-    # Keywords: strip person-role words (meaningless for org search), keep industry terms
     kw_parts = [k for k in (industries or []) + (keywords or []) if k.lower() not in _PERSON_WORDS]
-    if not kw_parts and any(s in all_lower for s in _SAAS_SIGNALS):
-        kw_parts = ["SaaS", "software"]
     if kw_parts:
         body["q_keywords"] = " ".join(dict.fromkeys(kw_parts))
 
@@ -314,10 +428,10 @@ def _search_orgs_as_contacts(
 
     return {
         "contacts": contacts,
-        "total": total,
+        "total": len(contacts),   # show actual count, not Apollo's misleading 32M estimate
         "page": page,
         "per_page": per_page,
-        "has_more": total > page * per_page,
+        "has_more": False,
         "source": "apollo_orgs",
     }
 

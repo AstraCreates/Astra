@@ -996,20 +996,23 @@ export default function OutreachPage() {
 
           {!apolloSearching && apolloResults.length > 0 && (
             <>
-              {apolloSource === "apollo_orgs" && (
+              {(apolloSource === "apollo_orgs" || apolloSource === "yc") && (
                 <div style={{
                   ...card({ padding: "10px 14px" }),
-                  borderLeft: "3px solid var(--amber, #f59e0b)",
-                  background: "rgba(245,158,11,0.06)",
+                  borderLeft: `3px solid ${apolloSource === "yc" ? "var(--green)" : "var(--amber, #f59e0b)"}`,
+                  background: apolloSource === "yc" ? "rgba(34,197,94,0.06)" : "rgba(245,158,11,0.06)",
                   fontSize: 12, color: "var(--fg)",
                   display: "flex", alignItems: "center", gap: 8,
                 }}>
-                  <span style={{ fontWeight: 700, color: "var(--amber, #f59e0b)" }}>⚠ Showing companies</span>
-                  — people search requires an upgraded Apollo plan. Upgrade to get individual contacts with emails.
+                  {apolloSource === "yc" ? (
+                    <><span style={{ fontWeight: 700, color: "var(--green)" }}>YC-backed startups</span> — showing real companies from Y Combinator. Upgrade Apollo plan to search individual contacts.</>
+                  ) : (
+                    <><span style={{ fontWeight: 700, color: "var(--amber, #f59e0b)" }}>⚠ Showing companies</span> — people search requires an upgraded Apollo plan. Upgrade to get individual contacts with emails.</>
+                  )}
                 </div>
               )}
               <div style={{ fontSize: 13, color: "var(--fm)" }}>
-                {apolloSource === "apollo_orgs"
+                {apolloSource === "apollo_orgs" || apolloSource === "yc"
                   ? `${apolloResults.length} companies shown`
                   : `${apolloTotal.toLocaleString()} contacts found`}
                 {selectedContacts.size === 0 && apolloSource !== "apollo_orgs" && (
