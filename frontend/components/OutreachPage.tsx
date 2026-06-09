@@ -439,7 +439,12 @@ export default function OutreachPage() {
       const res = await apiFetch(`${BASE}/outreach/search/people?${params}`);
       const data = await res.json();
       if (data.error) { setApolloError(JSON.stringify(data.error)); return; }
-      setApolloResults(data.contacts || []);
+      // Ensure every contact has a unique stable ID regardless of source
+      const contacts = (data.contacts || []).map((c: ApolloContact, idx: number) => ({
+        ...c,
+        apollo_id: c.apollo_id || `_local_${idx}_${(c.first_name || "").replace(/\s/g, "")}_${(c.company_name || "").replace(/\s/g, "")}`,
+      }));
+      setApolloResults(contacts);
       setApolloTotal(data.total || 0);
     } catch (e) {
       setApolloError(e instanceof Error ? e.message : "Search failed");
@@ -480,7 +485,10 @@ export default function OutreachPage() {
     setEnrolling(true);
     setEnrollResult(null);
     try {
-      const toEnrich = apolloResults.filter(c => selectedContacts.has(c.apollo_id)).slice(0, MAX_CONFIRM);
+      const toEnrich = apolloResults
+        .filter(c => selectedContacts.has(c.apollo_id))
+        .slice(0, MAX_CONFIRM)
+        .map(c => ({ ...c, apollo_id: c.apollo_id.startsWith("_local_") ? "" : c.apollo_id }));
       const enrichRes = await apiFetch(`${BASE}/outreach/enrich/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -881,20 +889,10 @@ export default function OutreachPage() {
           {!apolloSearching && apolloResults.length > 0 && (
             <>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                <div>
-                  <span style={{ fontSize: 13, color: "var(--fm)" }}>
-                    {apolloTotal.toLocaleString()} contacts found
-                  </span>
-                  <span style={{ fontSize: 11, color: "var(--fm)", marginLeft: 6 }}>
-                    · free search, no credits used · {selectedContacts.size}/{MAX_CONFIRM} selected
-                  </span>
-                </div>
+                <span style={{ fontSize: 13, color: "var(--fm)" }}>
+                  {apolloTotal.toLocaleString()} contacts found · {selectedContacts.size}/{MAX_CONFIRM} selected
+                </span>
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  {selectedContacts.size > 0 && (
-                    <span style={{ fontSize: 11, color: "var(--amber)" }}>
-                      {selectedContacts.size} credit{selectedContacts.size !== 1 ? "s" : ""} to reveal emails
-                    </span>
-                  )}
                   <Btn
                     variant={selectedContacts.size > 0 ? "green" : "ghost"}
                     disabled={enrolling || selectedContacts.size === 0}
