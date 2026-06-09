@@ -2083,7 +2083,7 @@ function AgentDetail({
 
       {/* Progress bar */}
       <div style={{ height: 3, borderRadius: 999, background: "rgba(0,0,0,0.08)", overflow: "hidden" }}>
-        <div style={{ height: "100%", borderRadius: 999, width: `${p}%`, background: isDone ? "#3D9E5F" : "#002EFF", transition: "width 0.6s" }} />
+        <div style={{ height: "100%", borderRadius: 999, width: "100%", transform: `scaleX(${p / 100})`, transformOrigin: "left", background: isDone ? "#3D9E5F" : "#002EFF", transition: "transform 0.6s cubic-bezier(0.22,1,0.36,1)" }} />
       </div>
 
       {/* Current action pill */}
@@ -2521,8 +2521,9 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
         {/* Progress bar */}
         <div style={{ height: 3, background: "var(--line-2)" }}>
           <div style={{
-            height: "100%", borderRadius: 999, transition: "width 0.6s",
-            width: `${phase === "done" ? 100 : stepPercent}%`,
+            height: "100%", borderRadius: 999, width: "100%",
+            transform: `scaleX(${(phase === "done" ? 100 : stepPercent) / 100})`, transformOrigin: "left",
+            transition: "transform 0.6s cubic-bezier(0.22,1,0.36,1)",
             background: phase === "done" ? "linear-gradient(90deg,#4ade80,#22d3ee)" : "linear-gradient(90deg,#60a5fa,#a78bfa)",
           }} />
         </div>
@@ -3814,7 +3815,7 @@ function LaunchChecklist({ sessionId, done, operating, agents, agentList, select
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 80, height: 4, borderRadius: 999, background: "var(--line-2)", overflow: "hidden" }}>
-            <div style={{ height: "100%", borderRadius: 999, transition: "width 0.5s", width: `${Math.round(((totalDone + runDone) / (total + runItems.length)) * 100)}%`, background: allDone ? "#3D9E5F" : "#002EFF" }} />
+            <div style={{ height: "100%", borderRadius: 999, width: "100%", transform: `scaleX(${Math.round(((totalDone + runDone) / (total + runItems.length)) * 100) / 100})`, transformOrigin: "left", background: allDone ? "#3D9E5F" : "#002EFF", transition: "transform 0.5s cubic-bezier(0.22,1,0.36,1)" }} />
           </div>
           <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{Math.round(((totalDone + runDone) / (total + runItems.length)) * 100)}%</span>
           <span style={{ fontSize: 10, color: "var(--fg-mute)" }}>{listOpen ? "▲" : "▼"}</span>
@@ -3858,7 +3859,7 @@ function LaunchChecklist({ sessionId, done, operating, agents, agentList, select
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <div style={{ width: 40, height: 3, borderRadius: 999, background: "var(--line-2)", overflow: "hidden" }}>
-                      <div style={{ height: "100%", borderRadius: 999, width: `${Math.round((catDone / cat.items.length) * 100)}%`, background: catAllDone ? "#3D9E5F" : "#002EFF", transition: "width 0.4s" }} />
+                      <div style={{ height: "100%", borderRadius: 999, width: "100%", transform: `scaleX(${Math.round((catDone / cat.items.length) * 100) / 100})`, transformOrigin: "left", background: catAllDone ? "#3D9E5F" : "#002EFF", transition: "transform 0.4s cubic-bezier(0.22,1,0.36,1)" }} />
                     </div>
                     <span style={{ fontSize: 9, color: "var(--fg-mute)" }}>{catOpen ? "▲" : "▼"}</span>
                   </div>
@@ -4231,7 +4232,7 @@ function PlanTreeNode({
           {node.estimated_time && <span style={{ fontSize: 10, color: "var(--fg-mute)", flexShrink: 0 }}>{node.estimated_time}</span>}
           {/* Progress bar */}
           <div style={{ width: 60, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.08)", flexShrink: 0, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${node.steps.length ? (completedSteps / node.steps.length) * 100 : 0}%`, background: statusColor, borderRadius: 2, transition: "width 0.4s" }} />
+            <div style={{ height: "100%", width: "100%", transform: `scaleX(${node.steps.length ? completedSteps / node.steps.length : 0})`, transformOrigin: "left", background: statusColor, borderRadius: 2, transition: "transform 0.4s cubic-bezier(0.22,1,0.36,1)" }} />
           </div>
           <span style={{ fontSize: 12, color: "var(--fg-mute)", flexShrink: 0 }}>{expanded ? "▾" : "▸"}</span>
         </div>
@@ -4344,7 +4345,7 @@ function PlanOverlay({
             {nodes.length > 0 && (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ width: 120, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-                  <div style={{ height: "100%", width: `${overallPct}%`, background: "#002EFF", borderRadius: 2, transition: "width 0.4s" }} />
+                  <div style={{ height: "100%", width: "100%", transform: `scaleX(${overallPct / 100})`, transformOrigin: "left", background: "#002EFF", borderRadius: 2, transition: "transform 0.4s cubic-bezier(0.22,1,0.36,1)" }} />
                 </div>
                 <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{doneCount}/{nodes.length} agents · {overallPct}%</span>
               </div>
@@ -5175,7 +5176,7 @@ export function GoalWorkspace({
         {total > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ flex: 1, height: 3, borderRadius: 999, background: "rgba(255,255,255,0.24)", overflow: "hidden" }}>
-              <div style={{ height: "100%", borderRadius: 999, transition: "width 0.7s", width: `${(doneCount / total) * 100}%`, background: "#FFFFFF" }} />
+              <div style={{ height: "100%", borderRadius: 999, width: "100%", transform: `scaleX(${doneCount / total})`, transformOrigin: "left", background: "#FFFFFF", transition: "transform 0.7s cubic-bezier(0.22,1,0.36,1)" }} />
             </div>
             <span style={{ fontSize: 11, color: "#FFFFFF", flexShrink: 0, fontFamily: "var(--font-jetbrains-mono)" }}>{doneCount}/{total}</span>
           </div>
@@ -5292,7 +5293,7 @@ export function GoalWorkspace({
                   <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{total ? Math.round((doneCount / total) * 100) : 0}%</span>
                 </div>
                 <div style={{ height: 7, borderRadius: 999, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(176,180,186,0.10)", overflow: "hidden" }}>
-                  <div style={{ width: `${total ? (doneCount / total) * 100 : 0}%`, height: "100%", borderRadius: 999, background: done ? "#3D9E5F" : "#002EFF", transition: "width 0.4s ease" }} />
+                  <div style={{ width: "100%", height: "100%", borderRadius: 999, transform: `scaleX(${total ? doneCount / total : 0})`, transformOrigin: "left", background: done ? "#3D9E5F" : "#002EFF", transition: "transform 0.4s cubic-bezier(0.22,1,0.36,1)" }} />
                 </div>
               </div>
               {completionAudit && (
