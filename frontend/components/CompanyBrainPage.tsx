@@ -641,7 +641,7 @@ export default function CompanyBrainPage() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
 
       {/* ── page header ── */}
-      <div style={{ padding: "18px 24px 0", borderBottom: "1px solid var(--bd)", flexShrink: 0, background: "linear-gradient(100deg, rgba(0,46,255,0.06) 0%, rgba(124,255,198,0.07) 55%, var(--surface) 90%)" }}>
+      <div style={{ padding: "18px 24px 0", borderBottom: "1px solid var(--bd)", flexShrink: 0, background: "var(--surface)" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 14 }}>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 6px", color: "var(--fg)" }}>

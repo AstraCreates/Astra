@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
 import { useDevUser } from "@/lib/use-dev-user";
 import CreditsDisplay from "@/components/CreditsDisplay";
-import AstraGradient from "@/components/AstraGradient";
 
 const LINKS: { href: string; ic: string; label: string; match: (p: string) => boolean }[] = [
   { href: "/", ic: "⬡", label: "Dashboard", match: (p) => p === "/" },
@@ -34,20 +33,15 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
 
   return (
     <nav onClick={(e) => { if (mobile && (e.target as HTMLElement).closest("a")) closeOnNav?.(); }} style={navStyle}>
-      <div style={{ padding: "20px 16px 16px", borderBottom: "1px solid var(--bd)", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, opacity: 0.2, pointerEvents: "none" }}>
-          <AstraGradient />
-        </div>
-        <div style={{ position: "relative", zIndex: 1 }}>
-          <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, textDecoration: "none" }}>
-            <div style={{ width: 28, height: 28, background: "var(--blue)", flexShrink: 0, WebkitMask: "url('/logo.png') center/contain no-repeat", mask: "url('/logo.png') center/contain no-repeat" }} />
-            <div>
-              <div className="nav-wordmark">Astra</div>
-              <div style={{ fontSize: 9, color: "var(--blue)", letterSpacing: ".06em", textTransform: "uppercase" }}>ready</div>
-            </div>
-          </Link>
-          <Link data-tour="new-goal-btn" href="/?new=1" className="btn" style={{ display: "flex", justifyContent: "center", gap: 7, width: "100%", textDecoration: "none" }}>＋ New goal</Link>
-        </div>
+      <div style={{ padding: "20px 16px 16px", borderBottom: "1px solid var(--bd)" }}>
+        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, textDecoration: "none" }}>
+          <div style={{ width: 28, height: 28, background: "var(--blue)", flexShrink: 0, WebkitMask: "url('/logo.png') center/contain no-repeat", mask: "url('/logo.png') center/contain no-repeat" }} />
+          <div>
+            <div className="nav-wordmark">Astra</div>
+            <div style={{ fontSize: 9, color: "var(--blue)", letterSpacing: ".06em", textTransform: "uppercase" }}>ready</div>
+          </div>
+        </Link>
+        <Link data-tour="new-goal-btn" href="/?new=1" className="btn" style={{ display: "flex", justifyContent: "center", gap: 7, width: "100%", textDecoration: "none" }}>＋ New goal</Link>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "10px 8px", flex: 1, overflowY: "auto" }}>

@@ -588,7 +588,7 @@ export default function OutreachPage() {
     <div style={{ width: "100%", maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
       <style>{`@keyframes outreach-sweep{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "linear-gradient(100deg, rgba(0,46,255,0.06) 0%, rgba(124,255,198,0.07) 55%, transparent 90%)", border: "1px solid var(--bd)", padding: "16px 20px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: "var(--fg)" }}>Outreach</h1>
           <p style={{ fontSize: 13, color: "var(--fm)", margin: "4px 0 0" }}>

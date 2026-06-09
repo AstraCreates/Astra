@@ -134,7 +134,7 @@ export default function CreditsPage() {
         </div>
 
         {/* balance card */}
-        <div style={{ border: "1px solid var(--bd2)", background: "linear-gradient(135deg, rgba(0,46,255,0.07) 0%, rgba(124,255,198,0.09) 60%, rgba(254,255,246,0.5) 100%)", padding: "22px 24px" }}>
+        <div style={{ border: "1px solid var(--bd2)", background: "rgba(0,46,255,0.04)", padding: "22px 24px" }}>
           {isLow && (
             <div style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "#FEF2F2", border: "1px solid #FCA5A5", padding: "2px 10px", fontSize: 11, fontWeight: 600, color: "#DC2626", marginBottom: 12, letterSpacing: "0.04em" }}>
               ⚠ Low credits
