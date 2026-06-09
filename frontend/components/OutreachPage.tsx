@@ -35,6 +35,7 @@ interface ApolloContact {
   company_website?: string;
   company_description?: string;
   company_funding?: string;
+  is_org?: boolean;
 }
 
 interface EnrolledContact {
@@ -306,39 +307,56 @@ function ContactCard({ contact, selected, onToggle, disabled }: {
         {selected && <span style={{ fontSize: 9, color: "#fff", fontWeight: 700 }}>✓</span>}
       </div>
       <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
-        {/* Person */}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>
-            {contact.first_name} {contact.last_name}
-          </span>
-          {contact.email && (
-            <span className="pill blue" style={{ fontSize: 9, padding: "1px 6px" }}>✓ email revealed</span>
-          )}
-        </div>
-        <div style={{ fontSize: 11, color: "var(--fm)" }}>{contact.title}</div>
-
-        {/* Company */}
-        <div style={{ marginTop: 4, paddingTop: 6, borderTop: "1px solid var(--bd)" }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)" }}>{contact.company_name}</div>
-          {companyMeta && (
-            <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 2 }}>{companyMeta}</div>
-          )}
-          {contact.company_description && (
-            <div style={{ fontSize: 10, color: "var(--fd)", marginTop: 3, lineHeight: 1.45 }}>
-              {contact.company_description}
+        {contact.is_org ? (
+          /* ── Org card ── */
+          <>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--fg)", display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{ fontSize: 10, opacity: 0.5 }}>🏢</span> {contact.first_name}
             </div>
-          )}
-          {contact.company_website && (
-            <div style={{ fontSize: 10, color: "var(--blue)", marginTop: 2, fontFamily: "var(--font-ibm-mono), monospace" }}>
-              {contact.company_website.replace(/^https?:\/\//, "")}
+            {companyMeta && <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 1 }}>{companyMeta}</div>}
+            {contact.company_description && (
+              <div style={{ fontSize: 10, color: "var(--fd)", marginTop: 3, lineHeight: 1.45 }}>
+                {contact.company_description}
+              </div>
+            )}
+            {contact.company_website && (
+              <div style={{ fontSize: 10, color: "var(--blue)", marginTop: 2, fontFamily: "var(--font-ibm-mono), monospace" }}>
+                {contact.company_website.replace(/^https?:\/\//, "")}
+              </div>
+            )}
+          </>
+        ) : (
+          /* ── Person card ── */
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>
+                {contact.first_name} {contact.last_name}
+              </span>
+              {contact.email && (
+                <span className="pill blue" style={{ fontSize: 9, padding: "1px 6px" }}>✓ email revealed</span>
+              )}
             </div>
-          )}
-        </div>
-
-        {contact.email && (
-          <div style={{ fontSize: 10, color: "var(--blue)", fontFamily: "var(--font-ibm-mono), monospace" }}>
-            {contact.email}
-          </div>
+            <div style={{ fontSize: 11, color: "var(--fm)" }}>{contact.title}</div>
+            <div style={{ marginTop: 4, paddingTop: 6, borderTop: "1px solid var(--bd)" }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)" }}>{contact.company_name}</div>
+              {companyMeta && <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 2 }}>{companyMeta}</div>}
+              {contact.company_description && (
+                <div style={{ fontSize: 10, color: "var(--fd)", marginTop: 3, lineHeight: 1.45 }}>
+                  {contact.company_description}
+                </div>
+              )}
+              {contact.company_website && (
+                <div style={{ fontSize: 10, color: "var(--blue)", marginTop: 2, fontFamily: "var(--font-ibm-mono), monospace" }}>
+                  {contact.company_website.replace(/^https?:\/\//, "")}
+                </div>
+              )}
+            </div>
+            {contact.email && (
+              <div style={{ fontSize: 10, color: "var(--blue)", fontFamily: "var(--font-ibm-mono), monospace" }}>
+                {contact.email}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -422,6 +440,7 @@ export default function OutreachPage() {
   const [enrolling, setEnrolling] = useState(false);
   const [enrollResult, setEnrollResult] = useState<{ enrolled: number; credits_used: number } | null>(null);
   const [findAudience, setFindAudience] = useState<TargetAudience>(defaultAudience());
+  const [apolloSource, setApolloSource] = useState("");
   const [showRefine, setShowRefine] = useState(false);
   const apolloFetchedForRef = useRef<string>("");
 
@@ -473,6 +492,7 @@ export default function OutreachPage() {
     setBatchResult(null);
     setApolloResults([]);
     setApolloError("");
+    setApolloSource("");
     apolloFetchedForRef.current = "";
     setFindAudience(c.target_audience ?? defaultAudience());
     setEditingSteps(c.steps ? JSON.parse(JSON.stringify(c.steps)) : []);
@@ -502,6 +522,7 @@ export default function OutreachPage() {
       }));
       setApolloResults(contacts);
       setApolloTotal(data.total || 0);
+      setApolloSource(data.source || "");
     } catch (e) {
       setApolloError(e instanceof Error ? e.message : "Search failed");
     } finally {
@@ -975,9 +996,21 @@ export default function OutreachPage() {
 
           {!apolloSearching && apolloResults.length > 0 && (
             <>
+              {apolloSource === "apollo_orgs" && (
+                <div style={{
+                  ...card({ padding: "10px 14px" }),
+                  borderLeft: "3px solid var(--amber, #f59e0b)",
+                  background: "rgba(245,158,11,0.06)",
+                  fontSize: 12, color: "var(--fg)",
+                  display: "flex", alignItems: "center", gap: 8,
+                }}>
+                  <span style={{ fontWeight: 700, color: "var(--amber, #f59e0b)" }}>⚠ Showing companies</span>
+                  — people search requires an upgraded Apollo plan. Upgrade to get individual contacts with emails.
+                </div>
+              )}
               <div style={{ fontSize: 13, color: "var(--fm)" }}>
-                {apolloTotal.toLocaleString()} contacts found
-                {selectedContacts.size === 0 && (
+                {apolloTotal.toLocaleString()} {apolloSource === "apollo_orgs" ? "companies" : "contacts"} found
+                {selectedContacts.size === 0 && apolloSource !== "apollo_orgs" && (
                   <span style={{ marginLeft: 8, color: "var(--blue)", fontWeight: 500 }}>
                     — check up to {MAX_CONFIRM} contacts below, then click Enroll
                   </span>

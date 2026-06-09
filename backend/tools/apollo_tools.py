@@ -40,24 +40,33 @@ def _headers() -> dict:
 
 def _post(endpoint: str, body: dict) -> dict:
     if not _key():
+        logger.error("[Apollo] APOLLO_API_KEY not configured")
         return {"error": "APOLLO_API_KEY not configured"}
+    url = f"{_BASE}{endpoint}"
+    # Log what we're actually sending (redact key)
+    safe_body = {k: v for k, v in body.items() if k != "api_key"}
+    logger.info("[Apollo] POST %s body=%s", endpoint, safe_body)
     try:
-        r = requests.post(
-            f"{_BASE}{endpoint}",
-            json=body,
-            headers=_headers(),
-            timeout=_TIMEOUT,
-        )
+        r = requests.post(url, json=body, headers=_headers(), timeout=_TIMEOUT)
+        logger.info("[Apollo] POST %s → HTTP %s", endpoint, r.status_code)
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+        people_count = len(data.get("people", []))
+        total = data.get("total_entries") or (data.get("pagination") or {}).get("total_entries", 0)
+        logger.info("[Apollo] POST %s → %d people returned, total=%s, keys=%s",
+                    endpoint, people_count, total, list(data.keys()))
+        if people_count == 0:
+            logger.warning("[Apollo] Zero people — full response: %s", str(data)[:800])
+        return data
     except requests.HTTPError as e:
-        logger.warning("Apollo %s error %s: %s", endpoint, e.response.status_code if e.response else "?", e)
+        status = e.response.status_code if e.response else "?"
+        logger.warning("[Apollo] %s HTTP error %s: %s", endpoint, status, e)
         try:
-            return {"error": e.response.json(), "status_code": e.response.status_code}
+            return {"error": e.response.json(), "status_code": status}
         except Exception:
-            return {"error": str(e)}
+            return {"error": str(e), "status_code": status}
     except Exception as e:
-        logger.error("Apollo %s failed: %s", endpoint, e)
+        logger.error("[Apollo] %s failed: %s", endpoint, e)
         return {"error": str(e)}
 
 
@@ -223,6 +232,83 @@ def _size_label(n: int | None) -> str:
     return "5000+"
 
 
+# ── Org search (free plan fallback) ───────────────────────────────────────────
+
+def _search_orgs_as_contacts(
+    locations: list[str] | None = None,
+    industries: list[str] | None = None,
+    company_sizes: list[str] | None = None,
+    keywords: list[str] | None = None,
+    page: int = 1,
+    per_page: int = MAX_SEARCH_RESULTS,
+) -> dict:
+    """
+    When people search is blocked (free plan), return organizations instead.
+    Each org is shaped as a contact so the existing UI works unchanged.
+    Upgrade Apollo plan to get real person-level results.
+    """
+    body: dict[str, Any] = {"per_page": min(per_page, MAX_SEARCH_RESULTS), "page": page}
+
+    if locations:
+        body["organization_locations"] = locations
+    if company_sizes:
+        body["organization_num_employees_ranges"] = company_sizes
+
+    kw_parts = list(industries or []) + list(keywords or [])
+    if kw_parts:
+        body["q_keywords"] = " ".join(dict.fromkeys(kw_parts))  # deduplicate
+
+    data = _post("/organizations/search", body)
+    if "error" in data:
+        return data
+
+    orgs = data.get("organizations", [])
+    pagination = data.get("pagination", {})
+    total = pagination.get("total_entries", len(orgs))
+
+    contacts = []
+    for o in orgs:
+        name = (o.get("name") or "").strip()
+        domain = (o.get("primary_domain") or o.get("website_url") or "").strip()
+        industry = (o.get("industry") or "").strip()
+        emp = o.get("estimated_num_employees") or 0
+        description = (o.get("short_description") or o.get("seo_description") or "").strip()
+        if not description and industry and name:
+            description = f"{name} — {industry}"
+
+        contacts.append({
+            "apollo_id": f"_org_{o.get('id', '')}",
+            "first_name": name,
+            "last_name": "",
+            "title": industry or "Company",
+            "company_name": name,
+            "has_email": False,
+            "has_phone": False,
+            "city": o.get("city", ""),
+            "state": o.get("state", ""),
+            "country": o.get("country", ""),
+            "email": "",
+            "email_status": "unknown",
+            "linkedin_url": o.get("linkedin_url", ""),
+            "enriched": False,
+            "company_industry": industry,
+            "company_size": _size_label(emp),
+            "company_website": domain,
+            "company_description": description,
+            "company_funding": o.get("latest_funding_stage", ""),
+            "is_org": True,
+        })
+
+    return {
+        "contacts": contacts,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "has_more": total > page * per_page,
+        "source": "apollo_orgs",
+    }
+
+
 # ── Phase 1: Credit-free people search ────────────────────────────────────────
 
 def apollo_search_people(
@@ -276,6 +362,16 @@ def apollo_search_people(
 
     data = _post("/mixed_people/api_search", params)
     if "error" in data:
+        if data.get("status_code") == 403:
+            logger.info("[Apollo] People search blocked (free plan) — using organization search")
+            return _search_orgs_as_contacts(
+                locations=locations,
+                industries=industries,
+                company_sizes=company_sizes,
+                keywords=list(titles or []) + list(industries or []) + list(keywords or []),
+                page=page,
+                per_page=fetch_size,
+            )
         return data
 
     people = data.get("people", [])
@@ -358,11 +454,19 @@ def apollo_enrich_batch(contacts: list[dict]) -> list[dict]:
     """
     Reveal emails for up to MAX_ENRICH_BATCH contacts (1 credit each).
     Each contact needs `apollo_id` (or first_name + company_name).
-    User should select which contacts they want before calling this.
+    Org-type contacts (is_org=True) are passed through without enrichment.
     """
     batch = contacts[:MAX_ENRICH_BATCH]
     results = []
     for contact in batch:
+        # Org placeholders have no person to enrich — pass through as-is
+        if contact.get("is_org") or (contact.get("apollo_id", "").startswith("_org_")):
+            results.append({**contact, "enriched": False})
+            continue
+        # Contact already has an email — no credit needed
+        if contact.get("email"):
+            results.append({**contact, "enriched": True})
+            continue
         enriched = apollo_enrich_person(
             apollo_id=contact.get("apollo_id", ""),
             first_name=contact.get("first_name", ""),
@@ -372,7 +476,6 @@ def apollo_enrich_batch(contacts: list[dict]) -> list[dict]:
         if "error" not in enriched:
             results.append(enriched)
         else:
-            # Keep original data even if enrichment failed
             results.append({**contact, "enriched": False, "enrich_error": enriched.get("error")})
     return results
 
