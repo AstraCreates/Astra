@@ -16,8 +16,8 @@ const WORDS = [
   "안녕하세요!",   // Korean
 ];
 
-// Progressive acceleration: slow → fast (min 450ms so words land before exiting)
-const HOLDS = [1200, 950, 730, 560, 450, 450, 450, 450, 450];
+// Progressive acceleration: slow → fast (700ms floor so every word reads clearly)
+const HOLDS = [1300, 1000, 780, 620, 700, 700, 700, 700, 700];
 
 interface Props {
   children: React.ReactNode;
@@ -68,8 +68,8 @@ export default function WordsPreloader({ children, onExitStart }: Props) {
               background: "#FEFFF6",
             }}
             exit={{
-              opacity: 0,
-              transition: { duration: 0.65, ease: "easeInOut" },
+              y: "100%",
+              transition: { duration: 0.72, ease: [0.76, 0, 0.24, 1] },
             }}
           >
             <motion.div
