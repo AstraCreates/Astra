@@ -922,8 +922,17 @@ export default function OutreachPage() {
           {apolloError && <div className="err-banner">{apolloError}</div>}
 
           {enrollResult && (
-            <div style={{ background: "var(--gdim)", border: "1px solid var(--gb)", padding: "10px 16px", fontSize: 12, color: "var(--green)" }}>
-              ✓ Enrolled {enrollResult.enrolled} contacts · used {enrollResult.credits_used} credits
+            <div style={{
+              background: "var(--gdim)", border: "1px solid var(--gb)",
+              padding: "12px 16px", display: "flex", alignItems: "center",
+              justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+            }}>
+              <span style={{ fontSize: 13, color: "var(--green)", fontWeight: 600 }}>
+                ✓ {enrollResult.enrolled} contact{enrollResult.enrolled !== 1 ? "s" : ""} enrolled
+              </span>
+              <Btn variant="green" onClick={() => setDetailTab("emails")} style={{ flexShrink: 0 }}>
+                Write email sequence →
+              </Btn>
             </div>
           )}
 
@@ -1002,6 +1011,25 @@ export default function OutreachPage() {
             </div>
           ) : (
             <>
+              {activeCampaign.status === "draft" && (
+                <div style={{
+                  background: "var(--bdim)", border: "2px solid var(--bb)",
+                  padding: "16px 20px", display: "flex", alignItems: "center",
+                  justifyContent: "space-between", gap: 16, flexWrap: "wrap",
+                }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "var(--blue)" }}>
+                      {enrolled.length} contact{enrolled.length !== 1 ? "s" : ""} ready to receive emails
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--fm)", marginTop: 3 }}>
+                      Next: write your email sequence, then launch the campaign
+                    </div>
+                  </div>
+                  <Btn variant="blue" onClick={() => setDetailTab("emails")} style={{ flexShrink: 0 }}>
+                    Set up email sequence →
+                  </Btn>
+                </div>
+              )}
               <div style={{ fontSize: 12, color: "var(--fm)", marginBottom: 4 }}>{enrolled.length} contacts enrolled</div>
               {enrolled.map(cc => {
                 const c = cc.outreach_contacts;
