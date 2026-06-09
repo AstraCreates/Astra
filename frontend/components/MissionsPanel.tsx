@@ -3,17 +3,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import AstraGradient from "@/components/AstraGradient";
-import { CHECKLIST_CATEGORIES } from "@/lib/checklist-data";
+import { CHECKLIST_CATEGORIES, type CLItem, type CLCategory } from "@/lib/checklist-data";
 import {
   getCompanyGoal, runCompanyCycle, setCompanyGoalStatus, syncMissionNotion,
-  type CompanyGoal,
+  AGENT_LABELS,
+  type CompanyGoal, type CompanyTask,
 } from "@/lib/api";
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-const KEY_DONE = "astra_cl_done";
-const KEY_CATS = "astra_cl_cats";       // string[] — selected cat ids; null = not set yet
-const KEY_ACTIVE = "astra_cl_active";  // string — current active cat id
+const KEY_DONE   = "astra_cl_done";
+const KEY_CATS   = "astra_cl_cats";
 
 function loadDone(): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -29,12 +29,20 @@ function loadCats(): string[] | null {
 }
 function saveCats(ids: string[]) { try { localStorage.setItem(KEY_CATS, JSON.stringify(ids)); } catch {} }
 
-function loadActive(): string | null {
-  if (typeof window === "undefined") return null;
-  try { return localStorage.getItem(KEY_ACTIVE); }
-  catch { return null; }
+// ── Agent matching ─────────────────────────────────────────────────────────
+
+function agentMatches(taskAgents: string[], autoAgent: string): boolean {
+  return taskAgents.some(a =>
+    a === autoAgent ||
+    a.startsWith(autoAgent + "_") ||
+    autoAgent.startsWith(a + "_")
+  );
 }
-function saveActive(id: string) { try { localStorage.setItem(KEY_ACTIVE, id); } catch {} }
+
+function findTask(autoAgent: string | undefined, tasks: CompanyTask[]): CompanyTask | null {
+  if (!autoAgent) return null;
+  return tasks.find(t => agentMatches(t.owner_agents ?? [], autoAgent)) ?? null;
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -52,42 +60,27 @@ function timeAgo(iso?: string | null): string {
 
 function CategoryPicker({ initial, onSave }: { initial: string[]; onSave: (ids: string[]) => void }) {
   const [sel, setSel] = useState<Set<string>>(new Set(initial));
-
-  const toggle = (id: string) => setSel(prev => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
+  const toggle = (id: string) => setSel(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 100,
-      background: "var(--bg, #fff)",
-      display: "flex", flexDirection: "column", overflow: "hidden",
-    }}>
-      {/* Header */}
+    <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "var(--bg, #fff)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       <div style={{ position: "relative", overflow: "hidden", background: "#001aff", padding: "28px 28px 24px", flexShrink: 0 }}>
         <AstraGradient />
         <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.20)", pointerEvents: "none", zIndex: 1 }} />
         <div style={{ position: "relative", zIndex: 2 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", marginBottom: 6, letterSpacing: "-0.02em" }}>
-            Build your launch plan
-          </div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", marginBottom: 6, letterSpacing: "-0.02em" }}>Build your launch plan</div>
           <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", maxWidth: 480, lineHeight: 1.5 }}>
             Pick the areas relevant to your startup. You can change this anytime.
           </div>
         </div>
       </div>
-
-      {/* Grid */}
       <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(175px, 1fr))", gap: 10 }}>
           {CHECKLIST_CATEGORIES.map(cat => {
             const on = sel.has(cat.id);
             return (
               <button key={cat.id} type="button" onClick={() => toggle(cat.id)} style={{
-                display: "flex", flexDirection: "column", gap: 6,
-                padding: "14px 16px", textAlign: "left",
+                display: "flex", flexDirection: "column", gap: 6, padding: "14px 16px", textAlign: "left",
                 border: `2px solid ${on ? "var(--blue)" : "var(--bd)"}`,
                 background: on ? "var(--bdim)" : "var(--surface)",
                 cursor: "pointer", transition: "border-color .1s, background .1s",
@@ -103,16 +96,8 @@ function CategoryPicker({ initial, onSave }: { initial: string[]; onSave: (ids: 
           })}
         </div>
       </div>
-
-      {/* Footer */}
       <div style={{ padding: "16px 28px", borderTop: "1px solid var(--bd)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-        <button
-          type="button"
-          disabled={sel.size === 0}
-          onClick={() => onSave([...sel])}
-          className="btn pri"
-          style={{ opacity: sel.size === 0 ? 0.5 : 1 }}
-        >
+        <button type="button" disabled={sel.size === 0} onClick={() => onSave([...sel])} className="btn pri" style={{ opacity: sel.size === 0 ? 0.5 : 1 }}>
           Build checklist →
         </button>
         <span style={{ fontSize: 12, color: "var(--fm)" }}>
@@ -123,46 +108,104 @@ function CategoryPicker({ initial, onSave }: { initial: string[]; onSave: (ids: 
   );
 }
 
-// ── Check Item ─────────────────────────────────────────────────────────────
+// ── Active item card ───────────────────────────────────────────────────────
 
-function CheckItem({ id, label, detail, autoAgent, done, onToggle }: {
-  id: string; label: string; detail?: string; autoAgent?: string;
-  done: boolean; onToggle: () => void;
-}) {
+function ActiveItemCard({ item, cat, task }: { item: CLItem; cat: CLCategory; task: CompanyTask }) {
+  const needsApproval = task.status === "awaiting_approval";
+  const agentLabel = AGENT_LABELS[item.autoAgent ?? ""] ?? item.autoAgent ?? "";
+
   return (
-    <label style={{
-      display: "flex", alignItems: "flex-start", gap: 11,
-      padding: "10px 16px", cursor: "pointer",
-      borderBottom: "1px solid var(--bd)",
-      opacity: done ? 0.55 : 1, transition: "opacity .15s",
+    <div style={{
+      display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 16px",
+      border: `1px solid ${needsApproval ? "var(--ab)" : "var(--bb)"}`,
+      background: needsApproval ? "var(--adim)" : "var(--bdim)",
     }}>
-      <input type="checkbox" checked={done} onChange={onToggle}
-        style={{ position: "absolute", opacity: 0, width: 0, height: 0 }} />
-      <div style={{ marginTop: 2, flexShrink: 0, width: 16, height: 16,
-        border: done ? "none" : "2px solid var(--bd2)",
-        background: done ? "var(--green)" : "transparent",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        transition: "all .1s",
-      }}>
-        {done && <span style={{ fontSize: 9, color: "#fff", fontWeight: 700 }}>✓</span>}
+      <div style={{ marginTop: 3, flexShrink: 0 }}>
+        <span style={{
+          display: "block", width: 8, height: 8, borderRadius: "50%",
+          background: needsApproval ? "var(--amber)" : "var(--blue)",
+          animation: needsApproval ? "none" : "cl-pulse 1.5s ease-in-out infinite",
+        }} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: done ? "var(--fm)" : "var(--fg)",
-          textDecoration: done ? "line-through" : "none", lineHeight: 1.4 }}>
-          {label}
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", lineHeight: 1.4 }}>{item.label}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, color: "var(--fm)" }}>{cat.icon} {cat.label}</span>
+          <span style={{ fontSize: 11, color: needsApproval ? "var(--amber)" : "var(--blue)", fontWeight: 600 }}>
+            via {agentLabel}
+          </span>
         </div>
-        {detail && !done && (
-          <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 3, lineHeight: 1.5 }}>{detail}</div>
+      </div>
+      <span style={{
+        flexShrink: 0, fontSize: 9, padding: "2px 8px",
+        border: `1px solid ${needsApproval ? "var(--ab)" : "var(--bb)"}`,
+        color: needsApproval ? "var(--amber)" : "var(--blue)",
+        fontWeight: 700, textTransform: "uppercase", letterSpacing: ".07em",
+        fontFamily: "var(--font-code)",
+      }}>
+        {needsApproval ? "Needs approval" : "Running"}
+      </span>
+    </div>
+  );
+}
+
+// ── Pending item row ───────────────────────────────────────────────────────
+
+function PendingRow({ item, cat, onCheck }: { item: CLItem; cat: CLCategory; onCheck: () => void }) {
+  const hasAgent = !!item.autoAgent;
+  return (
+    <label style={{
+      display: "flex", alignItems: "flex-start", gap: 11, padding: "10px 14px",
+      cursor: "pointer", borderBottom: "1px solid var(--bd)",
+      background: "var(--surface)",
+    }}>
+      <input type="checkbox" onChange={onCheck} style={{ position: "absolute", opacity: 0, width: 0, height: 0 }} />
+      <div style={{ marginTop: 3, flexShrink: 0, width: 15, height: 15,
+        border: "2px solid var(--bd2)", background: "transparent",
+        display: "flex", alignItems: "center", justifyContent: "center" }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)", lineHeight: 1.4 }}>{item.label}</div>
+        {item.detail && (
+          <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 2, lineHeight: 1.45 }}>{item.detail}</div>
         )}
       </div>
-      {autoAgent && !done && (
-        <span style={{ flexShrink: 0, marginTop: 2, fontSize: 9, padding: "2px 6px",
-          background: "var(--bdim)", border: "1px solid var(--bb)", color: "var(--blue)",
-          fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em",
-          fontFamily: "var(--font-code)", whiteSpace: "nowrap" }}>
-          Agent
-        </span>
-      )}
+      <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, marginTop: 2 }}>
+        <span style={{ fontSize: 10, color: "var(--fm)" }}>{cat.icon}</span>
+        {hasAgent ? (
+          <span style={{ fontSize: 9, padding: "2px 6px", background: "var(--bdim)", border: "1px solid var(--bb)",
+            color: "var(--blue)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em",
+            fontFamily: "var(--font-code)", whiteSpace: "nowrap" }}>
+            Agent
+          </span>
+        ) : (
+          <span style={{ fontSize: 9, padding: "2px 6px", background: "transparent", border: "1px solid var(--bd2)",
+            color: "var(--fm)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em",
+            fontFamily: "var(--font-code)", whiteSpace: "nowrap" }}>
+            Manual
+          </span>
+        )}
+      </div>
+    </label>
+  );
+}
+
+// ── Done item row ──────────────────────────────────────────────────────────
+
+function DoneRow({ item, cat, onUncheck }: { item: CLItem; cat: CLCategory; onUncheck: () => void }) {
+  return (
+    <label style={{
+      display: "flex", alignItems: "center", gap: 10, padding: "8px 14px",
+      cursor: "pointer", borderBottom: "1px solid var(--bd)", opacity: 0.55,
+    }}>
+      <input type="checkbox" checked onChange={onUncheck} style={{ position: "absolute", opacity: 0, width: 0, height: 0 }} />
+      <div style={{ flexShrink: 0, width: 15, height: 15, background: "var(--green)",
+        display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ fontSize: 9, color: "#fff", fontWeight: 700 }}>✓</span>
+      </div>
+      <span style={{ flex: 1, fontSize: 12, fontWeight: 500, color: "var(--fm)", textDecoration: "line-through", lineHeight: 1.3 }}>
+        {item.label}
+      </span>
+      <span style={{ fontSize: 10, color: "var(--fm)", flexShrink: 0 }}>{cat.icon}</span>
     </label>
   );
 }
@@ -177,31 +220,16 @@ export default function MissionsPanel() {
   const [busy, setBusy] = useState<string | null>(null);
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [runsOpen, setRunsOpen] = useState(false);
+  const [doneOpen, setDoneOpen] = useState(false);
 
   const [done, setDone] = useState<Set<string>>(new Set());
-  const [selectedCats, setSelectedCats] = useState<string[] | null>(null); // null = not loaded yet
-  const [activeCatId, setActiveCatId] = useState<string | null>(null);
+  const [selectedCats, setSelectedCats] = useState<string[] | null>(null);
   const [editingCats, setEditingCats] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  // Load from localStorage on mount
   useEffect(() => {
     setDone(loadDone());
-    const cats = loadCats();
-    setSelectedCats(cats);
-    if (cats) {
-      const savedActive = loadActive();
-      // If saved active is in selected cats, use it; else pick first incomplete
-      if (savedActive && cats.includes(savedActive)) {
-        setActiveCatId(savedActive);
-      } else {
-        const first = cats.find(id => {
-          const cat = CHECKLIST_CATEGORIES.find(c => c.id === id);
-          return cat && cat.items.some(it => !loadDone().has(it.id));
-        }) ?? cats[0] ?? null;
-        setActiveCatId(first);
-      }
-    }
+    setSelectedCats(loadCats());
     setMounted(true);
   }, []);
 
@@ -213,14 +241,34 @@ export default function MissionsPanel() {
   useEffect(() => {
     if (!founderId) return;
     loadGoal();
-    const t = setInterval(loadGoal, 20000);
+    const t = setInterval(loadGoal, 15000);
     return () => clearInterval(t);
   }, [founderId, loadGoal]);
+
+  // Auto-sync agent-completed tasks → done set
+  useEffect(() => {
+    if (!goal || !selectedCats) return;
+    const currentGoal = goal.goals?.find(g => g.id === goal.current_goal_id);
+    if (!currentGoal) return;
+    setDone(prev => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const cat of CHECKLIST_CATEGORIES.filter(c => selectedCats.includes(c.id))) {
+        for (const item of cat.items) {
+          if (prev.has(item.id) || !item.autoAgent) continue;
+          const task = findTask(item.autoAgent, currentGoal.tasks);
+          if (task?.status === "done") { next.add(item.id); changed = true; }
+        }
+      }
+      if (changed) saveDone(next);
+      return changed ? next : prev;
+    });
+  }, [goal, selectedCats]);
 
   const toggleItem = (itemId: string) => {
     setDone(prev => {
       const next = new Set(prev);
-      if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
+      next.has(itemId) ? next.delete(itemId) : next.add(itemId);
       saveDone(next);
       return next;
     });
@@ -230,26 +278,14 @@ export default function MissionsPanel() {
     saveCats(ids);
     setSelectedCats(ids);
     setEditingCats(false);
-    const d = loadDone();
-    const first = ids.find(id => {
-      const cat = CHECKLIST_CATEGORIES.find(c => c.id === id);
-      return cat && cat.items.some(it => !d.has(it.id));
-    }) ?? ids[0] ?? null;
-    setActiveCatId(first);
-    if (first) saveActive(first);
-  };
-
-  const selectActive = (id: string) => {
-    setActiveCatId(id);
-    saveActive(id);
   };
 
   const paused = goal?.status === "paused";
   const runs = (goal?.operating_sessions ?? []).slice().reverse().slice(0, 6);
+  const currentGoalTasks = goal?.goals?.find(g => g.id === goal.current_goal_id)?.tasks ?? [];
 
   const runNow = async () => {
-    setBusy("run");
-    setActionErr(null);
+    setBusy("run"); setActionErr(null);
     try {
       const r = await runCompanyCycle(founderId);
       if (r.parent_session_id) window.location.assign(`/s/${r.parent_session_id}`);
@@ -264,37 +300,51 @@ export default function MissionsPanel() {
     finally { setBusy(null); }
   };
 
-  // Wait for mount (avoid hydration mismatch)
   if (!mounted) return null;
+  if (!selectedCats || editingCats) return <CategoryPicker initial={selectedCats ?? []} onSave={handleCatSave} />;
 
-  // First visit — show category picker
-  if (!selectedCats || editingCats) {
-    return <CategoryPicker initial={selectedCats ?? []} onSave={handleCatSave} />;
+  // ── Derive item lists ──────────────────────────────────────────────────
+
+  type ItemWithMeta = { item: CLItem; cat: CLCategory };
+
+  const activeCats = CHECKLIST_CATEGORIES.filter(c => selectedCats.includes(c.id));
+  const allSelected: ItemWithMeta[] = activeCats.flatMap(cat => cat.items.map(item => ({ item, cat })));
+
+  // "Working on now": items whose agent has an in_progress or awaiting_approval task
+  const activeSet = new Set<string>();
+  const workingOn: Array<ItemWithMeta & { task: CompanyTask }> = [];
+  for (const { item, cat } of allSelected) {
+    if (done.has(item.id) || !item.autoAgent) continue;
+    const task = findTask(item.autoAgent, currentGoalTasks);
+    if (task && (task.status === "in_progress" || task.status === "awaiting_approval")) {
+      // Only show first incomplete item per running agent (avoid duplicates per agent)
+      if (!activeSet.has(item.autoAgent!)) {
+        workingOn.push({ item, cat, task });
+        activeSet.add(item.autoAgent!);
+      }
+    }
   }
 
-  // Derive sections
-  const activeCats = CHECKLIST_CATEGORIES.filter(c => selectedCats.includes(c.id));
-  const catDoneMap = Object.fromEntries(
-    activeCats.map(c => [c.id, c.items.every(it => done.has(it.id))])
-  );
-  const incompleteCats = activeCats.filter(c => !catDoneMap[c.id]);
-  const doneCats = activeCats.filter(c => catDoneMap[c.id]);
+  // "Up next": incomplete, not active, not done — flat mixed list
+  const upNext: ItemWithMeta[] = allSelected
+    .filter(({ item }) => !done.has(item.id) && !workingOn.find(w => w.item.id === item.id))
+    .slice(0, 12);
 
-  const activeCat = activeCats.find(c => c.id === activeCatId) ?? incompleteCats[0] ?? activeCats[0];
-  const upNextCats = incompleteCats.filter(c => c.id !== activeCat?.id).slice(0, 4);
+  // "Done"
+  const doneItems: ItemWithMeta[] = allSelected.filter(({ item }) => done.has(item.id));
 
-  const totalItems = activeCats.flatMap(c => c.items).length;
-  const totalDone = activeCats.flatMap(c => c.items).filter(it => done.has(it.id)).length;
+  const totalItems = allSelected.length;
+  const totalDone = doneItems.length;
   const pct = totalItems > 0 ? Math.round((totalDone / totalItems) * 100) : 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <style>{`
         @keyframes cl-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+        @keyframes cl-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(0,46,255,0.5); } 50% { box-shadow: 0 0 0 5px rgba(0,46,255,0); } }
         .cl-enter { animation: cl-fade 0.22s cubic-bezier(0.22,1,0.36,1) both; }
-        .cl-upnext:hover { border-color: var(--bb) !important; background: var(--bdim) !important; cursor: pointer; }
         .run-row:hover { border-color: var(--bb) !important; background: var(--bdim) !important; }
-        @media (prefers-reduced-motion: reduce) { .cl-enter { animation: none; } }
+        @media (prefers-reduced-motion: reduce) { .cl-enter { animation: none; } @keyframes cl-pulse {} }
       `}</style>
 
       {/* ── Blue hero ── */}
@@ -303,22 +353,21 @@ export default function MissionsPanel() {
         <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.20)", pointerEvents: "none", zIndex: 1 }} />
         <div style={{ position: "relative", zIndex: 2, padding: "22px 24px 18px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
               <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>Launch Checklist</div>
               {goal && (
-                <span style={{
-                  padding: "2px 9px", fontSize: 9, fontWeight: 700, letterSpacing: ".07em",
-                  textTransform: "uppercase", fontFamily: "var(--font-code)",
+                <span style={{ padding: "2px 9px", fontSize: 9, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", fontFamily: "var(--font-code)",
                   border: paused ? "1px solid rgba(255,180,50,0.5)" : "1px solid rgba(124,255,198,0.5)",
                   background: paused ? "rgba(255,180,50,0.14)" : "rgba(124,255,198,0.14)",
-                  color: paused ? "#FFCB50" : "#7CFFC6",
-                }}>{paused ? "paused" : "operating"}</span>
+                  color: paused ? "#FFCB50" : "#7CFFC6" }}>
+                  {paused ? "paused" : "operating"}
+                </span>
               )}
               <button type="button" onClick={() => setEditingCats(true)} style={{
                 fontSize: 10, padding: "2px 8px", background: "rgba(255,255,255,0.12)",
-                border: "1px solid rgba(255,255,255,0.25)", color: "rgba(255,255,255,0.75)",
-                cursor: "pointer", fontFamily: "var(--font-code)",
-              }}>Edit areas</button>
+                border: "1px solid rgba(255,255,255,0.25)", color: "rgba(255,255,255,0.75)", cursor: "pointer" }}>
+                Edit areas
+              </button>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ flex: 1, maxWidth: 300, height: 5, background: "rgba(255,255,255,0.2)", borderRadius: 3, overflow: "hidden" }}>
@@ -349,83 +398,64 @@ export default function MissionsPanel() {
 
         {actionErr && <div className="err-banner">{actionErr}</div>}
 
-        {/* ── Now ── */}
-        {activeCat && (
-          <div className="cl-enter">
-            <div className="sec-label" style={{ marginBottom: 10 }}>Working on now</div>
-            <div style={{ border: "1px solid var(--bb)", background: "var(--bdim)", overflow: "hidden" }}>
-              {/* Category header */}
-              <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--bd)", display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ fontSize: 20 }}>{activeCat.icon}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--fg)" }}>{activeCat.label}</div>
-                  <div style={{ fontSize: 11, color: "var(--fm)", fontFamily: "var(--font-code)", marginTop: 1 }}>
-                    {activeCat.items.filter(it => done.has(it.id)).length}/{activeCat.items.length} done
-                  </div>
-                </div>
-                {/* Mini progress */}
-                <div style={{ width: 80, height: 3, background: "var(--bd)", overflow: "hidden" }}>
-                  <div style={{ height: "100%", background: "var(--blue)", transition: "width .4s",
-                    width: `${Math.round(activeCat.items.filter(it => done.has(it.id)).length / activeCat.items.length * 100)}%` }} />
-                </div>
-              </div>
-              {/* Items */}
-              {activeCat.items.map((it, i) => (
-                <CheckItem key={it.id} id={it.id} label={it.label} detail={it.detail}
-                  autoAgent={it.autoAgent} done={done.has(it.id)}
-                  onToggle={() => toggleItem(it.id)} />
+        {/* ── Working on now ── */}
+        <div className="cl-enter">
+          <div className="sec-label" style={{ marginBottom: 10 }}>Working on now</div>
+          {workingOn.length === 0 ? (
+            <div style={{ padding: "14px 16px", border: "1px dashed var(--bd2)", fontSize: 12, color: "var(--fm)", lineHeight: 1.55 }}>
+              No agents running.{" "}
+              {goal
+                ? <button onClick={runNow} disabled={!!busy} style={{ color: "var(--blue)", background: "none", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, padding: 0, textDecoration: "underline" }}>Start a run</button>
+                : <a href="/" style={{ color: "var(--blue)" }}>Start a run</a>
+              }{" "}
+              to kick things off.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {workingOn.map(({ item, cat, task }) => (
+                <ActiveItemCard key={item.id} item={item} cat={cat} task={task} />
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* ── Up next ── */}
-        {upNextCats.length > 0 && (
+        {upNext.length > 0 && (
           <div className="cl-enter" style={{ animationDelay: "40ms" }}>
             <div className="sec-label" style={{ marginBottom: 10 }}>Up next</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 8 }}>
-              {upNextCats.map(cat => {
-                const catDone = cat.items.filter(it => done.has(it.id)).length;
-                return (
-                  <button key={cat.id} type="button" onClick={() => selectActive(cat.id)}
-                    className="cl-upnext"
-                    style={{ display: "flex", flexDirection: "column", gap: 6, padding: "12px 14px",
-                      border: "1px solid var(--bd)", background: "var(--surface)",
-                      textAlign: "left", transition: "border-color .1s, background .1s" }}>
-                    <span style={{ fontSize: 18 }}>{cat.icon}</span>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--fg)", lineHeight: 1.3 }}>{cat.label}</div>
-                    <div style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)" }}>
-                      {catDone > 0 ? <span style={{ color: "var(--blue)" }}>{catDone}/</span> : "0/"}
-                      {cat.items.length} done
-                    </div>
-                  </button>
-                );
-              })}
+            <div style={{ border: "1px solid var(--bd)", overflow: "hidden" }}>
+              {upNext.map(({ item, cat }, i) => (
+                <PendingRow
+                  key={item.id}
+                  item={item}
+                  cat={cat}
+                  onCheck={() => toggleItem(item.id)}
+                />
+              ))}
             </div>
           </div>
         )}
 
         {/* ── Done ── */}
-        {doneCats.length > 0 && (
-          <div className="cl-enter" style={{ animationDelay: "80ms" }}>
-            <div className="sec-label" style={{ marginBottom: 10 }}>Done</div>
-            <div style={{ border: "1px solid var(--bd)", background: "var(--surface)" }}>
-              {doneCats.map((cat, i) => (
-                <div key={cat.id} style={{
-                  display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
-                  borderBottom: i < doneCats.length - 1 ? "1px solid var(--bd)" : "none",
-                  opacity: 0.7,
-                }}>
-                  <span style={{ fontSize: 16 }}>{cat.icon}</span>
-                  <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: "var(--fm)", textDecoration: "line-through" }}>{cat.label}</span>
-                  <span style={{ fontSize: 10, color: "var(--green)", fontFamily: "var(--font-code)", fontWeight: 700 }}>✓ {cat.items.length}/{cat.items.length}</span>
-                </div>
-              ))}
-            </div>
+        {doneItems.length > 0 && (
+          <div className="cl-enter" style={{ animationDelay: "70ms" }}>
+            <button type="button" onClick={() => setDoneOpen(p => !p)}
+              style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: "0 0 10px" }}>
+              <span className="sec-label" style={{ marginBottom: 0 }}>Done</span>
+              <span style={{ fontSize: 11, color: "var(--green)", fontFamily: "var(--font-code)", fontWeight: 700 }}>{doneItems.length}</span>
+              <span style={{ fontSize: 10, color: "var(--fm)", transform: doneOpen ? "rotate(180deg)" : "none", transition: "transform .15s", display: "inline-block" }}>▾</span>
+            </button>
+            {doneOpen && (
+              <div style={{ border: "1px solid var(--bd)", overflow: "hidden" }}>
+                {doneItems.map(({ item, cat }) => (
+                  <DoneRow key={item.id} item={item} cat={cat} onUncheck={() => toggleItem(item.id)} />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* ── Agent runs (collapsible) ── */}
+        {/* ── Agent runs ── */}
         {runs.length > 0 && (
           <div className="cl-enter" style={{ animationDelay: "100ms" }}>
             <button type="button" onClick={() => setRunsOpen(p => !p)}
