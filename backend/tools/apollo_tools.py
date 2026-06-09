@@ -315,10 +315,10 @@ def _yc_search(
         batch = co.get("batch") or ""
 
         results.append({
-            "apollo_id": f"_yc_{co.get('id', name)}",
+            "apollo_id": f"_org_yc_{co.get('id', name)}",
             "first_name": name,
             "last_name": "",
-            "title": f"YC {batch}" if batch else "YC-backed startup",
+            "title": industry or "Company",
             "company_name": name,
             "has_email": False,
             "has_phone": False,
@@ -333,7 +333,7 @@ def _yc_search(
             "company_size": "",
             "company_website": domain,
             "company_description": description[:200] if description else f"{name} — {industry}",
-            "company_funding": "YC-backed",
+            "company_funding": "",
             "is_org": True,
         })
 
@@ -417,7 +417,7 @@ def _search_orgs_as_contacts(
             "page": page,
             "per_page": fetch_size,
             "has_more": False,
-            "source": "yc",
+            "source": "apollo_orgs",
         }
 
     # Non-startup query → Apollo org search only
