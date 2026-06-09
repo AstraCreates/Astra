@@ -129,6 +129,12 @@ def _normalize_search_person(p: dict) -> dict:
         "email_status": "unknown",
         "linkedin_url": "",
         "enriched": False,
+        # Company details — available from free search
+        "company_industry": org.get("industry", ""),
+        "company_size": _size_label(org.get("estimated_num_employees")),
+        "company_website": org.get("website_url", "") or org.get("primary_domain", ""),
+        "company_description": (org.get("short_description") or "")[:160],
+        "company_funding": org.get("latest_funding_stage", ""),
     }
 
 

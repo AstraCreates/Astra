@@ -2533,6 +2533,53 @@ def _store_contacts_background(founder_id: str, contacts: list[dict]) -> None:
         logger.warning("Background contact store failed: %s", e)
 
 
+@router.post("/outreach/parse-audience")
+async def parse_audience_prompt(body: dict, request: Request):
+    """Use a fast LLM to convert a natural-language audience description into
+    structured Apollo search filters (titles, locations, industries, etc.)."""
+    import json, re as _re
+    prompt = (body.get("prompt") or "").strip()
+    if not prompt:
+        return JSONResponse({"error": "No prompt provided"}, status_code=400)
+
+    llm_prompt = (
+        f'Convert this target audience description into Apollo.io search filters.\n\n'
+        f'Description: "{prompt}"\n\n'
+        'Return a JSON object with:\n'
+        '- titles: comma-separated job titles (e.g. "Owner, Manager, Chef")\n'
+        '- locations: comma-separated locations (e.g. "Arizona, United States")\n'
+        '- industries: comma-separated Apollo industry names (e.g. "Restaurants, Food & Beverages")\n'
+        '- keywords: any extra search terms not covered above\n'
+        '- seniorities: JSON array from ["c_suite","vp","director","manager","senior","entry","owner"]\n'
+        '- company_sizes: JSON array from ["1,10","11,50","51,200","201,500","501,1000","1001,5000"]\n\n'
+        'Common Apollo industry names: Restaurants, "Food & Beverages", "Computer Software", '
+        '"Information Technology & Services", "Marketing & Advertising", "Financial Services", '
+        'Healthcare, "Real Estate", Retail, Construction, "Legal Services", Accounting, '
+        'Manufacturing, Education, "Consumer Goods", "Health, Wellness & Fitness"\n\n'
+        'Return ONLY the JSON object.'
+    )
+
+    try:
+        from backend.tools._llm import generate
+        raw = await asyncio.to_thread(generate, llm_prompt, 400, False, "fast", 0.1)
+        m = _re.search(r'\{.*\}', raw, _re.DOTALL)
+        if not m:
+            raise ValueError("no JSON in response")
+        parsed = json.loads(m.group())
+        return {
+            "titles":       str(parsed.get("titles") or ""),
+            "locations":    str(parsed.get("locations") or ""),
+            "industries":   str(parsed.get("industries") or ""),
+            "keywords":     str(parsed.get("keywords") or ""),
+            "seniorities":  parsed.get("seniorities") if isinstance(parsed.get("seniorities"), list) else [],
+            "company_sizes": parsed.get("company_sizes") if isinstance(parsed.get("company_sizes"), list) else [],
+        }
+    except Exception as e:
+        logger.warning("parse-audience failed: %s", e)
+        # Fallback: put the whole prompt in keywords so search still runs
+        return {"titles": "", "locations": "", "industries": "", "keywords": prompt, "seniorities": [], "company_sizes": []}
+
+
 @router.post("/outreach/discover/{founder_id}")
 async def discover_contacts(founder_id: str, body: dict, request: Request):
     """

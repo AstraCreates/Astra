@@ -30,6 +30,11 @@ interface ApolloContact {
   country?: string;
   email?: string;
   enriched?: boolean;
+  company_industry?: string;
+  company_size?: string;
+  company_website?: string;
+  company_description?: string;
+  company_funding?: string;
 }
 
 interface EnrolledContact {
@@ -222,15 +227,17 @@ function CampaignCard({ campaign, stats, onClick }: {
 function ContactCard({ contact, selected, onToggle, disabled }: {
   contact: ApolloContact; selected: boolean; onToggle: () => void; disabled: boolean;
 }) {
+  const companyMeta = [contact.company_industry, contact.company_size, contact.company_funding]
+    .filter(Boolean).join(" · ");
   return (
     <div
       onClick={disabled && !selected ? undefined : onToggle}
       style={{
-        padding: "11px 13px", cursor: disabled && !selected ? "not-allowed" : "pointer",
+        padding: "12px 14px", cursor: disabled && !selected ? "not-allowed" : "pointer",
         background: selected ? "var(--bdim)" : "var(--surface)",
         border: `1px solid ${selected ? "var(--bb)" : "var(--bd)"}`,
         transition: "all 0.1s", opacity: disabled && !selected ? 0.45 : 1,
-        display: "flex", gap: 10, alignItems: "flex-start",
+        display: "flex", gap: 11, alignItems: "flex-start",
       }}
       onMouseEnter={e => { if (!disabled || selected) (e.currentTarget as HTMLElement).style.borderColor = "var(--bb)"; }}
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = selected ? "var(--bb)" : "var(--bd)"; }}
@@ -243,22 +250,38 @@ function ContactCard({ contact, selected, onToggle, disabled }: {
       }}>
         {selected && <span style={{ fontSize: 9, color: "#fff", fontWeight: 700 }}>✓</span>}
       </div>
-      <div style={{ minWidth: 0, flex: 1 }}>
+      <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
+        {/* Person */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>
             {contact.first_name} {contact.last_name}
           </span>
-          {contact.has_email && !contact.email && (
-            <span className="pill green" style={{ fontSize: 9, padding: "1px 6px" }}>email available</span>
-          )}
           {contact.email && (
-            <span className="pill blue" style={{ fontSize: 9, padding: "1px 6px" }}>✓ revealed</span>
+            <span className="pill blue" style={{ fontSize: 9, padding: "1px 6px" }}>✓ email revealed</span>
           )}
         </div>
-        <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 2 }}>{contact.title}</div>
-        <div style={{ fontSize: 11, color: "var(--fd)" }}>{contact.company_name}</div>
+        <div style={{ fontSize: 11, color: "var(--fm)" }}>{contact.title}</div>
+
+        {/* Company */}
+        <div style={{ marginTop: 4, paddingTop: 6, borderTop: "1px solid var(--bd)" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)" }}>{contact.company_name}</div>
+          {companyMeta && (
+            <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 2 }}>{companyMeta}</div>
+          )}
+          {contact.company_description && (
+            <div style={{ fontSize: 10, color: "var(--fd)", marginTop: 3, lineHeight: 1.45 }}>
+              {contact.company_description}
+            </div>
+          )}
+          {contact.company_website && (
+            <div style={{ fontSize: 10, color: "var(--blue)", marginTop: 2, fontFamily: "var(--font-ibm-mono), monospace" }}>
+              {contact.company_website.replace(/^https?:\/\//, "")}
+            </div>
+          )}
+        </div>
+
         {contact.email && (
-          <div style={{ fontSize: 10, color: "var(--blue)", marginTop: 3, fontFamily: "var(--font-ibm-mono), monospace" }}>
+          <div style={{ fontSize: 10, color: "var(--blue)", fontFamily: "var(--font-ibm-mono), monospace" }}>
             {contact.email}
           </div>
         )}
@@ -331,6 +354,7 @@ export default function OutreachPage() {
   const [newAudience, setNewAudience] = useState<TargetAudience>(defaultAudience());
   const [audienceMode, setAudienceMode] = useState<"simple" | "advanced">("simple");
   const [audiencePrompt, setAudiencePrompt] = useState("");
+  const [parsingAudience, setParsingAudience] = useState(false);
   const [creatingCampaign, setCreatingCampaign] = useState(false);
 
   // ── Find contacts tab ──────────────────────────────────────────────────────
@@ -501,9 +525,36 @@ export default function OutreachPage() {
   const createCampaign = async () => {
     setCreatingCampaign(true);
     try {
-      const audience: TargetAudience = audienceMode === "simple"
-        ? { ...defaultAudience(), keywords: audiencePrompt.trim() }
-        : newAudience;
+      let audience: TargetAudience;
+      if (audienceMode === "simple" && audiencePrompt.trim()) {
+        setParsingAudience(true);
+        try {
+          const parseRes = await apiFetch(`${BASE}/outreach/parse-audience`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: audiencePrompt.trim() }),
+          });
+          const parsed = await parseRes.json();
+          audience = parsed.error
+            ? { ...defaultAudience(), keywords: audiencePrompt.trim() }
+            : {
+                titles: parsed.titles || "",
+                locations: parsed.locations || "",
+                industries: parsed.industries || "",
+                keywords: parsed.keywords || "",
+                seniorities: parsed.seniorities || [],
+                company_sizes: parsed.company_sizes || [],
+              };
+        } catch {
+          audience = { ...defaultAudience(), keywords: audiencePrompt.trim() };
+        } finally {
+          setParsingAudience(false);
+        }
+      } else {
+        audience = audienceMode === "simple"
+          ? defaultAudience()
+          : newAudience;
+      }
       const res = await apiFetch(`${BASE}/outreach/campaigns/${founderId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -515,6 +566,7 @@ export default function OutreachPage() {
       setNewAudience(defaultAudience());
       setAudienceMode("simple");
       setAudiencePrompt("");
+      setParsingAudience(false);
       await loadCampaigns();
       enterCampaign(data);
     } catch (e) {
@@ -637,7 +689,7 @@ export default function OutreachPage() {
           <div style={{ ...card({ padding: "28px 24px", width: "100%", maxWidth: 560 }), maxHeight: "90vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(0,0,0,.14)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
               <h2 style={{ fontSize: 17, margin: 0, color: "var(--fg)" }}>New Campaign</h2>
-              <button onClick={() => { setShowNewCampaign(false); setAudienceMode("simple"); setAudiencePrompt(""); }} style={{ background: "none", border: "none", color: "var(--fm)", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>✕</button>
+              <button onClick={() => { setShowNewCampaign(false); setAudienceMode("simple"); setAudiencePrompt(""); setParsingAudience(false); }} style={{ background: "none", border: "none", color: "var(--fm)", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>✕</button>
             </div>
 
             <div className="sec-label" style={{ marginBottom: 10 }}>Campaign basics</div>
@@ -708,9 +760,9 @@ export default function OutreachPage() {
             )}
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", paddingTop: 8, borderTop: "1px solid var(--bd)" }}>
-              <button onClick={() => { setShowNewCampaign(false); setAudienceMode("simple"); setAudiencePrompt(""); }} className="btn">Cancel</button>
+              <button onClick={() => { setShowNewCampaign(false); setAudienceMode("simple"); setAudiencePrompt(""); setParsingAudience(false); }} className="btn">Cancel</button>
               <button onClick={createCampaign} disabled={creatingCampaign || !newCampaign.name.trim()} className="btn pri">
-                {creatingCampaign ? "Creating…" : "Create & Find Contacts →"}
+                {parsingAudience ? "Parsing audience…" : creatingCampaign ? "Creating…" : "Create & Find Contacts →"}
               </button>
             </div>
           </div>
@@ -829,13 +881,18 @@ export default function OutreachPage() {
           {!apolloSearching && apolloResults.length > 0 && (
             <>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 13, color: "var(--fm)" }}>
-                  {apolloTotal.toLocaleString()} contacts found · {selectedContacts.size}/{MAX_CONFIRM} selected
-                </span>
+                <div>
+                  <span style={{ fontSize: 13, color: "var(--fm)" }}>
+                    {apolloTotal.toLocaleString()} contacts found
+                  </span>
+                  <span style={{ fontSize: 11, color: "var(--fm)", marginLeft: 6 }}>
+                    · free search, no credits used · {selectedContacts.size}/{MAX_CONFIRM} selected
+                  </span>
+                </div>
                 <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                   {selectedContacts.size > 0 && (
-                    <span style={{ fontSize: 11, color: "var(--fm)" }}>
-                      Uses {selectedContacts.size} credit{selectedContacts.size !== 1 ? "s" : ""} to reveal emails
+                    <span style={{ fontSize: 11, color: "var(--amber)" }}>
+                      {selectedContacts.size} credit{selectedContacts.size !== 1 ? "s" : ""} to reveal emails
                     </span>
                   )}
                   <Btn
@@ -843,9 +900,9 @@ export default function OutreachPage() {
                     disabled={enrolling || selectedContacts.size === 0}
                     onClick={confirmContacts}
                   >
-                    {enrolling ? "Enriching & enrolling…" : selectedContacts.size > 0
-                      ? `Confirm ${selectedContacts.size} contact${selectedContacts.size !== 1 ? "s" : ""} →`
-                      : "Select contacts below"}
+                    {enrolling ? "Revealing & enrolling…" : selectedContacts.size > 0
+                      ? `Reveal emails & enroll ${selectedContacts.size} →`
+                      : "Select contacts to enroll"}
                   </Btn>
                 </div>
               </div>
