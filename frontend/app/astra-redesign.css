@@ -28,6 +28,13 @@
   --mint-dim:     rgba(124, 255, 198, 0.12);
   --mint-border:  rgba(124, 255, 198, 0.35);
 
+  /* Spectrum — Astra brand palette */
+  --lilac:        #EBA5FF;
+  --yellow:       #FFFF65;
+  --pink:         #FF29A7;
+  --astra-ink:    #111018;
+  --astra-paper:  #FEFFF6;
+
   --green:#16a34a; --gdim:rgba(22,163,74,.08); --gb:rgba(22,163,74,.25);
   --amber:#d97706; --adim:rgba(217,119,6,.08); --ab:rgba(217,119,6,.25);
   --red:#dc2626;   --rdim:rgba(220,38,38,.07); --rb:rgba(220,38,38,.25);
@@ -43,6 +50,40 @@
   --font-chakra:     var(--font-dm-sans),    "DM Sans", sans-serif;
   --font-syne:       var(--font-geist-sans), "Geist", sans-serif;
   --font-fraunces:   var(--font-geist-sans), "Geist", sans-serif;
+  --font-mono:       var(--font-geist-mono), var(--font-ibm-mono), monospace;
+  --font-code:       var(--font-jetbrains-mono), var(--font-geist-mono), monospace;
+  --font-pixel-face: var(--font-pixel), "Pixelify Sans", sans-serif;
+}
+
+[data-theme="dark"] {
+  --bg:        #111018;
+  --bg-surface:#17151F;
+  --bg-sunken: #0E0C15;
+  --surface:   #17151F;
+  --s2:        #1C1A26;
+  --s3:        #221F2E;
+  --fg:        #F0EEFF;
+  --fd:        #B8B0D8;
+  --fm:        #6B6485;
+  --bd:        rgba(240, 238, 255, 0.08);
+  --bd2:       rgba(240, 238, 255, 0.13);
+  --accent:    #3D5FFF;
+  --accent-hover: #6080FF;
+  --blue:      #3D5FFF;
+  --bdim:      rgba(61, 95, 255, 0.12);
+  --bb:        rgba(61, 95, 255, 0.35);
+  --bglow:     rgba(61, 95, 255, 0.22);
+  --mint:      #7CFFC6;
+  --mint-dim:  rgba(124, 255, 198, 0.10);
+  --mint-border: rgba(124, 255, 198, 0.28);
+  --lilac:     #EBA5FF;
+  --yellow:    #FFFF65;
+  --pink:      #FF29A7;
+  --astra-ink: #111018;
+  --astra-paper: #FEFFF6;
+  --green: #22c55e; --gdim: rgba(34,197,94,.09);  --gb: rgba(34,197,94,.28);
+  --amber: #f59e0b; --adim: rgba(245,158,11,.09); --ab: rgba(245,158,11,.28);
+  --red:   #ef4444; --rdim: rgba(239,68,68,.09);  --rb: rgba(239,68,68,.28);
 }
 
 body {
