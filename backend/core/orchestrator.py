@@ -345,9 +345,13 @@ class Orchestrator:
     async def _generate_company_name(self, goal: str, creative_brief: dict | None = None) -> str:
         """Extract or invent a company/product name from the goal."""
         import re
-        # Explicit name patterns: frontend sends "Company name: X." or "called X", quoted names
+        # Explicit name the founder chose — ALWAYS use it, never invent over it. The
+        # frontend sends "Company/project name: X" (note the /project), so the pattern
+        # must allow the optional /project|/product or the founder's name was ignored
+        # and a random one generated instead (the "Goon → VelaBeam" bug).
         for pattern in [
-            r'[Cc]ompany\s+name[:\s]+([A-Za-z][a-zA-Z0-9]{2,})',
+            r'[Cc]ompany(?:[ /](?:project|product))?\s+name[:\s]+"?([A-Za-z][A-Za-z0-9]{1,40})',
+            r'^[Cc]ompany\s*:\s*"?([A-Za-z][A-Za-z0-9]{1,40})',
             r'(?:called|named|building)\s+"?([A-Z][a-zA-Z0-9]{2,})"?',
             r'"([A-Z][a-zA-Z0-9]{2,20})"',
         ]:

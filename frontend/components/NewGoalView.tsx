@@ -51,8 +51,10 @@ export default function NewGoalView() {
     if (goal.length < 10) { setErr("⚠ Please describe your goal in more detail (min 10 chars)."); return; }
     setBusy(true);
     try {
-      // Prepend company context from onboarding if available
-      let instruction = company ? `Company: ${company}\n\n${goal}` : goal;
+      // Prepend the founder's chosen company name so the backend uses it (NOT a
+      // generated one). Must be "Company/project name:" — the prefix the name
+      // extractor recognizes (plain "Company:" was ignored → random names).
+      let instruction = company ? `Company/project name: ${company}\n\n${goal}` : goal;
       if (attachments.length) {
         instruction += "\n\nAttached context:\n" + attachments.map((a) => `--- ${a.name} ---\n${a.content.slice(0, 8000)}`).join("\n\n");
       }
