@@ -9,17 +9,14 @@ const WORDS = [
   "¡Hola!",       // Spanish
   "Bonjour !",    // French (space before !)
   "Ciao!",        // Italian
-  "Olá!",         // Portuguese
-  "Hallo!",       // German
   "こんにちは！",   // Japanese (full-width)
   "你好！",        // Chinese (full-width)
-  "안녕하세요!",   // Korean
-  "Привет!",      // Russian — fast
-  "مرحباً!",      // Arabic — fast
+  "Привет!",      // Russian
+  "مرحباً!",      // Arabic
 ];
 
-// Geometric progression ~×0.84 per step: 1200 → 220ms, no plateau
-const HOLDS = [1200, 1000, 850, 720, 610, 510, 430, 360, 300, 255, 220];
+// Geometric ~×0.80 per step: 1200 → 250ms across 8 words
+const HOLDS = [1200, 950, 750, 590, 470, 375, 300, 250];
 
 interface Props {
   children: React.ReactNode;

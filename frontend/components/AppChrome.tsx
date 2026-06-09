@@ -78,7 +78,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
           ☰
         </button>
         {isHome ? (
-          <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>{children}</main>
+          <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zIndex: 100 }}>{children}</main>
         ) : (
           <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
             <div style={{ height: 46, display: "flex", alignItems: "center", padding: "0 14px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
@@ -97,7 +97,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
       {tour}
       <RedesignSidebar />
       {isHome ? (
-        <main style={{ flex: 1, minWidth: 0, height: "100vh", overflow: "hidden" }}>{children}</main>
+        <main style={{ flex: 1, minWidth: 0, height: "100vh", overflow: "hidden", position: "relative", zIndex: 100 }}>{children}</main>
       ) : (
         <main style={{ flex: 1, minWidth: 0, height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
