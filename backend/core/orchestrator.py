@@ -1320,13 +1320,27 @@ class Orchestrator:
 
         logger.info("Non-research remaining tasks: %s", [(t["agent"], t.get("depends_on", [])) for t in remaining])
 
-        # design must finish before web (web uses brand colors/fonts from design output)
+        # Explicit dependency graph (overrides the planner's coarse deps):
+        #   research → everything.
+        #   design, legal, sales, marketing, ops, finance → run as soon as research is
+        #     done (in parallel with design — they don't need the brand).
+        #   web → needs design (brand colors/fonts) + research.
+        #   technical → builds on web's repo.
+        _research_ids = [t["id"] for t in parallel_research_tasks]
         _design_task = next((t for t in remaining if t["agent"] == "design"), None)
         _web_task = next((t for t in remaining if t["agent"] == "web"), None)
-        if _design_task and _web_task:
-            _web_task.setdefault("depends_on", [])
-            if _design_task["id"] not in _web_task["depends_on"]:
-                _web_task["depends_on"].append(_design_task["id"])
+        for t in remaining:
+            a = (t["agent"] or "").lower()
+            if a == "web":
+                deps = list(_research_ids)
+                if _design_task:
+                    deps.append(_design_task["id"])
+                t["depends_on"] = deps
+            elif a.startswith("technical"):
+                t["depends_on"] = [_web_task["id"]] if _web_task else list(_research_ids)
+            else:
+                # design / legal / sales / marketing / ops / finance: research only.
+                t["depends_on"] = list(_research_ids)
 
         # Wait for ALL research agents to finish, then fill completed so non-research deps resolve
         logger.info("Waiting for research agents to finish: %s", [t["agent"] for t in parallel_research_tasks])
@@ -1563,41 +1577,11 @@ class Orchestrator:
                 if all(dep in completed for dep in t.get("depends_on", []))
             ]
 
-            # Phase gate: fire only when nothing is running AND no cleared-phase tasks are
-            # ready to launch. This prevents gating phase N+2 immediately after clearing N+1
-            # (before N+1 tasks even start).
-            _ready_cleared = [t for t in all_ready if _task_phase(t) in _phase_gates_cleared]
-            if all_ready and not running and not _ready_cleared:
-                next_phases_sorted = sorted(
-                    {_task_phase(t) for t in all_ready},
-                    key=lambda p: _PHASE_ORDER.index(p) if p in _PHASE_ORDER else 99,
-                )
-                ungated = [p for p in next_phases_sorted if p not in _phase_gates_cleared]
-                if ungated:
-                    _np = ungated[0]
-                    # Use the actual last completed phase (not just prev in PHASE_ORDER) so the
-                    # gate says "X Phase Complete" only when X actually ran and finished.
-                    _completed_phases = [
-                        ph for ph in _PHASE_ORDER
-                        if ph != _np and _tasks_by_phase.get(ph) and all(t["id"] in completed for t in _tasks_by_phase[ph])
-                    ]
-                    _prev_ph = _completed_phases[-1] if _completed_phases else (
-                        _PHASE_ORDER[max(0, (_PHASE_ORDER.index(_np) if _np in _PHASE_ORDER else 1) - 1)]
-                    )
-                    _prev_tasks = _tasks_by_phase.get(_prev_ph, [])
-                    _gate_ok = await _phase_gate(_prev_ph, _np, _prev_tasks)
-                    if _gate_ok:
-                        _phase_gates_cleared.add(_np)
-                    else:
-                        # Rejected: tasks re-queued; update map to include them.
-                        for _rrt in remaining:
-                            _rph = _task_phase(_rrt)
-                            if _rrt not in _tasks_by_phase.get(_rph, []):
-                                _tasks_by_phase.setdefault(_rph, []).append(_rrt)
-                    continue  # Re-evaluate after gate decision
-
-            # Only launch tasks whose phase gate is cleared (_ready_cleared already computed above)
-            ready_to_launch = _ready_cleared
+            # Dispatch purely by dependencies — a task runs the moment its depends_on
+            # are complete (legal/sales/marketing right after research, in parallel with
+            # design; web after design; technical after web). Phase gates are
+            # informational/non-blocking and no longer serialize independent agents.
+            ready_to_launch = all_ready
             for t in ready_to_launch:
                 remaining.remove(t)
                 in_flight.add(t["id"])
