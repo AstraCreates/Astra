@@ -160,18 +160,53 @@ function CheckGroup({ label, options, selected, onChange }: {
   );
 }
 
-function ProgressBar({ label }: { label: string }) {
+const SEARCH_STAGES = [
+  "Connecting to contact database…",
+  "Applying your filters…",
+  "Fetching matching contacts…",
+  "Loading company details…",
+  "Ranking by relevance…",
+];
+
+function ProgressBar({ label, stages }: { label: string; stages?: string[] }) {
+  const stageList = stages || [label];
+  const [stageIdx, setStageIdx] = React.useState(0);
+
+  React.useEffect(() => {
+    setStageIdx(0);
+    if (stageList.length <= 1) return;
+    const interval = setInterval(() => {
+      setStageIdx(i => Math.min(i + 1, stageList.length - 1));
+    }, 2200);
+    return () => clearInterval(interval);
+  }, [label]); // reset when a new search starts
+
+  const current = stageList[stageIdx];
+  const pct = stageList.length > 1 ? Math.round(((stageIdx + 1) / stageList.length) * 100) : null;
+
   return (
-    <div style={{ padding: "32px 24px", textAlign: "center" }}>
-      <div style={{ fontSize: 13, color: "var(--fm)", marginBottom: 14 }}>{label}</div>
+    <div style={{ padding: "28px 24px", textAlign: "center" }}>
+      <div style={{ fontSize: 13, color: "var(--fm)", marginBottom: 14 }}>{current}</div>
       <div style={{ height: 2, background: "var(--bd)", overflow: "hidden", maxWidth: 320, margin: "0 auto" }}>
-        <div style={{
-          height: "100%",
-          background: "linear-gradient(90deg, transparent 0%, var(--blue) 40%, var(--mint) 70%, transparent 100%)",
-          backgroundSize: "200% 100%",
-          animation: "outreach-sweep 1.8s ease-in-out infinite",
-        }} />
+        {pct !== null ? (
+          <div style={{
+            height: "100%", background: "var(--blue)",
+            width: `${pct}%`, transition: "width 1.8s ease",
+          }} />
+        ) : (
+          <div style={{
+            height: "100%",
+            background: "linear-gradient(90deg, transparent 0%, var(--blue) 40%, var(--mint) 70%, transparent 100%)",
+            backgroundSize: "200% 100%",
+            animation: "outreach-sweep 1.8s ease-in-out infinite",
+          }} />
+        )}
       </div>
+      {pct !== null && (
+        <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 8, fontFamily: "var(--font-ibm-mono), monospace" }}>
+          Step {stageIdx + 1} of {stageList.length}
+        </div>
+      )}
     </div>
   );
 }
@@ -774,16 +809,16 @@ export default function OutreachPage() {
                   />
                 </Field>
                 <p style={{ fontSize: 11, color: "var(--fm)", margin: "6px 0 0" }}>
-                  AI will search based on your description. Switch to advanced for precise filters.
+                  AI will convert this to search filters. Switch to manual for exact control.
                 </p>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
                 {[
-                  { label: "Job Titles", key: "titles", placeholder: "CEO, CTO, Founder, Head of Growth" },
-                  { label: "Locations", key: "locations", placeholder: "United States, United Kingdom" },
-                  { label: "Industries", key: "industries", placeholder: "SaaS, Fintech, E-commerce" },
-                  { label: "Keywords", key: "keywords", placeholder: "startup, growth, scale" },
+                  { label: "Job Titles", key: "titles", placeholder: "Owner, Manager, Chef, Director" },
+                  { label: "Locations", key: "locations", placeholder: "New York, United States, California" },
+                  { label: "Industries", key: "industries", placeholder: "Restaurants, Food & Beverages, Retail" },
+                  { label: "Keywords", key: "keywords", placeholder: "catering, franchise, fine dining" },
                 ].map(f => (
                   <Field key={f.key} label={f.label}>
                     <input
@@ -936,7 +971,7 @@ export default function OutreachPage() {
             </div>
           )}
 
-          {apolloSearching && <div style={{ ...section() }}><ProgressBar label="Searching for matching contacts…" /></div>}
+          {apolloSearching && <div style={{ ...section() }}><ProgressBar label="Searching…" stages={SEARCH_STAGES} /></div>}
 
           {!apolloSearching && apolloResults.length > 0 && (
             <>

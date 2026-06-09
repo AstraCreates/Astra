@@ -229,20 +229,24 @@ def apollo_search_people(
         "page": page,
     }
 
+    # JSON POST body — use plain keys (no [] suffix; that's only for form/query encoding)
     if titles:
-        params["person_titles[]"] = titles
+        params["person_titles"] = titles
     if seniorities:
-        params["person_seniorities[]"] = seniorities
+        params["person_seniorities"] = seniorities
     if locations:
-        params["person_locations[]"] = locations
+        params["person_locations"] = locations
+    if industries:
+        params["q_organization_industry_tag_names"] = industries
     if company_sizes:
-        params["organization_num_employees_ranges[]"] = company_sizes
+        params["organization_num_employees_ranges"] = company_sizes
     if domains_include:
-        params["q_organization_domains_list[]"] = domains_include
-    if keywords:
-        params["q_keywords"] = " ".join(keywords)
+        params["q_organization_domains_list"] = domains_include
+    kw_parts = list(keywords or [])
+    if kw_parts:
+        params["q_keywords"] = " ".join(kw_parts)
     if has_email:
-        params["contact_email_status[]"] = ["verified", "unverified", "likely to engage"]
+        params["contact_email_status"] = ["verified", "unverified", "likely to engage"]
 
     data = _post("/mixed_people/api_search", params)
     if "error" in data:
