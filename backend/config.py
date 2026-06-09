@@ -9,7 +9,18 @@ class Settings(BaseSettings):
     outreach_use_supabase: bool = False
     # Model that drives openclaude for technical-agent MVP builds. Must be a
     # strong agentic/tool-use model (DeepSeek-V4-Flash chats instead of building).
-    mvp_build_model: str = "tencent/hy3-preview"
+    mvp_build_model: str = "xiaomi/mimo-v2.5-pro"
+    # Keep technical-agent spend bounded by default. The wrapper agent only needs
+    # to pick/log tools; run_mvp_loop does the real code generation.
+    technical_agent_model: str = "xiaomi/mimo-v2.5"
+    technical_agent_max_iterations: int = 6
+    # Web agent wrapper model (drives its tool calls: repo create, run_mvp_loop).
+    # Dedicated so it isn't pinned by the env-overridden or_planner_model (hy3).
+    web_agent_model: str = "xiaomi/mimo-v2.5-pro"
+    # Expensive LLM recovery passes are useful for broken builds, but should not
+    # run after deterministic checks already pass.
+    mvp_deep_heal_on_success: bool = False
+    mvp_max_completion_rounds: int = 1
     # Model that produces the COMPLETE build spec (pages, data model, features, file
     # plan) before web/technical agents build, so the build follows a real plan
     # instead of a one-line goal. MiniMax-M3 = strong long-form planning/reasoning.

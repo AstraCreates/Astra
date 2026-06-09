@@ -69,6 +69,13 @@ def get_orchestrator() -> Orchestrator:
             model_base_url=_or_base,
             model_api_key=_or_key,
         )
+        _technical_kwargs = dict(
+            model=settings.technical_agent_model or settings.or_light_model,
+            model_base_url=_or_base,
+            model_api_key=_or_key,
+            max_iterations=settings.technical_agent_max_iterations,
+            max_tool_calls={"run_mvp_loop": 1, "github_create_repo": 1, "obsidian_read": 1, "obsidian_log": 1},
+        )
         specialists = {
             # Research — MiMo for fast, repeated, source-grounded cycles
             "research": build_research_agent(agent_name="research", use_computer=True, **_small_kwargs),
@@ -78,9 +85,9 @@ def get_orchestrator() -> Orchestrator:
             "research_financial": build_research_financial_agent(use_computer=True, **_small_kwargs),
             "research_regulatory": build_research_regulatory_agent(use_computer=True, **_small_kwargs),
             # Web — hy3-preview (best tool calling for deploy/HTML gen)
-            "web": build_web_agent(use_computer=True, **_coder_kwargs),
-            # Technical/support synthesis — high-output OpenRouter model
-            "technical": build_technical_agent(use_computer=True, **_highoutput_kwargs),
+            "web": build_web_agent(use_computer=True, **{**_coder_kwargs, "model": settings.web_agent_model}),
+            # Technical wrapper — cheap router/logger; run_mvp_loop owns the heavy coding model.
+            "technical": build_technical_agent(use_computer=False, **_technical_kwargs),
             "technical_scaffold": build_technical_scaffold_agent(use_computer=True, **_highoutput_kwargs),
             "technical_infra": build_technical_infra_agent(use_computer=True, **_highoutput_kwargs),
             "technical_data": build_technical_data_agent(use_computer=True, **_highoutput_kwargs),
