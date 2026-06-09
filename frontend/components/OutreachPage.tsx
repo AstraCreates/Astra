@@ -149,7 +149,7 @@ function CheckGroup({ label, options, selected, onChange }: {
       <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
         {options.map(o => (
           <button key={o.value} onClick={() => toggle(o.value)} style={{
-            padding: "3px 10px", fontSize: 11, fontFamily: "var(--font-ibm-mono), monospace",
+            padding: "3px 10px", fontSize: 11, fontFamily: "var(--font-code)",
             background: selected.includes(o.value) ? "var(--bdim)" : "transparent",
             border: `1px solid ${selected.includes(o.value) ? "var(--bb)" : "var(--bd2)"}`,
             color: selected.includes(o.value) ? "var(--blue)" : "var(--fm)",
@@ -205,7 +205,7 @@ function ProgressBar({ label, stages }: { label: string; stages?: string[] }) {
         )}
       </div>
       {pct !== null && (
-        <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 8, fontFamily: "var(--font-ibm-mono), monospace" }}>
+        <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 8, fontFamily: "var(--font-code)" }}>
           Step {stageIdx + 1} of {stageList.length}
         </div>
       )}
@@ -216,7 +216,7 @@ function ProgressBar({ label, stages }: { label: string; stages?: string[] }) {
 function StatBadge({ label, value, color }: { label: string; value: string | number; color?: string }) {
   return (
     <div style={{ textAlign: "center", padding: "8px 14px", ...section() }}>
-      <div style={{ fontSize: 17, fontWeight: 700, color: color || "var(--fg)", fontFamily: "var(--font-ibm-mono), monospace" }}>{value}</div>
+      <div style={{ fontSize: 17, fontWeight: 700, color: color || "var(--fg)", fontFamily: "var(--font-code)" }}>{value}</div>
       <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--fm)", marginTop: 2 }}>{label}</div>
     </div>
   );
@@ -253,7 +253,7 @@ function CampaignCard({ campaign, stats, onClick, onDelete }: {
             <StatBadge label="Replies" value={`${stats.reply_rate}%`} color="var(--green)" />
           </div>
         )}
-        <div style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-ibm-mono), monospace" }}>
+        <div style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)" }}>
           {campaign.steps?.length || 0} email steps · {campaign.daily_limit}/day
         </div>
       </div>
@@ -321,7 +321,7 @@ function ContactCard({ contact, selected, onToggle, disabled }: {
               </div>
             )}
             {contact.company_website && (
-              <div style={{ fontSize: 10, color: "var(--blue)", marginTop: 2, fontFamily: "var(--font-ibm-mono), monospace" }}>
+              <div style={{ fontSize: 10, color: "var(--blue)", marginTop: 2, fontFamily: "var(--font-code)" }}>
                 {contact.company_website.replace(/^https?:\/\//, "")}
               </div>
             )}
@@ -347,13 +347,13 @@ function ContactCard({ contact, selected, onToggle, disabled }: {
                 </div>
               )}
               {contact.company_website && (
-                <div style={{ fontSize: 10, color: "var(--blue)", marginTop: 2, fontFamily: "var(--font-ibm-mono), monospace" }}>
+                <div style={{ fontSize: 10, color: "var(--blue)", marginTop: 2, fontFamily: "var(--font-code)" }}>
                   {contact.company_website.replace(/^https?:\/\//, "")}
                 </div>
               )}
             </div>
             {contact.email && (
-              <div style={{ fontSize: 10, color: "var(--blue)", fontFamily: "var(--font-ibm-mono), monospace" }}>
+              <div style={{ fontSize: 10, color: "var(--blue)", fontFamily: "var(--font-code)" }}>
                 {contact.email}
               </div>
             )}
@@ -386,7 +386,7 @@ const Btn = ({ children, onClick, disabled, variant = "ghost", style: s }: {
       disabled={disabled}
       style={{
         padding: "0 18px", height: 36, fontSize: 12, fontWeight: 600,
-        fontFamily: "var(--font-dm-sans), sans-serif",
+        fontFamily: "var(--font-geist-sans), sans-serif",
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.5 : 1, transition: "all .12s", whiteSpace: "nowrap",
         letterSpacing: "0.03em",
@@ -763,7 +763,7 @@ export default function OutreachPage() {
         </div>
       ) : campaigns.length === 0 ? (
         <div style={{ ...card({ padding: "60px 24px", textAlign: "center" }) }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>📨</div>
+          <div style={{ fontSize: 20, marginBottom: 12, fontFamily: "var(--font-code)", color: "var(--fm)", opacity: 0.4 }}>◎</div>
           <p style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)", margin: "0 0 6px" }}>No campaigns yet</p>
           <p style={{ fontSize: 13, color: "var(--fm)", margin: "0 0 20px" }}>
             Create one to start finding contacts and sending emails
@@ -887,7 +887,7 @@ export default function OutreachPage() {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <button
             onClick={() => { setView("campaigns"); setActiveCampaign(null); setConfirmingDelete(false); loadCampaigns(); }}
-            style={{ background: "none", border: "none", color: "var(--fm)", cursor: "pointer", fontSize: 12, padding: 0, fontFamily: "var(--font-ibm-mono), monospace" }}
+            style={{ background: "none", border: "none", color: "var(--fm)", cursor: "pointer", fontSize: 12, padding: 0, fontFamily: "var(--font-code)" }}
           >
             ← All campaigns
           </button>
@@ -1113,14 +1113,14 @@ export default function OutreachPage() {
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>
                         {c?.first_name} {c?.last_name}
                       </div>
-                      <div style={{ fontSize: 11, color: "var(--blue)", fontFamily: "var(--font-ibm-mono), monospace" }}>{c?.email || "—"}</div>
+                      <div style={{ fontSize: 11, color: "var(--blue)", fontFamily: "var(--font-code)" }}>{c?.email || "—"}</div>
                       <div style={{ fontSize: 11, color: "var(--fm)" }}>{c?.title} · {c?.company_name}</div>
                     </div>
                     <div style={{ fontSize: 11, color: "var(--fm)" }}>
                       Step {(cc.current_step || 0) + 1} of {activeCampaign.steps?.length || "?"}
                     </div>
                     <span className={statusPillClass(cc.status)}>{cc.status}</span>
-                    <div style={{ fontSize: 11, color: "var(--fm)", fontFamily: "var(--font-ibm-mono), monospace" }}>
+                    <div style={{ fontSize: 11, color: "var(--fm)", fontFamily: "var(--font-code)" }}>
                       {cc.next_send_at
                         ? `next ${new Date(cc.next_send_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
                         : "—"}
@@ -1199,7 +1199,7 @@ export default function OutreachPage() {
                     placeholder="Email body… Use {{first_name}}, {{company_name}}, {{title}} for personalisation"
                     className="f-input f-ta"
                     rows={7}
-                    style={{ fontFamily: "var(--font-ibm-mono), monospace", lineHeight: 1.7 }}
+                    style={{ fontFamily: "var(--font-code)", lineHeight: 1.7 }}
                   />
                 </div>
               ))}
