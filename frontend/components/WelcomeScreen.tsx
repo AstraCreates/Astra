@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { motion } from "framer-motion";
 import AstraGradient from "./AstraGradient";
 import WordsPreloader from "./WordsPreloader";
 
@@ -18,11 +19,11 @@ export default function WelcomeScreen() {
           to   { opacity: 1; transform: translateY(0);    filter: blur(0px); }
         }
         .ws-logo { opacity: 0; }
-        .ws-logo.go { animation: ws-up 0.7s cubic-bezier(0.22,1,0.36,1) 0.05s forwards; }
+        .ws-logo.go { animation: ws-up 0.7s cubic-bezier(0.22,1,0.36,1) 0.3s forwards; }
         .ws-h1  { opacity: 0; }
-        .ws-h1.go  { animation: ws-up 0.8s cubic-bezier(0.22,1,0.36,1) 0.18s forwards; }
+        .ws-h1.go  { animation: ws-up 0.8s cubic-bezier(0.22,1,0.36,1) 0.45s forwards; }
         .ws-cta { opacity: 0; }
-        .ws-cta.go { animation: ws-up 0.7s cubic-bezier(0.22,1,0.36,1) 0.34s forwards; }
+        .ws-cta.go { animation: ws-up 0.7s cubic-bezier(0.22,1,0.36,1) 0.62s forwards; }
         .ws-btn {
           padding: 13px 40px;
           font-size: 13px;
@@ -39,17 +40,22 @@ export default function WelcomeScreen() {
         .ws-btn:hover { opacity: 0.88; transform: translateY(-1px); }
       `}</style>
 
-      <div style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 200,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        overflow: "hidden",
-        background: "#001aff",
-      }}>
+      <motion.div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 200,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+          background: "#001aff",
+          clipPath: "circle(0% at 50% 50%)",
+        }}
+        animate={animate ? { clipPath: "circle(150% at 50% 50%)" } : {}}
+        transition={{ duration: 0.9, ease: [0.76, 0, 0.24, 1] }}
+      >
         <AstraGradient />
 
         <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 32px", display: "flex", flexDirection: "column", alignItems: "center", gap: 32 }}>
@@ -75,7 +81,7 @@ export default function WelcomeScreen() {
             </button>
           </div>
         </div>
-      </div>
+      </motion.div>
     </WordsPreloader>
   );
 }
