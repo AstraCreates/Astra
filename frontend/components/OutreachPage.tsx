@@ -193,37 +193,40 @@ function CampaignCard({ campaign, stats, onClick, onDelete }: {
   const audience = campaign.target_audience;
   const hasAudience = audience && (audience.titles || audience.industries || audience.locations);
   return (
-    <div onClick={onClick} className="sc" style={{ cursor: "pointer" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>{campaign.name}</div>
-          <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 2 }}>{campaign.from_email || "no sender"}</div>
+    <div className="sc" style={{ cursor: "default", padding: 0 }}>
+      {/* Clickable body — no delete button inside */}
+      <div onClick={onClick} style={{ cursor: "pointer", padding: "14px 14px 10px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>{campaign.name}</div>
+            <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 2 }}>{campaign.from_email || "no sender"}</div>
+          </div>
+          <span className={statusPillClass(campaign.status)} style={{ flexShrink: 0, marginLeft: 8 }}>{campaign.status}</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 8 }}>
-          <span className={statusPillClass(campaign.status)}>{campaign.status}</span>
-          <button
-            onClick={e => { e.stopPropagation(); onDelete(); }}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--fm)", fontSize: 13, lineHeight: 1, padding: "2px 4px", display: "flex", alignItems: "center" }}
-            title="Delete campaign"
-          >
-            ✕
-          </button>
+        {hasAudience && (
+          <div style={{ fontSize: 11, color: "var(--fm)", marginBottom: 8 }}>
+            {[audience!.titles, audience!.industries, audience!.locations].filter(Boolean).join(" · ")}
+          </div>
+        )}
+        {stats && stats.sent > 0 && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 8 }}>
+            <StatBadge label="Sent" value={stats.sent} />
+            <StatBadge label="Opens" value={`${stats.open_rate}%`} color="var(--blue)" />
+            <StatBadge label="Replies" value={`${stats.reply_rate}%`} color="var(--green)" />
+          </div>
+        )}
+        <div style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-ibm-mono), monospace" }}>
+          {campaign.steps?.length || 0} email steps · {campaign.daily_limit}/day
         </div>
       </div>
-      {hasAudience && (
-        <div style={{ fontSize: 11, color: "var(--fm)", marginBottom: 8 }}>
-          {[audience!.titles, audience!.industries, audience!.locations].filter(Boolean).join(" · ")}
-        </div>
-      )}
-      {stats && stats.sent > 0 && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 8 }}>
-          <StatBadge label="Sent" value={stats.sent} />
-          <StatBadge label="Opens" value={`${stats.open_rate}%`} color="var(--blue)" />
-          <StatBadge label="Replies" value={`${stats.reply_rate}%`} color="var(--green)" />
-        </div>
-      )}
-      <div style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-ibm-mono), monospace" }}>
-        {campaign.steps?.length || 0} email steps · {campaign.daily_limit}/day
+      {/* Delete row — sibling of clickable body, never triggers card click */}
+      <div style={{ borderTop: "1px solid var(--bd)", padding: "6px 10px", display: "flex", justifyContent: "flex-end" }}>
+        <button
+          onClick={onDelete}
+          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--red)", fontWeight: 600, padding: "2px 6px" }}
+        >
+          Delete
+        </button>
       </div>
     </div>
   );
