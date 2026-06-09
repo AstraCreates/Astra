@@ -33,16 +33,16 @@ export default function WordsPreloader({ children, onExitStart }: Props) {
   useEffect(() => {
     document.body.style.overflow = "hidden";
 
-    if (index >= WORDS.length - 1) {
-      const finish = setTimeout(() => {
+    const hold = HOLDS[index] ?? 200;
+    const t = setTimeout(() => {
+      if (index >= WORDS.length - 1) {
         onExitStart?.();
         setDone(true);
         setTimeout(() => { document.body.style.overflow = ""; }, 900);
-      }, 300);
-      return () => clearTimeout(finish);
-    }
-
-    const t = setTimeout(() => setIndex((p) => p + 1), HOLDS[index] ?? 200);
+      } else {
+        setIndex((p) => p + 1);
+      }
+    }, hold);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index]);

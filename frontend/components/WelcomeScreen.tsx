@@ -3,7 +3,6 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { motion } from "framer-motion";
 import AstraGradient from "./AstraGradient";
 import WordsPreloader from "./WordsPreloader";
 
@@ -53,18 +52,10 @@ export default function WelcomeScreen() {
         background: CSS_GRADIENT,
         overflow: "hidden",
       }}>
-        {/* Shader gradient: expands from center via clip-path on this inner layer */}
-        <motion.div
-          style={{
-            position: "absolute",
-            inset: 0,
-            clipPath: "circle(0% at 50% 50%)",
-          }}
-          animate={animate ? { clipPath: "circle(150% at 50% 50%)" } : {}}
-          transition={{ duration: 1.05, ease: [0.65, 0, 0.35, 1], delay: 0.2 }}
-        >
+        {/* Shader gradient: always full-coverage — preloads behind the word overlay */}
+        <div style={{ position: "absolute", inset: 0 }}>
           <AstraGradient />
-        </motion.div>
+        </div>
 
         {/* Content always on top */}
         <div style={{

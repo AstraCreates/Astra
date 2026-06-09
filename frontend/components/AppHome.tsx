@@ -30,8 +30,10 @@ export default function AppHome() {
     }
   }, []);
 
-  // Still checking localStorage — render nothing to avoid flash
-  if (onboarded === null) return null;
+  // Still checking localStorage — cover with blank screen matching preloader bg to avoid sidebar flash
+  if (onboarded === null) return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#FEFFF6" }} />
+  );
 
   // Post-onboarding celebration screen
   if (showWelcome) {
