@@ -111,8 +111,8 @@ export default function DashboardView() {
 
           <div style={{ position: "relative", zIndex: 2 }}>
             {company && (
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", borderRadius: 20, border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.12)", fontSize: 10.5, color: "rgba(255,255,255,0.8)", marginBottom: 14 }}>
-                <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#7cffe6" }} />
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.12)", fontSize: 10.5, color: "rgba(255,255,255,0.8)", marginBottom: 14 }}>
+                <div style={{ width: 6, height: 6, background: "#7cffe6" }} />
                 <span style={{ fontWeight: 600, color: "#fff" }}>{company}</span>
               </div>
             )}
@@ -133,7 +133,7 @@ export default function DashboardView() {
             <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18 }}>
               {sessions !== null && (
                 <>
-                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.65)" }}>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.85)" }}>
                     {sessions.length} session{sessions.length !== 1 ? "s" : ""}
                   </span>
                   {running > 0 && (
@@ -154,11 +154,11 @@ export default function DashboardView() {
               <button
                 data-tour="dash-new-run"
                 onClick={() => router.push("/?new=1")}
-                style={{ padding: "9px 20px", fontSize: 12, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", borderRadius: 100, cursor: "pointer", letterSpacing: "0.01em" }}
-              >＋ New run</button>
+                style={{ padding: "9px 20px", fontSize: 12, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", cursor: "pointer", letterSpacing: "0.01em" }}
+              >+ New run</button>
               <button
                 onClick={load}
-                style={{ padding: "9px 16px", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.85)", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 100, cursor: "pointer" }}
+                style={{ padding: "9px 16px", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.85)", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", cursor: "pointer" }}
               >Refresh</button>
             </div>
           </div>
@@ -169,7 +169,7 @@ export default function DashboardView() {
           {stalled > 0 && (
             <div style={{
               display: "flex", alignItems: "center", gap: 10,
-              padding: "10px 14px", borderRadius: 9,
+              padding: "10px 14px",
               border: "1px solid rgba(245,158,11,0.35)",
               background: "rgba(245,158,11,0.07)",
               marginBottom: 18, fontSize: 12, color: "rgba(245,158,11,0.95)",

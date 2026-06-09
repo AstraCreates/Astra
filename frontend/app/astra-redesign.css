@@ -15,7 +15,7 @@
 
   --fg:           #0a0a0a;
   --fd:           #4a4a4a;
-  --fm:           #999999;
+  --fm:           #737373; /* raised from #999 — passes WCAG AA 4.5:1 on --bg */
 
   --accent:       #002EFF;
   --accent-hover: #0024CC;
@@ -64,7 +64,7 @@
   --s3:        #221F2E;
   --fg:        #F0EEFF;
   --fd:        #B8B0D8;
-  --fm:        #6B6485;
+  --fm:        #857fa0; /* raised from #6B6485 — passes WCAG AA 4.5:1 on #111018 */
   --bd:        rgba(240, 238, 255, 0.08);
   --bd2:       rgba(240, 238, 255, 0.13);
   --accent:    #3D5FFF;
@@ -166,7 +166,7 @@ h1, h2, h3, h4, h5, h6 {
 .nav-wordmark{font-family:var(--font-chakra),sans-serif;font-size:15px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--fg)}
 .nl{display:flex;align-items:center;gap:9px;padding:8px 10px;font-family:var(--font-chakra),sans-serif;font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--fm);border-left:2px solid transparent;transition:color .12s,background .12s,border-color .12s;cursor:pointer}
 .nl:hover{color:var(--fd);background:rgba(0,0,0,.03)}
-.nl.on{color:var(--fg);border-left-color:var(--mint);background:linear-gradient(90deg,rgba(0,46,255,.07) 0%,rgba(124,255,198,.10) 100%)}
+.nl.on{color:var(--fg);background:linear-gradient(90deg,rgba(0,46,255,.07) 0%,rgba(124,255,198,.10) 100%)}
 
 /* Topbar */
 .topbar-title{font-family:var(--font-geist-sans),"Geist",sans-serif;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--fg)}
@@ -236,7 +236,7 @@ h1, h2, h3, h4, h5, h6 {
 .v-sec{font-family:var(--font-chakra),sans-serif;font-size:8px;font-weight:700;color:var(--fm);text-transform:uppercase;letter-spacing:.14em;padding:8px 8px 3px}
 .v-art{display:flex;align-items:center;gap:5px;font-size:9.5px;font-family:var(--font-code),monospace;color:var(--fd);padding:4px 8px;cursor:pointer;line-height:1.35;transition:background .1s,color .1s}
 .v-art:hover{background:rgba(0,0,0,.04);color:var(--fg)}
-.v-art.sel{background:linear-gradient(90deg,rgba(124,255,198,.14),rgba(124,255,198,.05));color:var(--blue);border-left:2px solid var(--mint)}
+.v-art.sel{background:linear-gradient(90deg,rgba(0,46,255,.10),rgba(124,255,198,.06));color:var(--blue)}
 .v-dot{width:4px;height:4px;flex-shrink:0}.v-dot.ready{background:var(--green)}.v-dot.live{background:var(--amber);animation:pulse 1.2s ease-in-out infinite}.v-dot.pend{background:var(--fm)}
 .detail{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
 .dtabs{display:flex;padding:0 18px;border-bottom:1px solid var(--bd);flex-shrink:0;background:var(--surface)}
@@ -280,6 +280,27 @@ h1, h2, h3, h4, h5, h6 {
    (settings/brain/integrations/payments/outreach) that can't be reached via
    token remap alone. */
 * { border-radius: 0 !important; }
+
+/* ── Focus ────────────────────────────────────────────────────────────────
+   Visible keyboard focus ring using brand blue. Replaces browser default
+   which is invisible on the dark surfaces. */
+:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────────────
+   State-indicator animations (live dot, running shimmer) become static. */
+@media (prefers-reduced-motion: reduce) {
+  .live-dot,
+  .v-dot.live { animation: none; opacity: 0.75; }
+  .sc-row.running::before,
+  .sc.running::before { animation: none; background: var(--blue); }
+}
 
 /* ── Mobile / responsive ──────────────────────────────────────────────────
    The fixed sidebar is an off-canvas drawer on phones (AppChrome handles the
