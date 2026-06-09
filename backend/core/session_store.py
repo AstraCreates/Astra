@@ -235,6 +235,27 @@ def list_sessions(founder_id: str | None = None, limit: int = 100) -> list[dict]
     return sessions[:limit]
 
 
+def has_active_run(founder_id: str, stale_seconds: int | None = None) -> bool:
+    """True if the founder has a session genuinely RUNNING right now. A "running"
+    session older than the stale window is ignored — otherwise a run that crashed
+    without flipping its status (no restart to reconcile it) would block goal
+    recovery forever. stale_seconds defaults to ASTRA_RUN_STALE_SECONDS (4h)."""
+    if stale_seconds is None:
+        stale_seconds = int(os.environ.get("ASTRA_RUN_STALE_SECONDS", "14400"))
+    now = time.time()
+    for s in list_sessions(founder_id, 30):
+        if s.get("status") != "running":
+            continue
+        ts = s.get("created_at") or ""
+        try:
+            epoch = time.mktime(time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")) - time.timezone
+        except Exception:
+            return True  # unknown age → assume active (safe: avoid duplicate dispatch)
+        if (now - epoch) < stale_seconds:
+            return True
+    return False
+
+
 def delete_session(session_id: str) -> bool:
     """Permanently remove a session's directory and index entry. Returns True if anything was removed."""
     import shutil

@@ -194,8 +194,9 @@ async def postpone_company_task(task_id: str, body: PostponeBody):
 async def run_company_cycle(founder_id: str, background_tasks: BackgroundTasks):
     """Run the current goal now — dispatch the whole agent system on its open tasks
     in a child session linked to the launch session."""
-    from backend.missions.company_goal import get_company_goal as load_company_goal, current_goal
+    from backend.missions.company_goal import get_company_goal as load_company_goal, current_goal, reconcile_operating_sessions
     from backend.missions.goal_engine import dispatch_current_goal
+    from backend.core.session_store import has_active_run
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id is required")
     goal = load_company_goal(founder_id)
@@ -205,6 +206,9 @@ async def run_company_cycle(founder_id: str, background_tasks: BackgroundTasks):
         raise HTTPException(status_code=409, detail="Operating is paused — resume it first")
     if not current_goal(founder_id):
         raise HTTPException(status_code=409, detail="No active goal to run")
+    reconcile_operating_sessions(founder_id)
+    if has_active_run(founder_id):
+        raise HTTPException(status_code=409, detail="A run is already in progress — wait for it to finish")
     background_tasks.add_task(dispatch_current_goal, founder_id)
     return {"ok": True, "parent_session_id": goal.get("root_session_id", "")}
 

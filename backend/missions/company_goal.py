@@ -152,6 +152,30 @@ def update_operating_session(founder_id: str, session_id: str, **fields: Any) ->
         _save(goal)
 
 
+def reconcile_operating_sessions(founder_id: str) -> int:
+    """Flip operating-run records stuck at "running" to a terminal state when the
+    underlying session is no longer running (a backend restart killed the run
+    mid-dispatch before update_operating_session fired). Returns count fixed."""
+    from backend.core.session_store import get_session_meta
+    with _lock:
+        goal = _read(founder_id)
+        if goal is None:
+            return 0
+        fixed = 0
+        for rec in goal.get("operating_sessions") or []:
+            if rec.get("status") != "running":
+                continue
+            meta = get_session_meta(rec.get("session_id")) or {}
+            st = meta.get("status")
+            if st in ("done", "error", "killed", "stalled") or not meta:
+                rec["status"] = "done" if st == "done" else "error"
+                rec["updated_at"] = _now_iso()
+                fixed += 1
+        if fixed:
+            _save(goal)
+        return fixed
+
+
 # ── Unified company task list (milestones the whole team works on) ───────────────
 
 _TASK_OPEN = {"pending", "in_progress", "blocked"}
