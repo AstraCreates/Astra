@@ -485,7 +485,9 @@ def _runs_today(goal: dict[str, Any]) -> int:
 
 
 def budget_allows(goal: dict[str, Any]) -> bool:
-    max_runs = max(12, int((goal.get("budget") or {}).get("max_runs_per_day") or 12))
+    budget = goal.get("budget") or {}
+    max_runs_raw = budget["max_runs_per_day"] if "max_runs_per_day" in budget else 12
+    max_runs = max(0, int(max_runs_raw))
     return _runs_today(goal) < max_runs
 
 
@@ -497,9 +499,19 @@ def chained_goals_today(goal: dict[str, Any]) -> int:
 
 def chain_allowed(goal: dict[str, Any]) -> bool:
     """Goal completion → chain to the next goal is genuine progress, not a retry, so it
-    is gated separately from the per-run budget. Cap new planner goals/day to bound cost."""
-    cap = int(os.environ.get("ASTRA_MAX_CHAINED_GOALS_PER_DAY", "8"))
-    return chained_goals_today(goal) < cap
+    is gated separately from the per-run budget. Cap chained goals/runs/cost to bound cost."""
+    budget = goal.get("budget") or {}
+    daily_cap = int(budget["max_chained_goals_per_day"] if "max_chained_goals_per_day" in budget else os.environ.get("ASTRA_MAX_CHAINED_GOALS_PER_DAY", "8"))
+    root_cap = int(budget["max_chained_runs_per_root_session"] if "max_chained_runs_per_root_session" in budget else os.environ.get("ASTRA_MAX_CHAINED_RUNS_PER_ROOT_SESSION", "20"))
+    cost_cap = float(budget["max_cost_usd_per_run"] if "max_cost_usd_per_run" in budget else os.environ.get("ASTRA_MAX_CHAINED_COST_USD_PER_RUN", "1.0"))
+    estimated_cost = float(budget.get("estimated_next_run_cost_usd") or 0.0)
+    if chained_goals_today(goal) >= daily_cap:
+        return False
+    if len(goal.get("operating_sessions") or []) >= root_cap:
+        return False
+    if estimated_cost and estimated_cost > cost_cap:
+        return False
+    return True
 
 
 def is_due(goal: dict[str, Any], min_interval_seconds: int) -> bool:

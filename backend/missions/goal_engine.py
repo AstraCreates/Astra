@@ -209,13 +209,15 @@ async def dispatch_current_goal(founder_id: str) -> dict[str, Any]:
     that own its open tasks, in a child session linked to the launch session."""
     from backend.core.session_ids import new_session_id
     from backend.missions.company_goal import (
-        current_goal, get_company_goal, add_operating_session, update_operating_session,
+        current_goal, get_company_goal, add_operating_session, update_operating_session, budget_allows,
     )
 
     goal = get_company_goal(founder_id)
     cg = current_goal(founder_id)
     if not goal or not cg:
         return {"ok": False, "reason": "no current goal"}
+    if not budget_allows(goal):
+        return {"ok": False, "reason": "operating budget exhausted"}
     open_tasks = [t for t in cg.get("tasks") or [] if not t.get("postponed") and t.get("status") != "done"]
     if not open_tasks:
         return {"ok": True, "skipped": "no open tasks"}
@@ -260,7 +262,7 @@ async def after_run(founder_id: str, session_id: str, state: dict[str, Any]) -> 
     if not founder_id:
         return
     from backend.missions.company_goal import (
-        get_company_goal, upsert_company_goal, current_goal, chain_allowed, _goal_is_complete,
+        get_company_goal, upsert_company_goal, current_goal, chain_allowed, budget_allows, _goal_is_complete,
     )
     try:
         goal = get_company_goal(founder_id)
@@ -298,6 +300,9 @@ async def after_run(founder_id: str, session_id: str, state: dict[str, Any]) -> 
         # Auto-chain: goal complete → next goal → dispatch immediately.
         goal = get_company_goal(founder_id)
         if goal and goal.get("status") != "paused" and _goal_is_complete(current_goal(founder_id)):
+            if not budget_allows(goal):
+                logger.info("goal_engine: founder=%s goal complete but operating run budget hit — not chaining", founder_id)
+                return
             if not chain_allowed(goal):
                 logger.info("goal_engine: founder=%s goal complete but daily new-goal cap hit — not chaining", founder_id)
                 return

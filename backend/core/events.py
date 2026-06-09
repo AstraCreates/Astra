@@ -230,6 +230,57 @@ def _strip_base64(event: dict) -> dict:
     return {**event, "result": clean_result, "_base64_stripped": True}
 
 
+def _persist_goal_status_memory(session_id: str, event: dict) -> None:
+    """Best-effort Company Brain mirror for goal task status changes."""
+    try:
+        etype = event.get("type")
+        if etype not in {"agent_start", "agent_done"}:
+            return
+        agent = str(event.get("agent") or "")
+        if not agent:
+            return
+        from backend.core.session_store import get_session_meta
+        founder_id = str((get_session_meta(session_id) or {}).get("founder_id") or event.get("founder_id") or "")
+        if not founder_id:
+            return
+        from backend.missions.company_goal import current_goal
+        goal = current_goal(founder_id) or {}
+        owned = [
+            {
+                "id": task.get("id"),
+                "title": task.get("title"),
+                "status": task.get("status"),
+                "owner_agents": task.get("owner_agents", []),
+                "done_agents": task.get("done_agents", []),
+            }
+            for task in goal.get("tasks") or []
+            if agent in (task.get("owner_agents") or [])
+        ]
+        if not owned:
+            return
+        from backend.tools.company_brain import add_company_brain_record
+        status = "started" if etype == "agent_start" else "finished"
+        add_company_brain_record(
+            founder_id=founder_id,
+            source="astra_goal_system",
+            title=f"{agent} {status} company-goal work",
+            content=json.dumps({
+                "session_id": session_id,
+                "agent": agent,
+                "event": etype,
+                "current_goal_id": goal.get("id", ""),
+                "current_goal_title": goal.get("title", ""),
+                "tasks": owned,
+            }, indent=2, default=str),
+            kind="goal_status",
+            canonical=False,
+            stale_risk="low",
+            metadata={"session_id": session_id, "agent": agent, "event": etype},
+        )
+    except Exception:
+        pass
+
+
 async def publish(session_id: str, event: dict) -> None:
     event.setdefault("ts_unix", time.time())
     event.setdefault("ts_iso", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(event["ts_unix"])))
@@ -258,6 +309,7 @@ async def publish(session_id: str, event: dict) -> None:
             from backend.missions.goal_engine import tick_from_agent, mark_running
             fn = tick_from_agent if _etype == "agent_done" else mark_running
             loop.run_in_executor(None, fn, session_id, str(event.get("agent")))
+            loop.run_in_executor(None, _persist_goal_status_memory, session_id, dict(event))
         except Exception:
             pass
 

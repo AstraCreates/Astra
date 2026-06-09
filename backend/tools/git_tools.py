@@ -870,50 +870,6 @@ def _planner_review(local: str, goal: str, files: list[str]) -> dict:
         return {"pass": True, "issues": [], "fix_instructions": ""}  # don't block on error
 
 
-_OC_TEST_PROMPT = """Verify the project you just built in THIS directory and fix any issues.
-FIRST detect the actual stack — do not assume a frontend/ or backend/ folder; the
-files may live at the repo root (e.g. a root-level Next.js app) or in subfolders.
-
-1. `ls -la` and read package.json / requirements.txt / pyproject.toml to identify the stack.
-2. If it's a Node/TypeScript project (package.json present): run `npx tsc --noEmit` if TypeScript is used, and verify every dependency in package.json actually exists on npm — remove any invented packages (e.g. @radix-ui/react-badge).
-3. If it's a Python project (.py files / requirements.txt): run a syntax check on the real .py files only (skip folders that don't exist).
-4. Find any file that is empty, contains only TODO/placeholder text, or has fewer than 5 lines of real code — rewrite it properly.
-5. Ensure every import references a file/module that actually exists in this project.
-
-Verify with `npx tsc --noEmit` / `npm run build` ONLY — do NOT start a dev server
-(`next dev`/`next start`) or curl endpoints. The sandbox blocks `sleep`, lacks `lsof`,
-and rate limiters trip your own requests; it wastes rounds. A clean build is the bar.
-
-Fix everything you find, then run: `git add -A && git commit -m "fix: verification pass"`.
-If everything is already correct, just say OK."""
-
-_BUILD_CHECK_PROMPT = """Run the Next.js production build and fix every error until it passes.
-
-1. Find package.json: check `ls frontend/package.json` first, then root `package.json`.
-2. cd into that directory and run: npm install --legacy-peer-deps --prefer-offline --no-audit --no-fund && npm run build 2>&1 | tail -150
-3. If the build PASSES (exit 0), say OK and stop.
-4. If it FAILS, read every error carefully and fix all of them. Common patterns to fix:
-   - Any @clerk/* import → remove it; replace auth with NextAuth.js (next-auth@beta) or Supabase Auth
-   - `export const dynamic = "error"` on a page that uses headers()/cookies() → change to `dynamic = "force-dynamic"` or remove the export
-   - Missing package → install it (npm install <pkg>) or remove the import if the package doesn't exist
-   - TypeScript type errors → fix the types
-   - `Cannot find module` → fix the import path or create the missing file
-   - Outdated Next.js 14 API → update to Next.js 15 App Router pattern
-5. After fixing, run npm run build again. Repeat until it passes.
-6. Commit: `git add -A && git commit -m "fix: build errors resolved"`
-
-VERIFY WITH `npm run build` ONLY. Do NOT start a dev/prod server (`next dev`/`next start`)
-and curl-test routes: this sandbox blocks `sleep`, has no `lsof`, and the app's own rate
-limiter will trip your test requests — it wastes rounds and proves nothing. A passing
-`npm run build` (and `npx tsc --noEmit`) is the bar. The live preview is started separately."""
-
-
-def _openclaude_test_pass(local: str, oc_session_id: str) -> str:
-    """Ask openclaude to self-test and fix the codebase. Returns its output."""
-    logger.info("openclaude self-test pass starting")
-    return _run_claude(local, _OC_TEST_PROMPT, session_id=oc_session_id, timeout=600)
-
-
 _FAKE_PACKAGES = {
     "@radix-ui/react-badge",
     "@radix-ui/react-layout",

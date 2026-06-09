@@ -1,183 +1,185 @@
-# Astra — AI Founding Team
+# Astra
 
-Astra turns a single plain-English instruction into a coordinated company-building operation. Six specialized AI agents run in parallel — doing market research, drafting legal documents, deploying landing pages, scaffolding codebases, creating marketing content, and managing operations — without any further input from the founder.
+Astra is an AI company-building platform. A founder gives Astra a goal, and Astra turns it into a coordinated operating run: planning the work, dispatching specialist agents, streaming progress, producing artifacts, tracking workspace history, and gating risky actions behind approvals.
 
-Live at **http://167.235.151.204** (Clerk auth required).
-
----
-
-## What It Does
-
-Submit one goal. Astra plans, dispatches, and executes across six domains simultaneously:
-
-| Agent | What It Produces |
-|---|---|
-| **Research** | Market sizing, competitor analysis, TAM/SAM/SOM, customer profile, data sources, YouTube competitor analysis |
-| **Legal** | NDAs, privacy policies, terms of service, founder agreements — full PDFs with patent landscape |
-| **Web** | Landing page designed (Qwen3.6-35B, 2-pass generation) and deployed to Vercel via CLI |
-| **Marketing** | Instagram Reels scripts, TikTok content, Meta ad copy, email campaigns, outreach sequences |
-| **Technical** | Full codebase scaffolded via Claude Code CLI, Linear tickets, Notion pages, GitHub repo |
-| **Ops** | Executive summary, investor outreach emails, fundraising docs, SOPs |
-
-Everything runs in under 15 minutes. Results are streamed live to the dashboard and logged to an Obsidian vault.
+The project has grown from a single "six agents build a startup" prototype into a broader platform for AI departments, company memory, missions, workspaces, deployment tracking, credits, teams, model routing, and production-readiness operations.
 
 ---
 
-## Architecture
+## Current Capabilities
 
-```
+- **Goal-to-run orchestration**: `POST /goal` creates a durable session, streams Server-Sent Events, dispatches agents, and records artifacts.
+- **Specialist agent team**: research, market research, regulatory research, legal, web, web navigation, design, technical, infra, data, marketing, SEO, paid marketing, outreach, sales, sales enablement, finance/fundraise, finance modeling, ops, and more under `backend/specialists/`.
+- **Agent Stack Platform**: compile business outcomes into deployable AI department packages with lanes, artifacts, connectors, approval gates, quality checks, and readiness checks.
+- **Workspaces and chapters**: each goal can create or extend a founder workspace so related sessions stay grouped.
+- **Missions and company goals**: persistent operating goals, task lists, approvals, scheduled follow-up runs, and Notion sync support.
+- **Company brain / context layer**: durable memory, session digesting, workboards, subteam reports, company reports, and connector-aware context.
+- **Library and attachments**: upload or persist reusable files for agent-readable context.
+- **Skills**: founder-defined skills can be attached to specific agents.
+- **Credits and billing hooks**: token/credit accounting, Stripe checkout/webhook support, and plan-based limits.
+- **Deployments**: staging/production deployment records and publish endpoints for generated projects.
+- **Teams and auth boundaries**: founder/team access controls, invites, org usage, and optional JWT/header-based auth.
+- **Production operations**: health, readiness, metrics, alerts, smoke checks, production launch, production verification, and admin observability endpoints.
+- **Frontend mockups**: static HTML/CSS app mockups in `mockup/app/`, including the session workspace, updates panel, artifact vault, richer previews, and launch flow.
+
+---
+
+## How A Run Works
+
+```text
+Founder goal
+    |
+    v
 POST /goal
-    │
-    ▼
-Orchestrator (planner LLM)
-    │  Decomposes goal into agent tasks with dependency order
-    ▼
-Wave Scheduler (asyncio.gather)
-    │
-    ├── research agent ──────────────────────────────────┐
-    │                                                    │
-    ├── (waits for research) ──────────────────────────  │
-    │       ├── web agent                                │
-    │       ├── legal agent                              │  parallel
-    │       ├── marketing agent                          │
-    │       └── technical agent                          │
-    │                                                    │
-    └── ops agent (runs last, sees all results) ─────────┘
-    │
-    ▼
-SSE stream → Next.js dashboard (live agent cards)
-    │
-    ▼
-Obsidian vault (persistent session notes per agent)
+    |
+    v
+Session + workspace/chapter registration
+    |
+    v
+Orchestrator planner
+    |
+    v
+Specialist agents run with shared context, tools, memory, and approval gates
+    |
+    v
+SSE stream: goal_start, plan_done, agent_start, actions, artifacts, approvals, done/error
+    |
+    v
+Durable session store, vault, workboard, costs, deployments, and company goal updates
 ```
 
-Each agent is a hand-rolled agentic loop:
-1. LLM receives system prompt + tool schemas
-2. LLM outputs tool call
-3. Tool executes, result appended to messages
-4. Repeat until `done` called or iteration cap hit
-
-No LangChain. No LlamaIndex. No Agents SDK. Raw OpenAI-compatible chat completions + tool dispatch.
+The backend is intentionally direct: FastAPI routes, Python agent loops, tool dispatch, Redis/SSE where needed, and local-first JSON/file stores for many product surfaces. External services are optional unless the requested workflow needs them.
 
 ---
 
-## Stack
+## Core Backend Areas
 
-| Layer | Technology |
+| Area | Purpose |
 |---|---|
-| Backend | FastAPI, Python 3.13, asyncio |
-| Frontend | Next.js 16, Tailwind CSS v4, SSE streaming, Clerk auth |
-| Agent LLM | DeepSeek-V4-Flash via DeepInfra |
-| Planner LLM | Llama 4 Scout 17B via DeepInfra |
-| HTML Gen | Qwen3.6-35B-A3B via DeepInfra (2-pass, ~44k chars) |
-| Database | Supabase (PostgreSQL) |
-| Cache / Bus | Redis (Upstash-compatible) |
-| Memory | Obsidian vault at `~/agent-workspace/` |
-| OAuth Tools | Composio (Gmail, LinkedIn, GitHub, Linear, Notion, Google Calendar) |
-| Deploy | Vercel CLI (landing pages), GitHub (repos + scaffolding via Claude Code CLI) |
-| Docs | ReportLab (PDF generation) |
-| Search | DuckDuckGo (`ddgs`), YouTube Transcript API |
-| Auth | Clerk (sign-in/sign-up, JWT, OAuth) |
-| Infrastructure | Docker Compose on VPS, nginx reverse proxy |
+| `backend/main.py` | FastAPI app, routers, startup jobs, health/readiness/metrics, MCP HTTP endpoint |
+| `backend/api/` | Public product APIs for goals, sessions, stacks, workspaces, teams, missions, skills, library, deployments, credits, admin |
+| `backend/core/` | Orchestration, events, session store, cancellation, usage, workspace state, company brain integrations |
+| `backend/specialists/` | Domain agents and their prompts/tool contracts |
+| `backend/tools/` | Search, document/PDF generation, deployment, GitHub, Stripe, browser/computer-use, email, social, CRM/prospecting, local previews |
+| `backend/stacks/` | Agent Stack catalog, compiler, manifests, operating plans, execution blueprints, readiness, quality audits |
+| `backend/missions/` | Persistent missions, company goals, task scheduling, approval workflow integration |
+| `backend/library/` | Founder file library |
+| `backend/skills/` | Agent-attached reusable skills |
+| `backend/credits/` | Credit ledger, checkout, token-to-credit accounting |
+| `backend/deployments/` | Staging/production deployment records |
+| `backend/provisioning/` | Connector/account provisioning helpers |
+| `backend/safety/` | Content filtering and SafeRun approval gates |
+| `mockup/app/` | Current static frontend mockup surface |
+| `deploy/` | nginx and production helper scripts |
+| `tests/` | Backend tests for agents, storage, billing, production checks, policies, and workflows |
 
 ---
 
-## Agent Tools
+## API Overview
 
-**Research:** `web_search`, `news_search`, `patent_search`, `youtube_research`, `obsidian_log`
+### Runs and Sessions
 
-**Legal:** `format_legal_document`, `generate_pdf`, `patent_search`, `obsidian_log`
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/goal` | Start a coordinated agent run |
+| `GET` | `/stream/{session_id}` | SSE stream for live session events |
+| `GET` | `/sessions` | List founder sessions |
+| `GET` | `/sessions/{session_id}/state` | Rebuild current session state |
+| `GET` | `/sessions/{session_id}/replay` | Replay the durable event log as SSE |
+| `GET` | `/sessions/{session_id}/meta` | Session metadata |
+| `GET` | `/sessions/{session_id}/cost` | Token and cost accounting |
+| `GET` | `/sessions/{session_id}/digest` | Session digest |
+| `GET` | `/sessions/{session_id}/workboard` | Workboard view |
+| `GET` | `/sessions/{session_id}/completion-audit` | Completion audit |
+| `POST` | `/sessions/{session_id}/kill` | Stop a run and clean up previews/workspace files |
+| `POST` | `/sessions/{session_id}/pause` | Pause a run |
+| `POST` | `/sessions/{session_id}/resume` | Resume a paused run |
+| `DELETE` | `/sessions/{session_id}` | Delete a session and related run artifacts |
 
-**Web:** `generate_landing_page_html`, `vercel_deploy`, `obsidian_log`
+### Agent Stacks
 
-**Marketing:** `generate_reel_package`, `generate_tiktok_package`, `generate_meta_ad`, `send_email_campaign`, `outreach_find_leads`, `obsidian_log`
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/stacks` | List available stack templates |
+| `GET` | `/agents/catalog` | Full specialist catalog |
+| `POST` | `/stacks/recommend` | Recommend a stack for an instruction |
+| `POST` | `/stacks/package` | Compile an outcome into a deployable stack package |
+| `POST` | `/stacks/custom` | Build a package from selected agents |
+| `GET` | `/stacks/{stack_id}/manifest` | Stack manifest |
+| `GET` | `/stacks/{stack_id}/operating-plan` | Operating plan |
+| `GET` | `/stacks/{stack_id}/execution-blueprint` | Execution blueprint |
+| `GET` | `/stacks/{stack_id}/quality` | Template quality audit |
+| `GET` | `/stacks/{stack_id}/readiness/{founder_id}` | Founder readiness for a stack |
+| `GET` | `/stacks/{stack_id}/connector-coverage/{founder_id}` | Connector coverage |
+| `GET` | `/stacks/{stack_id}/connector-setup/{founder_id}` | Connector setup plan |
+| `GET` | `/stacks/{stack_id}/connector-validation/{founder_id}` | Connector validation |
 
-**Technical:** `github_create_repo`, `claude_code_scaffold`, `composio_linear_create_issue`, `composio_notion_create_page`, `obsidian_log`
+### Product Surfaces Under `/api`
 
-**Ops:** `generate_pdf`, `send_email_campaign`, `composio_linear_create_issue`, `composio_notion_create_page`, `obsidian_log`
+| Area | Endpoints |
+|---|---|
+| Workspaces | `/workspaces`, `/workspaces/{workspace_id}`, chapters, vault |
+| Teams | `/api/teams`, `/api/teams/me`, invites, member removal |
+| Missions | `/api/missions`, company goal, task approval/postpone/run, Notion sync |
+| Skills | `/api/skills`, attach/detach to agents |
+| Library | `/api/library`, file CRUD |
+| Deployments | `/api/deployments`, publish staged deployment |
+| Credits | `/api/credits`, add/deduct/checkout/webhook |
+| Model settings | `/api/model-settings` |
+
+### Platform Operations
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/health` | Platform health |
+| `GET` | `/ready` | Readiness check |
+| `GET` | `/metrics` | Prometheus metrics |
+| `POST` | `/mcp` | HTTP MCP bridge |
+| `GET` | `/admin/*` | Admin observability, smoke checks, production launch/verification, alerts, logs, git/env/system info |
 
 ---
 
-## Agent Stack Platform
+## SSE Events
 
-Astra includes a production-grade **Agent Stack Platform** under `backend/stacks/`. Instead of ad-hoc agent runs, founders select a pre-built stack (or describe an outcome) and get a fully-compiled AI department package:
+The session UI is driven by an event stream. Common event types include:
 
-- **Idea to Revenue Stack** — research → legal → web → marketing → ops, end-to-end
-- **Sales Stack** — lead gen, outreach, CRM sync, pipeline management
-- **Marketing Stack** — GTM, content calendar, ad ops, analytics
-- **Founder Ops Stack** — task management, investor updates, board prep
-- **Customer Support Stack** — ticket routing, knowledge base, escalation
-- **Product Stack** — spec writing, sprint planning, release notes
-
-Each stack compiles into an execution blueprint with lanes, artifacts, connectors, approval gates, KPIs, and quality gates. All 6 stacks currently score 100/100 on the quality checker.
-
+```text
+goal_start
+plan_done
+agent_start
+agent_action
+agent_action_result
+agent_done
+agent_error
+stack_artifact
+approval_required
+approval_resolved
+goal_done
+goal_error
+replay_complete
 ```
-POST /stacks/package   — compile a stack from a business outcome
-GET  /stacks           — list available stacks
-GET  /ready            — full objective readiness check (all stacks + platform health)
-GET  /metrics          — Prometheus metrics endpoint
-```
 
 ---
 
-## Company Brain
+## Frontend State
 
-Astra includes a local-first company brain that normalizes context from GitHub, Slack, Notion, Google Drive, Gmail, Linear, Zendesk, Confluence, and Astra agent memory into one searchable graph. It tracks canonical records, stale/conflicting knowledge, source relationships, and continuous sync state.
+This checkout currently contains static frontend mockups in `mockup/app/`:
 
-Backend agents receive compact company-brain context automatically during goal runs. External coding agents and IDE clients can also access it through the stdio JSON-RPC bridge:
+- `index.html`: integrated dashboard/new-goal/session workspace
+- `session.html`: standalone session UI
+- `new.html`: new-goal flow
+- `astra.css`: shared mockup styling
+
+You can open the mockup locally with:
 
 ```bash
-ASTRA_FOUNDER_ID=founder_001 python -m backend.tools.company_brain_mcp
+cd mockup/app
+python3 -m http.server 4173
 ```
 
-Example MCP-style client config:
+Then visit `http://localhost:4173/index.html`.
 
-```json
-{
-  "mcpServers": {
-    "astra-company-brain": {
-      "command": "python",
-      "args": ["-m", "backend.tools.company_brain_mcp"],
-      "env": {
-        "ASTRA_FOUNDER_ID": "founder_001"
-      }
-    }
-  }
-}
-```
-
----
-
-## Key Design Decisions
-
-**One-shot tool guard** — Expensive tools (`format_legal_document`, `vercel_deploy`, `generate_landing_page_html`, `claude_code_scaffold`) are hard-blocked after first successful execution per session. Prevents the LLM from calling them twice and doubling cost/time.
-
-**One-shot obsidian_read** — Each agent's `obsidian_read` fires exactly once per run. On repeat calls, returns a `_blocked` message forcing the agent forward. Prevents infinite read loops that eat all iterations.
-
-**2-pass HTML generation** — Web agent generates a full landing page (~37k chars, ~3.5 min) then runs a targeted polish pass: fills sparse sections, adds IntersectionObserver animations, tightens spacing, deepens hero. Final output ~44k chars. Vercel deploys the cached version — LLM cannot truncate it.
-
-**Iteration pressure** — After iteration 5, the agent receives a message nudging it toward `done`. Prevents infinite tool loops.
-
-**Run ledger** — Every agent event is durably recorded to `.astra/run_ledger/index.json` (absolute path, CWD-safe). Tracks per-session status, agent counts, artifact counts, durations. Exposed via `/metrics`.
-
-**Claude Code CLI scaffold** — Technical agent clones the GitHub repo, runs Claude Code non-interactively inside it, then commits and pushes. Produces 20-30 real files with working code, not stubs.
-
-**Obsidian vault** — Each agent writes structured session notes. Prior notes are loaded before each new run, giving agents cross-session memory without a vector database.
-
-**SafeRun approval gates** — High-risk actions (Vercel deploy, repo creation, email sends) require founder approval before executing. In test mode, `bypass_approvals=True` skips the gate. In production, the approval queue is durable and role-aware.
-
----
-
-## Proprietary Intelligence Layer
-
-Four compounding systems under `proprietary-agent/` that make Astra smarter with every run:
-
-- **Causal Decision Graph** — NetworkX graph tracking every agent decision, its causes, and outcomes. Agents query it before acting. Becomes a queryable company brain over time.
-- **Silent Observer** — 24/7 background agent monitoring competitor activity, regulatory changes, and industry signals. Surfaces proactive alerts without being asked.
-- **Execution Fingerprinting** — Every run compressed into a fingerprint. New runs matched against history: "78% similar to a run that succeeded — here's what worked and what failed."
-- **Founder Mirror** — Adversarial agent that attacks every specialist output before it ships. Returns pass/flag/block verdict. Forces outputs to survive scrutiny.
-
-See `proprietary-agent/README.md` for full design.
+Note: `Dockerfile.frontend` and `docker-compose.yml` still expect a `frontend/` Next.js app. That folder is not present in this checkout, so the backend and static mockups are the reliable local surfaces here unless the Next frontend is restored.
 
 ---
 
@@ -186,167 +188,111 @@ See `proprietary-agent/README.md` for full design.
 ### Requirements
 
 - Python 3.13+
-- Node.js 20+
-- Redis
-- Supabase project
-- Clerk application (for auth)
+- Redis, for the default event bus/cache path
+- Node.js/npm, used by generated app builds and frontend tooling
+- Optional: Supabase, Stripe, GitHub, Vercel, Composio, SendGrid/Resend, Cloudflare, PostHog, Clerk, Notion, Hunter, Apollo, browser automation credentials
 
 ### Install
 
 ```bash
-# Backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
-
-# Frontend
-cd frontend && npm install
 ```
 
 ### Environment
 
-```bash
-cp .env.example .env
-```
+The backend reads `.env` through `backend/config.py`. Most values are optional for local development, but real agent runs need at least model credentials and any service credentials required by the tools you invoke.
 
-Required variables:
+Common variables:
 
 ```env
-SUPABASE_URL=
-SUPABASE_KEY=
 REDIS_URL=redis://localhost:6379
-AGENT_MODEL_BASE_URL=https://api.deepinfra.com/v1/openai
+OBSIDIAN_VAULT=~/agent-workspace
+
+OPENROUTER_API_KEY=
 AGENT_MODEL_API_KEY=
-AGENT_MODEL_NAME=deepseek-ai/DeepSeek-V4-Flash
 PLANNER_MODEL_API_KEY=
-COMPOSIO_API_KEY=
+
 GITHUB_TOKEN=
 VERCEL_TOKEN=
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
-CLERK_SECRET_KEY=
+COMPOSIO_API_KEY=
+
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+
+ASTRA_REQUIRE_AUTH=false
+ASTRA_ALLOW_DEV_AUTH=true
+ASTRA_PLATFORM_ADMINS=
 ```
 
-### Run (local)
+See [`backend/config.py`](backend/config.py) for the full configuration surface.
+
+### Run The Backend
 
 ```bash
-# Backend (port 8000)
-uvicorn backend.main:app --port 8000
-
-# Frontend (port 3000)
-cd frontend && npm run dev
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
-### Run (Docker)
+Useful checks:
 
 ```bash
-cp .env.example .env   # fill in values
-docker compose up -d --build
+curl http://localhost:8000/health
+curl http://localhost:8000/ready
+curl http://localhost:8000/stacks
 ```
 
-Open `http://localhost:3000`, sign in, enter a goal, click Launch.
+### Run Tests
+
+```bash
+pytest
+```
+
+### Docker
+
+The backend image is defined in `Dockerfile.backend` and installs Python dependencies, Playwright Chromium, Node/npm, and the OpenClaude CLI used by generated builds.
+
+`docker-compose.yml` also defines Redis, frontend, and nginx services. Because this checkout does not currently include the expected `frontend/` directory, full compose builds may require restoring that app or disabling the frontend service.
 
 ---
 
-## API
+## Production And Ops
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/goal` | Submit a goal, returns `session_id` |
-| `GET` | `/stream/{session_id}` | SSE stream of agent events |
-| `GET` | `/status/{goal_id}` | Goal + task status |
-| `GET` | `/health` | Service health check |
-| `GET` | `/ready` | Full objective readiness check |
-| `GET` | `/metrics` | Prometheus metrics |
-| `POST` | `/stacks/package` | Compile a stack from a business outcome |
-| `GET` | `/stacks` | List available stacks |
-| `POST` | `/setup` | Provision GitHub/Vercel/SendGrid accounts |
-| `GET` | `/setup/{founder_id}` | Check which services are connected |
-| `GET` | `/setup/composio/connect/{founder_id}` | Get OAuth URLs for Composio apps |
+Astra includes operator-facing checks and runbooks under `backend/production_*`, `backend/platform_status.py`, `backend/alerts.py`, `backend/deploy_evidence.py`, and `deploy/`.
 
-### SSE Event Types
+Notable surfaces:
 
-```
-goal_start           — run acknowledged
-plan_done            — planner finished, tasks list available
-agent_start          — specialist began
-agent_action         — tool call in progress
-agent_action_result  — tool returned
-agent_done           — specialist finished, result available
-goal_done            — all agents complete
-goal_error           — unrecoverable failure
-```
+- `/health`, `/ready`, `/metrics`
+- `/admin/overview`
+- `/admin/system`
+- `/admin/sessions`
+- `/admin/runs`
+- `/admin/alerts`
+- `/admin/smoke`
+- `/admin/production-verification`
+- `/admin/production-launch`
+
+Startup jobs also handle interrupted-session recovery, platform alert checks, 30-day PII purge, company-brain scheduling, and mission scheduling.
 
 ---
 
-## Project Structure
+## Design Principles
 
-```
-Astra/
-├── backend/
-│   ├── core/
-│   │   ├── agent.py           # Agentic loop — LLM + tool dispatch
-│   │   ├── orchestrator.py    # Planner + wave scheduler
-│   │   ├── factory.py         # Singleton orchestrator with all specialists
-│   │   ├── events.py          # SSE pub/sub via Redis
-│   │   └── bus.py             # Agent message bus
-│   ├── specialists/
-│   │   ├── research.py
-│   │   ├── legal.py           # One-shot obsidian_read wrapper
-│   │   ├── web.py             # One-shot obsidian_read + 2-pass HTML gen
-│   │   ├── marketing.py
-│   │   ├── technical.py
-│   │   └── ops.py
-│   ├── stacks/                # Agent Stack Platform
-│   │   ├── compiler.py
-│   │   ├── execution_blueprint.py
-│   │   ├── execution_contracts.py
-│   │   ├── manifest.py
-│   │   ├── operating_plan.py
-│   │   ├── package.py
-│   │   ├── readiness.py
-│   │   ├── template_quality.py
-│   │   └── templates.py       # 6 production stack definitions
-│   ├── tools/
-│   │   ├── _llm.py            # Sync LLM wrapper
-│   │   ├── vercel_deploy.py   # 2-pass HTML gen + Vercel CLI deploy
-│   │   ├── claude_scaffold.py # Claude Code CLI repo scaffolding
-│   │   ├── github_scaffold.py # GitHub repo creation
-│   │   ├── doc_generator.py   # Legal document generation
-│   │   ├── pdf_generator.py   # PDF rendering via ReportLab
-│   │   ├── social_content.py  # Reels, TikTok, Meta ad copy
-│   │   ├── email_campaign.py  # SendGrid email campaigns
-│   │   ├── outreach.py        # Hunter-driven lead discovery + Gmail campaigns
-│   │   ├── web_search.py      # Web + news search
-│   │   ├── patent_search.py   # Patent search
-│   │   ├── composio_tools.py  # OAuth tool execution via Composio
-│   │   └── obsidian_logger.py # Vault read/write/append
-│   ├── safety/
-│   │   └── saferun.py         # Approval gates for high-risk actions
-│   ├── run_ledger.py          # Durable per-run operational log
-│   ├── platform_status.py     # Health/readiness/metrics
-│   ├── api/
-│   │   └── routes.py
-│   └── config.py              # Pydantic settings from .env
-├── frontend/
-│   └── app/
-│       ├── page.tsx            # Goal submission
-│       ├── goal/[id]/page.tsx  # Live agent dashboard
-│       ├── payments/page.tsx   # Billing + plans
-│       └── setup/page.tsx      # Account connection
-├── deploy/
-│   ├── nginx.conf
-│   ├── server-preflight.sh
-│   └── production-proof.sh
-├── docker-compose.yml
-├── Dockerfile.backend
-├── Dockerfile.frontend
-├── supabase/                   # Schema migrations
-└── tests/
-```
+- **Durable by default**: sessions, events, credits, deployments, missions, library files, and workspaces are persisted so the UI can replay state.
+- **Founder control**: high-risk actions such as deploys, emails, account actions, and production changes flow through approval gates.
+- **Local-first where practical**: many stores are file-backed, with Supabase and external providers layered in where production needs them.
+- **Agent stacks over loose prompts**: repeatable business outcomes compile into stack manifests, operating plans, quality gates, connector requirements, and execution blueprints.
+- **Observable runs**: token usage, costs, event logs, workboards, digests, completion audits, production checks, and admin endpoints make agent behavior inspectable.
 
 ---
 
-## Cost
+## Repository Notes
 
-A full 6-agent run costs approximately **$0.03–0.08** in LLM tokens at current DeepInfra pricing. HTML generation (Qwen3.6-35B, 2 passes) adds ~$0.02. Claude Code scaffold (technical agent) uses Anthropic credits separately.
+- The worktree may contain generated artifacts such as `__pycache__`, local previews, and `.DS_Store`; avoid committing those.
+- `_archive/` keeps older orchestrator/agent experiments for reference.
+- `proprietary_agent/` and `proprietary-agent/` contain experimental intelligence-layer concepts such as decision graphs, silent observers, execution fingerprints, and founder-mirror review.
+- `mockup/` is currently the primary frontend artifact in this checkout.
 
 ---
 

@@ -68,8 +68,3 @@ def get_gold_price() -> float:
         _cache["fetched_at"] = time.time()
 
     return price
-
-
-def tokens_to_credits(tokens: int) -> int:
-    """Convert token count to credits. Flat rate: 10 tokens = 1 credit."""
-    return max(1, tokens // 10)
