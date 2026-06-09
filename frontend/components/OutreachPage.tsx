@@ -122,6 +122,15 @@ const COMPANY_SIZE_OPTIONS = [
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="f-label">{label}</label>
+      {children}
+    </div>
+  );
+}
+
 function CheckGroup({ label, options, selected, onChange }: {
   label: string; options: { value: string; label: string }[];
   selected: string[]; onChange: (v: string[]) => void;
@@ -320,6 +329,8 @@ export default function OutreachPage() {
     name: "", from_name: "", from_email: "", product_name: "", value_prop: "", daily_limit: 50,
   });
   const [newAudience, setNewAudience] = useState<TargetAudience>(defaultAudience());
+  const [audienceMode, setAudienceMode] = useState<"simple" | "advanced">("simple");
+  const [audiencePrompt, setAudiencePrompt] = useState("");
   const [creatingCampaign, setCreatingCampaign] = useState(false);
 
   // ── Find contacts tab ──────────────────────────────────────────────────────
@@ -490,15 +501,20 @@ export default function OutreachPage() {
   const createCampaign = async () => {
     setCreatingCampaign(true);
     try {
+      const audience: TargetAudience = audienceMode === "simple"
+        ? { ...defaultAudience(), keywords: audiencePrompt.trim() }
+        : newAudience;
       const res = await apiFetch(`${BASE}/outreach/campaigns/${founderId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...newCampaign, target_audience: newAudience }),
+        body: JSON.stringify({ ...newCampaign, target_audience: audience }),
       });
       const data = await res.json();
       setShowNewCampaign(false);
       setNewCampaign({ name: "", from_name: "", from_email: "", product_name: "", value_prop: "", daily_limit: 50 });
       setNewAudience(defaultAudience());
+      setAudienceMode("simple");
+      setAudiencePrompt("");
       await loadCampaigns();
       enterCampaign(data);
     } catch (e) {
@@ -570,14 +586,6 @@ export default function OutreachPage() {
 
   const stats = activeCampaign ? campaignStats[activeCampaign.id] : null;
 
-  // ── Shared label row for form fields ──────────────────────────────────────
-  const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div>
-      <label className="f-label">{label}</label>
-      {children}
-    </div>
-  );
-
   // ══════════════════════════════════════════════════════════════════════════
   // RENDER
   // ══════════════════════════════════════════════════════════════════════════
@@ -629,7 +637,7 @@ export default function OutreachPage() {
           <div style={{ ...card({ padding: "28px 24px", width: "100%", maxWidth: 560 }), maxHeight: "90vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(0,0,0,.14)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
               <h2 style={{ fontSize: 17, margin: 0, color: "var(--fg)" }}>New Campaign</h2>
-              <button onClick={() => setShowNewCampaign(false)} style={{ background: "none", border: "none", color: "var(--fm)", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>✕</button>
+              <button onClick={() => { setShowNewCampaign(false); setAudienceMode("simple"); setAudiencePrompt(""); }} style={{ background: "none", border: "none", color: "var(--fm)", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>✕</button>
             </div>
 
             <div className="sec-label" style={{ marginBottom: 10 }}>Campaign basics</div>
@@ -652,29 +660,55 @@ export default function OutreachPage() {
               ))}
             </div>
 
-            <div className="sec-label" style={{ marginBottom: 10 }}>Target audience (Apollo search filters)</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
-              {[
-                { label: "Job Titles", key: "titles", placeholder: "CEO, CTO, Founder, Head of Growth" },
-                { label: "Locations", key: "locations", placeholder: "United States, United Kingdom" },
-                { label: "Industries", key: "industries", placeholder: "SaaS, Fintech, E-commerce" },
-                { label: "Keywords", key: "keywords", placeholder: "startup, growth, scale" },
-              ].map(f => (
-                <Field key={f.key} label={f.label}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <span className="sec-label" style={{ margin: 0 }}>Target audience</span>
+              <button
+                type="button"
+                onClick={() => setAudienceMode(m => m === "simple" ? "advanced" : "simple")}
+                style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 11, color: "var(--blue)", fontWeight: 600 }}
+              >
+                {audienceMode === "simple" ? "Advanced filters ▼" : "Simple mode ▲"}
+              </button>
+            </div>
+
+            {audienceMode === "simple" ? (
+              <div style={{ marginBottom: 22 }}>
+                <Field label="Describe who you want to reach">
                   <input
-                    value={(newAudience as unknown as Record<string, string>)[f.key] ?? ""}
-                    onChange={e => setNewAudience(a => ({ ...a, [f.key]: e.target.value }))}
-                    placeholder={f.placeholder}
+                    value={audiencePrompt}
+                    onChange={e => setAudiencePrompt(e.target.value)}
+                    placeholder="e.g. restaurant owners in New York, SaaS founders in the US"
                     className="f-input"
                   />
                 </Field>
-              ))}
-              <CheckGroup label="Seniority" options={SENIORITY_OPTIONS} selected={newAudience.seniorities} onChange={v => setNewAudience(a => ({ ...a, seniorities: v }))} />
-              <CheckGroup label="Company Size" options={COMPANY_SIZE_OPTIONS} selected={newAudience.company_sizes} onChange={v => setNewAudience(a => ({ ...a, company_sizes: v }))} />
-            </div>
+                <p style={{ fontSize: 11, color: "var(--fm)", margin: "6px 0 0" }}>
+                  Apollo will search based on your description. Switch to advanced for precise filters.
+                </p>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
+                {[
+                  { label: "Job Titles", key: "titles", placeholder: "CEO, CTO, Founder, Head of Growth" },
+                  { label: "Locations", key: "locations", placeholder: "United States, United Kingdom" },
+                  { label: "Industries", key: "industries", placeholder: "SaaS, Fintech, E-commerce" },
+                  { label: "Keywords", key: "keywords", placeholder: "startup, growth, scale" },
+                ].map(f => (
+                  <Field key={f.key} label={f.label}>
+                    <input
+                      value={(newAudience as unknown as Record<string, string>)[f.key] ?? ""}
+                      onChange={e => setNewAudience(a => ({ ...a, [f.key]: e.target.value }))}
+                      placeholder={f.placeholder}
+                      className="f-input"
+                    />
+                  </Field>
+                ))}
+                <CheckGroup label="Seniority" options={SENIORITY_OPTIONS} selected={newAudience.seniorities} onChange={v => setNewAudience(a => ({ ...a, seniorities: v }))} />
+                <CheckGroup label="Company Size" options={COMPANY_SIZE_OPTIONS} selected={newAudience.company_sizes} onChange={v => setNewAudience(a => ({ ...a, company_sizes: v }))} />
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", paddingTop: 8, borderTop: "1px solid var(--bd)" }}>
-              <button onClick={() => setShowNewCampaign(false)} className="btn">Cancel</button>
+              <button onClick={() => { setShowNewCampaign(false); setAudienceMode("simple"); setAudiencePrompt(""); }} className="btn">Cancel</button>
               <button onClick={createCampaign} disabled={creatingCampaign || !newCampaign.name.trim()} className="btn pri">
                 {creatingCampaign ? "Creating…" : "Create & Find Contacts →"}
               </button>
