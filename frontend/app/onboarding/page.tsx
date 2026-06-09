@@ -1,10 +1,13 @@
 import { Suspense } from "react";
 import OnboardingWizard from "@/components/OnboardingWizard";
+import WordsPreloader from "@/components/WordsPreloader";
 
 export default function OnboardingPage() {
   return (
-    <Suspense>
-      <OnboardingWizard />
-    </Suspense>
+    <WordsPreloader>
+      <Suspense>
+        <OnboardingWizard />
+      </Suspense>
+    </WordsPreloader>
   );
 }
