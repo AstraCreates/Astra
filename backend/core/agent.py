@@ -98,6 +98,50 @@ _TOOL_ALIASES = {
     "generate_colors": "generate_color_palette",
 }
 
+# Generic verbs shared by many tool names — ignore them when token-matching so the
+# distinctive part of the name drives the match (e.g. "brand identity" → brand_board).
+_GENERIC_TOOL_TOKENS = {"generate", "create", "make", "get", "run", "build", "do", "new", "the", "a", "tool"}
+
+
+def fuzzy_resolve_tool(name: str, tool_names) -> str | None:
+    """Best-effort map a hallucinated tool name to the closest real tool for THIS
+    agent. Catches the whole class (generate_brand_identity → generate_brand_board)
+    without a hardcoded alias for every variant. Returns the real name or None."""
+    import re as _re
+    import difflib as _dl
+    if not name or not tool_names:
+        return None
+    keys = list(tool_names)
+    low = {k.lower(): k for k in keys}
+    n = name.lower().strip()
+    if n in low:
+        return low[n]
+
+    def toks(s: str) -> set:
+        out = set()
+        for t in _re.split(r"[^a-z0-9]+", s):
+            if not t or t in _GENERIC_TOOL_TOKENS:
+                continue
+            out.add(t[:-1] if len(t) > 3 and t.endswith("s") else t)  # singularize: colors→color
+        return out
+
+    # 1) Distinctive-token overlap (Jaccard) — precise, drives most hallucinations.
+    nt = toks(n)
+    best, best_j = None, 0.0
+    for lk, orig in low.items():
+        ct = toks(lk)
+        if not ct:
+            continue
+        j = len(nt & ct) / len(nt | ct)
+        if j > best_j:
+            best_j, best = j, orig
+    if best_j >= 0.34:
+        return best
+    # 2) Close-match on the full string (typos / suffix swaps) at a strict cutoff so
+    # near-misses like generate_colors→generate_logo don't slip through.
+    m = _dl.get_close_matches(n, list(low), n=1, cutoff=0.7)
+    return low[m[0]] if m else None
+
 
 def _format_tool_result(tool_name: str, result: Any) -> str:
     text = _format_tool_result_raw(tool_name, result)
@@ -1103,14 +1147,20 @@ class Agent:
     async def _execute_tool(self, tool_name: str, args: dict, ctx: AgentContext) -> Any:
         fn = self.tools.get(tool_name)
         if fn is None:
-            # Models frequently hallucinate alternate names for the note tool.
-            # Resolve common aliases instead of erroring (was a recurring failure).
+            # Explicit aliases first (fast, exact), then fuzzy-match the hallucinated
+            # name to the closest real tool for this agent so we route it instead of
+            # erroring + relying on the model to recover.
             alias = _TOOL_ALIASES.get(tool_name)
             if alias:
                 fn = self.tools.get(alias)
+            if fn is None:
+                resolved = fuzzy_resolve_tool(tool_name, self.tools.keys())
+                if resolved:
+                    logger.info("Tool '%s' not found — fuzzy-routed to '%s' (%s)", tool_name, resolved, self.name)
+                    tool_name = resolved
+                    fn = self.tools.get(resolved)
         if fn is None:
-            # List the real tools so the model stops re-calling a hallucinated name
-            # (e.g. design looping on generate_landing) and picks a valid one.
+            # No reasonable match — list the real tools so the model picks a valid one.
             available = ", ".join(sorted(self.tools.keys()))
             return {"error": f"Unknown tool '{tool_name}'. It does not exist — do NOT call it again. "
                              f"Use ONLY one of these tools: {available}."}
