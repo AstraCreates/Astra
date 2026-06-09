@@ -14,10 +14,12 @@ const WORDS = [
   "こんにちは！",   // Japanese (full-width)
   "你好！",        // Chinese (full-width)
   "안녕하세요!",   // Korean
+  "Привет!",      // Russian — fast
+  "مرحباً!",      // Arabic — fast
 ];
 
-// Progressive acceleration: slow → fast (700ms floor so every word reads clearly)
-const HOLDS = [1300, 1000, 780, 620, 700, 700, 700, 700, 700];
+// Progressive acceleration — last 2 break the floor for rapid-fire finish
+const HOLDS = [1300, 1000, 780, 620, 700, 700, 700, 700, 700, 320, 320];
 
 interface Props {
   children: React.ReactNode;
@@ -68,8 +70,8 @@ export default function WordsPreloader({ children, onExitStart }: Props) {
               background: "#FEFFF6",
             }}
             exit={{
-              y: "100%",
-              transition: { duration: 0.72, ease: [0.76, 0, 0.24, 1] },
+              clipPath: "inset(0 0 100% 0)",
+              transition: { duration: 0.85, ease: [0.76, 0, 0.24, 1] },
             }}
           >
             <motion.div
