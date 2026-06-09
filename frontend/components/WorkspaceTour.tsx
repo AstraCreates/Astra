@@ -304,9 +304,10 @@ export default function WorkspaceTour({ onDone }: { onDone: () => void }) {
                   onClick={() => { setEntering(true); setTimeout(() => setIdx(i), 50); }}
                   style={{
                     height: 4, borderRadius: 999,
-                    width: i === idx ? 20 : 6,
+                    width: 20,
                     background: i === idx ? "var(--blue)" : i < idx ? "rgba(59,130,246,0.35)" : "var(--bd)",
-                    transition: "width 0.25s, background 0.25s",
+                    clipPath: `inset(0 ${i === idx ? 0 : 70}% 0 0 round 999px)`,
+                    transition: "clip-path 0.25s cubic-bezier(0.22,1,0.36,1), background 0.25s",
                     cursor: "pointer",
                     animation: i === idx ? "tour-dot-active 2s ease-in-out infinite" : "none",
                   }}

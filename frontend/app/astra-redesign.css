@@ -259,7 +259,7 @@ h1, h2, h3, h4, h5, h6 {
 .dc-badge.err{color:var(--red);border-color:var(--rb);background:var(--rdim)}
 .dc-badge.que{color:var(--fm);border-color:var(--bd);background:rgba(0,0,0,.03)}
 .dc-what{font-size:9.5px;color:var(--fd);line-height:1.45;font-family:var(--font-code),monospace}
-.dc-prog{height:1px;background:rgba(0,0,0,.06)}.dc-bar{height:100%;transition:width .9s cubic-bezier(.22,1,.36,1)}
+.dc-prog{height:1px;background:rgba(0,0,0,.06);overflow:hidden}.dc-bar{height:100%;width:100%;transform-origin:left;transition:transform .9s cubic-bezier(.22,1,.36,1)}
 
 /* Session — workspace split */
 .sess-ws{flex:1;display:flex;overflow:hidden;min-height:0}

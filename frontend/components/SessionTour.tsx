@@ -245,9 +245,10 @@ export default function SessionTour({ onDone }: { onDone: () => void }) {
                   onClick={() => { setReady(false); setTimeout(() => setIdx(i), 60); }}
                   style={{
                     height: 4, borderRadius: 999, cursor: "pointer",
-                    width: i === idx ? 20 : 6,
+                    width: 20,
                     background: i === idx ? "var(--blue)" : i < idx ? "rgba(0,46,255,.35)" : "var(--bd)",
-                    transition: "width .22s, background .22s",
+                    clipPath: `inset(0 ${i === idx ? 0 : 70}% 0 0 round 999px)`,
+                    transition: "clip-path 0.22s cubic-bezier(0.22,1,0.36,1), background 0.22s",
                   }}
                 />
               ))}

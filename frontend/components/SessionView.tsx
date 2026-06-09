@@ -208,6 +208,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [designImages, setDesignImages] = useState<SessionImages>({ logos: {}, brand_images: [] });
   const [accessDenied, setAccessDenied] = useState(false);
   const [toastErr, setToastErr] = useState("");
+  const [restartConfirm, setRestartConfirm] = useState(false);
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
   const imgsFetched = useRef(false);
 
@@ -654,9 +655,20 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               style={{ touchAction: "manipulation" }} onClick={stop}>Stop</button>
           </div>
         )}
-        <button className="btn sm" title="Restart this run" aria-label="Restart run"
-          style={{ flexShrink: 0, touchAction: "manipulation" }}
-          onClick={killClearRestart}>↻ Restart</button>
+        {restartConfirm ? (
+          <>
+            <button className="btn sm danger" aria-label="Confirm restart run"
+              style={{ flexShrink: 0, touchAction: "manipulation" }}
+              onClick={() => { setRestartConfirm(false); killClearRestart(); }}>Confirm restart</button>
+            <button className="btn sm" aria-label="Cancel restart"
+              style={{ flexShrink: 0, touchAction: "manipulation" }}
+              onClick={() => setRestartConfirm(false)}>✕</button>
+          </>
+        ) : (
+          <button className="btn sm" title="Restart this run" aria-label="Restart run"
+            style={{ flexShrink: 0, touchAction: "manipulation" }}
+            onClick={() => { setRestartConfirm(true); setTimeout(() => setRestartConfirm(false), 5000); }}>↻ Restart</button>
+        )}
       </div>
 
       {/* inline error toast — replaces all alert() calls */}
@@ -740,10 +752,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           const bc = s === "done" ? "var(--green)" : s === "run" ? "var(--blue)" : s === "err" ? "var(--red)" : "var(--fm)";
           const badge = s === "run" ? "Working" : s === "done" ? "Done" : s === "err" ? "Error" : "Queued";
           return (
-            <div key={dk} className={`dc ${s}${st.selDept === dk ? " sel" : ""}`} onClick={() => sel(dk, null)}>
+            <div key={dk} className={`dc ${s}${st.selDept === dk ? " sel" : ""}`} title={d.n} aria-label={`${d.n} department — ${badge}`} onClick={() => sel(dk, null)}>
               <div className="dc-top"><div className="dc-ico">{d.ic}</div><div className="dc-name">{d.n}</div><div className={`dc-badge ${s}`}>{badge}</div></div>
               <div className="dc-what">{deptWhat(d.inS)}</div>
-              <div className="dc-prog"><div className="dc-bar" style={{ width: `${prog}%`, background: bc }} /></div>
+              <div className="dc-prog"><div className="dc-bar" style={{ transform: `scaleX(${prog / 100})`, background: bc }} /></div>
             </div>
           );
         })}

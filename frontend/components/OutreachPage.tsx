@@ -192,7 +192,8 @@ function ProgressBar({ label, stages }: { label: string; stages?: string[] }) {
         {pct !== null ? (
           <div style={{
             height: "100%", background: "var(--blue)",
-            width: `${pct}%`, transition: "width 1.8s ease",
+            width: "100%", transform: `scaleX(${(pct ?? 0) / 100})`, transformOrigin: "left",
+            transition: "transform 1.8s cubic-bezier(0.22,1,0.36,1)",
           }} />
         ) : (
           <div style={{
@@ -999,8 +1000,8 @@ export default function OutreachPage() {
               {apolloSource === "apollo_orgs" && (
                 <div style={{
                   ...card({ padding: "10px 14px" }),
-                  borderLeft: "3px solid var(--amber, #f59e0b)",
-                  background: "rgba(245,158,11,0.06)",
+                  border: "1px solid var(--ab, rgba(217,119,6,.25))",
+                  background: "var(--adim, rgba(217,119,6,.08))",
                   fontSize: 12, color: "var(--fg)",
                   display: "flex", alignItems: "center", gap: 8,
                 }}>

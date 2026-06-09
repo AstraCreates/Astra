@@ -39,6 +39,9 @@ export default function DashboardView() {
   const [sessions, setSessions] = useState<SessionIndexEntry[] | null>(null);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const [pendingDel, setPendingDel] = useState<Set<string>>(new Set());
+  const [toastErr, setToastErr] = useState("");
+  const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
   const [company, setCompany] = useState("");
   const [firstName, setFirstName] = useState("");
   const [greeting, setGreeting] = useState("");
@@ -55,7 +58,12 @@ export default function DashboardView() {
   const del = useCallback(async (e: React.MouseEvent, s: SessionIndexEntry) => {
     e.stopPropagation();
     e.preventDefault();
-    if (!confirm(`Delete this run permanently?\n\n${s.goal || s.session_id}`)) return;
+    if (!pendingDel.has(s.session_id)) {
+      setPendingDel((p) => new Set(p).add(s.session_id));
+      setTimeout(() => setPendingDel((p) => { const n = new Set(p); n.delete(s.session_id); return n; }), 3000);
+      return;
+    }
+    setPendingDel((p) => { const n = new Set(p); n.delete(s.session_id); return n; });
     setDeleting((p) => new Set(p).add(s.session_id));
     // Optimistically drop from the UI immediately so it feels instant.
     deleteLocalSession(s.session_id);
@@ -65,11 +73,11 @@ export default function DashboardView() {
       // index and reappear on the next refresh.
       await killSession(s.session_id).catch(() => {});
       const ok = await deleteSessionRemote(s.session_id);
-      if (!ok) { alert("Could not delete this run on the server — it may reappear on refresh."); }
+      if (!ok) { showErr("Could not delete this run on the server — it may reappear on refresh."); }
     } finally {
       setDeleting((p) => { const n = new Set(p); n.delete(s.session_id); return n; });
     }
-  }, []);
+  }, [pendingDel]);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -164,6 +172,13 @@ export default function DashboardView() {
           </div>
         </div>
 
+        {toastErr && (
+          <div style={{ background: "var(--rdim)", borderBottom: "1px solid var(--rb)", padding: "7px 18px", display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "var(--red)", fontFamily: "var(--font-code)", animation: "astraSlideDown 0.22s var(--ease-out-quint, cubic-bezier(0.22,1,0.36,1)) both" }}>
+            <span>✗</span>
+            <span style={{ flex: 1 }}>{toastErr}</span>
+            <button onClick={() => setToastErr("")} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 14, padding: 0, lineHeight: 1 }}>✕</button>
+          </div>
+        )}
         <div style={{ padding: "20px 24px 40px" }}>
           {/* Attention banner */}
           {stalled > 0 && (
@@ -240,24 +255,27 @@ export default function DashboardView() {
                   >
                     {/* Delete */}
                     <button
-                      title="Delete run"
-                      aria-label="Delete run"
+                      title={pendingDel.has(s.session_id) ? "Click again to confirm delete" : "Delete run"}
+                      aria-label={pendingDel.has(s.session_id) ? "Confirm delete" : "Delete run"}
                       disabled={deleting.has(s.session_id)}
                       onClick={(e) => del(e, s)}
                       onPointerDown={(e) => e.stopPropagation()}
                       onTouchStart={(e) => e.stopPropagation()}
                       style={{
                         position: "absolute", top: 6, right: 6,
-                        width: 36, height: 36,
+                        width: pendingDel.has(s.session_id) ? "auto" : 36, height: 36,
+                        padding: pendingDel.has(s.session_id) ? "0 10px" : 0,
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        background: "var(--surface)", border: "1px solid var(--bd)",
-                        color: "var(--fm)", cursor: "pointer", fontSize: 14, borderRadius: 8,
-                        opacity: deleting.has(s.session_id) ? 0.4 : 0.75,
-                        transition: "opacity .15s",
+                        background: pendingDel.has(s.session_id) ? "var(--rdim)" : "var(--surface)",
+                        border: pendingDel.has(s.session_id) ? "1px solid var(--rb)" : "1px solid var(--bd)",
+                        color: pendingDel.has(s.session_id) ? "var(--red)" : "var(--fm)",
+                        cursor: "pointer", fontSize: pendingDel.has(s.session_id) ? 9 : 14, borderRadius: 8,
+                        opacity: deleting.has(s.session_id) ? 0.4 : 1,
+                        transition: "opacity .15s, background .15s, border-color .15s, color .15s",
                         touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
-                        zIndex: 3,
+                        zIndex: 3, fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap",
                       }}
-                    >{deleting.has(s.session_id) ? "…" : "✕"}</button>
+                    >{deleting.has(s.session_id) ? "…" : pendingDel.has(s.session_id) ? "DELETE?" : "✕"}</button>
 
                     <div style={{ flex: 1, paddingRight: 44 }}>
                       {/* Goal */}

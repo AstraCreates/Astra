@@ -160,11 +160,12 @@ function StepDots({ step, total = 4 }: { step: number; total?: number }) {
         <div
           key={i}
           style={{
-            width: i === step ? 24 : 8,
+            width: 24,
             height: 8,
             borderRadius: 999,
             background: i === step ? T.blue : i < step ? T.blueMid : T.border,
-            transition: "width 0.25s, background 0.25s",
+            clipPath: `inset(0 ${i === step ? 0 : 66.67}% 0 0 round 999px)`,
+            transition: "clip-path 0.25s cubic-bezier(0.22,1,0.36,1), background 0.25s",
           }}
         />
       ))}

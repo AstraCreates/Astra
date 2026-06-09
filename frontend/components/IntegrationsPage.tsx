@@ -1053,9 +1053,10 @@ export default function SetupPage() {
           <div style={{ height: 6, width: 120, borderRadius: 999, background: c.border, overflow: "hidden" }}>
             <div style={{
               height: "100%", borderRadius: 999,
-              width: `${progressPct}%`,
+              width: "100%",
+              transform: `scaleX(${progressPct / 100})`, transformOrigin: "left",
               background: progressPct === 100 ? c.green : c.blue,
-              transition: "width 0.6s",
+              transition: "transform 0.6s cubic-bezier(0.22,1,0.36,1)",
             }} />
           </div>
         </div>
