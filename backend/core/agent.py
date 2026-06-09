@@ -91,6 +91,11 @@ _TOOL_ALIASES = {
     "generate_mockup": "generate_wireframe",
     "generate_logo_image": "generate_logo",
     "generate_brandboard": "generate_brand_board",
+    "generate_brand_identity": "generate_brand_board",
+    "generate_identity": "generate_brand_board",
+    "generate_visual_identity": "generate_brand_board",
+    "generate_palette": "generate_color_palette",
+    "generate_colors": "generate_color_palette",
 }
 
 
@@ -569,7 +574,9 @@ class Agent:
             "- Output ONLY the JSON object. Nothing before it, nothing after it.\n"
             "- Never invent tool results. Only report what tools actually returned.\n"
             "- If a tool fails, put the error in output and call done.\n"
-            "- Use exact arg names from tool descriptions."
+            "- Use exact arg names from tool descriptions.\n"
+            "- Treat injected run_context_pack/current_company_goal/company_brain_context as source-of-truth context. "
+            "Call Company Brain tools only when that injected context is insufficient for the current task."
             + library_section
         )
 
