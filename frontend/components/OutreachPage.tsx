@@ -931,24 +931,16 @@ export default function OutreachPage() {
 
           {!apolloSearching && apolloResults.length > 0 && (
             <>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 13, color: "var(--fm)" }}>
-                  {apolloTotal.toLocaleString()} contacts found · {selectedContacts.size}/{MAX_CONFIRM} selected
-                </span>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <Btn
-                    variant={selectedContacts.size > 0 ? "green" : "ghost"}
-                    disabled={enrolling || selectedContacts.size === 0}
-                    onClick={confirmContacts}
-                  >
-                    {enrolling ? "Revealing & enrolling…" : selectedContacts.size > 0
-                      ? `Reveal emails & enroll ${selectedContacts.size} →`
-                      : "Select contacts to enroll"}
-                  </Btn>
-                </div>
+              <div style={{ fontSize: 13, color: "var(--fm)" }}>
+                {apolloTotal.toLocaleString()} contacts found
+                {selectedContacts.size === 0 && (
+                  <span style={{ marginLeft: 8, color: "var(--blue)", fontWeight: 500 }}>
+                    — check up to {MAX_CONFIRM} contacts below, then click Enroll
+                  </span>
+                )}
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 8 }}>
                 {apolloResults.map(c => (
                   <ContactCard
                     key={c.apollo_id}
@@ -960,9 +952,28 @@ export default function OutreachPage() {
                 ))}
               </div>
 
-              {selectedContacts.size >= MAX_CONFIRM && (
-                <div style={{ textAlign: "center", fontSize: 12, color: "var(--fm)" }}>
-                  Max {MAX_CONFIRM} selected. Confirm or deselect to swap contacts.
+              {/* Sticky enroll bar — visible whenever contacts are selected */}
+              {selectedContacts.size > 0 && (
+                <div style={{
+                  position: "sticky", bottom: 0,
+                  background: "var(--surface)", borderTop: "2px solid var(--bb)",
+                  padding: "12px 18px", display: "flex", alignItems: "center",
+                  justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+                  boxShadow: "0 -4px 16px rgba(0,46,255,0.08)",
+                }}>
+                  <div>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>
+                      {selectedContacts.size} contact{selectedContacts.size !== 1 ? "s" : ""} selected
+                    </span>
+                    <span style={{ fontSize: 12, color: "var(--fm)", marginLeft: 8 }}>
+                      {selectedContacts.size < MAX_CONFIRM
+                        ? `(up to ${MAX_CONFIRM - selectedContacts.size} more)`
+                        : "max reached"}
+                    </span>
+                  </div>
+                  <Btn variant="green" disabled={enrolling} onClick={confirmContacts} style={{ minWidth: 200 }}>
+                    {enrolling ? "Enrolling…" : `Enroll ${selectedContacts.size} contact${selectedContacts.size !== 1 ? "s" : ""} →`}
+                  </Btn>
                 </div>
               )}
             </>

@@ -2426,22 +2426,26 @@ async def outreach_search_people(
     domains_exc = _split(domains_exclude)
     keywords_list = _split(keywords)
 
-    # 1. Query local DB first
-    from backend.tools.contact_scraper import search_local_contacts
-    local = await asyncio.to_thread(
-        search_local_contacts,
-        founder_id=founder_id,
-        titles=titles_list or None,
-        industries=industries_list or None,
-        locations=locations_list or None,
-        company_sizes=sizes_list or None,
-        seniorities=seniorities_list or None,
-        page=page,
-        limit=per_page,
-    )
-    if local["contacts"]:
-        from backend.tools.contact_seeder import is_seeding
-        return {**local, "source": "local_db", "seeding": is_seeding(founder_id)}
+    # 1. Query local DB only when no specific filters are set.
+    # With filters the user expects fresh, targeted results — local cache
+    # would return stale/unrelated contacts and ignore the filters.
+    has_filters = any([titles_list, industries_list, locations_list, keywords_list, seniorities_list, sizes_list])
+    if not has_filters:
+        from backend.tools.contact_scraper import search_local_contacts
+        local = await asyncio.to_thread(
+            search_local_contacts,
+            founder_id=founder_id,
+            titles=None,
+            industries=None,
+            locations=None,
+            company_sizes=None,
+            seniorities=None,
+            page=page,
+            limit=per_page,
+        )
+        if local["contacts"]:
+            from backend.tools.contact_seeder import is_seeding
+            return {**local, "source": "local_db", "seeding": is_seeding(founder_id)}
 
     # Kick off the global Hunter seed if pool is empty
     from backend.tools.contact_seeder import seed_contact_database, is_seeding, GLOBAL_FOUNDER_ID
