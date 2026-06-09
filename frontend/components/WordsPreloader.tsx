@@ -5,16 +5,10 @@ import { useEffect, useState } from "react";
 
 const WORDS = [
   "Hello",
-  "Bonjour",
   "Hola",
-  "Ciao",
-  "Olá",
-  "Hallo",
-  "Hej",
   "こんにちは",
-  "안녕하세요",
+  "Bonjour",
   "你好",
-  "ਸਤ ਸ੍ਰੀ ਅਕਾਲ",
 ];
 
 interface Props {

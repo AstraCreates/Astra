@@ -55,12 +55,13 @@ export default function WelcomeScreen() {
       `}</style>
 
       <div style={{
-        minHeight: "100vh",
+        position: "fixed",
+        inset: 0,
+        zIndex: 200,
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        position: "relative",
         overflow: "hidden",
         background: "#001aff",
       }}>
