@@ -9,6 +9,7 @@ from typing import Any
 
 from backend.core.agent import Agent, AgentContext
 from backend.core.bus import AgentBus
+from backend.core.context_policy import RunContextPolicy
 from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
 
 logger = logging.getLogger(__name__)
@@ -635,6 +636,7 @@ class Orchestrator:
         from backend.core.creative import build_creative_brief
         creative_brief = (constraints or {}).get("creative_brief") or build_creative_brief(session_id, goal)
         shared: dict[str, Any] = {"constraints": constraints or {}, "creative_brief": creative_brief}
+        context_policy = RunContextPolicy(session_id=session_id, founder_id=founder_id, constraints=constraints or {})
 
         from backend.core.events import publish
         await publish(session_id, {"type": "goal_start", "goal": goal, "founder_id": founder_id})
@@ -927,7 +929,13 @@ class Orchestrator:
                     session_id=session_id,
                     founder_id=founder_id,
                     task_id=tid,
-                    shared=shared,
+                    shared=context_policy.build_agent_shared(
+                        base_shared=shared,
+                        agent_name=agent_name,
+                        task=task,
+                        dep_results=dep_results,
+                        vault_context=vault_context_text,
+                    ),
                     dep_results=dep_results,
                     vault_context=vault_context_text,
                     bypass_approvals=True,  # bypass_planner path skips approval gates for testing
@@ -936,6 +944,7 @@ class Orchestrator:
                 try:
                     result = await agent.run(ctx)
                     completed[tid] = result
+                    context_policy.persist_agent_result(agent_name=agent_name, task=task, result=result)
                     await publish(session_id, {"type": "agent_done", "agent": agent_name, "task_id": tid, "result": result})
                 except Exception as _agent_exc:
                     err_msg = str(_agent_exc)[:400]
@@ -1044,11 +1053,13 @@ class Orchestrator:
                 founder_id=founder_id,
                 session_id=session_id,
                 unlimited_credits=bool((constraints or {}).get("unlimited_credits", False)),
-                shared={
-                    **shared,
-                    "prior_results": dep_results,
-                    "prior_vault_notes": vault_context_text,
-                },
+                shared=context_policy.build_agent_shared(
+                    base_shared=shared,
+                    agent_name=agent_name,
+                    task=task,
+                    dep_results=dep_results,
+                    vault_context=vault_context_text,
+                ),
             )
             if proprietary_engine:
                 proprietary_engine.on_agent_start(agent_name)
@@ -1169,6 +1180,12 @@ class Orchestrator:
                     "artifacts": [],
                 }
             task_verifications[tid] = artifact_verification
+            context_policy.persist_agent_result(
+                agent_name=agent_name,
+                task=task,
+                result=result,
+                artifact_verification=artifact_verification,
+            )
             await self._publish_stack_artifacts(session_id, task, result, stack_template)
             await publish(session_id, {
                 "type": "stack_artifact_verification",
@@ -1199,6 +1216,10 @@ class Orchestrator:
                 ),
             })
             logger.info("Task %s (%s) done", tid, agent_name)
+
+        async def _run_task_with_limit(task: dict, semaphore: asyncio.Semaphore) -> None:
+            async with semaphore:
+                await _run_task(task)
 
         # Phase A: start ALL agents immediately in parallel — research and specialists together.
         # Research results flow into shared context as they arrive; specialists pick them up
@@ -1231,8 +1252,9 @@ class Orchestrator:
             return result, notes
 
         # Launch research in background
+        research_semaphore = asyncio.Semaphore(max(1, context_policy.max_concurrent_agents))
         research_bg_tasks = [
-            asyncio.create_task(_run_task(t)) for t in parallel_research_tasks
+            asyncio.create_task(_run_task_with_limit(t, research_semaphore)) for t in parallel_research_tasks
         ]
 
         # Background replan: when research is ready, update shared with enriched instructions
@@ -1392,6 +1414,17 @@ class Orchestrator:
             })
             logger.info("Phase gate published: %s → %s (%d artifacts)", phase_name, next_phase, len(gate_artifacts))
 
+            # Speed: phase gates are NON-BLOCKING by default. The gate is still
+            # published (the UI shows the phase deliverables), but the pipeline does
+            # NOT sit idle for up to 2h waiting for a human click — it auto-advances.
+            # Human checkpoints live in the goal system (milestone approvals). Set
+            # ASTRA_PHASE_GATES_BLOCKING=1 to restore the blocking 2h-wait behaviour.
+            import os as _os
+            if _os.environ.get("ASTRA_PHASE_GATES_BLOCKING", "").lower() not in ("1", "true", "yes"):
+                await publish(session_id, {"type": "stack_approval_decision", "gate_key": gate_key, "decision": "approved"})
+                logger.info("Phase gate '%s' auto-advanced (non-blocking mode)", phase_name)
+                return True
+
             from backend.core.events import approval_decision_wait
             decision = await approval_decision_wait(session_id, gate_key, timeout=7200)
             if cancellation.is_killed(session_id):
@@ -1445,57 +1478,60 @@ class Orchestrator:
         def _is_build_agent(agent: str) -> bool:
             return (agent or "").lower().startswith(("web", "technical"))
 
+        agent_semaphore = asyncio.Semaphore(max(1, context_policy.max_concurrent_agents))
+
         async def _run_task_guarded(t: dict) -> None:
             """Run a task. Build agents run unguarded (per-pass timeouts bound them);
             others get a hard timeout so a hung agent never blocks the wave."""
-            if _is_build_agent(t["agent"]):
+            async with agent_semaphore:
+                if _is_build_agent(t["agent"]):
+                    try:
+                        await _run_task(t)
+                    except Exception as _be:
+                        logger.error("Build agent %s raised: %s", t["agent"], _be)
+                        if t["id"] not in completed:
+                            completed[t["id"]] = {"error": str(_be), "agent": t["agent"]}
+                    return
+                _to = _AGENT_TIMEOUT
                 try:
-                    await _run_task(t)
-                except Exception as _be:
-                    logger.error("Build agent %s raised: %s", t["agent"], _be)
+                    await asyncio.wait_for(_run_task(t), timeout=_to)
+                except asyncio.TimeoutError:
+                    logger.error("Agent %s timed out after %ds — marking done to unblock downstream", t["agent"], _to)
+                    completed[t["id"]] = {"error": f"timed_out_after_{_to}s", "agent": t["agent"], "timed_out": True}
+                    await publish(session_id, {
+                        "type": "agent_error", "agent": t["agent"],
+                        "task_id": t["id"], "error": f"agent timed out after {_to}s",
+                    })
+                    await publish(session_id, {
+                        "type": "stack_lane_status",
+                        "lane_id": t.get("id"),
+                        "agent": t["agent"],
+                        "task_id": t["id"],
+                        "status": "blocked",
+                        "title": t.get("stack_task_title") or t["agent"],
+                        "blockers": [f"agent timed out after {_to}s"],
+                        "next_actor": "founder",
+                    })
+                except Exception as _te:
+                    logger.error("Agent %s raised unhandled exception: %s", t["agent"], _te)
                     if t["id"] not in completed:
-                        completed[t["id"]] = {"error": str(_be), "agent": t["agent"]}
-                return
-            _to = _AGENT_TIMEOUT
-            try:
-                await asyncio.wait_for(_run_task(t), timeout=_to)
-            except asyncio.TimeoutError:
-                logger.error("Agent %s timed out after %ds — marking done to unblock downstream", t["agent"], _to)
-                completed[t["id"]] = {"error": f"timed_out_after_{_to}s", "agent": t["agent"], "timed_out": True}
-                await publish(session_id, {
-                    "type": "agent_error", "agent": t["agent"],
-                    "task_id": t["id"], "error": f"agent timed out after {_to}s",
-                })
-                await publish(session_id, {
-                    "type": "stack_lane_status",
-                    "lane_id": t.get("id"),
-                    "agent": t["agent"],
-                    "task_id": t["id"],
-                    "status": "blocked",
-                    "title": t.get("stack_task_title") or t["agent"],
-                    "blockers": [f"agent timed out after {_to}s"],
-                    "next_actor": "founder",
-                })
-            except Exception as _te:
-                logger.error("Agent %s raised unhandled exception: %s", t["agent"], _te)
-                if t["id"] not in completed:
-                    completed[t["id"]] = {"error": str(_te), "agent": t["agent"]}
-                await publish(session_id, {
-                    "type": "agent_error",
-                    "agent": t["agent"],
-                    "task_id": t["id"],
-                    "error": str(_te)[:400],
-                })
-                await publish(session_id, {
-                    "type": "stack_lane_status",
-                    "lane_id": t.get("id"),
-                    "agent": t["agent"],
-                    "task_id": t["id"],
-                    "status": "blocked",
-                    "title": t.get("stack_task_title") or t["agent"],
-                    "blockers": [str(_te)[:220]],
-                    "next_actor": "founder",
-                })
+                        completed[t["id"]] = {"error": str(_te), "agent": t["agent"]}
+                    await publish(session_id, {
+                        "type": "agent_error",
+                        "agent": t["agent"],
+                        "task_id": t["id"],
+                        "error": str(_te)[:400],
+                    })
+                    await publish(session_id, {
+                        "type": "stack_lane_status",
+                        "lane_id": t.get("id"),
+                        "agent": t["agent"],
+                        "task_id": t["id"],
+                        "status": "blocked",
+                        "title": t.get("stack_task_title") or t["agent"],
+                        "blockers": [str(_te)[:220]],
+                        "next_actor": "founder",
+                    })
 
         # Prune dependencies on agents that aren't actually in this run's task set
         # (custom stacks, agent-filtered runs, or any plan where an upstream agent was
@@ -1710,6 +1746,7 @@ class Orchestrator:
 
         # Load all prior vault notes for this founder to give full company context
         shared: dict[str, Any] = {"prior_session_id": prior_session_id, "creative_brief": creative_brief}
+        context_policy = RunContextPolicy(session_id=session_id, founder_id=founder_id, constraints={})
         try:
             vault_summary_parts = []
             for agent_name in self.specialists:
@@ -1773,8 +1810,13 @@ class Orchestrator:
                 founder_id=founder_id,
                 session_id=session_id,
                 shared={
-                    **shared,
-                    "prior_vault_notes": vault_ctx,
+                    **context_policy.build_agent_shared(
+                        base_shared=shared,
+                        agent_name=agent_name,
+                        task=task,
+                        dep_results={},
+                        vault_context=vault_ctx,
+                    ),
                     "is_continuation": True,
                     "prior_session_id": prior_session_id,
                 },
@@ -1786,6 +1828,7 @@ class Orchestrator:
                 await asyncio.to_thread(auto_log_if_missing, agent_name, session_id, result, founder_id)
             except Exception:
                 pass
+            context_policy.persist_agent_result(agent_name=agent_name, task=task, result=result)
             completed[tid] = result
             shared[f"result_{agent_name}"] = _shared_safe(agent_name, result)
             await self._publish_outcomes(session_id, task, result)
