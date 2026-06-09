@@ -4,6 +4,7 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential curl git nodejs npm sudo \
+    libjpeg-dev zlib1g-dev libpng-dev libwebp-dev libfreetype6-dev \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g @gitlawb/openclaude 2>/dev/null || true \
     && useradd -m -s /bin/bash astra \
