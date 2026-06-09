@@ -67,9 +67,12 @@ def generate(prompt: str, max_tokens: int | None = None, json_mode: bool = False
     )
     if max_tokens:
         kwargs["max_tokens"] = max_tokens
-    # Let OpenRouter fall back across providers on error/rate-limit instead of
-    # handing back a malformed body.
-    kwargs["extra_body"] = _provider_routing(json_mode)
+    # Disable chain-of-thought reasoning AND let OpenRouter fall back across providers.
+    # Without reasoning:{effort:none}, hy3-preview/mimo spend the entire max_tokens budget
+    # on the <think> channel and return EMPTY content — which silently broke plan_next_goal
+    # (no next goal proposed) and every other generate()-based content tool.
+    from backend.core.llm_cache import openrouter_extra_body
+    kwargs["extra_body"] = openrouter_extra_body(selected) or _provider_routing(json_mode)
     resp = client.chat.completions.create(**kwargs, timeout=300.0)
     if not getattr(resp, "choices", None):
         return ""

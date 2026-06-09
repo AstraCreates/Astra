@@ -6,6 +6,7 @@ import asyncio
 import difflib
 import json
 import logging
+import os
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -357,11 +358,17 @@ class Agent:
         # MiMo: $0.14→$0.0028/M on cache hit (50x cheaper). hy3/ling also benefit.
         if is_openrouter and messages:
             messages = cacheable_messages(messages)
+        # Cap the per-call output. The agent loop only ever emits a small JSON action
+        # (tool call / done), so a few thousand tokens is plenty. WITHOUT a cap, reasoning
+        # models like hy3-preview run to their 65536-token default and, hitting the 300s
+        # timeout, retry up to 5× → a single stuck iteration burns ~22 minutes (this is
+        # exactly why the design agent "took ages"). The cap bounds worst-case latency.
         kwargs: dict = dict(
             model=self.model,
             messages=messages,
             temperature=0.1,
             timeout=300.0,
+            max_tokens=int(os.environ.get("ASTRA_AGENT_MAX_TOKENS", "8192")),
         )
         extra_body = openrouter_extra_body(self.model) if is_openrouter else None
         if extra_body:

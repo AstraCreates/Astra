@@ -1339,12 +1339,19 @@ def run_mvp_loop(
               "implemented and runnable. Build the ENTIRE product (auth + dashboard + the core features "
               "from the plan), file by file, using your Write/Edit/Bash tools. Keep working until the whole "
               "product is complete and matches the plan; do not stop after one file or build only a landing page.\n"
-              "HONESTY: do NOT fabricate testimonials, customer quotes/names/photos, company logos, user "
+            + ("DESIGN PRESERVATION (non-negotiable): a landing page already exists in this repo with an "
+               "established visual design. Do NOT change the existing styling. Specifically: do NOT rewrite or "
+               "restyle globals.css theme/color CSS variables, the tailwind.config theme (colors, fonts, spacing), "
+               "the fonts wired in layout.tsx, or any existing landing-page component. REUSE those exact design "
+               "tokens (the same colors, fonts, spacing, component classes) for every NEW page (auth, dashboard, "
+               "features) so the whole product looks like one cohesive site. Only ADD files/sections; never "
+               "overwrite the landing's look.\n" if agent != "web" else "")
+            + ("HONESTY: do NOT fabricate testimonials, customer quotes/names/photos, company logos, user "
               "counts, ratings, revenue, or press mentions — a new product has no customers yet. Use honest "
               "copy and neutral placeholders (no invented specifics) instead of fake social proof.\n"
               "VERIFY with `npm run build` / `npx tsc --noEmit` ONLY — do NOT run `next dev`/`next start` and "
               "curl-test routes: the sandbox blocks `sleep`, has no `lsof`, and rate limiters trip your own "
-              "requests. A clean build is the bar; the live preview is started separately."
+              "requests. A clean build is the bar; the live preview is started separately.")
         )
         logger.info("Pass 1: holistic MVP build (%d target files, plan=%s)", len(required_files), bool(build_plan))
         _phase("Pass 1/4 — building the full product" + (" from plan" if build_plan else ""))

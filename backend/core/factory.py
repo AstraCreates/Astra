@@ -95,7 +95,10 @@ def get_orchestrator() -> Orchestrator:
             "marketing": build_marketing_agent(use_computer=True, **_highoutput_kwargs),
             "legal": build_legal_agent(use_computer=True, **_highoutput_kwargs),
             "ops": build_ops_agent(use_computer=True, **_coder_kwargs),
-            "design": build_design_agent(use_computer=False, **_highoutput_kwargs),
+            # Design — mimo-v2.5 (fast, clean tool calls). It works through tools
+            # (brand board, wireframe, logo brief), so it doesn't need a heavy reasoning
+            # model; hy3-preview here ran 20+ min per stuck iteration ("design took ages").
+            "design": build_design_agent(use_computer=False, **_small_kwargs),
             "legal_docs": build_legal_docs_agent(use_computer=True, **_highoutput_kwargs),
             "legal_entity": build_legal_entity_agent(use_computer=True, **_highoutput_kwargs),
             "legal_ip": build_legal_ip_agent(use_computer=True, **_highoutput_kwargs),
