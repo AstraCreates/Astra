@@ -362,20 +362,65 @@ def _search_orgs_as_contacts(
     all_lower = " ".join(k.lower() for k in (keywords or []) + (industries or []))
     fetch_size = min(per_page, 25)
 
-    # Use YC data for startup/SaaS queries — far better quality than Apollo orgs
-    if any(s in all_lower for s in _STARTUP_SIGNALS):
-        yc = _yc_search(keywords=keywords, industries=industries, locations=locations, limit=fetch_size)
-        if yc:
-            return {
-                "contacts": yc,
-                "total": len(yc),
-                "page": page,
-                "per_page": fetch_size,
-                "has_more": False,
-                "source": "yc",
-            }
+    is_startup_query = any(s in all_lower for s in _STARTUP_SIGNALS)
 
-    # Non-startup query → Apollo org search
+    # For startup/SaaS queries: combine YC (quality) + Apollo small orgs (breadth)
+    if is_startup_query:
+        yc = _yc_search(keywords=keywords, industries=industries, locations=locations, limit=15)
+
+        # Apollo small org supplement — tight size filter gives real small startups
+        apollo_body: dict[str, Any] = {
+            "per_page": 15, "page": page,
+            "organization_num_employees_ranges": company_sizes or ["1,10", "11,50"],
+        }
+        if locations:
+            apollo_body["organization_locations"] = locations
+        kw_parts = [k for k in (industries or []) + (keywords or []) if k.lower() not in _PERSON_WORDS]
+        if kw_parts:
+            apollo_body["q_keywords"] = " ".join(dict.fromkeys(kw_parts))
+        else:
+            apollo_body["q_keywords"] = "SaaS software startup"
+
+        apollo_data = _post("/organizations/search", apollo_body)
+        apollo_orgs: list[dict] = []
+        if "error" not in apollo_data:
+            seen_names = {c["first_name"].lower() for c in yc}
+            for o in apollo_data.get("organizations", []):
+                name = (o.get("name") or "").strip()
+                if not name or name.lower() in seen_names:
+                    continue
+                seen_names.add(name.lower())
+                domain = (o.get("primary_domain") or o.get("website_url") or "").strip()
+                industry = (o.get("industry") or "").strip()
+                emp = o.get("estimated_num_employees") or 0
+                description = (o.get("short_description") or o.get("seo_description") or "").strip()
+                if not description and industry and name:
+                    description = f"{name} — {industry}"
+                apollo_orgs.append({
+                    "apollo_id": f"_org_{o.get('id', '')}",
+                    "first_name": name, "last_name": "",
+                    "title": industry or "Company", "company_name": name,
+                    "has_email": False, "has_phone": False,
+                    "city": o.get("city", ""), "state": o.get("state", ""), "country": o.get("country", ""),
+                    "email": "", "email_status": "unknown", "linkedin_url": o.get("linkedin_url", ""),
+                    "enriched": False, "company_industry": industry,
+                    "company_size": _size_label(emp), "company_website": domain,
+                    "company_description": description[:200],
+                    "company_funding": o.get("latest_funding_stage", ""),
+                    "is_org": True,
+                })
+
+        combined = yc + apollo_orgs
+        return {
+            "contacts": combined[:fetch_size],
+            "total": len(combined),
+            "page": page,
+            "per_page": fetch_size,
+            "has_more": False,
+            "source": "yc",
+        }
+
+    # Non-startup query → Apollo org search only
     body: dict[str, Any] = {"per_page": fetch_size, "page": page}
     if locations:
         body["organization_locations"] = locations
