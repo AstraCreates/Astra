@@ -308,7 +308,11 @@ async def after_run(founder_id: str, session_id: str, state: dict[str, Any]) -> 
         # produced a pile of confusing back-to-back goals + sub-runs.
         goal = get_company_goal(founder_id)
         cur = current_goal(founder_id)
-        if goal and goal.get("status") != "paused" and cur and cur.get("status") == "active" and _goal_is_complete(cur):
+        # Propose the next goal when the current goal is complete. A completed goal's
+        # status is already "done" (complete_agent_workstream flips it during ticking),
+        # so guard on != "proposed" (don't stack a second proposal on an unapproved one)
+        # — NOT == "active", which is never true by the time a goal finishes.
+        if goal and goal.get("status") != "paused" and cur and cur.get("status") != "proposed" and _goal_is_complete(cur):
             if not chain_allowed(goal):
                 logger.info("goal_engine: founder=%s goal complete but daily new-goal cap hit — not proposing", founder_id)
                 return
