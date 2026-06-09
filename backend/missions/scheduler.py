@@ -85,11 +85,23 @@ async def _scheduler_tick() -> int:
         logger.warning("missions_scheduler: failed to load company goals: %s", exc)
         return 0
 
+    from backend.core.session_store import list_sessions
+
+    def _has_active_run(fid: str) -> bool:
+        # A launch or operating run is already working this goal — never dispatch a
+        # duplicate (that re-ran web/technical/all agents concurrently).
+        try:
+            return any(s.get("status") == "running" for s in list_sessions(fid, 25))
+        except Exception:
+            return False
+
     dispatched = 0
     for goal in goals:
         founder_id = goal.get("founder_id", "")
         if not founder_id or goal.get("status") in ("paused", "completed"):
             continue
+        if await asyncio.to_thread(_has_active_run, founder_id):
+            continue  # a run is in progress — don't start a duplicate
         cg = await asyncio.to_thread(current_goal, founder_id)
         open_tasks = [t for t in (cg or {}).get("tasks", []) if not t.get("postponed") and t.get("status") != "done"]
 
