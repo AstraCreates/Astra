@@ -5,50 +5,34 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import AstraGradient from "./AstraGradient";
 
-const CSS_GRADIENT =
-  "radial-gradient(ellipse at 30% 40%, #002EFF 0%, #004FCC 40%, #7CFFC6 75%, #FEFFF6 100%)";
-
-// Foreign langs first — settle on English
 const PHRASES = [
+  "Welcome to Astra",
   "Bienvenido a Astra",
   "Bienvenue chez Astra",
   "Astraへようこそ",
   "欢迎来到Astra",
   "Добро пожаловать в Astra",
-  "Welcome to Astra",
 ];
 
-// Hold per phrase before advancing (last phrase stays — 0 unused)
-const HOLDS = [600, 480, 380, 300, 240, 0];
+const HOLD = 800; // consistent, no acceleration
 
 export default function WelcomeScreen() {
   const router = useRouter();
-  const [phase, setPhase] = useState<"blank" | "reveal" | "cycle" | "done">("blank");
+  const [covered, setCovered] = useState(true);
   const [idx, setIdx] = useState(0);
-  const [showCta, setShowCta] = useState(false);
 
-  // blank → reveal (350ms) → cycle starts after gradient finishes (350+850ms)
+  // Let shader preload behind overlay, then fade overlay away
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase("reveal"), 350);
-    const t2 = setTimeout(() => setPhase("cycle"), 1200);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    const t = setTimeout(() => setCovered(false), 700);
+    return () => clearTimeout(t);
   }, []);
 
-  // Advance phrase index during cycle
+  // Cycle phrases once gradient is visible
   useEffect(() => {
-    if (phase !== "cycle") return;
-    if (idx >= PHRASES.length - 1) {
-      setPhase("done");
-      const t = setTimeout(() => setShowCta(true), 550);
-      return () => clearTimeout(t);
-    }
-    const t = setTimeout(() => setIdx((i) => i + 1), HOLDS[idx]);
+    if (covered) return;
+    const t = setTimeout(() => setIdx((i) => (i + 1) % PHRASES.length), HOLD);
     return () => clearTimeout(t);
-  }, [phase, idx]);
-
-  const isLast = idx === PHRASES.length - 1;
-  // Enter animation: fast for foreign, slow + expressive for final English
-  const enterDur = isLast ? 0.7 : Math.max(0.18, 0.32 - (idx / (PHRASES.length - 2)) * 0.14);
+  }, [covered, idx]);
 
   return (
     <>
@@ -69,24 +53,13 @@ export default function WelcomeScreen() {
         .ws-btn:hover { opacity: 0.88; transform: translateY(-1px); }
       `}</style>
 
-      {/* Base: always covers full viewport */}
-      <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "#FEFFF6" }}>
-
-        {/* Gradient wipes up from bottom */}
-        <motion.div
-          style={{
-            position: "absolute",
-            inset: 0,
-            clipPath: "inset(100% 0 0 0)",
-            background: CSS_GRADIENT,
-          }}
-          animate={phase !== "blank" ? { clipPath: "inset(0% 0 0 0)" } : {}}
-          transition={{ duration: 0.85, ease: [0.76, 0, 0.24, 1] }}
-        >
+      <div style={{ position: "fixed", inset: 0, zIndex: 200 }}>
+        {/* Gradient always rendered — preloads while overlay is up */}
+        <div style={{ position: "absolute", inset: 0 }}>
           <AstraGradient />
-        </motion.div>
+        </div>
 
-        {/* Content */}
+        {/* Content: text + button, always present */}
         <div
           style={{
             position: "relative",
@@ -102,42 +75,50 @@ export default function WelcomeScreen() {
           }}
         >
           <AnimatePresence>
-            {(phase === "cycle" || phase === "done") && (
-              <motion.h1
-                key={idx}
-                initial={{ opacity: 0, y: 22, filter: "blur(10px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                exit={{ opacity: 0, y: -16, filter: "blur(6px)", transition: { duration: 0.2 } }}
-                transition={{ duration: enterDur, ease: [0.22, 1, 0.36, 1] }}
-                style={{
-                  fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-                  fontSize: "clamp(36px, 6vw, 68px)",
-                  fontWeight: 700,
-                  color: "#0a0a0a",
-                  letterSpacing: "-0.02em",
-                  lineHeight: 1.05,
-                  margin: 0,
-                }}
-              >
-                {PHRASES[idx]}
-              </motion.h1>
-            )}
+            <motion.h1
+              key={idx}
+              initial={{ opacity: 0, filter: "blur(8px)" }}
+              animate={{ opacity: 1, filter: "blur(0px)" }}
+              exit={{ opacity: 0, filter: "blur(4px)" }}
+              transition={{ duration: 0.38, ease: "easeInOut" }}
+              style={{
+                position: "absolute",
+                fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
+                fontSize: "clamp(36px, 6vw, 68px)",
+                fontWeight: 700,
+                color: "#0a0a0a",
+                letterSpacing: "-0.02em",
+                lineHeight: 1.05,
+                margin: 0,
+              }}
+            >
+              {PHRASES[idx]}
+            </motion.h1>
           </AnimatePresence>
 
-          <AnimatePresence>
-            {showCta && (
-              <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-              >
-                <button className="ws-btn" onClick={() => router.push("/onboarding")}>
-                  Get Started
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Spacer so button stays below where title sits */}
+          <div style={{ height: "clamp(52px, 8vw, 90px)" }} />
+
+          <button className="ws-btn" onClick={() => router.push("/onboarding")}>
+            Get Started
+          </button>
         </div>
+
+        {/* White overlay — fades out to reveal preloaded gradient */}
+        <AnimatePresence>
+          {covered && (
+            <motion.div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "#FEFFF6",
+                zIndex: 10,
+              }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.65, ease: "easeInOut" }}
+            />
+          )}
+        </AnimatePresence>
       </div>
     </>
   );
