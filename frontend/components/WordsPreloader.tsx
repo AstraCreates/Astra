@@ -18,8 +18,8 @@ const WORDS = [
   "مرحباً!",      // Arabic — fast
 ];
 
-// Progressive acceleration — last 2 break the floor for rapid-fire finish
-const HOLDS = [1300, 1000, 780, 620, 700, 700, 700, 700, 700, 320, 320];
+// Geometric progression ~×0.84 per step: 1200 → 220ms, no plateau
+const HOLDS = [1200, 1000, 850, 720, 610, 510, 430, 360, 300, 255, 220];
 
 interface Props {
   children: React.ReactNode;
