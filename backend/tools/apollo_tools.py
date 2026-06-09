@@ -247,16 +247,29 @@ def _search_orgs_as_contacts(
     Each org is shaped as a contact so the existing UI works unchanged.
     Upgrade Apollo plan to get real person-level results.
     """
-    body: dict[str, Any] = {"per_page": min(per_page, MAX_SEARCH_RESULTS), "page": page}
+    _FOUNDER_SIGNALS = {"founder", "cofounder", "co-founder", "startup", "ceo", "cto", "owner", "entrepreneur"}
+    _SAAS_SIGNALS    = {"saas", "software", "tech", "b2b", "platform", "api", "developer", "cloud"}
+    _PERSON_WORDS    = {"founder", "ceo", "cto", "coo", "vp", "director", "manager", "owner", "president"}
+
+    all_lower = " ".join(k.lower() for k in (keywords or []) + (industries or []))
+    fetch_size = min(per_page, 25)   # 25 orgs — quality over quantity
+    body: dict[str, Any] = {"per_page": fetch_size, "page": page}
 
     if locations:
         body["organization_locations"] = locations
+
+    # Size filter: use explicit or infer from keywords
     if company_sizes:
         body["organization_num_employees_ranges"] = company_sizes
+    elif any(s in all_lower for s in _FOUNDER_SIGNALS):
+        body["organization_num_employees_ranges"] = ["1,10", "11,50", "51,200"]
 
-    kw_parts = list(industries or []) + list(keywords or [])
+    # Keywords: strip person-role words (meaningless for org search), keep industry terms
+    kw_parts = [k for k in (industries or []) + (keywords or []) if k.lower() not in _PERSON_WORDS]
+    if not kw_parts and any(s in all_lower for s in _SAAS_SIGNALS):
+        kw_parts = ["SaaS", "software"]
     if kw_parts:
-        body["q_keywords"] = " ".join(dict.fromkeys(kw_parts))  # deduplicate
+        body["q_keywords"] = " ".join(dict.fromkeys(kw_parts))
 
     data = _post("/organizations/search", body)
     if "error" in data:

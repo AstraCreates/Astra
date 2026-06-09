@@ -1009,7 +1009,9 @@ export default function OutreachPage() {
                 </div>
               )}
               <div style={{ fontSize: 13, color: "var(--fm)" }}>
-                {apolloTotal.toLocaleString()} {apolloSource === "apollo_orgs" ? "companies" : "contacts"} found
+                {apolloSource === "apollo_orgs"
+                  ? `${apolloResults.length} companies shown`
+                  : `${apolloTotal.toLocaleString()} contacts found`}
                 {selectedContacts.size === 0 && apolloSource !== "apollo_orgs" && (
                   <span style={{ marginLeft: 8, color: "var(--blue)", fontWeight: 500 }}>
                     — check up to {MAX_CONFIRM} contacts below, then click Enroll
