@@ -245,28 +245,32 @@ def apollo_search_people(
     User picks which contacts to reveal; call apollo_enrich_batch() for
     the selected contacts to get emails (costs 1 credit each, max 15 at once).
     """
-    # Search is free — allow up to 100 (Apollo's page limit)
     fetch_size = min(per_page, MAX_SEARCH_RESULTS)
 
+    # Some Apollo endpoint configs require api_key in the body in addition to the header
     params: dict[str, Any] = {
+        "api_key": _key(),
         "per_page": fetch_size,
         "page": page,
     }
 
-    # JSON POST body — use plain keys (no [] suffix; that's only for form/query encoding)
+    # Reliable structured filters (Apollo enum/range fields — these match exactly)
     if titles:
         params["person_titles"] = titles
     if seniorities:
         params["person_seniorities"] = seniorities
     if locations:
         params["person_locations"] = locations
-    if industries:
-        params["q_organization_industry_tag_names"] = industries
     if company_sizes:
         params["organization_num_employees_ranges"] = company_sizes
     if domains_include:
         params["q_organization_domains_list"] = domains_include
-    kw_parts = list(keywords or [])
+
+    # Industries → q_keywords (NOT q_organization_industry_tag_names).
+    # The tag-names param requires Apollo's exact internal taxonomy strings
+    # (e.g. "Computer Software", NOT "SaaS") — wrong names silently return ~0 results.
+    # q_keywords is a free-text search across all profile fields and is far more forgiving.
+    kw_parts = list(industries or []) + list(keywords or [])
     if kw_parts:
         params["q_keywords"] = " ".join(kw_parts)
 
@@ -281,19 +285,26 @@ def apollo_search_people(
     if excluded:
         people = [
             p for p in people
-            if (p.get("organization") or {}).get("name", "").lower() not in excluded
+            if (p.get("organization") or {}).get("primary_domain", "").lower() not in excluded
         ]
 
     # Rank by quality score — best contacts first
     people_sorted = sorted(people, key=_score_person, reverse=True)
 
+    # Pagination: Apollo may nest under "pagination" key or expose at top level
+    pagination = data.get("pagination") or {}
+    total = (
+        data.get("total_entries")
+        or pagination.get("total_entries")
+        or len(people)
+    )
+
     return {
         "contacts": [_normalize_search_person(p) for p in people_sorted],
-        "total": data.get("total_entries", len(people)),
+        "total": total,
         "page": page,
         "per_page": fetch_size,
-        "has_more": data.get("total_entries", 0) > page * fetch_size,
-        "note": f"{len(people_sorted)} contacts ranked by quality. Select up to {MAX_ENRICH_BATCH} to reveal emails.",
+        "has_more": total > page * fetch_size,
     }
 
 
