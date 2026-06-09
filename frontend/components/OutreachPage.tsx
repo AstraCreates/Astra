@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch } from "@/lib/api";
 
@@ -190,11 +190,12 @@ function StatBadge({ label, value, color }: { label: string; value: string | num
 function CampaignCard({ campaign, stats, onClick, onDelete }: {
   campaign: Campaign; stats?: CampaignStats; onClick: () => void; onDelete: () => void;
 }) {
+  const [confirming, setConfirming] = React.useState(false);
   const audience = campaign.target_audience;
   const hasAudience = audience && (audience.titles || audience.industries || audience.locations);
   return (
     <div className="sc" style={{ cursor: "default", padding: 0 }}>
-      {/* Clickable body — no delete button inside */}
+      {/* Clickable body — delete button is never inside this */}
       <div onClick={onClick} style={{ cursor: "pointer", padding: "14px 14px 10px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
           <div style={{ minWidth: 0, flex: 1 }}>
@@ -219,14 +220,23 @@ function CampaignCard({ campaign, stats, onClick, onDelete }: {
           {campaign.steps?.length || 0} email steps · {campaign.daily_limit}/day
         </div>
       </div>
-      {/* Delete row — sibling of clickable body, never triggers card click */}
-      <div style={{ borderTop: "1px solid var(--bd)", padding: "6px 10px", display: "flex", justifyContent: "flex-end" }}>
-        <button
-          onClick={onDelete}
-          style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--red)", fontWeight: 600, padding: "2px 6px" }}
-        >
-          Delete
-        </button>
+      {/* Delete row — outside the clickable body */}
+      <div style={{ borderTop: "1px solid var(--bd)", padding: "6px 10px", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+        {confirming ? (
+          <>
+            <span style={{ fontSize: 11, color: "var(--fg)" }}>Delete this campaign?</span>
+            <button onClick={() => { setConfirming(false); onDelete(); }} style={{ background: "var(--rdim)", border: "1px solid var(--rb)", color: "var(--red)", cursor: "pointer", fontSize: 11, fontWeight: 600, padding: "2px 10px" }}>
+              Yes
+            </button>
+            <button onClick={() => setConfirming(false)} style={{ background: "none", border: "1px solid var(--bd2)", color: "var(--fm)", cursor: "pointer", fontSize: 11, padding: "2px 10px" }}>
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button onClick={() => setConfirming(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--red)", fontWeight: 600, padding: "2px 6px" }}>
+            Delete
+          </button>
+        )}
       </div>
     </div>
   );
@@ -366,6 +376,7 @@ export default function OutreachPage() {
   const [audiencePrompt, setAudiencePrompt] = useState("");
   const [parsingAudience, setParsingAudience] = useState(false);
   const [creatingCampaign, setCreatingCampaign] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // ── Find contacts tab ──────────────────────────────────────────────────────
   const [apolloResults, setApolloResults] = useState<ApolloContact[]>([]);
@@ -635,7 +646,6 @@ export default function OutreachPage() {
   };
 
   const deleteCampaign = async (campaignId: string, campaignName: string) => {
-    if (!confirm(`Delete "${campaignName}"? This cannot be undone.`)) return;
     try {
       await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${campaignId}`, { method: "DELETE" });
       if (activeCampaign?.id === campaignId) {
@@ -682,7 +692,7 @@ export default function OutreachPage() {
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: "var(--fg)" }}>Outreach</h1>
           <p style={{ fontSize: 13, color: "var(--fm)", margin: "4px 0 0" }}>
-            Create a campaign, find contacts from Apollo, send personalised emails
+            Create a campaign, find contacts, and send personalised emails
           </p>
         </div>
         <button onClick={() => setShowNewCampaign(true)} className="btn pri">
@@ -764,7 +774,7 @@ export default function OutreachPage() {
                   />
                 </Field>
                 <p style={{ fontSize: 11, color: "var(--fm)", margin: "6px 0 0" }}>
-                  Apollo will search based on your description. Switch to advanced for precise filters.
+                  AI will search based on your description. Switch to advanced for precise filters.
                 </p>
               </div>
             ) : (
@@ -819,14 +829,20 @@ export default function OutreachPage() {
       <div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
           <button
-            onClick={() => { setView("campaigns"); setActiveCampaign(null); loadCampaigns(); }}
+            onClick={() => { setView("campaigns"); setActiveCampaign(null); setConfirmingDelete(false); loadCampaigns(); }}
             style={{ background: "none", border: "none", color: "var(--fm)", cursor: "pointer", fontSize: 12, padding: 0, fontFamily: "var(--font-ibm-mono), monospace" }}
           >
             ← All campaigns
           </button>
-          <Btn variant="danger" onClick={() => deleteCampaign(activeCampaign.id, activeCampaign.name)}>
-            Delete campaign
-          </Btn>
+          {confirmingDelete ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 12, color: "var(--fg)" }}>Delete this campaign?</span>
+              <Btn variant="danger" onClick={() => { setConfirmingDelete(false); deleteCampaign(activeCampaign.id, activeCampaign.name); }}>Yes, delete</Btn>
+              <Btn variant="ghost" onClick={() => setConfirmingDelete(false)}>Cancel</Btn>
+            </div>
+          ) : (
+            <Btn variant="danger" onClick={() => setConfirmingDelete(true)}>Delete campaign</Btn>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
           <div>
@@ -911,7 +927,7 @@ export default function OutreachPage() {
             </div>
           )}
 
-          {apolloSearching && <div style={{ ...section() }}><ProgressBar label="Searching Apollo for matching contacts…" /></div>}
+          {apolloSearching && <div style={{ ...section() }}><ProgressBar label="Searching for matching contacts…" /></div>}
 
           {!apolloSearching && apolloResults.length > 0 && (
             <>
