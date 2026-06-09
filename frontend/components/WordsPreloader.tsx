@@ -6,10 +6,17 @@ import { useEffect, useState } from "react";
 const WORDS = [
   "Hello",
   "Hola",
-  "こんにちは",
   "Bonjour",
+  "こんにちは",
   "你好",
+  "Ciao",
+  "Hej",
+  "مرحبا",
 ];
+
+// First word lingers, rest cycle fast
+const FIRST_HOLD = 900;
+const REST_HOLD  = 320;
 
 interface Props {
   children: React.ReactNode;
@@ -28,11 +35,12 @@ export default function WordsPreloader({ children, onExitStart }: Props) {
         onExitStart?.();
         setDone(true);
         setTimeout(() => { document.body.style.overflow = ""; }, 900);
-      }, 650);
+      }, 400);
       return () => clearTimeout(finish);
     }
 
-    const t = setTimeout(() => setIndex((p) => p + 1), 800);
+    const hold = index === 0 ? FIRST_HOLD : REST_HOLD;
+    const t = setTimeout(() => setIndex((p) => p + 1), hold);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index]);
@@ -60,7 +68,6 @@ export default function WordsPreloader({ children, onExitStart }: Props) {
               transition: { duration: 0.85, ease: [0.76, 0, 0.24, 1] },
             }}
           >
-            {/* Blue pulse dot */}
             <motion.div
               style={{
                 position: "absolute",
@@ -79,10 +86,18 @@ export default function WordsPreloader({ children, onExitStart }: Props) {
             <AnimatePresence mode="wait">
               <motion.span
                 key={index}
-                initial={{ opacity: 0, y: 16, filter: "blur(10px)" }}
+                initial={{ opacity: 0, y: index === 0 ? 20 : 10, filter: "blur(8px)" }}
                 animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                exit={{ opacity: 0, y: -16, filter: "blur(10px)" }}
-                transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+                exit={{
+                  opacity: 0,
+                  y: index === 0 ? -14 : -8,
+                  filter: "blur(6px)",
+                  transition: { duration: index === 0 ? 0.32 : 0.18, ease: [0.22, 1, 0.36, 1] },
+                }}
+                transition={{
+                  duration: index === 0 ? 0.55 : 0.22,
+                  ease: [0.22, 1, 0.36, 1],
+                }}
                 style={{
                   position: "absolute",
                   fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
