@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     # run after deterministic checks already pass.
     mvp_deep_heal_on_success: bool = False
     mvp_max_completion_rounds: int = 1
+    # Compiler-as-critic recovery: re-run `npm run build`, feed real errors to the
+    # coder, re-verify — up to this many rounds before giving up.
+    mvp_max_build_rounds: int = 3
     # Model that produces the COMPLETE build spec (pages, data model, features, file
     # plan) before web/technical agents build, so the build follows a real plan
     # instead of a one-line goal. MiniMax-M3 = strong long-form planning/reasoning.

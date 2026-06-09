@@ -1419,54 +1419,55 @@ def run_mvp_loop(
                build_output=build_output[-1200:])
 
         deep_heal = bool(getattr(settings, "mvp_deep_heal_on_success", False))
-        if (not build_ok) or deep_heal:
-            # Pass 2: openclaude self-test + fix (fresh session, reads actual files on disk)
-            logger.info("Pass 2: openclaude fix pass")
-            _phase("Pass 2/4 — self-test & fix")
-            _run_claude(local, _OC_TEST_PROMPT, session_id=None, timeout=600, founder_id=founder_id, app_session_id=session_id, agent=agent)
-            _sanitize_package_json(local)
-            if is_github:
-                sha2 = _commit_and_push(local, f"fix: verification pass — {goal[:45]}")
-                if sha2:
-                    commits.append(sha2)
-            else:
-                _stage_all(local)
+        max_rounds = max(1, int(getattr(settings, "mvp_max_build_rounds", 3) or 3))
 
-            # Re-apply deterministic fixes so the LLM can't undo the known-good toolchain.
+        # Compiler-as-critic recovery loop: feed the REAL `npm run build` errors to
+        # openclaude, re-apply deterministic fixes, then RE-VERIFY with the compiler.
+        # Repeat until the build genuinely passes or we hit the round cap — so we never
+        # ship a build that only "passed" because the model said so.
+        round_i = 0
+        while (not build_ok) and round_i < max_rounds:
+            round_i += 1
+            _phase(f"Build recovery {round_i}/{max_rounds} — fixing real build errors")
+            fix_prompt = (
+                "The production build FAILS. Fix EVERY error below so `npm run build` passes "
+                "clean. Fix the actual cause (TypeScript types, bad imports, async Supabase "
+                "`createClient` → `await createClient()`, missing files, invented npm packages, "
+                "Next.js 15 App Router APIs). Do NOT start a dev server or curl-test.\n\n"
+                f"=== npm run build output ===\n{(build_output or '')[-4500:]}"
+            )
+            _run_claude(local, fix_prompt, session_id=None, timeout=900,
+                        founder_id=founder_id, app_session_id=session_id, agent=agent)
+            # Re-assert deterministic fixes so the LLM can't undo the known-good toolchain.
+            _sanitize_package_json(local)
             _ensure_tailwind_setup(local)
             _build_doctor(local)
-
-            # Pass 2b: build-error self-healing — run `npm run build`, fix any errors, repeat
-            logger.info("Pass 2b: build-error self-healing pass")
-            _phase("Pass 3/4 — build-error self-healing (npm run build)")
-            _run_claude(local, _BUILD_CHECK_PROMPT, session_id=None, timeout=900, founder_id=founder_id, app_session_id=session_id, agent=agent)
-            _sanitize_package_json(local)
+            build_ok, build_output = _npm_build_passes(local)
+            _phase("Build now PASSES ✓" if build_ok else f"Build still failing after round {round_i}",
+                   build_output=(build_output or "")[-1200:])
             if is_github:
-                sha2b = _commit_and_push(local, f"fix: build errors — {goal[:45]}")
-                if sha2b:
-                    commits.append(sha2b)
+                sha_r = _commit_and_push(local, f"fix: build recovery {round_i} — {goal[:40]}")
+                if sha_r:
+                    commits.append(sha_r)
             else:
                 _stage_all(local)
 
-        # Pass 3: planner review → fix any remaining issues. Skip it when the
-        # deterministic build passed and deep healing is disabled.
-        current_files = _staged_files(local)
-        review = {"pass": True, "issues": [], "fix_instructions": ""}
-        if (not build_ok) or deep_heal:
-            _phase("Pass 4/4 — planner review")
-            review = _planner_review(local, goal, current_files)
-        logger.info("Planner review: pass=%s issues=%s", review["pass"], review["issues"])
-        if (not build_ok) or deep_heal:
-            _phase(f"Review: {'passed' if review['pass'] else 'needs fixes'} — {len(review.get('issues') or [])} issue(s)")
-        if not review["pass"] and review["fix_instructions"]:
-            _run_claude(local, review["fix_instructions"], session_id=None, timeout=600, founder_id=founder_id, app_session_id=session_id, agent=agent)
-            _sanitize_package_json(local)
-            if is_github:
-                sha3 = _commit_and_push(local, f"fix: planner fixes — {goal[:45]}")
-                if sha3:
-                    commits.append(sha3)
-            else:
-                _stage_all(local)
+        # Optional quality polish via the planner-critic — only when the build is green
+        # and deep healing is on (don't burn rounds on a passing build by default).
+        if build_ok and deep_heal:
+            _phase("Planner review — quality polish")
+            review = _planner_review(local, goal, _staged_files(local))
+            if not review["pass"] and review["fix_instructions"]:
+                _run_claude(local, review["fix_instructions"], session_id=None, timeout=600,
+                            founder_id=founder_id, app_session_id=session_id, agent=agent)
+                _sanitize_package_json(local); _ensure_tailwind_setup(local); _build_doctor(local)
+                build_ok, _ = _npm_build_passes(local)  # don't let polish break the build
+                if is_github:
+                    sha3 = _commit_and_push(local, f"polish: {goal[:50]}")
+                    if sha3:
+                        commits.append(sha3)
+                else:
+                    _stage_all(local)
 
         # Final guard — re-assert the Tailwind toolchain in case a later pass touched it.
         _ensure_tailwind_setup(local)
@@ -1522,6 +1523,7 @@ def run_mvp_loop(
 
         return {
             "success": True,
+            "build_passes": bool(build_ok),
             "repo_url": repo_url,
             "github_url": f"{repo_url}/tree/main" if is_github else "",
             "deploy_url": deploy_url,
