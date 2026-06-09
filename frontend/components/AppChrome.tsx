@@ -81,7 +81,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
           <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>{children}</main>
         ) : (
           <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-            <div style={{ height: 46, display: "flex", alignItems: "center", padding: "0 14px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
+            <div style={{ height: 46, display: "flex", alignItems: "center", padding: "0 14px", borderBottom: "1px solid var(--bd)", background: "linear-gradient(100deg, rgba(0,46,255,0.07) 0%, rgba(124,255,198,0.07) 55%, var(--surface) 90%)", flexShrink: 0 }}>
               <div className="topbar-title">{title || "Astra"}</div>
             </div>
             <div style={{ flex: 1, padding: "18px 16px 64px" }}>{children}</div>
@@ -100,7 +100,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
         <main style={{ flex: 1, minWidth: 0, height: "100vh", overflow: "hidden" }}>{children}</main>
       ) : (
         <main style={{ flex: 1, minWidth: 0, height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
+          <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 18px", borderBottom: "1px solid var(--bd)", background: "linear-gradient(100deg, rgba(0,46,255,0.07) 0%, rgba(124,255,198,0.07) 55%, var(--surface) 90%)", flexShrink: 0 }}>
             <div className="topbar-title">{title || "Astra"}</div>
           </div>
           <div style={{ flex: 1, overflowY: "auto", padding: "24px 22px 48px" }}>{children}</div>
