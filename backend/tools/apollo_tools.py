@@ -362,7 +362,15 @@ def apollo_search_people(
 
     data = _post("/mixed_people/api_search", params)
     if "error" in data:
-        if data.get("status_code") == 403:
+        err_str = str(data.get("error", ""))
+        is_403 = (
+            data.get("status_code") == 403
+            or "403" in err_str
+            or "API_INACCESSIBLE" in err_str
+            or "free plan" in err_str.lower()
+            or "not accessible" in err_str.lower()
+        )
+        if is_403:
             logger.info("[Apollo] People search blocked (free plan) — using organization search")
             return _search_orgs_as_contacts(
                 locations=locations,
