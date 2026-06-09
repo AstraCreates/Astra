@@ -110,30 +110,54 @@ def _score_person(p: dict) -> int:
 
 
 def _normalize_search_person(p: dict) -> dict:
-    """Normalize a result from the credit-free search endpoint.
-    Note: last_name is obfuscated, no email returned — that requires enrichment."""
+    """Normalize a result from the credit-free search endpoint."""
     org = p.get("organization") or {}
+
+    # Apollo's search endpoint returns obfuscated last_name in the "last_name" field.
+    # There is no separate "last_name_obfuscated" key.
+    first_name = p.get("first_name", "") or ""
+    last_name  = p.get("last_name", "") or ""
+    # Strip asterisk-only tokens — they add clutter without meaning
+    if all(c in "*" for c in last_name.replace(" ", "")):
+        last_name = ""
+
+    # Company name: try org object first, fall back to person-level field
+    company_name = org.get("name", "") or p.get("organization_name", "")
+
+    # Industry: Apollo may use "industry" or nested tags
+    industry = (org.get("industry") or "").strip()
+
+    # Employee count: try two field names
+    emp = org.get("estimated_num_employees") or org.get("num_employees") or 0
+
+    # Description: short_description is often null; fall back to a composite
+    description = (org.get("short_description") or org.get("seo_description") or "").strip()
+    if not description and industry and company_name:
+        description = f"{company_name} — {industry}"
+    description = description[:200]
+
+    # Website
+    website = (org.get("website_url") or org.get("primary_domain") or "").strip()
+
     return {
         "apollo_id": p.get("id", ""),
-        "first_name": p.get("first_name", ""),
-        "last_name": p.get("last_name_obfuscated", ""),   # e.g. "Sm***h"
-        "title": p.get("title", "") or "",
-        "company_name": org.get("name", ""),
-        "has_email": bool(p.get("has_email")),
-        "has_phone": p.get("has_direct_phone") == "Yes",
-        "city": "" if not p.get("has_city") else "(available)",
-        "state": "" if not p.get("has_state") else "(available)",
-        "country": "" if not p.get("has_country") else "(available)",
-        # email/full name only populated after enrichment
+        "first_name": first_name,
+        "last_name": last_name,
+        "title": (p.get("title") or p.get("headline") or "").strip(),
+        "company_name": company_name,
+        "has_email": bool(p.get("email") or p.get("has_email")),
+        "has_phone": bool(p.get("has_direct_phone")),
+        "city": p.get("city", ""),
+        "state": p.get("state", ""),
+        "country": p.get("country", ""),
         "email": "",
-        "email_status": "unknown",
-        "linkedin_url": "",
+        "email_status": p.get("email_status", "unknown"),
+        "linkedin_url": p.get("linkedin_url", ""),
         "enriched": False,
-        # Company details — available from free search
-        "company_industry": org.get("industry", ""),
-        "company_size": _size_label(org.get("estimated_num_employees")),
-        "company_website": org.get("website_url", "") or org.get("primary_domain", ""),
-        "company_description": (org.get("short_description") or "")[:160],
+        "company_industry": industry,
+        "company_size": _size_label(emp),
+        "company_website": website,
+        "company_description": description,
         "company_funding": org.get("latest_funding_stage", ""),
     }
 
@@ -211,7 +235,7 @@ def apollo_search_people(
     domains_include: list[str] | None = None,
     domains_exclude: list[str] | None = None,
     keywords: list[str] | None = None,
-    has_email: bool = True,
+    has_email: bool = False,
     page: int = 1,
     per_page: int = MAX_SEARCH_RESULTS,
 ) -> dict:
@@ -245,8 +269,6 @@ def apollo_search_people(
     kw_parts = list(keywords or [])
     if kw_parts:
         params["q_keywords"] = " ".join(kw_parts)
-    if has_email:
-        params["contact_email_status"] = ["verified", "unverified", "likely to engage"]
 
     data = _post("/mixed_people/api_search", params)
     if "error" in data:
