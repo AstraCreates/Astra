@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import Link from "next/link";
+import AstraGradient from "@/components/AstraGradient";
 import {
   addCompanyBrainRecord,
   askCompanyBrain,
@@ -641,44 +642,64 @@ export default function CompanyBrainPage() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
 
       {/* ── page header ── */}
-      <div style={{ padding: "18px 24px 0", borderBottom: "1px solid var(--bd)", flexShrink: 0, background: "var(--surface)" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 14 }}>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, margin: "0 0 6px", color: "var(--fg)" }}>
-              Company Brain
-            </h1>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {[
-                ["Records", String(records.length)],
-                ["Sources", `${connected} connected`],
-                ["Proposals", String(openProposals.length)],
-                ["Stale", String(brain?.maintenance?.stale_count ?? 0)],
-              ].map(([label, value]) => (
-                <div key={label} style={{ display: "flex", gap: 5, alignItems: "center" }}>
-                  <span style={{ fontSize: 10, color: "var(--fm)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{label}</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--fg)", fontFamily: "var(--font-ibm-mono)" }}>{value}</span>
-                </div>
-              ))}
+      <div style={{ flexShrink: 0 }}>
+        {/* Blue hero */}
+        <div style={{ position: "relative", overflow: "hidden", background: "#001aff", minHeight: 140, borderBottom: "1px solid var(--bd)" }}>
+          <AstraGradient />
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.20)", pointerEvents: "none", zIndex: 1 }} />
+          <div style={{ position: "relative", zIndex: 2, padding: "26px 24px 20px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em", marginBottom: 8 }}>
+                Company Brain
+              </div>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                {[
+                  ["Records", String(records.length)],
+                  ["Sources", `${connected} connected`],
+                  ["Proposals", String(openProposals.length)],
+                  ["Stale", String(brain?.maintenance?.stale_count ?? 0)],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                    <span style={{ fontSize: 16, fontWeight: 700, color: "#fff", fontFamily: "var(--font-code)", lineHeight: 1 }}>{value}</span>
+                    <span style={{ fontSize: 9, color: "rgba(255,255,255,0.58)", textTransform: "uppercase", letterSpacing: ".08em" }}>{label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexShrink: 0, marginTop: 4 }}>
-            <Link href="/integrations" className="btn" style={{ minHeight: 34, fontSize: 11 }}>Integrations</Link>
-            <Link href="/" className="btn pri" style={{ minHeight: 34, fontSize: 11 }}>Run agents</Link>
+            <div style={{ display: "flex", gap: 9, flexShrink: 0 }}>
+              <Link href="/integrations" style={{
+                display: "inline-flex", alignItems: "center", padding: "9px 16px",
+                fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.88)",
+                background: "rgba(255,255,255,0.13)", border: "1px solid rgba(255,255,255,0.28)",
+                textDecoration: "none",
+              }}>
+                Integrations
+              </Link>
+              <Link href="/" style={{
+                display: "inline-flex", alignItems: "center", padding: "9px 20px",
+                fontSize: 12, fontWeight: 600, color: "#002EFF",
+                background: "#fff", border: "none", textDecoration: "none",
+              }}>
+                Run agents
+              </Link>
+            </div>
           </div>
         </div>
 
-        {/* tab bar */}
-        <div className="dtabs" style={{ padding: 0, borderBottom: "none" }}>
-          {(["ask", "sources", "memory", "settings"] as Tab[]).map(t => (
-            <button
-              key={t}
-              type="button"
-              className={`dtab${tab === t ? " on" : ""}`}
-              onClick={() => setTab(t)}
-            >
-              {t === "ask" ? "Ask" : t === "sources" ? "Sources" : t === "memory" ? "Memory" : "Settings"}
-            </button>
-          ))}
+        {/* Tab bar */}
+        <div style={{ borderBottom: "1px solid var(--bd)", background: "var(--surface)", paddingInline: 24 }}>
+          <div className="dtabs" style={{ padding: 0, borderBottom: "none" }}>
+            {(["ask", "sources", "memory", "settings"] as Tab[]).map(t => (
+              <button
+                key={t}
+                type="button"
+                className={`dtab${tab === t ? " on" : ""}`}
+                onClick={() => setTab(t)}
+              >
+                {t === "ask" ? "Ask" : t === "sources" ? "Sources" : t === "memory" ? "Memory" : "Settings"}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

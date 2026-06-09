@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
+import AstraGradient from "@/components/AstraGradient";
 import {
   getCompanyGoal,
   postponeCompanyTask,
@@ -82,6 +83,15 @@ function Btn({ label, onClick, primary, disabled, small }: {
   );
 }
 
+const STATUS_DOT_COLOR: Record<string, string> = {
+  done: "var(--green)",
+  in_progress: "var(--blue)",
+  awaiting_approval: "var(--amber)",
+  blocked: "var(--red)",
+  postponed: "var(--fm)",
+  pending: "var(--fm)",
+};
+
 function TaskRow({
   t, busy, onPostpone, onMarkDone,
 }: {
@@ -97,23 +107,23 @@ function TaskRow({
     : t.status.replace(/_/g, " ");
   const owners = t.owner_agents ?? [];
   const doneAgents = t.done_agents ?? [];
-  const { bg, border } = TASK_BG[kind] ?? TASK_BG.pending;
-  const icon = STATUS_ICON[kind] ?? "○";
+  const dotColor = STATUS_DOT_COLOR[kind] ?? "var(--fm)";
+  const isDone = t.status === "done";
 
   return (
     <div style={{
-      display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px",
-      border: `1px solid ${border}`, background: bg,
+      display: "flex", alignItems: "flex-start", gap: 12, padding: "11px 16px",
+      background: isDone ? "var(--gdim)" : kind === "in_progress" ? "var(--bdim)" : kind === "awaiting_approval" ? "var(--adim)" : "var(--surface)",
+      border: `1px solid ${isDone ? "var(--gb)" : kind === "in_progress" ? "var(--bb)" : kind === "awaiting_approval" ? "var(--ab)" : "var(--bd)"}`,
       opacity: t.postponed ? 0.55 : 1,
+      transition: "border-color .12s, background .12s",
     }}>
-      <span style={{ marginTop: 2, fontSize: 11, color: "var(--fm)", fontFamily: "var(--font-code)", flexShrink: 0 }}>
-        {icon}
-      </span>
+      <div style={{ marginTop: 3, width: 8, height: 8, flexShrink: 0, borderRadius: "50%", background: dotColor, boxShadow: kind === "in_progress" ? `0 0 0 3px rgba(0,46,255,0.18)` : "none" }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{
-            fontSize: 13, fontWeight: 600, color: "var(--fg)",
-            textDecoration: t.postponed ? "line-through" : "none",
+            fontSize: 13, fontWeight: 600, color: isDone ? "var(--fd)" : "var(--fg)",
+            textDecoration: t.postponed || isDone ? "line-through" : "none",
           }}>
             {t.title}
           </span>
@@ -133,13 +143,14 @@ function TaskRow({
           </div>
         )}
         {t.status !== "done" && (
-          <div style={{ display: "flex", gap: 6, marginTop: 7 }}>
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
             <Btn label={t.postponed ? "Resume" : "Postpone"} onClick={onPostpone} disabled={!!busy} small />
             {!t.postponed && (
               <Btn
                 label={t.status === "awaiting_approval" ? "Approve ✓" : "Mark done"}
                 onClick={onMarkDone}
                 disabled={!!busy}
+                primary
                 small
               />
             )}
@@ -221,240 +232,307 @@ export default function MissionsPanel() {
 
   // ── Render states ──
 
+  const doneTasks = tasks.filter((t) => t.status === "done").length;
+  const totalTasks = tasks.length;
+
   if (!founderId) {
     return (
-      <div className="empty" style={{ minHeight: 240 }}>
-        <span style={{ fontSize: 22, fontFamily: "var(--font-code)", opacity: 0.25 }}>◎</span>
-        <span className="empty-title">Sign in to track your launch progress.</span>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+        <GoalsHero goal={null} paused={false} cg={null} busy={null} runNow={() => {}} togglePause={() => {}} />
+        <div className="empty" style={{ flex: 1 }}>
+          <span style={{ fontSize: 22, fontFamily: "var(--font-code)", opacity: 0.25 }}>◎</span>
+          <span className="empty-title">Sign in to track your launch progress.</span>
+        </div>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="empty" style={{ minHeight: 240 }}>
-        <span style={{ fontSize: 11, fontFamily: "var(--font-code)", color: "var(--fm)" }}>Loading…</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div style={{ padding: "32px 36px", maxWidth: 860, margin: "0 auto" }}>
-        <div className="err-banner">
-          {error}{" "}
-          <button
-            onClick={load}
-            style={{ marginLeft: 8, textDecoration: "underline", background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontFamily: "var(--font-code)", fontSize: 11 }}
-          >
-            Retry
-          </button>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+        <GoalsHero goal={null} paused={false} cg={null} busy={null} runNow={() => {}} togglePause={() => {}} />
+        <div className="empty" style={{ flex: 1 }}>
+          <span style={{ fontSize: 11, fontFamily: "var(--font-code)", color: "var(--fm)" }}>Loading…</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ minHeight: "100%", padding: "32px 36px", maxWidth: 860, margin: "0 auto" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      <style>{`
+        @keyframes goals-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+        .goal-row-enter { animation: goals-fade 0.24s cubic-bezier(0.22,1,0.36,1) both; }
+        .run-row:hover { border-color: var(--bb) !important; background: var(--bdim) !important; }
+        @media (prefers-reduced-motion: reduce) { .goal-row-enter { animation: none; opacity: 1; } }
+      `}</style>
 
-      {/* Page header */}
-      <div style={{ marginBottom: 28 }}>
-        <h1 className="dash-ht" style={{ margin: "0 0 5px" }}>Company Goal</h1>
-        <p className="dash-sub" style={{ margin: 0 }}>
-          One goal at a time — tasks tick as agents finish, planner sets the next.
-        </p>
-      </div>
-
-      {actionErr && (
-        <div className="err-banner" style={{ marginBottom: 16 }}>{actionErr}</div>
-      )}
-
-      {/* Operating section */}
-      {goal && (
-        <div style={{ border: "1px solid var(--bd)", marginBottom: 24 }}>
-
-          {/* Header row */}
-          <button
-            onClick={() => setOperatingOpen((o) => !o)}
-            style={{
-              width: "100%", display: "flex", alignItems: "center",
-              justifyContent: "space-between", padding: "11px 16px",
-              background: "none", border: "none", cursor: "pointer",
-              borderBottom: operatingOpen ? "1px solid var(--bd)" : "none",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--fg)", letterSpacing: "0.03em" }}>
-                What Astra is working on
-              </span>
-              <span className={`pill${paused ? " amber" : " blue"}`}>
-                {paused ? "paused" : "operating"}
-              </span>
+      {/* ── Blue hero header ── */}
+      <div style={{
+        position: "relative", overflow: "hidden", flexShrink: 0,
+        background: "#001aff", minHeight: 148,
+        borderBottom: "1px solid var(--bd)",
+      }}>
+        <AstraGradient />
+        <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.20)", pointerEvents: "none", zIndex: 1 }} />
+        <div style={{ position: "relative", zIndex: 2, padding: "28px 24px 22px" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 26, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em", marginBottom: 6 }}>
+                Company Goals
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                {goal ? (
+                  <>
+                    <span style={{
+                      padding: "3px 10px", fontSize: 10, fontWeight: 700, letterSpacing: ".06em",
+                      textTransform: "uppercase", fontFamily: "var(--font-code)",
+                      border: paused ? "1px solid rgba(255,180,50,0.45)" : "1px solid rgba(124,255,198,0.45)",
+                      background: paused ? "rgba(255,180,50,0.14)" : "rgba(124,255,198,0.14)",
+                      color: paused ? "#FFCB50" : "#7CFFC6",
+                    }}>
+                      {paused ? "paused" : "operating"}
+                    </span>
+                    {totalTasks > 0 && (
+                      <span style={{ fontSize: 11, color: "rgba(255,255,255,0.72)", fontFamily: "var(--font-code)" }}>
+                        {doneTasks}/{totalTasks} tasks done
+                      </span>
+                    )}
+                    {runs.length > 0 && (
+                      <span style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>
+                        · {runs.length} operating run{runs.length !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.55)" }}>No active goal</span>
+                )}
+              </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-              <span onClick={(e) => e.stopPropagation()}>
-                <Btn
-                  label={busy === "run" ? "Starting…" : "▶ Run now"}
+            {goal && (
+              <div style={{ display: "flex", gap: 9, flexShrink: 0 }}>
+                <button
                   onClick={runNow}
-                  primary
                   disabled={paused || !cg || !!busy}
-                />
-              </span>
-              <span onClick={(e) => e.stopPropagation()}>
-                <Btn
-                  label={paused ? "Resume" : "Pause"}
+                  style={{
+                    padding: "9px 20px", fontSize: 12, fontWeight: 600, color: "#002EFF",
+                    background: "#fff", border: "none", cursor: "pointer",
+                    letterSpacing: "0.01em", opacity: (paused || !cg || !!busy) ? 0.5 : 1,
+                  }}
+                >
+                  {busy === "run" ? "Starting…" : "▶ Run now"}
+                </button>
+                <button
                   onClick={togglePause}
                   disabled={!!busy}
-                />
-              </span>
-              <span style={{ fontSize: 9, color: "var(--fm)", fontFamily: "var(--font-code)", marginLeft: 2, flexShrink: 0 }}>
-                {operatingOpen ? "▲" : "▼"}
-              </span>
-            </div>
-          </button>
+                  style={{
+                    padding: "9px 16px", fontSize: 12, fontWeight: 500,
+                    color: "rgba(255,255,255,0.88)", background: "rgba(255,255,255,0.13)",
+                    border: "1px solid rgba(255,255,255,0.28)", cursor: "pointer",
+                    opacity: !!busy ? 0.5 : 1,
+                  }}
+                >
+                  {paused ? "Resume" : "Pause"}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
-          {operatingOpen && (
-            <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* ── Scrollable content ── */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px 48px" }}>
 
-              {/* North star */}
-              <div style={{ padding: "11px 14px", background: "var(--bdim)", border: "1px solid var(--bb)" }}>
-                <div className="sec-label" style={{ color: "var(--blue)", marginBottom: 5 }}>North Star</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", lineHeight: 1.55 }}>
+        {error && (
+          <div className="err-banner" style={{ marginBottom: 18 }}>
+            {error}
+            <button onClick={load} style={{ marginLeft: 8, textDecoration: "underline", background: "none", border: "none", color: "var(--red)", cursor: "pointer", fontFamily: "var(--font-code)", fontSize: 11 }}>
+              Retry
+            </button>
+          </div>
+        )}
+
+        {actionErr && (
+          <div className="err-banner" style={{ marginBottom: 18 }}>{actionErr}</div>
+        )}
+
+        {/* ── Empty state ── */}
+        {!goal && !loading && (
+          <div style={{ padding: "64px 24px", textAlign: "center", border: "1px dashed var(--bd2)" }}>
+            <div style={{ fontSize: 28, marginBottom: 14, fontFamily: "var(--font-code)", color: "var(--fm)", opacity: 0.25 }}>◎</div>
+            <div className="empty-title" style={{ marginBottom: 8 }}>No run started yet</div>
+            <p style={{ fontSize: 12, color: "var(--fm)", maxWidth: 340, margin: "0 auto 20px", lineHeight: 1.65 }}>
+              Start a run from the home screen — Astra auto-completes tasks as agents work.
+            </p>
+            <a href="/" className="btn pri" style={{ textDecoration: "none", display: "inline-block" }}>Start a run →</a>
+          </div>
+        )}
+
+        {goal && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 820 }}>
+
+            {/* ── North star ── */}
+            {goal.north_star && (
+              <div className="goal-row-enter" style={{ padding: "14px 18px", background: "var(--bdim)", border: "1px solid var(--bb)" }}>
+                <div className="sec-label" style={{ color: "var(--blue)", marginBottom: 6 }}>North Star</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)", lineHeight: 1.6 }}>
                   {goal.north_star}
                 </div>
                 {goal.notion_url && (
-                  <a
-                    href={goal.notion_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{ fontSize: 11, color: "var(--blue)", marginTop: 8, display: "inline-block", fontFamily: "var(--font-code)" }}
-                  >
+                  <a href={goal.notion_url} target="_blank" rel="noreferrer"
+                    style={{ fontSize: 11, color: "var(--blue)", marginTop: 8, display: "inline-block", fontFamily: "var(--font-code)" }}>
                     Open in Notion →
                   </a>
                 )}
               </div>
+            )}
 
-              {/* Current goal + tasks */}
-              {cg ? (
-                <div>
-                  <div className="sec-label" style={{ marginBottom: 9 }}>
-                    Current goal{cg.kind === "launch" ? " · launch" : ""}
+            {/* ── Current goal + tasks ── */}
+            {cg ? (
+              <div className="goal-row-enter" style={{ border: "1px solid var(--bd2)", background: "var(--surface)" }}>
+                <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--bd)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div>
+                    <div className="sec-label" style={{ marginBottom: 5 }}>
+                      Current goal{cg.kind === "launch" ? " · launch" : ""}
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.01em" }}>
+                      {cg.title}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: "var(--fg)", marginBottom: 12, letterSpacing: "-0.01em" }}>
-                    {cg.title}
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                    {tasks.map((t) => (
+                  {totalTasks > 0 && (
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontSize: 22, fontWeight: 700, color: doneTasks === totalTasks ? "var(--green)" : "var(--fg)", fontFamily: "var(--font-code)", lineHeight: 1 }}>{doneTasks}</div>
+                      <div style={{ fontSize: 9, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".08em" }}>of {totalTasks} done</div>
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+                  {tasks.map((t, i) => (
+                    <div key={t.id} className="goal-row-enter" style={{ animationDelay: `${i * 30}ms`, borderBottom: i < tasks.length - 1 ? "1px solid var(--bd)" : "none" }}>
                       <TaskRow
-                        key={t.id}
                         t={t}
                         busy={busy}
                         onPostpone={() => postpone(t)}
                         onMarkDone={() => markDone(t)}
                       />
-                    ))}
-                    {tasks.length === 0 && (
-                      <p style={{ fontSize: 12, color: "var(--fm)", margin: 0 }}>No tasks on this goal yet.</p>
-                    )}
-                  </div>
+                    </div>
+                  ))}
+                  {tasks.length === 0 && (
+                    <div style={{ padding: "16px 18px", fontSize: 12, color: "var(--fm)" }}>
+                      No tasks on this goal yet.
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <p style={{ fontSize: 12, color: "var(--fm)", margin: 0 }}>
-                  No active goal — planner sets the next one when the current run finishes.
-                </p>
-              )}
-
-              {/* Sync Notion */}
-              <div style={{ display: "flex" }}>
-                <Btn
-                  label={busy === "notion" ? "Syncing…" : "Sync Notion"}
-                  onClick={async () => {
-                    setBusy("notion");
-                    try { await syncMissionNotion(founderId); await load(); }
-                    catch (e) { setActionErr(e instanceof Error ? e.message : String(e)); setTimeout(() => setActionErr(null), 8000); }
-                    finally { setBusy(null); }
-                  }}
-                  disabled={!!busy}
-                />
               </div>
+            ) : (
+              <div style={{ padding: "16px 18px", border: "1px solid var(--bd)", background: "var(--s2)", fontSize: 12, color: "var(--fm)" }}>
+                No active goal — planner sets the next one when the current run finishes.
+              </div>
+            )}
 
-              {/* Recent runs */}
-              {runs.length > 0 && (
-                <div>
-                  <div className="sec-label" style={{ marginBottom: 8 }}>Recent runs · {runs.length}</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    {runs.map((r) => (
-                      <a
-                        key={r.session_id}
-                        href={`/s/${r.session_id}`}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 10,
-                          padding: "8px 12px", border: "1px solid var(--bd)",
-                          background: "var(--surface)", textDecoration: "none",
-                          transition: "border-color .12s, background .12s",
-                        }}
-                      >
-                        <Badge
-                          label={r.status}
-                          kind={r.status === "done" ? "done" : r.status === "error" ? "blocked" : "in_progress"}
-                        />
-                        <span style={{
-                          flex: 1, minWidth: 0, fontSize: 12, color: "var(--fg)",
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                        }}>
-                          {r.summary || "Operating run"}
-                        </span>
-                        <span style={{ fontSize: 10, color: "var(--fm)", whiteSpace: "nowrap", fontFamily: "var(--font-code)" }}>
-                          {timeAgo(r.started_at)}
-                        </span>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Completed goals */}
-              {doneGoals.length > 0 && (
-                <div>
-                  <div className="sec-label" style={{ marginBottom: 8 }}>Completed goals · {doneGoals.length}</div>
-                  <div style={{ display: "flex", flexDirection: "column" }}>
-                    {doneGoals.map((g) => (
-                      <div
-                        key={g.id}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 8,
-                          padding: "7px 0", fontSize: 12, color: "var(--fm)",
-                          borderBottom: "1px solid var(--bd)",
-                        }}
-                      >
-                        <span style={{ color: "var(--green)", fontFamily: "var(--font-code)", fontSize: 10 }}>✓</span>
-                        <span style={{ textDecoration: "line-through", flex: 1 }}>{g.title}</span>
-                        <span style={{ fontSize: 10, fontFamily: "var(--font-code)" }}>{timeAgo(g.completed_at)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
+            {/* ── Actions row ── */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                onClick={async () => {
+                  setBusy("notion");
+                  try { await syncMissionNotion(founderId); await load(); }
+                  catch (e) { setActionErr(e instanceof Error ? e.message : String(e)); setTimeout(() => setActionErr(null), 8000); }
+                  finally { setBusy(null); }
+                }}
+                disabled={!!busy}
+                className="btn"
+              >
+                {busy === "notion" ? "Syncing…" : "Sync Notion"}
+              </button>
+              <button onClick={load} disabled={!!busy} className="btn" style={{ color: "var(--fm)" }}>Refresh</button>
             </div>
-          )}
-        </div>
-      )}
 
-      {/* Empty state */}
-      {!goal && !loading && (
-        <div style={{ padding: "64px 24px", textAlign: "center", border: "1px dashed var(--bd2)" }}>
-          <div style={{ fontSize: 22, marginBottom: 14, fontFamily: "var(--font-code)", color: "var(--fm)", opacity: 0.35 }}>◎</div>
-          <div className="empty-title" style={{ marginBottom: 8 }}>No run started yet</div>
-          <p style={{ fontSize: 12, color: "var(--fm)", maxWidth: 340, margin: "0 auto 20px", lineHeight: 1.65 }}>
-            Start a run from the home screen — Astra auto-completes checklist items as it works.
-          </p>
-          <a href="/" className="btn pri" style={{ textDecoration: "none", display: "inline-block" }}>
-            Start a run →
-          </a>
-        </div>
-      )}
+            {/* ── Recent runs ── */}
+            {runs.length > 0 && (
+              <div className="goal-row-enter">
+                <div className="sec-label" style={{ marginBottom: 10 }}>Recent runs · {runs.length}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {runs.map((r) => (
+                    <a
+                      key={r.session_id}
+                      href={`/s/${r.session_id}`}
+                      className="run-row"
+                      style={{
+                        display: "flex", alignItems: "center", gap: 12,
+                        padding: "10px 14px",
+                        border: "1px solid var(--bd)",
+                        background: "var(--surface)",
+                        textDecoration: "none",
+                        transition: "border-color .12s, background .12s",
+                      }}
+                    >
+                      <div style={{
+                        width: 7, height: 7, flexShrink: 0,
+                        borderRadius: "50%",
+                        background: r.status === "done" ? "var(--green)" : r.status === "error" ? "var(--red)" : "var(--blue)",
+                      }} />
+                      <span style={{
+                        flex: 1, minWidth: 0, fontSize: 12, fontWeight: 500, color: "var(--fg)",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>
+                        {r.summary || "Operating run"}
+                      </span>
+                      <Badge
+                        label={r.status}
+                        kind={r.status === "done" ? "done" : r.status === "error" ? "blocked" : "in_progress"}
+                      />
+                      <span style={{ fontSize: 10, color: "var(--fm)", whiteSpace: "nowrap", fontFamily: "var(--font-code)" }}>
+                        {timeAgo(r.started_at)}
+                      </span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
 
+            {/* ── Completed goals ── */}
+            {doneGoals.length > 0 && (
+              <div className="goal-row-enter">
+                <div className="sec-label" style={{ marginBottom: 10 }}>Completed goals · {doneGoals.length}</div>
+                <div style={{ border: "1px solid var(--bd)", background: "var(--surface)" }}>
+                  {doneGoals.map((g, i) => (
+                    <div
+                      key={g.id}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        padding: "9px 14px", fontSize: 12, color: "var(--fm)",
+                        borderBottom: i < doneGoals.length - 1 ? "1px solid var(--bd)" : "none",
+                      }}
+                    >
+                      <span style={{ color: "var(--green)", fontFamily: "var(--font-code)", fontSize: 11, flexShrink: 0 }}>✓</span>
+                      <span style={{ textDecoration: "line-through", flex: 1, color: "var(--fd)" }}>{g.title}</span>
+                      <span style={{ fontSize: 10, fontFamily: "var(--font-code)", flexShrink: 0 }}>{timeAgo(g.completed_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Tiny helper component used in loading/unauthenticated states
+function GoalsHero({ goal, paused, cg, busy, runNow, togglePause }: {
+  goal: CompanyGoal | null; paused: boolean;
+  cg: CompanyGoalEntry | null; busy: string | null;
+  runNow: () => void; togglePause: () => void;
+}) {
+  return (
+    <div style={{ position: "relative", overflow: "hidden", flexShrink: 0, background: "#001aff", minHeight: 100, borderBottom: "1px solid var(--bd)" }}>
+      <AstraGradient />
+      <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.20)", pointerEvents: "none", zIndex: 1 }} />
+      <div style={{ position: "relative", zIndex: 2, padding: "24px 24px 20px" }}>
+        <div style={{ fontSize: 24, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>Company Goals</div>
+      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch } from "@/lib/api";
+import AstraGradient from "@/components/AstraGradient";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const MAX_CONFIRM = 10;
@@ -742,20 +743,44 @@ export default function OutreachPage() {
   // ── Campaign list ──────────────────────────────────────────────────────────
 
   if (view === "campaigns") return (
-    <div style={{ width: "100%", maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ width: "100%", display: "flex", flexDirection: "column" }}>
       <style>{`@keyframes outreach-sweep{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: "var(--fg)" }}>Outreach</h1>
-          <p style={{ fontSize: 13, color: "var(--fm)", margin: "4px 0 0" }}>
-            Create a campaign, find contacts, and send personalised emails
-          </p>
+      {/* Blue hero header */}
+      <div style={{ position: "relative", overflow: "hidden", background: "#001aff", minHeight: 140, flexShrink: 0, borderBottom: "1px solid var(--bd)" }}>
+        <AstraGradient />
+        <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.20)", pointerEvents: "none", zIndex: 1 }} />
+        <div style={{ position: "relative", zIndex: 2, padding: "28px 24px 22px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em", marginBottom: 6 }}>
+              Outreach
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              {campaigns.length > 0 && (
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", fontFamily: "var(--font-code)" }}>
+                  {campaigns.length} campaign{campaigns.length !== 1 ? "s" : ""}
+                </span>
+              )}
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>
+                Find contacts, send personalised emails
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowNewCampaign(true)}
+            style={{
+              padding: "9px 20px", fontSize: 12, fontWeight: 600, color: "#002EFF",
+              background: "#fff", border: "none", cursor: "pointer",
+              letterSpacing: "0.01em", flexShrink: 0,
+            }}
+          >
+            + New Campaign
+          </button>
         </div>
-        <button onClick={() => setShowNewCampaign(true)} className="btn pri">
-          + New Campaign
-        </button>
       </div>
+
+      {/* Content area */}
+      <div style={{ flex: 1, padding: "20px 24px 48px", maxWidth: 1100, width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: 20 }}>
 
       {campaignsLoading ? (
         <div style={{ ...section() }}>
@@ -865,6 +890,7 @@ export default function OutreachPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 
@@ -879,57 +905,82 @@ export default function OutreachPage() {
   ];
 
   return (
-    <div style={{ width: "100%", maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
+    <div style={{ width: "100%", display: "flex", flexDirection: "column" }}>
       <style>{`@keyframes outreach-sweep{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
 
-      {/* Detail header */}
-      <div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+      {/* Detail blue hero header */}
+      <div style={{ position: "relative", overflow: "hidden", background: "#001aff", minHeight: 148, flexShrink: 0, borderBottom: "1px solid var(--bd)" }}>
+        <AstraGradient />
+        <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.20)", pointerEvents: "none", zIndex: 1 }} />
+        <div style={{ position: "relative", zIndex: 2, padding: "22px 24px 18px" }}>
           <button
             onClick={() => { setView("campaigns"); setActiveCampaign(null); setConfirmingDelete(false); loadCampaigns(); }}
-            style={{ background: "none", border: "none", color: "var(--fm)", cursor: "pointer", fontSize: 12, padding: 0, fontFamily: "var(--font-code)" }}
+            style={{ background: "none", border: "none", color: "rgba(255,255,255,0.6)", cursor: "pointer", fontSize: 11, padding: 0, fontFamily: "var(--font-code)", marginBottom: 10, display: "block" }}
           >
             ← All campaigns
           </button>
-          {confirmingDelete ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 12, color: "var(--fg)" }}>Delete this campaign?</span>
-              <Btn variant="danger" onClick={() => { setConfirmingDelete(false); deleteCampaign(activeCampaign.id, activeCampaign.name); }}>Yes, delete</Btn>
-              <Btn variant="ghost" onClick={() => setConfirmingDelete(false)}>Cancel</Btn>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>
+                  {activeCampaign.name}
+                </div>
+                <span style={{
+                  padding: "3px 10px", fontSize: 10, fontWeight: 700, letterSpacing: ".06em",
+                  textTransform: "uppercase", fontFamily: "var(--font-code)",
+                  border: activeCampaign.status === "active" ? "1px solid rgba(124,255,198,0.45)" : "1px solid rgba(255,255,255,0.25)",
+                  background: activeCampaign.status === "active" ? "rgba(124,255,198,0.14)" : "rgba(255,255,255,0.1)",
+                  color: activeCampaign.status === "active" ? "#7CFFC6" : "rgba(255,255,255,0.75)",
+                }}>
+                  {activeCampaign.status}
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)", marginBottom: stats && stats.sent > 0 ? 10 : 0 }}>
+                {activeCampaign.from_name} · {activeCampaign.from_email || "no sender set"} · {activeCampaign.daily_limit}/day
+              </div>
+              {stats && stats.sent > 0 && (
+                <div style={{ display: "flex", gap: 16 }}>
+                  {[
+                    ["Sent", String(stats.sent)],
+                    ["Open rate", `${stats.open_rate}%`],
+                    ["Reply rate", `${stats.reply_rate}%`],
+                  ].map(([label, value]) => (
+                    <div key={label} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: "#fff", fontFamily: "var(--font-code)", lineHeight: 1 }}>{value}</span>
+                      <span style={{ fontSize: 9, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: ".08em" }}>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          ) : (
-            <Btn variant="danger" onClick={() => setConfirmingDelete(true)}>Delete campaign</Btn>
-          )}
-        </div>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: "var(--fg)" }}>{activeCampaign.name}</h1>
-              <span className={statusPillClass(activeCampaign.status)}>{activeCampaign.status}</span>
-            </div>
-            <div style={{ fontSize: 12, color: "var(--fm)", marginTop: 4 }}>
-              {activeCampaign.from_name} · {activeCampaign.from_email || "no sender set"} · {activeCampaign.daily_limit}/day
+            <div style={{ flexShrink: 0 }}>
+              {confirmingDelete ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.8)" }}>Delete this campaign?</span>
+                  <Btn variant="danger" onClick={() => { setConfirmingDelete(false); deleteCampaign(activeCampaign.id, activeCampaign.name); }}>Yes, delete</Btn>
+                  <Btn variant="ghost" onClick={() => setConfirmingDelete(false)}>Cancel</Btn>
+                </div>
+              ) : (
+                <Btn variant="danger" onClick={() => setConfirmingDelete(true)}>Delete campaign</Btn>
+              )}
             </div>
           </div>
-          {stats && stats.sent > 0 && (
-            <div style={{ display: "flex", gap: 8 }}>
-              <StatBadge label="Sent" value={stats.sent} />
-              <StatBadge label="Opens" value={`${stats.open_rate}%`} color="var(--blue)" />
-              <StatBadge label="Replies" value={`${stats.reply_rate}%`} color="var(--green)" />
-            </div>
-          )}
         </div>
+      </div>
 
-        {/* Tab bar */}
-        <div className="dtabs" style={{ marginTop: 14, borderBottom: "none", padding: 0, gap: 2 }}>
+      {/* Tab bar */}
+      <div style={{ borderBottom: "1px solid var(--bd)", background: "var(--surface)", paddingInline: 24, flexShrink: 0 }}>
+        <div className="dtabs" style={{ padding: 0, borderBottom: "none", gap: 2 }}>
           {DETAIL_TABS.map(t => (
             <button key={t.key} className={`dtab${detailTab === t.key ? " on" : ""}`} onClick={() => setDetailTab(t.key)}>
               {t.label}
             </button>
           ))}
         </div>
-        <div style={{ height: 1, background: "var(--bd)" }} />
       </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, maxWidth: 1100, width: "100%", margin: "0 auto", display: "flex", flexDirection: "column", gap: 18, padding: "18px 24px 48px" }}>
 
       {/* ── Find Contacts tab ─────────────────────────────────────────────── */}
       {detailTab === "find" && (
@@ -1215,6 +1266,7 @@ export default function OutreachPage() {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

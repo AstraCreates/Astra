@@ -251,7 +251,7 @@ export default function DashboardView() {
                     key={s.session_id}
                     className={`sc-row${isStalled ? " stalled" : isRunning ? " running" : ""}`}
                     onClick={() => router.push(`/s/${s.session_id}`)}
-                    style={{ position: "relative", marginLeft: child ? 28 : 0, borderLeft: child ? "2px solid var(--bd)" : undefined, '--i': idx } as CSSProperties}
+                    style={{ position: "relative", '--i': idx } as CSSProperties}
                   >
                     {/* Delete */}
                     <button
@@ -278,6 +278,13 @@ export default function DashboardView() {
                     >{deleting.has(s.session_id) ? "…" : pendingDel.has(s.session_id) ? "DELETE?" : "✕"}</button>
 
                     <div style={{ flex: 1, paddingRight: 44 }}>
+                      {/* Sub-run indicator */}
+                      {child && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                          <span style={{ width: 14, height: 1, background: "var(--bb)", display: "inline-block", flexShrink: 0 }} />
+                          <span style={{ fontSize: 9, color: "var(--blue)", fontFamily: "var(--font-code)", letterSpacing: ".06em", fontWeight: 700, textTransform: "uppercase" }}>sub-run</span>
+                        </div>
+                      )}
                       {/* Goal */}
                       <div style={{
                         fontSize: 12.5, fontWeight: 600, color: "var(--fg)",
