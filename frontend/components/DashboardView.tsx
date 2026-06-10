@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { listSessions, deleteSessionRemote, killSession, type SessionIndexEntry } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
@@ -8,6 +8,14 @@ import { useDevUser } from "@/lib/use-dev-user";
 import { useCompany } from "@/lib/company-context";
 import AstraGradient from "./AstraGradient";
 import GoalPanel from "./GoalPanel";
+
+const GREETINGS = [
+  "Welcome back",
+  "Let's get to work",
+  "Ready to build",
+  "Good to see you",
+  "Let's keep building",
+];
 
 function ago(ts: string | undefined): string {
   if (!ts) return "";
@@ -38,6 +46,16 @@ export default function DashboardView() {
   const [toastErr, setToastErr] = useState("");
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
   const company = activeCompany?.name || "";
+  const [firstName, setFirstName] = useState("");
+  const [greeting, setGreeting] = useState("");
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const fullName = localStorage.getItem("astra_onboarding_name") || "";
+      setFirstName(fullName.split(" ")[0] || fullName);
+    }
+    setGreeting(GREETINGS[Math.floor(Math.random() * GREETINGS.length)]);
+  }, []);
+  const headline = greeting && firstName ? `${greeting}, ${firstName}.` : greeting ? `${greeting}.` : "Dashboard";
 
   const del = useCallback(async (e: React.MouseEvent, s: SessionIndexEntry) => {
     e.stopPropagation();
@@ -106,13 +124,13 @@ export default function DashboardView() {
           <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.18)", pointerEvents: "none", zIndex: 1 }} />
 
           <div style={{ position: "relative", zIndex: 2 }}>
-            <div style={{
+            <div className="greeting-text" style={{
               fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
               fontSize: 26, fontWeight: 700,
               letterSpacing: "-0.02em",
-              color: "#fff", marginBottom: 6,
+              color: "#fff", marginBottom: 4,
             }}>
-              {company || "Dashboard"}
+              {headline}
             </div>
 
             {/* Stats row */}
