@@ -461,8 +461,10 @@ export default function MissionsPanel() {
           <div className="cl-enter">
             <div className="sec-label" style={{ marginBottom: 10 }}>Company goals</div>
 
-            {/* Current goal card (proposed goals use the banner above instead) */}
-            {currentGoalEntry && !proposed && (() => {
+            {/* Current goal card — only for an in-flight goal. Proposed goals use the
+                banner above; a done current goal shows in the progression list below
+                (showing it here too would duplicate it). */}
+            {currentGoalEntry && !proposed && currentGoalEntry.status !== "done" && (() => {
               const tasks = currentGoalEntry.tasks ?? [];
               const dn = tasks.filter(t => t.status === "done").length;
               const pctG = tasks.length ? Math.round((dn / tasks.length) * 100) : 0;
