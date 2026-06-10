@@ -42,7 +42,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-SERVER_INFO = {"name": "astra", "version": "1.0.0"}
+SERVER_INFO = {"name": "astra", "version": "1.1.0"}
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -54,18 +54,23 @@ def _founder_id() -> str:
 
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
 
+def _headers() -> dict[str, str]:
+    # Authenticate as the configured founder so auth-gated endpoints (brain, goals,
+    # credits) accept the call regardless of server auth mode.
+    return {"Content-Type": "application/json", "x-astra-user-id": _founder_id()}
+
 def _get(path: str, params: dict | None = None, timeout: int = 15) -> Any:
     url = _api_url() + path
     if params:
         url += "?" + urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
-    req = urllib.request.Request(url, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(url, headers=_headers())
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read())
 
 def _post(path: str, body: dict, timeout: int = 20) -> Any:
     url = _api_url() + path
     data = json.dumps(body).encode()
-    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+    req = urllib.request.Request(url, data=data, headers=_headers(), method="POST")
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read())
 
@@ -207,6 +212,68 @@ TOOLS: list[dict[str, Any]] = [
             "session_id": {"type": "string"},
             "founder_id": {"type": "string"},
         }, ["session_id"]),
+    },
+    # ── Company brain (GraphRAG) ──
+    {
+        "name": "astra_ask_brain",
+        "description": (
+            "Ask the company brain a question. Returns a synthesized, cited answer grounded in "
+            "the founder's accumulated company knowledge (research, agent outputs, connected "
+            "sources) via GraphRAG retrieval. Use for 'what do we know about X', 'what's our "
+            "ICP/pricing/positioning', 'what did the team produce', etc."
+        ),
+        "inputSchema": _schema({
+            "question": {"type": "string", "description": "The question to answer from company knowledge."},
+            "limit": {"type": "integer", "description": "Max records to ground on (default 8).", "default": 8},
+            "founder_id": {"type": "string"},
+        }, ["question"]),
+    },
+    {
+        "name": "astra_search_brain",
+        "description": "Search the company brain for matching records (GraphRAG). Returns ranked records with snippets. Use to find specific facts/sources rather than a synthesized answer.",
+        "inputSchema": _schema({
+            "query": {"type": "string", "description": "Search query."},
+            "limit": {"type": "integer", "default": 8},
+            "founder_id": {"type": "string"},
+        }, ["query"]),
+    },
+    {
+        "name": "astra_brain_graph",
+        "description": "Get the GraphRAG entity map of the company brain — nodes (entities), edges (relationships), and communities — for visualization or structural inspection.",
+        "inputSchema": _schema({"founder_id": {"type": "string"}}),
+    },
+    # ── Company goals (the operating loop) ──
+    {
+        "name": "astra_company_goal",
+        "description": (
+            "Get the founder's company operating state: the north star, the current goal and "
+            "its tasks (with status + per-task owner agents), any PROPOSED next goal awaiting "
+            "approval, completed goals, recent operating sub-runs, and credits spent per goal."
+        ),
+        "inputSchema": _schema({"founder_id": {"type": "string"}}),
+    },
+    {
+        "name": "astra_approve_next_goal",
+        "description": (
+            "Approve or reject the planner's PROPOSED next company goal. approved=true puts the "
+            "team on it (it dispatches); approved=false drops it and the planner proposes another. "
+            "Use after astra_company_goal shows a goal with status 'proposed'."
+        ),
+        "inputSchema": _schema({
+            "approved": {"type": "boolean", "description": "true to approve & start, false to reject.", "default": True},
+            "founder_id": {"type": "string"},
+        }),
+    },
+    {
+        "name": "astra_run_cycle",
+        "description": "Run the current (already-approved) company goal now — dispatches the team on its open tasks in a child operating run. Returns the parent session id.",
+        "inputSchema": _schema({"founder_id": {"type": "string"}}),
+    },
+    # ── Credits ──
+    {
+        "name": "astra_credits",
+        "description": "Get the founder's credit balance and usage (1 credit = $0.005). Returns balance, total granted, total used.",
+        "inputSchema": _schema({"founder_id": {"type": "string"}}),
     },
 ]
 
@@ -359,6 +426,57 @@ def _workboard(args: dict) -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+def _ask_brain(args: dict) -> dict:
+    founder_id = args.get("founder_id") or _founder_id()
+    try:
+        return {"ok": True, **_post(f"/brain/{founder_id}/ask", {"question": args["question"], "limit": int(args.get("limit") or 8)})}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _search_brain(args: dict) -> dict:
+    founder_id = args.get("founder_id") or _founder_id()
+    try:
+        return {"ok": True, **_get(f"/brain/{founder_id}/search", {"query": args["query"], "limit": int(args.get("limit") or 8)})}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _brain_graph(args: dict) -> dict:
+    founder_id = args.get("founder_id") or _founder_id()
+    try:
+        return {"ok": True, **_get(f"/brain/{founder_id}/graph-rag")}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _company_goal(args: dict) -> dict:
+    founder_id = args.get("founder_id") or _founder_id()
+    try:
+        return {"ok": True, **_get("/api/missions/company-goal", {"founder_id": founder_id})}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _approve_next_goal(args: dict) -> dict:
+    founder_id = args.get("founder_id") or _founder_id()
+    approved = args.get("approved")
+    approved = True if approved is None else bool(approved)
+    try:
+        return {"ok": True, **_post("/api/missions/company-goal/approve-next", {"founder_id": founder_id, "approved": approved})}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _run_cycle(args: dict) -> dict:
+    founder_id = args.get("founder_id") or _founder_id()
+    try:
+        return {"ok": True, **_post(f"/api/missions/company-goal/run?founder_id={urllib.parse.quote(founder_id)}", {})}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+def _credits(args: dict) -> dict:
+    founder_id = args.get("founder_id") or _founder_id()
+    try:
+        return {"ok": True, **_get("/api/credits", {"founder_id": founder_id})}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 _DISPATCH: dict[str, Any] = {
     "astra_submit_goal": _submit_goal,
     "astra_session_status": _session_status,
@@ -371,6 +489,13 @@ _DISPATCH: dict[str, Any] = {
     "astra_recommend_stack": _recommend_stack,
     "astra_approve": _approve,
     "astra_session_workboard": _workboard,
+    "astra_ask_brain": _ask_brain,
+    "astra_search_brain": _search_brain,
+    "astra_brain_graph": _brain_graph,
+    "astra_company_goal": _company_goal,
+    "astra_approve_next_goal": _approve_next_goal,
+    "astra_run_cycle": _run_cycle,
+    "astra_credits": _credits,
 }
 
 # ── JSON-RPC handler ──────────────────────────────────────────────────────────
