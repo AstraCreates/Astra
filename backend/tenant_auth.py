@@ -182,9 +182,13 @@ def require_company_access(request: Request, founder_id: str, company_id: str, m
             )
     except HTTPException:
         raise
-    except Exception:
-        # Workspace check failed, fall back to simple check
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error("workspace lookup failed for %s: %s", founder_id, e)
+        raise HTTPException(
+            status_code=403,
+            detail="Company access could not be verified.",
+        )
 
     return user_id
 
