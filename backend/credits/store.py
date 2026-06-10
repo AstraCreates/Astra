@@ -18,7 +18,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_INITIAL_CREDITS = 10_000_000_000_000  # 10T — effectively unlimited for beta
+_INITIAL_CREDITS = 5_000_000  # 5M starting credits
 _MAX_TRANSACTIONS = 100
 
 # Per-user locks to avoid cross-user contention
@@ -110,7 +110,7 @@ def _init_if_new(founder_id: str, data: dict[str, Any]) -> dict[str, Any]:
         data["balance"] = _INITIAL_CREDITS
         data["total_granted"] = _INITIAL_CREDITS
         data["transactions"].append(
-            _make_tx("grant", _INITIAL_CREDITS, "Welcome bonus — 10 free credits")
+            _make_tx("grant", _INITIAL_CREDITS, "Welcome bonus — 5M free credits")
         )
         _save(data)
     return data
