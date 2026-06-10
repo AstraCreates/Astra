@@ -10,10 +10,12 @@ class Settings(BaseSettings):
     # Model that drives openclaude for technical-agent MVP builds. Must be a
     # strong agentic/tool-use model (DeepSeek-V4-Flash chats instead of building).
     mvp_build_model: str = "xiaomi/mimo-v2.5-pro"
-    # Keep technical-agent spend bounded by default. The wrapper agent only needs
-    # to pick/log tools; run_mvp_loop does the real code generation.
-    technical_agent_model: str = "xiaomi/mimo-v2.5"
-    technical_agent_max_iterations: int = 6
+    # Technical wrapper orchestrates a multi-step workflow (build → provision infra via
+    # browser → self-QA the live site → fix), so it gets the smart model for reliable
+    # tool decisions; the heavy code generation is still done by mvp_build_model in
+    # run_mvp_loop / openclaude. Few wrapper calls, so the cost impact is small.
+    technical_agent_model: str = "deepseek/deepseek-v4-pro"
+    technical_agent_max_iterations: int = 12
     # Web agent wrapper model (drives its tool calls: repo create, run_mvp_loop).
     # Dedicated so it isn't pinned by the env-overridden or_planner_model (hy3).
     web_agent_model: str = "xiaomi/mimo-v2.5-pro"
