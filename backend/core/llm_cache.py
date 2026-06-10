@@ -42,4 +42,9 @@ def openrouter_extra_body(model: str, extra: dict[str, Any] | None = None) -> di
     # slower, and it's unnecessary now that we no longer send json-mode response_format
     # (which is what some providers rejected).
     body.setdefault("provider", {"allow_fallbacks": True})
+    # Usage accounting: OpenRouter only populates usage.prompt_tokens_details.cached_tokens
+    # (and cost) when accounting is requested. Without this, prompt-cache HITS report 0
+    # cached tokens, so we'd both lose the cache savings AND bill cached tokens at the full
+    # input rate. Required for caching to be reflected for every model that supports it.
+    body.setdefault("usage", {"include": True})
     return body or None
