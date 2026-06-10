@@ -22,7 +22,7 @@ export const CHECKLIST_CATEGORIES: CLCategory[] = [
       { id: "ip_assign",         label: "Assign all IP to the company",         autoAgent: "legal_docs", detail: "Every founder and contractor signs an IP assignment." },
       { id: "ein",               label: "Get an EIN from the IRS", autoAgent: "legal_entity", detail: "Free, takes minutes online — needed for banking and payroll." },
       { id: "83b",               label: "File 83(b) election within 30 days", detail: "Hard deadline — missing it creates a large future tax bill." },
-      { id: "trademark",         label: "Register trademark for brand name", autoAgent: "legal_ip", detail: "Clear the name first; file once you commit to it." },
+      { id: "trademark",         label: "Research trademark clearance & prepare filing", autoAgent: "legal_ip", detail: "Agent clears the name; you file at USPTO." },
       { id: "nda",               label: "Draft NDA template",                   autoAgent: "legal_docs" },
       { id: "privacy_tos",       label: "Publish Privacy Policy & Terms of Service", autoAgent: "legal_docs", detail: "Required before collecting any user data or payments." },
       { id: "contractor_agmt",   label: "Create contractor agreement templates", autoAgent: "legal_docs" },
@@ -92,7 +92,7 @@ export const CHECKLIST_CATEGORIES: CLCategory[] = [
   {
     id: "social", label: "Social Media", icon: "📱",
     items: [
-      { id: "claim_handles",     label: "Claim handles on all major platforms", autoAgent: "web_navigator" },
+      { id: "claim_handles",     label: "Claim handles on all major platforms", detail: "Secure your brand name on Twitter/X, Instagram, TikTok, LinkedIn before launch." },
       { id: "focus_channels",    label: "Choose 2–3 primary channels to focus on", detail: "Go deep where your ICP actually hangs out." },
       { id: "linkedin_page",     label: "Set up LinkedIn company page", autoAgent: "marketing_outreach" },
       { id: "content_calendar",  label: "Create 30-day pre-launch content calendar", autoAgent: "marketing_content" },
@@ -156,8 +156,8 @@ export const CHECKLIST_CATEGORIES: CLCategory[] = [
   {
     id: "ops", label: "Team & Operations", icon: "🧭",
     items: [
-      { id: "gsuite",            label: "Set up G Suite / Microsoft 365",       autoAgent: "ops" },
-      { id: "slack_setup",       label: "Set up Slack or team comms tool", autoAgent: "ops" },
+      { id: "gsuite",            label: "Set up G Suite / Microsoft 365",       detail: "Create your company Google Workspace or M365 tenant." },
+      { id: "slack_setup",       label: "Set up Slack or team comms tool", detail: "Create your workspace and invite the founding team." },
       { id: "wiki_docs",         label: "Document core processes in a wiki",    autoAgent: "ops" },
       { id: "password_manager",  label: "Roll out a team password manager", detail: "1Password / Bitwarden — kill shared-credentials risk." },
       { id: "esop",              label: "Create employee option pool (ESOP)" },
