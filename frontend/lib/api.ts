@@ -1240,6 +1240,7 @@ export interface SessionMeta {
   created_at: string;
   parent_session_id: string;
   kind: string;
+  credits_used?: number;
 }
 
 /** Public, unauthenticated session header — lets /s/<id> links work without the
@@ -2127,6 +2128,7 @@ export interface CompanyGoalEntry {
   tasks: CompanyTask[];
   created_at: string;
   completed_at?: string | null;
+  credits_used?: number;
 }
 
 export interface OperatingRun {
@@ -2135,6 +2137,7 @@ export interface OperatingRun {
   status: string;
   summary?: string;
   goal_id?: string;
+  credits_used?: number;
 }
 
 export interface CompanyGoal {
@@ -2151,6 +2154,7 @@ export interface CompanyGoal {
   updated_at: string;
   notion_database_id?: string | null;
   notion_url?: string | null;
+  credits_used_total?: number;
 }
 
 export async function postponeCompanyTask(

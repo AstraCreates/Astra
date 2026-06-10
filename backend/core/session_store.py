@@ -117,6 +117,7 @@ def register_session(
         # session; kind is "launch" | "operating" | "" so the UI can nest them.
         "parent_session_id": parent_session_id or "",
         "kind": kind or "",
+        "credits_used": 0,
     }
     with _session_lock(session_id):
         meta_path(session_id).write_text(json.dumps(meta, indent=2))
@@ -168,6 +169,29 @@ def append_event(session_id: str, event_id: int, event: dict) -> None:
             _increment_artifacts(session_id)
     except Exception as exc:
         logger.warning("session_store.append_event failed for %s: %s", session_id, exc)
+
+
+def add_session_credits(session_id: str, credits: int) -> None:
+    """Accumulate credits spent by this session (durable, in meta.json). Lets the UI
+    show per-session — and, summed by goal, per-goal — credit spend."""
+    if not credits:
+        return
+    try:
+        with _session_lock(session_id):
+            p = meta_path(session_id)
+            meta = json.loads(p.read_text()) if p.exists() else {"session_id": session_id}
+            meta["credits_used"] = int(meta.get("credits_used", 0)) + int(credits)
+            p.write_text(json.dumps(meta, indent=2))
+    except Exception as exc:
+        logger.debug("add_session_credits failed for %s: %s", session_id, exc)
+
+
+def get_session_credits(session_id: str) -> int:
+    meta = get_session_meta(session_id) or {}
+    try:
+        return int(meta.get("credits_used", 0))
+    except Exception:
+        return 0
 
 
 def _increment_artifacts(session_id: str) -> None:

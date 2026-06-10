@@ -500,6 +500,9 @@ export default function MissionsPanel() {
                       <div style={{ minWidth: 0 }}>
                         <div className="sec-label" style={{ marginBottom: 3 }}>Current goal{currentGoalEntry.kind === "launch" ? " · launch" : ""}</div>
                         <div style={{ fontSize: 14, fontWeight: 700, color: "var(--fg)", lineHeight: 1.35 }}>{currentGoalEntry.title}</div>
+                        <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 4, fontFamily: "var(--font-code)" }}>
+                          ◈ {(currentGoalEntry.credits_used ?? 0).toLocaleString()} credits used
+                        </div>
                       </div>
                       {tasks.length > 0 && (
                         <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -545,6 +548,7 @@ export default function MissionsPanel() {
                   <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 14px", fontSize: 12, borderTop: i === 0 ? "none" : "1px solid var(--bd)" }}>
                     <span style={{ color: "var(--green)", fontFamily: "var(--font-code)", fontSize: 10, flexShrink: 0 }}>✓</span>
                     <span style={{ flex: 1, color: "var(--fm)", textDecoration: "line-through", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.title}</span>
+                    <span style={{ fontSize: 9, fontFamily: "var(--font-code)", color: "var(--fm)", flexShrink: 0 }}>◈ {(g.credits_used ?? 0).toLocaleString()}</span>
                     <span style={{ fontSize: 9, fontFamily: "var(--font-code)", color: "var(--fm)", flexShrink: 0 }}>{timeAgo(g.completed_at)}</span>
                   </div>
                 ))}
@@ -635,7 +639,8 @@ export default function MissionsPanel() {
                     style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", border: "1px solid var(--bd)", background: "var(--surface)", textDecoration: "none", transition: "border-color .12s, background .12s" }}>
                     <div style={{ width: 7, height: 7, flexShrink: 0, borderRadius: "50%", background: r.status === "done" ? "var(--green)" : r.status === "error" ? "var(--red)" : "var(--blue)" }} />
                     <span style={{ flex: 1, fontSize: 12, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.summary || "Operating run"}</span>
-                    <span style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)" }}>{timeAgo(r.started_at)}</span>
+                    <span style={{ fontSize: 9, color: "var(--fm)", fontFamily: "var(--font-code)", flexShrink: 0 }}>◈ {(r.credits_used ?? 0).toLocaleString()}</span>
+                    <span style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)", flexShrink: 0 }}>{timeAgo(r.started_at)}</span>
                   </a>
                 ))}
               </div>

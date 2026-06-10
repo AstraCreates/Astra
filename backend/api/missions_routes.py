@@ -142,8 +142,19 @@ async def get_company_goal(founder_id: str = ""):
     goal = load_company_goal(founder_id)
     cur = None
     if goal:
-        from backend.missions.company_goal import current_goal as _cur
+        from backend.missions.company_goal import current_goal as _cur, goal_credits
+        from backend.core.session_store import get_session_credits
+        # Per-goal credit spend (sum of each goal's sessions).
+        credits_by_goal = goal_credits(founder_id)
+        for go in goal.get("goals") or []:
+            go["credits_used"] = credits_by_goal.get(go.get("id"), 0)
+        # Per-sub-run credit spend.
+        for r in goal.get("operating_sessions") or []:
+            r["credits_used"] = get_session_credits(r.get("session_id"))
+        goal["credits_used_total"] = sum(credits_by_goal.values())
         cur = _cur(founder_id)
+        if cur:
+            cur["credits_used"] = credits_by_goal.get(cur.get("id"), 0)
     return {"company_goal": goal, "current_goal": cur}
 
 

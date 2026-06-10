@@ -531,6 +531,30 @@ def handle_session_deleted(session_id: str) -> dict[str, Any]:
     return {"deleted_goals": deleted, "detached_runs": detached}
 
 
+def goal_credits(founder_id: str) -> dict[str, int]:
+    """Credits spent per goal: sum each goal's sessions' durable credit tallies. A
+    planner goal's spend = its operating sub-runs; the launch goal also counts the root
+    (launch) session it ran in. Returns {goal_id: credits}."""
+    from backend.core.session_store import get_session_credits
+    g = _read(founder_id)
+    if not g:
+        return {}
+    out: dict[str, int] = {}
+    runs_by_goal: dict[str, list[str]] = {}
+    for r in g.get("operating_sessions") or []:
+        gid = r.get("goal_id")
+        if gid and r.get("session_id"):
+            runs_by_goal.setdefault(gid, []).append(r["session_id"])
+    root = g.get("root_session_id") or ""
+    for go in g.get("goals") or []:
+        gid = go.get("id")
+        total = sum(get_session_credits(sid) for sid in runs_by_goal.get(gid, []))
+        if go.get("kind") == "launch" and root:
+            total += get_session_credits(root)
+        out[gid] = total
+    return out
+
+
 def list_company_goals() -> list[dict[str, Any]]:
     """Every founder's company goal (one file each)."""
     out: list[dict[str, Any]] = []

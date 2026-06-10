@@ -477,9 +477,14 @@ class Agent:
                     from backend.credits.store import deduct_credits
                     from backend.core.usage import cost_to_credits
                     total_t = prompt_t + completion_t
-                    credits = cost_to_credits(self.model, prompt_t, completion_t, 0)
+                    # Pass cached_tokens so cache hits bill at the cheaper cache rate.
+                    credits = cost_to_credits(self.model, prompt_t, completion_t, cached_tokens)
                     deduct_credits(ctx.founder_id, credits,
                                    f"{self.name} call ({total_t:,} tokens, {self.model})", ctx.session_id)
+                    # Per-session running tally (durable) so each session/goal shows its
+                    # own credit spend, not just the founder-wide balance.
+                    from backend.core.session_store import add_session_credits
+                    add_session_credits(ctx.session_id, credits)
                 except Exception as _ce:
                     logger.warning("Per-call credit deduction failed: %s", _ce)
         if not resp or not getattr(resp, "choices", None):
