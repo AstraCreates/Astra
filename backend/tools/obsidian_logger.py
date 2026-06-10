@@ -44,9 +44,29 @@ def _coerce_output(output: Any) -> dict | None:
 
 def obsidian_read(agent: str = "", max_notes: int = 5, founder_id: str | None = None, session_id: str | None = None, **kwargs) -> dict:
     """
-    Read recent session notes for this agent across all sessions.
-    Returns accumulated knowledge the agent can use as context.
+    Read accumulated company knowledge this agent can use as context.
+
+    Source of truth is the COMPANY BRAIN (GraphRAG): query it first. Legacy per-agent
+    vault notes are only a fallback for when the brain has nothing yet (very early in a
+    founder's first run, before any records are ingested).
     """
+    # ── Primary: company brain / GraphRAG ──
+    if founder_id and not kwargs.get("vault_only"):
+        try:
+            from backend.tools.company_brain import company_brain_context
+            query = str(kwargs.get("query") or agent or "company context").strip()
+            brain = company_brain_context(founder_id, query, limit=max_notes)
+            if brain and brain.strip():
+                return {
+                    "notes": [{"file": "company_brain/graphrag", "content": brain[:16000]}],
+                    "count": 1,
+                    "summary": "Company brain (GraphRAG) context.",
+                    "source": "company_brain",
+                }
+        except Exception:
+            pass
+
+    # ── Fallback: legacy vault notes ──
     root = _sessions_root(founder_id)
     if not root.exists():
         return {"notes": [], "summary": "No prior notes found."}
@@ -75,8 +95,10 @@ def obsidian_read(agent: str = "", max_notes: int = 5, founder_id: str | None = 
 
 
 def format_vault_context(agent: str, max_notes: int = 3, founder_id: str | None = None) -> str:
-    """Return vault notes as markdown for injection into agent prompts."""
-    ctx = obsidian_read(agent, max_notes=max_notes, founder_id=founder_id)
+    """Return vault notes as markdown for injection into agent prompts. Reads the vault
+    directly (vault_only) — the brain/GraphRAG context is injected separately by the
+    orchestrator, so this path must not double-inject it."""
+    ctx = obsidian_read(agent, max_notes=max_notes, founder_id=founder_id, vault_only=True)
     notes = ctx.get("notes", [])
     if not notes:
         return ""
@@ -149,6 +171,28 @@ def obsidian_log(
         sections += ["## Related", link_str, ""]
 
     filename.write_text("\n".join(sections))
+
+    # Mirror the note into the COMPANY BRAIN so agent outputs become GraphRAG knowledge
+    # (run_graph_rag_sync ingests brain records). Without this the brain never sees what
+    # agents produce, so brain-backed reads would miss agent-generated context. Best-effort
+    # — a brain-write failure must never fail the vault log.
+    try:
+        if founder_id and (summary or output_dict):
+            from backend.tools.company_brain import add_company_brain_record
+            body = summary or ""
+            if output_dict:
+                body += "\n\n" + json.dumps(output_dict, indent=2)[:6000]
+            add_company_brain_record(
+                founder_id,
+                source=f"agent:{agent}",
+                title=f"{agent} — {date} {time_str}",
+                content=body[:8000],
+                kind="agent_output",
+                metadata={"session_id": session_id, "agent": agent},
+            )
+    except Exception:
+        pass
+
     return {"logged": True, "path": str(filename), "note": filename.name}
 
 
