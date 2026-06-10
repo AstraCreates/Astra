@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ServiceLogo from "@/components/ServiceLogo";
 import { useCompany } from "@/lib/company-context";
 import {
   addCompanyBrainRecord,
@@ -90,7 +91,7 @@ function RecordCard({ record }: { record: BrainRecord }) {
     <Card style={{ padding: "13px 16px", cursor: body.length > 180 ? "pointer" : "default" }}>
       <div onClick={() => setOpen(v => !v)}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-          <span style={{ fontSize: 13 }}>{SOURCE_ICONS[record.source] ?? "📌"}</span>
+          <ServiceLogo serviceKey={record.source} label={record.source} size={16} fallback={SOURCE_ICONS[record.source] ?? "◇"} />
           <span style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {record.title}
           </span>
@@ -144,7 +145,7 @@ function ConnectModal({
         boxShadow: "0 24px 60px rgba(17,16,24,0.18)",
       }}>
         <div style={{ padding: "18px 22px 14px", borderBottom: "1px solid var(--bd)", display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 20 }}>{SOURCE_ICONS[source.key] ?? "🔌"}</span>
+          <ServiceLogo serviceKey={source.key} label={source.label} size={24} fallback={SOURCE_ICONS[source.key] ?? "◇"} />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)" }}>{source.label}</div>
             <div style={{ fontSize: 11, color: isConnected(source) ? "#16a34a" : "var(--fm)", marginTop: 1 }}>

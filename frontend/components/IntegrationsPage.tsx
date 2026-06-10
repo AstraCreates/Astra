@@ -2,40 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
-const LOGOS: Record<string, string> = {
-  github:        "https://cdn.simpleicons.org/github/181717",
-  vercel:        "https://cdn.simpleicons.org/vercel/000000",
-  sendgrid:      "https://cdn.simpleicons.org/sendgrid/009BDE",
-  gmail:         "https://cdn.simpleicons.org/gmail/EA4335",
-  linkedin:      "https://cdn.simpleicons.org/linkedin/0A66C2",
-  googlecalendar:"https://cdn.simpleicons.org/googlecalendar/4285F4",
-  notion:        "https://cdn.simpleicons.org/notion/000000",
-  linear:        "https://cdn.simpleicons.org/linear/5E6AD2",
-  instagram:     "https://cdn.simpleicons.org/instagram/E4405F",
-  tiktok:        "https://cdn.simpleicons.org/tiktok/000000",
-  meta_ads:      "https://cdn.simpleicons.org/meta/0082FB",
-};
-
-function ServiceLogo({ serviceKey, label, size = 24 }: { serviceKey: string; label: string; size?: number }) {
-  const [err, setErr] = useState(false);
-  const src = LOGOS[serviceKey];
-  if (!src || err) {
-    return (
-      <div style={{
-        width: size, height: size, flexShrink: 0,
-        background: "#f3f4f6", display: "flex", alignItems: "center",
-        justifyContent: "center", fontSize: size * 0.45, fontWeight: 700, color: "#6b7280",
-      }}>
-        {label[0]}
-      </div>
-    );
-  }
-  return (
-    <img src={src} alt={label} width={size} height={size}
-      onError={() => setErr(true)}
-      style={{ objectFit: "contain", flexShrink: 0, display: "block" }} />
-  );
-}
+import ServiceLogo from "@/components/ServiceLogo";
 import { useDevUser } from "@/lib/use-dev-user";
 import Link from "next/link";
 import { apiFetch, saveServiceCredential, getComposioOAuthUrls, getSetupStatus, SetupStatus } from "@/lib/api";

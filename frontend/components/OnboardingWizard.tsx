@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getSetupStatus, saveServiceCredential, getComposioOAuthUrls, setupAccounts, submitGoal } from "@/lib/api";
+import ServiceLogo from "@/components/ServiceLogo";
 import type { AgentStackTemplate, AgentCatalogEntry, StackReadiness } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -500,7 +501,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
     return (
       <div key={key} style={{ borderRadius: 14, border: borderStyle, background: bgStyle, transition: "border 0.2s, background 0.2s", boxShadow: T.shadow }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px" }}>
-          <span style={{ fontSize: 20, lineHeight: 1, flexShrink: 0 }}>{icon}</span>
+          <ServiceLogo serviceKey={key} label={label} size={24} fallback={icon} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ fontSize: 13, fontWeight: 500, color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>{label}</span>
