@@ -238,17 +238,37 @@ async def dispatch_current_goal(founder_id: str) -> dict[str, Any]:
         return {"ok": True, "skipped": f"goal status {cg.get('status')!r} — needs approval"}
     if not budget_allows(goal):
         return {"ok": False, "reason": "operating budget exhausted"}
-    open_tasks = [t for t in cg.get("tasks") or [] if not t.get("postponed") and t.get("status") != "done"]
+    all_tasks = [t for t in cg.get("tasks") or [] if not t.get("postponed")]
+    open_tasks = [t for t in all_tasks if t.get("status") != "done"]
     if not open_tasks:
         return {"ok": True, "skipped": "no open tasks"}
 
+    # A follow-up run = some of this goal's tasks are already done, so this dispatch is
+    # finishing only the LEFTOVERS an earlier run didn't complete (e.g. an agent that
+    # didn't deliver). Label it so the sub-run isn't mistaken for a duplicate of the goal.
+    done_count = sum(1 for t in all_tasks if t.get("status") == "done")
+    is_followup = done_count > 0 and done_count < len(all_tasks)
+    title = cg.get("title", "")
     owners = sorted({a for t in open_tasks for a in (t.get("owner_agents") or [])})
     root = goal.get("root_session_id") or goal.get("source_session_id") or ""
     session_id = new_session_id()
+    if is_followup:
+        header = (
+            f"FOLLOW-UP RUN for GOAL: {title}\n\n"
+            f"An earlier run already completed {done_count} of {len(all_tasks)} tasks for this goal. "
+            f"Finish ONLY the {len(open_tasks)} remaining task(s) below:\n"
+        )
+    else:
+        header = f"GOAL: {title}\n\nWork together to complete these major tasks:\n"
     instruction = (
-        f"GOAL: {cg.get('title')}\n\nWork together to complete these major tasks:\n"
+        header
         + "\n".join(f"- {t.get('title')}" for t in open_tasks)
         + "\n\nEach agent: deliver real outputs for the task(s) you own; end with a clear summary."
+    )
+    # Summary that distinguishes runs in the sub-run list: task count + follow-up marker.
+    run_summary = (
+        f"Follow-up · {len(open_tasks)} remaining task(s): {title}" if is_followup
+        else f"{len(open_tasks)} task(s): {title}"
     )
     try:
         from backend.core.session_store import register_session
@@ -256,7 +276,7 @@ async def dispatch_current_goal(founder_id: str) -> dict[str, Any]:
                          parent_session_id=root, kind="operating")
     except Exception:
         pass
-    add_operating_session(founder_id, session_id, summary=cg.get("title", ""), goal_id=cg.get("id", ""))
+    add_operating_session(founder_id, session_id, summary=run_summary, goal_id=cg.get("id", ""))
 
     try:
         from backend.core.factory import get_orchestrator
@@ -265,7 +285,7 @@ async def dispatch_current_goal(founder_id: str) -> dict[str, Any]:
             instruction=instruction, founder_id=founder_id,
             prior_session_id=root or session_id, agents=owners or None, session_id=session_id,
         )
-        update_operating_session(founder_id, session_id, status="done", summary=cg.get("title", ""))
+        update_operating_session(founder_id, session_id, status="done", summary=run_summary)
         return {"ok": True, "session_id": session_id}
     except Exception as e:
         logger.error("dispatch_current_goal failed for %s: %s", founder_id, e, exc_info=True)
