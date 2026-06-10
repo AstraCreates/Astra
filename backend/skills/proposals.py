@@ -17,8 +17,19 @@ _SECRET_RE = re.compile(r"(?:sk-|token|secret|password|api[_-]?key)", re.I)
 _ALLOWED = {"draft", "approved", "rejected", "active", "archived"}
 
 
+def _safe_founder(founder_id: str) -> str:
+    """Sanitize a founder id to a single safe path segment — founder_id arrives from
+    the API, so prevent path traversal / cross-tenant escape. Drops '.' so '..' is
+    impossible; keeps only [A-Za-z0-9_-]."""
+    safe = "".join(ch for ch in (founder_id or "") if ch.isalnum() or ch in {"_", "-"})[:80]
+    return safe or "founder"
+
+
 def _path(founder_id: str) -> Path:
-    root = Path(os.environ.get("OBSIDIAN_VAULT", "/tmp/astra_docs")) / "skills" / founder_id
+    base = (Path(os.environ.get("OBSIDIAN_VAULT", "/tmp/astra_docs")) / "skills").resolve()
+    root = (base / _safe_founder(founder_id)).resolve()
+    if base != root and base not in root.parents:
+        raise ValueError("invalid founder_id")
     root.mkdir(parents=True, exist_ok=True)
     return root / "proposals.json"
 

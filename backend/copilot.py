@@ -25,9 +25,11 @@ logger = logging.getLogger(__name__)
 # ── History store ───────────────────────────────────────────────────────────────
 
 def _hist_path(session_id: str) -> Path:
+    # session_id comes from the URL — sanitize to a safe filename (no path traversal).
+    safe = "".join(ch for ch in (session_id or "") if ch.isalnum() or ch in {"_", "-"})[:80] or "session"
     root = Path(os.environ.get("OBSIDIAN_VAULT", "/data/astra_docs")) / "copilot"
     root.mkdir(parents=True, exist_ok=True)
-    return root / f"{session_id}.json"
+    return root / f"{safe}.json"
 
 
 def get_history(session_id: str) -> list[dict[str, Any]]:
