@@ -48,7 +48,7 @@ export default function NewRunView({ workspaceId }: { workspaceId: string }) {
       if (attachments.length) {
         instruction += "\n\nAdditional context for this run:\n" + attachments.map((a) => `--- ${a.name} ---\n${a.content.slice(0, 6000)}`).join("\n\n");
       }
-      const data = await submitGoal(userId, instruction, {}, selStack || workspace?.stack_id || "idea_to_revenue", workspaceId);
+      const data = await submitGoal(userId, instruction, {}, selStack || workspace?.stack_id || "idea_to_revenue");
       if (!data.session_id) throw new Error("No session_id returned");
       // Open the live session (AppHome is session-based). Hard nav so it always lands.
       window.location.assign(`/s/${data.session_id}`);
