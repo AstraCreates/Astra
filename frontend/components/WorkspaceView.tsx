@@ -277,7 +277,7 @@ export default function WorkspaceView({
               onMouseEnter={(e) => { if (!vaultOpen) (e.currentTarget as HTMLDivElement).style.background = "rgba(255,255,255,.04)"; }}
               onMouseLeave={(e) => { if (!vaultOpen) (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
             >
-              <span style={{ fontSize: 13 }}>🗄️</span>
+              <span style={{ fontSize: 13 }}>◇</span>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 600, color: vaultOpen ? "var(--fg)" : "var(--fd)" }}>Workspace Vault</div>
                 <div style={{ fontSize: 9, color: "var(--fm)" }}>{vaultCount} artifact{vaultCount !== 1 ? "s" : ""}</div>

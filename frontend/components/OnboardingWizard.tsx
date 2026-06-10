@@ -11,8 +11,8 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const STACK_ICONS: Record<string, string> = {
-  idea_to_revenue: "🚀", sales: "🤝", marketing: "📢",
-  founder_ops: "🧭", support: "🎧", product: "📐", custom: "✨",
+  idea_to_revenue: "▲", sales: "⊕", marketing: "✦",
+  founder_ops: "◎", support: "◈", product: "◇", custom: "✦",
 };
 
 const TOKEN_CONFIG: Record<string, { service: string; credKey: string; createUrl: string; placeholder: string }> = {
@@ -181,8 +181,8 @@ const GROUP_LABELS: Record<string, string> = {
   technical: "Technical", finance: "Finance", ops: "Ops", web: "Web", design: "Design",
 };
 const GROUP_EMOJI: Record<string, string> = {
-  research: "🔍", legal: "⚖️", marketing: "📣", sales: "💰",
-  technical: "⚙️", finance: "📊", ops: "🧭", web: "🌐", design: "🎨",
+  research: "◈", legal: "≡", marketing: "✦", sales: "⊕",
+  technical: "⚙", finance: "▦", ops: "▲", web: "◎", design: "◉",
 };
 
 const _REQUIRED = new Set(["research"]);
@@ -346,10 +346,10 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
   const hasComposioApp = [...required, ...optional].some(c => COMPOSIO_APPS.has(c.key));
 
   const ICONS: Record<string, string> = {
-    github: "🐙", vercel: "▲", supabase: "⚡", clerk: "🔐", gmail: "📧",
-    google_drive: "📁", google_sheets: "📊", google_calendar: "📅", slack: "💬",
-    notion: "📝", linear: "📐", crm: "👥", linkedin: "💼", meta_ads: "📱",
-    analytics: "📈", website_cms: "🌐", helpdesk: "🎧", figma: "🎨", stripe: "💳",
+    github: "●", vercel: "▲", supabase: "◆", clerk: "◇", gmail: "◻",
+    google_drive: "△", google_sheets: "▦", google_calendar: "▣", slack: "◎",
+    notion: "▷", linear: "◈", crm: "⊕", linkedin: "▪", meta_ads: "◻",
+    analytics: "▲", website_cms: "◎", helpdesk: "◈", figma: "◈", stripe: "≡",
   };
 
   const cardBtnStyle: React.CSSProperties = {
@@ -706,11 +706,11 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
         {optional.length > 0 && (
           <>
             <span style={{ ...SECTION_LABEL, marginTop: 12 }}>Optional</span>
-            {optional.map(c => card(c.key, ICONS[c.key] ?? "🔌", c.label, c.purpose, false))}
+            {optional.map(c => card(c.key, ICONS[c.key] ?? "◇", c.label, c.purpose, false))}
           </>
         )}
         <span style={{ ...SECTION_LABEL, marginTop: 12 }}>Payments</span>
-        {card("stripe", "💳", "Stripe", "Accept payments and track revenue — optional", false)}
+        {card("stripe", "≡", "Stripe", "Accept payments and track revenue — optional", false)}
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>

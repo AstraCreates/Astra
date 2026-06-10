@@ -160,9 +160,9 @@ const PREVIEW_HEADER: React.CSSProperties = {
 };
 
 const AGENT_ICONS: Record<string, string> = {
-  research: "🔬", research_competitors: "🏆", research_execution: "📋",
-  web: "🌐", marketing: "📢", technical: "⚙️",
-  legal: "⚖️", ops: "🚀", sales: "🤝", design: "🎨",
+  research: "◈", research_competitors: "◆", research_execution: "◇",
+  web: "◎", marketing: "✦", technical: "⚙",
+  legal: "≡", ops: "▲", sales: "⊕", design: "◉",
 };
 
 const STATUS_COLOR = {
@@ -494,7 +494,7 @@ interface BuildEvent {
 function BuildStream({ events, files }: { events: BuildEvent[]; files: Record<string, { content: string; size: number }> }) {
   const [open, setOpen] = useState<string | null>(null);
   const fileList = Object.keys(files).sort();
-  const icon = (k: string) => k === "file" ? "📝" : k === "command" ? "▶" : k === "build_start" ? "🔨" : k === "done" ? "✅" : k === "deploy" ? "🚀" : k === "deploy_start" ? "☁️" : k === "tool" ? "⚙" : k === "phase" ? "◆" : k === "plan" ? "📋" : k === "output" ? "»" : k === "error" ? "⚠" : "·";
+  const icon = (k: string) => k === "file" ? "▷" : k === "command" ? "▶" : k === "build_start" ? "◆" : k === "done" ? "✓" : k === "deploy" ? "▲" : k === "deploy_start" ? "○" : k === "tool" ? "⚙" : k === "phase" ? "◆" : k === "plan" ? "◇" : k === "output" ? "»" : k === "error" ? "⚠" : "·";
   const lineText = (e: BuildEvent) =>
     e.kind === "file" ? `${e.verb ?? "wrote"} ${e.path} (${e.size ?? 0}b)` :
     e.kind === "command" ? `$ ${e.command}${e.desc ? `  # ${e.desc}` : ""}` :
@@ -635,7 +635,7 @@ function TechnicalPreview({ state }: { state: AgentState }) {
       {/* GitHub repo link */}
       {repo && (
         <a href={repo} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 8, borderRadius: 20, border: "1px solid rgba(0,0,0,0.1)", background: "rgba(0,0,0,0.03)", padding: "8px 14px", color: "#002EFF", textDecoration: "none", fontSize: 12 }}>
-          <span>🐙</span>
+          <span>●</span>
           <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{repo.replace("https://github.com/", "")}</span>
           <span style={{ opacity: 0.5, flexShrink: 0 }}>↗</span>
         </a>
@@ -958,10 +958,10 @@ function MarketingPreview({ state }: { state: AgentState }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 5 }}>
         {[
-          { label: "Reels", active: !!reelScript, icon: "📸", color: "#F472B6", bg: "rgba(244,114,182,0.08)", border: "rgba(244,114,182,0.2)" },
-          { label: "TikTok", active: !!tiktokScript, icon: "🎵", color: "#22D3EE", bg: "rgba(34,211,238,0.08)", border: "rgba(34,211,238,0.2)" },
-          { label: "Meta Ad", active: !!(adHeadline || adBody), icon: "📣", color: "#60A5FA", bg: "rgba(96,165,250,0.08)", border: "rgba(96,165,250,0.2)" },
-          { label: "Images", active: adImages.length > 0, icon: "🖼", color: "#A78BFA", bg: "rgba(167,139,250,0.08)", border: "rgba(167,139,250,0.2)" },
+          { label: "Reels", active: !!reelScript, icon: "◎", color: "#F472B6", bg: "rgba(244,114,182,0.08)", border: "rgba(244,114,182,0.2)" },
+          { label: "TikTok", active: !!tiktokScript, icon: "◆", color: "#22D3EE", bg: "rgba(34,211,238,0.08)", border: "rgba(34,211,238,0.2)" },
+          { label: "Meta Ad", active: !!(adHeadline || adBody), icon: "✦", color: "#60A5FA", bg: "rgba(96,165,250,0.08)", border: "rgba(96,165,250,0.2)" },
+          { label: "Images", active: adImages.length > 0, icon: "◻", color: "#A78BFA", bg: "rgba(167,139,250,0.08)", border: "rgba(167,139,250,0.2)" },
         ].map(({ label, active, icon, color, bg, border }) => (
           <div key={label} style={{ padding: "8px 10px", borderRadius: 12, background: active ? bg : "rgba(255,255,255,0.02)", border: `1px solid ${active ? border : "rgba(255,255,255,0.06)"}`, textAlign: "center" as const, transition: "all 0.3s ease" }}>
             <div style={{ fontSize: 16, marginBottom: 3, opacity: active ? 1 : 0.25 }}>{icon}</div>
@@ -991,11 +991,11 @@ function MarketingPreview({ state }: { state: AgentState }) {
           </div>
         </div>
       )}
-      {(reelScript || reelCaption) && <SocialCard platform="Instagram Reel" icon="📸" color="#E1306C" gradient="linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045)" lines={[["Script", reelScript], ["Caption", reelCaption], ["Hashtags", reelHashtags]]} />}
-      {tiktokScript && <SocialCard platform="TikTok" icon="🎵" color="#69C9D0" gradient="linear-gradient(135deg,#010101,#69C9D0)" lines={[["Script", tiktokScript]]} />}
-      {(adHeadline || adBody) && <SocialCard platform="Meta Ad" icon="📣" color="#1877F2" gradient="linear-gradient(135deg,#1877F2,#42a5f5)" lines={[["Headline", adHeadline], ["Body", adBody], ["CTA", adCta]]} />}
-      {(emailSubject || emailBody) && CARD("📧 Email", [["Subject", emailSubject], ["Body", typeof emailBody === "string" ? emailBody.replace(/<[^>]+>/g, "") : emailBody]])}
-      {linkedin && <SocialCard platform="LinkedIn" icon="💼" color="#0A66C2" gradient="linear-gradient(135deg,#0A66C2,#00a0dc)" lines={[["Post", linkedin]]} />}
+      {(reelScript || reelCaption) && <SocialCard platform="Instagram Reel" icon="◎" color="#E1306C" gradient="linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045)" lines={[["Script", reelScript], ["Caption", reelCaption], ["Hashtags", reelHashtags]]} />}
+      {tiktokScript && <SocialCard platform="TikTok" icon="◆" color="#69C9D0" gradient="linear-gradient(135deg,#010101,#69C9D0)" lines={[["Script", tiktokScript]]} />}
+      {(adHeadline || adBody) && <SocialCard platform="Meta Ad" icon="✦" color="#1877F2" gradient="linear-gradient(135deg,#1877F2,#42a5f5)" lines={[["Headline", adHeadline], ["Body", adBody], ["CTA", adCta]]} />}
+      {(emailSubject || emailBody) && CARD("◻ Email", [["Subject", emailSubject], ["Body", typeof emailBody === "string" ? emailBody.replace(/<[^>]+>/g, "") : emailBody]])}
+      {linkedin && <SocialCard platform="LinkedIn" icon="▪" color="#0A66C2" gradient="linear-gradient(135deg,#0A66C2,#00a0dc)" lines={[["Post", linkedin]]} />}
     </div>
   );
 }
@@ -1118,7 +1118,7 @@ function LegalPreview({ state, founderId, company }: { state: AgentState; founde
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", marginBottom: 3 }}>⚖️ File Your LLC</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", marginBottom: 3 }}>≡ File Your LLC</div>
           <div style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.5 }}>
             Astra will automate the filing with Northwest Registered Agent. Takes ~5 min.
           </div>
@@ -2334,7 +2334,7 @@ function AgentInputModal({ sessionId, request, onDone }: {
       }}>
         {/* Header */}
         <div style={{ padding: "18px 24px", borderBottom: "1px solid var(--line-2)", display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 20 }}>⚖️</span>
+          <span style={{ fontSize: 20 }}>≡</span>
           <div>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "var(--fg)", letterSpacing: "-0.02em" }}>{request.title}</h2>
             <p style={{ margin: "3px 0 0", fontSize: 12, color: "var(--fg-mute)" }}>Required to complete your LLC filing — stays in memory only, never stored.</p>
@@ -2498,7 +2498,7 @@ function LLCFilingModal({ founderId, companyName, state, onClose }: {
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: "1px solid var(--line-2)" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 16 }}>⚖️</span>
+            <span style={{ fontSize: 16 }}>≡</span>
             <div>
               <span style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>Filing LLC — {companyName}</span>
               <span style={{ fontSize: 11, color: "var(--fg-mute)", marginLeft: 10, fontFamily: "var(--font-mono)" }}>{state}</span>
@@ -3362,7 +3362,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
                       color: "var(--fg)", padding: "10px 11px", cursor: "pointer",
                     }}
                   >
-                    <span style={{ fontSize: 12, fontWeight: 650 }}>🚀 Full Stack</span>
+                    <span style={{ fontSize: 12, fontWeight: 650 }}>▲ Full Stack</span>
                     <span style={{ fontSize: 10, color: active ? "#a855f7" : "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
                       {active ? `${allAgentNames.length} agents` : "All agents"}
                     </span>
@@ -3413,8 +3413,8 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
               );
               if (!customPickerOpen) return <div style={{ padding: "4px 0" }}>{header}</div>;
               const GROUP_EMOJI: Record<string, string> = {
-                research: "🔍", legal: "⚖️", marketing: "📣", sales: "💰",
-                technical: "⚙️", finance: "📊", ops: "🧭", web: "🌐", design: "🎨",
+                research: "◈", legal: "≡", marketing: "✦", sales: "⊕",
+                technical: "⚙", finance: "▦", ops: "▲", web: "◎", design: "◉",
               };
               const grouped: Record<string, AgentCatalogEntry[]> = {};
               agentCatalog.forEach(agent => {
@@ -3598,7 +3598,7 @@ const _CHECKLIST_CATEGORIES_UNUSED = [
     ],
   },
   {
-    id: "legal", label: "Legal & Entity", icon: "⚖️",
+    id: "legal", label: "Legal & Entity", icon: "≡",
     items: [
       { id: "form_entity",       label: "Form LLC or Delaware C-Corp",          autoAgent: "legal", detail: "C-Corp if you'll raise venture capital; LLC for bootstrapped." },
       { id: "founders_agmt",     label: "Draft founders' agreement",            autoAgent: "legal", detail: "Equity split, roles, decision rights, and exit terms in writing." },
@@ -3615,7 +3615,7 @@ const _CHECKLIST_CATEGORIES_UNUSED = [
     ],
   },
   {
-    id: "technical", label: "Technical / Product", icon: "🛠️",
+    id: "technical", label: "Technical / Product", icon: "◆",
     items: [
       { id: "mvp_scope",         label: "Define and scope MVP features",        autoAgent: "research", detail: "Cut to the single workflow that delivers the core value." },
       { id: "github_setup",      label: "Set up GitHub repo & version control", autoAgent: "technical", detail: "Branch protection, PR reviews, and a clear README." },
@@ -3632,7 +3632,7 @@ const _CHECKLIST_CATEGORIES_UNUSED = [
     ],
   },
   {
-    id: "infra", label: "Domain & Infrastructure", icon: "🌐",
+    id: "infra", label: "Domain & Infrastructure", icon: "◎",
     items: [
       { id: "domain_primary",    label: "Purchase primary domain name" },
       { id: "domain_variants",   label: "Buy brand-protecting domain variants", detail: "Common misspellings and .com/.io/.ai to prevent squatting." },
@@ -3646,7 +3646,7 @@ const _CHECKLIST_CATEGORIES_UNUSED = [
     ],
   },
   {
-    id: "security", label: "Security & Data", icon: "🔐",
+    id: "security", label: "Security & Data", icon: "◇",
     items: [
       { id: "secrets_mgmt",      label: "Move secrets out of code into a vault", detail: "No API keys in the repo; rotate anything ever committed." },
       { id: "mfa_admin",         label: "Enforce MFA on all admin accounts" },
@@ -3658,7 +3658,7 @@ const _CHECKLIST_CATEGORIES_UNUSED = [
     ],
   },
   {
-    id: "marketing", label: "Marketing & Brand", icon: "📢",
+    id: "marketing", label: "Marketing & Brand", icon: "✦",
     items: [
       { id: "icp",               label: "Define ICP (ideal customer profile)",  autoAgent: "research", detail: "Be specific enough to name 50 real target accounts." },
       { id: "brand_identity",    label: "Create brand identity (logo, colors)", autoAgent: "design" },
@@ -3674,7 +3674,7 @@ const _CHECKLIST_CATEGORIES_UNUSED = [
     ],
   },
   {
-    id: "social", label: "Social Media", icon: "📱",
+    id: "social", label: "Social Media", icon: "◻",
     items: [
       { id: "claim_handles",     label: "Claim handles on all major platforms" },
       { id: "focus_channels",    label: "Choose 2–3 primary channels to focus on", detail: "Go deep where your ICP actually hangs out." },
@@ -3686,7 +3686,7 @@ const _CHECKLIST_CATEGORIES_UNUSED = [
     ],
   },
   {
-    id: "finance", label: "Finance & Payments", icon: "💳",
+    id: "finance", label: "Finance & Payments", icon: "≡",
     items: [
       { id: "accounting",        label: "Set up accounting software (QuickBooks/Xero)" },
       { id: "stripe_setup",      label: "Integrate Stripe or payment processor", detail: "Test mode end-to-end before going live." },
@@ -3700,7 +3700,7 @@ const _CHECKLIST_CATEGORIES_UNUSED = [
     ],
   },
   {
-    id: "sales", label: "Sales & CRM", icon: "🤝",
+    id: "sales", label: "Sales & CRM", icon: "⊕",
     items: [
       { id: "crm_setup",         label: "Set up CRM (HubSpot / Pipedrive)",     autoAgent: "sales" },
       { id: "sales_pipeline",    label: "Define sales pipeline stages",         autoAgent: "sales_pipeline" },
@@ -3714,7 +3714,7 @@ const _CHECKLIST_CATEGORIES_UNUSED = [
     ],
   },
   {
-    id: "analytics", label: "Growth & Analytics", icon: "📈",
+    id: "analytics", label: "Growth & Analytics", icon: "▲",
     items: [
       { id: "product_analytics", label: "Install product analytics (PostHog / Mixpanel)" },
       { id: "web_analytics",     label: "Set up Google Analytics or Plausible" },
@@ -3727,7 +3727,7 @@ const _CHECKLIST_CATEGORIES_UNUSED = [
     ],
   },
   {
-    id: "support", label: "Customer Support & Success", icon: "💬",
+    id: "support", label: "Customer Support & Success", icon: "◎",
     items: [
       { id: "support_inbox",     label: "Set up a support inbox / help desk", detail: "Intercom, Help Scout, or a shared inbox to start." },
       { id: "help_docs",         label: "Write a starter help center / FAQ", autoAgent: "technical" },
@@ -3738,7 +3738,7 @@ const _CHECKLIST_CATEGORIES_UNUSED = [
     ],
   },
   {
-    id: "ops", label: "Team & Operations", icon: "🧭",
+    id: "ops", label: "Team & Operations", icon: "◉",
     items: [
       { id: "gsuite",            label: "Set up G Suite / Microsoft 365",       autoAgent: "ops" },
       { id: "slack_setup",       label: "Set up Slack or team comms tool" },
@@ -3751,7 +3751,7 @@ const _CHECKLIST_CATEGORIES_UNUSED = [
     ],
   },
   {
-    id: "launch_day", label: "Launch Day", icon: "🎬",
+    id: "launch_day", label: "Launch Day", icon: "◆",
     items: [
       { id: "launch_checklist_qa", label: "Final QA pass across core flows", detail: "Sign-up, payment, and onboarding on mobile and desktop." },
       { id: "launch_assets",     label: "Stage launch assets & copy", autoAgent: "marketing", detail: "PH post, tweets, email, and screenshots ready to fire." },
@@ -3762,7 +3762,7 @@ const _CHECKLIST_CATEGORIES_UNUSED = [
     ],
   },
   {
-    id: "post_launch", label: "Post-Launch Growth", icon: "🌱",
+    id: "post_launch", label: "Post-Launch Growth", icon: "▲",
     items: [
       { id: "weekly_review",     label: "Run a weekly metrics & growth review", detail: "Same metrics, same time, every week — compounding clarity." },
       { id: "referral_loop",     label: "Add a referral / invite loop", autoAgent: "marketing" },
@@ -3773,7 +3773,7 @@ const _CHECKLIST_CATEGORIES_UNUSED = [
     ],
   },
   {
-    id: "fundraising", label: "Investor / Fundraising", icon: "🚀",
+    id: "fundraising", label: "Investor / Fundraising", icon: "▲",
     items: [
       { id: "pitch_deck",        label: "Build 10–12 slide pitch deck",         autoAgent: "research" },
       { id: "narrative",         label: "Craft the fundraising narrative", autoAgent: "marketing", detail: "Why now, why this, why you — in one tight story." },

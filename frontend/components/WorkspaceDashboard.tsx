@@ -202,7 +202,7 @@ export default function WorkspaceDashboard() {
 
       {!loading && workspaces.length === 0 && !err && (
         <div style={{ textAlign: "center", paddingTop: 60 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🚀</div>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>▲</div>
           <div style={{ fontFamily: "var(--font-chakra)", fontSize: 16, fontWeight: 700, color: "var(--fg)", marginBottom: 6 }}>
             No projects yet
           </div>

@@ -7,9 +7,9 @@ import { AGENT_LABELS, apiFetch, askCompanyBrain } from "@/lib/api";
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const AGENT_ICONS: Record<string, string> = {
-  research: "🔬", research_competitors: "🏆", research_execution: "📋",
-  web: "🌐", marketing: "📢", technical: "⚙️",
-  legal: "⚖️", ops: "🚀", sales: "🤝", design: "🎨",
+  research: "◈", research_competitors: "◆", research_execution: "◇",
+  web: "◎", marketing: "✦", technical: "⚙",
+  legal: "≡", ops: "▲", sales: "⊕", design: "◉",
 };
 
 const SUGGESTIONS = [
@@ -164,7 +164,7 @@ export default function CompanyChat({
     <LiquidGlass contentStyle={{ padding: "0", display: "flex", flexDirection: "column", height: 560 }}>
       {/* Header */}
       <div style={{ padding: "18px 24px 14px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ fontSize: 16 }}>💬</span>
+        <span style={{ fontSize: 16 }}>◈</span>
         <div>
           <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{company || "Your company"}</div>
           <div style={{ fontSize: 11, color: "var(--text-2)" }}>Tell the team what to do next</div>
@@ -227,7 +227,7 @@ export default function CompanyChat({
                     borderRadius: 12, border: "1px solid var(--line)",
                     background: run.status === "done" ? "rgba(61,158,95,0.05)" : run.status === "error" ? "rgba(192,57,43,0.05)" : "rgba(37,99,235,0.05)",
                   }}>
-                    <span style={{ fontSize: 16, lineHeight: 1.2, flexShrink: 0 }}>{AGENT_ICONS[run.agent] ?? "⚙️"}</span>
+                    <span style={{ fontSize: 16, lineHeight: 1.2, flexShrink: 0 }}>{AGENT_ICONS[run.agent] ?? "⚙"}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>

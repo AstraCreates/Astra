@@ -35,9 +35,9 @@ const SOURCE_ORDER = [
 ];
 
 const SOURCE_ICONS: Record<string, string> = {
-  discord: "💬", slack: "💬", github: "🐙", linear: "📋", notion: "📝",
-  google_drive: "📁", google_workspace: "📁", gmail: "📧",
-  confluence: "📚", zendesk: "🎧", granola: "🎙", astra_vault: "🗄",
+  discord: "◎", slack: "◎", github: "●", linear: "◈", notion: "▷",
+  google_drive: "△", google_workspace: "△", gmail: "◻",
+  confluence: "▦", zendesk: "◈", granola: "◎", astra_vault: "◇",
 };
 
 const SUGGESTED_QUESTIONS = [
@@ -798,7 +798,7 @@ export default function CompanyBrainPage() {
       {/* ── suggestions banner (visible from any tab) ── */}
       {openProposals.length > 0 && tab !== "settings" && (
         <div style={{ flexShrink: 0, padding: "9px 24px", borderBottom: "1px solid rgba(217,119,6,0.25)", background: "rgba(217,119,6,0.06)", display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "#b45309" }}>
-          <span>💡</span>
+          <span>◈</span>
           <span style={{ flex: 1 }}>
             {openProposals.length} suggestion{openProposals.length > 1 ? "s" : ""} to keep your brain accurate
           </span>

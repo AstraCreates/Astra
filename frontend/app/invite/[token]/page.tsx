@@ -105,7 +105,7 @@ export default function AcceptInvitePage() {
             fontSize: 24,
           }}
         >
-          🚀
+          ▲
         </div>
         <h1 style={{ marginBottom: 8, fontSize: 22 }}>You&apos;re invited</h1>
         {invite && (

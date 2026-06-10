@@ -617,7 +617,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const live = st.artifacts.filter((a) => a.status !== "ready");
   const displayName = st.projectName || st.company || "";
   const shortGoal = st.goal ? st.goal.slice(0, 70) + (st.goal.length > 70 ? "…" : "") : `Session ${sessionId.slice(0, 8)}`;
-  const ICONS: Record<string, string> = { think: "💭", tool: "🔍", result: "→", done: "✓", error: "✗", start: "↳" };
+  const ICONS: Record<string, string> = { think: "◈", tool: "◎", result: "→", done: "✓", error: "✗", start: "↳" };
   const LABELS: Record<string, string> = { think: "Thinking", tool: "Searching", result: "Found", done: "Done", error: "Error", start: "Started" };
 
   const statusPill = (s: string) => {
@@ -828,7 +828,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               /* ── Phase checkpoint card ── */
               <div key={ap.gate_key} style={{ border: "1.5px solid var(--blue)", background: "rgba(59,130,246,.06)", padding: "16px 16px 12px", marginBottom: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontSize: 18 }}>✅</span>
+                  <span style={{ fontSize: 18 }}>✓</span>
                   <div>
                     <div style={{ fontFamily: "var(--font-chakra)", fontSize: 13, fontWeight: 700, color: "var(--fg)" }}>{ap.title}</div>
                     <div style={{ fontSize: 10, color: "var(--blue)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".08em" }}>Phase Checkpoint</div>

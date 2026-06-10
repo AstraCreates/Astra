@@ -71,7 +71,7 @@ const SERVICES = [
     key: "github",
     credKey: "token",
     label: "GitHub",
-    icon: "🐙",
+    icon: "●",
     desc: "Scaffold repos, push code, open PRs",
     placeholder: "ghp_xxxxxxxxxxxx",
     createUrl: "https://github.com/settings/tokens/new?description=Astra&scopes=repo,workflow",
@@ -93,7 +93,7 @@ const SERVICES = [
     key: "sendgrid",
     credKey: "api_key",
     label: "SendGrid",
-    icon: "✉️",
+    icon: "◻",
     desc: "Send email campaigns",
     placeholder: "SG.xxxxxxxxxxxxxxxx",
     createUrl: "https://app.sendgrid.com/settings/api_keys",
@@ -103,12 +103,12 @@ const SERVICES = [
 ] as const;
 
 const COMPOSIO_APPS = [
-  { key: "gmail", label: "Gmail", icon: "📧", desc: "Send from your inbox" },
-  { key: "linkedin", label: "LinkedIn", icon: "💼", desc: "Post announcements" },
-  { key: "googlecalendar", label: "Calendar", icon: "📅", desc: "Schedule meetings" },
-  { key: "notion", label: "Notion", icon: "📝", desc: "Update wiki" },
-  { key: "linear", label: "Linear", icon: "📋", desc: "Track issues" },
-  { key: "github", label: "GitHub PRs", icon: "🔀", desc: "Open PRs via Composio" },
+  { key: "gmail", label: "Gmail", icon: "◻", desc: "Send from your inbox" },
+  { key: "linkedin", label: "LinkedIn", icon: "▪", desc: "Post announcements" },
+  { key: "googlecalendar", label: "Calendar", icon: "▣", desc: "Schedule meetings" },
+  { key: "notion", label: "Notion", icon: "▷", desc: "Update wiki" },
+  { key: "linear", label: "Linear", icon: "◈", desc: "Track issues" },
+  { key: "github", label: "GitHub PRs", icon: "●", desc: "Open PRs via Composio" },
 ];
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -1104,9 +1104,9 @@ export default function SetupPage() {
           padding: "14px 18px", display: "flex", gap: 10, flexWrap: "wrap",
         }}>
           {[
-            { key: "instagram", label: "Instagram", icon: "📸", connected: status?.instagram },
-            { key: "tiktok", label: "TikTok", icon: "🎵", connected: status?.tiktok },
-            { key: "meta_ads", label: "Meta Ads", icon: "📢", connected: status?.meta_ads },
+            { key: "instagram", label: "Instagram", icon: "◎", connected: status?.instagram },
+            { key: "tiktok", label: "TikTok", icon: "◆", connected: status?.tiktok },
+            { key: "meta_ads", label: "Meta Ads", icon: "✦", connected: status?.meta_ads },
           ].map(svc => (
             <div key={svc.key} style={{
               display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
