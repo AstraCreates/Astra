@@ -964,6 +964,7 @@ export interface BrainAnswerCitation {
 
 export interface CompanyBrain {
   founder_id: string;
+  company_id?: string;
   updated_at: string;
   sources: Record<string, BrainSource>;
   records: BrainRecord[];
@@ -1068,6 +1069,7 @@ export interface WorkspaceVaultEntry {
 
 export interface Workspace {
   workspace_id: string;
+  company_id?: string;
   founder_id: string;
   name: string;
   goal: string;
@@ -1455,9 +1457,10 @@ export async function getComposioOAuthUrls(
   return data.oauth_urls ?? {};
 }
 
-export async function getCompanyBrain(founderId: string, viewerId = ""): Promise<CompanyBrain> {
+export async function getCompanyBrain(founderId: string, viewerId = "", companyId = ""): Promise<CompanyBrain> {
   const params = new URLSearchParams();
   if (viewerId) params.set("viewer_id", viewerId);
+  if (companyId) params.set("company_id", companyId);
   const suffix = params.toString() ? `?${params.toString()}` : "";
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}${suffix}`);
   if (!res.ok) throw new Error(await res.text());
@@ -1466,12 +1469,13 @@ export async function getCompanyBrain(founderId: string, viewerId = ""): Promise
 
 export async function syncCompanyBrain(
   founderId: string,
-  sources?: string[]
+  sources?: string[],
+  companyId = ""
 ): Promise<{ ok: boolean; record_count: number; relationship_count: number; changed_records: number; sources: BrainSource[] }> {
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/sync`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sources }),
+    body: JSON.stringify({ sources, company_id: companyId }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -1480,21 +1484,26 @@ export async function syncCompanyBrain(
 export async function importCompanyBrainSources(
   founderId: string,
   sources?: string[],
-  limit = 20
+  limit = 20,
+  companyId = ""
 ): Promise<{ ok: boolean; founder_id: string; results: Array<{ ok: boolean; source: string; error?: string; ingested?: number; changed_records?: number }>; imported_sources: string[]; failed_sources: string[] }> {
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/import`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sources, limit }),
+    body: JSON.stringify({ sources, limit, company_id: companyId }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function syncGraphRag(
-  founderId: string
+  founderId: string,
+  companyId = ""
 ): Promise<GraphRagSyncResult> {
-  const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/graph-sync`, {
+  const params = new URLSearchParams();
+  if (companyId) params.set("company_id", companyId);
+  const suffix = params.toString() ? `?${params}` : "";
+  const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/graph-sync${suffix}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
@@ -1503,9 +1512,13 @@ export async function syncGraphRag(
 }
 
 export async function getGraphRagVisualization(
-  founderId: string
+  founderId: string,
+  companyId = ""
 ): Promise<GraphRagVisualization> {
-  const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/graph-rag`);
+  const params = new URLSearchParams();
+  if (companyId) params.set("company_id", companyId);
+  const suffix = params.toString() ? `?${params}` : "";
+  const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/graph-rag${suffix}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -1514,10 +1527,12 @@ export async function getCompanyBrainAgentContext(
   founderId: string,
   query: string,
   limit = 8,
-  viewerId = ""
+  viewerId = "",
+  companyId = ""
 ): Promise<{ ok: boolean; context: string; records: BrainRecord[]; relationships: BrainRelationship[]; canonical_sources: BrainRecord[]; open_proposals: BrainProposal[]; sync: BrainSyncState }> {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
   if (viewerId) params.set("viewer_id", viewerId);
+  if (companyId) params.set("company_id", companyId);
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/agent-context?${params}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -1526,12 +1541,13 @@ export async function getCompanyBrainAgentContext(
 export async function askCompanyBrain(
   founderId: string,
   question: string,
-  limit = 8
+  limit = 8,
+  companyId = ""
 ): Promise<{ ok: boolean; question: string; answer: string; confidence: number; citations: BrainAnswerCitation[]; evidence: string[]; context: string }> {
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, limit }),
+    body: JSON.stringify({ question, limit, company_id: companyId }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -1546,12 +1562,13 @@ export async function getCompanySubteamReport(founderId: string, team = "enginee
 
 export async function configureCompanyBrainSync(
   founderId: string,
-  config: { enabled: boolean; sources?: string[]; interval_minutes?: number }
+  config: { enabled: boolean; sources?: string[]; interval_minutes?: number },
+  companyId = ""
 ): Promise<{ ok: boolean; sync: BrainSyncState }> {
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/sync/config`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(config),
+    body: JSON.stringify({ ...config, company_id: companyId }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -1559,12 +1576,13 @@ export async function configureCompanyBrainSync(
 
 export async function runCompanyBrainSync(
   founderId: string,
-  sources?: string[]
+  sources?: string[],
+  companyId = ""
 ): Promise<{ ok: boolean; skipped: boolean; sync: BrainSyncState }> {
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/sync/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sources }),
+    body: JSON.stringify({ sources, company_id: companyId }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -1580,10 +1598,12 @@ export async function searchCompanyBrain(
   founderId: string,
   query: string,
   limit = 8,
-  viewerId = ""
+  viewerId = "",
+  companyId = ""
 ): Promise<{ query: string; count: number; results: BrainRecord[]; formatted: string }> {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
   if (viewerId) params.set("viewer_id", viewerId);
+  if (companyId) params.set("company_id", companyId);
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/search?${params}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -1591,12 +1611,13 @@ export async function searchCompanyBrain(
 
 export async function addCompanyBrainRecord(
   founderId: string,
-  record: { source: string; title: string; content: string; kind?: string; url?: string; canonical?: boolean; stale_risk?: string; owner_id?: string; visibility?: string; allowed_roles?: string[] }
+  record: { source: string; title: string; content: string; kind?: string; url?: string; canonical?: boolean; stale_risk?: string; owner_id?: string; visibility?: string; allowed_roles?: string[] },
+  companyId = ""
 ): Promise<{ ok: boolean; record: BrainRecord }> {
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/records`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(record),
+    body: JSON.stringify({ ...record, company_id: companyId }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -1605,12 +1626,13 @@ export async function addCompanyBrainRecord(
 export async function reviseCompanyBrainRecord(
   founderId: string,
   recordId: string,
-  revision: { title?: string; content?: string; canonical?: boolean; stale_risk?: string; editor_id?: string }
+  revision: { title?: string; content?: string; canonical?: boolean; stale_risk?: string; editor_id?: string },
+  companyId = ""
 ): Promise<{ ok: boolean; record?: BrainRecord; previous_record?: BrainRecord; error?: string }> {
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/records/${encodeURIComponent(recordId)}/revise`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(revision),
+    body: JSON.stringify({ ...revision, company_id: companyId }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -1618,12 +1640,13 @@ export async function reviseCompanyBrainRecord(
 
 export async function configureCompanyBrainAccess(
   founderId: string,
-  body: { roles?: Record<string, string>; role_permissions?: Record<string, string[]> }
+  body: { roles?: Record<string, string>; role_permissions?: Record<string, string[]> },
+  companyId = ""
 ): Promise<{ ok: boolean; access_control: NonNullable<CompanyBrain["access_control"]> }> {
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/access`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, company_id: companyId }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -1632,21 +1655,26 @@ export async function configureCompanyBrainAccess(
 export async function ingestCompanyBrainRecords(
   founderId: string,
   source: string,
-  records: Array<Record<string, unknown>>
+  records: Array<Record<string, unknown>>,
+  companyId = ""
 ): Promise<{ ok: boolean; source: string; ingested: number; changed_records: number; record_count: number; proposal_count: number }> {
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/ingest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source, records }),
+    body: JSON.stringify({ source, records, company_id: companyId }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function maintainCompanyBrain(
-  founderId: string
+  founderId: string,
+  companyId = ""
 ): Promise<{ ok: boolean; maintenance: BrainMaintenance; proposals: BrainProposal[] }> {
-  const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/maintain`, {
+  const params = new URLSearchParams();
+  if (companyId) params.set("company_id", companyId);
+  const suffix = params.toString() ? `?${params}` : "";
+  const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/maintain${suffix}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
@@ -1657,12 +1685,13 @@ export async function maintainCompanyBrain(
 export async function updateBrainProposal(
   founderId: string,
   proposalId: string,
-  status: "open" | "resolved" | "dismissed"
+  status: "open" | "resolved" | "dismissed",
+  companyId = ""
 ): Promise<{ ok: boolean; proposal?: BrainProposal; error?: string }> {
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/proposals/${encodeURIComponent(proposalId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, company_id: companyId }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -2142,6 +2171,7 @@ export interface OperatingRun {
 
 export interface CompanyGoal {
   founder_id: string;
+  company_id?: string;
   north_star: string;
   company_goal: string;
   source_session_id: string;
@@ -2158,44 +2188,48 @@ export interface CompanyGoal {
 }
 
 export async function postponeCompanyTask(
-  founderId: string, taskId: string, postponed = true
+  founderId: string, taskId: string, postponed = true, companyId = ""
 ): Promise<{ ok: boolean; task: CompanyTask }> {
   const res = await apiFetch(`${BASE}/api/missions/company-goal/tasks/${encodeURIComponent(taskId)}/postpone`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ founder_id: founderId, postponed }),
+    body: JSON.stringify({ founder_id: founderId, company_id: companyId, postponed }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
-export async function markCompanyTaskDone(founderId: string, taskId: string): Promise<CompanyTask> {
+export async function markCompanyTaskDone(founderId: string, taskId: string, companyId = ""): Promise<CompanyTask> {
   const res = await apiFetch(`${BASE}/api/missions/company-goal/tasks/${encodeURIComponent(taskId)}`, {
     method: "PATCH", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ founder_id: founderId, status: "done" }),
+    body: JSON.stringify({ founder_id: founderId, company_id: companyId, status: "done" }),
   });
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()).task;
 }
 
-export async function runCompanyCycle(founderId: string): Promise<{ ok: boolean; parent_session_id: string }> {
-  const res = await apiFetch(`${BASE}/api/missions/company-goal/run?founder_id=${encodeURIComponent(founderId)}`, { method: "POST" });
+export async function runCompanyCycle(founderId: string, companyId = ""): Promise<{ ok: boolean; parent_session_id: string }> {
+  const params = new URLSearchParams({ founder_id: founderId });
+  if (companyId) params.set("company_id", companyId);
+  const res = await apiFetch(`${BASE}/api/missions/company-goal/run?${params}`, { method: "POST" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function approveNextGoal(
-  founderId: string, approved = true
+  founderId: string, approved = true, companyId = ""
 ): Promise<{ ok: boolean; goal?: CompanyGoalEntry; rejected?: boolean }> {
   const res = await apiFetch(`${BASE}/api/missions/company-goal/approve-next`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ founder_id: founderId, approved }),
+    body: JSON.stringify({ founder_id: founderId, company_id: companyId, approved }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
-export async function setCompanyGoalStatus(founderId: string, status: "operating" | "paused" | "completed"): Promise<{ ok: boolean; status: string }> {
-  const res = await apiFetch(`${BASE}/api/missions/company-goal/status?founder_id=${encodeURIComponent(founderId)}&status=${status}`, { method: "PATCH" });
+export async function setCompanyGoalStatus(founderId: string, status: "operating" | "paused" | "completed", companyId = ""): Promise<{ ok: boolean; status: string }> {
+  const params = new URLSearchParams({ founder_id: founderId, status });
+  if (companyId) params.set("company_id", companyId);
+  const res = await apiFetch(`${BASE}/api/missions/company-goal/status?${params}`, { method: "PATCH" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -2203,6 +2237,7 @@ export async function setCompanyGoalStatus(founderId: string, status: "operating
 export interface Mission {
   id: string;
   founder_id: string;
+  company_id?: string;
   department: string;
   name: string;
   goal: string;
@@ -2222,8 +2257,10 @@ export interface Mission {
   notion_page_url?: string | null;
 }
 
-export async function getMissions(founderId: string): Promise<Mission[]> {
-  const res = await apiFetch(`${BASE}/api/missions?founder_id=${encodeURIComponent(founderId)}`);
+export async function getMissions(founderId: string, companyId = ""): Promise<Mission[]> {
+  const params = new URLSearchParams({ founder_id: founderId });
+  if (companyId) params.set("company_id", companyId);
+  const res = await apiFetch(`${BASE}/api/missions?${params}`);
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   return data.missions ?? [];
@@ -2269,8 +2306,10 @@ export async function runMission(id: string): Promise<{ ok: boolean; session_id:
   return res.json();
 }
 
-export async function getCompanyGoal(founderId: string): Promise<CompanyGoal | null> {
-  const res = await apiFetch(`${BASE}/api/missions/company-goal?founder_id=${encodeURIComponent(founderId)}`);
+export async function getCompanyGoal(founderId: string, companyId = ""): Promise<CompanyGoal | null> {
+  const params = new URLSearchParams({ founder_id: founderId });
+  if (companyId) params.set("company_id", companyId);
+  const res = await apiFetch(`${BASE}/api/missions/company-goal?${params}`);
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   return data.company_goal ?? null;
@@ -2279,19 +2318,21 @@ export async function getCompanyGoal(founderId: string): Promise<CompanyGoal | n
 // Founder decision on a milestone the agent finished (awaiting_approval).
 // approved → done (+ planner may assign the next milestones); rejected → reopened.
 export async function approveMissionTask(
-  missionId: string, taskId: string, founderId: string, approved: boolean, note = ""
+  missionId: string, taskId: string, founderId: string, approved: boolean, note = "", companyId = ""
 ): Promise<{ ok: boolean; next_milestones_scheduled: boolean }> {
   const res = await apiFetch(`${BASE}/api/missions/${encodeURIComponent(missionId)}/tasks/${encodeURIComponent(taskId)}/approve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ founder_id: founderId, approved, note }),
+    body: JSON.stringify({ founder_id: founderId, company_id: companyId, approved, note }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
-export async function getPendingApprovals(founderId: string): Promise<{ mission_id: string; mission_name: string; department: string; task: MissionTask }[]> {
-  const res = await apiFetch(`${BASE}/api/missions/pending-approvals?founder_id=${encodeURIComponent(founderId)}`);
+export async function getPendingApprovals(founderId: string, companyId = ""): Promise<{ mission_id: string; mission_name: string; department: string; task: MissionTask }[]> {
+  const params = new URLSearchParams({ founder_id: founderId });
+  if (companyId) params.set("company_id", companyId);
+  const res = await apiFetch(`${BASE}/api/missions/pending-approvals?${params}`);
   if (!res.ok) return [];
   const data = await res.json();
   return data.pending ?? [];
@@ -2312,11 +2353,11 @@ export async function updateMissionTask(
   return result.task ?? result;
 }
 
-export async function syncMissionNotion(founderId: string): Promise<Record<string, unknown>> {
+export async function syncMissionNotion(founderId: string, companyId = ""): Promise<Record<string, unknown>> {
   const res = await apiFetch(`${BASE}/api/missions/sync-notion`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ founder_id: founderId }),
+    body: JSON.stringify({ founder_id: founderId, company_id: companyId }),
   });
   if (!res.ok) throw new Error(await res.text());
   return res.json();

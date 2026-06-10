@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
+import { useCompany } from "@/lib/company-context";
 import PageHeader from "@/components/PageHeader";
 import { CHECKLIST_CATEGORIES, type CLItem, type CLCategory } from "@/lib/checklist-data";
 import { getCompanyGoal, type CompanyTask } from "@/lib/api";
@@ -10,12 +11,21 @@ import { getCompanyGoal, type CompanyTask } from "@/lib/api";
 
 const KEY_DONE = "astra_cl_done";
 
-function loadDone(): Set<string> {
+function doneKey(companyId: string, founderId: string): string {
+  return companyId === founderId ? KEY_DONE : `${KEY_DONE}:${companyId}`;
+}
+
+function loadDone(companyId: string, founderId: string): Set<string> {
   if (typeof window === "undefined") return new Set();
-  try { const r = localStorage.getItem(KEY_DONE); return r ? new Set(JSON.parse(r) as string[]) : new Set(); }
+  try {
+    const r = localStorage.getItem(doneKey(companyId, founderId));
+    return r ? new Set(JSON.parse(r) as string[]) : new Set();
+  }
   catch { return new Set(); }
 }
-function saveDone(s: Set<string>) { try { localStorage.setItem(KEY_DONE, JSON.stringify([...s])); } catch {} }
+function saveDone(companyId: string, founderId: string, s: Set<string>) {
+  try { localStorage.setItem(doneKey(companyId, founderId), JSON.stringify([...s])); } catch {}
+}
 
 // ── Status helpers ─────────────────────────────────────────────────────────
 
@@ -292,21 +302,25 @@ function CategoryGroup({ cat, items, onCheck }: { cat: CLCategory; items: CLItem
 
 export default function ChecklistPage() {
   const { user } = useDevUser();
+  const { companyId, activeCompany } = useCompany();
+  const founderId = user?.id || "";
   const [tasks, setTasks] = useState<CompanyTask[]>([]);
   const [doneSet, setDoneSet] = useState<Set<string>>(new Set());
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   const [showDone, setShowDone] = useState(false);
 
-  useEffect(() => { setDoneSet(loadDone()); }, []);
+  useEffect(() => {
+    setDoneSet(loadDone(companyId, founderId));
+  }, [companyId, founderId]);
 
   const load = useCallback(async () => {
-    if (!user?.id) return;
+    if (!founderId) return;
     try {
-      const g = await getCompanyGoal(user.id);
+      const g = await getCompanyGoal(founderId, companyId);
       const entry = g?.goals?.find(x => x.id === g.current_goal_id) ?? null;
       setTasks(entry?.tasks ?? []);
     } catch {}
-  }, [user?.id]);
+  }, [companyId, founderId]);
 
   useEffect(() => {
     load();
@@ -318,10 +332,10 @@ export default function ChecklistPage() {
     setDoneSet(prev => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
-      saveDone(next);
+      saveDone(companyId, founderId, next);
       return next;
     });
-  }, []);
+  }, [companyId, founderId]);
 
   const allItems = useMemo(() => CHECKLIST_CATEGORIES.flatMap(c => c.items), []);
 
@@ -371,7 +385,7 @@ export default function ChecklistPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <PageHeader
-        title="Checklist"
+        title={`${activeCompany?.name || "Company"} Checklist`}
         badge={totalActive > 0 ? { label: `${totalActive} active`, color: "blue" } : { label: "ready", color: "green" }}
         stats={[
           { label: "Done",      value: String(totalDone) },

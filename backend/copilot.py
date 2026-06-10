@@ -51,16 +51,32 @@ def _save_history(session_id: str, history: list[dict[str, Any]]) -> None:
 
 # ── Tools (in-process, curated from the MCP surface) ─────────────────────────────
 
+def _company_for_session(session_id: str, founder_id: str) -> str:
+    try:
+        from backend.core.session_store import get_session_meta
+        return str((get_session_meta(session_id) or {}).get("company_id") or founder_id)
+    except Exception:
+        return founder_id
+
+
 async def _tool_ask_brain(founder_id: str, session_id: str, args: dict) -> Any:
     from backend.tools.company_brain import ask_company_brain
     import asyncio
-    return await asyncio.to_thread(ask_company_brain, founder_id, str(args.get("question", "")), 8)
+    company_id = _company_for_session(session_id, founder_id)
+    return await asyncio.to_thread(
+        ask_company_brain,
+        founder_id,
+        str(args.get("question", "")),
+        8,
+        company_id,
+    )
 
 
 async def _tool_company_goal(founder_id: str, session_id: str, args: dict) -> Any:
     from backend.missions.company_goal import get_company_goal, current_goal
-    g = get_company_goal(founder_id) or {}
-    cur = current_goal(founder_id)
+    company_id = _company_for_session(session_id, founder_id)
+    g = get_company_goal(founder_id, company_id) or {}
+    cur = current_goal(founder_id, company_id)
     goals = [{"title": x.get("title"), "kind": x.get("kind"), "status": x.get("status")} for x in g.get("goals", [])]
     return {"north_star": g.get("north_star"), "status": g.get("status"), "goals": goals,
             "current_goal": {"title": (cur or {}).get("title"), "status": (cur or {}).get("status")} if cur else None}
@@ -70,13 +86,14 @@ async def _tool_approve_next_goal(founder_id: str, session_id: str, args: dict) 
     from backend.missions.company_goal import approve_current_goal, reject_current_goal
     from backend.missions.goal_engine import dispatch_current_goal
     import asyncio
+    company_id = _company_for_session(session_id, founder_id)
     if bool(args.get("approved", True)):
-        goal = approve_current_goal(founder_id)
+        goal = approve_current_goal(founder_id, company_id)
         if goal:
-            asyncio.create_task(dispatch_current_goal(founder_id))
+            asyncio.create_task(dispatch_current_goal(founder_id, company_id))
             return {"approved": True, "goal": goal.get("title")}
         return {"approved": False, "error": "no proposed goal to approve"}
-    return {"rejected": reject_current_goal(founder_id)}
+    return {"rejected": reject_current_goal(founder_id, company_id)}
 
 
 async def _tool_steer_agents(founder_id: str, session_id: str, args: dict) -> Any:
@@ -96,7 +113,8 @@ async def _tool_steer_agents(founder_id: str, session_id: str, args: dict) -> An
 async def _tool_run_cycle(founder_id: str, session_id: str, args: dict) -> Any:
     from backend.missions.goal_engine import dispatch_current_goal
     import asyncio
-    asyncio.create_task(dispatch_current_goal(founder_id))
+    company_id = _company_for_session(session_id, founder_id)
+    asyncio.create_task(dispatch_current_goal(founder_id, company_id))
     return {"ok": True, "started": True}
 
 

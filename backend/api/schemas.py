@@ -7,6 +7,7 @@ class GoalRequest(BaseModel):
     instruction: str
     stack_id: Optional[str] = None
     constraints: dict = {}
+    company_id: Optional[str] = None
     workspace_id: Optional[str] = None
     workspace_name: Optional[str] = None
 
@@ -57,6 +58,7 @@ class AskRequest(BaseModel):
     session_id: Optional[str] = None    # for Obsidian note lookup
     company_name: Optional[str] = None  # company name for this session
     goal: Optional[str] = None          # original goal/instruction
+    company_id: Optional[str] = None
 
 
 class SetupRequest(BaseModel):
@@ -91,12 +93,14 @@ class ContinueRequest(BaseModel):
 class BrainSyncRequest(BaseModel):
     sources: Optional[list[str]] = None
     limit: int = 20
+    company_id: Optional[str] = None
 
 
 class BrainSyncConfigRequest(BaseModel):
     enabled: bool = True
     sources: Optional[list[str]] = None
     interval_minutes: int = 60
+    company_id: Optional[str] = None
 
 
 class BrainRecordRequest(BaseModel):
@@ -111,6 +115,7 @@ class BrainRecordRequest(BaseModel):
     visibility: str = "team"
     allowed_roles: Optional[list[str]] = None
     metadata: Optional[dict] = None
+    company_id: Optional[str] = None
 
 
 class BrainRecordRevisionRequest(BaseModel):
@@ -119,11 +124,13 @@ class BrainRecordRevisionRequest(BaseModel):
     canonical: Optional[bool] = None
     stale_risk: Optional[str] = None
     editor_id: Optional[str] = None
+    company_id: Optional[str] = None
 
 
 class BrainAccessRequest(BaseModel):
     roles: Optional[dict[str, str]] = None
     role_permissions: Optional[dict[str, list[str]]] = None
+    company_id: Optional[str] = None
 
 
 class OrgMemberRequest(BaseModel):
@@ -168,15 +175,18 @@ class BillingPortalRequest(BaseModel):
 class BrainIngestRequest(BaseModel):
     source: str
     records: list[dict]
+    company_id: Optional[str] = None
 
 
 class BrainProposalRequest(BaseModel):
     status: str = "resolved"
+    company_id: Optional[str] = None
 
 
 class BrainAskRequest(BaseModel):
     question: str
     limit: int = 8
+    company_id: Optional[str] = None
 
 
 class StripeEINUpgradeRequest(BaseModel):

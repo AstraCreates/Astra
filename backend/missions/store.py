@@ -82,6 +82,7 @@ def _index_entry(mission: dict) -> dict:
     return {
         "id": mission["id"],
         "founder_id": mission["founder_id"],
+        "company_id": mission.get("company_id") or mission["founder_id"],
         "department": mission["department"],
         "name": mission["name"],
         "status": mission["status"],
@@ -127,6 +128,7 @@ def create_mission(
     objectives: list[str],
     budget: dict[str, Any],
     approval_policy: ApprovalPolicyType,
+    company_id: str | None = None,
 ) -> dict:
     """Create a new mission and persist it.
 
@@ -148,6 +150,7 @@ def create_mission(
     mission: dict[str, Any] = {
         "id": str(uuid.uuid4()),
         "founder_id": founder_id,
+        "company_id": company_id or founder_id,
         "department": department,
         "name": name,
         "goal": goal,
@@ -194,7 +197,7 @@ def get_mission(mission_id: str) -> dict | None:
         return _load_mission_file(entry["founder_id"], mission_id)
 
 
-def list_missions(founder_id: str) -> list[dict]:
+def list_missions(founder_id: str, company_id: str | None = None) -> list[dict]:
     """Return all missions belonging to a founder, newest first.
 
     Args:
@@ -210,16 +213,25 @@ def list_missions(founder_id: str) -> list[dict]:
     missions: list[dict] = []
     for entry in entries:
         m = _load_mission_file(founder_id, entry["id"])
-        if m is not None:
+        if m is not None and (
+            company_id is None
+            or str(m.get("company_id") or founder_id) == company_id
+        ):
+            m.setdefault("company_id", founder_id)
             missions.append(m)
 
     missions.sort(key=lambda m: m.get("created_at", ""), reverse=True)
     return missions
 
 
-def find_mission(founder_id: str, department: str, name: str) -> dict | None:
+def find_mission(
+    founder_id: str,
+    department: str,
+    name: str,
+    company_id: str | None = None,
+) -> dict | None:
     normalized_name = (name or "").strip().lower()
-    for mission in list_missions(founder_id):
+    for mission in list_missions(founder_id, company_id):
         if mission.get("department") == department and str(mission.get("name", "")).strip().lower() == normalized_name:
             return mission
     return None
@@ -415,10 +427,13 @@ def decide_task(mission_id: str, task_id: str, approved: bool, note: str = "", d
     return update_task(mission_id, task_id, **fields)
 
 
-def pending_approvals(founder_id: str) -> list[dict[str, Any]]:
+def pending_approvals(
+    founder_id: str,
+    company_id: str | None = None,
+) -> list[dict[str, Any]]:
     """Every milestone across the founder's missions that is awaiting human sign-off."""
     out: list[dict[str, Any]] = []
-    for mission in list_missions(founder_id):
+    for mission in list_missions(founder_id, company_id):
         for task in mission.get("tasks") or []:
             if task.get("status") == "awaiting_approval":
                 out.append({

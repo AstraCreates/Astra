@@ -4,10 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getStacks, submitGoal, ingestAttachment, type AgentStackTemplate } from "@/lib/api";
 import { useDevUser } from "@/lib/use-dev-user";
+import { useCompany } from "@/lib/company-context";
 
 export default function NewGoalView() {
   const router = useRouter();
   const { userId } = useDevUser();
+  const { activeCompany } = useCompany();
   const [stacks, setStacks] = useState<AgentStackTemplate[]>([]);
   const [stackHint, setStackHint] = useState("Loading stacks…");
   const [selStack, setSelStack] = useState<string>("");
@@ -17,6 +19,7 @@ export default function NewGoalView() {
   const [attachments, setAttachments] = useState<{ name: string; content: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [company, setCompany] = useState("");
+  const displayCompany = activeCompany?.name || company;
   const goalRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -54,11 +57,18 @@ export default function NewGoalView() {
       // Prepend the founder's chosen company name so the backend uses it (NOT a
       // generated one). Must be "Company/project name:" — the prefix the name
       // extractor recognizes (plain "Company:" was ignored → random names).
-      let instruction = company ? `Company/project name: ${company}\n\n${goal}` : goal;
+      let instruction = displayCompany ? `Company/project name: ${displayCompany}\n\n${goal}` : goal;
       if (attachments.length) {
         instruction += "\n\nAttached context:\n" + attachments.map((a) => `--- ${a.name} ---\n${a.content.slice(0, 8000)}`).join("\n\n");
       }
-      const data = await submitGoal(userId, instruction, {}, selStack || "idea_to_revenue");
+      const data = await submitGoal(
+        userId,
+        instruction,
+        {},
+        selStack || "idea_to_revenue",
+        activeCompany?.workspace?.workspace_id,
+        activeCompany?.name,
+      );
       if (!data.session_id) throw new Error("No session_id returned");
       // Hard navigation — router.push (soft nav: same pathname, only query changes) can
       // fail to re-render in some in-app webviews, leaving the button stuck on "Launching…".
@@ -72,10 +82,10 @@ export default function NewGoalView() {
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       <div className="new-wrap">
-        {company && (
+        {displayCompany && (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--bd)", background: "var(--surface)", fontSize: 10.5, color: "var(--fd)", marginBottom: 16 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)" }} />
-            <span style={{ fontWeight: 600, color: "var(--fg)" }}>{company}</span>
+            <span style={{ fontWeight: 600, color: "var(--fg)" }}>{displayCompany}</span>
           </div>
         )}
 

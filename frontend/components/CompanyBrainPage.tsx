@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useDevUser } from "@/lib/use-dev-user";
+import { useCompany } from "@/lib/company-context";
 import {
   addCompanyBrainRecord,
   askCompanyBrain,
@@ -465,8 +465,7 @@ function KnowledgeMap({
 /* ─── main page ─── */
 
 export default function CompanyBrainPage() {
-  const { userId } = useDevUser();
-  const founderId = userId === "anon" ? "founder_001" : userId;
+  const { founderId, companyId, activeCompany } = useCompany();
 
   /* ── state (all original features preserved) ── */
   const [tab, setTab] = useState<Tab>("ask");
@@ -502,7 +501,7 @@ export default function CompanyBrainPage() {
   const loadBrain = useCallback(async () => {
     setError(null);
     try {
-      const data = await getCompanyBrain(founderId);
+      const data = await getCompanyBrain(founderId, "", companyId);
       setBrain(data);
       if (data.sync?.interval_minutes) setSyncInterval(data.sync.interval_minutes);
       try {
@@ -514,19 +513,19 @@ export default function CompanyBrainPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load company brain.");
     }
-  }, [founderId]);
+  }, [companyId, founderId]);
 
   const loadGraph = useCallback(async () => {
     setGraphLoading(true);
     try {
-      const data = await getGraphRagVisualization(founderId);
+      const data = await getGraphRagVisualization(founderId, companyId);
       setGraph(data);
     } catch {
       setGraph(null);
     } finally {
       setGraphLoading(false);
     }
-  }, [founderId]);
+  }, [companyId, founderId]);
 
   useEffect(() => {
     const t = window.setTimeout(() => { void loadBrain(); }, 0);
@@ -537,6 +536,17 @@ export default function CompanyBrainPage() {
     const t = window.setTimeout(() => { void loadGraph(); }, 0);
     return () => window.clearTimeout(t);
   }, [loadGraph]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setResults([]);
+      setSearched(false);
+      setAskAnswer(null);
+      setAskCitations([]);
+      setImportSummary(null);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [companyId]);
 
   /* ── derived ── */
   const sources = useMemo(() => {
@@ -560,7 +570,7 @@ export default function CompanyBrainPage() {
     setSyncing(true);
     setError(null);
     try {
-      await syncCompanyBrain(founderId, selectedSources);
+      await syncCompanyBrain(founderId, selectedSources, companyId);
       await loadBrain();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sync failed.");
@@ -574,7 +584,7 @@ export default function CompanyBrainPage() {
     setError(null);
     setImportSummary(null);
     try {
-      const result = await importCompanyBrainSources(founderId, selectedSources, 20);
+      const result = await importCompanyBrainSources(founderId, selectedSources, 20, companyId);
       const imported = result.imported_sources.length ? result.imported_sources.join(", ") : "none";
       const failed = result.failed_sources.length ? ` Failed: ${result.failed_sources.join(", ")}.` : "";
       setImportSummary(`Imported: ${imported}.${failed}`);
@@ -594,7 +604,7 @@ export default function CompanyBrainPage() {
     try {
       await saveServiceCredential(founderId, connectSource.key, credentialValues[connectSource.key] ?? {});
       setCredentialValues(v => ({ ...v, [connectSource.key]: {} }));
-      await syncCompanyBrain(founderId, [connectSource.key]);
+      await syncCompanyBrain(founderId, [connectSource.key], companyId);
       await loadBrain();
       setConnectKey(null);
     } catch (err) {
@@ -608,7 +618,11 @@ export default function CompanyBrainPage() {
     setContinuousSyncing(true);
     setError(null);
     try {
-      await configureCompanyBrainSync(founderId, { enabled, sources: selectedSources, interval_minutes: syncInterval });
+      await configureCompanyBrainSync(
+        founderId,
+        { enabled, sources: selectedSources, interval_minutes: syncInterval },
+        companyId,
+      );
       await loadBrain();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update sync settings.");
@@ -621,7 +635,7 @@ export default function CompanyBrainPage() {
     setContinuousSyncing(true);
     setError(null);
     try {
-      await runCompanyBrainSync(founderId, selectedSources);
+      await runCompanyBrainSync(founderId, selectedSources, companyId);
       await loadBrain();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Continuous sync run failed.");
@@ -636,7 +650,7 @@ export default function CompanyBrainPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await searchCompanyBrain(founderId, query.trim(), 10);
+      const data = await searchCompanyBrain(founderId, query.trim(), 10, "", companyId);
       setResults(data.results);
       setSearched(true);
     } catch (err) {
@@ -654,7 +668,7 @@ export default function CompanyBrainPage() {
     setAsking(true);
     setError(null);
     try {
-      const data = await askCompanyBrain(founderId, q, 8);
+      const data = await askCompanyBrain(founderId, q, 8, companyId);
       setAskAnswer(data.answer);
       setAskConfidence(data.confidence);
       setAskCitations(data.citations ?? []);
@@ -678,7 +692,7 @@ export default function CompanyBrainPage() {
         canonical: draft.canonical,
         kind: "note",
         stale_risk: draft.canonical ? "low" : "medium",
-      });
+      }, companyId);
       setDraft({ source: "manual", title: "", content: "", canonical: true });
       setPinOpen(false);
       await loadBrain();
@@ -693,7 +707,7 @@ export default function CompanyBrainPage() {
     setMaintaining(true);
     setError(null);
     try {
-      await maintainCompanyBrain(founderId);
+      await maintainCompanyBrain(founderId, companyId);
       await loadBrain();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Health check failed.");
@@ -706,7 +720,7 @@ export default function CompanyBrainPage() {
     setGraphRebuilding(true);
     setError(null);
     try {
-      await syncGraphRag(founderId);
+      await syncGraphRag(founderId, companyId);
       await loadGraph();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Map rebuild failed.");
@@ -718,7 +732,7 @@ export default function CompanyBrainPage() {
   async function updateProposal(proposalId: string, status: "resolved" | "dismissed") {
     setError(null);
     try {
-      await updateBrainProposal(founderId, proposalId, status);
+      await updateBrainProposal(founderId, proposalId, status, companyId);
       await loadBrain();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update suggestion.");
@@ -740,7 +754,7 @@ export default function CompanyBrainPage() {
       <div style={{ flexShrink: 0, background: "#001AFF", position: "sticky", top: 0, zIndex: 10 }}>
         <div style={{ padding: "18px 24px 0", display: "flex", alignItems: "baseline", gap: 12 }}>
           <h1 style={{ fontSize: 20, fontWeight: 600, color: "#fff", letterSpacing: "-0.02em", margin: 0, lineHeight: 1.2 }}>
-            Company Brain
+            {activeCompany?.name || "Company"} Brain
           </h1>
           <span style={{ fontSize: 12, color: "rgba(255,255,255,0.60)" }}>
             {records.length} records · {connected} sources

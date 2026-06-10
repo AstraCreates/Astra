@@ -97,13 +97,18 @@ async def _scheduler_tick() -> int:
     dispatched = 0
     for goal in goals:
         founder_id = goal.get("founder_id", "")
+        company_id = goal.get("company_id") or founder_id
         if not founder_id or goal.get("status") in ("paused", "completed"):
             continue
         # Heal op-run records stuck at "running" from a restart-killed dispatch.
-        await asyncio.to_thread(reconcile_operating_sessions, founder_id)
-        if await asyncio.to_thread(has_active_run, founder_id):
+        await asyncio.to_thread(reconcile_operating_sessions, founder_id, company_id)
+        if await asyncio.to_thread(
+            has_active_run,
+            founder_id,
+            company_id=company_id,
+        ):
             continue  # a run is genuinely in progress — don't start a duplicate
-        cg = await asyncio.to_thread(current_goal, founder_id)
+        cg = await asyncio.to_thread(current_goal, founder_id, company_id)
         # SAFETY NET — current goal complete but NO successor proposed. This happens when
         # after_run missed (run crashed, backend restarted between goal_done and the
         # proposal, or the planner errored), which is exactly the "goal done but no next
@@ -114,7 +119,7 @@ async def _scheduler_tick() -> int:
         if cg and cg.get("status") == "done" and _goal_is_complete(cg):
             if chain_allowed(goal):
                 try:
-                    if await asyncio.to_thread(plan_next_goal, founder_id):
+                    if await asyncio.to_thread(plan_next_goal, founder_id, company_id):
                         logger.info("missions_scheduler: recovered missing next-goal proposal founder=%s", founder_id)
                 except Exception as exc:
                     logger.error("missions_scheduler: next-goal proposal recovery failed founder=%s: %s", founder_id, exc, exc_info=True)
@@ -137,7 +142,13 @@ async def _scheduler_tick() -> int:
         if attempts >= max_goal_attempts:
             for t in open_tasks:
                 try:
-                    await asyncio.to_thread(postpone_task, founder_id, t.get("id"), True)
+                    await asyncio.to_thread(
+                        postpone_task,
+                        founder_id,
+                        t.get("id"),
+                        True,
+                        company_id,
+                    )
                 except Exception:
                     pass
             logger.warning("missions_scheduler: goal %s hit %d-attempt cap — postponed %d stuck task(s) so it can complete",
@@ -147,7 +158,7 @@ async def _scheduler_tick() -> int:
             continue
         logger.info("missions_scheduler: recovering stalled goal founder=%s (%d open tasks, attempt %d)", founder_id, len(open_tasks), attempts + 1)
         try:
-            result = await dispatch_current_goal(founder_id)
+            result = await dispatch_current_goal(founder_id, company_id)
             if result.get("ok") and result.get("session_id"):
                 dispatched += 1
         except Exception as exc:

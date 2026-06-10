@@ -75,6 +75,22 @@ from backend.tenant_auth import actor_or_body, require_founder_access, require_o
 router = APIRouter()
 
 
+def _require_company_scope(
+    request: Request,
+    founder_id: str,
+    company_id: str | None = None,
+    min_role: str = "viewer",
+) -> str:
+    require_founder_access(request, founder_id, min_role=min_role)
+    resolved_company_id = company_id or founder_id
+    if resolved_company_id != founder_id:
+        from backend.core.workspace_store import get_workspace
+        company = get_workspace(resolved_company_id)
+        if not company or str(company.get("founder_id") or "") != founder_id:
+            raise HTTPException(status_code=404, detail="Company not found")
+    return resolved_company_id
+
+
 async def _load_session_events(session_id: str) -> list[tuple[int, dict]]:
     from backend.core.events import _event_log, _restore_session
 
@@ -286,9 +302,18 @@ async def submit_goal(body: GoalRequest, request: Request):
     try:
         from backend.core import workspace_store as _wss
         _ws_name = (body.workspace_name or "").strip() or body.instruction[:60]
-        if body.workspace_id:
+        _requested_company_id = body.company_id or body.workspace_id
+        if _requested_company_id:
             # Add a new chapter to an existing workspace
-            _workspace_id = body.workspace_id
+            _company = _wss.get_workspace(_requested_company_id)
+            if not _company:
+                raise HTTPException(status_code=404, detail="Company not found")
+            require_founder_access(
+                request,
+                str(_company.get("founder_id") or ""),
+                min_role="operator",
+            )
+            _workspace_id = _requested_company_id
         else:
             # Auto-create a new workspace for this project
             _ws = _wss.create_workspace(
@@ -300,6 +325,10 @@ async def submit_goal(body: GoalRequest, request: Request):
             _workspace_id = _ws["workspace_id"]
         _ch = _wss.create_chapter(workspace_id=_workspace_id, session_id=session_id)
         _chapter_id = _ch["chapter_id"]
+        constraints["company_id"] = _workspace_id
+        constraints["workspace_id"] = _workspace_id
+    except HTTPException:
+        raise
     except Exception as _we:
         logger.warning("workspace creation failed (non-fatal): %s", _we)
 
@@ -314,6 +343,7 @@ async def submit_goal(body: GoalRequest, request: Request):
             company_name=str(constraints.get("company_name", "")),
             agents=list(constraints.get("agents", [])),
             workspace_id=_workspace_id,
+            company_id=_workspace_id or body.founder_id,
             chapter_id=_chapter_id,
         )
     except Exception as _se:
@@ -365,7 +395,13 @@ async def submit_goal(body: GoalRequest, request: Request):
     _task = asyncio.create_task(_run())
     from backend.core import cancellation
     cancellation.register_task(session_id, _task)
-    return {"session_id": session_id, "status": "running", "workspace_id": _workspace_id, "chapter_id": _chapter_id}
+    return {
+        "session_id": session_id,
+        "status": "running",
+        "company_id": _workspace_id or body.founder_id,
+        "workspace_id": _workspace_id,
+        "chapter_id": _chapter_id,
+    }
 
 
 @router.get("/stream/{session_id}")
@@ -391,12 +427,34 @@ async def stream_goal(session_id: str, request: Request):
 
 
 @router.get("/sessions")
-async def list_sessions(request: Request, founder_id: str = "", limit: int = 50):
+async def list_sessions(
+    request: Request,
+    founder_id: str = "",
+    company_id: str = "",
+    limit: int = 50,
+):
     """List all sessions for a founder, newest first."""
     from backend.core.session_store import list_sessions as _ls
+    if founder_id:
+        require_founder_access(request, founder_id, min_role="viewer")
+    if company_id:
+        from backend.core.workspace_store import get_workspace
+        company = get_workspace(company_id)
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        require_founder_access(
+            request,
+            str(company.get("founder_id") or ""),
+            min_role="viewer",
+        )
     # Offload the blocking index.json read so it doesn't stall the event loop
     # (single worker serves all sessions — sync file I/O here serializes them).
-    sessions = await asyncio.to_thread(_ls, founder_id or None, limit)
+    sessions = await asyncio.to_thread(
+        _ls,
+        founder_id or None,
+        limit,
+        company_id or None,
+    )
     return {"sessions": sessions}
 
 
@@ -1059,6 +1117,11 @@ async def continue_goal(body: ContinueRequest, request: Request):
 @router.post("/ask")
 async def ask_agent(body: AskRequest, request: Request):
     require_founder_access(request, body.founder_id, min_role="viewer")
+    company_id = body.company_id or ""
+    if not company_id and body.session_id:
+        from backend.core.session_store import get_session_meta
+        company_id = str((get_session_meta(body.session_id) or {}).get("company_id") or "")
+    company_id = _require_company_scope(request, body.founder_id, company_id)
     from backend.core.agent import AgentContext
     from backend.core.session_ids import new_session_id
 
@@ -1071,7 +1134,7 @@ async def ask_agent(body: AskRequest, request: Request):
         goal=body.question,
         founder_id=body.founder_id,
         session_id=f"ask_{new_session_id()}",
-        shared={"context": body.context or ""},
+        shared={"context": body.context or "", "company_id": company_id},
     )
     result = await agent.run(ctx)
     return {"agent": body.target_agent, "response": result}
@@ -1103,6 +1166,11 @@ async def chat_agent(agent_key: str, body: AskRequest, request: Request):
     from backend.config import settings
 
     require_founder_access(request, body.founder_id, min_role="viewer")
+    company_id = body.company_id or ""
+    if not company_id and body.session_id:
+        from backend.core.session_store import get_session_meta
+        company_id = str((get_session_meta(body.session_id) or {}).get("company_id") or "")
+    company_id = _require_company_scope(request, body.founder_id, company_id)
     orch = get_orchestrator()
     base_key = _re.sub(r"_\d+$", "", agent_key)
     agent = orch.specialists.get(agent_key) or orch.specialists.get(base_key)
@@ -1113,14 +1181,19 @@ async def chat_agent(agent_key: str, body: AskRequest, request: Request):
     brain_context = ""
     try:
         from backend.tools.company_brain import search_company_brain, _load as _brain_load
-        results = search_company_brain(body.founder_id, body.question, limit=6)
+        results = search_company_brain(
+            body.founder_id,
+            body.question,
+            limit=6,
+            company_id=company_id,
+        )
         snippets = results.get("results", [])
         if snippets:
             lines = [f"- [{r.get('source','?')}] {r.get('content','')[:400]}" for r in snippets]
             brain_context = "COMPANY KNOWLEDGE (semantic search):\n" + "\n".join(lines)
         else:
             # Fallback: load ALL canonical records directly
-            data = _brain_load(body.founder_id)
+            data = _brain_load(body.founder_id, company_id)
             records = [r for r in data.get("records", []) if r.get("status", "active") == "active"]
             if records:
                 lines = [f"- [{r.get('source','?')}] {r.get('title','')}: {r.get('content','')[:300]}" for r in records[:10]]
@@ -1308,20 +1381,41 @@ async def save_service_credential(body: SaveCredentialRequest, request: Request)
 
 
 @router.get("/brain/{founder_id}")
-async def get_brain(founder_id: str, request: Request, viewer_id: str = ""):
+async def get_brain(
+    founder_id: str,
+    request: Request,
+    viewer_id: str = "",
+    company_id: str = "",
+):
     """Return the founder's normalized company brain graph."""
+    resolved_company_id = _require_company_scope(request, founder_id, company_id)
     actor_id = require_founder_access(request, founder_id, min_role="viewer")
     from backend.tools.company_brain import get_company_brain
-    return get_company_brain(founder_id, viewer_id or actor_id)
+    return get_company_brain(
+        founder_id,
+        viewer_id or actor_id,
+        company_id=resolved_company_id,
+    )
 
 
 @router.post("/brain/{founder_id}/sync")
 async def sync_brain(founder_id: str, body: BrainSyncRequest, request: Request):
     """Sync connected sources and local agent vault notes into the company brain."""
+    company_id = _require_company_scope(
+        request,
+        founder_id,
+        body.company_id,
+        min_role="operator",
+    )
     actor_id = require_founder_access(request, founder_id, min_role="operator")
     import asyncio
     from backend.tools.company_brain import sync_company_brain
-    result = await asyncio.to_thread(sync_company_brain, founder_id, body.sources)
+    result = await asyncio.to_thread(
+        sync_company_brain,
+        founder_id,
+        body.sources,
+        company_id,
+    )
     try:
         from backend.accounts import record_usage
         record_usage(founder_id, actor_id=actor_id, connector_syncs=len(body.sources or []))
@@ -1331,43 +1425,103 @@ async def sync_brain(founder_id: str, body: BrainSyncRequest, request: Request):
 
 
 @router.post("/brain/{founder_id}/graph-sync")
-async def graph_sync_brain(founder_id: str, request: Request):
+async def graph_sync_brain(
+    founder_id: str,
+    request: Request,
+    company_id: str = "",
+):
     """Queue an offline GraphRAG v2 SQLite rebuild for the founder."""
-    require_founder_access(request, founder_id, min_role="operator")
+    resolved_company_id = _require_company_scope(
+        request,
+        founder_id,
+        company_id,
+        min_role="operator",
+    )
+    if resolved_company_id != founder_id:
+        from backend.tools.company_brain import rebuild_company_brain_graph
+        return await asyncio.to_thread(
+            rebuild_company_brain_graph,
+            founder_id,
+            resolved_company_id,
+        )
     from backend.tools.graph_rag_ingest import run_graph_rag_sync
     return await asyncio.to_thread(run_graph_rag_sync, founder_id)
 
 
 @router.get("/brain/{founder_id}/graph-rag")
-async def graph_rag_visualization(founder_id: str, request: Request):
+async def graph_rag_visualization(
+    founder_id: str,
+    request: Request,
+    company_id: str = "",
+):
     """Return GraphRAG v2 nodes and edges for visualization."""
-    require_founder_access(request, founder_id, min_role="viewer")
+    resolved_company_id = _require_company_scope(request, founder_id, company_id)
+    if resolved_company_id != founder_id:
+        from backend.tools.company_brain import get_company_brain_graph
+        return await asyncio.to_thread(
+            get_company_brain_graph,
+            founder_id,
+            resolved_company_id,
+        )
     from backend.tools.graph_rag_v2 import export_graph_visualization
     return await asyncio.to_thread(export_graph_visualization, founder_id)
 
 
 @router.get("/brain/{founder_id}/search")
-async def search_brain(founder_id: str, request: Request, q: str, limit: int = 8, viewer_id: str = ""):
+async def search_brain(
+    founder_id: str,
+    request: Request,
+    q: str,
+    limit: int = 8,
+    viewer_id: str = "",
+    company_id: str = "",
+):
     """Search company brain records for human UI and agent context."""
+    resolved_company_id = _require_company_scope(request, founder_id, company_id)
     actor_id = require_founder_access(request, founder_id, min_role="viewer")
     from backend.tools.company_brain import search_company_brain
-    return search_company_brain(founder_id, q, limit, viewer_id or actor_id)
+    return search_company_brain(
+        founder_id,
+        q,
+        limit,
+        viewer_id or actor_id,
+        resolved_company_id,
+    )
 
 
 @router.get("/brain/{founder_id}/agent-context")
-async def brain_agent_context(founder_id: str, request: Request, q: str, limit: int = 8, viewer_id: str = ""):
+async def brain_agent_context(
+    founder_id: str,
+    request: Request,
+    q: str,
+    limit: int = 8,
+    viewer_id: str = "",
+    company_id: str = "",
+):
     """Compact graph context for IDE/MCP/external agents."""
+    resolved_company_id = _require_company_scope(request, founder_id, company_id)
     actor_id = require_founder_access(request, founder_id, min_role="viewer")
     from backend.tools.company_brain import company_brain_agent_context
-    return company_brain_agent_context(founder_id, q, limit, viewer_id or actor_id)
+    return company_brain_agent_context(
+        founder_id,
+        q,
+        limit,
+        viewer_id or actor_id,
+        resolved_company_id,
+    )
 
 
 @router.post("/brain/{founder_id}/ask")
 async def ask_brain(founder_id: str, body: BrainAskRequest, request: Request):
     """Return a cited answer synthesized from matched company-brain records."""
-    require_founder_access(request, founder_id, min_role="viewer")
+    company_id = _require_company_scope(
+        request,
+        founder_id,
+        body.company_id,
+        min_role="viewer",
+    )
     from backend.tools.company_brain import ask_company_brain
-    return ask_company_brain(founder_id, body.question, body.limit)
+    return ask_company_brain(founder_id, body.question, body.limit, company_id)
 
 
 @router.get("/brain/{founder_id}/subteam-report")
@@ -1383,6 +1537,12 @@ async def brain_subteam_report(founder_id: str, request: Request, team: str = "e
 @router.post("/brain/{founder_id}/records")
 async def add_brain_record(founder_id: str, body: BrainRecordRequest, request: Request):
     """Add a manual or app-sourced record to the company brain."""
+    company_id = _require_company_scope(
+        request,
+        founder_id,
+        body.company_id,
+        min_role="operator",
+    )
     actor_id = require_founder_access(request, founder_id, min_role="operator")
     from backend.tools.company_brain import add_company_brain_record
     return add_company_brain_record(
@@ -1398,12 +1558,19 @@ async def add_brain_record(founder_id: str, body: BrainRecordRequest, request: R
         visibility=body.visibility,
         allowed_roles=body.allowed_roles,
         metadata=body.metadata,
+        company_id=company_id,
     )
 
 
 @router.post("/brain/{founder_id}/records/{record_id}/revise")
 async def revise_brain_record(founder_id: str, record_id: str, body: BrainRecordRevisionRequest, request: Request):
     """Create a new version of a Company Brain record and deprecate the prior version."""
+    company_id = _require_company_scope(
+        request,
+        founder_id,
+        body.company_id,
+        min_role="operator",
+    )
     actor_id = require_founder_access(request, founder_id, min_role="operator")
     from backend.tools.company_brain import revise_company_brain_record
     return revise_company_brain_record(
@@ -1414,24 +1581,37 @@ async def revise_brain_record(founder_id: str, record_id: str, body: BrainRecord
         canonical=body.canonical,
         stale_risk=body.stale_risk,
         editor_id=body.editor_id or actor_id,
+        company_id=company_id,
     )
 
 
 @router.post("/brain/{founder_id}/access")
 async def configure_brain_access(founder_id: str, body: BrainAccessRequest, request: Request):
     """Configure Company Brain team roles and permission grants."""
-    require_founder_access(request, founder_id, min_role="admin")
+    company_id = _require_company_scope(
+        request,
+        founder_id,
+        body.company_id,
+        min_role="admin",
+    )
     from backend.tools.company_brain import configure_company_brain_access
     return configure_company_brain_access(
         founder_id=founder_id,
         roles=body.roles,
         role_permissions=body.role_permissions,
+        company_id=company_id,
     )
 
 
 @router.post("/brain/{founder_id}/ingest")
 async def ingest_brain_records(founder_id: str, body: BrainIngestRequest, request: Request):
     """Bulk-ingest normalized records from connector/webhook payloads."""
+    company_id = _require_company_scope(
+        request,
+        founder_id,
+        body.company_id,
+        min_role="operator",
+    )
     actor_id = require_founder_access(request, founder_id, min_role="operator")
     import asyncio
     from backend.tools.company_brain import ingest_company_brain_records
@@ -1440,6 +1620,7 @@ async def ingest_brain_records(founder_id: str, body: BrainIngestRequest, reques
         founder_id,
         body.source,
         body.records,
+        company_id,
     )
     try:
         from backend.connector_sync_ledger import record_connector_sync
@@ -1483,6 +1664,12 @@ async def connector_brain_webhook(founder_id: str, source: str, request: Request
 @router.post("/brain/{founder_id}/import")
 async def import_brain_sources(founder_id: str, body: BrainSyncRequest, request: Request):
     """Import actual records from connected providers into the company brain."""
+    company_id = _require_company_scope(
+        request,
+        founder_id,
+        body.company_id,
+        min_role="operator",
+    )
     actor_id = require_founder_access(request, founder_id, min_role="operator")
     import asyncio
     from backend.tools.company_brain_connectors import import_company_brain_sources
@@ -1491,6 +1678,7 @@ async def import_brain_sources(founder_id: str, body: BrainSyncRequest, request:
         founder_id,
         body.sources,
         body.limit,
+        company_id,
     )
     try:
         from backend.accounts import record_usage
@@ -1501,35 +1689,62 @@ async def import_brain_sources(founder_id: str, body: BrainSyncRequest, request:
 
 
 @router.get("/brain/{founder_id}/sync/status")
-async def brain_sync_status(founder_id: str, request: Request):
+async def brain_sync_status(
+    founder_id: str,
+    request: Request,
+    company_id: str = "",
+):
     """Return continuous sync settings and recent run history."""
-    require_founder_access(request, founder_id, min_role="viewer")
+    resolved_company_id = _require_company_scope(request, founder_id, company_id)
     from backend.tools.company_brain import get_company_brain_sync_status
-    return get_company_brain_sync_status(founder_id)
+    return get_company_brain_sync_status(founder_id, resolved_company_id)
 
 
 @router.post("/brain/{founder_id}/sync/config")
 async def configure_brain_sync(founder_id: str, body: BrainSyncConfigRequest, request: Request):
     """Configure continuous sync for connected providers."""
-    require_founder_access(request, founder_id, min_role="admin")
+    company_id = _require_company_scope(
+        request,
+        founder_id,
+        body.company_id,
+        min_role="admin",
+    )
     from backend.tools.company_brain import configure_company_brain_sync
     return configure_company_brain_sync(
         founder_id=founder_id,
         enabled=body.enabled,
         sources=body.sources,
         interval_minutes=body.interval_minutes,
+        company_id=company_id,
     )
 
 
 @router.post("/brain/{founder_id}/sync/run")
 async def run_brain_sync(founder_id: str, body: BrainSyncRequest, request: Request):
     """Run continuous-sync import now, regardless of schedule."""
+    company_id = _require_company_scope(
+        request,
+        founder_id,
+        body.company_id,
+        min_role="operator",
+    )
     actor_id = require_founder_access(request, founder_id, min_role="operator")
     import asyncio
     from backend.tools.company_brain import configure_company_brain_sync, run_company_brain_sync
     if body.sources:
-        configure_company_brain_sync(founder_id, enabled=True, sources=body.sources, interval_minutes=60)
-    result = await asyncio.to_thread(run_company_brain_sync, founder_id, True)
+        configure_company_brain_sync(
+            founder_id,
+            enabled=True,
+            sources=body.sources,
+            interval_minutes=60,
+            company_id=company_id,
+        )
+    result = await asyncio.to_thread(
+        run_company_brain_sync,
+        founder_id,
+        True,
+        company_id,
+    )
     try:
         from backend.accounts import record_usage
         imported = (((result.get("import") or {}).get("imported_sources")) or [])
@@ -1557,20 +1772,43 @@ async def run_due_brain_syncs(request: Request):
 
 
 @router.post("/brain/{founder_id}/maintain")
-async def maintain_brain(founder_id: str, request: Request):
+async def maintain_brain(
+    founder_id: str,
+    request: Request,
+    company_id: str = "",
+):
     """Run drift, canonical-gap, and contradiction detection."""
-    require_founder_access(request, founder_id, min_role="operator")
+    resolved_company_id = _require_company_scope(
+        request,
+        founder_id,
+        company_id,
+        min_role="operator",
+    )
     import asyncio
     from backend.tools.company_brain import maintain_company_brain
-    return await asyncio.to_thread(maintain_company_brain, founder_id)
+    return await asyncio.to_thread(
+        maintain_company_brain,
+        founder_id,
+        resolved_company_id,
+    )
 
 
 @router.post("/brain/{founder_id}/proposals/{proposal_id}")
 async def update_brain_proposal(founder_id: str, proposal_id: str, body: BrainProposalRequest, request: Request):
     """Update a maintenance proposal status."""
-    require_founder_access(request, founder_id, min_role="operator")
+    company_id = _require_company_scope(
+        request,
+        founder_id,
+        body.company_id,
+        min_role="operator",
+    )
     from backend.tools.company_brain import resolve_company_brain_proposal
-    return resolve_company_brain_proposal(founder_id, proposal_id, body.status)
+    return resolve_company_brain_proposal(
+        founder_id,
+        proposal_id,
+        body.status,
+        company_id,
+    )
 
 
 # ── Stripe Standard Connect ───────────────────────────────────────────────────

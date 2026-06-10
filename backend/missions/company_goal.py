@@ -1,4 +1,4 @@
-"""Founder-level continuous company operating goal storage."""
+"""Company-scoped continuous operating goal storage."""
 
 from __future__ import annotations
 
@@ -22,25 +22,27 @@ def _root() -> Path:
     return path
 
 
-def _goal_path(founder_id: str) -> Path:
-    safe = "".join(ch for ch in founder_id if ch.isalnum() or ch in {"_", "-", "."})[:120] or "founder"
-    return _root() / f"{safe}.json"
+def _safe_id(value: str, fallback: str) -> str:
+    return "".join(ch for ch in value if ch.isalnum() or ch in {"_", "-", "."})[:120] or fallback
+
+
+def _goal_path(founder_id: str, company_id: str | None = None) -> Path:
+    safe_founder = _safe_id(founder_id, "founder")
+    resolved_company = company_id or founder_id
+    if resolved_company == founder_id:
+        return _root() / f"{safe_founder}.json"
+    company_dir = _root() / safe_founder
+    company_dir.mkdir(parents=True, exist_ok=True)
+    return company_dir / f"{_safe_id(resolved_company, 'company')}.json"
 
 
 def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-def get_company_goal(founder_id: str) -> dict[str, Any] | None:
+def get_company_goal(founder_id: str, company_id: str | None = None) -> dict[str, Any] | None:
     with _lock:
-        path = _goal_path(founder_id)
-        if not path.exists():
-            return None
-        try:
-            return json.loads(path.read_text())
-        except Exception as exc:
-            logger.warning("company_goal: failed to read %s: %s", path, exc)
-            return None
+        return _read(founder_id, company_id)
 
 
 def upsert_company_goal(
@@ -53,19 +55,20 @@ def upsert_company_goal(
     kpis: list[dict[str, Any]] | None = None,
     notion_database_id: str | None = None,
     notion_url: str | None = None,
+    company_id: str | None = None,
 ) -> dict[str, Any]:
+    resolved_company_id = company_id or founder_id
     with _lock:
-        path = _goal_path(founder_id)
-        if path.exists():
-            try:
-                current = json.loads(path.read_text())
-            except Exception:
-                current = {"founder_id": founder_id, "created_at": _now_iso()}
-        else:
-            current = {"founder_id": founder_id, "created_at": _now_iso()}
+        path = _goal_path(founder_id, resolved_company_id)
+        current = _read(founder_id, resolved_company_id) or {
+            "founder_id": founder_id,
+            "company_id": resolved_company_id,
+            "created_at": _now_iso(),
+        }
         current.update(
             {
                 "founder_id": founder_id,
+                "company_id": resolved_company_id,
                 "north_star": north_star,
                 "company_goal": company_goal,
                 "source_session_id": source_session_id,
@@ -93,27 +96,40 @@ def upsert_company_goal(
 # ── Internal write helper ───────────────────────────────────────────────────────
 
 def _save(goal: dict[str, Any]) -> dict[str, Any]:
+    goal.setdefault("company_id", goal.get("founder_id", ""))
     goal["updated_at"] = _now_iso()
-    _goal_path(goal["founder_id"]).write_text(json.dumps(goal, indent=2, sort_keys=True))
+    _goal_path(goal["founder_id"], goal["company_id"]).write_text(json.dumps(goal, indent=2, sort_keys=True))
     return goal
 
 
-def _read(founder_id: str) -> dict[str, Any] | None:
-    path = _goal_path(founder_id)
+def _read(founder_id: str, company_id: str | None = None) -> dict[str, Any] | None:
+    resolved_company_id = company_id or founder_id
+    path = _goal_path(founder_id, resolved_company_id)
+    if not path.exists() and resolved_company_id != founder_id:
+        legacy_path = _goal_path(founder_id)
+        try:
+            legacy = json.loads(legacy_path.read_text()) if legacy_path.exists() else None
+        except Exception:
+            legacy = None
+        if isinstance(legacy, dict) and legacy.get("company_id") == resolved_company_id:
+            path.write_text(json.dumps(legacy, indent=2, sort_keys=True))
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text())
-    except Exception:
+        goal = json.loads(path.read_text())
+        goal.setdefault("company_id", resolved_company_id)
+        return goal
+    except Exception as exc:
+        logger.warning("company_goal: failed to read %s: %s", path, exc)
         return None
 
 
 # ── Root session + child operating runs ─────────────────────────────────────────
 
-def set_root_session(founder_id: str, session_id: str) -> None:
+def set_root_session(founder_id: str, session_id: str, company_id: str | None = None) -> None:
     """Record the parent launch session every operating run continues from."""
     with _lock:
-        goal = _read(founder_id)
+        goal = _read(founder_id, company_id)
         if goal is None:
             return
         # Only set once — the first launch session is the durable parent.
@@ -122,12 +138,18 @@ def set_root_session(founder_id: str, session_id: str) -> None:
             _save(goal)
 
 
-def add_operating_session(founder_id: str, session_id: str, summary: str = "", goal_id: str = "") -> None:
+def add_operating_session(
+    founder_id: str,
+    session_id: str,
+    summary: str = "",
+    goal_id: str = "",
+    company_id: str | None = None,
+) -> None:
     """Append a child operating-run record (traceable back to root_session_id).
     ``goal_id`` ties the run to the goal it was dispatched for so the UI can group
     every sub-run under its goal instead of showing a flat, confusing list."""
     with _lock:
-        goal = _read(founder_id)
+        goal = _read(founder_id, company_id)
         if goal is None:
             return
         runs = goal.setdefault("operating_sessions", [])
@@ -142,9 +164,14 @@ def add_operating_session(founder_id: str, session_id: str, summary: str = "", g
         _save(goal)
 
 
-def update_operating_session(founder_id: str, session_id: str, **fields: Any) -> None:
+def update_operating_session(
+    founder_id: str,
+    session_id: str,
+    company_id: str | None = None,
+    **fields: Any,
+) -> None:
     with _lock:
-        goal = _read(founder_id)
+        goal = _read(founder_id, company_id)
         if goal is None:
             return
         for rec in goal.get("operating_sessions", []):
@@ -155,13 +182,13 @@ def update_operating_session(founder_id: str, session_id: str, **fields: Any) ->
         _save(goal)
 
 
-def reconcile_operating_sessions(founder_id: str) -> int:
+def reconcile_operating_sessions(founder_id: str, company_id: str | None = None) -> int:
     """Flip operating-run records stuck at "running" to a terminal state when the
     underlying session is no longer running (a backend restart killed the run
     mid-dispatch before update_operating_session fired). Returns count fixed."""
     from backend.core.session_store import get_session_meta
     with _lock:
-        goal = _read(founder_id)
+        goal = _read(founder_id, company_id)
         if goal is None:
             return 0
         fixed = 0
@@ -199,14 +226,18 @@ def _normalize_task(task: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def get_tasks(founder_id: str) -> list[dict[str, Any]]:
-    goal = _read(founder_id)
+def get_tasks(founder_id: str, company_id: str | None = None) -> list[dict[str, Any]]:
+    goal = _read(founder_id, company_id)
     return list(goal.get("tasks") or []) if goal else []
 
 
-def set_tasks(founder_id: str, tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def set_tasks(
+    founder_id: str,
+    tasks: list[dict[str, Any]],
+    company_id: str | None = None,
+) -> list[dict[str, Any]]:
     with _lock:
-        goal = _read(founder_id)
+        goal = _read(founder_id, company_id)
         if goal is None:
             return []
         goal["tasks"] = [_normalize_task(t) for t in tasks]
@@ -214,10 +245,14 @@ def set_tasks(founder_id: str, tasks: list[dict[str, Any]]) -> list[dict[str, An
         return goal["tasks"]
 
 
-def upsert_tasks(founder_id: str, tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def upsert_tasks(
+    founder_id: str,
+    tasks: list[dict[str, Any]],
+    company_id: str | None = None,
+) -> list[dict[str, Any]]:
     """Merge tasks by id (add new, update existing). Returns the full task list."""
     with _lock:
-        goal = _read(founder_id)
+        goal = _read(founder_id, company_id)
         if goal is None:
             return []
         existing = {str(t.get("id")): dict(t) for t in goal.get("tasks") or [] if t.get("id")}
@@ -230,9 +265,14 @@ def upsert_tasks(founder_id: str, tasks: list[dict[str, Any]]) -> list[dict[str,
         return goal["tasks"]
 
 
-def update_task(founder_id: str, task_id: str, **fields: Any) -> dict[str, Any]:
+def update_task(
+    founder_id: str,
+    task_id: str,
+    company_id: str | None = None,
+    **fields: Any,
+) -> dict[str, Any]:
     with _lock:
-        goal = _read(founder_id)
+        goal = _read(founder_id, company_id)
         if goal is None:
             raise KeyError(f"No company goal for {founder_id}")
         for idx, t in enumerate(goal.get("tasks") or []):
@@ -243,18 +283,24 @@ def update_task(founder_id: str, task_id: str, **fields: Any) -> dict[str, Any]:
         raise KeyError(f"Task not found: {task_id}")
 
 
-def decide_task(founder_id: str, task_id: str, approved: bool, note: str = "") -> dict[str, Any]:
+def decide_task(
+    founder_id: str,
+    task_id: str,
+    approved: bool,
+    note: str = "",
+    company_id: str | None = None,
+) -> dict[str, Any]:
     """Founder sign-off on a milestone marked awaiting_approval.
     approved → done; rejected → in_progress with the note as feedback."""
     decision = {"approved": approved, "note": note, "at": _now_iso()}
     fields: dict[str, Any] = {"status": "done" if approved else "in_progress", "approval": decision}
     if note:
         verb = "Approved" if approved else "Revisions requested"
-        for t in get_tasks(founder_id):
+        for t in get_tasks(founder_id, company_id):
             if str(t.get("id")) == str(task_id):
                 fields["notes"] = (t.get("notes", "") + f"\n[{verb}]: {note}").strip()[:1000]
                 break
-    return update_task(founder_id, task_id, **fields)
+    return update_task(founder_id, task_id, company_id=company_id, **fields)
 
 
 # ── Sequential goals (each goal = overall objective + per-workstream major tasks) ──
@@ -278,13 +324,25 @@ def _new_goal_task(title: str, owner_agents: list[str], notes: str = "") -> dict
     }
 
 
-def reset_for_new_launch(founder_id: str, session_id: str, north_star: str, company_goal: str) -> dict[str, Any]:
+def reset_for_new_launch(
+    founder_id: str,
+    session_id: str,
+    north_star: str,
+    company_goal: str,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     """A fresh launch run = a new company → wipe the prior goal/runs and start clean,
     so the /goals view tracks the LATEST session, not a stale earlier one."""
     with _lock:
-        data = _read(founder_id) or {"founder_id": founder_id, "created_at": _now_iso()}
+        resolved_company_id = company_id or founder_id
+        data = _read(founder_id, resolved_company_id) or {
+            "founder_id": founder_id,
+            "company_id": resolved_company_id,
+            "created_at": _now_iso(),
+        }
         data.update({
             "founder_id": founder_id,
+            "company_id": resolved_company_id,
             "north_star": north_star,
             "company_goal": company_goal,
             "source_session_id": session_id,
@@ -300,8 +358,8 @@ def reset_for_new_launch(founder_id: str, session_id: str, north_star: str, comp
         return data
 
 
-def current_goal(founder_id: str) -> dict[str, Any] | None:
-    g = _read(founder_id)
+def current_goal(founder_id: str, company_id: str | None = None) -> dict[str, Any] | None:
+    g = _read(founder_id, company_id)
     if not g:
         return None
     cid = g.get("current_goal_id")
@@ -311,18 +369,25 @@ def current_goal(founder_id: str) -> dict[str, Any] | None:
     return None
 
 
-def get_goals(founder_id: str) -> list[dict[str, Any]]:
-    g = _read(founder_id)
+def get_goals(founder_id: str, company_id: str | None = None) -> list[dict[str, Any]]:
+    g = _read(founder_id, company_id)
     return list(g.get("goals") or []) if g else []
 
 
-def start_goal(founder_id: str, title: str, tasks: list[dict[str, Any]], kind: str = "planner", status: str = "active") -> dict[str, Any] | None:
+def start_goal(
+    founder_id: str,
+    title: str,
+    tasks: list[dict[str, Any]],
+    kind: str = "planner",
+    status: str = "active",
+    company_id: str | None = None,
+) -> dict[str, Any] | None:
     """Create a new goal (marking the prior current goal done) and make it current.
     ``tasks`` items: {title, owner_agents:[...], notes}. ``status`` is "active" for the
     launch goal (runs immediately) or "proposed" for planner-chained goals (the founder
     must approve before the team works it — goals need human sign-off)."""
     with _lock:
-        g = _read(founder_id)
+        g = _read(founder_id, company_id)
         if g is None:
             return None
         for go in g.get("goals") or []:
@@ -344,11 +409,11 @@ def start_goal(founder_id: str, title: str, tasks: list[dict[str, Any]], kind: s
         return goal
 
 
-def approve_current_goal(founder_id: str) -> dict[str, Any] | None:
+def approve_current_goal(founder_id: str, company_id: str | None = None) -> dict[str, Any] | None:
     """Founder sign-off on a proposed next goal → flip it active so it can be dispatched.
     Returns the now-active goal, or None if there's nothing proposed."""
     with _lock:
-        g = _read(founder_id)
+        g = _read(founder_id, company_id)
         if g is None:
             return None
         cg = next((go for go in g.get("goals") or [] if go.get("id") == g.get("current_goal_id")), None)
@@ -360,11 +425,11 @@ def approve_current_goal(founder_id: str) -> dict[str, Any] | None:
         return cg
 
 
-def reject_current_goal(founder_id: str) -> bool:
+def reject_current_goal(founder_id: str, company_id: str | None = None) -> bool:
     """Founder rejects the proposed next goal → drop it; the planner can propose another.
     Restores the most recent done goal as current so the view isn't empty."""
     with _lock:
-        g = _read(founder_id)
+        g = _read(founder_id, company_id)
         if g is None:
             return False
         goals = g.get("goals") or []
@@ -385,15 +450,21 @@ def _goal_is_complete(goal: dict[str, Any] | None) -> bool:
     return bool(actionable) and all(t.get("status") == "done" for t in actionable)
 
 
-def goal_is_complete(founder_id: str) -> bool:
-    return _goal_is_complete(current_goal(founder_id))
+def goal_is_complete(founder_id: str, company_id: str | None = None) -> bool:
+    return _goal_is_complete(current_goal(founder_id, company_id))
 
 
-def complete_agent_workstream(founder_id: str, agent: str, run_id: str = "", summary: str = "") -> dict[str, Any]:
+def complete_agent_workstream(
+    founder_id: str,
+    agent: str,
+    run_id: str = "",
+    summary: str = "",
+    company_id: str | None = None,
+) -> dict[str, Any]:
     """Mark ``agent`` as having delivered on the current goal's tasks it owns. A task
     is done once ALL its owner agents have delivered. Returns {changed, goal_complete}."""
     with _lock:
-        g = _read(founder_id)
+        g = _read(founder_id, company_id)
         if g is None:
             return {"changed": False, "goal_complete": False}
         cg = next((go for go in g.get("goals") or [] if go.get("id") == g.get("current_goal_id")), None)
@@ -424,11 +495,15 @@ def complete_agent_workstream(founder_id: str, agent: str, run_id: str = "", sum
         return {"changed": changed, "goal_complete": complete}
 
 
-def mark_workstream_running(founder_id: str, agent: str) -> bool:
+def mark_workstream_running(
+    founder_id: str,
+    agent: str,
+    company_id: str | None = None,
+) -> bool:
     """An owner agent started → flip its current-goal task(s) pending → in_progress
     so the goal reads as 'running' the moment a run starts. Returns True if changed."""
     with _lock:
-        g = _read(founder_id)
+        g = _read(founder_id, company_id)
         if g is None:
             return False
         cg = next((go for go in g.get("goals") or [] if go.get("id") == g.get("current_goal_id")), None)
@@ -447,9 +522,14 @@ def mark_workstream_running(founder_id: str, agent: str) -> bool:
         return changed
 
 
-def postpone_task(founder_id: str, task_id: str, postponed: bool = True) -> dict[str, Any]:
+def postpone_task(
+    founder_id: str,
+    task_id: str,
+    postponed: bool = True,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     with _lock:
-        g = _read(founder_id)
+        g = _read(founder_id, company_id)
         if g is None:
             raise KeyError("no company goal")
         cg = next((go for go in g.get("goals") or [] if go.get("id") == g.get("current_goal_id")), None)
@@ -468,9 +548,14 @@ def postpone_task(founder_id: str, task_id: str, postponed: bool = True) -> dict
         raise KeyError(f"task not found: {task_id}")
 
 
-def set_goal_task_status(founder_id: str, task_id: str, status: str) -> dict[str, Any]:
+def set_goal_task_status(
+    founder_id: str,
+    task_id: str,
+    status: str,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     with _lock:
-        g = _read(founder_id)
+        g = _read(founder_id, company_id)
         if g is None:
             raise KeyError("no company goal")
         cg = next((go for go in g.get("goals") or [] if go.get("id") == g.get("current_goal_id")), None)
@@ -490,12 +575,12 @@ def set_goal_task_status(founder_id: str, task_id: str, status: str) -> dict[str
         raise KeyError(f"task not found: {task_id}")
 
 
-def delete_company_goal(founder_id: str) -> bool:
+def delete_company_goal(founder_id: str, company_id: str | None = None) -> bool:
     with _lock:
-        path = _goal_path(founder_id)
+        path = _goal_path(founder_id, company_id)
         if path.exists():
             path.unlink()
-            logger.info("company_goal: deleted goal for %s", founder_id)
+            logger.info("company_goal: deleted goal for %s company=%s", founder_id, company_id or founder_id)
             return True
         return False
 
@@ -513,17 +598,18 @@ def handle_session_deleted(session_id: str) -> dict[str, Any]:
     detached = 0
     for goal in list_company_goals():
         founder_id = goal.get("founder_id")
+        company_id = goal.get("company_id") or founder_id
         if not founder_id:
             continue
         if session_id in (goal.get("root_session_id"), goal.get("source_session_id")):
-            if delete_company_goal(founder_id):
+            if delete_company_goal(founder_id, company_id):
                 deleted += 1
             continue
         runs = goal.get("operating_sessions") or []
         kept = [r for r in runs if r.get("session_id") != session_id]
         if len(kept) != len(runs):
             with _lock:
-                g = _read(founder_id)
+                g = _read(founder_id, company_id)
                 if g is not None:
                     g["operating_sessions"] = [r for r in (g.get("operating_sessions") or []) if r.get("session_id") != session_id]
                     _save(g)
@@ -531,12 +617,12 @@ def handle_session_deleted(session_id: str) -> dict[str, Any]:
     return {"deleted_goals": deleted, "detached_runs": detached}
 
 
-def goal_credits(founder_id: str) -> dict[str, int]:
+def goal_credits(founder_id: str, company_id: str | None = None) -> dict[str, int]:
     """Credits spent per goal: sum each goal's sessions' durable credit tallies. A
     planner goal's spend = its operating sub-runs; the launch goal also counts the root
     (launch) session it ran in. Returns {goal_id: credits}."""
     from backend.core.session_store import get_session_credits
-    g = _read(founder_id)
+    g = _read(founder_id, company_id)
     if not g:
         return {}
     out: dict[str, int] = {}
@@ -556,9 +642,9 @@ def goal_credits(founder_id: str) -> dict[str, int]:
 
 
 def list_company_goals() -> list[dict[str, Any]]:
-    """Every founder's company goal (one file each)."""
+    """Every company goal, including legacy founder-default records."""
     out: list[dict[str, Any]] = []
-    for path in _root().glob("*.json"):
+    for path in _root().rglob("*.json"):
         try:
             out.append(json.loads(path.read_text()))
         except Exception:
@@ -614,9 +700,13 @@ def is_due(goal: dict[str, Any], min_interval_seconds: int) -> bool:
     return (time.time() - epoch) >= min_interval_seconds
 
 
-def has_open_work(founder_id: str) -> bool:
-    return any(str(t.get("status")) in _TASK_OPEN for t in get_tasks(founder_id))
+def has_open_work(founder_id: str, company_id: str | None = None) -> bool:
+    return any(str(t.get("status")) in _TASK_OPEN for t in get_tasks(founder_id, company_id))
 
 
-def pending_approvals(founder_id: str) -> list[dict[str, Any]]:
-    return [t for t in get_tasks(founder_id) if str(t.get("status")) == "awaiting_approval"]
+def pending_approvals(founder_id: str, company_id: str | None = None) -> list[dict[str, Any]]:
+    return [
+        task
+        for task in get_tasks(founder_id, company_id)
+        if str(task.get("status")) == "awaiting_approval"
+    ]

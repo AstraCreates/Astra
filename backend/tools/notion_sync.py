@@ -157,7 +157,10 @@ def _upsert_page(
     return {"ok": True, "page_id": data.get("id"), "url": data.get("url"), "updated": False}
 
 
-def sync_founder_operating_system(founder_id: str) -> dict[str, Any]:
+def sync_founder_operating_system(
+    founder_id: str,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     from backend.config import settings
     from backend.missions.company_goal import get_company_goal, upsert_company_goal
     from backend.missions.store import list_missions, update_mission, update_task
@@ -172,11 +175,16 @@ def sync_founder_operating_system(founder_id: str) -> dict[str, Any]:
             "detail": "Set NOTION_TOKEN and NOTION_OPERATING_PARENT_ID to enable Astra -> Notion sync.",
         }
 
-    company_goal = get_company_goal(founder_id)
+    resolved_company_id = company_id or founder_id
+    company_goal = get_company_goal(founder_id, resolved_company_id)
     if not company_goal:
         return {"ok": False, "skipped": True, "reason": "missing_company_goal"}
 
-    db_result = _ensure_database(token, parent_id, f"Astra Operating System - {founder_id}")
+    db_result = _ensure_database(
+        token,
+        parent_id,
+        f"Astra Operating System - {resolved_company_id}",
+    )
     if not db_result.get("ok"):
         return db_result
     database_id = db_result["database_id"]
@@ -189,13 +197,14 @@ def sync_founder_operating_system(founder_id: str) -> dict[str, Any]:
         kpis=company_goal.get("kpis") or [],
         notion_database_id=database_id,
         notion_url=db_result.get("url"),
+        company_id=resolved_company_id,
     )
 
     goal_row = _upsert_page(
         token,
         database_id,
         title=company_goal.get("company_goal", "Company Goal"),
-        astra_id=f"company_goal:{founder_id}",
+        astra_id=f"company_goal:{resolved_company_id}",
         row_type="company_goal",
         status=company_goal.get("status", "operating"),
         owner="astra",
@@ -206,7 +215,7 @@ def sync_founder_operating_system(founder_id: str) -> dict[str, Any]:
     if not goal_row.get("ok"):
         return goal_row
 
-    missions = list_missions(founder_id)
+    missions = list_missions(founder_id, resolved_company_id)
     synced = {"missions": 0, "tasks": 0}
     for mission in missions:
         mission_row = _upsert_page(
@@ -217,7 +226,7 @@ def sync_founder_operating_system(founder_id: str) -> dict[str, Any]:
             row_type="mission",
             status=mission.get("status", "active"),
             owner=mission.get("department", ""),
-            parent_astra_id=f"company_goal:{founder_id}",
+            parent_astra_id=f"company_goal:{resolved_company_id}",
             source_session_id=company_goal.get("source_session_id", ""),
             notes=mission.get("goal", ""),
         )

@@ -54,7 +54,11 @@ def _github_headers(founder_id: str) -> dict[str, str] | None:
     }
 
 
-def import_github(founder_id: str, limit: int = 12) -> dict[str, Any]:
+def import_github(
+    founder_id: str,
+    limit: int = 12,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     """Import GitHub repos, recent issues, pull requests, and READMEs."""
     headers = _github_headers(founder_id)
     if headers is None:
@@ -98,7 +102,7 @@ def import_github(founder_id: str, limit: int = 12) -> dict[str, Any]:
         logger.warning("GitHub import failed: %s", exc)
         return {"ok": False, "source": "github", "error": str(exc)}
 
-    result = ingest_company_brain_records(founder_id, "github", records)
+    result = ingest_company_brain_records(founder_id, "github", records, company_id)
     return {**result, "ok": True, "source": "github", "cursor": max_seen}
 
 
@@ -169,7 +173,11 @@ def _max_cursor(current: str, candidate: str) -> str:
     return current
 
 
-def import_slack(founder_id: str, limit: int = 8) -> dict[str, Any]:
+def import_slack(
+    founder_id: str,
+    limit: int = 8,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     """Import recent Slack public-channel messages using a bot token."""
     token = _token(founder_id, "slack", "bot_token", "token", "access_token")
     if not token:
@@ -228,7 +236,7 @@ def import_slack(founder_id: str, limit: int = 8) -> dict[str, Any]:
     except Exception as exc:
         logger.warning("Slack import failed: %s", exc)
         return {"ok": False, "source": "slack", "error": str(exc)}
-    result = ingest_company_brain_records(founder_id, "slack", records)
+    result = ingest_company_brain_records(founder_id, "slack", records, company_id)
     return {**result, "ok": True, "source": "slack", "cursor": max_seen}
 
 
@@ -258,7 +266,11 @@ def _slack_thread_text(headers: dict[str, str], channel_id: str, thread_ts: str 
     return "\n".join(lines), max_seen
 
 
-def import_discord(founder_id: str, limit: int = 8) -> dict[str, Any]:
+def import_discord(
+    founder_id: str,
+    limit: int = 8,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     """Import recent Discord text-channel messages using a bot token."""
     token = _token(founder_id, "discord", "bot_token", "token")
     if not token:
@@ -328,11 +340,15 @@ def import_discord(founder_id: str, limit: int = 8) -> dict[str, Any]:
     except Exception as exc:
         logger.warning("Discord import failed: %s", exc)
         return {"ok": False, "source": "discord", "error": str(exc)}
-    result = ingest_company_brain_records(founder_id, "discord", records)
+    result = ingest_company_brain_records(founder_id, "discord", records, company_id)
     return {**result, "ok": True, "source": "discord", "cursor": max_seen}
 
 
-def import_notion(founder_id: str, limit: int = 20) -> dict[str, Any]:
+def import_notion(
+    founder_id: str,
+    limit: int = 20,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     """Import Notion pages/databases visible to a saved integration token."""
     token = _token(founder_id, "notion", "token", "api_key", "access_token")
     if not token:
@@ -387,7 +403,7 @@ def import_notion(founder_id: str, limit: int = 20) -> dict[str, Any]:
     except Exception as exc:
         logger.warning("Notion import failed: %s", exc)
         return {"ok": False, "source": "notion", "error": str(exc)}
-    result = ingest_company_brain_records(founder_id, "notion", records)
+    result = ingest_company_brain_records(founder_id, "notion", records, company_id)
     return {**result, "ok": True, "source": "notion", "cursor": max_seen}
 
 
@@ -418,7 +434,11 @@ def _notion_page_text(headers: dict[str, str], page_id: str | None) -> str:
     return "\n".join(lines)
 
 
-def import_google_drive(founder_id: str, limit: int = 20) -> dict[str, Any]:
+def import_google_drive(
+    founder_id: str,
+    limit: int = 20,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     """Import Google Drive file metadata and Google Docs/Sheets/Slides export text."""
     token = _token(founder_id, "google_drive", "token", "access_token") or _token(founder_id, "google", "token", "access_token")
     if not token:
@@ -463,7 +483,7 @@ def import_google_drive(founder_id: str, limit: int = 20) -> dict[str, Any]:
     except Exception as exc:
         logger.warning("Google Drive import failed: %s", exc)
         return {"ok": False, "source": "google_drive", "error": str(exc)}
-    result = ingest_company_brain_records(founder_id, "google_drive", records)
+    result = ingest_company_brain_records(founder_id, "google_drive", records, company_id)
     return {**result, "ok": True, "source": "google_drive", "cursor": max_seen}
 
 
@@ -488,7 +508,11 @@ def _google_export_text(headers: dict[str, str], file_id: str | None, mime_type:
         return ""
 
 
-def import_gmail(founder_id: str, limit: int = 20) -> dict[str, Any]:
+def import_gmail(
+    founder_id: str,
+    limit: int = 20,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     """Import Gmail message metadata and snippets."""
     token = _token(founder_id, "gmail", "token", "access_token") or _token(founder_id, "google", "token", "access_token")
     if not token:
@@ -528,11 +552,15 @@ def import_gmail(founder_id: str, limit: int = 20) -> dict[str, Any]:
     except Exception as exc:
         logger.warning("Gmail import failed: %s", exc)
         return {"ok": False, "source": "gmail", "error": str(exc)}
-    result = ingest_company_brain_records(founder_id, "gmail", records)
+    result = ingest_company_brain_records(founder_id, "gmail", records, company_id)
     return {**result, "ok": True, "source": "gmail"}
 
 
-def import_obsidian(founder_id: str, limit: int = 80) -> dict[str, Any]:
+def import_obsidian(
+    founder_id: str,
+    limit: int = 80,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     """Import Markdown notes from a configured local Obsidian vault path."""
     creds = load_credentials(founder_id, "obsidian") or {}
     vault_path = str(creds.get("vault_path") or creds.get("path") or "").strip()
@@ -576,11 +604,15 @@ def import_obsidian(founder_id: str, limit: int = 80) -> dict[str, Any]:
         logger.warning("Obsidian import failed: %s", exc)
         return {"ok": False, "source": "obsidian", "error": str(exc)}
 
-    result = ingest_company_brain_records(founder_id, "obsidian", records)
+    result = ingest_company_brain_records(founder_id, "obsidian", records, company_id)
     return {**result, "ok": True, "source": "obsidian"}
 
 
-def import_linear(founder_id: str, limit: int = 30) -> dict[str, Any]:
+def import_linear(
+    founder_id: str,
+    limit: int = 30,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     """Import recent Linear issues from a saved API token."""
     token = _token(founder_id, "linear", "token", "api_key", "access_token")
     if not token:
@@ -621,11 +653,15 @@ def import_linear(founder_id: str, limit: int = 30) -> dict[str, Any]:
             "state": state,
             "updated_at": issue.get("updatedAt"),
         })
-    result = ingest_company_brain_records(founder_id, "linear", records)
+    result = ingest_company_brain_records(founder_id, "linear", records, company_id)
     return {**result, "ok": True, "source": "linear"}
 
 
-def import_zendesk(founder_id: str, limit: int = 30) -> dict[str, Any]:
+def import_zendesk(
+    founder_id: str,
+    limit: int = 30,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     """Import recent Zendesk tickets using subdomain/email/token credentials."""
     creds = load_credentials(founder_id, "zendesk") or {}
     subdomain = creds.get("subdomain")
@@ -660,11 +696,15 @@ def import_zendesk(founder_id: str, limit: int = 30) -> dict[str, Any]:
             "state": ticket.get("status"),
             "updated_at": ticket.get("updated_at"),
         })
-    result = ingest_company_brain_records(founder_id, "zendesk", records)
+    result = ingest_company_brain_records(founder_id, "zendesk", records, company_id)
     return {**result, "ok": True, "source": "zendesk"}
 
 
-def import_confluence(founder_id: str, limit: int = 30) -> dict[str, Any]:
+def import_confluence(
+    founder_id: str,
+    limit: int = 30,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     """Import recent Confluence pages using cloud/base URL credentials."""
     creds = load_credentials(founder_id, "confluence") or {}
     base_url = str(creds.get("base_url") or "").rstrip("/")
@@ -707,7 +747,7 @@ def import_confluence(founder_id: str, limit: int = 30) -> dict[str, Any]:
             "external_id": page.get("id"),
             "updated_at": ((page.get("version") or {}).get("when")),
         })
-    result = ingest_company_brain_records(founder_id, "confluence", records)
+    result = ingest_company_brain_records(founder_id, "confluence", records, company_id)
     return {**result, "ok": True, "source": "confluence"}
 
 
@@ -726,25 +766,47 @@ IMPORTERS = {
 }
 
 
-def import_company_brain_source(founder_id: str, source: str, limit: int = 20) -> dict[str, Any]:
+def import_company_brain_source(
+    founder_id: str,
+    source: str,
+    limit: int = 20,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     """Import one source into the company brain."""
     importer = IMPORTERS.get(source)
     if importer is None:
         result = {"ok": False, "source": source, "error": f"No importer implemented for {source}"}
         _record_import_ledger(founder_id, source, result)
         return result
-    result = importer(founder_id, limit=limit)
+    if not company_id or company_id == founder_id:
+        result = importer(founder_id, limit=limit)
+    else:
+        result = importer(founder_id, limit=limit, company_id=company_id)
     _record_import_ledger(founder_id, source, result)
     return result
 
 
-def import_company_brain_sources(founder_id: str, sources: list[str] | None = None, limit: int = 20) -> dict[str, Any]:
+def import_company_brain_sources(
+    founder_id: str,
+    sources: list[str] | None = None,
+    limit: int = 20,
+    company_id: str | None = None,
+) -> dict[str, Any]:
     """Import multiple connected sources into the company brain."""
     selected = sources or list(IMPORTERS)
-    results = [import_company_brain_source(founder_id, source, limit=limit) for source in selected]
+    results = [
+        import_company_brain_source(
+            founder_id,
+            source,
+            limit=limit,
+            company_id=company_id,
+        )
+        for source in selected
+    ]
     return {
         "ok": any(result.get("ok") for result in results),
         "founder_id": founder_id,
+        "company_id": company_id or founder_id,
         "results": results,
         "imported_sources": [r["source"] for r in results if r.get("ok")],
         "failed_sources": [r["source"] for r in results if not r.get("ok")],

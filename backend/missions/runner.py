@@ -241,9 +241,10 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
             return {"success": True, "session_id": session_id, "summary": f"Waiting on founder approval for {len(_awaiting)} milestone(s).", "cost_usd": 0.0, "skipped": "awaiting_approval"}
 
     founder_id: str = mission["founder_id"]
+    company_id: str = str(mission.get("company_id") or founder_id)
     department: str = mission["department"]
     mission_name: str = mission.get("name", mission_id)
-    company_goal = get_company_goal(founder_id)
+    company_goal = get_company_goal(founder_id, company_id)
     mission["company_goal"] = company_goal or {}
 
     logger.info(
@@ -283,6 +284,7 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
             founder_id=founder_id,
             goal=context_goal,
             agents=[agent_name],
+            company_id=company_id,
         )
     except Exception as exc:
         # Non-fatal — continue even if session registration fails
@@ -317,6 +319,7 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
                 "mission_name": mission_name,
                 "department": department,
                 "is_mission_run": True,
+                "company_id": company_id,
                 "prior_vault_notes": vault_context_text,
             },
         )
@@ -370,7 +373,14 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
 
     try:
         from backend.tools.notion_sync import sync_founder_operating_system
-        await asyncio.to_thread(sync_founder_operating_system, founder_id)
+        if company_id == founder_id:
+            await asyncio.to_thread(sync_founder_operating_system, founder_id)
+        else:
+            await asyncio.to_thread(
+                sync_founder_operating_system,
+                founder_id,
+                company_id,
+            )
     except Exception as exc:
         logger.warning("run_mission: notion sync skipped for founder=%s: %s", founder_id, exc)
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
+import { useCompany } from "@/lib/company-context";
 import PageHeader, { HeaderPrimaryBtn, HeaderSecondaryBtn } from "@/components/PageHeader";
 import { CHECKLIST_CATEGORIES, type CLItem, type CLCategory } from "@/lib/checklist-data";
 import {
@@ -267,6 +268,7 @@ function DoneRow({ item, cat, onUncheck }: { item: CLItem; cat: CLCategory; onUn
 export default function MissionsPanel() {
   const { userId } = useDevUser();
   const founderId = userId === "anon" ? "" : userId;
+  const { companyId } = useCompany();
 
   const [goal, setGoal] = useState<CompanyGoal | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -286,8 +288,8 @@ export default function MissionsPanel() {
 
   const loadGoal = useCallback(async () => {
     if (!founderId) return;
-    try { setGoal(await getCompanyGoal(founderId)); } catch {}
-  }, [founderId]);
+    try { setGoal(await getCompanyGoal(founderId, companyId)); } catch {}
+  }, [companyId, founderId]);
 
   useEffect(() => {
     if (!founderId) return;
@@ -340,7 +342,7 @@ export default function MissionsPanel() {
   const runNow = async () => {
     setBusy("run"); setActionErr(null);
     try {
-      const r = await runCompanyCycle(founderId);
+      const r = await runCompanyCycle(founderId, companyId);
       if (r.parent_session_id) window.location.assign(`/s/${r.parent_session_id}`);
       else await loadGoal();
     } catch (e) { setActionErr(e instanceof Error ? e.message : String(e)); setTimeout(() => setActionErr(null), 8000); }
@@ -349,14 +351,14 @@ export default function MissionsPanel() {
 
   const togglePause = async () => {
     setBusy("pause");
-    try { await setCompanyGoalStatus(founderId, paused ? "operating" : "paused"); await loadGoal(); }
+    try { await setCompanyGoalStatus(founderId, paused ? "operating" : "paused", companyId); await loadGoal(); }
     finally { setBusy(null); }
   };
 
   const decideGoal = async (approved: boolean) => {
     setBusy(approved ? "approve" : "reject"); setActionErr(null);
     try {
-      await approveNextGoal(founderId, approved);
+      await approveNextGoal(founderId, approved, companyId);
       if (approved && goal?.root_session_id) window.location.assign(`/s/${goal.root_session_id}`);
       else await loadGoal();
     } catch (e) { setActionErr(e instanceof Error ? e.message : String(e)); setTimeout(() => setActionErr(null), 8000); }
@@ -653,7 +655,7 @@ export default function MissionsPanel() {
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={async () => {
               setBusy("notion");
-              try { await syncMissionNotion(founderId); await loadGoal(); }
+              try { await syncMissionNotion(founderId, companyId); await loadGoal(); }
               catch (e) { setActionErr(e instanceof Error ? e.message : String(e)); setTimeout(() => setActionErr(null), 8000); }
               finally { setBusy(null); }
             }} disabled={!!busy} className="btn" style={{ fontSize: 11 }}>

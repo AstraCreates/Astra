@@ -106,6 +106,7 @@ class RunContextPolicy:
         policy = constraints.get("context_policy") if isinstance(constraints.get("context_policy"), dict) else {}
         self.session_id = session_id
         self.founder_id = founder_id
+        self.company_id = str(constraints.get("company_id") or founder_id)
         self.max_context_chars = int(policy.get("max_context_chars") or constraints.get("max_context_chars") or _env_int("ASTRA_AGENT_CONTEXT_PACK_CHARS", 24_000))
         self.max_brain_retrievals = int(policy.get("max_brain_retrievals") or constraints.get("max_brain_retrievals") or _env_int("ASTRA_MAX_BRAIN_RETRIEVALS_PER_SESSION", 24))
         self.max_brain_writes = int(policy.get("max_brain_writes") or constraints.get("max_brain_writes") or _env_int("ASTRA_MAX_BRAIN_WRITES_PER_SESSION", 80))
@@ -125,8 +126,8 @@ class RunContextPolicy:
     def _current_goal_pack(self, agent_name: str) -> dict[str, Any]:
         try:
             from backend.missions.company_goal import current_goal, get_company_goal
-            root = get_company_goal(self.founder_id) or {}
-            current = current_goal(self.founder_id) or {}
+            root = get_company_goal(self.founder_id, self.company_id) or {}
+            current = current_goal(self.founder_id, self.company_id) or {}
             tasks = [
                 {
                     "id": task.get("id"),
@@ -150,7 +151,7 @@ class RunContextPolicy:
             return {}
 
     def _brain_context(self, query: str) -> dict[str, Any]:
-        key = (self.founder_id, self._norm_query(query), self.brain_limit)
+        key = (self.company_id, self._norm_query(query), self.brain_limit)
         if key in self._brain_cache:
             return {**self._brain_cache[key], "cache_hit": True}
         if self._brain_retrievals >= self.max_brain_retrievals:
@@ -158,11 +159,24 @@ class RunContextPolicy:
         self._brain_retrievals += 1
         try:
             from backend.tools.company_brain import company_brain_agent_context
-            result = company_brain_agent_context(self.founder_id, query, self.brain_limit)
+            result = company_brain_agent_context(
+                self.founder_id,
+                query,
+                self.brain_limit,
+                company_id=self.company_id,
+            )
         except Exception:
             try:
                 from backend.tools.company_brain import company_brain_context
-                result = {"ok": True, "context": company_brain_context(self.founder_id, query, self.brain_limit)}
+                result = {
+                    "ok": True,
+                    "context": company_brain_context(
+                        self.founder_id,
+                        query,
+                        self.brain_limit,
+                        company_id=self.company_id,
+                    ),
+                }
             except Exception as exc:
                 result = {"ok": False, "error": str(exc), "context": ""}
         self._brain_cache[key] = result
@@ -246,7 +260,12 @@ class RunContextPolicy:
                 kind="agent_output",
                 canonical=False,
                 stale_risk="medium",
-                metadata={"session_id": self.session_id, "agent": agent_name, "task_id": task.get("id", "")},
+                metadata={
+                    "session_id": self.session_id,
+                    "company_id": self.company_id,
+                    "agent": agent_name,
+                    "task_id": task.get("id", ""),
+                },
             )
         except Exception as exc:
             return {"ok": False, "error": str(exc)}

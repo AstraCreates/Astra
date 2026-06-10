@@ -16,6 +16,8 @@ import os
 import threading
 import time
 import uuid
+import zipfile
+from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
@@ -66,6 +68,14 @@ def _save_index(data: dict) -> None:
     _index_path().write_text(json.dumps(data, indent=2))
 
 
+def _with_company_id(record: dict) -> dict:
+    """Expose the promoted company identifier while keeping workspace compatibility."""
+    normalized = dict(record)
+    workspace_id = str(normalized.get("workspace_id") or "")
+    normalized.setdefault("company_id", workspace_id or str(normalized.get("founder_id") or ""))
+    return normalized
+
+
 # ── Workspace CRUD ──────────────────────────────────────────────────────────
 
 def create_workspace(
@@ -79,6 +89,7 @@ def create_workspace(
     now = _now()
     meta = {
         "workspace_id": workspace_id,
+        "company_id": workspace_id,
         "founder_id": founder_id,
         "name": name or goal[:60],
         "goal": goal,
@@ -99,6 +110,7 @@ def create_workspace(
         idx = _load_index()
         idx[workspace_id] = {
             "workspace_id": workspace_id,
+            "company_id": workspace_id,
             "founder_id": founder_id,
             "name": meta["name"],
             "company_name": meta["company_name"],
@@ -118,7 +130,7 @@ def get_workspace(workspace_id: str) -> Optional[dict]:
     if not p.exists():
         return None
     try:
-        return json.loads(p.read_text())
+        return _with_company_id(json.loads(p.read_text()))
     except Exception:
         return None
 
@@ -126,29 +138,81 @@ def get_workspace(workspace_id: str) -> Optional[dict]:
 def list_workspaces(founder_id: str) -> list[dict]:
     with _global_lock:
         idx = _load_index()
-    items = [v for v in idx.values() if v.get("founder_id") == founder_id]
+    items = [_with_company_id(v) for v in idx.values() if v.get("founder_id") == founder_id]
     items.sort(key=lambda x: x.get("last_active", ""), reverse=True)
     return items
 
 
-def update_workspace_meta(workspace_id: str, **fields) -> None:
+def update_workspace_meta(workspace_id: str, **fields) -> Optional[dict]:
     now = _now()
     with _ws_lock(workspace_id):
         p = _ws_dir(workspace_id) / "meta.json"
         if not p.exists():
-            return
+            return None
         meta = json.loads(p.read_text())
         meta.update(fields)
+        meta["company_id"] = workspace_id
         meta["last_active"] = now
         p.write_text(json.dumps(meta, indent=2))
     with _global_lock:
         idx = _load_index()
         if workspace_id in idx:
+            idx[workspace_id]["company_id"] = workspace_id
             for k in fields:
                 if k in idx[workspace_id]:
                     idx[workspace_id][k] = fields[k]
             idx[workspace_id]["last_active"] = now
             _save_index(idx)
+    return _with_company_id(meta)
+
+
+def archive_workspace(workspace_id: str) -> Optional[dict]:
+    return update_workspace_meta(workspace_id, status="archived", archived_at=_now())
+
+
+def duplicate_workspace(workspace_id: str, name: str = "") -> Optional[dict]:
+    source = get_workspace(workspace_id)
+    if not source:
+        return None
+    duplicate = create_workspace(
+        founder_id=str(source.get("founder_id") or ""),
+        name=name.strip() or f"{source.get('name') or 'Company'} copy",
+        goal=str(source.get("goal") or ""),
+        stack_id=str(source.get("stack_id") or "idea_to_revenue"),
+        company_name=str(source.get("company_name") or ""),
+    )
+    return update_workspace_meta(
+        duplicate["workspace_id"],
+        duplicated_from_company_id=workspace_id,
+    )
+
+
+def export_workspace_zip(workspace_id: str) -> Optional[bytes]:
+    company = get_workspace(workspace_id)
+    if not company:
+        return None
+
+    try:
+        from backend.core.session_store import list_sessions
+        sessions = list_sessions(
+            founder_id=str(company.get("founder_id") or ""),
+            company_id=workspace_id,
+            limit=10000,
+        )
+    except Exception:
+        sessions = []
+
+    files = {
+        "company.json": company,
+        "chapters.json": list_chapters(workspace_id),
+        "vault.json": get_vault(workspace_id),
+        "sessions.json": sessions,
+    }
+    output = BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for filename, payload in files.items():
+            archive.writestr(filename, json.dumps(payload, indent=2, sort_keys=True))
+    return output.getvalue()
 
 
 # ── Chapter CRUD ────────────────────────────────────────────────────────────
@@ -168,6 +232,7 @@ def create_chapter(
     chapter = {
         "chapter_id": chapter_id,
         "workspace_id": workspace_id,
+        "company_id": workspace_id,
         "session_id": session_id,
         "name": name,
         "phase_scope": phase_scope,
@@ -200,7 +265,7 @@ def get_chapter(workspace_id: str, chapter_id: str) -> Optional[dict]:
     if not p.exists():
         return None
     try:
-        return json.loads(p.read_text())
+        return _with_company_id(json.loads(p.read_text()))
     except Exception:
         return None
 

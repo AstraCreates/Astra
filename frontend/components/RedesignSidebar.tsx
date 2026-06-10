@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
 import { useDevUser } from "@/lib/use-dev-user";
 import CreditsDisplay from "@/components/CreditsDisplay";
+import { useCompany } from "@/lib/company-context";
 
 const LINKS: { href: string; ic: string; label: string; match: (p: string) => boolean }[] = [
   { href: "/", ic: "⬡", label: "Dashboard", match: (p) => p === "/" },
@@ -21,6 +22,7 @@ function initials(id: string) { return (id || "?").replace(/^(user_|google_)/, "
 export default function RedesignSidebar({ mobile = false, open = false, onClose }: { mobile?: boolean; open?: boolean; onClose?: () => void } = {}) {
   const pathname = usePathname() || "/";
   const { userId, isSignedIn, user } = useDevUser();
+  const { companies, companyId, activeCompany, loading, setCompanyId } = useCompany();
 
   // On mobile the sidebar is an off-canvas drawer (fixed, slides in over content);
   // on desktop it's the usual sticky in-flow column.
@@ -41,6 +43,39 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
             <div style={{ fontSize: 9, color: "var(--blue)", letterSpacing: ".06em", textTransform: "uppercase" }}>ready</div>
           </div>
         </Link>
+        <label style={{ display: "grid", gap: 5, marginBottom: 10 }}>
+          <span style={{ fontSize: 8, color: "var(--fm)", letterSpacing: ".1em", textTransform: "uppercase" }}>
+            Company
+          </span>
+          <select
+            aria-label="Active company"
+            value={companyId}
+            disabled={loading}
+            onChange={event => setCompanyId(event.target.value)}
+            style={{
+              width: "100%",
+              minHeight: 34,
+              padding: "6px 28px 6px 9px",
+              border: "1px solid var(--bd)",
+              background: "var(--s2)",
+              color: "var(--fg)",
+              fontSize: 11,
+              fontFamily: "var(--font-code)",
+              cursor: loading ? "default" : "pointer",
+            }}
+          >
+            {companies.map(company => (
+              <option key={company.companyId} value={company.companyId}>
+                {company.name}
+              </option>
+            ))}
+          </select>
+          {activeCompany?.isPrimary && companies.length > 1 && (
+            <span style={{ fontSize: 8.5, color: "var(--fm)", lineHeight: 1.35 }}>
+              Original data and runs
+            </span>
+          )}
+        </label>
         <Link data-tour="new-goal-btn" href="/?new=1" className="btn" style={{ display: "flex", justifyContent: "center", gap: 7, width: "100%", textDecoration: "none" }}>＋ New goal</Link>
       </div>
 
@@ -49,11 +84,11 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
           l.href === "/" ? (
             // Dashboard: hard-navigate to the clean site root so it ALWAYS resets to
             // the dashboard (a Next <Link href="/"> from /?session=x stays put).
-            <a key={l.href} href="/" data-tour="nav-dashboard"
+            <Link key={l.href} href="/" data-tour="nav-dashboard"
                onClick={(e) => { e.preventDefault(); window.location.assign("/"); }}
                className={`nl${l.match(pathname) ? " on" : ""}`} style={{ textDecoration: "none" }}>
               <span style={{ width: 18, textAlign: "center" }}>{l.ic}</span>{l.label}
-            </a>
+            </Link>
           ) : (
             <Link key={l.href} href={l.href} data-tour={`nav-${l.label.toLowerCase().replace(/\s+/g, "-")}`} className={`nl${l.match(pathname) ? " on" : ""}`} style={{ textDecoration: "none" }}>
               <span style={{ width: 18, textAlign: "center" }}>{l.ic}</span>{l.label}

@@ -34,7 +34,12 @@ def has_open_work(mission: dict[str, Any]) -> bool:
     return False
 
 
-def assign_next_milestones(founder_id: str, mission_id: str, max_new: int = 3) -> list[dict[str, Any]]:
+def assign_next_milestones(
+    founder_id: str,
+    mission_id: str,
+    max_new: int = 3,
+    company_id: str | None = None,
+) -> list[dict[str, Any]]:
     """If the mission has no open work, ask the planner LLM for the next milestones
     toward the north star and add them as pending tasks. Returns the new tasks."""
     from backend.missions.store import get_mission, add_task
@@ -45,10 +50,11 @@ def assign_next_milestones(founder_id: str, mission_id: str, max_new: int = 3) -
         return []
     if has_open_work(mission):
         return []  # still work to do — don't pile on
+    company_id = company_id or str(mission.get("company_id") or founder_id)
 
     goal = {}
     try:
-        goal = get_company_goal(founder_id) or {}
+        goal = get_company_goal(founder_id, company_id) or {}
     except Exception:
         pass
     north_star = goal.get("north_star") or mission.get("goal") or mission.get("name") or ""

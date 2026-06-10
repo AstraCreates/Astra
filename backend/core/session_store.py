@@ -86,6 +86,15 @@ def _save_index(index: dict[str, Any]) -> None:
     _index_path().write_text(json.dumps(index, indent=2, sort_keys=True))
 
 
+def _with_company_id(record: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(record)
+    normalized.setdefault(
+        "company_id",
+        str(normalized.get("workspace_id") or normalized.get("founder_id") or ""),
+    )
+    return normalized
+
+
 # ── Session registration ───────────────────────────────────────────────────────
 
 def register_session(
@@ -96,10 +105,12 @@ def register_session(
     company_name: str = "",
     agents: list[str] | None = None,
     workspace_id: str | None = None,
+    company_id: str | None = None,
     chapter_id: str | None = None,
     parent_session_id: str = "",
     kind: str = "",
 ) -> None:
+    resolved_company_id = company_id or workspace_id or founder_id
     meta = {
         "session_id": session_id,
         "founder_id": founder_id,
@@ -112,6 +123,7 @@ def register_session(
         "completed_at": None,
         "artifact_count": 0,
         "workspace_id": workspace_id or "",
+        "company_id": resolved_company_id,
         "chapter_id": chapter_id or "",
         # parent_session_id links an operating/continuation run back to its launch
         # session; kind is "launch" | "operating" | "" so the UI can nest them.
@@ -123,7 +135,22 @@ def register_session(
         meta_path(session_id).write_text(json.dumps(meta, indent=2))
     with _index_lock:
         index = _load_index()
-        index[session_id] = {k: meta[k] for k in ("session_id", "founder_id", "goal", "stack_id", "status", "created_at", "completed_at", "parent_session_id", "kind")}
+        index[session_id] = {
+            k: meta[k]
+            for k in (
+                "session_id",
+                "founder_id",
+                "company_id",
+                "workspace_id",
+                "goal",
+                "stack_id",
+                "status",
+                "created_at",
+                "completed_at",
+                "parent_session_id",
+                "kind",
+            )
+        }
         _save_index(index)
 
 
@@ -248,18 +275,28 @@ def is_done(session_id: str) -> bool:
 
 # ── Session listing ────────────────────────────────────────────────────────────
 
-def list_sessions(founder_id: str | None = None, limit: int = 100) -> list[dict]:
+def list_sessions(
+    founder_id: str | None = None,
+    limit: int = 100,
+    company_id: str | None = None,
+) -> list[dict]:
     """Return sessions from the index, newest first."""
     with _lock:
         index = _load_index()
-    sessions = list(index.values())
+    sessions = [_with_company_id(session) for session in index.values()]
     if founder_id:
         sessions = [s for s in sessions if s.get("founder_id") == founder_id]
+    if company_id:
+        sessions = [s for s in sessions if s.get("company_id") == company_id]
     sessions.sort(key=lambda s: s.get("created_at", ""), reverse=True)
     return sessions[:limit]
 
 
-def has_active_run(founder_id: str, stale_seconds: int | None = None) -> bool:
+def has_active_run(
+    founder_id: str,
+    stale_seconds: int | None = None,
+    company_id: str | None = None,
+) -> bool:
     """True if the founder has a session genuinely RUNNING right now. A "running"
     session older than the stale window is ignored — otherwise a run that crashed
     without flipping its status (no restart to reconcile it) would block goal
@@ -267,7 +304,7 @@ def has_active_run(founder_id: str, stale_seconds: int | None = None) -> bool:
     if stale_seconds is None:
         stale_seconds = int(os.environ.get("ASTRA_RUN_STALE_SECONDS", "14400"))
     now = time.time()
-    for s in list_sessions(founder_id, 30):
+    for s in list_sessions(founder_id, 30, company_id):
         if s.get("status") != "running":
             continue
         ts = s.get("created_at") or ""
@@ -305,7 +342,7 @@ def get_session_meta(session_id: str) -> dict | None:
     if not p.exists():
         return None
     try:
-        return json.loads(p.read_text())
+        return _with_company_id(json.loads(p.read_text()))
     except Exception:
         return None
 

@@ -249,11 +249,13 @@ def _persist_goal_status_memory(session_id: str, event: dict) -> None:
         if not agent:
             return
         from backend.core.session_store import get_session_meta
-        founder_id = str((get_session_meta(session_id) or {}).get("founder_id") or event.get("founder_id") or "")
+        session_meta = get_session_meta(session_id) or {}
+        founder_id = str(session_meta.get("founder_id") or event.get("founder_id") or "")
         if not founder_id:
             return
         from backend.missions.company_goal import current_goal
-        goal = current_goal(founder_id) or {}
+        company_id = str(session_meta.get("company_id") or founder_id)
+        goal = current_goal(founder_id, company_id) or {}
         owned = [
             {
                 "id": task.get("id"),
@@ -284,7 +286,12 @@ def _persist_goal_status_memory(session_id: str, event: dict) -> None:
             kind="goal_status",
             canonical=False,
             stale_risk="low",
-            metadata={"session_id": session_id, "agent": agent, "event": etype},
+            metadata={
+                "session_id": session_id,
+                "company_id": str(session_meta.get("company_id") or founder_id),
+                "agent": agent,
+                "event": etype,
+            },
         )
     except Exception:
         pass

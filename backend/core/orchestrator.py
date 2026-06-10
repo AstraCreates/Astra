@@ -180,14 +180,16 @@ class Orchestrator:
             events = _event_log.get(session_id, [])
             state = build_session_state(session_id, events)
             await after_run(founder_id, session_id, state)
-            goal_rec = get_company_goal(founder_id)
+            from backend.core.session_store import get_session_meta
+            company_id = str((get_session_meta(session_id) or {}).get("company_id") or founder_id)
+            goal_rec = get_company_goal(founder_id, company_id)
             await publish(
                 session_id,
                 {
                     "type": "company_operating",
                     "company_goal": goal_rec,
-                    "current_goal": current_goal(founder_id),
-                    "summary": (current_goal(founder_id) or {}).get("title", "Company operating"),
+                    "current_goal": current_goal(founder_id, company_id),
+                    "summary": (current_goal(founder_id, company_id) or {}).get("title", "Company operating"),
                 },
             )
             save_session_state(session_id, _event_log.get(session_id, []))
@@ -598,9 +600,17 @@ class Orchestrator:
     async def _publish_outcomes(self, session_id: str, task: dict, result: Any) -> None:
         """Emit measurable Outcome Ledger events from a completed task result."""
         from backend.core.events import publish
+        from backend.core.session_store import get_session_meta
         from backend.outcomes import build_outcome_events
 
+        session_meta = get_session_meta(session_id) or {}
         for outcome in build_outcome_events(task.get("agent", ""), result, task):
+            outcome["session_id"] = session_id
+            outcome["company_id"] = str(
+                session_meta.get("company_id")
+                or session_meta.get("founder_id")
+                or ""
+            )
             await publish(session_id, {"type": "outcome_recorded", "outcome": outcome})
 
     async def _persist_brain_record(
@@ -611,6 +621,7 @@ class Orchestrator:
         kind: str,
         canonical: bool = False,
         stale_risk: str = "medium",
+        company_id: str = "",
     ) -> None:
         """Best-effort write of operator records into the Company Brain."""
         try:
@@ -624,6 +635,7 @@ class Orchestrator:
                 kind=kind,
                 canonical=canonical,
                 stale_risk=stale_risk,
+                metadata={"company_id": company_id or founder_id},
             )
         except Exception as exc:
             logger.warning("Company brain record write failed for %s: %s", title, exc)
@@ -637,13 +649,26 @@ class Orchestrator:
         if not session_id:
             from backend.core.session_ids import new_session_id
             session_id = new_session_id()
+        company_id = str((constraints or {}).get("company_id") or founder_id)
         from backend.core.creative import build_creative_brief
         creative_brief = (constraints or {}).get("creative_brief") or build_creative_brief(session_id, goal)
-        shared: dict[str, Any] = {"constraints": constraints or {}, "creative_brief": creative_brief}
+        shared: dict[str, Any] = {
+            "constraints": constraints or {},
+            "creative_brief": creative_brief,
+            "company_id": company_id,
+        }
         context_policy = RunContextPolicy(session_id=session_id, founder_id=founder_id, constraints=constraints or {})
 
         from backend.core.events import publish
-        await publish(session_id, {"type": "goal_start", "goal": goal, "founder_id": founder_id})
+        await publish(
+            session_id,
+            {
+                "type": "goal_start",
+                "goal": goal,
+                "founder_id": founder_id,
+                "company_id": company_id,
+            },
+        )
         await publish(session_id, {"type": "creative_brief", "creative_brief": creative_brief})
 
         from backend.stacks import build_approval_queue, build_stack_execution_blueprint, build_stack_execution_contract, build_stack_manifest, build_stack_operating_plan, get_stack_template, task_execution_guidance
@@ -723,7 +748,13 @@ class Orchestrator:
             from backend.tools.company_brain import company_brain_context, sync_company_brain
             # Reduced timeout: company brain is nice-to-have, not blocking
             shared["company_brain_context"] = await asyncio.wait_for(
-                asyncio.to_thread(company_brain_context, founder_id, goal, 4),
+                asyncio.to_thread(
+                    company_brain_context,
+                    founder_id,
+                    goal,
+                    4,
+                    company_id=company_id,
+                ),
                 timeout=3.0,
             )
         except (asyncio.TimeoutError, Exception) as _cb:
@@ -777,6 +808,7 @@ class Orchestrator:
                     kind="operating_plan",
                     canonical=True,
                     stale_risk="low",
+                    company_id=company_id,
                 )
                 await self._persist_brain_record(
                     founder_id=founder_id,
@@ -785,6 +817,7 @@ class Orchestrator:
                     kind="department_manifest",
                     canonical=True,
                     stale_risk="low",
+                    company_id=company_id,
                 )
             except Exception as _op:
                 logger.warning("Stack manifest brain record failed: %s", _op)
@@ -801,6 +834,7 @@ class Orchestrator:
                     kind="fact",
                     canonical=True,
                     stale_risk="low",
+                    metadata={"company_id": company_id, "session_id": session_id},
                 )
             except Exception as _bi:
                 logger.warning("Brain identity record failed: %s", _bi)
@@ -1672,6 +1706,7 @@ class Orchestrator:
                 kind="run_digest",
                 canonical=False,
                 stale_risk="low",
+                company_id=company_id,
             )
             save_session_state(session_id, _event_log.get(session_id, []))
         except Exception as _digest_err:
@@ -1724,23 +1759,42 @@ class Orchestrator:
         if not session_id:
             from backend.core.session_ids import new_session_id
             session_id = new_session_id()
+        try:
+            from backend.core.session_store import get_session_meta as _session_meta
+            prior_meta = _session_meta(prior_session_id) or {}
+        except Exception:
+            prior_meta = {}
+        company_id = str(prior_meta.get("company_id") or founder_id)
         from backend.core.events import publish
         from backend.tools.obsidian_logger import format_vault_context, _note_path
         from backend.core.creative import build_creative_brief
         creative_brief = build_creative_brief(session_id, instruction)
 
-        await publish(session_id, {"type": "goal_start", "goal": instruction, "founder_id": founder_id, "continue_from": prior_session_id})
+        await publish(
+            session_id,
+            {
+                "type": "goal_start",
+                "goal": instruction,
+                "founder_id": founder_id,
+                "company_id": company_id,
+                "continue_from": prior_session_id,
+            },
+        )
         await publish(session_id, {"type": "creative_brief", "creative_brief": creative_brief})
 
         # Load all prior vault notes for this founder to give full company context
-        shared: dict[str, Any] = {"prior_session_id": prior_session_id, "creative_brief": creative_brief}
+        shared: dict[str, Any] = {
+            "prior_session_id": prior_session_id,
+            "creative_brief": creative_brief,
+            "company_id": company_id,
+        }
         # Propagate the SAME company name the launch run chose, so operating-run agents
         # don't invent a new one (the "Goon → TrueNorth" bug). Resolve: brain identity
         # record → prior launch session meta → launch goal title ("Launch X" → X).
         _company_name = ""
         try:
             from backend.tools.company_brain import get_company_name as _gcn
-            _company_name = _gcn(founder_id) or ""
+            _company_name = _gcn(founder_id, company_id=company_id) or ""
         except Exception:
             pass
         if not _company_name and prior_session_id:
@@ -1752,7 +1806,10 @@ class Orchestrator:
         if not _company_name:
             try:
                 from backend.missions.company_goal import get_goals as _gg
-                _launch = next((g for g in _gg(founder_id) if g.get("kind") == "launch"), None)
+                _launch = next(
+                    (g for g in _gg(founder_id, company_id) if g.get("kind") == "launch"),
+                    None,
+                )
                 _t = (_launch or {}).get("title", "")
                 if _t.lower().startswith("launch ") and _t[7:].strip().lower() not in ("the company", "company"):
                     _company_name = _t[7:].strip()
@@ -1762,7 +1819,11 @@ class Orchestrator:
             shared["company_name"] = _company_name
             await publish(session_id, {"type": "company_name", "name": _company_name})
             logger.info("continue_run: propagated company_name=%r for %s", _company_name, founder_id)
-        context_policy = RunContextPolicy(session_id=session_id, founder_id=founder_id, constraints={})
+        context_policy = RunContextPolicy(
+            session_id=session_id,
+            founder_id=founder_id,
+            constraints={"company_id": company_id},
+        )
         try:
             vault_summary_parts = []
             for agent_name in self.specialists:
@@ -1776,7 +1837,11 @@ class Orchestrator:
         try:
             from backend.tools.company_brain import company_brain_context, sync_company_brain
             shared["company_brain_context"] = await asyncio.to_thread(
-                company_brain_context, founder_id, instruction, 10
+                company_brain_context,
+                founder_id,
+                instruction,
+                10,
+                company_id=company_id,
             )
         except Exception as _cb:
             logger.warning("Company brain continuation context skipped: %s", _cb)
