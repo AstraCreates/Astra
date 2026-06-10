@@ -1253,9 +1253,11 @@ export async function getSessionMeta(sessionId: string): Promise<SessionMeta | n
   return res.json();
 }
 
-/** List a founder's sessions persisted server-side (for cross-device sync). */
-export async function listSessions(founderId: string, limit = 50): Promise<SessionIndexEntry[]> {
-  const res = await apiFetch(`${BASE}/sessions?founder_id=${encodeURIComponent(founderId)}&limit=${limit}`);
+/** List a founder's sessions, optionally scoped to a single company/workspace. */
+export async function listSessions(founderId: string, limit = 50, companyId?: string): Promise<SessionIndexEntry[]> {
+  const params = new URLSearchParams({ founder_id: founderId, limit: String(limit) });
+  if (companyId) params.set("company_id", companyId);
+  const res = await apiFetch(`${BASE}/sessions?${params.toString()}`);
   if (!res.ok) return [];
   const data = await res.json();
   return Array.isArray(data?.sessions) ? data.sessions : [];

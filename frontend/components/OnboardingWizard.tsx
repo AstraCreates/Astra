@@ -1027,6 +1027,10 @@ export default function OnboardingWizard() {
         ? { custom_agents: customAgents } : {};
       const data = await submitGoal(founderId, instruction, constraints, stack);
       if (!data.session_id) throw new Error("No session_id returned");
+      // Mark the new workspace as the active company so the dashboard switches to it.
+      if (data.workspace_id) {
+        lsSet(`astra_company_id:${founderId}`, data.workspace_id);
+      }
       window.location.assign(`/s/${data.session_id}`);
     } catch (e) {
       // Never leave the button dead — fall back to the dashboard.

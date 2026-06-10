@@ -70,8 +70,10 @@ export default function NewGoalView() {
         activeCompany?.name,
       );
       if (!data.session_id) throw new Error("No session_id returned");
-      // Hard navigation — router.push (soft nav: same pathname, only query changes) can
-      // fail to re-render in some in-app webviews, leaving the button stuck on "Launching…".
+      // If this run created a new workspace (primary company had none), make it active.
+      if (data.workspace_id && !activeCompany?.workspace?.workspace_id) {
+        try { localStorage.setItem(`astra_company_id:${userId}`, data.workspace_id); } catch {}
+      }
       window.location.assign(`/s/${data.session_id}`);
     } catch (e) {
       setBusy(false);

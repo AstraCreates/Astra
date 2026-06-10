@@ -45,15 +45,16 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
         workspace,
         isPrimary: false,
       }));
-    return [
-      ...active,
-      {
+    // Only include the "primary" fallback if no real workspaces exist yet
+    if (active.length === 0) {
+      return [{
         companyId: founderId,
-        name: active.length ? "Primary company" : "My company",
+        name: "My company",
         status: "active",
         isPrimary: true,
-      },
-    ];
+      }];
+    }
+    return active;
   }, [founderId, workspaces]);
 
   const refreshCompanies = useCallback(async () => {

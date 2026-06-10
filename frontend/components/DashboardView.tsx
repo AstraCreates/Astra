@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { listSessions, deleteSessionRemote, killSession, type SessionIndexEntry } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
+import { useCompany } from "@/lib/company-context";
 import AstraGradient from "./AstraGradient";
 import GoalPanel from "./GoalPanel";
 
@@ -37,22 +38,23 @@ function StatusPill({ status }: { status: string }) {
 export default function DashboardView() {
   const router = useRouter();
   const { userId } = useDevUser();
+  const { activeCompany, companyId } = useCompany();
   const [sessions, setSessions] = useState<SessionIndexEntry[] | null>(null);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
   const [pendingDel, setPendingDel] = useState<Set<string>>(new Set());
   const [toastErr, setToastErr] = useState("");
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
-  const [company, setCompany] = useState("");
   const [firstName, setFirstName] = useState("");
   const [greeting, setGreeting] = useState("");
+
+  const company = activeCompany?.name || "";
+
   useEffect(() => {
     if (typeof window !== "undefined") {
-      setCompany(localStorage.getItem("astra_onboarding_company") || "");
       const fullName = localStorage.getItem("astra_onboarding_name") || "";
       setFirstName(fullName.split(" ")[0] || fullName);
     }
-    // Pick one greeting randomly for this session — never changes until next load
     setGreeting(GREETINGS[Math.floor(Math.random() * GREETINGS.length)]);
   }, []);
 
@@ -80,12 +82,16 @@ export default function DashboardView() {
     }
   }, [pendingDel]);
 
+  // companyId from a real workspace filters to just that company's sessions.
+  // The "primary" fallback (isPrimary) has no workspace so we pass undefined — shows all.
+  const filterCompanyId = activeCompany?.isPrimary ? undefined : companyId;
+
   const load = useCallback(async () => {
     if (!userId) return;
     setError(""); setSessions(null);
-    try { setSessions(await listSessions(userId)); }
+    try { setSessions(await listSessions(userId, 50, filterCompanyId)); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); setSessions([]); }
-  }, [userId]);
+  }, [userId, filterCompanyId]);
 
   useEffect(() => { load(); }, [load]);
 
