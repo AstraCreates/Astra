@@ -41,26 +41,27 @@ class Settings(BaseSettings):
     openrouter_api_key_2: str = ""
     openrouter_api_key_3: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    or_planner_model: str = "tencent/hy3-preview"
-    or_highoutput_model: str = "tencent/hy3-preview"
+    or_planner_model: str = "deepseek/deepseek-v4-flash"
+    or_highoutput_model: str = "deepseek/deepseek-v4-flash"
     or_light_model: str = "xiaomi/mimo-v2.5"
-    # Tool-use model — hy3-preview for web agent (strong agentic workflows)
+    # Tool-use model — DeepSeek V4 Flash (strong agentic/tool-calling, 1M ctx)
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
-    tooluse_model_name: str = "tencent/hy3-preview"
-    # Planner — hy3-preview: $0.063/$0.21/M, reasoning MoE, 262k ctx
+    tooluse_model_name: str = "deepseek/deepseek-v4-flash"
+    # Planner — DeepSeek V4 Flash: $0.098/$0.197/M, strong tool calling, 1M ctx
+    # (replaced hy3-preview, which mangled tool calls and never finished tasks).
     planner_model_base_url: str = "https://openrouter.ai/api/v1"
     planner_model_api_key: str = ""
-    planner_model_name: str = "tencent/hy3-preview"
-    # Chat model — hy3-preview
+    planner_model_name: str = "deepseek/deepseek-v4-flash"
+    # Chat model — DeepSeek V4 Flash
     chat_model_base_url: str = "https://openrouter.ai/api/v1"
     chat_model_api_key: str = ""
-    chat_model_name: str = "tencent/hy3-preview"
+    chat_model_name: str = "deepseek/deepseek-v4-flash"
     # Light model — MiMo: cheap, fast for research and short repeated tasks
     light_model_base_url: str = "https://openrouter.ai/api/v1"
     light_model_name: str = "xiaomi/mimo-v2.5"
-    # High-output model — hy3-preview via OpenRouter
+    # High-output model — DeepSeek V4 Flash via OpenRouter
     highoutput_model_base_url: str = "https://openrouter.ai/api/v1"
-    highoutput_model_name: str = "tencent/hy3-preview"
+    highoutput_model_name: str = "deepseek/deepseek-v4-flash"
     vertex_project: str = ""
     vertex_location: str = "us-central1"
 
