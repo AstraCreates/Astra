@@ -1227,9 +1227,11 @@ async def steer_session_path(session_id: str, body: dict, request: Request):
 
 
 @router.get("/runtime-metrics")
-async def runtime_metrics():
+async def runtime_metrics(request: Request):
     """Live runtime counters (shadow match/mismatch, guardrail blocks, budget events,
-    native↔JSON fallbacks, …) for monitoring the modernization rollout."""
+    native↔JSON fallbacks, …) for monitoring the modernization rollout. Gated like the
+    rest of this router — requires an authenticated actor (allowed in dev auth mode)."""
+    actor_or_body(request)
     from backend.runtime.metrics import snapshot
     return {"ok": True, "metrics": snapshot()}
 
