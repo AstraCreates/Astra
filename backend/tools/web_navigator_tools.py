@@ -297,7 +297,7 @@ async def vision_browse_streaming(
     session_id: str,
     url: str,
     goal: str,
-    max_steps: int = 30,
+    max_steps: int = 50,
 ) -> None:
     """
     Run the vision browse loop for a session, pushing SSE events to the session queue.
@@ -590,7 +590,7 @@ async def vision_browse(
     url: str,
     goal: str,
     credentials: dict | None = None,
-    max_steps: int = 30,
+    max_steps: int = 50,
     founder_id: str = "",
     session_id: str = "",
     _browser_session=None,

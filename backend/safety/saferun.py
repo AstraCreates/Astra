@@ -129,10 +129,21 @@ def _safe_args(args: dict[str, Any]) -> dict[str, Any]:
     return safe
 
 
+# Gates that are AUTO-APPROVED in autonomous runs (audit-only, never block). Deploying
+# the founder's OWN product to their OWN hosting is low real-risk and is exactly what the
+# agent should do without waiting for a human — unlike outbound_send (mass email) or
+# legal_publish, which stay gated. Override with ASTRA_SAFERUN_AUTOAPPROVE_GATES (comma list).
+def _auto_approved_gates() -> set[str]:
+    import os
+    raw = os.environ.get("ASTRA_SAFERUN_AUTOAPPROVE_GATES", "public_deploy")
+    return {g.strip() for g in raw.split(",") if g.strip()}
+
+
 def build_saferun_action(tool_name: str, args: dict[str, Any], agent_name: str) -> dict[str, Any] | None:
     spec = _RISKY_TOOLS.get(tool_name)
     if not spec:
         return None
+    gated = spec["risk_level"] in {"medium", "high"} and spec["approval_gate"] not in _auto_approved_gates()
     return {
         "id": f"sr_{uuid.uuid4().hex[:10]}",
         "tool": tool_name,
@@ -140,8 +151,8 @@ def build_saferun_action(tool_name: str, args: dict[str, Any], agent_name: str) 
         "risk_level": spec["risk_level"],
         "category": spec["category"],
         "approval_gate": spec["approval_gate"],
-        "approval_required": spec["risk_level"] in {"medium", "high"},
-        "mode": "approval_required" if spec["risk_level"] in {"medium", "high"} else "audit_only",
+        "approval_required": gated,
+        "mode": "approval_required" if gated else "audit_only",
         "reason": spec["reason"],
         "args_preview": _safe_args(args),
         "status": "planned",
