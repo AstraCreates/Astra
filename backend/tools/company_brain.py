@@ -1340,13 +1340,17 @@ def ask_company_brain(founder_id: str, question: str, limit: int = 8) -> dict[st
         from backend.tools._llm import generate
         evidence_block = "\n".join(evidence_lines)
         prompt = (
-            "You are the company's knowledge assistant. Answer the QUESTION using ONLY the "
-            "EVIDENCE below (retrieved from the company brain). Be direct and specific. Cite "
-            "every claim inline with [n] matching the evidence numbers. If the evidence does "
-            "not contain the answer, say so plainly — do not invent facts.\n\n"
-            f"QUESTION: {query}\n\nEVIDENCE:\n{evidence_block}\n\nAnswer (with [n] citations):"
+            "You answer questions about THIS company strictly from its own brain records.\n\n"
+            "HARD RULES:\n"
+            "- Use ONLY the EVIDENCE below. Cite each claim inline with [n].\n"
+            "- NEVER invent or substitute a plausible-sounding description. If the evidence does "
+            "not explicitly state the answer, reply exactly: \"The company brain doesn't have a "
+            "clear record of that yet.\" and (optionally) name what IS in the evidence.\n"
+            "- Do NOT describe the company from general knowledge or from what AI/agent platforms "
+            "typically do — only what these specific records say.\n\n"
+            f"QUESTION: {query}\n\nEVIDENCE:\n{evidence_block}\n\nGrounded answer (with [n] citations):"
         )
-        out = generate(prompt, max_tokens=700, model="large").strip()
+        out = generate(prompt, max_tokens=700, model="large", temperature=0.15).strip()
         if out:
             answer = out
     except Exception as exc:

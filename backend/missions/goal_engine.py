@@ -56,6 +56,33 @@ def _workstream(agent: str) -> str | None:
     return None
 
 
+def _seed_company_identity(founder_id: str, goal_text: str) -> None:
+    """Write a CANONICAL company-identity record into the brain from the founder's own
+    launch description, so 'what does the company do / what are we selling' always has a
+    grounded, authoritative answer (instead of the brain hallucinating a generic pitch)."""
+    if not goal_text or not goal_text.strip():
+        return
+    try:
+        text = goal_text.strip()
+        name = ""
+        m = re.search(r"[Cc]ompany(?:[ /](?:project|product))?\s+name[:\s]+\"?([A-Za-z][A-Za-z0-9 ]{1,40})", text)
+        if m:
+            name = m.group(1).strip()
+        # Description = everything after the name line (the founder's own pitch).
+        desc = re.sub(r"^[^\n]*[Cc]ompany(?:[ /](?:project|product))?\s+name[:\s][^\n]*\n+", "", text).strip() or text
+        title = f"Company identity: {name}" if name else "Company identity"
+        content = (f"{name} — " if name else "") + desc[:1500]
+        from backend.tools.company_brain import add_company_brain_record
+        add_company_brain_record(
+            founder_id, source="company_identity", title=title, content=content,
+            kind="identity", canonical=True, stale_risk="low",
+            metadata={"company_name": name},
+        )
+        logger.info("goal_engine: seeded company identity record for %s (%s)", founder_id, name or "?")
+    except Exception as e:
+        logger.warning("goal_engine._seed_company_identity failed for %s: %s", founder_id, e)
+
+
 def _founder_for_session(session_id: str) -> str:
     try:
         from backend.core.session_store import get_session_meta
@@ -105,6 +132,7 @@ def ensure_launch_goal(founder_id: str, session_id: str, agents: list[str], goal
         )
         start_goal(founder_id, title="Launch the company", tasks=tasks, kind="launch")
         logger.info("goal_engine: reset+seeded launch goal for %s session=%s (%d tasks)", founder_id, session_id, len(tasks))
+        _seed_company_identity(founder_id, goal_text)
     except Exception as e:
         logger.warning("goal_engine.ensure_launch_goal failed for %s: %s", founder_id, e)
 
