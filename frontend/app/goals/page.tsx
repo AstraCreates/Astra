@@ -1,5 +1,5 @@
-import MissionsPanel from "@/components/MissionsPanel";
+import ChecklistPage from "@/components/ChecklistPage";
 
 export default function GoalsPage() {
-  return <MissionsPanel />;
+  return <ChecklistPage />;
 }
