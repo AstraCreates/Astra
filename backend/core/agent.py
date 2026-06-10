@@ -1252,10 +1252,6 @@ class Agent:
                 logger.warning("[%s] SafeRun approval wait failed for %s: %s", self.name, tool_name, e)
                 return {"error": f"SafeRun approval check failed for {tool_name}: {e}"}
         # Inject required context fields that models sometimes omit
-        if tool_name == "obsidian_log":
-            args.setdefault("session_id", ctx.session_id)
-            args.setdefault("founder_id", ctx.founder_id)
-            args.setdefault("agent", self.name)
         # Unwrap common extra wrapper keys models accidentally include
         import inspect as _inspect
         try:
@@ -1265,9 +1261,21 @@ class Agent:
                 if list(args.keys()) == [_wrap_key] and isinstance(args.get(_wrap_key), dict):
                     args = args[_wrap_key]
                     break
+        except Exception:
+            _sig_params = set()
+        # Inject run context into ANY tool that declares these params, so the model
+        # doesn't have to thread session/founder ids through every call (needed by
+        # run_mvp_loop, spawn_parallel_coders, vision_browse, obsidian_log, …).
+        if "session_id" in _sig_params:
+            args.setdefault("session_id", ctx.session_id)
+        if "founder_id" in _sig_params:
+            args.setdefault("founder_id", ctx.founder_id)
+        if "agent" in _sig_params:
+            args.setdefault("agent", self.name)
+        try:
             # Strip any keys the function doesn't accept (if it doesn't use **kwargs)
             _has_var_kw = any(p.kind == _inspect.Parameter.VAR_KEYWORD for p in _inspect.signature(fn).parameters.values())
-            if not _has_var_kw:
+            if _sig_params and not _has_var_kw:
                 args = {k: v for k, v in args.items() if k in _sig_params}
         except Exception:
             pass

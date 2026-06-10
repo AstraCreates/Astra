@@ -74,7 +74,8 @@ def get_orchestrator() -> Orchestrator:
             model_base_url=_or_base,
             model_api_key=_or_key,
             max_iterations=settings.technical_agent_max_iterations,
-            max_tool_calls={"run_mvp_loop": 1, "github_create_repo": 1, "obsidian_read": 1, "obsidian_log": 1},
+            max_tool_calls={"run_mvp_loop": 1, "spawn_parallel_coders": 1, "github_create_repo": 1,
+                            "obsidian_read": 1, "obsidian_log": 2, "vision_browse": 6},
         )
         specialists = {
             # Research — MiMo for fast, repeated, source-grounded cycles

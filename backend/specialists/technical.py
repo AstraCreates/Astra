@@ -3,6 +3,8 @@ from backend.core.agent import Agent
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
 from backend.tools.github_scaffold import github_create_repo
 from backend.tools.git_tools import run_mvp_loop, write_files_to_repo, run_claude_in_repo
+from backend.tools.parallel_build import spawn_parallel_coders
+from backend.tools.web_navigator_tools import vision_browse
 from backend.tools.vercel_deploy import vercel_deploy_from_github
 from backend.tools.supabase_tools import supabase_generate_schema, supabase_create_project
 from backend.tools.posthog_tools import posthog_generate_integration
@@ -39,22 +41,33 @@ def build_technical_agent(**kwargs) -> Agent:
             "repo_url the web agent logged. The web agent's repo_url is also in your shared/dependency context.\n"
             "2. Use the web agent's existing repo_url. ONLY if there is genuinely no repo_url anywhere, "
             "call github_create_repo(repo_name=<kebab-case-COMPANY_NAME>) as a fallback.\n"
-            "3. run_mvp_loop(repo_url=<the web agent's repo_url>, goal=<EXTEND the existing Next.js landing into "
-            "the full product: add sign-up/auth using NextAuth.js v5 or Supabase Auth (NO Clerk), a dashboard, "
-            "and the core product features — KEEP the existing landing page AND its design system. Do NOT restyle: "
-            "reuse the landing's existing globals.css theme, tailwind colors/fonts, and component styles for all "
-            "new pages so the product looks cohesive. Use Next.js 15>, "
-            "session_id=<SESSION>, context=<research notes>) — MANDATORY. It clones the existing "
-            "repo (landing already present) and builds the app on top, then auto-deploys.\n"
-            "4. obsidian_log — log the final repo_url and deploy_url.\n"
-            "5. done — return {repo_url, deploy_url, files_in_repo}.\n\n"
-            "run_mvp_loop writes ALL the product code on top of the web agent's landing and auto-deploys "
-            "(including a build-error self-healing pass). "
-            "Never call run_claude_in_repo instead of run_mvp_loop. Do NOT create a new repo if one already exists."
+            "3. BUILD THE PRODUCT. Two ways — pick based on size:\n"
+            "   (a) SIMPLE product (a few pages): run_mvp_loop(repo_url=<repo>, goal=<EXTEND the landing into the "
+            "full product: sign-up/auth (NextAuth v5 or Supabase Auth, NO Clerk), dashboard, core features — KEEP "
+            "the landing page AND its design system; reuse globals.css theme, tailwind colors/fonts, component "
+            "styles; Next.js 15>, context=<research notes>). It clones the repo and builds on top, then deploys.\n"
+            "   (b) LARGER product (3+ independent areas) — BUILD IN PARALLEL: spawn_parallel_coders(repo_url=<repo>, "
+            "modules=[{name, goal, owns}, ...], context=<research notes>). Each module gets its OWN coding agent "
+            "running concurrently; 'owns' is the directory that module owns (NON-OVERLAPPING across modules, e.g. "
+            "'frontend/app/(auth)', 'frontend/app/dashboard', 'frontend/lib/billing'). The tool merges the modules, "
+            "runs one consolidated build-fix, and deploys. Use this to build faster when areas are independent. "
+            "Same design-preservation + auth rules apply to every module.\n"
+            "4. PROVISION REAL INFRA when the product needs it (real auth/db/hosting, not just placeholders). Use "
+            "vision_browse(url, goal, credentials) — a real browser agent that signs up for services and grabs "
+            "API keys. Examples: vision_browse('https://vercel.com/signup', 'sign up and get a deploy token'), "
+            "vision_browse('https://supabase.com/dashboard', 'create a project and copy the URL + anon/service keys'). "
+            "Only pass credentials the founder provided; if a step needs human action (phone/CAPTCHA/2FA), report "
+            "exactly what's needed. Wire any keys you obtain into the app (env vars) and log them with obsidian_log.\n"
+            "5. obsidian_log — log the final repo_url, deploy_url, and any provisioned keys.\n"
+            "6. done — return {repo_url, deploy_url, files_in_repo}.\n\n"
+            "Never call run_claude_in_repo instead of run_mvp_loop/spawn_parallel_coders. Do NOT create a new repo "
+            "if one already exists."
         ),
         tools={
             "github_create_repo": github_create_repo,
             "run_mvp_loop": run_mvp_loop,
+            "spawn_parallel_coders": spawn_parallel_coders,
+            "vision_browse": vision_browse,
             "run_claude_in_repo": run_claude_in_repo,
             "write_files_to_repo": write_files_to_repo,
             "vercel_deploy_from_github": vercel_deploy_from_github,
