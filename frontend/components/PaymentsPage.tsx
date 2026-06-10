@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import PageHeader from "@/components/PageHeader";
 import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch } from "@/lib/api";
 import {
@@ -573,47 +574,32 @@ export default function PaymentsPage() {
   const hasActivity = data && (data.charges.length > 0 || data.payouts.length > 0);
 
   return (
-    <div style={{ width: "100%", maxWidth: 1020, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24, fontFamily: "var(--font-geist-sans)" }}>
-
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <Link href="/" style={{
-            fontSize: 13, padding: "6px 14px", borderRadius: 8,
-            background: "#FFFFFF", color: "#374151",
-            border: "1px solid #E5E7EB", textDecoration: "none", fontWeight: 500,
-          }}>← Back</Link>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: "#111827", letterSpacing: "-0.02em" }}>Payments</h1>
-            <p style={{ fontSize: 13, color: "#6B7280", margin: "3px 0 0" }}>Revenue, balance, and transactions</p>
-          </div>
-        </div>
-        {status?.connected && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{
-              fontSize: 11, padding: "4px 12px", borderRadius: 999, fontWeight: 500,
-              background: status.livemode ? "#DCFCE7" : "#FEF9C3",
-              color: status.livemode ? "#16a34a" : "#854d0e",
-              border: `1px solid ${status.livemode ? "#BBF7D0" : "#FDE68A"}`,
-              display: "flex", alignItems: "center", gap: 5,
-            }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: status.livemode ? "#16a34a" : "#ca8a04", display: "inline-block" }} />
-              {status.livemode ? "Live" : "Test mode"}
-            </span>
-            <button
-              onClick={fetchData}
-              disabled={loadingData}
-              style={{
-                fontSize: 13, padding: "6px 16px", borderRadius: 8,
-                background: "#FFFFFF", color: "#374151",
-                border: "1px solid #E5E7EB", cursor: "pointer", fontWeight: 500,
-              }}
-            >
-              {loadingData ? "Loading…" : "Refresh"}
-            </button>
-          </div>
-        )}
-      </div>
+    <>
+      <PageHeader
+        title="Payments"
+        subtitle="Revenue, balance, and transactions"
+        badge={status?.connected ? {
+          label: status.livemode ? "Live" : "Test",
+          color: status.livemode ? "green" : "amber",
+        } : undefined}
+        actions={status?.connected ? (
+          <button
+            onClick={fetchData}
+            disabled={loadingData}
+            style={{
+              fontSize: 12, padding: "8px 14px",
+              color: "rgba(255,255,255,0.88)",
+              background: "rgba(255,255,255,0.13)",
+              border: "1px solid rgba(255,255,255,0.28)",
+              cursor: loadingData ? "not-allowed" : "pointer",
+              opacity: loadingData ? 0.5 : 1,
+            }}
+          >
+            {loadingData ? "Loading…" : "Refresh"}
+          </button>
+        ) : undefined}
+      />
+      <div style={{ width: "100%", maxWidth: 1020, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24, padding: "24px 0 48px", fontFamily: "var(--font-geist-sans)" }}>
 
       {connectError && (
         <div style={{ padding: "12px 16px", borderRadius: 10, background: "#FEF2F2", border: "1px solid #FECACA", fontSize: 13, color: "#dc2626" }}>
@@ -807,7 +793,8 @@ export default function PaymentsPage() {
           )}
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 }
 

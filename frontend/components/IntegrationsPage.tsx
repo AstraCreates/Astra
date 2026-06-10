@@ -39,6 +39,7 @@ function ServiceLogo({ serviceKey, label, size = 24 }: { serviceKey: string; lab
 import { useDevUser } from "@/lib/use-dev-user";
 import Link from "next/link";
 import { apiFetch, saveServiceCredential, getComposioOAuthUrls, getSetupStatus, SetupStatus } from "@/lib/api";
+import PageHeader from "@/components/PageHeader";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -1021,54 +1022,13 @@ export default function SetupPage() {
   const progressPct = status ? (connectedCount / totalServices) * 100 : 0;
 
   return (
-    <div style={{ width: "100%", maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32, padding: "0 0 48px", fontFamily: "var(--font-geist-sans)" }}>
-
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          <Link href="/" style={{
-            fontSize: 13, padding: "6px 14px", borderRadius: 8,
-            background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`,
-            textDecoration: "none", fontWeight: 500,
-          }}>
-            ← Back
-          </Link>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: c.text, letterSpacing: "-0.02em" }}>
-              Integrations
-            </h1>
-            <p style={{ fontSize: 13, color: c.grey, margin: "3px 0 0" }}>
-              Connect services once — agents use them everywhere
-            </p>
-          </div>
-        </div>
-
-        {/* Progress indicator */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-          {status && (
-            <span style={{ fontSize: 12, color: c.grey, fontWeight: 500 }}>
-              {connectedCount} of {totalServices} connected
-            </span>
-          )}
-          <div style={{ height: 6, width: 120, borderRadius: 999, background: c.border, overflow: "hidden" }}>
-            <div style={{
-              height: "100%", borderRadius: 999,
-              width: "100%",
-              transform: `scaleX(${progressPct / 100})`, transformOrigin: "left",
-              background: progressPct === 100 ? c.green : c.blue,
-              transition: "transform 0.6s cubic-bezier(0.22,1,0.36,1)",
-            }} />
-          </div>
-        </div>
-      </div>
-
-      {/* Founder ID chip */}
-      {founderId && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderRadius: 8, background: c.surface, border: `1px solid ${c.border}`, width: "fit-content" }}>
-          <span style={{ fontSize: 11, color: c.textMuted, fontWeight: 500 }}>Founder ID</span>
-          <span style={{ fontSize: 11, fontFamily: "var(--font-geist-mono, monospace)", color: c.grey }}>{founderId}</span>
-        </div>
-      )}
+    <>
+      <PageHeader
+        title="Integrations"
+        subtitle="Connect services once — agents use them everywhere"
+        stats={status ? [{ label: "Connected", value: `${connectedCount} / ${totalServices}` }] : undefined}
+      />
+      <div style={{ width: "100%", maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32, padding: "24px 0 48px", fontFamily: "var(--font-geist-sans)" }}>
 
       {/* Core services */}
       <div>
@@ -1242,7 +1202,8 @@ export default function SetupPage() {
           Back to app →
         </Link>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 
