@@ -205,6 +205,21 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [, force] = useReducer((x: number) => x + 1, 0);
   const sseRef = useRef<EventSource | null>(null);
   const steerRef = useRef<HTMLInputElement>(null);
+  const [copilot, setCopilot] = useState<{ role: string; content: string; actions?: string[] }[]>([]);
+  const [copilotBusy, setCopilotBusy] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(false);
+  const copilotLoaded = useRef(false);
+  useEffect(() => {
+    if (!copilotOpen || copilotLoaded.current || !sessionId) return;
+    copilotLoaded.current = true;
+    (async () => {
+      try {
+        const r = await apiFetch(`${API}/copilot/${sessionId}`);
+        const d = await r.json();
+        if (Array.isArray(d.history)) setCopilot(d.history.map((h: any) => ({ role: h.role, content: h.content, actions: h.actions })));
+      } catch {}
+    })();
+  }, [copilotOpen, sessionId]);
   const [showSessionTour, setShowSessionTour] = useState(false);
   const [designImages, setDesignImages] = useState<SessionImages>({ logos: {}, brand_images: [] });
   const [accessDenied, setAccessDenied] = useState(false);
@@ -468,6 +483,19 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       force();
       showErr(`Approval failed: ${e instanceof Error ? e.message : String(e)}`);
     }
+  };
+  const sendCopilot = async () => {
+    const msg = steerRef.current?.value.trim(); if (!msg || copilotBusy) return;
+    if (steerRef.current) steerRef.current.value = "";
+    setCopilot((c) => [...c, { role: "founder", content: msg }]);
+    setCopilotBusy(true);
+    try {
+      const r = await apiFetch(`${API}/copilot/${sessionId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg }) });
+      const d = await r.json();
+      setCopilot((c) => [...c, { role: "copilot", content: d.reply || "(no reply)", actions: (d.actions || []).map((a: any) => a.tool) }]);
+    } catch (e) {
+      setCopilot((c) => [...c, { role: "copilot", content: "Copilot error — try again." }]);
+    } finally { setCopilotBusy(false); }
   };
   const sendSteer = async () => {
     const msg = steerRef.current?.value.trim(); if (!msg) return;
@@ -1141,13 +1169,37 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         </div>
       </div>
 
-      {/* steer bar */}
-      <div data-tour="session-steerbar" className="steerbar">
+      {/* copilot chat bar */}
+      <div data-tour="session-steerbar" className="steerbar" style={{ flexDirection: "column", alignItems: "stretch", gap: 0 }}>
+        {copilotOpen && (
+          <div style={{ maxHeight: 280, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, borderBottom: "1px solid var(--bd)" }}>
+            {copilot.length === 0 && (
+              <div style={{ fontSize: 12, color: "var(--fm)", lineHeight: 1.6 }}>
+                Ask or direct Astra. The copilot can answer from your company brain, read &amp; approve goals, steer the running agents, and run a cycle. Try “what’s our current goal?”, “tell the team to focus on pricing”, or “approve the next goal”.
+              </div>
+            )}
+            {copilot.map((m, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: m.role === "founder" ? "flex-end" : "flex-start" }}>
+                <div style={{ maxWidth: "82%", padding: "8px 11px", fontSize: 12.5, lineHeight: 1.5, whiteSpace: "pre-wrap",
+                  background: m.role === "founder" ? "#001AFF" : "var(--surface)", color: m.role === "founder" ? "#fff" : "var(--fg)",
+                  border: m.role === "founder" ? "none" : "1px solid var(--bd)", borderRadius: 10 }}>
+                  {m.content}
+                  {m.actions && m.actions.length > 0 && (
+                    <div style={{ marginTop: 5, fontSize: 9, opacity: 0.7, fontFamily: "var(--font-code)" }}>⚙ {m.actions.join(" · ")}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {copilotBusy && <div style={{ fontSize: 11, color: "var(--fm)", fontFamily: "var(--font-code)" }}>copilot thinking…</div>}
+          </div>
+        )}
         <div className="steer-wrap">
-          <input ref={steerRef} className="steer-inp" aria-label="Steer Astra — redirect or expand the current run"
-            placeholder='Steer Astra — "focus more on pricing" · "skip legal" · "make it B2B"'
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendSteer(); } }} />
-          <button className="steer-send" aria-label="Send steer message" onClick={sendSteer}>↑</button>
+          <button className="steer-send" aria-label="Toggle copilot" title="Copilot chat" onClick={() => setCopilotOpen((v) => !v)} style={{ marginRight: 6 }}>{copilotOpen ? "▾" : "✦"}</button>
+          <input ref={steerRef} className="steer-inp" aria-label="Ask or direct Astra"
+            placeholder='Ask or direct Astra — "what’s our goal?" · "focus on pricing" · "approve next goal"'
+            onFocus={() => setCopilotOpen(true)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); setCopilotOpen(true); sendCopilot(); } }} />
+          <button className="steer-send" aria-label="Send" onClick={() => { setCopilotOpen(true); sendCopilot(); }}>↑</button>
         </div>
       </div>
 
