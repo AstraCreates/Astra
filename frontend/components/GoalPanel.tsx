@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useCompany } from "@/lib/company-context";
+import { useDevUser } from "@/lib/use-dev-user";
 import {
   getCompanyGoal, runCompanyCycle, approveNextGoal, setCompanyGoalStatus,
   AGENT_LABELS,
@@ -82,6 +83,7 @@ function SecLabel({ children }: { children: React.ReactNode }) {
 
 export default function GoalPanel() {
   const { founderId, companyId, activeCompany, loading: companiesLoading } = useCompany();
+  const { isSignedIn } = useDevUser();
 
   const [goal, setGoal] = useState<CompanyGoal | null>(null);
   const [loading, setLoading] = useState(true);
@@ -173,7 +175,9 @@ export default function GoalPanel() {
           border: "1px dashed var(--bd2)", padding: "18px 16px",
           fontSize: 12, color: "var(--fm)", lineHeight: 1.6, textAlign: "center",
         }}>
-          {companiesLoading || loading
+          {!isSignedIn
+            ? "Sign in to see company goals."
+            : companiesLoading || loading
             ? "Loading…"
             : !goal
               ? `${activeCompany?.name || "This company"} has no goals yet. Start a run to kick things off.`
