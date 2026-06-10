@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useDevUser } from "@/lib/use-dev-user";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useCompany } from "@/lib/company-context";
 import {
   getCompanyGoal, runCompanyCycle, approveNextGoal, setCompanyGoalStatus,
   AGENT_LABELS,
@@ -81,25 +81,46 @@ function SecLabel({ children }: { children: React.ReactNode }) {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function GoalPanel() {
-  const { userId } = useDevUser();
-  const founderId = userId === "anon" ? "" : userId;
+  const { founderId, companyId, activeCompany, loading: companiesLoading } = useCompany();
 
   const [goal, setGoal] = useState<CompanyGoal | null>(null);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [showDoneGoals, setShowDoneGoals] = useState(false);
+  const loadRequest = useRef(0);
 
   const loadGoal = useCallback(async () => {
     if (!founderId) return;
-    try { setGoal(await getCompanyGoal(founderId)); } catch {}
-  }, [founderId]);
+    const requestId = ++loadRequest.current;
+    setLoading(true);
+    setErr(null);
+    try {
+      const nextGoal = await getCompanyGoal(founderId, companyId);
+      if (loadRequest.current === requestId) setGoal(nextGoal);
+    } catch (error) {
+      if (loadRequest.current === requestId) {
+        setGoal(null);
+        setErr(error instanceof Error ? error.message : "Could not load goals.");
+      }
+    } finally {
+      if (loadRequest.current === requestId) setLoading(false);
+    }
+  }, [companyId, founderId]);
 
   useEffect(() => {
-    if (!founderId) return;
-    loadGoal();
-    const t = setInterval(loadGoal, 15_000);
-    return () => clearInterval(t);
-  }, [founderId, loadGoal]);
+    if (!founderId || companiesLoading) return;
+    const initial = window.setTimeout(() => {
+      setGoal(null);
+      void loadGoal();
+    }, 0);
+    const t = window.setInterval(() => void loadGoal(), 15_000);
+    return () => {
+      loadRequest.current += 1;
+      clearTimeout(initial);
+      clearInterval(t);
+    };
+  }, [companiesLoading, founderId, loadGoal]);
 
   const paused = goal?.status === "paused";
   const currentEntry: CompanyGoalEntry | null = goal?.goals?.find(g => g.id === goal.current_goal_id) ?? null;
@@ -112,7 +133,7 @@ export default function GoalPanel() {
   const runNow = async () => {
     setBusy("run"); setErr(null);
     try {
-      const r = await runCompanyCycle(founderId);
+      const r = await runCompanyCycle(founderId, companyId);
       if (r.parent_session_id) window.location.assign(`/s/${r.parent_session_id}`);
       else await loadGoal();
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); setTimeout(() => setErr(null), 8000); }
@@ -121,14 +142,14 @@ export default function GoalPanel() {
 
   const togglePause = async () => {
     setBusy("pause");
-    try { await setCompanyGoalStatus(founderId, paused ? "operating" : "paused"); await loadGoal(); }
+    try { await setCompanyGoalStatus(founderId, paused ? "operating" : "paused", companyId); await loadGoal(); }
     finally { setBusy(null); }
   };
 
   const decideGoal = async (approved: boolean) => {
     setBusy(approved ? "approve" : "reject"); setErr(null);
     try {
-      await approveNextGoal(founderId, approved);
+      await approveNextGoal(founderId, approved, companyId);
       if (approved && goal?.root_session_id) window.location.assign(`/s/${goal.root_session_id}`);
       else await loadGoal();
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); setTimeout(() => setErr(null), 8000); }
@@ -140,13 +161,25 @@ export default function GoalPanel() {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <SecLabel>Current goal</SecLabel>
+        {err && (
+          <div style={{ fontSize: 11, color: "var(--red)", padding: "8px 10px", background: "var(--rdim)", border: "1px solid var(--rb)", lineHeight: 1.5 }}>
+            Could not load goals.
+            <button onClick={() => void loadGoal()} style={{ marginLeft: 8, padding: 0, border: "none", background: "none", color: "inherit", font: "inherit", fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>
+              Try again
+            </button>
+          </div>
+        )}
         <div style={{
           border: "1px dashed var(--bd2)", padding: "18px 16px",
           fontSize: 12, color: "var(--fm)", lineHeight: 1.6, textAlign: "center",
         }}>
-          {!founderId ? "Sign in to see goals." : !goal ? "Loading…" : "No active goal yet. Start a run to kick things off."}
+          {companiesLoading || loading
+            ? "Loading…"
+            : !goal
+              ? `${activeCompany?.name || "This company"} has no goals yet. Start a run to kick things off.`
+              : "No active goal yet. Start a run to kick things off."}
         </div>
-        {goal && !currentEntry && (
+        {!loading && !err && !currentEntry && (
           <button onClick={runNow} disabled={!!busy} style={{
             padding: "9px 18px", fontSize: 12, fontWeight: 600,
             color: "#002EFF", background: "#fff",
