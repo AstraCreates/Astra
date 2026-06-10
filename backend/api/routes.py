@@ -1226,6 +1226,14 @@ async def steer_session_path(session_id: str, body: dict, request: Request):
     return {"ok": True, "session_id": session_id}
 
 
+@router.get("/runtime-metrics")
+async def runtime_metrics():
+    """Live runtime counters (shadow match/mismatch, guardrail blocks, budget events,
+    native↔JSON fallbacks, …) for monitoring the modernization rollout."""
+    from backend.runtime.metrics import snapshot
+    return {"ok": True, "metrics": snapshot()}
+
+
 @router.post("/copilot/{session_id}")
 async def copilot_chat(session_id: str, body: dict, request: Request):
     """Founder copilot — an agentic chat that can query the brain, read/approve goals,
