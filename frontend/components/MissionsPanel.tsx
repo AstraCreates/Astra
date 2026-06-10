@@ -286,6 +286,8 @@ export default function MissionsPanel() {
   const currentGoalTasks = currentGoalEntry?.tasks ?? [];
   // A planner-proposed next goal awaits the founder's sign-off before the team runs it.
   const proposed = currentGoalEntry?.status === "proposed";
+  // Completed goals, newest first (for the goal-progression view).
+  const doneGoals = (goal?.goals ?? []).filter(g => g.status === "done").reverse();
 
   const runNow = async () => {
     setBusy("run"); setActionErr(null);
@@ -451,6 +453,77 @@ export default function MissionsPanel() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* ── Company goals (current goal + progression) ── */}
+        {goal && (currentGoalEntry || doneGoals.length > 0) && (
+          <div className="cl-enter">
+            <div className="sec-label" style={{ marginBottom: 10 }}>Company goals</div>
+
+            {/* Current goal card (proposed goals use the banner above instead) */}
+            {currentGoalEntry && !proposed && (() => {
+              const tasks = currentGoalEntry.tasks ?? [];
+              const dn = tasks.filter(t => t.status === "done").length;
+              const pctG = tasks.length ? Math.round((dn / tasks.length) * 100) : 0;
+              return (
+                <div style={{ border: "1px solid var(--bd2)", background: "var(--surface)", marginBottom: doneGoals.length ? 14 : 0 }}>
+                  <div style={{ padding: "12px 16px", borderBottom: tasks.length ? "1px solid var(--bd)" : "none" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div className="sec-label" style={{ marginBottom: 3 }}>Current goal{currentGoalEntry.kind === "launch" ? " · launch" : ""}</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: "var(--fg)", lineHeight: 1.35 }}>{currentGoalEntry.title}</div>
+                      </div>
+                      {tasks.length > 0 && (
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontSize: 22, fontWeight: 800, color: dn === tasks.length ? "var(--green)" : "var(--blue)", fontFamily: "var(--font-code)", lineHeight: 1 }}>{dn}</div>
+                          <div style={{ fontSize: 9, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".08em" }}>of {tasks.length}</div>
+                        </div>
+                      )}
+                    </div>
+                    {tasks.length > 0 && (
+                      <div style={{ height: 3, background: "var(--bd)", overflow: "hidden", marginTop: 10 }}>
+                        <div style={{ height: "100%", width: `${pctG}%`, background: dn === tasks.length ? "var(--green)" : "var(--blue)", transition: "width .4s" }} />
+                      </div>
+                    )}
+                  </div>
+                  {tasks.map((t, i) => {
+                    const tint = t.status === "done" ? "var(--green)" : t.status === "in_progress" ? "var(--blue)" : t.status === "awaiting_approval" ? "var(--amber)" : "var(--fm)";
+                    const owners = t.owner_agents ?? [];
+                    const doneAg = t.done_agents ?? [];
+                    return (
+                      <div key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 16px", borderTop: i === 0 ? "none" : "1px solid var(--bd)" }}>
+                        <span style={{ marginTop: 5, width: 7, height: 7, flexShrink: 0, borderRadius: "50%", background: tint }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12.5, color: t.status === "done" ? "var(--fd)" : "var(--fg)", textDecoration: t.status === "done" ? "line-through" : "none", lineHeight: 1.4 }}>{t.title}</div>
+                          {owners.length > 0 && (
+                            <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 2, fontFamily: "var(--font-code)" }}>
+                              {owners.map(o => (doneAg.includes(o) ? `✓${AGENT_LABELS[o] ?? o}` : (AGENT_LABELS[o] ?? o))).join(" · ")}
+                            </div>
+                          )}
+                        </div>
+                        <span style={{ flexShrink: 0, fontSize: 9, color: tint, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", fontFamily: "var(--font-code)" }}>
+                          {t.status === "awaiting_approval" ? "approval" : t.status.replace(/_/g, " ")}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {/* Goal progression — completed goals */}
+            {doneGoals.length > 0 && (
+              <div style={{ border: "1px solid var(--bd)", background: "var(--surface)" }}>
+                {doneGoals.map((g, i) => (
+                  <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 14px", fontSize: 12, borderTop: i === 0 ? "none" : "1px solid var(--bd)" }}>
+                    <span style={{ color: "var(--green)", fontFamily: "var(--font-code)", fontSize: 10, flexShrink: 0 }}>✓</span>
+                    <span style={{ flex: 1, color: "var(--fm)", textDecoration: "line-through", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.title}</span>
+                    <span style={{ fontSize: 9, fontFamily: "var(--font-code)", color: "var(--fm)", flexShrink: 0 }}>{timeAgo(g.completed_at)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
