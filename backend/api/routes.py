@@ -1226,6 +1226,27 @@ async def steer_session_path(session_id: str, body: dict, request: Request):
     return {"ok": True, "session_id": session_id}
 
 
+@router.post("/copilot/{session_id}")
+async def copilot_chat(session_id: str, body: dict, request: Request):
+    """Founder copilot — an agentic chat that can query the brain, read/approve goals,
+    steer the running agents, run a cycle, and check status, with persistent history."""
+    founder_id = await _require_session_access(request, session_id, min_role="operator")
+    message = str(body.get("message", "")).strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+    from backend.copilot import run_copilot
+    fid = body.get("founder_id") or founder_id or ""
+    return await run_copilot(fid, session_id, message)
+
+
+@router.get("/copilot/{session_id}")
+async def copilot_history(session_id: str, request: Request):
+    """Return the copilot conversation history for a session."""
+    await _require_session_access(request, session_id, min_role="viewer")
+    from backend.copilot import get_history
+    return {"ok": True, "session_id": session_id, "history": get_history(session_id)}
+
+
 @router.post("/setup")
 async def setup_accounts(body: SetupRequest, request: Request):
     """
