@@ -23,6 +23,8 @@ _PRICING: dict[str, tuple[float, float, float]] = {
     "deepseek/deepseek-v4-flash":                        (0.0983, 0.1966, 0.0197),
     "deepseek/deepseek-v4-pro":                          (0.435,  0.87,   0.003625),
     "xiaomi/mimo-v2.5":                                  (0.14,  0.40,  0.0028),
+    "xiaomi/mimo-v2.5-pro":                              (0.435, 0.87,  0.0036),
+    "minimax/minimax-m3":                                (0.30,  1.20,  0.06),
     "moonshotai/kimi-k2.6:free":                         (0.00,  0.00,  0.00),
     "google/gemma-4-31b-it:free":                        (0.00,  0.00,  0.00),
     "inclusionai/ling-2.6-flash":                        (0.01,  0.03,  0.00),
