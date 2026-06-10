@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 model_settings_router = APIRouter()
 
 AVAILABLE_MODELS: list[str] = [
+    "deepseek/deepseek-v4-pro",
     "deepseek/deepseek-v4-flash",
     "tencent/hy3-preview",
     "xiaomi/mimo-v2.5",

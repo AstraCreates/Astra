@@ -21,6 +21,7 @@ _PRICING: dict[str, tuple[float, float, float]] = {
     "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8": (0.15,  0.60,  0.03),
     "tencent/hy3-preview":                               (0.063, 0.21,  0.02),
     "deepseek/deepseek-v4-flash":                        (0.0983, 0.1966, 0.0197),
+    "deepseek/deepseek-v4-pro":                          (0.435,  0.87,   0.003625),
     "xiaomi/mimo-v2.5":                                  (0.14,  0.40,  0.0028),
     "moonshotai/kimi-k2.6:free":                         (0.00,  0.00,  0.00),
     "google/gemma-4-31b-it:free":                        (0.00,  0.00,  0.00),
