@@ -2312,7 +2312,13 @@ export async function getCompanyGoal(founderId: string, companyId = ""): Promise
   const res = await apiFetch(`${BASE}/api/missions/company-goal?${params}`);
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
-  return data.company_goal ?? null;
+  const goal = data.company_goal ?? null;
+  if (!goal || !data.current_goal) return goal;
+  // Populate current_goal_id so lookups by id work for backward compat
+  if (!goal.current_goal_id && data.current_goal.id) {
+    goal.current_goal_id = data.current_goal.id;
+  }
+  return goal;
 }
 
 // Founder decision on a milestone the agent finished (awaiting_approval).
