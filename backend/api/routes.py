@@ -315,14 +315,22 @@ async def submit_goal(body: GoalRequest, request: Request):
             )
             _workspace_id = _requested_company_id
         else:
-            # Auto-create a new workspace for this project
-            _ws = _wss.create_workspace(
-                founder_id=body.founder_id,
-                name=_ws_name,
-                goal=body.instruction,
-                stack_id=body.stack_id or "idea_to_revenue",
-            )
-            _workspace_id = _ws["workspace_id"]
+            # Reuse an existing workspace with the same company name if one exists,
+            # so multiple runs for the same company don't scatter into separate workspaces.
+            _existing = None
+            if body.workspace_name:
+                from backend.core.workspace_store import find_workspace_by_name as _fwbn
+                _existing = _fwbn(body.founder_id, body.workspace_name)
+            if _existing:
+                _workspace_id = _existing["workspace_id"]
+            else:
+                _ws = _wss.create_workspace(
+                    founder_id=body.founder_id,
+                    name=_ws_name,
+                    goal=body.instruction,
+                    stack_id=body.stack_id or "idea_to_revenue",
+                )
+                _workspace_id = _ws["workspace_id"]
         _ch = _wss.create_chapter(workspace_id=_workspace_id, session_id=session_id)
         _chapter_id = _ch["chapter_id"]
         constraints["company_id"] = _workspace_id

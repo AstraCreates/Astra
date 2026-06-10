@@ -143,6 +143,20 @@ def list_workspaces(founder_id: str) -> list[dict]:
     return items
 
 
+def find_workspace_by_name(founder_id: str, company_name: str) -> Optional[dict]:
+    """Return the most-recently-active non-archived workspace whose name matches."""
+    needle = company_name.strip().lower()
+    if not needle:
+        return None
+    for ws in list_workspaces(founder_id):
+        if ws.get("status") == "archived":
+            continue
+        candidate = (ws.get("company_name") or ws.get("name") or "").strip().lower()
+        if candidate == needle:
+            return ws
+    return None
+
+
 def update_workspace_meta(workspace_id: str, **fields) -> Optional[dict]:
     now = _now()
     with _ws_lock(workspace_id):

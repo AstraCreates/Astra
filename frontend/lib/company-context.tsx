@@ -36,15 +36,27 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const companies = useMemo<CompanyChoice[]>(() => {
-    const active = workspaces
+    const sorted = workspaces
       .filter(workspace => workspace.status !== "archived")
-      .map(workspace => ({
-        companyId: workspace.company_id || workspace.workspace_id,
-        name: companyName(workspace),
-        status: workspace.status,
-        workspace,
-        isPrimary: false,
-      }));
+      .sort((a, b) => (b.last_active || "").localeCompare(a.last_active || ""));
+
+    // Deduplicate by company name — keep the most-recently-active workspace per name.
+    const seen = new Set<string>();
+    const deduped = sorted.filter(workspace => {
+      const key = companyName(workspace).toLowerCase().trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    const active = deduped.map(workspace => ({
+      companyId: workspace.company_id || workspace.workspace_id,
+      name: companyName(workspace),
+      status: workspace.status,
+      workspace,
+      isPrimary: false,
+    }));
+
     // Only include the "primary" fallback if no real workspaces exist yet
     if (active.length === 0) {
       return [{

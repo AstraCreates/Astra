@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { listSessions, deleteSessionRemote, killSession, type SessionIndexEntry } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
@@ -8,14 +8,6 @@ import { useDevUser } from "@/lib/use-dev-user";
 import { useCompany } from "@/lib/company-context";
 import AstraGradient from "./AstraGradient";
 import GoalPanel from "./GoalPanel";
-
-const GREETINGS = [
-  "Welcome back",
-  "Let's get to work",
-  "Ready to build",
-  "Good to see you",
-  "Let's keep building",
-];
 
 function ago(ts: string | undefined): string {
   if (!ts) return "";
@@ -45,18 +37,7 @@ export default function DashboardView() {
   const [pendingDel, setPendingDel] = useState<Set<string>>(new Set());
   const [toastErr, setToastErr] = useState("");
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
-  const [firstName, setFirstName] = useState("");
-  const [greeting, setGreeting] = useState("");
-
   const company = activeCompany?.name || "";
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const fullName = localStorage.getItem("astra_onboarding_name") || "";
-      setFirstName(fullName.split(" ")[0] || fullName);
-    }
-    setGreeting(GREETINGS[Math.floor(Math.random() * GREETINGS.length)]);
-  }, []);
 
   const del = useCallback(async (e: React.MouseEvent, s: SessionIndexEntry) => {
     e.stopPropagation();
@@ -125,23 +106,13 @@ export default function DashboardView() {
           <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.18)", pointerEvents: "none", zIndex: 1 }} />
 
           <div style={{ position: "relative", zIndex: 2 }}>
-            {company && (
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.12)", fontSize: 10.5, color: "rgba(255,255,255,0.8)", marginBottom: 14 }}>
-                <div style={{ width: 6, height: 6, background: "#7cffe6" }} />
-                <span style={{ fontWeight: 600, color: "#fff" }}>{company}</span>
-              </div>
-            )}
-
-            <div
-              className="greeting-text"
-              style={{
-                fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-                fontSize: 26, fontWeight: 700,
-                letterSpacing: "-0.02em",
-                color: "#fff", marginBottom: 4,
-              }}
-            >
-              {headline || "Sessions"}
+            <div style={{
+              fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
+              fontSize: 26, fontWeight: 700,
+              letterSpacing: "-0.02em",
+              color: "#fff", marginBottom: 6,
+            }}>
+              {company || "Dashboard"}
             </div>
 
             {/* Stats row */}
@@ -149,7 +120,7 @@ export default function DashboardView() {
               {sessions !== null && (
                 <>
                   <span style={{ fontSize: 11, color: "rgba(255,255,255,0.85)" }}>
-                    {sessions.length} session{sessions.length !== 1 ? "s" : ""}
+                    {sessions.length} run{sessions.length !== 1 ? "s" : ""}
                   </span>
                   {running > 0 && (
                     <span style={{ fontSize: 11, color: "#7cffe6", fontWeight: 600 }}>
