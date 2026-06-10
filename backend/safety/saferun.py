@@ -141,6 +141,19 @@ def _auto_approved_gates() -> set[str]:
 
 def build_saferun_action(tool_name: str, args: dict[str, Any], agent_name: str) -> dict[str, Any] | None:
     spec = _RISKY_TOOLS.get(tool_name)
+    if spec is None:
+        try:
+            from backend.runtime.tool_registry import registry
+            entry = registry.get(tool_name)
+            if entry and entry.risk_category:
+                spec = {
+                    "risk_level": "high" if entry.mutability == "external" else "medium",
+                    "category": entry.risk_category,
+                    "approval_gate": entry.risk_category,
+                    "reason": entry.description or f"Executes {entry.risk_category} action.",
+                }
+        except Exception:
+            spec = None
     if not spec:
         return None
     gated = spec["risk_level"] in {"medium", "high"} and spec["approval_gate"] not in _auto_approved_gates()

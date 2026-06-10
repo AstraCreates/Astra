@@ -22,7 +22,7 @@ async def log(msg: str):
     async with _lock:
         print(msg, flush=True)
 
-async def test_agent(agent: str, client: httpx.AsyncClient) -> tuple[str, str]:
+async def run_agent_check(agent: str, client: httpx.AsyncClient) -> tuple[str, str]:
     start = time.time()
     status = "unknown"
     error = ""
@@ -130,7 +130,7 @@ async def main():
 
     async def run(a):
         async with sem:
-            return await test_agent(a, client)
+            return await run_agent_check(a, client)
 
     async with httpx.AsyncClient(verify=False, follow_redirects=True) as client:
         batch_results = await asyncio.gather(*[run(a) for a in AGENTS])
@@ -144,4 +144,5 @@ async def main():
     print(f"  RUNNING ({len(partial)}): {', '.join(partial) or 'none'}")
     print(f"  FAILED  ({len(failed)}): {', '.join(failed) or 'none'}")
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

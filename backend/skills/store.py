@@ -101,6 +101,9 @@ def create_skill(
         "agent_keys": agent_keys or [],
         "created_at": _now(),
         "is_builtin": is_builtin,
+        "status": "active",
+        "version": 1,
+        "version_history": [],
     }
     with _lock:
         index = _load_index(founder_id)
@@ -134,6 +137,8 @@ def update_skill(
     description: str | None = None,
     content: str | None = None,
     agent_keys: list[str] | None = None,
+    version: int | None = None,
+    version_history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     """Patch a skill's mutable fields. Returns updated skill or None if missing."""
     with _lock:
@@ -149,6 +154,10 @@ def update_skill(
             skill["content"] = content
         if agent_keys is not None:
             skill["agent_keys"] = agent_keys
+        if version is not None:
+            skill["version"] = version
+        if version_history is not None:
+            skill["version_history"] = version_history
         index[skill_id] = skill
         _save_index(founder_id, index)
     return skill

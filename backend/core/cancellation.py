@@ -57,6 +57,11 @@ def request_kill(session_id: str) -> bool:
     Returns True if a running task was found and cancelled.
     """
     _killed.add(session_id)
+    try:
+        from backend.runtime.delegation import interrupt_session_subagents
+        interrupt_session_subagents(session_id)
+    except Exception:
+        pass
     task = _tasks.get(session_id)
     if task is not None and not task.done():
         task.cancel()

@@ -254,10 +254,22 @@ def _state_metrics() -> dict[str, Any]:
         alerts = alert_metrics()
     except Exception:
         alerts = {}
+    try:
+        from backend.runtime.metrics import snapshot as runtime_agent_metrics
+        agent_runtime = runtime_agent_metrics()
+    except Exception:
+        agent_runtime = {}
+    try:
+        from backend.runtime.circuit_breaker import status as circuit_breaker_status
+        runtime_rollbacks = circuit_breaker_status()
+    except Exception:
+        runtime_rollbacks = {}
     return {
         "sessions_active": active,
         "sessions_completed": len(_safe_completed()),
         "events_buffered": events,
+        "agent_runtime": agent_runtime,
+        "runtime_rollbacks": runtime_rollbacks,
         "workflow_snapshots": _dir_count(".astra/workflows", "*.json"),
         "approval_ledgers": _dir_count(".astra/approvals", "*.json"),
         "company_brains": _dir_count(".astra/company_brain", "*.json"),
@@ -401,4 +413,9 @@ def prometheus_metrics() -> str:
             f"# TYPE astra_check_ok gauge",
             f"astra_check_ok{{check=\"{name}\"}} {1 if check.get('ok') else 0}",
         ])
+    try:
+        from backend.runtime.metrics import prometheus_lines
+        lines.extend(prometheus_lines())
+    except Exception:
+        pass
     return "\n".join(lines) + "\n"

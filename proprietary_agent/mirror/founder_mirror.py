@@ -107,16 +107,6 @@ class FounderMirror:
 
     def review(self, agent: str, output: str) -> MirrorResult:
         """Run adversarial review. Returns MirrorResult with verdict."""
-        # Mirror disabled — always pass
-        return MirrorResult(
-            verdict="pass",
-            critique="",
-            questions=[],
-            revised_recommendation=None,
-            agent=agent,
-            raw_output_length=len(output),
-        )
-
         import json as _json
 
         questions = _AGENT_QUESTIONS.get(agent, ["What is the single biggest flaw in this output?"])

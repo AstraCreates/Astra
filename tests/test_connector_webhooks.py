@@ -156,6 +156,7 @@ async def test_connector_webhook_route_rejects_missing_secret(tmp_path, monkeypa
 def _test_app(monkeypatch):
     fake_db = types.ModuleType("backend.db.client")
     fake_db.get_supabase = lambda: None
+    fake_db.get_outreach_db = lambda: None
     fake_db.update_task_status = lambda *args, **kwargs: None
     monkeypatch.setitem(sys.modules, "backend.db.client", fake_db)
     sys.modules.pop("backend.api.routes", None)

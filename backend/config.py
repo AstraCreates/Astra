@@ -105,6 +105,19 @@ class Settings(BaseSettings):
     astra_storage_backend: str = "local"
     astra_alert_webhook_url: str = ""
     astra_alert_min_severity: str = "warning"
+    astra_runtime_guardrails: bool = True
+    astra_tool_registry_v2: bool = False
+    astra_specialist_manifests: bool = False
+    astra_native_tool_calls: bool = False
+    astra_context_compression_v2: bool = False
+    astra_delegation_v2: bool = False
+    astra_skill_review: bool = False
+    astra_native_tool_calls_rollout_percent: int = 100
+    astra_context_compression_v2_rollout_percent: int = 100
+    astra_delegation_v2_rollout_percent: int = 100
+    astra_skill_review_rollout_percent: int = 100
+    astra_fallback_model: str = "xiaomi/mimo-v2.5"
+    astra_shadow_runtime: bool = False
 
     # Stripe Standard Connect
     stripe_secret_key: str = ""
@@ -172,4 +185,17 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
-settings = Settings()
+_reloaded_settings = Settings()
+_existing_settings = globals().get("settings")
+if _existing_settings is not None and isinstance(_existing_settings, BaseSettings):
+    # Keep object identity stable across importlib.reload(). A number of runtime
+    # modules and test fixtures retain a reference to this singleton.
+    for _field_name in Settings.model_fields:
+        object.__setattr__(
+            _existing_settings,
+            _field_name,
+            getattr(_reloaded_settings, _field_name),
+        )
+    settings = _existing_settings
+else:
+    settings = _reloaded_settings

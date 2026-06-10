@@ -342,9 +342,8 @@ def _wireframe_llm_description(page_type: str, sections, style: str, audience: s
 
 
 def _landing_wireframe(sections, style, audience):
-    description = _wireframe_llm_description("landing", sections, style, audience)
     return {
-        "ascii": description,
+        "ascii": _wireframe_ascii("Landing", sections or ["Hero", "Social proof", "Features", "Pricing", "Footer"]),
         "components": ["NavBar", "HeroSection", "SocialProof", "FeatureGrid", "HowItWorks", "Testimonials", "Pricing", "FAQ", "Footer"],
         "copy_guidelines": {
             "headline": "Problem-focused, outcome-driven, max 8 words",
@@ -355,9 +354,8 @@ def _landing_wireframe(sections, style, audience):
 
 
 def _dashboard_wireframe(sections, style, audience):
-    description = _wireframe_llm_description("dashboard", sections, style, audience)
     return {
-        "ascii": description,
+        "ascii": _wireframe_ascii("Dashboard", sections or ["Sidebar + top navigation", "Metrics", "Charts", "Activity"]),
         "components": ["Sidebar", "TopNav", "MetricCards", "ChartArea", "DataTable", "ActivityFeed"],
         "copy_guidelines": {
             "metric_labels": "Short, clear. Show delta vs previous period.",
@@ -367,9 +365,8 @@ def _dashboard_wireframe(sections, style, audience):
 
 
 def _onboarding_wireframe(sections, style, audience):
-    description = _wireframe_llm_description("onboarding", sections, style, audience)
     return {
-        "ascii": description,
+        "ascii": _wireframe_ascii("Onboarding", sections or ["Progress", "Step form", "Continue action"]),
         "components": ["ProgressBar", "StepForm", "InputFields", "ContinueButton"],
         "copy_guidelines": {
             "heading": "Warm, personal. Use their name if available.",
@@ -380,9 +377,8 @@ def _onboarding_wireframe(sections, style, audience):
 
 
 def _pricing_wireframe(sections, style, audience):
-    description = _wireframe_llm_description("pricing", sections, style, audience)
     return {
-        "ascii": description,
+        "ascii": _wireframe_ascii("Pricing", sections or ["Plan toggle", "Pricing cards", "Comparison", "FAQ"]),
         "components": ["PricingToggle", "PricingCards", "FeatureComparison", "PricingFAQ"],
         "copy_guidelines": {
             "tier_names": "Name tiers after outcomes, not features (e.g. 'Starter' vs 'Free')",
@@ -392,9 +388,8 @@ def _pricing_wireframe(sections, style, audience):
 
 
 def _settings_wireframe(sections, style, audience):
-    description = _wireframe_llm_description("settings", sections, style, audience)
     return {
-        "ascii": description,
+        "ascii": _wireframe_ascii("Settings", sections or ["Settings navigation", "Form panel", "Save action", "Danger zone"]),
         "components": ["SettingsSidebar", "SettingsPanel", "FormFields", "SaveButton", "DangerZone"],
         "copy_guidelines": {
             "danger_zone": "Clear warning copy. Destructive actions require confirm step.",
@@ -403,12 +398,18 @@ def _settings_wireframe(sections, style, audience):
 
 
 def _generic_wireframe(sections, style, audience):
-    ascii_art = "\n".join(
-        [f"┌{'─' * 40}┐"]
-        + [f"│  {s:<38}│" for s in (sections or ["Section 1", "Section 2", "Section 3"])]
-        + [f"└{'─' * 40}┘"]
-    )
+    ascii_art = _wireframe_ascii("Page", sections or ["Section 1", "Section 2", "Section 3"])
     return {"ascii": ascii_art, "components": sections or [], "copy_guidelines": {}}
+
+
+def _wireframe_ascii(title: str, sections: list) -> str:
+    width = 44
+    rows = [title, *[str(section) for section in sections]]
+    return "\n".join(
+        [f"┌{'─' * width}┐"]
+        + [f"│ {row[:width - 2]:<{width - 2}} │" for row in rows]
+        + [f"└{'─' * width}┘"]
+    )
 
 
 def _design_principles(vibe: str) -> list:

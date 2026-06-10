@@ -920,7 +920,8 @@ def test_company_brain_ask_returns_citations(tmp_path, monkeypatch):
     asked = ask_company_brain(founder_id, "What is our onboarding strategy?", limit=5)
     assert asked["ok"] is True
     assert asked["citations"]
-    assert "Top source" in asked["answer"]
+    assert "onboarding" in asked["answer"].lower()
+    assert "[1]" in asked["answer"]
     assert asked["citations"][0]["title"] == "Onboarding strategy"
 
 

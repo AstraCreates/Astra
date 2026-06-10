@@ -16,6 +16,16 @@ import openai
 
 from backend.config import settings
 from backend.core.llm_cache import cacheable_messages, is_openrouter_base_url, openrouter_extra_body
+from backend.runtime.budget import RunBudget
+from backend.runtime.context_compressor import AstraContextCompressor
+from backend.runtime.manifests import SpecialistManifest
+from backend.runtime.tool_guardrails import ToolCallGuardrailController
+from backend.runtime.tool_guardrails import READ_ONLY_TOOLS
+from backend.runtime.tool_registry import ToolEntry, registry as runtime_tool_registry
+from backend.runtime.tool_registry import schema_from_callable
+from backend.runtime.model_catalog import capabilities_for
+from backend.runtime.rollout import enabled as runtime_feature_enabled
+from backend.runtime.metrics import increment as runtime_metric
 
 logger = logging.getLogger(__name__)
 
@@ -283,6 +293,11 @@ class AgentContext:
     dep_results: dict = field(default_factory=dict)
     vault_context: str = ""
     unlimited_credits: bool = False  # scale/beta plans skip credit deduction
+    budget: RunBudget | None = None
+    guardrails: ToolCallGuardrailController | None = None
+    delegation_depth: int = 0
+    parent_agent: str = ""
+    parent_task_id: str = ""
 
 
 class Agent:
@@ -309,23 +324,46 @@ class Agent:
         max_tool_calls: dict[str, int] | None = None,
         library_files: list[dict] = None,
         skills: list[str] | None = None,
+        toolsets: list[str] | None = None,
+        manifest: SpecialistManifest | None = None,
+        max_cost_usd: float | None = None,
+        deadline_seconds: float | None = None,
     ):
         self.name = name
         self.role = role
-        self.tools = tools or {}
+        self.manifest = manifest
+        self.toolsets = list(toolsets or (manifest.toolsets if manifest else ()))
+        self._runtime_entries: dict[str, ToolEntry] = {}
+        self.tools = dict(tools or {})
+        if settings.astra_tool_registry_v2:
+            for tool_name, handler in self.tools.items():
+                existing = runtime_tool_registry.get(tool_name)
+                if existing is None:
+                    existing = runtime_tool_registry.register_callable(
+                        tool_name, handler, toolset="legacy", override=False,
+                    )
+                self._runtime_entries[tool_name] = existing
+            resolved = runtime_tool_registry.resolve(toolsets=self.toolsets)
+            self._runtime_entries.update(resolved)
+            self.tools.update({name: entry.handler for name, entry in resolved.items()})
         self.sub_agents = {a.name: a for a in (sub_agents or [])}
         self.use_computer = use_computer
         self.model = model or settings.agent_model_name
         self._model_base_url = model_base_url or settings.agent_model_base_url
         self._model_api_key = model_api_key or settings.agent_model_api_key
-        self._max_iterations = max_iterations
-        self._max_tool_calls = max_tool_calls or {}
+        self._max_iterations = max_iterations or (manifest.max_iterations if manifest else None)
+        self._max_tool_calls = max_tool_calls or (dict(manifest.max_tool_calls) if manifest else {})
+        self._max_cost_usd = max_cost_usd if max_cost_usd is not None else (manifest.max_cost_usd if manifest else None)
+        self._deadline_seconds = deadline_seconds
         self._library_files: list[dict] = library_files or []
         self._skills: list[str] = skills or []
         self._inbox: asyncio.Queue = asyncio.Queue()
         self._llm: Optional[openai.OpenAI] = None
 
     def _get_llm(self) -> openai.OpenAI:
+        legacy_client = getattr(self, "_client", None)
+        if legacy_client is not None:
+            return legacy_client
         is_openrouter = self._model_base_url and "openrouter" in self._model_base_url
         extra = {}
         if is_openrouter:
@@ -373,8 +411,21 @@ class Agent:
         extra_body = openrouter_extra_body(self.model) if is_openrouter else None
         if extra_body:
             kwargs["extra_body"] = extra_body
+        native_enabled = bool(
+            ctx and runtime_feature_enabled("native_tool_calls", ctx.founder_id)
+            and capabilities_for(self.model).native_tool_calls
+        )
+        if native_enabled and self.tools:
+            if self._runtime_entries:
+                kwargs["tools"] = runtime_tool_registry.definitions(self._runtime_entries)
+            else:
+                kwargs["tools"] = [
+                    {"type": "function", "function": schema_from_callable(name, fn)}
+                    for name, fn in self.tools.items()
+                ]
+            kwargs["tool_choice"] = "auto"
         # json_object not supported by OpenRouter models
-        if not is_openrouter:
+        if not is_openrouter and not native_enabled:
             kwargs["response_format"] = {"type": "json_object"}
         # Rate-limit/transient resilience: retry with key rotation + backoff.
         # On 429 we rotate to the next OpenRouter key; on 5xx/timeout we just
@@ -428,6 +479,16 @@ class Agent:
                     # loop handles it (re-prompt / finish) instead of crashing the run.
                     logger.warning("%s LLM call failed after %d attempts (%s) — returning empty",
                                    self.name, _max_attempts, type(_e).__name__)
+                    fallback = settings.astra_fallback_model
+                    if fallback and fallback != self.model:
+                        try:
+                            fallback_kwargs = {**kwargs, "model": fallback}
+                            resp = self._get_llm().chat.completions.create(**fallback_kwargs)
+                            if getattr(resp, "choices", None):
+                                runtime_metric("model_fallback_success_total")
+                                break
+                        except Exception:
+                            runtime_metric("model_fallback_failure_total")
                     return ""
                 # Prefer the provider's Retry-After; else exponential backoff + jitter.
                 _retry_after = None
@@ -452,11 +513,20 @@ class Agent:
         # Track token usage and deduct credits per call
         if resp and getattr(resp, "usage", None) and ctx:
             from backend.core.usage import record_usage
+            from backend.core.usage import _cost_usd
             cached = getattr(resp.usage, "prompt_tokens_details", None)
-            cached_tokens = getattr(cached, "cached_tokens", 0) if cached else 0
-            prompt_t = resp.usage.prompt_tokens
-            completion_t = resp.usage.completion_tokens
+            def _usage_int(value) -> int:
+                return int(value) if isinstance(value, (int, float)) else 0
+
+            cached_tokens = _usage_int(getattr(cached, "cached_tokens", 0) if cached else 0)
+            prompt_t = _usage_int(getattr(resp.usage, "prompt_tokens", 0))
+            completion_t = _usage_int(getattr(resp.usage, "completion_tokens", 0))
             record_usage(ctx.session_id, self.model, prompt_t, completion_t, cached_tokens=cached_tokens)
+            if ctx.budget:
+                ctx.budget.record_usage(
+                    tokens=prompt_t + completion_t,
+                    cost_usd=_cost_usd(self.model, prompt_t, completion_t, cached_tokens),
+                )
             # Emit model stats event (model name + tk/s) for UI display
             try:
                 from backend.core.events import publish_sync
@@ -479,6 +549,8 @@ class Agent:
                     total_t = prompt_t + completion_t
                     # Pass cached_tokens so cache hits bill at the cheaper cache rate.
                     credits = cost_to_credits(self.model, prompt_t, completion_t, cached_tokens)
+                    if ctx.budget:
+                        ctx.budget.record_usage(credits=credits)
                     deduct_credits(ctx.founder_id, credits,
                                    f"{self.name} call ({total_t:,} tokens, {self.model})", ctx.session_id)
                     # Per-session running tally (durable) so each session/goal shows its
@@ -493,12 +565,34 @@ class Agent:
             logger.warning("%s LLM produced no choices after %d attempts — returning empty", self.name, _max_attempts)
             return ""
         msg = resp.choices[0].message
+        native_calls = getattr(msg, "tool_calls", None) or []
+        if native_calls:
+            runtime_metric("native_tool_call_responses_total")
+            calls = []
+            for call in native_calls:
+                try:
+                    arguments = json.loads(call.function.arguments or "{}")
+                except Exception:
+                    arguments = {}
+                calls.append({
+                    "id": getattr(call, "id", ""),
+                    "tool": call.function.name,
+                    "args": arguments,
+                })
+            return json.dumps({"action": "tool_batch", "calls": calls})
         content = msg.content or ""
         # Strip DeepSeek-R1 <think> blocks
         content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
         # Strip markdown fences
         content = re.sub(r"^```(?:json)?\s*", "", content).rstrip("```").strip()
         return content
+
+    def _invoke_llm(self, messages: list[dict], ctx: "AgentContext | None" = None) -> str:
+        """Call the active LLM hook while preserving legacy one-argument test hooks."""
+        hook = self._call_llm
+        if getattr(hook, "__self__", None) is self:
+            return hook(messages, ctx)
+        return hook(messages)
 
     def _parse_json(self, raw: str) -> dict:
         # Strip <tool_call>...</tool_call> XML wrappers (ling model)
@@ -636,8 +730,28 @@ class Agent:
         )
 
     async def run(self, ctx: AgentContext) -> dict[str, Any]:
+        if ctx.budget is None:
+            ctx.budget = RunBudget(
+                max_iterations=self._max_iterations or 20,
+                max_cost_usd=self._max_cost_usd,
+                deadline_seconds=self._deadline_seconds,
+            )
+        if ctx.guardrails is None and settings.astra_runtime_guardrails:
+            ctx.guardrails = ToolCallGuardrailController()
+        system_prompt = self._system_prompt()
+        try:
+            from backend.skills.store import get_skills_for_agent
+            approved_skills = get_skills_for_agent(ctx.founder_id, self.name)
+            contents = [
+                str(skill.get("content") or "") for skill in approved_skills
+                if skill.get("content") and skill.get("status", "active") == "active"
+            ]
+            if contents:
+                system_prompt = "\n---\n".join(contents) + "\n---\n" + system_prompt
+        except Exception:
+            pass
         messages = [
-            {"role": "system", "content": self._system_prompt()},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": (
                 f"GOAL: {ctx.goal}\n"
                 f"FOUNDER_ID: {ctx.founder_id}\n"
@@ -664,12 +778,15 @@ class Agent:
     async def _run_loop(self, messages: list[dict], ctx: AgentContext, browser=None) -> dict[str, Any]:
         i = 0
         MAX_ITERATIONS = self._max_iterations or 20
+        compressor = AstraContextCompressor()
         # Track consecutive failures per tool to break infinite retry loops
         _tool_fail_counts: dict[str, int] = {}
         _large_results: dict[str, Any] = {}  # stores large non-dict results (HTML etc.) by tool name
         # One-shot tools: hard-blocked after first success
         _ONE_SHOT_TOOLS = {"generate_landing_page_html", "vercel_deploy", "claude_code_scaffold",
                            "obsidian_log"}
+        if self.manifest:
+            _ONE_SHOT_TOOLS.update(self.manifest.one_shot_tools)
         _one_shot_done: set[str] = set()
         _called_tools: set[str] = set()
         _attempted_tools: set[str] = set()  # includes failed attempts
@@ -678,6 +795,16 @@ class Agent:
         _consecutive_unknown = 0  # consecutive "unknown action" responses
 
         while i < MAX_ITERATIONS:
+            if ctx.budget and not ctx.budget.consume_iteration():
+                snapshot = ctx.budget.snapshot()
+                payload = {
+                    "status": "budget_exhausted",
+                    "agent": self.name,
+                    "reason": snapshot.exhausted_reason or "unknown",
+                    "budget": snapshot.__dict__,
+                }
+                await self._emit(ctx, "agent_budget_exhausted", **payload)
+                return payload
             i += 1
             # Inject any founder steer messages before calling LLM
             try:
@@ -687,9 +814,36 @@ class Agent:
                     logger.info("%s received founder directive: %s", self.name, directive[:80])
             except Exception:
                 pass
-            messages = _trim_message_history(messages)
-            raw = await asyncio.to_thread(self._call_llm, messages, ctx)
+            if runtime_feature_enabled("context_compression_v2", ctx.founder_id) and compressor.should_compress(messages):
+                await self._emit(ctx, "context_compression_started", messages=len(messages))
+                try:
+                    summary_override = None
+                    try:
+                        summary_source = compressor.summary_source(messages)
+                        from backend.tools._llm import generate
+                        summary_override = await asyncio.to_thread(
+                            generate,
+                            compressor.summary_prompt(summary_source, ctx.goal),
+                            max_tokens=2500,
+                            model="small",
+                        )
+                    except Exception:
+                        runtime_metric("context_compression_llm_fallback_total")
+                    messages, compression = compressor.compress(messages, summary_override=summary_override)
+                    runtime_metric("context_compression_total")
+                    await self._emit(ctx, "context_compression_completed", **compression)
+                except Exception as exc:
+                    await self._emit(ctx, "context_compression_failed", error=str(exc)[:240])
+                    messages = _trim_message_history(messages)
+            else:
+                messages = _trim_message_history(messages)
+            if ctx.budget:
+                await self._emit(ctx, "agent_budget_update", budget=ctx.budget.snapshot().__dict__)
+            raw = await asyncio.to_thread(self._invoke_llm, messages, ctx)
             parsed = self._parse_json(raw)
+            if settings.astra_shadow_runtime and parsed:
+                from backend.runtime.shadow import compare_action
+                compare_action(parsed)
 
             if not parsed:
                 # Handle plain-text "done" from models that don't follow JSON format
@@ -704,6 +858,14 @@ class Agent:
                     continue
 
             action = parsed.get("action")
+            if action is None and parsed.get("tool") == "done":
+                args = parsed.get("args") or {}
+                parsed = {
+                    "action": "done",
+                    "output": args.get("output") or args,
+                    "reasoning": args.get("summary", ""),
+                }
+                action = "done"
             # If action is missing but parsed has an "output" key containing a dict with "action", unwrap it
             if action is None and isinstance(parsed.get("output"), dict) and parsed["output"].get("action"):
                 parsed = parsed["output"]
@@ -712,7 +874,7 @@ class Agent:
             tool_hint = parsed.get("tool", "")
             logger.info("[%s] iter=%d  action=%-12s  %s", self.name, i, action, (tool_hint or reasoning)[:80])
             messages.append({"role": "assistant", "content": raw})
-            if action in ("done", "tool", "delegate", "computer_use"):
+            if action in ("done", "tool", "tool_batch", "delegate", "computer_use"):
                 _consecutive_unknown = 0
 
             if action == "done":
@@ -772,7 +934,54 @@ class Agent:
                         logger.info("[%s] auto-logged done output to obsidian", self.name)
                     except Exception as oe:
                         logger.warning("[%s] obsidian auto-log failed: %s", self.name, oe)
+                if runtime_feature_enabled("skill_review", ctx.founder_id) and isinstance(output, dict):
+                    from backend.skills.reviewer import review_run_for_skill_proposal
+                    asyncio.create_task(review_run_for_skill_proposal(
+                        founder_id=ctx.founder_id, specialist=self.name,
+                        session_id=ctx.session_id, goal=ctx.goal, result=output,
+                    ))
                 return output
+
+            elif action == "tool_batch":
+                calls = [call for call in (parsed.get("calls") or []) if isinstance(call, dict)]
+                unique: list[dict] = []
+                seen: set[tuple[str, str]] = set()
+                for call in calls:
+                    name = str(call.get("tool") or call.get("name") or "")
+                    args = call.get("args") or call.get("arguments") or {}
+                    signature = (name, json.dumps(args, sort_keys=True, default=str))
+                    if name and signature not in seen:
+                        seen.add(signature)
+                        unique.append({"tool": name, "args": args})
+
+                read_calls = [call for call in unique if call["tool"] in READ_ONLY_TOOLS]
+                write_calls = [call for call in unique if call["tool"] not in READ_ONLY_TOOLS]
+
+                async def execute(call: dict) -> tuple[str, Any]:
+                    name, args = call["tool"], call["args"]
+                    await self._emit(ctx, "agent_action", action="tool", tool=name, args=args, reasoning=reasoning)
+                    result = await self._execute_tool(name, args, ctx)
+                    await self._emit(ctx, "agent_action_result", tool=name, result=result)
+                    return name, result
+
+                batch_results: list[tuple[str, Any]] = []
+                if read_calls:
+                    batch_results.extend(await asyncio.gather(*(execute(call) for call in read_calls)))
+                for call in write_calls:
+                    batch_results.append(await execute(call))
+                for name, result in batch_results:
+                    _attempted_tools.add(name)
+                    if not (isinstance(result, dict) and result.get("error")):
+                        _called_tools.add(name)
+                        if isinstance(result, dict):
+                            _tool_results.append((name, result))
+                messages.append({
+                    "role": "user",
+                    "content": "\n\n".join(
+                        f"Tool result ({name}):\n{_format_tool_result(name, result)}"
+                        for name, result in batch_results
+                    ),
+                })
 
             elif action == "tool":
                 tool_name = parsed.get("tool")
@@ -952,7 +1161,7 @@ class Agent:
                     "Respond with JSON: {\"action\": \"done\", \"output\": {\"summary\": \"...\", \"findings\": [...], \"sources\": [...]}}"
                 )},
             ]
-            raw = await asyncio.to_thread(self._call_llm, synthesis_messages, ctx)
+            raw = await asyncio.to_thread(self._invoke_llm, synthesis_messages, ctx)
             parsed = self._parse_json(raw)
             if parsed and parsed.get("action") == "done":
                 output = parsed.get("output", {})
@@ -975,6 +1184,12 @@ class Agent:
                         logger.info("[%s] auto-logged synthesis to obsidian", self.name)
                     except Exception as oe:
                         logger.warning("[%s] obsidian auto-log failed: %s", self.name, oe)
+                if runtime_feature_enabled("skill_review", ctx.founder_id) and isinstance(output, dict):
+                    from backend.skills.reviewer import review_run_for_skill_proposal
+                    asyncio.create_task(review_run_for_skill_proposal(
+                        founder_id=ctx.founder_id, specialist=self.name,
+                        session_id=ctx.session_id, goal=ctx.goal, result=output,
+                    ))
                 return output
         except Exception as e:
             logger.warning("%s forced synthesis failed: %s", self.name, e)
@@ -982,6 +1197,10 @@ class Agent:
 
     def _missing_required_output(self, output: dict[str, Any], attempted_tools: set[str] | None = None) -> list[str]:
         """Require key preview artifacts per role before accepting done."""
+        if self.manifest and self.manifest.output_schema:
+            missing = self.manifest.missing_output_fields(output)
+            if missing:
+                return missing
         if self.name in ("legal", "legal_docs"):
             docs = output.get("documents")
             if not isinstance(docs, list) or not docs:
@@ -1173,8 +1392,26 @@ class Agent:
         if fn is None:
             # No reasonable match — list the real tools so the model picks a valid one.
             available = ", ".join(sorted(self.tools.keys()))
+            await self._emit(ctx, "tool_unavailable", tool=tool_name, available=available[:1000])
             return {"error": f"Unknown tool '{tool_name}'. It does not exist — do NOT call it again. "
                              f"Use ONLY one of these tools: {available}."}
+        if ctx.budget and not ctx.budget.consume_tool_call():
+            snapshot = ctx.budget.snapshot()
+            await self._emit(ctx, "agent_budget_exhausted", status="budget_exhausted",
+                             reason=snapshot.exhausted_reason, budget=snapshot.__dict__)
+            return {"error": f"Tool budget exhausted: {snapshot.exhausted_reason}"}
+        guardrail_decision = None
+        if ctx.guardrails:
+            guardrail_decision = ctx.guardrails.before_call(tool_name, args)
+            if guardrail_decision.action == "warn":
+                await self._emit(ctx, "tool_guardrail_warning", tool=tool_name,
+                                 code=guardrail_decision.code, message=guardrail_decision.message,
+                                 count=guardrail_decision.count)
+            elif not guardrail_decision.allows_execution:
+                await self._emit(ctx, "tool_guardrail_blocked", tool=tool_name,
+                                 code=guardrail_decision.code, message=guardrail_decision.message,
+                                 count=guardrail_decision.count)
+                return {"error": guardrail_decision.message, "guardrail": guardrail_decision.code}
         import time as _time
         saferun_action = None
         try:
@@ -1283,11 +1520,26 @@ class Agent:
         logger.debug("[%s] → %s  args=%s", self.name, tool_name, args_preview)
         t0 = _time.monotonic()
         try:
-            if asyncio.iscoroutinefunction(fn):
+            entry = self._runtime_entries.get(tool_name)
+            if settings.astra_tool_registry_v2 and entry:
+                result = await runtime_tool_registry.dispatch(entry, args, {
+                    "session_id": ctx.session_id,
+                    "founder_id": ctx.founder_id,
+                    "agent": self.name,
+                })
+            elif asyncio.iscoroutinefunction(fn):
                 result = await fn(**args)
             else:
                 result = await asyncio.to_thread(fn, **args)
             elapsed = _time.monotonic() - t0
+            if ctx.guardrails:
+                post = ctx.guardrails.after_call(
+                    tool_name, args, result,
+                    failed=isinstance(result, dict) and bool(result.get("error")),
+                )
+                if post.action == "warn":
+                    await self._emit(ctx, "tool_guardrail_warning", tool=tool_name,
+                                     code=post.code, message=post.message, count=post.count)
             result_preview = str(result)[:200] if result is not None else "None"
             logger.debug("[%s] ← %s  %.1fs  result=%.200s", self.name, tool_name, elapsed, result_preview)
             if saferun_action:
@@ -1579,6 +1831,15 @@ class Agent:
         return out
 
     async def _delegate(self, agent_name: str, task: str, ctx: AgentContext) -> Any:
+        if runtime_feature_enabled("delegation_v2", ctx.founder_id):
+            from backend.runtime.delegation import run_delegated_task
+            return await run_delegated_task(
+                parent=self,
+                ctx=ctx,
+                role=agent_name,
+                task=task,
+                max_iterations=20,
+            )
         agent = self.sub_agents.get(agent_name)
         if agent is None:
             return {"error": f"Unknown sub-agent: {agent_name}"}
@@ -1586,7 +1847,11 @@ class Agent:
             goal=task,
             founder_id=ctx.founder_id,
             session_id=ctx.session_id,
-            shared=ctx.shared,
+            shared=dict(ctx.shared),
+            budget=ctx.budget.child(max_iterations=agent._max_iterations or 20) if ctx.budget else None,
+            delegation_depth=ctx.delegation_depth + 1,
+            parent_agent=self.name,
+            parent_task_id=ctx.task_id,
         )
         return await agent.run(sub_ctx)
 

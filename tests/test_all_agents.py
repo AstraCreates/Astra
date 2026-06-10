@@ -44,7 +44,7 @@ AGENTS = [
 RESULTS: dict[str, dict] = {}
 
 
-async def test_agent(agent: str, client: httpx.AsyncClient) -> None:
+async def run_agent_check(agent: str, client: httpx.AsyncClient) -> None:
     start = time.time()
     result = {"agent": agent, "status": "unknown", "events": [], "error": None, "elapsed": 0}
 
@@ -124,7 +124,7 @@ async def main() -> None:
 
         async def guarded(agent: str) -> None:
             async with sem:
-                await test_agent(agent, client)
+                await run_agent_check(agent, client)
 
         await asyncio.gather(*[guarded(a) for a in AGENTS])
 

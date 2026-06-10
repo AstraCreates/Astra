@@ -29,6 +29,13 @@ from backend.skills.store import (
     list_skills,
     update_skill,
 )
+from backend.skills.proposals import (
+    activate_proposal,
+    create_proposal,
+    list_proposals,
+    resolve_proposal,
+    rollback_skill,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +61,23 @@ class UpdateSkillRequest(BaseModel):
     description: str | None = None
     content: str | None = None
     agent_keys: list[str] | None = None
+
+
+class CreateProposalRequest(BaseModel):
+    founder_id: str
+    specialist: str
+    source_session: str
+    evidence: str
+    proposed_change: str
+    risk_level: str = "low"
+    reviewer: str = "agent"
+    skill_id: str | None = None
+
+
+class ResolveProposalRequest(BaseModel):
+    founder_id: str
+    reviewer: str
+    status: str
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +119,51 @@ async def api_list_skills(founder_id: str = Query(...)) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="founder_id query param required")
     skills = list_skills(founder_id)
     return {"founder_id": founder_id, "skills": skills}
+
+
+@skills_router.post("/proposals")
+async def api_create_skill_proposal(body: CreateProposalRequest) -> dict[str, Any]:
+    try:
+        proposal = create_proposal(**body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "proposal": proposal}
+
+
+@skills_router.get("/proposals/list")
+async def api_list_skill_proposals(founder_id: str = Query(...), status: str | None = None) -> dict[str, Any]:
+    return {"founder_id": founder_id, "proposals": list_proposals(founder_id, status)}
+
+
+@skills_router.post("/proposals/{proposal_id}/resolve")
+async def api_resolve_skill_proposal(proposal_id: str, body: ResolveProposalRequest) -> dict[str, Any]:
+    try:
+        proposal = resolve_proposal(body.founder_id, proposal_id, body.status, body.reviewer)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    return {"ok": True, "proposal": proposal}
+
+
+@skills_router.post("/proposals/{proposal_id}/activate")
+async def api_activate_skill_proposal(
+    proposal_id: str,
+    founder_id: str = Query(...),
+    reviewer: str = Query(...),
+) -> dict[str, Any]:
+    result = activate_proposal(founder_id, proposal_id, reviewer)
+    if result is None:
+        raise HTTPException(status_code=409, detail="Proposal must exist and be approved")
+    return {"ok": True, **result}
+
+
+@skills_router.post("/{skill_id}/rollback")
+async def api_rollback_skill(skill_id: str, founder_id: str = Query(...)) -> dict[str, Any]:
+    skill = rollback_skill(founder_id, skill_id)
+    if skill is None:
+        raise HTTPException(status_code=409, detail="Skill has no prior version to restore")
+    return {"ok": True, "skill": skill}
 
 
 @skills_router.get("/{skill_id}")

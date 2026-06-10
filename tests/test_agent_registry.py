@@ -1,10 +1,11 @@
 from backend.core.factory import get_orchestrator
 
 
-def test_all_six_agents_registered():
+def test_core_agents_and_expanded_catalog_registered():
     orch = get_orchestrator()
     expected = {"legal", "research", "web", "marketing", "technical", "ops"}
-    assert set(orch.specialists.keys()) == expected
+    assert expected <= set(orch.specialists.keys())
+    assert len(orch.specialists) >= 25
 
 
 def test_each_specialist_has_correct_name():

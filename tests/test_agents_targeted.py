@@ -19,7 +19,7 @@ AGENTS = [
 
 RESULTS: dict = {}
 
-async def test_agent(agent: str, client: httpx.AsyncClient) -> None:
+async def run_agent_check(agent: str, client: httpx.AsyncClient) -> None:
     start = time.time()
     result = {"status": "unknown", "error": None, "events": []}
     try:
@@ -70,7 +70,7 @@ async def main():
     sem = asyncio.Semaphore(CONCURRENCY)
     async with httpx.AsyncClient() as client:
         async def g(a):
-            async with sem: await test_agent(a, client)
+            async with sem: await run_agent_check(a, client)
         await asyncio.gather(*[g(a) for a in AGENTS])
 
     done = [a for a,r in RESULTS.items() if r["status"]=="done"]
@@ -85,4 +85,5 @@ async def main():
             print(f"    {a}: [{RESULTS[a]['status']}] {RESULTS[a]['error']}")
     print()
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

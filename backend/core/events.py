@@ -25,6 +25,15 @@ _event_counters: dict[str, int] = {}
 
 _MAX_BUFFER = 2000  # max events kept per session
 _REDIS_TTL = 8 * 3600  # 8 hours
+_RUNTIME_EVENT_TYPES = {
+    "agent_budget_update", "agent_budget_exhausted",
+    "tool_guardrail_warning", "tool_guardrail_blocked", "tool_unavailable",
+    "context_compression_started", "context_compression_completed",
+    "context_compression_failed", "subagent_spawned", "subagent_started",
+    "subagent_progress", "subagent_action_requested", "subagent_completed",
+    "subagent_failed", "subagent_interrupted",
+}
+_SECRET_KEYS = ("token", "secret", "password", "api_key", "authorization")
 
 
 # ── Redis helpers ──────────────────────────────────────────────────────────────
@@ -281,7 +290,26 @@ def _persist_goal_status_memory(session_id: str, event: dict) -> None:
         pass
 
 
+def _bound_runtime_event(event: dict) -> dict:
+    if event.get("type") not in _RUNTIME_EVENT_TYPES:
+        return event
+
+    def clean(key: str, value):
+        if any(part in key.lower() for part in _SECRET_KEYS):
+            return "[redacted]"
+        if isinstance(value, str):
+            return value[:4000] + ("...[truncated]" if len(value) > 4000 else "")
+        if isinstance(value, dict):
+            return {str(k): clean(str(k), v) for k, v in list(value.items())[:60]}
+        if isinstance(value, list):
+            return [clean(key, item) for item in value[:30]]
+        return value
+
+    return {str(key): clean(str(key), value) for key, value in event.items()}
+
+
 async def publish(session_id: str, event: dict) -> None:
+    event = _bound_runtime_event(dict(event))
     event.setdefault("ts_unix", time.time())
     event.setdefault("ts_iso", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(event["ts_unix"])))
     event_id = _next_id(session_id)

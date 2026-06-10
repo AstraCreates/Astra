@@ -103,6 +103,10 @@ class TestEnginePreRun:
 # 2. Mirror — real LLM adversarial review
 # ================================================================== #
 
+@pytest.mark.skipif(
+    os.environ.get("ASTRA_RUN_LIVE_TESTS") != "1",
+    reason="Requires live model credentials; set ASTRA_RUN_LIVE_TESTS=1",
+)
 class TestMirrorRealLLM:
     """Run Mirror with real LLM. Check verdict quality and latency."""
 
@@ -507,7 +511,7 @@ class TestObsidianIntegration:
         wrote = ol.auto_log_if_missing("research", sid, result, founder_id=FOUNDER_ID)
         assert wrote
 
-        note_path = tmp_path / "founders" / FOUNDER_ID / "research"
+        note_path = tmp_path / "founders" / FOUNDER_ID / "sessions" / sid
         notes = list(note_path.glob("*.md"))
         assert len(notes) == 1
         content = notes[0].read_text()
@@ -540,7 +544,7 @@ class TestObsidianIntegration:
         result = ol.obsidian_session_index(sid, GOAL, agents, founder_id=FOUNDER_ID)
         assert result["indexed"]
 
-        index_path = tmp_path / "founders" / FOUNDER_ID / "sessions"
+        index_path = tmp_path / "founders" / FOUNDER_ID / "sessions" / sid
         notes = list(index_path.glob("*.md"))
         assert len(notes) == 1
         content = notes[0].read_text()
@@ -599,6 +603,10 @@ class TestRufloMCPIntegration:
         assert "Unknown" in result.content[0]["text"]
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        os.environ.get("ASTRA_RUN_LIVE_TESTS") != "1",
+        reason="Requires live model credentials; set ASTRA_RUN_LIVE_TESTS=1",
+    )
     async def test_mcp_mirror_routes_to_real_mirror(self):
         """astra_mirror MCP call invokes real Mirror with real LLM."""
         from proprietary_agent.ruflo_bridge import AstraMCPServer

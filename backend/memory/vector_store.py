@@ -2,7 +2,10 @@ import asyncio
 import uuid
 from typing import Optional
 
-from vertexai.language_models import TextEmbeddingModel
+try:
+    from vertexai.language_models import TextEmbeddingModel
+except ImportError:  # Vertex AI is optional for local/file-backed deployments.
+    TextEmbeddingModel = None
 
 from backend.config import settings
 from backend.db.client import store_memory_document
@@ -15,6 +18,8 @@ class VectorStore:
 
     def _get_model(self) -> TextEmbeddingModel:
         if self._model is None:
+            if TextEmbeddingModel is None:
+                raise RuntimeError("Vertex AI embeddings require google-cloud-aiplatform")
             import vertexai
             vertexai.init(project=settings.vertex_project, location=settings.vertex_location)
             self._model = TextEmbeddingModel.from_pretrained("text-embedding-004")

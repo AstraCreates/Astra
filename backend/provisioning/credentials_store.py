@@ -11,14 +11,22 @@ from tempfile import NamedTemporaryFile
 
 from backend.config import settings
 
-_STORE_DIR = Path(os.environ.get("OBSIDIAN_VAULT", "/data/astra_docs")) / "credentials"
 _ENC_VERSION = 2
+_STORE_DIR: Path | None = None
+
+
+def _store_dir() -> Path:
+    if _STORE_DIR is not None:
+        return Path(_STORE_DIR)
+    vault = os.environ.get("OBSIDIAN_VAULT") or settings.obsidian_vault
+    return Path(vault).expanduser() / "credentials"
 
 
 def _founder_path(founder_id: str) -> Path:
-    _STORE_DIR.mkdir(exist_ok=True)
+    store_dir = _store_dir()
+    store_dir.mkdir(parents=True, exist_ok=True)
     safe = founder_id.replace("/", "_").replace("..", "_").replace(" ", "_")
-    return _STORE_DIR / f"{safe}.json"
+    return store_dir / f"{safe}.json"
 
 
 def _write_atomic(path: Path, payload: str) -> None:

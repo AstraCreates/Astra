@@ -150,6 +150,10 @@ def get_orchestrator() -> Orchestrator:
             agent.tools.setdefault("company_brain_run_due_syncs", run_due_company_brain_syncs)
             agent.tools.setdefault("company_brain_import_source", import_company_brain_source)
             agent.tools.setdefault("company_brain_import_sources", import_company_brain_sources)
+        from backend.runtime.catalog import migrate_agent, validate_catalog
+        for agent in specialists.values():
+            migrate_agent(agent)
+        validate_catalog(specialists)
         planner = Agent(
             name="planner",
             role="planning coordinator. Decompose founder goals into specialist tasks scoped to each agent's actual capabilities.",

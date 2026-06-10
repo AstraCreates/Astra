@@ -33,7 +33,7 @@ AGENTS = [
     "sales",
 ]
 
-async def test_agent(agent: str, client: httpx.AsyncClient) -> tuple[str, str, float]:
+async def run_agent_check(agent: str, client: httpx.AsyncClient) -> tuple[str, str, float]:
     start = time.time()
     status = "unknown"
     error = ""
@@ -77,7 +77,7 @@ async def main():
     results = []
     async with httpx.AsyncClient() as client:
         for agent in AGENTS:
-            r = await test_agent(agent, client)
+            r = await run_agent_check(agent, client)
             results.append(r)
 
     done = [a for a,s,_ in results if s == "done"]
@@ -89,4 +89,5 @@ async def main():
     if failed: print(f"  FAILED ({len(failed)}): {', '.join(failed)}")
     print()
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
