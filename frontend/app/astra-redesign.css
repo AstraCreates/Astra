@@ -1,7 +1,17 @@
 /* ════════════════════════════════════════════════════════════════
-   ASTRA REDESIGN — DM Sans (all type) · #002EFF
+   ASTRA REDESIGN — Instrument Sans · #002EFF · soft geometry
    Loaded after globals.css so it remaps the design tokens app-wide.
    ════════════════════════════════════════════════════════════════ */
+
+/* Font hijack — components inline-reference --font-geist-sans / jetbrains /
+   ibm vars everywhere. Redefining them here (class+type beats next/font's
+   class selector) reskins ALL type app-wide without touching components. */
+html.antialiased {
+  --font-geist-sans: var(--font-instrument), "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-dm-sans: var(--font-instrument), "Instrument Sans", sans-serif;
+  --font-jetbrains-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-ibm-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
 
 /* ── Token remap ──────────────────────────────────────────────── */
 :root,
@@ -43,20 +53,20 @@
   --bd:  rgba(0, 0, 0, 0.08);
   --bd2: rgba(0, 0, 0, 0.13);
 
-  --radius: 0px; --radius-sm: 0px; --radius-lg: 0px;
+  --radius: 10px; --radius-sm: 7px; --radius-lg: 16px;
 
   /* Motion easing */
   --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out-expo:  cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* Fonts — Geist everywhere, JetBrains Mono for labels/code, Pixelify for accent */
-  --font-heading:    var(--font-geist-sans), "Geist", sans-serif;
-  --font-display:    var(--font-geist-sans), "Geist", sans-serif;
-  --font-chakra:     var(--font-geist-sans), "Geist", sans-serif;
-  --font-syne:       var(--font-geist-sans), "Geist", sans-serif;
-  --font-fraunces:   var(--font-geist-sans), "Geist", sans-serif;
-  --font-mono:       var(--font-jetbrains-mono), var(--font-geist-mono), monospace;
-  --font-code:       var(--font-jetbrains-mono), var(--font-geist-mono), monospace;
+  /* Fonts — Instrument Sans everywhere, Geist Mono for labels/code */
+  --font-heading:    var(--font-instrument), "Instrument Sans", sans-serif;
+  --font-display:    var(--font-instrument), "Instrument Sans", sans-serif;
+  --font-chakra:     var(--font-instrument), "Instrument Sans", sans-serif;
+  --font-syne:       var(--font-instrument), "Instrument Sans", sans-serif;
+  --font-fraunces:   var(--font-instrument), "Instrument Sans", sans-serif;
+  --font-mono:       var(--font-geist-mono), ui-monospace, monospace;
+  --font-code:       var(--font-geist-mono), ui-monospace, monospace;
   --font-pixel-face: var(--font-pixel), "Pixelify Sans", sans-serif;
 }
 
@@ -92,15 +102,22 @@
 }
 
 body {
-  font-family: var(--font-geist-sans), "Geist", sans-serif;
+  font-family: var(--font-instrument), "Instrument Sans", sans-serif;
   background-color: var(--bg);
   color: var(--fg);
 }
 
+/* Quiet, flat surfaces — kill the grid-line / radial-gradient backdrop. */
+body,
+[data-theme="light"] body,
+[data-theme="dark"] body {
+  background-image: none;
+}
+
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-geist-sans), "Geist", sans-serif !important;
+  font-family: var(--font-instrument), "Instrument Sans", sans-serif !important;
   letter-spacing: -0.02em !important;
-  font-weight: 700 !important;
+  font-weight: 600 !important;
 }
 
 /* Kill rounded corners from existing inline/utility styles where feasible */
@@ -114,46 +131,58 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: 0 0 20px var(--bglow), 0 0 8px rgba(124,255,198,0.35);
 }
 
-.pill { font-size: 9.5px; font-family: var(--font-code), monospace; padding: 3px 9px;
-  border: 1px solid var(--bd2); color: var(--fd); letter-spacing: .04em; white-space: nowrap; }
+.pill { font-size: 9.5px; font-family: var(--font-code), monospace; padding: 3px 10px;
+  border: 1px solid var(--bd2); color: var(--fd); letter-spacing: .04em; white-space: nowrap;
+  border-radius: 999px; }
 .pill.blue  { background: var(--bdim); border-color: var(--bb); color: var(--blue); }
 .pill.green { background: var(--gdim); border-color: var(--gb); color: var(--green); }
 .pill.amber { background: var(--adim); border-color: var(--ab); color: var(--amber); }
 .pill.red   { background: var(--rdim); border-color: var(--rb); color: var(--red); }
 
-.btn { font-family: var(--font-display); font-size: 10px; font-weight: 600;
-  letter-spacing: .06em; text-transform: uppercase; padding: 6px 13px; cursor: pointer;
-  border: 1px solid var(--bd2); background: transparent; color: var(--fd);
-  transition: color .12s, background .12s, border-color .12s, box-shadow .12s, transform .08s; }
-.btn:hover { color: var(--fg); }
-.btn:active { transform: scale(0.97); }
-.btn.pri, .btn.primary { background: linear-gradient(135deg, #002EFF 0%, #1a4dff 100%); color: #fff; border-color: #002EFF; box-shadow: 0 2px 14px rgba(124,255,198,0.28); }
-.btn.pri:hover, .btn.primary:hover { background: linear-gradient(135deg, #0024CC 0%, #003eee 100%); box-shadow: 0 3px 20px rgba(124,255,198,0.42); }
-.btn.pri:active, .btn.primary:active { transform: scale(0.97); }
+.btn { font-family: var(--font-display); font-size: 11px; font-weight: 600;
+  letter-spacing: .02em; padding: 7px 14px; cursor: pointer; border-radius: 8px;
+  border: 1px solid var(--bd2); background: var(--surface); color: var(--fd);
+  transition: color .15s var(--ease-out-quint), background .15s var(--ease-out-quint),
+    border-color .15s var(--ease-out-quint), box-shadow .2s var(--ease-out-quint),
+    transform .15s var(--ease-out-quint); }
+.btn:hover { color: var(--fg); border-color: var(--bd2); transform: translateY(-1px);
+  box-shadow: 0 3px 10px rgba(17,16,24,0.07); }
+.btn:active { transform: translateY(0) scale(0.97); box-shadow: none; }
+.btn.pri, .btn.primary { background: var(--blue); color: #fff; border-color: var(--blue);
+  box-shadow: 0 1px 2px rgba(0,46,255,0.25); }
+.btn.pri:hover, .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover);
+  box-shadow: 0 4px 14px rgba(0,46,255,0.30); transform: translateY(-1px); }
+.btn.pri:active, .btn.primary:active { transform: translateY(0) scale(0.97); box-shadow: 0 1px 2px rgba(0,46,255,0.25); }
 .btn.danger { background: var(--rdim); color: var(--red); border-color: var(--rb); }
 .btn.success { background: var(--green); color: #fff; border-color: var(--green); }
-.btn.sm { padding: 4px 9px; font-size: 9px; }
+.btn.sm { padding: 5px 10px; font-size: 10px; }
+
+/* Universal press feedback — every button in the app gets a subtle tactile push. */
+button:not(:disabled) { transition: transform .14s var(--ease-out-quint, ease-out),
+  background .15s, border-color .15s, color .15s, box-shadow .2s, opacity .15s; }
+button:not(:disabled):active { transform: scale(0.97); }
 
 .f-label, .form-label { font-family: var(--font-display); font-size: 9px; font-weight: 700;
   text-transform: uppercase; letter-spacing: .12em; color: var(--fm); display: block; margin-bottom: 5px; }
-.f-input, .form-input, .f-ta, .form-textarea { width: 100%; padding: 9px 11px; background: var(--s2);
-  border: 1px solid var(--bd2); font-family: var(--font-code), monospace; font-size: 12px;
-  color: var(--fg); outline: none; transition: border-color .15s; }
-.f-input:focus, .form-input:focus, .f-ta:focus, .form-textarea:focus { border-color: var(--bb); box-shadow: 0 0 0 3px rgba(124,255,198,0.18); }
+.f-input, .form-input, .f-ta, .form-textarea { width: 100%; padding: 9px 12px; background: var(--surface);
+  border: 1px solid var(--bd2); border-radius: 9px; font-family: var(--font-instrument), sans-serif; font-size: 13px;
+  color: var(--fg); outline: none; transition: border-color .15s, box-shadow .2s var(--ease-out-quint); }
+.f-input:focus, .form-input:focus, .f-ta:focus, .form-textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--bdim); }
 .f-ta, .form-textarea { resize: vertical; min-height: 110px; }
 .f-hint, .form-hint { font-size: 9.5px; color: var(--fm); margin-top: 4px; font-family: var(--font-code), monospace; }
 
 /* Session card (dashboard grid) */
-.sc { background: var(--surface); border: 1px solid var(--bd); padding: 16px; cursor: pointer;
-  transition: border-color .14s, box-shadow .14s; position: relative; overflow: hidden; }
-.sc:hover { border-color: var(--bb); box-shadow: 0 6px 20px rgba(0,46,255,.08); }
+.sc { background: var(--surface); border: 1px solid var(--bd); border-radius: 12px; padding: 16px; cursor: pointer;
+  transition: border-color .16s, box-shadow .22s var(--ease-out-quint), transform .22s var(--ease-out-quint);
+  position: relative; overflow: hidden; }
+.sc:hover { border-color: var(--bb); box-shadow: 0 8px 24px rgba(0,46,255,.09); transform: translateY(-2px); }
 .sc::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--bd2); }
 .sc.running::before { background: linear-gradient(90deg, var(--blue), var(--mint)); }
 .sc.done::before { background: var(--green); }
 .sessions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 10px; }
 
 /* Department card (session view) */
-.dept-card { background: var(--surface); border: 1px solid var(--bd); padding: 14px; }
+.dept-card { background: var(--surface); border: 1px solid var(--bd); border-radius: 12px; padding: 14px; }
 .dept-card.running { border-color: var(--bb); box-shadow: 0 0 0 1px var(--bb) inset; }
 .dept-card.done { border-color: var(--gb); }
 
@@ -196,12 +225,12 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Nav */
 .nav-wordmark{font-family:var(--font-chakra),sans-serif;font-size:15px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--fg)}
-.nl{display:flex;align-items:center;gap:9px;padding:8px 10px;font-family:var(--font-chakra),sans-serif;font-size:11px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--fm);border-left:2px solid transparent;transition:color .12s,background .12s,border-color .12s;cursor:pointer}
-.nl:hover{color:var(--fd);background:rgba(0,0,0,.03)}
-.nl.on{color:var(--fg);background:linear-gradient(90deg,rgba(0,46,255,.07) 0%,rgba(124,255,198,.10) 100%)}
+.nl{display:flex;align-items:center;gap:10px;padding:8px 11px;font-family:var(--font-instrument),sans-serif;font-size:13px;font-weight:500;letter-spacing:0;color:var(--fm);border-radius:8px;margin:0 6px;transition:color .14s,background .14s;cursor:pointer}
+.nl:hover{color:var(--fg);background:rgba(17,16,24,.05)}
+.nl.on{color:var(--blue);background:var(--bdim);font-weight:600}
 
 /* Topbar */
-.topbar-title{font-family:var(--font-geist-sans),"Geist",sans-serif;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--fg)}
+.topbar-title{font-family:var(--font-instrument),sans-serif;font-size:13px;font-weight:600;letter-spacing:-0.01em;color:var(--fg)}
 
 /* Dashboard cards */
 .dash-ht{font-family:var(--font-geist-sans),"Geist",sans-serif;font-size:22px;font-weight:700;letter-spacing:-0.02em;margin-bottom:5px}
@@ -307,11 +336,31 @@ h1, h2, h3, h4, h5, h6 {
 .steer-send{width:22px;height:22px;background:linear-gradient(135deg,#002EFF 0%,#00b894 100%);border:none;color:#fff;font-size:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 8px rgba(124,255,198,0.35)}
 @keyframes scanline{0%{left:-40%}100%{left:130%}}
 
-/* ── Global square corners — reskin every page to the mockup aesthetic ──
-   The mockup is 0-radius everywhere; this squares inline-styled deep pages
-   (settings/brain/integrations/payments/outreach) that can't be reached via
-   token remap alone. */
-* { border-radius: 0 !important; }
+/* ── Soft geometry defaults ──────────────────────────────────────────────
+   Inline-styled components keep their own radii; class-based components get
+   clean rounded defaults here. */
+.dc, .sk, .apv, .err-banner, .done-bar, .copilot-dock, .art-pre { border-radius: 12px; }
+.dc-badge { border-radius: 999px; }
+.steer-wrap { border-radius: 10px; }
+.btn-ok, .btn-skip, .btn-reject { border-radius: 8px; }
+.f-hint kbd, .astra-chat-hint kbd { border-radius: 5px; }
+
+/* ── Thin, quiet scrollbars ─────────────────────────────────────────────── */
+*::-webkit-scrollbar { width: 9px; height: 9px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: rgba(17,16,24,0.16); border-radius: 999px;
+  border: 2.5px solid transparent; background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(17,16,24,0.30); background-clip: padding-box; }
+[data-theme="dark"] *::-webkit-scrollbar-thumb { background: rgba(240,238,255,0.16);
+  border: 2.5px solid transparent; background-clip: padding-box; }
+
+/* ── Page transition — content fades in on route change (AppChrome keys
+   the wrapper by pathname) ──────────────────────────────────────────────── */
+@keyframes pageFade { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+.page-fade { animation: pageFade 0.26s var(--ease-out-quint) both; }
+
+/* ── Link + interactive smoothing ───────────────────────────────────────── */
+a { transition: color .15s, background .15s, border-color .15s, opacity .15s, box-shadow .2s; }
 
 /* Mission chat intentionally uses the softer product geometry. */
 .astra-chat {
@@ -536,8 +585,10 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   .v-dot.live { animation: none; opacity: 0.75; }
   .sc-row.running::before,
   .sc.running::before { animation: none; background: var(--blue); }
-  .sc-row, .dv-hero, .err-banner { animation: none; opacity: 1; transform: none; }
+  .sc-row, .dv-hero, .err-banner, .page-fade { animation: none; opacity: 1; transform: none; }
   .btn:active, .btn.pri:active, .btn.primary:active { transform: none; }
+  .btn:hover, .btn.pri:hover, .btn.primary:hover, .sc:hover { transform: none; }
+  button:not(:disabled):active { transform: none; }
   .blink { animation: none; opacity: 1; }
 }
 
