@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
@@ -38,7 +38,7 @@ const SOURCE_ORDER = [
   "confluence", "zendesk", "granola", "astra_vault",
 ];
 
-type Tab = "ask" | "sources" | "memory" | "settings";
+type Tab = "ask" | "graph" | "sources" | "memory" | "settings";
 
 function statusColor(status: string): string {
   if (status === "connected") return "#3D9E5F";
@@ -241,6 +241,19 @@ function GraphRagPanel({
   onRebuild: () => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Zoom / pan view transform for an interactive map.
+  const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
+  const panRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
+  const onWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    setView(v => ({ ...v, scale: Math.min(4, Math.max(0.4, v.scale * (e.deltaY < 0 ? 1.12 : 0.89))) }));
+  };
+  const onDown = (e: React.MouseEvent) => { panRef.current = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }; };
+  const onMove = (e: React.MouseEvent) => {
+    if (!panRef.current) return;
+    setView(v => ({ ...v, tx: panRef.current!.tx + (e.clientX - panRef.current!.x), ty: panRef.current!.ty + (e.clientY - panRef.current!.y) }));
+  };
+  const onUp = () => { panRef.current = null; };
   const nodes = useMemo(() => graph?.nodes ?? [], [graph]);
   const edges = useMemo(() => graph?.edges ?? [], [graph]);
   const visibleNodes = useMemo(() => nodes.slice(0, 80), [nodes]);
@@ -303,8 +316,10 @@ function GraphRagPanel({
           </div>
         ) : (
           <svg viewBox={`0 0 ${layout.width} ${layout.height}`} role="img" aria-label="GraphRAG entity map"
-            style={{ width: "100%", height: 320, display: "block" }}>
+            style={{ width: "100%", height: 320, display: "block", cursor: panRef.current ? "grabbing" : "grab", touchAction: "none" }}
+            onWheel={onWheel} onMouseDown={onDown} onMouseMove={onMove} onMouseUp={onUp} onMouseLeave={onUp}>
             <rect width={layout.width} height={layout.height} fill="rgba(0,0,0,0.02)" />
+            <g transform={`translate(${view.tx} ${view.ty}) scale(${view.scale})`}>
             {visibleEdges.map(edge => {
               const src = layout.positions.get(edge.source);
               const tgt = layout.positions.get(edge.target);
@@ -336,7 +351,16 @@ function GraphRagPanel({
                 </g>
               );
             })}
+            </g>
           </svg>
+        )}
+        {visibleNodes.length > 0 && (
+          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", padding: "6px 8px", borderTop: "1px solid var(--bd)", fontFamily: "var(--font-ibm-mono)", fontSize: 10, color: "var(--fm)" }}>
+            <span style={{ marginRight: "auto" }}>scroll to zoom · drag to pan</span>
+            <button type="button" onClick={() => setView(v => ({ ...v, scale: Math.min(4, v.scale * 1.2) }))} className="btn" style={{ minHeight: 24, fontSize: 11, padding: "0 8px" }}>+</button>
+            <button type="button" onClick={() => setView(v => ({ ...v, scale: Math.max(0.4, v.scale * 0.83) }))} className="btn" style={{ minHeight: 24, fontSize: 11, padding: "0 8px" }}>−</button>
+            <button type="button" onClick={() => setView({ scale: 1, tx: 0, ty: 0 })} className="btn" style={{ minHeight: 24, fontSize: 11, padding: "0 8px" }}>Reset</button>
+          </div>
         )}
       </div>
 
@@ -675,14 +699,14 @@ export default function CompanyBrainPage() {
         {/* Tab bar */}
         <div style={{ borderBottom: "1px solid var(--bd)", background: "var(--surface)", paddingInline: 24 }}>
           <div className="dtabs" style={{ padding: 0, borderBottom: "none" }}>
-            {(["ask", "sources", "memory", "settings"] as Tab[]).map(t => (
+            {(["ask", "graph", "sources", "memory", "settings"] as Tab[]).map(t => (
               <button
                 key={t}
                 type="button"
                 className={`dtab${tab === t ? " on" : ""}`}
                 onClick={() => setTab(t)}
               >
-                {t === "ask" ? "Ask" : t === "sources" ? "Sources" : t === "memory" ? "Memory" : "Settings"}
+                {t === "ask" ? "Ask" : t === "graph" ? "Graph" : t === "sources" ? "Sources" : t === "memory" ? "Memory" : "Settings"}
               </button>
             ))}
           </div>
@@ -783,6 +807,16 @@ export default function CompanyBrainPage() {
         )}
 
         {/* ━━━ SOURCES TAB ━━━ */}
+        {tab === "graph" && (
+          <GraphRagPanel
+            graph={graph}
+            loading={graphLoading}
+            rebuilding={graphRebuilding}
+            onReload={loadGraph}
+            onRebuild={rebuildGraph}
+          />
+        )}
+
         {tab === "sources" && (
           <div style={{ display: "grid", gap: 18 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>

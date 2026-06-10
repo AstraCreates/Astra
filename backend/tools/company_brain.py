@@ -8,10 +8,13 @@ expanded per provider without changing the API surface.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from collections import Counter
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from typing import Any
 
 
