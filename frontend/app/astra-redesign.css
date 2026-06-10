@@ -6,16 +6,17 @@
 /* ── Token remap ──────────────────────────────────────────────── */
 :root,
 [data-theme="light"] {
-  --bg:           #FEFFF6;
-  --bg-surface:   #ffffff;
-  --bg-sunken:    #f5f6ee;
-  --surface:      #ffffff;
-  --s2:           #f7f8f0;
-  --s3:           #eeefe8;
+  /* Cool neutral application surfaces. Paper stays a brand swatch, not a wall color. */
+  --bg:           #F3F4F7;
+  --bg-surface:   #FFFFFF;
+  --bg-sunken:    #EAECEF;
+  --surface:      #FFFFFF;
+  --s2:           #F7F8FA;
+  --s3:           #EAEAEA;
 
-  --fg:           #0a0a0a;
-  --fd:           #4a4a4a;
-  --fm:           #737373; /* raised from #999 — passes WCAG AA 4.5:1 on --bg */
+  --fg:           #111018;
+  --fd:           #3A3A3A;
+  --fm:           #737373;
 
   --accent:       #002EFF;
   --accent-hover: #0024CC;

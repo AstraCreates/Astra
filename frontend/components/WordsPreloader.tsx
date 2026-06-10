@@ -64,7 +64,7 @@ export default function WordsPreloader({ children, onExitStart }: Props) {
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              background: "#FEFFF6",
+              background: "#F3F4F7",
             }}
             exit={{
               clipPath: "inset(0 0 100% 0)",

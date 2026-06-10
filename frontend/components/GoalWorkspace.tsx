@@ -2783,73 +2783,106 @@ function UnifiedChat({ sessionId, founderId, company, goal, done, connected, age
   const placeholder = !connected && !done ? "Waiting for session…"
     : done ? "Ask about results… or @research what was the TAM?"
     : "Steer all agents… or @legal what entity should I form?";
+  const canSend = !loading && Boolean(input.trim() || chatAttachments.length);
 
   return (
-    <div data-tour="unified-chat" style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 16, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>
-          {done ? "Ask Astra" : "Chat"}
-        </span>
-        <span style={{ fontSize: 11, color: "#9CA3AF" }}>
-          @agent to route · plain message {done ? "asks about results" : "steers all agents"}
-        </span>
+    <section data-tour="unified-chat" className="astra-chat">
+      <header className="astra-chat-header">
+        <div className="astra-chat-heading">
+          <span className="astra-chat-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M7 8h10M7 12h7m-8.5 7 2.2-3H18a3 3 0 0 0 3-3V6a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v7a3 3 0 0 0 2.5 2.96V19Z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </span>
+          <div>
+            <div className="astra-chat-title">{done ? "Ask Astra" : "Mission chat"}</div>
+            <div className="astra-chat-subtitle">
+              {done ? "Explore the work and decisions from this run" : "Guide the team while they work"}
+            </div>
+          </div>
+        </div>
+        <div className={`astra-chat-status ${connected && !done ? "is-live" : ""}`}>
+          <span />
+          {done ? "Run complete" : connected ? "Team online" : "Connecting"}
+        </div>
+      </header>
+
+      <div className={`astra-chat-thread ${msgs.length === 0 ? "is-empty" : ""}`}>
+        {msgs.length === 0 && (
+          <div className="astra-chat-empty">
+            <div className="astra-chat-empty-orbit" aria-hidden="true"><span /></div>
+            <div>
+              <strong>{done ? "The whole run is in context." : "Your team is listening."}</strong>
+              <p>
+                {done
+                  ? "Ask for a summary, rationale, or a deeper look at any result."
+                  : "Send a general note to everyone, or mention an agent for a focused reply."}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {msgs.map(m => (
+          <div key={m.id} className={`astra-chat-row is-${m.role}`}>
+            {m.role !== "user" && (
+              <span className="astra-chat-avatar" aria-hidden="true">
+                {m.role === "system" ? "↗" : (m.agent?.[0] ?? "A").toUpperCase()}
+              </span>
+            )}
+            <div className="astra-chat-message-wrap">
+              {m.role === "agent" && <span className="astra-chat-agent">{m.agent ? `@${m.agent}` : "Astra"}</span>}
+              <div className="astra-chat-bubble">{m.text}</div>
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div className="astra-chat-row is-agent">
+            <span className="astra-chat-avatar">A</span>
+            <div className="astra-chat-thinking" aria-label="Astra is thinking">
+              <span /><span /><span />
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
       </div>
 
-      {msgs.length > 0 && (
-        <div style={{ maxHeight: 280, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8, padding: "4px 0" }}>
-          {msgs.map(m => (
-            <div key={m.id} style={{ display: "flex", gap: 8, justifyContent: m.role === "user" ? "flex-end" : "flex-start", alignItems: "flex-end" }}>
-              {m.role !== "user" && (
-                <span style={{ fontSize: 10, color: "#6B7280", fontWeight: 700, whiteSpace: "nowrap", marginBottom: 2 }}>
-                  {m.agent ? `@${m.agent}` : "·"}
-                </span>
-              )}
-              <div style={{
-                maxWidth: "75%", padding: "8px 12px", borderRadius: 12, fontSize: 13, lineHeight: 1.6, wordBreak: "break-word", whiteSpace: "pre-wrap",
-                background: m.role === "user" ? "#002EFF" : m.role === "system" ? "#EFF6FF" : "#F8F9FA",
-                color: m.role === "user" ? "#fff" : m.role === "system" ? "#1f36e0" : "#111827",
-                border: m.role === "user" ? "none" : "1px solid #E5E7EB",
-                fontStyle: m.role === "system" ? "italic" : "normal",
-              }}>{m.text}</div>
-            </div>
-          ))}
-          {loading && <div style={{ fontSize: 12, color: "#9CA3AF", display: "flex", alignItems: "center", gap: 6 }}><span className="animate-pulse" style={{ color: "#002EFF" }}>●</span> Thinking…</div>}
-          <div ref={bottomRef} />
-        </div>
-      )}
-
-      <div style={{ position: "relative" }}>
+      <div className="astra-chat-composer-wrap">
         {mentionOpen && filteredAgents.length > 0 && (
-          <div style={{
-            position: "absolute", bottom: "calc(100% + 6px)", left: 0, right: 0,
-            background: "#fff", border: "1px solid #E5E7EB", boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
-            borderRadius: 12, padding: 8, display: "flex", flexWrap: "wrap", gap: 4, zIndex: 20,
-          }}>
+          <div className="astra-chat-mentions">
+            <span className="astra-chat-mentions-label">Route to an agent</span>
             {filteredAgents.slice(0, 12).map(a => (
-              <button key={a} type="button" onClick={() => insertMention(a)}
-                style={{ padding: "3px 10px", borderRadius: 999, fontSize: 11, border: "1px solid #E5E7EB", background: "#F8F9FA", cursor: "pointer", color: "#374151" }}>
+              <button key={a} type="button" onClick={() => insertMention(a)}>
                 @{a}
               </button>
             ))}
           </div>
         )}
-        <div style={{ marginBottom: 8 }}>
+        <div className="astra-chat-attachments">
           <AttachBar attachments={chatAttachments} setAttachments={setChatAttachments} disabled={loading} compact founderId={founderId} />
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
+        <div className="astra-chat-composer">
+          <textarea
             value={input} onChange={e => handleChange(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
             placeholder={placeholder}
-            style={{ flex: 1, padding: "10px 16px", fontSize: 13, borderRadius: 999, border: "1px solid #E5E7EB", background: "#F8F9FA", color: "#111827", outline: "none" }}
+            rows={1}
+            disabled={!connected && !done}
+            aria-label="Chat message"
           />
-          <button onClick={send} disabled={loading || (!input.trim() && !chatAttachments.length)}
-            style={{ padding: "0 20px", borderRadius: 999, fontSize: 13, background: loading || (!input.trim() && !chatAttachments.length) ? "#E5E7EB" : "#002EFF", color: loading || (!input.trim() && !chatAttachments.length) ? "#9CA3AF" : "#fff", border: "none", cursor: loading || (!input.trim() && !chatAttachments.length) ? "default" : "pointer", fontWeight: 600 }}>
-            {loading ? "…" : "↑"}
+          <button className="astra-chat-send" onClick={send} disabled={!canSend} aria-label="Send message">
+            {loading ? <span className="astra-chat-send-spinner" /> : (
+              <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path d="m4 10 6-6 6 6m-6-5.5V16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
           </button>
         </div>
+        <div className="astra-chat-hint">
+          <span><kbd>@</kbd> route to an agent</span>
+          <span><kbd>↵</kbd> send <i>·</i> <kbd>shift ↵</kbd> new line</span>
+        </div>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -5718,4 +5751,3 @@ export function GoalWorkspace({
     </div>
   );
 }
-

@@ -128,7 +128,7 @@ export default function WelcomeScreen() {
           {covered && (
             <motion.div
               key="cover"
-              style={{ position: "absolute", inset: 0, background: "#FEFFF6", zIndex: 10 }}
+              style={{ position: "absolute", inset: 0, background: "#F3F4F7", zIndex: 10 }}
               exit={{ opacity: 0, transition: { duration: 0.7, ease: "easeInOut" } }}
             />
           )}

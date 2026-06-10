@@ -32,7 +32,7 @@ export default function AppHome() {
 
   // Still checking localStorage — cover with blank screen matching preloader bg to avoid sidebar flash
   if (onboarded === null) return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#FEFFF6" }} />
+    <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#F3F4F7" }} />
   );
 
   // Post-onboarding celebration screen

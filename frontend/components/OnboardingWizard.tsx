@@ -54,7 +54,7 @@ const COMPOSIO_APP_KEYS: Record<string, string> = {
 
 const T = {
   white: "#FFFFFF",
-  surface: "#FEFFF6",
+  surface: "#F3F4F7",
   textPrimary: "#111827",
   textSecondary: "#374151",
   textMuted: "#9CA3AF",
@@ -1047,7 +1047,7 @@ export default function OnboardingWizard() {
       alignItems: "flex-start",
       justifyContent: "center",
       padding: "48px 16px",
-      background: "linear-gradient(160deg, rgba(0,46,255,0.04) 0%, #FEFFF6 40%)",
+      background: "linear-gradient(160deg, rgba(0,46,255,0.06) 0%, #F3F4F7 40%)",
       fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
     }}>
       {/* Logo */}
@@ -1128,6 +1128,5 @@ export default function OnboardingWizard() {
     </div>
   );
 }
-
 
 
