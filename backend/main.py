@@ -17,6 +17,7 @@ from backend.api.genome_routes import router as genome_router
 from backend.api.outcomes_routes import router as outcomes_router
 from backend.api.roadmap_routes import router as roadmap_router
 from backend.api.company_routes import router as company_router
+from backend.api.team_map_routes import router as team_map_router
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ app.include_router(genome_router, prefix="/api")
 app.include_router(outcomes_router, prefix="/api")
 app.include_router(roadmap_router, prefix="/api")
 app.include_router(company_router, prefix="/api")
+app.include_router(team_map_router, prefix="/api")
 
 
 @app.on_event("startup")
