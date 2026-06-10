@@ -4,10 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import PageHeader from "@/components/PageHeader";
 import { CHECKLIST_CATEGORIES, type CLItem, type CLCategory } from "@/lib/checklist-data";
-import {
-  getCompanyGoal, approveNextGoal, runCompanyCycle, AGENT_LABELS,
-  type CompanyTask, type CompanyGoal, type CompanyGoalEntry,
-} from "@/lib/api";
+import { getCompanyGoal, type CompanyTask } from "@/lib/api";
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
@@ -296,8 +293,6 @@ function CategoryGroup({ cat, items, onCheck }: { cat: CLCategory; items: CLItem
 export default function ChecklistPage() {
   const { user } = useDevUser();
   const [tasks, setTasks] = useState<CompanyTask[]>([]);
-  const [goal, setGoal] = useState<CompanyGoal | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
   const [doneSet, setDoneSet] = useState<Set<string>>(new Set());
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   const [showDone, setShowDone] = useState(false);
@@ -308,36 +303,10 @@ export default function ChecklistPage() {
     if (!user?.id) return;
     try {
       const g = await getCompanyGoal(user.id);
-      setGoal(g);
       const entry = g?.goals?.find(x => x.id === g.current_goal_id) ?? null;
       setTasks(entry?.tasks ?? []);
     } catch {}
   }, [user?.id]);
-
-  const currentGoal: CompanyGoalEntry | null = goal?.goals?.find(g => g.id === goal.current_goal_id) ?? null;
-  const proposed = currentGoal?.status === "proposed";
-  const doneGoals = (goal?.goals ?? []).filter(g => g.status === "done").reverse();
-  const runs = (goal?.operating_sessions ?? []).slice().reverse().slice(0, 6);
-
-  const decideGoal = async (approved: boolean) => {
-    if (!user?.id) return;
-    setBusy(approved ? "approve" : "reject");
-    try {
-      await approveNextGoal(user.id, approved);
-      if (approved && goal?.root_session_id) window.location.assign(`/s/${goal.root_session_id}`);
-      else await load();
-    } catch {} finally { setBusy(null); }
-  };
-
-  const runNow = async () => {
-    if (!user?.id) return;
-    setBusy("run");
-    try {
-      const r = await runCompanyCycle(user.id);
-      if (r.parent_session_id) window.location.assign(`/s/${r.parent_session_id}`);
-      else await load();
-    } catch {} finally { setBusy(null); }
-  };
 
   useEffect(() => {
     load();
@@ -448,84 +417,6 @@ export default function ChecklistPage() {
 
         {/* ── Right content ── */}
         <main style={{ flex: 1, overflowY: "auto", padding: "24px 28px 48px" }}>
-
-          {/* ── Company goals (current goal + approval + progression) ── */}
-          {goal && (currentGoal || doneGoals.length > 0) && (() => {
-            const cr = (n?: number) => `◈ ${(n ?? 0).toLocaleString()}`;
-            const ago = (iso?: string | null) => {
-              if (!iso) return "";
-              const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-              return m < 1 ? "just now" : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`;
-            };
-            const ctasks = currentGoal?.tasks ?? [];
-            const cdone = ctasks.filter(t => t.status === "done").length;
-            return (
-              <div style={{ marginBottom: 28, border: "1px solid var(--bd2)", background: "var(--surface)" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "14px 16px", borderBottom: "1px solid var(--bd)", background: proposed ? "var(--adim)" : "transparent" }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: proposed ? "var(--amber)" : "var(--fm)", marginBottom: 4 }}>
-                      {proposed ? "▲ Next goal proposed · awaiting approval" : `Company goal${currentGoal?.kind === "launch" ? " · launch" : ""}`}
-                    </div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: "var(--fg)", lineHeight: 1.35 }}>{currentGoal?.title ?? "—"}</div>
-                    <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 4, fontFamily: "var(--font-code)" }}>
-                      {ctasks.length > 0 && `${cdone}/${ctasks.length} tasks · `}{cr(currentGoal?.credits_used)} credits
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                    {proposed ? (
-                      <>
-                        <button onClick={() => decideGoal(true)} disabled={!!busy} style={{ padding: "8px 16px", fontSize: 12, fontWeight: 600, color: "#fff", background: "#001AFF", border: "none", cursor: "pointer", opacity: busy ? 0.5 : 1 }}>{busy === "approve" ? "Starting…" : "✓ Approve & start"}</button>
-                        <button onClick={() => decideGoal(false)} disabled={!!busy} style={{ padding: "8px 12px", fontSize: 12, color: "var(--fd)", background: "var(--surface)", border: "1px solid var(--bd2)", cursor: "pointer", opacity: busy ? 0.5 : 1 }}>{busy === "reject" ? "…" : "Reject"}</button>
-                      </>
-                    ) : currentGoal && currentGoal.status !== "done" ? (
-                      <button onClick={runNow} disabled={!!busy} style={{ padding: "8px 16px", fontSize: 12, fontWeight: 600, color: "#fff", background: "#001AFF", border: "none", cursor: "pointer", opacity: busy ? 0.5 : 1 }}>{busy === "run" ? "Starting…" : "▶ Run now"}</button>
-                    ) : null}
-                  </div>
-                </div>
-                {/* current goal tasks */}
-                {currentGoal && currentGoal.status !== "done" && ctasks.map((t, i) => {
-                  const tint = t.status === "done" ? "var(--green)" : t.status === "in_progress" ? "#001AFF" : t.status === "awaiting_approval" ? "var(--amber)" : "var(--fm)";
-                  const owners = t.owner_agents ?? [], dn = t.done_agents ?? [];
-                  return (
-                    <div key={t.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "9px 16px", borderTop: i === 0 ? "1px solid var(--bd)" : "1px solid var(--bd)" }}>
-                      <span style={{ marginTop: 5, width: 7, height: 7, flexShrink: 0, borderRadius: "50%", background: tint }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12.5, color: t.status === "done" ? "var(--fd)" : "var(--fg)", textDecoration: t.status === "done" ? "line-through" : "none", lineHeight: 1.4 }}>{t.title}</div>
-                        {owners.length > 0 && <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 2, fontFamily: "var(--font-code)" }}>{owners.map(o => (dn.includes(o) ? `✓${AGENT_LABELS[o] ?? o}` : (AGENT_LABELS[o] ?? o))).join(" · ")}</div>}
-                      </div>
-                      <span style={{ flexShrink: 0, fontSize: 9, color: tint, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em", fontFamily: "var(--font-code)" }}>{t.status === "awaiting_approval" ? "approval" : t.status.replace(/_/g, " ")}</span>
-                    </div>
-                  );
-                })}
-                {/* completed goals */}
-                {doneGoals.length > 0 && (
-                  <div style={{ borderTop: "1px solid var(--bd)" }}>
-                    {doneGoals.map(g => (
-                      <div key={g.id} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 16px", fontSize: 12, borderTop: "1px solid var(--bd)" }}>
-                        <span style={{ color: "var(--green)", fontSize: 10, flexShrink: 0, fontFamily: "var(--font-code)" }}>✓</span>
-                        <span style={{ flex: 1, color: "var(--fm)", textDecoration: "line-through", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.title}</span>
-                        <span style={{ fontSize: 9, color: "var(--fm)", flexShrink: 0, fontFamily: "var(--font-code)" }}>{cr(g.credits_used)}</span>
-                        <span style={{ fontSize: 9, color: "var(--fm)", flexShrink: 0, fontFamily: "var(--font-code)" }}>{ago(g.completed_at)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {/* recent sub-runs */}
-                {runs.length > 0 && (
-                  <div style={{ borderTop: "1px solid var(--bd)" }}>
-                    {runs.map(r => (
-                      <a key={r.session_id} href={`/s/${r.session_id}`} style={{ display: "flex", alignItems: "center", gap: 9, padding: "8px 16px", fontSize: 11.5, borderTop: "1px solid var(--bd)", textDecoration: "none", color: "var(--fg)" }}>
-                        <span style={{ width: 6, height: 6, flexShrink: 0, borderRadius: "50%", background: r.status === "done" ? "var(--green)" : r.status === "error" ? "var(--red)" : "#001AFF" }} />
-                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--fm)" }}>{r.summary || "Operating run"}</span>
-                        <span style={{ fontSize: 9, color: "var(--fm)", flexShrink: 0, fontFamily: "var(--font-code)" }}>{cr(r.credits_used)}</span>
-                        <span style={{ fontSize: 9, color: "var(--fm)", flexShrink: 0, fontFamily: "var(--font-code)" }}>{ago(r.started_at)}</span>
-                      </a>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
 
           {/* Active section */}
           <Section
