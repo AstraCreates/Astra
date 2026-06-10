@@ -91,8 +91,10 @@ def get_orchestrator() -> Orchestrator:
             "technical_scaffold": build_technical_scaffold_agent(use_computer=True, **_highoutput_kwargs),
             "technical_infra": build_technical_infra_agent(use_computer=True, **_highoutput_kwargs),
             "technical_data": build_technical_data_agent(use_computer=True, **_highoutput_kwargs),
-            # Writing/synthesis agents — high-output OpenRouter model
-            "marketing": build_marketing_agent(use_computer=True, **_highoutput_kwargs),
+            # Marketing — mimo-v2.5. On hy3-preview it never finished its task (mangled
+            # tool-call JSON / no agent_done), which left goal tasks perpetually open and
+            # spawned endless follow-up runs. mimo completes its tool workflow reliably.
+            "marketing": build_marketing_agent(use_computer=True, **_small_kwargs),
             "legal": build_legal_agent(use_computer=True, **_highoutput_kwargs),
             "ops": build_ops_agent(use_computer=True, **_coder_kwargs),
             # Design — mimo-v2.5 (fast, clean tool calls). It works through tools

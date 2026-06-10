@@ -75,11 +75,15 @@ async def _scheduler_tick() -> int:
     """
     import os
     from backend.missions.company_goal import (
-        list_company_goals, budget_allows, is_due, current_goal, chain_allowed, _goal_is_complete,
+        list_company_goals, budget_allows, is_due, current_goal, chain_allowed, _goal_is_complete, postpone_task,
     )
     from backend.missions.goal_engine import dispatch_current_goal, plan_next_goal
 
     safety_interval = max(300, int(os.environ.get("ASTRA_GOAL_SAFETY_INTERVAL_SECONDS", "1800")))
+    # Cap how many runs one goal gets before we stop retrying a task an agent keeps
+    # failing to deliver (e.g. a flaky model that never emits agent_done). Without this a
+    # perpetually-open task makes the safety-net re-dispatch the goal forever.
+    max_goal_attempts = max(1, int(os.environ.get("ASTRA_MAX_GOAL_ATTEMPTS", "3")))
 
     try:
         goals: list[dict] = await asyncio.to_thread(list_company_goals)
@@ -125,9 +129,23 @@ async def _scheduler_tick() -> int:
             continue  # nothing actionable
         if not is_due(goal, safety_interval):
             continue  # a run started recently — not stalled
+        # Attempt cap: if this goal already got max_goal_attempts runs and STILL has open
+        # tasks, an agent keeps failing to deliver. Stop retrying — postpone the stuck
+        # tasks so the goal can complete and the company moves on (the founder can revisit
+        # them). This is what prevents endless follow-up runs of the same goal.
+        attempts = sum(1 for r in goal.get("operating_sessions") or [] if r.get("goal_id") == cg.get("id"))
+        if attempts >= max_goal_attempts:
+            for t in open_tasks:
+                try:
+                    await asyncio.to_thread(postpone_task, founder_id, t.get("id"), True)
+                except Exception:
+                    pass
+            logger.warning("missions_scheduler: goal %s hit %d-attempt cap — postponed %d stuck task(s) so it can complete",
+                           cg.get("id"), max_goal_attempts, len(open_tasks))
+            continue
         if not budget_allows(goal):
             continue
-        logger.info("missions_scheduler: recovering stalled goal founder=%s (%d open tasks)", founder_id, len(open_tasks))
+        logger.info("missions_scheduler: recovering stalled goal founder=%s (%d open tasks, attempt %d)", founder_id, len(open_tasks), attempts + 1)
         try:
             result = await dispatch_current_goal(founder_id)
             if result.get("ok") and result.get("session_id"):
