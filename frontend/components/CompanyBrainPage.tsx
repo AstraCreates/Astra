@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import Link from "next/link";
-import AstraGradient from "@/components/AstraGradient";
+import PageHeader from "@/components/PageHeader";
 import {
   addCompanyBrainRecord,
   askCompanyBrain,
@@ -643,48 +643,34 @@ export default function CompanyBrainPage() {
 
       {/* ── page header ── */}
       <div style={{ flexShrink: 0 }}>
-        {/* Blue hero */}
-        <div style={{ position: "relative", overflow: "hidden", background: "#001aff", minHeight: 140, borderBottom: "1px solid var(--bd)" }}>
-          <AstraGradient />
-          <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.20)", pointerEvents: "none", zIndex: 1 }} />
-          <div style={{ position: "relative", zIndex: 2, padding: "26px 24px 20px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-            <div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em", marginBottom: 8 }}>
-                Company Brain
-              </div>
-              <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-                {[
-                  ["Records", String(records.length)],
-                  ["Sources", `${connected} connected`],
-                  ["Proposals", String(openProposals.length)],
-                  ["Stale", String(brain?.maintenance?.stale_count ?? 0)],
-                ].map(([label, value]) => (
-                  <div key={label} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                    <span style={{ fontSize: 16, fontWeight: 700, color: "#fff", fontFamily: "var(--font-code)", lineHeight: 1 }}>{value}</span>
-                    <span style={{ fontSize: 9, color: "rgba(255,255,255,0.58)", textTransform: "uppercase", letterSpacing: ".08em" }}>{label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 9, flexShrink: 0 }}>
+        <PageHeader
+          title="Company Brain"
+          stats={[
+            { label: "Records",   value: String(records.length) },
+            { label: "Sources",   value: `${connected} connected` },
+            { label: "Proposals", value: String(openProposals.length) },
+            { label: "Stale",     value: String(brain?.maintenance?.stale_count ?? 0) },
+          ]}
+          actions={
+            <>
               <Link href="/integrations" style={{
-                display: "inline-flex", alignItems: "center", padding: "9px 16px",
-                fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.88)",
+                display: "inline-flex", alignItems: "center", padding: "8px 14px",
+                fontSize: 12, color: "rgba(255,255,255,0.88)",
                 background: "rgba(255,255,255,0.13)", border: "1px solid rgba(255,255,255,0.28)",
                 textDecoration: "none",
               }}>
                 Integrations
               </Link>
               <Link href="/" style={{
-                display: "inline-flex", alignItems: "center", padding: "9px 20px",
+                display: "inline-flex", alignItems: "center", padding: "8px 18px",
                 fontSize: 12, fontWeight: 600, color: "#002EFF",
                 background: "#fff", border: "none", textDecoration: "none",
               }}>
                 Run agents
               </Link>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        />
 
         {/* Tab bar */}
         <div style={{ borderBottom: "1px solid var(--bd)", background: "var(--surface)", paddingInline: 24 }}>

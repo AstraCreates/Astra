@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch } from "@/lib/api";
-import AstraGradient from "@/components/AstraGradient";
+import PageHeader from "@/components/PageHeader";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const MAX_CONFIRM = 10;
@@ -746,38 +746,25 @@ export default function OutreachPage() {
     <div style={{ width: "100%", display: "flex", flexDirection: "column" }}>
       <style>{`@keyframes outreach-sweep{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
 
-      {/* Blue hero header */}
-      <div style={{ position: "relative", overflow: "hidden", background: "#001aff", minHeight: 140, flexShrink: 0, borderBottom: "1px solid var(--bd)" }}>
-        <AstraGradient />
-        <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.20)", pointerEvents: "none", zIndex: 1 }} />
-        <div style={{ position: "relative", zIndex: 2, padding: "28px 24px 22px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: 26, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em", marginBottom: 6 }}>
-              Outreach
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-              {campaigns.length > 0 && (
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", fontFamily: "var(--font-code)" }}>
-                  {campaigns.length} campaign{campaigns.length !== 1 ? "s" : ""}
-                </span>
-              )}
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }}>
-                Find contacts, send personalised emails
-              </span>
-            </div>
-          </div>
+      <PageHeader
+        title="Outreach"
+        subtitle={
+          campaigns.length > 0
+            ? `${campaigns.length} campaign${campaigns.length !== 1 ? "s" : ""} · Find contacts, send personalised emails`
+            : "Find contacts, send personalised emails"
+        }
+        actions={
           <button
             onClick={() => setShowNewCampaign(true)}
             style={{
-              padding: "9px 20px", fontSize: 12, fontWeight: 600, color: "#002EFF",
+              padding: "8px 18px", fontSize: 12, fontWeight: 600, color: "#002EFF",
               background: "#fff", border: "none", cursor: "pointer",
-              letterSpacing: "0.01em", flexShrink: 0,
             }}
           >
             + New Campaign
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* Content area */}
       <div style={{ flex: 1, padding: "20px 24px 48px", display: "flex", flexDirection: "column", gap: 20 }}>
@@ -909,10 +896,8 @@ export default function OutreachPage() {
       <style>{`@keyframes outreach-sweep{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
 
       {/* Detail blue hero header */}
-      <div style={{ position: "relative", overflow: "hidden", background: "#001aff", minHeight: 148, flexShrink: 0, borderBottom: "1px solid var(--bd)" }}>
-        <AstraGradient />
-        <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.20)", pointerEvents: "none", zIndex: 1 }} />
-        <div style={{ position: "relative", zIndex: 2, padding: "22px 24px 18px" }}>
+      <div style={{ background: "#001AFF", flexShrink: 0, borderBottom: "1px solid var(--bd)" }}>
+        <div style={{ padding: "22px 24px 18px" }}>
           <button
             onClick={() => { setView("campaigns"); setActiveCampaign(null); setConfirmingDelete(false); loadCampaigns(); }}
             style={{ background: "none", border: "none", color: "rgba(255,255,255,0.6)", cursor: "pointer", fontSize: 11, padding: 0, fontFamily: "var(--font-code)", marginBottom: 10, display: "block" }}

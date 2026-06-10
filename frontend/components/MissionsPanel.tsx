@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
-import AstraGradient from "@/components/AstraGradient";
+import PageHeader, { HeaderPrimaryBtn, HeaderSecondaryBtn } from "@/components/PageHeader";
 import { CHECKLIST_CATEGORIES, type CLItem, type CLCategory } from "@/lib/checklist-data";
 import {
   getCompanyGoal, runCompanyCycle, approveNextGoal, setCompanyGoalStatus, syncMissionNotion,
@@ -12,8 +12,8 @@ import {
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-const KEY_DONE   = "astra_cl_done";
-const KEY_CATS   = "astra_cl_cats";
+const KEY_DONE = "astra_cl_done";
+const KEY_CATS = "astra_cl_cats";
 
 function loadDone(): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -56,6 +56,68 @@ function timeAgo(iso?: string | null): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+// ── Geometric agent logos ──────────────────────────────────────────────────
+
+function getAgentDept(agentId: string): string {
+  const LEGAL = ["form_entity","founders_agmt","vesting","ein","cap_table","ip_assign","nda","privacy_tos","contractor_agmt","safe_docs","trademark"];
+  const TECH = ["github_setup","ci_cd","cloud_hosting","staging_prod","dns_records","ssl","cdn_setup","backups","uptime_monitoring","incident_plan","rollback_plan"];
+  const FINANCE = ["financial_model","burn_rate","unit_economics","pricing_model","pricing_revisit","diligence_prep"];
+  const FUNDRAISE = ["narrative","data_room","investor_list"];
+  const SALES = ["pitch_deck","sales_deck"];
+  const RESEARCH = ["market_sizing","pricing_willingness","icp","north_star","activation_metric","gdpr_ccpa"];
+  const MARKETING = ["seo_foundation","blog_post","product_hunt","press_kit","content_calendar","lead_magnet","launch_assets","case_studies","roadmap_public"];
+  const OUTREACH = ["linkedin_page","warm_list_email"];
+  const WEB = ["domain_primary"];
+  if (LEGAL.includes(agentId)) return "legal";
+  if (TECH.includes(agentId)) return "tech";
+  if (FINANCE.includes(agentId)) return "finance";
+  if (FUNDRAISE.includes(agentId)) return "fundraise";
+  if (SALES.includes(agentId)) return "sales";
+  if (RESEARCH.includes(agentId)) return "research";
+  if (MARKETING.includes(agentId)) return "marketing";
+  if (OUTREACH.includes(agentId)) return "outreach";
+  if (WEB.includes(agentId)) return "web";
+  return "ops";
+}
+
+type DeptShape = {
+  color: string;
+  bg: string;
+  shape: "hexagon" | "pentagon" | "circle" | "diamond" | "triangle" | "rect" | "shield" | "octagon";
+};
+const DEPT: Record<string, DeptShape> = {
+  legal:     { color: "#D97706", bg: "rgba(217,119,6,0.13)",  shape: "shield"   },
+  tech:      { color: "#0891B2", bg: "rgba(8,145,178,0.13)",  shape: "hexagon"  },
+  finance:   { color: "#7C3AED", bg: "rgba(124,58,237,0.13)", shape: "circle"   },
+  fundraise: { color: "#2563EB", bg: "rgba(37,99,235,0.13)",  shape: "diamond"  },
+  sales:     { color: "#059669", bg: "rgba(5,150,105,0.13)",  shape: "triangle" },
+  research:  { color: "#6366F1", bg: "rgba(99,102,241,0.13)", shape: "circle"   },
+  marketing: { color: "#F97316", bg: "rgba(249,115,22,0.13)", shape: "pentagon" },
+  outreach:  { color: "#DB2777", bg: "rgba(219,39,119,0.13)", shape: "rect"     },
+  web:       { color: "#0284C7", bg: "rgba(2,132,199,0.13)",  shape: "octagon"  },
+  ops:       { color: "#DC2626", bg: "rgba(220,38,38,0.13)",  shape: "octagon"  },
+};
+
+function AgentGeoLogo({ agentId, size = 36 }: { agentId: string; size?: number }) {
+  const dept = getAgentDept(agentId);
+  const d = DEPT[dept] ?? { color: "#888", bg: "rgba(128,128,128,0.1)", shape: "circle" as const };
+  const s = size - 10;
+  return (
+    <div style={{ width: size, height: size, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", background: d.bg, borderRadius: 2 }}>
+      <svg width={s} height={s} viewBox="0 0 28 28" fill="none">
+        {d.shape === "hexagon"  && <polygon points="14,2 24,8 24,20 14,26 4,20 4,8" fill={d.color} />}
+        {d.shape === "pentagon" && <polygon points="14,2 25,9 21,23 7,23 3,9" fill={d.color} />}
+        {d.shape === "circle"   && <circle cx="14" cy="14" r="12" fill={d.color} />}
+        {d.shape === "diamond"  && <polygon points="14,2 26,14 14,26 2,14" fill={d.color} />}
+        {d.shape === "triangle" && <polygon points="14,3 26,24 2,24" fill={d.color} />}
+        {d.shape === "rect"     && <rect x="2" y="5" width="24" height="18" rx="4" fill={d.color} />}
+        {d.shape === "shield"   && <path d="M14 2L24 6V15C24 20.5 19.5 24.8 14 26C8.5 24.8 4 20.5 4 15V6L14 2Z" fill={d.color} />}
+        {d.shape === "octagon"  && <polygon points="9,2 19,2 26,9 26,19 19,26 9,26 2,19 2,9" fill={d.color} />}
+      </svg>
+    </div>
+  );
+}
+
 // ── Category Picker ────────────────────────────────────────────────────────
 
 function CategoryPicker({ initial, onSave }: { initial: string[]; onSave: (ids: string[]) => void }) {
@@ -64,14 +126,10 @@ function CategoryPicker({ initial, onSave }: { initial: string[]; onSave: (ids: 
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 100, background: "var(--bg, #fff)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div style={{ position: "relative", overflow: "hidden", background: "#001aff", padding: "28px 28px 24px", flexShrink: 0 }}>
-        <AstraGradient />
-        <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.20)", pointerEvents: "none", zIndex: 1 }} />
-        <div style={{ position: "relative", zIndex: 2 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", marginBottom: 6, letterSpacing: "-0.02em" }}>Build your launch plan</div>
-          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", maxWidth: 480, lineHeight: 1.5 }}>
-            Pick the areas relevant to your startup. You can change this anytime.
-          </div>
+      <div style={{ background: "#001AFF", padding: "28px 28px 24px", flexShrink: 0 }}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", marginBottom: 6, letterSpacing: "-0.02em" }}>Build your launch plan</div>
+        <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", maxWidth: 480, lineHeight: 1.5 }}>
+          Pick the areas relevant to your startup. You can change this anytime.
         </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px" }}>
@@ -108,7 +166,7 @@ function CategoryPicker({ initial, onSave }: { initial: string[]; onSave: (ids: 
   );
 }
 
-// ── Active item card ───────────────────────────────────────────────────────
+// ── Active item card (with geo logo) ──────────────────────────────────────
 
 function ActiveItemCard({ item, cat, task }: { item: CLItem; cat: CLCategory; task: CompanyTask }) {
   const needsApproval = task.status === "awaiting_approval";
@@ -116,35 +174,36 @@ function ActiveItemCard({ item, cat, task }: { item: CLItem; cat: CLCategory; ta
 
   return (
     <div style={{
-      display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 16px",
+      display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 14px",
       border: `1px solid ${needsApproval ? "var(--ab)" : "var(--bb)"}`,
       background: needsApproval ? "var(--adim)" : "var(--bdim)",
     }}>
-      <div style={{ marginTop: 3, flexShrink: 0 }}>
-        <span style={{
-          display: "block", width: 8, height: 8, borderRadius: "50%",
-          background: needsApproval ? "var(--amber)" : "var(--blue)",
-          animation: needsApproval ? "none" : "cl-pulse 1.5s ease-in-out infinite",
-        }} />
-      </div>
+      {item.autoAgent && <AgentGeoLogo agentId={item.autoAgent} size={38} />}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", lineHeight: 1.4 }}>{item.label}</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11, color: "var(--fm)" }}>{cat.icon} {cat.label}</span>
-          <span style={{ fontSize: 11, color: needsApproval ? "var(--amber)" : "var(--blue)", fontWeight: 600 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", lineHeight: 1.4, marginBottom: 4 }}>{item.label}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 10, color: "var(--fm)" }}>{cat.icon} {cat.label}</span>
+          <span style={{ fontSize: 10, color: needsApproval ? "var(--amber)" : "var(--blue)", fontWeight: 600 }}>
             via {agentLabel}
           </span>
         </div>
       </div>
-      <span style={{
-        flexShrink: 0, fontSize: 9, padding: "2px 8px",
-        border: `1px solid ${needsApproval ? "var(--ab)" : "var(--bb)"}`,
-        color: needsApproval ? "var(--amber)" : "var(--blue)",
-        fontWeight: 700, textTransform: "uppercase", letterSpacing: ".07em",
-        fontFamily: "var(--font-code)",
-      }}>
-        {needsApproval ? "Needs approval" : "Running"}
-      </span>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
+        <span style={{
+          fontSize: 9, padding: "2px 8px",
+          border: `1px solid ${needsApproval ? "var(--ab)" : "var(--bb)"}`,
+          color: needsApproval ? "var(--amber)" : "var(--blue)",
+          fontWeight: 700, textTransform: "uppercase", letterSpacing: ".07em",
+          fontFamily: "var(--font-code)",
+        }}>
+          {needsApproval ? "Needs approval" : "Running"}
+        </span>
+        <span style={{
+          display: "inline-block", width: 7, height: 7, borderRadius: "50%",
+          background: needsApproval ? "var(--amber)" : "var(--blue)",
+          animation: needsApproval ? "none" : "cl-pulse 1.5s ease-in-out infinite",
+        }} />
+      </div>
     </div>
   );
 }
@@ -156,8 +215,7 @@ function PendingRow({ item, cat, onCheck }: { item: CLItem; cat: CLCategory; onC
   return (
     <label style={{
       display: "flex", alignItems: "flex-start", gap: 11, padding: "10px 14px",
-      cursor: "pointer", borderBottom: "1px solid var(--bd)",
-      background: "var(--surface)",
+      cursor: "pointer", borderBottom: "1px solid var(--bd)", background: "var(--surface)",
     }}>
       <input type="checkbox" onChange={onCheck} style={{ position: "absolute", opacity: 0, width: 0, height: 0 }} />
       <div style={{ marginTop: 3, flexShrink: 0, width: 15, height: 15,
@@ -165,31 +223,25 @@ function PendingRow({ item, cat, onCheck }: { item: CLItem; cat: CLCategory; onC
         display: "flex", alignItems: "center", justifyContent: "center" }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)", lineHeight: 1.4 }}>{item.label}</div>
-        {item.detail && (
-          <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 2, lineHeight: 1.45 }}>{item.detail}</div>
-        )}
+        {item.detail && <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 2, lineHeight: 1.45 }}>{item.detail}</div>}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0, marginTop: 2 }}>
         <span style={{ fontSize: 10, color: "var(--fm)" }}>{cat.icon}</span>
         {hasAgent ? (
           <span style={{ fontSize: 9, padding: "2px 6px", background: "var(--bdim)", border: "1px solid var(--bb)",
             color: "var(--blue)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em",
-            fontFamily: "var(--font-code)", whiteSpace: "nowrap" }}>
-            Agent
-          </span>
+            fontFamily: "var(--font-code)", whiteSpace: "nowrap" }}>Agent</span>
         ) : (
           <span style={{ fontSize: 9, padding: "2px 6px", background: "transparent", border: "1px solid var(--bd2)",
             color: "var(--fm)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em",
-            fontFamily: "var(--font-code)", whiteSpace: "nowrap" }}>
-            Manual
-          </span>
+            fontFamily: "var(--font-code)", whiteSpace: "nowrap" }}>Manual</span>
         )}
       </div>
     </label>
   );
 }
 
-// ── Done item row ──────────────────────────────────────────────────────────
+// ── Done item row (compact) ────────────────────────────────────────────────
 
 function DoneRow({ item, cat, onUncheck }: { item: CLItem; cat: CLCategory; onUncheck: () => void }) {
   return (
@@ -220,7 +272,6 @@ export default function MissionsPanel() {
   const [busy, setBusy] = useState<string | null>(null);
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [runsOpen, setRunsOpen] = useState(false);
-  const [doneOpen, setDoneOpen] = useState(false);
 
   const [done, setDone] = useState<Set<string>>(new Set());
   const [selectedCats, setSelectedCats] = useState<string[] | null>(null);
@@ -245,7 +296,6 @@ export default function MissionsPanel() {
     return () => clearInterval(t);
   }, [founderId, loadGoal]);
 
-  // Auto-sync agent-completed tasks → done set
   useEffect(() => {
     if (!goal || !selectedCats) return;
     const currentGoal = goal.goals?.find(g => g.id === goal.current_goal_id);
@@ -284,9 +334,7 @@ export default function MissionsPanel() {
   const runs = (goal?.operating_sessions ?? []).slice().reverse().slice(0, 6);
   const currentGoalEntry: CompanyGoalEntry | null = goal?.goals?.find(g => g.id === goal.current_goal_id) ?? null;
   const currentGoalTasks = currentGoalEntry?.tasks ?? [];
-  // A planner-proposed next goal awaits the founder's sign-off before the team runs it.
   const proposed = currentGoalEntry?.status === "proposed";
-  // Completed goals, newest first (for the goal-progression view).
   const doneGoals = (goal?.goals ?? []).filter(g => g.status === "done").reverse();
 
   const runNow = async () => {
@@ -318,21 +366,19 @@ export default function MissionsPanel() {
   if (!mounted) return null;
   if (!selectedCats || editingCats) return <CategoryPicker initial={selectedCats ?? []} onSave={handleCatSave} />;
 
-  // ── Derive item lists ──────────────────────────────────────────────────
+  // ── Derive item lists ────────────────────────────────────────────────────
 
   type ItemWithMeta = { item: CLItem; cat: CLCategory };
 
   const activeCats = CHECKLIST_CATEGORIES.filter(c => selectedCats.includes(c.id));
   const allSelected: ItemWithMeta[] = activeCats.flatMap(cat => cat.items.map(item => ({ item, cat })));
 
-  // "Working on now": items whose agent has an in_progress or awaiting_approval task
   const activeSet = new Set<string>();
   const workingOn: Array<ItemWithMeta & { task: CompanyTask }> = [];
   for (const { item, cat } of allSelected) {
     if (done.has(item.id) || !item.autoAgent) continue;
     const task = findTask(item.autoAgent, currentGoalTasks);
     if (task && (task.status === "in_progress" || task.status === "awaiting_approval")) {
-      // Only show first incomplete item per running agent (avoid duplicates per agent)
       if (!activeSet.has(item.autoAgent!)) {
         workingOn.push({ item, cat, task });
         activeSet.add(item.autoAgent!);
@@ -340,12 +386,10 @@ export default function MissionsPanel() {
     }
   }
 
-  // "Up next": incomplete, not active, not done — flat mixed list
   const upNext: ItemWithMeta[] = allSelected
     .filter(({ item }) => !done.has(item.id) && !workingOn.find(w => w.item.id === item.id))
     .slice(0, 12);
 
-  // "Done"
   const doneItems: ItemWithMeta[] = allSelected.filter(({ item }) => done.has(item.id));
 
   const totalItems = allSelected.length;
@@ -362,68 +406,52 @@ export default function MissionsPanel() {
         @media (prefers-reduced-motion: reduce) { .cl-enter { animation: none; } @keyframes cl-pulse {} }
       `}</style>
 
-      {/* ── Blue hero ── */}
-      <div style={{ position: "relative", overflow: "hidden", flexShrink: 0, background: "#001aff", minHeight: 140, borderBottom: "1px solid var(--bd)" }}>
-        <AstraGradient />
-        <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.20)", pointerEvents: "none", zIndex: 1 }} />
-        <div style={{ position: "relative", zIndex: 2, padding: "22px 24px 18px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em" }}>Launch Checklist</div>
-              {goal && (
-                <span style={{ padding: "2px 9px", fontSize: 9, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", fontFamily: "var(--font-code)",
-                  border: (paused || proposed) ? "1px solid rgba(255,180,50,0.5)" : "1px solid rgba(124,255,198,0.5)",
-                  background: (paused || proposed) ? "rgba(255,180,50,0.14)" : "rgba(124,255,198,0.14)",
-                  color: (paused || proposed) ? "#FFCB50" : "#7CFFC6" }}>
-                  {paused ? "paused" : proposed ? "needs approval" : "operating"}
-                </span>
-              )}
-              <button type="button" onClick={() => setEditingCats(true)} style={{
-                fontSize: 10, padding: "2px 8px", background: "rgba(255,255,255,0.12)",
-                border: "1px solid rgba(255,255,255,0.25)", color: "rgba(255,255,255,0.75)", cursor: "pointer" }}>
-                Edit areas
-              </button>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ flex: 1, maxWidth: 300, height: 5, background: "rgba(255,255,255,0.2)", borderRadius: 3, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${pct}%`, background: pct === 100 ? "#7CFFC6" : "#fff", borderRadius: 3, transition: "width .5s" }} />
+      {/* ── Flat header ── */}
+      <PageHeader
+        title="Launch Checklist"
+        badge={goal ? {
+          label: proposed ? "needs approval" : paused ? "paused" : "operating",
+          color: (paused || proposed) ? "amber" : "green",
+        } : undefined}
+        actions={
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginRight: 4 }}>
+              <div style={{ width: 130, height: 4, background: "rgba(255,255,255,0.2)", borderRadius: 2, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${pct}%`, background: pct === 100 ? "#7CFFC6" : "#fff", borderRadius: 2, transition: "width .5s" }} />
               </div>
-              <span style={{ fontSize: 12, fontWeight: 600, color: pct === 100 ? "#7CFFC6" : "rgba(255,255,255,0.85)", fontFamily: "var(--font-code)" }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: pct === 100 ? "#7CFFC6" : "rgba(255,255,255,0.85)", fontFamily: "var(--font-code)", whiteSpace: "nowrap" }}>
                 {totalDone}/{totalItems}
               </span>
             </div>
-          </div>
-          {goal && (
-            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-              {proposed ? (
-                <>
-                  <button onClick={() => decideGoal(true)} disabled={paused || !!busy}
-                    style={{ padding: "8px 18px", fontSize: 12, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", cursor: "pointer", opacity: (paused || !!busy) ? 0.5 : 1 }}>
-                    {busy === "approve" ? "Starting…" : "✓ Approve & start"}
-                  </button>
-                  <button onClick={() => decideGoal(false)} disabled={!!busy}
-                    style={{ padding: "8px 14px", fontSize: 12, color: "rgba(255,255,255,0.88)", background: "rgba(255,255,255,0.13)", border: "1px solid rgba(255,255,255,0.28)", cursor: "pointer", opacity: !!busy ? 0.5 : 1 }}>
-                    {busy === "reject" ? "…" : "Reject"}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button onClick={runNow} disabled={paused || !!busy}
-                    style={{ padding: "8px 18px", fontSize: 12, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", cursor: "pointer", opacity: (paused || !!busy) ? 0.5 : 1 }}>
-                    {busy === "run" ? "Starting…" : "▶ Run now"}
-                  </button>
-                  <button onClick={togglePause} disabled={!!busy}
-                    style={{ padding: "8px 14px", fontSize: 12, color: "rgba(255,255,255,0.88)", background: "rgba(255,255,255,0.13)", border: "1px solid rgba(255,255,255,0.28)", cursor: "pointer", opacity: !!busy ? 0.5 : 1 }}>
-                    {paused ? "Resume" : "Pause"}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+            <button type="button" onClick={() => setEditingCats(true)} style={{
+              fontSize: 10, padding: "4px 10px", background: "rgba(255,255,255,0.12)",
+              border: "1px solid rgba(255,255,255,0.25)", color: "rgba(255,255,255,0.75)", cursor: "pointer" }}>
+              Edit areas
+            </button>
+            {goal && (proposed ? (
+              <>
+                <HeaderPrimaryBtn
+                  label={busy === "approve" ? "Starting…" : "✓ Approve & start"}
+                  onClick={() => decideGoal(true)}
+                  disabled={paused || !!busy}
+                />
+                <HeaderSecondaryBtn
+                  label={busy === "reject" ? "…" : "Reject"}
+                  onClick={() => decideGoal(false)}
+                  disabled={!!busy}
+                />
+              </>
+            ) : (
+              <>
+                <HeaderPrimaryBtn label={busy === "run" ? "Starting…" : "▶ Run now"} onClick={runNow} disabled={paused || !!busy} />
+                <HeaderSecondaryBtn label={paused ? "Resume" : "Pause"} onClick={togglePause} disabled={!!busy} />
+              </>
+            ))}
+          </>
+        }
+      />
 
-      {/* ── Scrollable ── */}
+      {/* ── Scrollable content ── */}
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px 48px", display: "flex", flexDirection: "column", gap: 24 }}>
 
         {actionErr && <div className="err-banner">{actionErr}</div>}
@@ -461,9 +489,6 @@ export default function MissionsPanel() {
           <div className="cl-enter">
             <div className="sec-label" style={{ marginBottom: 10 }}>Company goals</div>
 
-            {/* Current goal card — only for an in-flight goal. Proposed goals use the
-                banner above; a done current goal shows in the progression list below
-                (showing it here too would duplicate it). */}
             {currentGoalEntry && !proposed && currentGoalEntry.status !== "done" && (() => {
               const tasks = currentGoalEntry.tasks ?? [];
               const dn = tasks.filter(t => t.status === "done").length;
@@ -514,7 +539,6 @@ export default function MissionsPanel() {
               );
             })()}
 
-            {/* Goal progression — completed goals */}
             {doneGoals.length > 0 && (
               <div style={{ border: "1px solid var(--bd)", background: "var(--surface)" }}>
                 {doneGoals.map((g, i) => (
@@ -529,54 +553,52 @@ export default function MissionsPanel() {
           </div>
         )}
 
-        {/* ── Working on now ── */}
-        <div className="cl-enter">
-          <div className="sec-label" style={{ marginBottom: 10 }}>Working on now</div>
-          {workingOn.length === 0 ? (
-            <div style={{ padding: "14px 16px", border: "1px dashed var(--bd2)", fontSize: 12, color: "var(--fm)", lineHeight: 1.55 }}>
-              No agents running.{" "}
-              {goal
-                ? <button onClick={runNow} disabled={!!busy} style={{ color: "var(--blue)", background: "none", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, padding: 0, textDecoration: "underline" }}>Start a run</button>
-                : <a href="/" style={{ color: "var(--blue)" }}>Start a run</a>
-              }{" "}
-              to kick things off.
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {workingOn.map(({ item, cat, task }) => (
-                <ActiveItemCard key={item.id} item={item} cat={cat} task={task} />
-              ))}
-            </div>
-          )}
-        </div>
+        {/* ── TOP 2-COLUMN: Working on now | Done ── */}
+        <div className="cl-enter" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
 
-        {/* ── Up next ── */}
-        {upNext.length > 0 && (
-          <div className="cl-enter" style={{ animationDelay: "40ms" }}>
-            <div className="sec-label" style={{ marginBottom: 10 }}>Up next</div>
-            <div style={{ border: "1px solid var(--bd)", overflow: "hidden" }}>
-              {upNext.map(({ item, cat }, i) => (
-                <PendingRow
-                  key={item.id}
-                  item={item}
-                  cat={cat}
-                  onCheck={() => toggleItem(item.id)}
-                />
-              ))}
+          {/* LEFT: Working on now */}
+          <div>
+            <div className="sec-label" style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 7 }}>
+              Working on now
+              {workingOn.length > 0 && (
+                <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "var(--font-code)", color: "var(--blue)" }}>
+                  {workingOn.length}
+                </span>
+              )}
             </div>
+            {workingOn.length === 0 ? (
+              <div style={{ padding: "16px", border: "1px dashed var(--bd2)", fontSize: 12, color: "var(--fm)", lineHeight: 1.6 }}>
+                No agents running.{" "}
+                {goal
+                  ? <button onClick={runNow} disabled={!!busy} style={{ color: "var(--blue)", background: "none", border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, padding: 0, textDecoration: "underline" }}>Start a run</button>
+                  : <a href="/" style={{ color: "var(--blue)" }}>Start a run</a>
+                }{" "}
+                to kick things off.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {workingOn.map(({ item, cat, task }) => (
+                  <ActiveItemCard key={item.id} item={item} cat={cat} task={task} />
+                ))}
+              </div>
+            )}
           </div>
-        )}
 
-        {/* ── Done ── */}
-        {doneItems.length > 0 && (
-          <div className="cl-enter" style={{ animationDelay: "70ms" }}>
-            <button type="button" onClick={() => setDoneOpen(p => !p)}
-              style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: "0 0 10px" }}>
-              <span className="sec-label" style={{ marginBottom: 0 }}>Done</span>
-              <span style={{ fontSize: 11, color: "var(--green)", fontFamily: "var(--font-code)", fontWeight: 700 }}>{doneItems.length}</span>
-              <span style={{ fontSize: 10, color: "var(--fm)", transform: doneOpen ? "rotate(180deg)" : "none", transition: "transform .15s", display: "inline-block" }}>▾</span>
-            </button>
-            {doneOpen && (
+          {/* RIGHT: Done */}
+          <div>
+            <div className="sec-label" style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 7 }}>
+              Done
+              {doneItems.length > 0 && (
+                <span style={{ fontSize: 10, fontWeight: 700, fontFamily: "var(--font-code)", color: "var(--green)" }}>
+                  {doneItems.length}
+                </span>
+              )}
+            </div>
+            {doneItems.length === 0 ? (
+              <div style={{ padding: "16px", border: "1px dashed var(--bd2)", fontSize: 12, color: "var(--fm)" }}>
+                Complete tasks to see them here.
+              </div>
+            ) : (
               <div style={{ border: "1px solid var(--bd)", overflow: "hidden" }}>
                 {doneItems.map(({ item, cat }) => (
                   <DoneRow key={item.id} item={item} cat={cat} onUncheck={() => toggleItem(item.id)} />
@@ -584,11 +606,23 @@ export default function MissionsPanel() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* ── Up next ── */}
+        {upNext.length > 0 && (
+          <div className="cl-enter" style={{ animationDelay: "40ms" }}>
+            <div className="sec-label" style={{ marginBottom: 10 }}>Up next</div>
+            <div style={{ border: "1px solid var(--bd)", overflow: "hidden" }}>
+              {upNext.map(({ item, cat }) => (
+                <PendingRow key={item.id} item={item} cat={cat} onCheck={() => toggleItem(item.id)} />
+              ))}
+            </div>
+          </div>
         )}
 
         {/* ── Agent runs ── */}
         {runs.length > 0 && (
-          <div className="cl-enter" style={{ animationDelay: "100ms" }}>
+          <div className="cl-enter" style={{ animationDelay: "70ms" }}>
             <button type="button" onClick={() => setRunsOpen(p => !p)}
               style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", padding: "0 0 8px" }}>
               <span className="sec-label" style={{ marginBottom: 0 }}>Agent runs</span>
