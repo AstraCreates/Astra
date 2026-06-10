@@ -10,6 +10,7 @@ def patent_search(query: str, assignee: str = None, max_results: int = 10) -> di
         search_query = f"site:patents.google.com {query}"
         if assignee:
             search_query += f" {assignee}"
+        max_results = int(max_results) if max_results else 10
         with DDGS() as ddgs:
             raw = list(ddgs.text(search_query, max_results=max_results))
         patents = []
