@@ -1170,36 +1170,40 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       </div>
 
       {/* copilot chat bar */}
-      <div data-tour="session-steerbar" className="steerbar" style={{ flexDirection: "column", alignItems: "stretch", gap: 0 }}>
+      <div data-tour="session-steerbar" className={`steerbar copilot-dock ${copilotOpen ? "is-open" : ""}`}>
         {copilotOpen && (
-          <div style={{ maxHeight: 280, overflowY: "auto", padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8, borderBottom: "1px solid var(--bd)" }}>
+          <div className="copilot-thread">
             {copilot.length === 0 && (
-              <div style={{ fontSize: 12, color: "var(--fm)", lineHeight: 1.6 }}>
+              <div className="copilot-empty">
                 Ask or direct Astra. The copilot can answer from your company brain, read &amp; approve goals, steer the running agents, and run a cycle. Try “what’s our current goal?”, “tell the team to focus on pricing”, or “approve the next goal”.
               </div>
             )}
             {copilot.map((m, i) => (
-              <div key={i} style={{ display: "flex", justifyContent: m.role === "founder" ? "flex-end" : "flex-start" }}>
-                <div style={{ maxWidth: "82%", padding: "8px 11px", fontSize: 12.5, lineHeight: 1.5, whiteSpace: "pre-wrap",
-                  background: m.role === "founder" ? "#001AFF" : "var(--surface)", color: m.role === "founder" ? "#fff" : "var(--fg)",
-                  border: m.role === "founder" ? "none" : "1px solid var(--bd)", borderRadius: 10 }}>
+              <div key={i} className={`copilot-row ${m.role === "founder" ? "is-founder" : "is-astra"}`}>
+                {m.role !== "founder" && <span className="copilot-avatar">A</span>}
+                <div className="copilot-bubble">
                   {m.content}
                   {m.actions && m.actions.length > 0 && (
-                    <div style={{ marginTop: 5, fontSize: 9, opacity: 0.7, fontFamily: "var(--font-code)" }}>⚙ {m.actions.join(" · ")}</div>
+                    <div className="copilot-actions">⚙ {m.actions.join(" · ")}</div>
                   )}
                 </div>
               </div>
             ))}
-            {copilotBusy && <div style={{ fontSize: 11, color: "var(--fm)", fontFamily: "var(--font-code)" }}>copilot thinking…</div>}
+            {copilotBusy && (
+              <div className="copilot-row is-astra">
+                <span className="copilot-avatar">A</span>
+                <div className="copilot-thinking"><span /><span /><span /></div>
+              </div>
+            )}
           </div>
         )}
         <div className="steer-wrap">
-          <button className="steer-send" aria-label="Toggle copilot" title="Copilot chat" onClick={() => setCopilotOpen((v) => !v)} style={{ marginRight: 6 }}>{copilotOpen ? "▾" : "✦"}</button>
+          <button className="steer-send copilot-toggle" aria-label="Toggle copilot" title="Copilot chat" onClick={() => setCopilotOpen((v) => !v)}>{copilotOpen ? "▾" : "✦"}</button>
           <input ref={steerRef} className="steer-inp" aria-label="Ask or direct Astra"
             placeholder='Ask or direct Astra — "what’s our goal?" · "focus on pricing" · "approve next goal"'
             onFocus={() => setCopilotOpen(true)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); setCopilotOpen(true); sendCopilot(); } }} />
-          <button className="steer-send" aria-label="Send" onClick={() => { setCopilotOpen(true); sendCopilot(); }}>↑</button>
+          <button className="steer-send copilot-submit" aria-label="Send" onClick={() => { setCopilotOpen(true); sendCopilot(); }}>↑</button>
         </div>
       </div>
 
