@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { listSessions, deleteSessionRemote, killSession, type SessionIndexEntry } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
-import { useCompany } from "@/lib/company-context";
 import AstraGradient from "./AstraGradient";
 import GoalPanel from "./GoalPanel";
 
@@ -38,14 +37,12 @@ function StatusPill({ status }: { status: string }) {
 export default function DashboardView() {
   const router = useRouter();
   const { userId } = useDevUser();
-  const { activeCompany, companyId } = useCompany();
   const [sessions, setSessions] = useState<SessionIndexEntry[] | null>(null);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
   const [pendingDel, setPendingDel] = useState<Set<string>>(new Set());
   const [toastErr, setToastErr] = useState("");
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
-  const company = activeCompany?.name || "";
   const [firstName, setFirstName] = useState("");
   const [greeting, setGreeting] = useState("");
   useEffect(() => {
@@ -55,7 +52,6 @@ export default function DashboardView() {
     }
     setGreeting(GREETINGS[Math.floor(Math.random() * GREETINGS.length)]);
   }, []);
-  const headline = greeting && firstName ? `${greeting}, ${firstName}.` : greeting ? `${greeting}.` : "Dashboard";
 
   const del = useCallback(async (e: React.MouseEvent, s: SessionIndexEntry) => {
     e.stopPropagation();
@@ -81,24 +77,19 @@ export default function DashboardView() {
     }
   }, [pendingDel]);
 
-  // companyId from a real workspace filters to just that company's sessions.
-  // The "primary" fallback (isPrimary) has no workspace so we pass undefined — shows all.
-  const filterCompanyId = activeCompany?.isPrimary ? undefined : companyId;
-
   const load = useCallback(async () => {
     if (!userId) return;
     setError(""); setSessions(null);
-    try { setSessions(await listSessions(userId, 50, filterCompanyId)); }
+    try { setSessions(await listSessions(userId, 50)); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); setSessions([]); }
-  }, [userId, filterCompanyId]);
+  }, [userId]);
 
   useEffect(() => { load(); }, [load]);
 
   const running = (sessions || []).filter((s) => s.status === "running").length;
   const stalled = (sessions || []).filter((s) => s.status === "stalled").length;
 
-  const headlineName = firstName || (company ? `the ${company} team` : null);
-  const headline = greeting && headlineName ? `${greeting}, ${headlineName}.` : greeting ? `${greeting}.` : "";
+  const headline = greeting && firstName ? `${greeting}, ${firstName}.` : greeting ? `${greeting}.` : "";
 
   return (
     <>

@@ -7,7 +7,6 @@ import DashboardView from "@/components/DashboardView";
 import NewGoalView from "@/components/NewGoalView";
 import WelcomeScreen from "@/components/WelcomeScreen";
 import PostOnboardingScreen from "@/components/PostOnboardingScreen";
-import OnboardingWizard from "@/components/OnboardingWizard";
 
 export default function AppHome() {
   const router = useRouter();
@@ -16,7 +15,6 @@ export default function AppHome() {
 
   const sessionId = searchParams.get("session") ?? "";
   const forceNew = searchParams.get("new") === "1";
-  const newCompany = searchParams.get("newCompany") === "1";
   const showWelcome = searchParams.get("welcome") === "1";
   const welcomeName = searchParams.get("name") ?? "";
 
@@ -46,21 +44,6 @@ export default function AppHome() {
   // Not onboarded — show animated landing, not a redirect (avoids flash)
   if (!onboarded) {
     return <WelcomeScreen />;
-  }
-
-  // New company — show onboarding wizard inline (without clearing onboarding_done)
-  if (newCompany) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflow: "hidden", background: "var(--bg)" }}>
-        <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0, gap: 12 }}>
-          <div className="topbar-title">New Company</div>
-          <button onClick={() => router.replace("/")} style={{ marginLeft: "auto", background: "none", border: "none", fontSize: 11, color: "var(--fm)", cursor: "pointer" }}>✕ Cancel</button>
-        </div>
-        <div style={{ flex: 1, overflowY: "auto" }}>
-          <OnboardingWizard />
-        </div>
-      </div>
-    );
   }
 
   // Normal routing

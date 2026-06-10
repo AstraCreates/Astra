@@ -1006,11 +1006,7 @@ export async function submitGoal(
   instruction: string,
   constraints: Record<string, unknown> = {},
   stackId = "idea_to_revenue",
-  workspaceId?: string,
-  workspaceName?: string,
 ): Promise<{ session_id: string; status: string; workspace_id: string; chapter_id: string }> {
-  // Abort after 30s so a hung request surfaces an error instead of leaving the
-  // UI stuck on "Launching…" forever (e.g. a stale bundle pointing at a dead host).
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 30_000);
   let res: Response;
@@ -1023,8 +1019,6 @@ export async function submitGoal(
         instruction,
         constraints,
         stack_id: stackId,
-        workspace_id: workspaceId || undefined,
-        workspace_name: workspaceName || undefined,
       }),
       signal: ctrl.signal,
     });
@@ -1254,9 +1248,8 @@ export async function getSessionMeta(sessionId: string): Promise<SessionMeta | n
 }
 
 /** List a founder's sessions, optionally scoped to a single company/workspace. */
-export async function listSessions(founderId: string, limit = 50, companyId?: string): Promise<SessionIndexEntry[]> {
+export async function listSessions(founderId: string, limit = 50): Promise<SessionIndexEntry[]> {
   const params = new URLSearchParams({ founder_id: founderId, limit: String(limit) });
-  if (companyId) params.set("company_id", companyId);
   const res = await apiFetch(`${BASE}/sessions?${params.toString()}`);
   if (!res.ok) return [];
   const data = await res.json();

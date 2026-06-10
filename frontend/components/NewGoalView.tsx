@@ -4,12 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getStacks, submitGoal, ingestAttachment, type AgentStackTemplate } from "@/lib/api";
 import { useDevUser } from "@/lib/use-dev-user";
-import { useCompany } from "@/lib/company-context";
 
 export default function NewGoalView() {
   const router = useRouter();
   const { userId } = useDevUser();
-  const { activeCompany } = useCompany();
   const [stacks, setStacks] = useState<AgentStackTemplate[]>([]);
   const [stackHint, setStackHint] = useState("Loading stacks…");
   const [selStack, setSelStack] = useState<string>("");
@@ -19,7 +17,7 @@ export default function NewGoalView() {
   const [attachments, setAttachments] = useState<{ name: string; content: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [company, setCompany] = useState("");
-  const displayCompany = activeCompany?.name || company;
+  const displayCompany = company;
   const goalRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -66,14 +64,8 @@ export default function NewGoalView() {
         instruction,
         {},
         selStack || "idea_to_revenue",
-        activeCompany?.workspace?.workspace_id,
-        activeCompany?.name,
       );
       if (!data.session_id) throw new Error("No session_id returned");
-      // If this run created a new workspace (primary company had none), make it active.
-      if (data.workspace_id && !activeCompany?.workspace?.workspace_id) {
-        try { localStorage.setItem(`astra_company_id:${userId}`, data.workspace_id); } catch {}
-      }
       window.location.assign(`/s/${data.session_id}`);
     } catch (e) {
       setBusy(false);

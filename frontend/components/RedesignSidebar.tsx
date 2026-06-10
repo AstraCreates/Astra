@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
 import { useDevUser } from "@/lib/use-dev-user";
 import CreditsDisplay from "@/components/CreditsDisplay";
-import { useCompany } from "@/lib/company-context";
 
 const LINKS: { href: string; ic: string; label: string; match: (p: string) => boolean }[] = [
   { href: "/", ic: "⬡", label: "Dashboard", match: (p) => p === "/" },
@@ -22,7 +21,6 @@ function initials(id: string) { return (id || "?").replace(/^(user_|google_)/, "
 export default function RedesignSidebar({ mobile = false, open = false, onClose }: { mobile?: boolean; open?: boolean; onClose?: () => void } = {}) {
   const pathname = usePathname() || "/";
   const { userId, isSignedIn, user } = useDevUser();
-  const { companies, companyId, activeCompany, loading, setCompanyId } = useCompany();
 
   // On mobile the sidebar is an off-canvas drawer (fixed, slides in over content);
   // on desktop it's the usual sticky in-flow column.
@@ -43,40 +41,8 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
             <div style={{ fontSize: 9, color: "var(--blue)", letterSpacing: ".06em", textTransform: "uppercase" }}>ready</div>
           </div>
         </Link>
-        {/* Company switcher — only show if there are real workspaces */}
-        {companies.filter(c => !c.isPrimary).length > 0 && (
-          <label style={{ display: "grid", gap: 5, marginBottom: 10 }}>
-            <span style={{ fontSize: 8, color: "var(--fm)", letterSpacing: ".1em", textTransform: "uppercase" }}>
-              Company
-            </span>
-            <select
-              aria-label="Active company"
-              value={companyId}
-              disabled={loading}
-              onChange={event => setCompanyId(event.target.value)}
-              style={{
-                width: "100%",
-                minHeight: 34,
-                padding: "6px 28px 6px 9px",
-                border: "1px solid var(--bd)",
-                background: "var(--s2)",
-                color: "var(--fg)",
-                fontSize: 11,
-                fontFamily: "var(--font-code)",
-                cursor: loading ? "default" : "pointer",
-              }}
-            >
-              {companies.filter(c => !c.isPrimary).map(company => (
-                <option key={company.companyId} value={company.companyId}>
-                  {company.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 2 }}>
           <Link data-tour="new-goal-btn" href="/?new=1" className="btn" style={{ display: "flex", justifyContent: "center", gap: 7, textDecoration: "none" }}>＋ New run</Link>
-          <Link href="/?newCompany=1" className="btn" style={{ display: "flex", justifyContent: "center", gap: 7, textDecoration: "none", background: "transparent", border: "1px solid var(--bd)", color: "var(--fd)", fontSize: 11 }}>＋ New company</Link>
         </div>
       </div>
 
