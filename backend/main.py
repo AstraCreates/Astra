@@ -14,6 +14,7 @@ from backend.api.skills_routes import skills_router
 from backend.api.deployments_routes import deployments_router
 from backend.api.credits_routes import credits_router
 from backend.api.genome_routes import router as genome_router
+from backend.api.outcomes_routes import router as outcomes_router
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ app.include_router(skills_router, prefix="/api")
 app.include_router(deployments_router, prefix="/api")
 app.include_router(credits_router, prefix="/api")
 app.include_router(genome_router, prefix="/api")
+app.include_router(outcomes_router, prefix="/api")
 
 
 @app.on_event("startup")
