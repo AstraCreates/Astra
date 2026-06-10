@@ -1324,15 +1324,35 @@ def ask_company_brain(founder_id: str, question: str, limit: int = 8) -> dict[st
     canonical_hits = sum(1 for c in citations if c["canonical"])
     top_score = float(citations[0].get("score") or 0.0)
     confidence = min(1.0, round((top_score / 6.0) + (canonical_hits / max(1, len(citations))) * 0.25, 2))
-    summary = (
+
+    # SYNTHESIZE a real answer from the retrieved evidence (RAG generation). Without this
+    # the "answer" was just a template ("Answer based on N matched records") — retrieval
+    # with no generation. Cite sources inline as [n] matching the citations list.
+    fallback = (
         f"Answer based on {len(top)} matched records. "
         f"Top source: {citations[0]['title']} ({citations[0]['source']})."
     )
+    answer = fallback
+    try:
+        from backend.tools._llm import generate
+        evidence_block = "\n".join(evidence_lines)
+        prompt = (
+            "You are the company's knowledge assistant. Answer the QUESTION using ONLY the "
+            "EVIDENCE below (retrieved from the company brain). Be direct and specific. Cite "
+            "every claim inline with [n] matching the evidence numbers. If the evidence does "
+            "not contain the answer, say so plainly — do not invent facts.\n\n"
+            f"QUESTION: {query}\n\nEVIDENCE:\n{evidence_block}\n\nAnswer (with [n] citations):"
+        )
+        out = generate(prompt, max_tokens=700, model="large").strip()
+        if out:
+            answer = out
+    except Exception as exc:
+        logger.warning("ask_company_brain answer synthesis failed: %s", exc)
 
     return {
         "ok": True,
         "question": question,
-        "answer": summary,
+        "answer": answer,
         "confidence": confidence,
         "citations": citations,
         "evidence": evidence_lines,
