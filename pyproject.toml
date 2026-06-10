@@ -1,3 +1,7 @@
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Bound every test so a real LLM/network call that stalls fails fast instead of
+# hanging the whole suite (we test against real providers, no mocking).
+timeout = 120
+timeout_method = "thread"
