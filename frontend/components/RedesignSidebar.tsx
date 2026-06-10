@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
 import { useDevUser } from "@/lib/use-dev-user";
 import CreditsDisplay from "@/components/CreditsDisplay";
+import { useEffect, useState } from "react";
 
 const LINKS: { href: string; ic: string; label: string; match: (p: string) => boolean }[] = [
   { href: "/", ic: "⬡", label: "Dashboard", match: (p) => p === "/" },
@@ -21,6 +22,10 @@ function initials(id: string) { return (id || "?").replace(/^(user_|google_)/, "
 export default function RedesignSidebar({ mobile = false, open = false, onClose }: { mobile?: boolean; open?: boolean; onClose?: () => void } = {}) {
   const pathname = usePathname() || "/";
   const { userId, isSignedIn, user } = useDevUser();
+  const [companyName, setCompanyName] = useState("");
+  useEffect(() => {
+    setCompanyName(localStorage.getItem("astra_onboarding_company") || "");
+  }, []);
 
   // On mobile the sidebar is an off-canvas drawer (fixed, slides in over content);
   // on desktop it's the usual sticky in-flow column.
@@ -41,6 +46,12 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
             <div style={{ fontSize: 9, color: "var(--blue)", letterSpacing: ".06em", textTransform: "uppercase" }}>ready</div>
           </div>
         </Link>
+        {companyName && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", marginBottom: 8, background: "var(--s2)", border: "1px solid var(--bd)" }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", flexShrink: 0 }} />
+            <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{companyName}</span>
+          </div>
+        )}
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 2 }}>
           <Link data-tour="new-goal-btn" href="/?new=1" className="btn" style={{ display: "flex", justifyContent: "center", gap: 7, textDecoration: "none" }}>＋ New run</Link>
         </div>
