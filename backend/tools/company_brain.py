@@ -1297,11 +1297,26 @@ def ask_company_brain(founder_id: str, question: str, limit: int = 8) -> dict[st
         }
     search = search_company_brain(founder_id, query, limit=limit)
     records = search.get("results", [])
+
+    # ALWAYS put the canonical company-identity record(s) first, fetched directly from the
+    # brain — the GraphRAG index can be stale (new records aren't indexed until the next
+    # sync), so identity questions ("what is X / what do we sell") would otherwise miss the
+    # authoritative record and get answered from off-topic retrieval.
+    try:
+        _ids = {r.get("id") for r in records}
+        identity = [
+            r for r in (_load(founder_id).get("records") or [])
+            if (r.get("source") == "company_identity" or r.get("kind") == "identity") and r.get("id") not in _ids
+        ]
+        records = identity + records
+    except Exception:
+        pass
+
     if not records:
         return {
             "ok": True,
             "question": question,
-            "answer": "I could not find supporting records in the current company brain.",
+            "answer": "The company brain doesn't have a clear record of that yet.",
             "citations": [],
             "confidence": 0.0,
         }
