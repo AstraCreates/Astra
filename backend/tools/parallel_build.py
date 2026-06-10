@@ -105,13 +105,19 @@ async def spawn_parallel_coders(
 
     # Give each coder its own clone of the repo so concurrent openclaude runs can't
     # race on the same git index / working tree.
+    is_git_repo = (Path(main_local) / ".git").exists()
     worker_dirs: list[str] = []
     for i, m in enumerate(mods):
         wd = f"{main_local}_coder_{i}"
         shutil.rmtree(wd, ignore_errors=True)
         try:
-            subprocess.run(["git", "clone", "--quiet", main_local, wd], check=True, timeout=180,
-                           capture_output=True, text=True)
+            if is_git_repo:
+                subprocess.run(["git", "clone", "--quiet", main_local, wd], check=True, timeout=180,
+                               capture_output=True, text=True)
+            else:
+                # Local-only workspace (no git) — copy the tree so each coder still gets
+                # its own isolated working dir. Skip node_modules/.git to keep it fast.
+                shutil.copytree(main_local, wd, ignore=shutil.ignore_patterns("node_modules", ".git", ".next"))
             worker_dirs.append(wd)
         except Exception as e:
             logger.warning("parallel coder %s clone failed: %s", m.get("name"), e)
@@ -146,46 +152,48 @@ async def spawn_parallel_coders(
         else:
             logger.warning("parallel coder failed: %s", r)
 
-    # Merge each module's owned directory + union dependencies into the main repo.
-    _phase(session_id, agent, f"Merging {len(built)} modules into the repo")
     merged_files = 0
-    for r in built:
-        idx = next((i for i, m in enumerate(mods) if m["name"] == r["name"]), None)
-        if idx is not None and worker_dirs[idx]:
-            merged_files += _merge_owned(main_local, worker_dirs[idx], r["owns"])
-    _union_package_json(main_local, [w for w in worker_dirs if w])
-
-    # One consolidated build check + auto-fix on the merged tree.
-    _phase(session_id, agent, "Consolidated build check on merged modules")
-    _build_doctor(main_local)
-    passed, out = _npm_build_passes(main_local)
-    if passed is False:
-        _phase(session_id, agent, "Merged build failed — running recovery pass")
-        recovery = (
-            "The merged product fails to build. Fix ALL compile/type/import errors across the "
-            "modules so `npm run build` passes. Build output:\n" + (out or "")[:4000]
-        )
-        _run_claude(main_local, recovery, timeout=1200, founder_id=founder_id, app_session_id=session_id, agent=agent)
-        _build_doctor(main_local)
-        passed, out = _npm_build_passes(main_local)
-
-    _stage_all(main_local)
-    _commit_and_push(main_local, f"feat: build {len(built)} modules in parallel ({', '.join(b['name'] for b in built)})")
-
+    passed = None
     deploy_url = ""
     try:
-        from backend.tools.local_preview import start_local_preview
-        deploy_url = start_local_preview(main_local, session_id) or ""
-        if deploy_url:
-            from backend.core.events import publish_sync
-            publish_sync(session_id, {"type": "agent_build", "agent": agent, "kind": "deploy", "url": deploy_url, "local": True})
-    except Exception as e:
-        logger.warning("parallel build deploy failed: %s", e)
+        # Merge each module's owned directory + union dependencies into the main repo.
+        _phase(session_id, agent, f"Merging {len(built)} modules into the repo")
+        for r in built:
+            idx = next((i for i, m in enumerate(mods) if m["name"] == r["name"]), None)
+            if idx is not None and worker_dirs[idx]:
+                merged_files += _merge_owned(main_local, worker_dirs[idx], r["owns"])
+        _union_package_json(main_local, [w for w in worker_dirs if w])
 
-    # Clean up worker clones.
-    for wd in worker_dirs:
-        if wd:
-            shutil.rmtree(wd, ignore_errors=True)
+        # One consolidated build check + auto-fix on the merged tree.
+        _phase(session_id, agent, "Consolidated build check on merged modules")
+        _build_doctor(main_local)
+        passed, out = _npm_build_passes(main_local)
+        if passed is False:
+            _phase(session_id, agent, "Merged build failed — running recovery pass")
+            recovery = (
+                "The merged product fails to build. Fix ALL compile/type/import errors across the "
+                "modules so `npm run build` passes. Build output:\n" + (out or "")[:4000]
+            )
+            _run_claude(main_local, recovery, timeout=1200, founder_id=founder_id, app_session_id=session_id, agent=agent)
+            _build_doctor(main_local)
+            passed, out = _npm_build_passes(main_local)
+
+        _stage_all(main_local)
+        _commit_and_push(main_local, f"feat: build {len(built)} modules in parallel ({', '.join(b['name'] for b in built)})")
+
+        try:
+            from backend.tools.local_preview import start_local_preview
+            deploy_url = start_local_preview(main_local, session_id) or ""
+            if deploy_url:
+                from backend.core.events import publish_sync
+                publish_sync(session_id, {"type": "agent_build", "agent": agent, "kind": "deploy", "url": deploy_url, "local": True})
+        except Exception as e:
+            logger.warning("parallel build deploy failed: %s", e)
+    finally:
+        # Always clean up worker clones, even if merge/build raised.
+        for wd in worker_dirs:
+            if wd:
+                shutil.rmtree(wd, ignore_errors=True)
 
     _phase(session_id, agent, f"Parallel build done — {len(built)}/{len(mods)} modules, {merged_files} files, build {'OK' if passed else 'has errors'}")
     return {
