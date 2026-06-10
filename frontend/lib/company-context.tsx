@@ -81,7 +81,7 @@ export function CompanyProvider({ children }: { children: React.ReactNode }) {
     const params = new URLSearchParams(window.location.search);
     const requested = params.get("company") || params.get("workspace") || "";
     const stored = localStorage.getItem(storageKey) || "";
-    const next = [requested, stored, founderId, companies[0].companyId]
+    const next = [requested, stored, companies[0].companyId, founderId]
       .find(candidate => companies.some(company => company.companyId === candidate))
       || founderId;
     const timer = window.setTimeout(() => {
