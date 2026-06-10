@@ -313,6 +313,66 @@ h1, h2, h3, h4, h5, h6 {
    token remap alone. */
 * { border-radius: 0 !important; }
 
+/* Mission chat intentionally uses the softer product geometry. */
+.astra-chat {
+  border-radius: 30px !important;
+  border-color: rgba(17, 16, 24, 0.10);
+  box-shadow: 0 20px 60px rgba(17, 16, 24, 0.10), 0 2px 10px rgba(17, 16, 24, 0.04);
+}
+.astra-chat-mark {
+  border-radius: 14px !important;
+}
+.astra-chat-status,
+.astra-chat-status span,
+.astra-chat-empty-orbit,
+.astra-chat-empty-orbit::before,
+.astra-chat-empty-orbit span {
+  border-radius: 999px !important;
+}
+.astra-chat-avatar {
+  border-radius: 50% !important;
+}
+.astra-chat-bubble {
+  border-radius: 8px 22px 22px 22px !important;
+  padding: 11px 15px;
+}
+.astra-chat-row.is-user .astra-chat-bubble {
+  border-radius: 22px 22px 8px 22px !important;
+}
+.astra-chat-row.is-system .astra-chat-bubble {
+  border-radius: 999px !important;
+}
+.astra-chat-thinking {
+  border-radius: 8px 22px 22px 22px !important;
+}
+.astra-chat-thinking span,
+.astra-chat-send-spinner {
+  border-radius: 50% !important;
+}
+.astra-chat-composer {
+  border-radius: 24px !important;
+  padding: 8px 8px 8px 17px;
+}
+.astra-chat-send {
+  width: 40px;
+  height: 40px;
+  border-radius: 50% !important;
+}
+.astra-chat-hint kbd {
+  border-radius: 6px !important;
+}
+.astra-chat-mentions {
+  border-radius: 22px !important;
+}
+.astra-chat-mentions button {
+  border-radius: 999px !important;
+}
+
+[data-theme="dark"] .astra-chat {
+  border-color: rgba(240, 238, 255, 0.10);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
+}
+
 /* ── Focus ────────────────────────────────────────────────────────────────
    Visible keyboard focus ring using brand blue. Replaces browser default
    which is invisible on the dark surfaces. */
