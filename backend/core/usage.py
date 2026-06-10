@@ -65,9 +65,10 @@ def _tokens_to_credits(tokens: int) -> int:
 # Credits are priced off REAL API cost so revenue scales with spend:
 #   charged_usd = real_api_cost_usd * markup     (markup = 10× by default)
 #   credits     = charged_usd / CREDIT_USD
-# So $1 of real API cost bills as $10 of credits (10× markup). "Higher for certain
-# use cases" = a bigger markup (e.g. MVP builds use BASE × mvp_credit_multiplier).
-CREDIT_USD = 0.10          # 1 credit = $0.10 (the founder-facing price/credit)
+# So $1 of real API cost bills as $10 of credits (10× markup), = 2000 credits at
+# $0.005/credit. "Higher for certain use cases" = a bigger markup (e.g. MVP builds
+# use BASE × mvp_credit_multiplier).
+CREDIT_USD = 0.005         # 1 credit = $0.005 (the founder-facing price/credit)
 BASE_MARKUP = 10.0         # bill 10× the real API cost
 
 
