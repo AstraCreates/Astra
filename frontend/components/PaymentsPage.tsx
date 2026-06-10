@@ -599,7 +599,7 @@ export default function PaymentsPage() {
           </button>
         ) : undefined}
       />
-      <div style={{ width: "100%", maxWidth: 1020, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24, padding: "24px 0 48px", fontFamily: "var(--font-geist-sans)" }}>
+      <div style={{ width: "100%", maxWidth: 1020, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24, padding: "24px 22px 48px", fontFamily: "var(--font-geist-sans)" }}>
 
       {connectError && (
         <div style={{ padding: "12px 16px", borderRadius: 10, background: "#FEF2F2", border: "1px solid #FECACA", fontSize: 13, color: "#dc2626" }}>

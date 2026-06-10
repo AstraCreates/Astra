@@ -1028,7 +1028,7 @@ export default function SetupPage() {
         subtitle="Connect services once — agents use them everywhere"
         stats={status ? [{ label: "Connected", value: `${connectedCount} / ${totalServices}` }] : undefined}
       />
-      <div style={{ width: "100%", maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32, padding: "24px 0 48px", fontFamily: "var(--font-geist-sans)" }}>
+      <div style={{ width: "100%", maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32, padding: "24px 22px 48px", fontFamily: "var(--font-geist-sans)" }}>
 
       {/* Core services */}
       <div>

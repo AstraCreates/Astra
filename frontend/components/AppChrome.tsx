@@ -95,7 +95,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
             <div style={{ height: 46, display: "flex", alignItems: "center", padding: "0 14px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
               <div className="topbar-title">{title || "Astra"}</div>
             </div>
-            <div style={{ flex: 1, padding: "18px 16px 64px" }}>{children}</div>
+            <div style={{ flex: 1, padding: 0 }}>{children}</div>
           </main>
         )}
       </div>
@@ -114,7 +114,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
           <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
             <div className="topbar-title">{title || "Astra"}</div>
           </div>
-          <div style={{ flex: 1, overflowY: "auto", padding: "24px 22px 48px" }}>{children}</div>
+          <div style={{ flex: 1, overflowY: "auto", padding: 0 }}>{children}</div>
         </main>
       )}
     </div>

@@ -34,6 +34,9 @@ export default function PageHeader({ title, subtitle, badge, stats, actions }: P
       justifyContent: "space-between",
       gap: 16,
       flexWrap: "wrap",
+      position: "sticky",
+      top: 0,
+      zIndex: 10,
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Title row */}
