@@ -181,24 +181,39 @@ def plan_next_goal(founder_id: str) -> dict[str, Any] | None:
         'Respond with ONLY JSON: {"title": "the goal", "tasks": [{"title": "task", '
         '"workstream": "<one of the workstreams>"}]}'
     )
-    try:
-        from backend.tools._llm import generate
-        data = _parse_obj(generate(prompt, max_tokens=900, model="large"))
-    except Exception as e:
-        logger.warning("plan_next_goal LLM failed for %s: %s", founder_id, e)
-        return None
+    # Retry the planner once — a transient empty/garbled body shouldn't leave the
+    # company permanently goal-less.
+    title, tasks = "", []
+    for _attempt in range(2):
+        try:
+            from backend.tools._llm import generate
+            data = _parse_obj(generate(prompt, max_tokens=900, model="large"))
+        except Exception as e:
+            logger.warning("plan_next_goal LLM failed for %s (attempt %d): %s", founder_id, _attempt + 1, e)
+            data = {}
+        title = str(data.get("title") or "").strip()
+        raw_tasks = data.get("tasks") if isinstance(data.get("tasks"), list) else []
+        tasks = []
+        for t in raw_tasks[:5]:
+            if not isinstance(t, dict) or not t.get("title"):
+                continue
+            ws = str(t.get("workstream") or "").lower().strip()
+            owners = WORKSTREAMS.get(ws, {}).get("dispatch") or ["ops"]
+            tasks.append({"title": str(t["title"])[:200], "owner_agents": list(owners)})
+        if title and tasks:
+            break
 
-    title = str(data.get("title") or "").strip()
-    raw_tasks = data.get("tasks") if isinstance(data.get("tasks"), list) else []
-    tasks: list[dict[str, Any]] = []
-    for t in raw_tasks[:5]:
-        if not isinstance(t, dict) or not t.get("title"):
-            continue
-        ws = str(t.get("workstream") or "").lower().strip()
-        owners = WORKSTREAMS.get(ws, {}).get("dispatch") or ["ops"]
-        tasks.append({"title": str(t["title"])[:200], "owner_agents": list(owners)})
+    # Deterministic fallback — if the planner keeps failing, the company must STILL get
+    # a next goal (never silently stuck with no goal). A generic growth objective routed
+    # across the core workstreams; the founder reviews/edits it like any proposal.
     if not title or not tasks:
-        return None
+        logger.warning("plan_next_goal: planner produced nothing for %s — using fallback goal", founder_id)
+        title = "Grow traction: sharpen the product and reach more of the target customer"
+        tasks = [
+            {"title": "Talk to users and ship the highest-impact product improvements", "owner_agents": list(WORKSTREAMS["product"]["dispatch"])},
+            {"title": "Run go-to-market experiments to grow qualified demand", "owner_agents": list(WORKSTREAMS["marketing"]["dispatch"])},
+            {"title": "Build and work the sales pipeline from inbound interest", "owner_agents": list(WORKSTREAMS["sales"]["dispatch"])},
+        ]
     # Planner goals are PROPOSED, not active — the founder must approve before the
     # team works them. (The launch goal is the only auto-active one.)
     return start_goal(founder_id, title=title, tasks=tasks, kind="planner", status="proposed")

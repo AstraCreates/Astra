@@ -64,18 +64,20 @@ def _budget_allows(mission: dict) -> bool:
 async def _scheduler_tick() -> int:
     """Safety-net only. The goal loop is EVENT-DRIVEN: agent_done events tick tasks.
     When a goal completes, the planner PROPOSES the next goal and waits for the founder
-    to approve it (no auto-chain). This tick only recovers a STALLED *active* (approved)
-    goal — open, non-postponed tasks whose last run is older than the safety interval
-    (e.g. a run crashed). It re-dispatches that goal; it never decides goal-done on a
-    timer and never starts a proposed goal. Budget-gated.
+    to approve it (no auto-chain). This tick recovers two failure modes:
+      1. A completed goal with NO proposed successor (after_run missed — crash/restart/
+         planner error) → re-PROPOSE the next goal (never dispatched without sign-off).
+      2. A STALLED *active* (approved) goal — open, non-postponed tasks whose last run is
+         older than the safety interval (e.g. a run crashed) → re-dispatch it.
+    It never decides goal-done on a timer and never starts a proposed goal. Budget-gated.
 
     Returns the number of stalled goals re-dispatched.
     """
     import os
     from backend.missions.company_goal import (
-        list_company_goals, budget_allows, is_due, current_goal,
+        list_company_goals, budget_allows, is_due, current_goal, chain_allowed, _goal_is_complete,
     )
-    from backend.missions.goal_engine import dispatch_current_goal
+    from backend.missions.goal_engine import dispatch_current_goal, plan_next_goal
 
     safety_interval = max(300, int(os.environ.get("ASTRA_GOAL_SAFETY_INTERVAL_SECONDS", "1800")))
 
@@ -98,6 +100,21 @@ async def _scheduler_tick() -> int:
         if await asyncio.to_thread(has_active_run, founder_id):
             continue  # a run is genuinely in progress — don't start a duplicate
         cg = await asyncio.to_thread(current_goal, founder_id)
+        # SAFETY NET — current goal complete but NO successor proposed. This happens when
+        # after_run missed (run crashed, backend restarted between goal_done and the
+        # proposal, or the planner errored), which is exactly the "goal done but no next
+        # goal" stall. Re-propose now. Approval-gated: this only PROPOSES (status
+        # "proposed"); it never dispatches without the founder's sign-off. After a
+        # proposal exists the current goal is the proposal (not "done"), so this won't
+        # fire again or stack duplicates.
+        if cg and cg.get("status") == "done" and _goal_is_complete(cg):
+            if chain_allowed(goal):
+                try:
+                    if await asyncio.to_thread(plan_next_goal, founder_id):
+                        logger.info("missions_scheduler: recovered missing next-goal proposal founder=%s", founder_id)
+                except Exception as exc:
+                    logger.error("missions_scheduler: next-goal proposal recovery failed founder=%s: %s", founder_id, exc, exc_info=True)
+            continue
         # Only an APPROVED (active) goal is the scheduler's business. Proposed goals
         # wait for the founder's sign-off; completed goals wait for the next proposal.
         # No auto-chaining here — that's a human decision now.
