@@ -1734,6 +1734,34 @@ class Orchestrator:
 
         # Load all prior vault notes for this founder to give full company context
         shared: dict[str, Any] = {"prior_session_id": prior_session_id, "creative_brief": creative_brief}
+        # Propagate the SAME company name the launch run chose, so operating-run agents
+        # don't invent a new one (the "Goon → TrueNorth" bug). Resolve: brain identity
+        # record → prior launch session meta → launch goal title ("Launch X" → X).
+        _company_name = ""
+        try:
+            from backend.tools.company_brain import get_company_name as _gcn
+            _company_name = _gcn(founder_id) or ""
+        except Exception:
+            pass
+        if not _company_name and prior_session_id:
+            try:
+                from backend.core.session_store import get_session_meta as _gsm
+                _company_name = ((_gsm(prior_session_id) or {}).get("company_name") or "").strip()
+            except Exception:
+                pass
+        if not _company_name:
+            try:
+                from backend.missions.company_goal import get_goals as _gg
+                _launch = next((g for g in _gg(founder_id) if g.get("kind") == "launch"), None)
+                _t = (_launch or {}).get("title", "")
+                if _t.lower().startswith("launch ") and _t[7:].strip().lower() not in ("the company", "company"):
+                    _company_name = _t[7:].strip()
+            except Exception:
+                pass
+        if _company_name:
+            shared["company_name"] = _company_name
+            await publish(session_id, {"type": "company_name", "name": _company_name})
+            logger.info("continue_run: propagated company_name=%r for %s", _company_name, founder_id)
         context_policy = RunContextPolicy(session_id=session_id, founder_id=founder_id, constraints={})
         try:
             vault_summary_parts = []

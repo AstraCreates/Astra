@@ -1196,6 +1196,25 @@ def company_brain_context(founder_id: str, query: str, limit: int = 6, viewer_id
     return search_company_brain(founder_id, query, limit=limit, viewer_id=viewer_id)["formatted"]
 
 
+def get_company_name(founder_id: str) -> str:
+    """Best-effort canonical company name for a founder, so operating/continuation runs
+    use the SAME name the launch run picked instead of inventing a new one. Order:
+    the canonical company-identity record's metadata → its title → empty."""
+    try:
+        data = _load(founder_id)
+        for rec in data.get("records") or []:
+            if rec.get("source") == "company_identity" or rec.get("kind") == "identity":
+                name = ((rec.get("metadata") or {}).get("company_name") or "").strip()
+                if name:
+                    return name
+                title = str(rec.get("title") or "")
+                if ":" in title:
+                    return title.split(":", 1)[1].strip()
+    except Exception:
+        pass
+    return ""
+
+
 def ask_company_brain(founder_id: str, question: str, limit: int = 8) -> dict[str, Any]:
     """Answer a question using company-brain records with explicit citations."""
     query = question.strip()
