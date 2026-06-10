@@ -9,7 +9,7 @@ import CreditsDisplay from "@/components/CreditsDisplay";
 
 const LINKS: { href: string; ic: string; label: string; match: (p: string) => boolean }[] = [
   { href: "/", ic: "⬡", label: "Dashboard", match: (p) => p === "/" },
-  { href: "/goals", ic: "◎", label: "Goals", match: (p) => p.startsWith("/goals") },
+  { href: "/goals", ic: "◎", label: "Checklist", match: (p) => p.startsWith("/goals") },
   { href: "/outreach", ic: "✦", label: "Outreach", match: (p) => p.startsWith("/outreach") },
   { href: "/brain", ic: "◈", label: "Company Brain", match: (p) => p.startsWith("/brain") },
   { href: "/integrations", ic: "⌘", label: "Integrations", match: (p) => p.startsWith("/integrations") },
