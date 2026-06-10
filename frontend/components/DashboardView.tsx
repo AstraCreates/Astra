@@ -6,6 +6,7 @@ import { listSessions, deleteSessionRemote, killSession, type SessionIndexEntry 
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import AstraGradient from "./AstraGradient";
+import GoalPanel from "./GoalPanel";
 
 const GREETINGS = [
   "Welcome back",
@@ -179,7 +180,18 @@ export default function DashboardView() {
             <button onClick={() => setToastErr("")} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 14, padding: 0, lineHeight: 1 }}>✕</button>
           </div>
         )}
-        <div style={{ padding: "20px 24px 40px" }}>
+        <div style={{ padding: "20px 24px 40px", display: "flex", gap: 24, alignItems: "flex-start" }}>
+
+          {/* ── Left: Goal panel ── */}
+          <div style={{ width: 340, flexShrink: 0 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fd)", fontFamily: "var(--font-code)", marginBottom: 12 }}>
+              Goals
+            </div>
+            <GoalPanel />
+          </div>
+
+          {/* ── Right: Sessions ── */}
+          <div style={{ flex: 1, minWidth: 0 }}>
           {/* Attention banner */}
           {stalled > 0 && (
             <div style={{
@@ -332,6 +344,7 @@ export default function DashboardView() {
               })()}
             </div>
           )}
+          </div>{/* end sessions col */}
         </div>
       </div>
     </>
