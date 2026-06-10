@@ -6,7 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
-from backend.tenant_auth import require_founder_access, request_user_id
+from backend.tenant_auth import require_founder_access, require_company_access, request_user_id
 from backend.missions.company_goal import get_company_goal
 from backend.genome.store import get_genome, get_conflicts
 from backend.outcomes.store import weekly_rollup
@@ -40,9 +40,12 @@ async def company_overview_route(
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id required")
 
-    require_founder_access(request, founder_id, min_role="viewer")
+    resolved_company_id = company_id or founder_id
+    require_company_access(request, founder_id, resolved_company_id, min_role="viewer")
 
     overview = {}
+
+    # Already resolved company_id, reuse it below
 
     # Goals: current + bucketed
     try:

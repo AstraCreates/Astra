@@ -13,7 +13,7 @@ from backend.outcomes.store import (
     update_outcome_state,
     weekly_rollup,
 )
-from backend.tenant_auth import require_founder_access
+from backend.tenant_auth import require_founder_access, require_company_access
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -44,7 +44,8 @@ async def add_outcome_route(
     """Record an outcome."""
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id query param required")
-    require_founder_access(request, founder_id, min_role="viewer")
+    resolved_company_id = company_id or founder_id
+    require_company_access(request, founder_id, resolved_company_id, min_role="viewer")
 
     resolved_company_id = company_id or founder_id
     outcome = add_outcome(
@@ -72,7 +73,8 @@ async def list_outcomes_route(
     """Fetch outcomes, optionally filtered."""
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id query param required")
-    require_founder_access(request, founder_id, min_role="viewer")
+    resolved_company_id = company_id or founder_id
+    require_company_access(request, founder_id, resolved_company_id, min_role="viewer")
 
     resolved_company_id = company_id or founder_id
     state_list = [s.strip() for s in states.split(",") if s.strip()] if states else None
@@ -106,7 +108,8 @@ async def weekly_rollup_route(
     """Get this week's outcome rollup by metric + state."""
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id query param required")
-    require_founder_access(request, founder_id, min_role="viewer")
+    resolved_company_id = company_id or founder_id
+    require_company_access(request, founder_id, resolved_company_id, min_role="viewer")
 
     resolved_company_id = company_id or founder_id
     rollup = weekly_rollup(founder_id, resolved_company_id)

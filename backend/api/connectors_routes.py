@@ -13,7 +13,7 @@ from backend.safety.connector_check import (
     check_connector_availability,
     get_connector_requirements,
 )
-from backend.tenant_auth import require_founder_access
+from backend.tenant_auth import require_founder_access, require_company_access
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -32,7 +32,8 @@ async def list_connectors_route(
     """Get connector status: connected/degraded/expired/missing per connector."""
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id query param required")
-    require_founder_access(request, founder_id, min_role="viewer")
+    resolved_company_id = company_id or founder_id
+    require_company_access(request, founder_id, resolved_company_id, min_role="viewer")
 
     resolved_company_id = company_id or founder_id
     coverage = build_connector_coverage(founder_id, stack_id=resolved_company_id) or {}
@@ -52,7 +53,8 @@ async def check_tool_connectors_route(
     """
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id query param required")
-    require_founder_access(request, founder_id, min_role="viewer")
+    resolved_company_id = company_id or founder_id
+    require_company_access(request, founder_id, resolved_company_id, min_role="viewer")
 
     resolved_company_id = company_id or founder_id
     check_result = check_connector_availability(

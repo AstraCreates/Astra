@@ -161,6 +161,34 @@ def require_org_access(request: Request, org_id: str, min_role: str = "viewer") 
     return user_id
 
 
+def require_company_access(request: Request, founder_id: str, company_id: str, min_role: str = "viewer") -> str:
+    """Require caller to have access to a company within a founder's workspace."""
+    # First check founder/org access
+    user_id = require_founder_access(request, founder_id, min_role=min_role)
+
+    # In dev mode or same-company, allow access
+    if _missing_user_allowed() or company_id == founder_id:
+        return user_id
+
+    # In prod, verify company belongs to this founder's workspace
+    try:
+        from backend.core.workspace_store import get_workspace
+        workspace = get_workspace(founder_id) or {}
+        companies = workspace.get("companies", [])
+        if company_id not in companies and company_id != founder_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Company not found in this workspace.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        # Workspace check failed, fall back to simple check
+        pass
+
+    return user_id
+
+
 def require_platform_admin(request: Request) -> str:
     """Require a caller explicitly allowlisted for platform-wide admin access."""
     user_id = request_user_id(request)

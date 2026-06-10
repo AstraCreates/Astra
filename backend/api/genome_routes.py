@@ -14,7 +14,7 @@ from backend.genome.store import (
     resolve_conflict,
     get_conflicts,
 )
-from backend.tenant_auth import require_founder_access
+from backend.tenant_auth import require_founder_access, require_company_access
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -42,7 +42,8 @@ async def get_genome_route(
     """Fetch company genome."""
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id query param required")
-    require_founder_access(request, founder_id, min_role="viewer")
+    resolved_company_id = company_id or founder_id
+    require_company_access(request, founder_id, resolved_company_id, min_role="viewer")
 
     resolved_company_id = company_id or founder_id
     genome = get_genome(founder_id, resolved_company_id)
@@ -59,7 +60,8 @@ async def get_section_route(
     """Fetch one section of the genome."""
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id query param required")
-    require_founder_access(request, founder_id, min_role="viewer")
+    resolved_company_id = company_id or founder_id
+    require_company_access(request, founder_id, resolved_company_id, min_role="viewer")
 
     resolved_company_id = company_id or founder_id
     facts = get_section(founder_id, section, resolved_company_id)

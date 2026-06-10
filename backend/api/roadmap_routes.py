@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from backend.missions.roadmap import generate_roadmap, apply_roadmap
-from backend.tenant_auth import require_founder_access
+from backend.tenant_auth import require_founder_access, require_company_access
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -32,7 +32,8 @@ async def generate_roadmap_route(
     """Generate personalized roadmap from company genome using LLM."""
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id query param required")
-    require_founder_access(request, founder_id, min_role="viewer")
+    resolved_company_id = company_id or founder_id
+    require_company_access(request, founder_id, resolved_company_id, min_role="viewer")
 
     resolved_company_id = company_id or founder_id
     result = generate_roadmap(
