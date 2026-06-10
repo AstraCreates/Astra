@@ -13,32 +13,70 @@ logger = logging.getLogger(__name__)
 
 _BH_SRC = "/tmp/browser-harness/src"
 
-# Reliable search backends in priority order. On this host the default/
-# duckduckgo/google/brave backends frequently return "No results found",
-# while "auto" and "bing" work fast (<2s). Rotate through the good ones with
-# retries so a single rate-limited backend never yields 0 sites.
-_SEARCH_BACKENDS = ("auto", "bing")
+# Reliable search backends in priority order. On this host duckduckgo/brave/
+# mojeek/startpage frequently return "No results found", while "auto", "bing"
+# and "yahoo" work fast (<2s). Rotate through the good ones with retries so a
+# single rate-limited backend never yields 0 sites.
+_SEARCH_BACKENDS = ("auto", "bing", "yahoo")
+
+# Several research agents run in parallel and hammer the same search backends,
+# which is exactly when they start rate-limiting. A process-wide throttle
+# (serialize + minimum gap between calls) plus a short-TTL result cache keeps
+# concurrent agents from triggering that — duplicate queries are answered from
+# cache and distinct queries are spaced out instead of fired simultaneously.
+import threading as _threading
+import time as _time
+
+_SEARCH_GATE = _threading.Lock()
+_SEARCH_MIN_INTERVAL = 1.0  # seconds between actual backend hits
+_last_search_at = 0.0
+_SEARCH_CACHE: dict[str, tuple[float, list[dict]]] = {}
+_SEARCH_CACHE_TTL = 300.0  # 5 min — research bursts re-ask the same queries
+_SEARCH_CACHE_MAX = 256
 
 
 def _robust_search(query: str, max_results: int = 12) -> list[dict]:
     """Return search results, rotating reliable ddgs backends with retries.
-    Never hangs (each call is bounded) and never silently returns 0 if any
-    backend works."""
-    import time as _t
+    Throttled process-wide so parallel agents don't rate-limit the backends,
+    and cached briefly so repeated queries are free. Never hangs (each call is
+    bounded) and never silently returns 0 if any backend works."""
+    import random as _random
     try:
         from ddgs import DDGS
     except Exception as e:
         logger.warning("ddgs import failed: %s", e)
         return []
-    for backend in _SEARCH_BACKENDS:
-        for attempt in range(2):
-            try:
-                r = list(DDGS(timeout=12).text(query, max_results=max_results, backend=backend))
-                if r:
-                    return r
-            except Exception as e:
-                logger.debug("search backend=%s attempt=%d failed: %s", backend, attempt, e)
-            _t.sleep(0.3 * (attempt + 1))
+
+    global _last_search_at
+    key = f"{query.strip().lower()}|{max_results}"
+    now = _time.time()
+    hit = _SEARCH_CACHE.get(key)
+    if hit and (now - hit[0]) < _SEARCH_CACHE_TTL:
+        return hit[1]
+
+    with _SEARCH_GATE:
+        # Re-check cache: another thread may have answered this query while we waited.
+        hit = _SEARCH_CACHE.get(key)
+        if hit and (_time.time() - hit[0]) < _SEARCH_CACHE_TTL:
+            return hit[1]
+        for backend in _SEARCH_BACKENDS:
+            for attempt in range(3):
+                gap = _SEARCH_MIN_INTERVAL - (_time.time() - _last_search_at)
+                if gap > 0:
+                    _time.sleep(gap)
+                try:
+                    _last_search_at = _time.time()
+                    r = list(DDGS(timeout=12).text(query, max_results=max_results, backend=backend))
+                    if r:
+                        if len(_SEARCH_CACHE) >= _SEARCH_CACHE_MAX:
+                            oldest = min(_SEARCH_CACHE, key=lambda k: _SEARCH_CACHE[k][0])
+                            _SEARCH_CACHE.pop(oldest, None)
+                        _SEARCH_CACHE[key] = (_time.time(), r)
+                        return r
+                except Exception as e:
+                    logger.debug("search backend=%s attempt=%d failed: %s", backend, attempt, e)
+                # Jittered exponential backoff before retrying this backend.
+                _time.sleep(0.4 * (2 ** attempt) + _random.uniform(0, 0.4))
     return []
 
 _QUERY_BLUEPRINTS = {
