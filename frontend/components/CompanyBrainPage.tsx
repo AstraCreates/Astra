@@ -2,8 +2,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
-import Link from "next/link";
-import PageHeader from "@/components/PageHeader";
 import {
   addCompanyBrainRecord,
   askCompanyBrain,
@@ -267,12 +265,15 @@ function KnowledgeMap({
     [edges, visibleIds]
   );
   const selected = visibleNodes.find(n => n.id === selectedId) ?? visibleNodes[0] ?? null;
+  const communities = useMemo(
+    () => Array.from(new Set(visibleNodes.map(n => n.community_id || "unassigned"))),
+    [visibleNodes]
+  );
   const layout = useMemo(() => {
     const width = 720;
     const height = 360;
     const cx = width / 2;
     const cy = height / 2;
-    const communities = Array.from(new Set(visibleNodes.map(n => n.community_id || "unassigned")));
     const positions = new Map<string, { x: number; y: number; color: string; radius: number }>();
     visibleNodes.forEach((node, i) => {
       const ci = Math.max(0, communities.indexOf(node.community_id || "unassigned"));
@@ -288,7 +289,31 @@ function KnowledgeMap({
       });
     });
     return { width, height, positions };
-  }, [visibleNodes]);
+  }, [visibleNodes, communities]);
+  // Legend: each color group named after its most important entity.
+  const legend = useMemo(() =>
+    communities.slice(0, 8).map((cid, ci) => {
+      const members = visibleNodes.filter(n => (n.community_id || "unassigned") === cid);
+      const top = [...members].sort((a, b) => Number(b.importance || 0) - Number(a.importance || 0))[0];
+      return {
+        id: cid,
+        color: GRAPH_COLORS[ci % GRAPH_COLORS.length],
+        label: top ? top.name.slice(0, 22) : "Other",
+        count: members.length,
+      };
+    }),
+    [communities, visibleNodes]
+  );
+  // Entities directly connected to the selected node — the "why is this here" answer.
+  const neighbors = useMemo(() => {
+    if (!selected) return [];
+    const ids = new Set<string>();
+    for (const e of visibleEdges) {
+      if (e.source === selected.id) ids.add(e.target);
+      if (e.target === selected.id) ids.add(e.source);
+    }
+    return visibleNodes.filter(n => ids.has(n.id)).slice(0, 10);
+  }, [selected, visibleEdges, visibleNodes]);
   const topEntities = useMemo(
     () => [...nodes].sort((a, b) => Number(b.importance || 0) - Number(a.importance || 0)).slice(0, 8),
     [nodes]
@@ -345,8 +370,10 @@ function KnowledgeMap({
                   <circle r={pos.radius + (active ? 5 : 2)} fill={active ? "rgba(0,46,255,0.12)" : "rgba(0,0,0,0.04)"} />
                   <circle r={pos.radius} fill={pos.color}
                     stroke={active ? "#002EFF" : "rgba(255,255,255,0.8)"} strokeWidth={active ? 2 : 1} />
-                  {(active || Number(node.importance || 0) >= 3) && (
-                    <text x={pos.radius + 5} y={4} fill="var(--fg)" fontSize="9" fontFamily="var(--font-code)">
+                  {(active || Number(node.importance || 0) >= 2) && (
+                    <text x={pos.radius + 6} y={4} fill="var(--fg)" fontSize="10"
+                      fontFamily="var(--font-instrument), sans-serif" fontWeight={active ? 600 : 400}
+                      style={{ paintOrder: "stroke", stroke: "rgba(255,255,255,0.85)", strokeWidth: 3 }}>
                       {node.name.slice(0, 22)}
                     </text>
                   )}
@@ -357,23 +384,56 @@ function KnowledgeMap({
           </svg>
         )}
         {visibleNodes.length > 0 && (
-          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", padding: "6px 8px", borderTop: "1px solid var(--bd)", fontFamily: "var(--font-code)", fontSize: 10, color: "var(--fm)" }}>
-            <span style={{ marginRight: "auto" }}>scroll to zoom · drag to pan</span>
-            <button type="button" onClick={() => setView(v => ({ ...v, scale: Math.min(4, v.scale * 1.2) }))} className="btn" style={{ minHeight: 24, fontSize: 11, padding: "0 8px" }}>+</button>
-            <button type="button" onClick={() => setView(v => ({ ...v, scale: Math.max(0.4, v.scale * 0.83) }))} className="btn" style={{ minHeight: 24, fontSize: 11, padding: "0 8px" }}>−</button>
-            <button type="button" onClick={() => setView({ scale: 1, tx: 0, ty: 0 })} className="btn" style={{ minHeight: 24, fontSize: 11, padding: "0 8px" }}>Reset</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderTop: "1px solid var(--bd)", fontSize: 11, color: "var(--fm)", flexWrap: "wrap" }}>
+            {/* legend — color groups named after their main entity */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", flex: 1, minWidth: 0 }}>
+              {legend.map(g => (
+                <span key={g.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, whiteSpace: "nowrap" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 999, background: g.color, flexShrink: 0 }} />
+                  <span style={{ color: "var(--fd)", fontWeight: 500 }}>{g.label}</span>
+                  <span style={{ color: "var(--fm)" }}>({g.count})</span>
+                </span>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+              <span style={{ fontSize: 10 }}>scroll to zoom · drag to pan</span>
+              <button type="button" onClick={() => setView(v => ({ ...v, scale: Math.min(4, v.scale * 1.2) }))} className="btn" style={{ minHeight: 24, fontSize: 11, padding: "0 8px" }}>+</button>
+              <button type="button" onClick={() => setView(v => ({ ...v, scale: Math.max(0.4, v.scale * 0.83) }))} className="btn" style={{ minHeight: 24, fontSize: 11, padding: "0 8px" }}>−</button>
+              <button type="button" onClick={() => setView({ scale: 1, tx: 0, ty: 0 })} className="btn" style={{ minHeight: 24, fontSize: 11, padding: "0 8px" }}>Reset</button>
+            </div>
           </div>
         )}
       </Card>
+
+      {/* how to read this */}
+      {visibleNodes.length > 0 && (
+        <div style={{ fontSize: 11.5, color: "var(--fm)", lineHeight: 1.6, padding: "0 2px" }}>
+          Each dot is a person, product, or concept found in your knowledge. Bigger dots matter more,
+          lines show how they&apos;re related, and colors group related topics. Click any dot to see its connections.
+        </div>
+      )}
 
       {visibleNodes.length > 0 && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <Card style={{ padding: "13px 15px", minHeight: 88 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fm)", marginBottom: 7, textTransform: "uppercase", letterSpacing: ".06em" }}>Selected</div>
             {selected ? (
-              <div style={{ display: "grid", gap: 5 }}>
+              <div style={{ display: "grid", gap: 6 }}>
                 <div style={{ color: "var(--fg)", fontSize: 13, fontWeight: 600 }}>{selected.name}</div>
                 <div style={{ color: "var(--fd)", fontSize: 11.5, lineHeight: 1.45 }}>{selected.description || selected.type}</div>
+                {neighbors.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 10, color: "var(--fm)", marginBottom: 4 }}>Connected to:</div>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                      {neighbors.map(n => (
+                        <button type="button" key={n.id} onClick={() => setSelectedId(n.id)}
+                          className="pill" style={{ letterSpacing: 0, cursor: "pointer" }}>
+                          {n.name.slice(0, 20)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div style={{ color: "var(--fm)", fontSize: 12 }}>Click a dot to inspect it.</div>
@@ -676,45 +736,35 @@ export default function CompanyBrainPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
 
-      {/* ── page header ── */}
-      <div style={{ flexShrink: 0 }}>
-        <PageHeader
-          title="Company Brain"
-          subtitle="Everything your company knows — searchable by you and your agents"
-          stats={[
-            { label: "Records", value: String(records.length) },
-            { label: "Sources", value: `${connected} connected` },
-          ]}
-          actions={
-            <Link href="/" style={{
-              display: "inline-flex", alignItems: "center", padding: "8px 18px",
-              fontSize: 12, fontWeight: 600, color: "#002EFF",
-              background: "#fff", border: "none", textDecoration: "none", borderRadius: 8,
-            }}>
-              Run agents
-            </Link>
-          }
-        />
-
-        {/* Tab bar */}
-        <div style={{ borderBottom: "1px solid var(--bd)", background: "var(--surface)", paddingInline: 24, display: "flex", gap: 2 }}>
+      {/* ── slim blue header: title + tabs in one block ── */}
+      <div style={{ flexShrink: 0, background: "#001AFF", position: "sticky", top: 0, zIndex: 10 }}>
+        <div style={{ padding: "18px 24px 0", display: "flex", alignItems: "baseline", gap: 12 }}>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: "#fff", letterSpacing: "-0.02em", margin: 0, lineHeight: 1.2 }}>
+            Company Brain
+          </h1>
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.60)" }}>
+            {records.length} records · {connected} sources
+          </span>
+        </div>
+        <div style={{ padding: "10px 18px 0", display: "flex", gap: 2 }}>
           {TABS.map(t => (
             <button
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
               style={{
-                padding: "11px 14px", fontSize: 13,
+                padding: "9px 14px 11px", fontSize: 13,
                 fontWeight: tab === t.key ? 600 : 450,
-                color: tab === t.key ? "var(--blue)" : "var(--fm)",
+                color: tab === t.key ? "#fff" : "rgba(255,255,255,0.60)",
                 background: "transparent", border: "none", cursor: "pointer",
-                borderBottom: tab === t.key ? "2px solid var(--blue)" : "2px solid transparent",
-                marginBottom: -1, display: "flex", alignItems: "center", gap: 6,
+                borderBottom: tab === t.key ? "2px solid #fff" : "2px solid transparent",
+                display: "flex", alignItems: "center", gap: 6,
+                transition: "color .14s",
               }}
             >
               {t.label}
               {t.key === "settings" && openProposals.length > 0 && (
-                <span style={{ fontSize: 9, fontWeight: 700, color: "#fff", background: "#d97706", borderRadius: 999, padding: "1px 6px" }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: "#001AFF", background: "#FFCB50", borderRadius: 999, padding: "1px 6px" }}>
                   {openProposals.length}
                 </span>
               )}
