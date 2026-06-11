@@ -624,19 +624,52 @@ class Agent:
             except Exception:
                 pass
 
-        # Strategy 3: find all JSON-like blobs and try each
-        for m in _re.finditer(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)?\}', raw, _re.DOTALL):
+        # Strategy 2c: repair a TRUNCATED object (large done/tool outputs get cut
+        # off at max_tokens → unbalanced braces). Close the open braces/brackets and
+        # retry so the envelope ({"action":...}) survives even if the tail is lost.
+        if start != -1:
+            frag = raw[start:]
+            opens = frag.count("{") - frag.count("}")
+            obrk = frag.count("[") - frag.count("]")
+            if opens > 0 or obrk > 0:
+                repaired = frag.rstrip().rstrip(",") + "]" * max(0, obrk) + "}" * max(0, opens)
+                try:
+                    return json.loads(repaired)
+                except Exception:
+                    pass
+
+        # Strategy 3: collect JSON-like blobs; PREFER one carrying an action/tool key
+        # (don't return a nested leaf fragment like {"heading_font": ...}).
+        _candidates: list[dict] = []
+        for m in _re.finditer(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', raw, _re.DOTALL):
+            d = None
             try:
-                return json.loads(m.group())
+                d = json.loads(m.group())
             except Exception:
                 try:
                     import ast
-                    result = ast.literal_eval(m.group())
-                    if isinstance(result, dict):
-                        return result
+                    r = ast.literal_eval(m.group())
+                    d = r if isinstance(r, dict) else None
                 except Exception:
-                    continue
+                    d = None
+            if isinstance(d, dict):
+                if "action" in d or d.get("tool"):
+                    return d
+                _candidates.append(d)
 
+        # Strategy 4: reconstruct the envelope from a truncated/garbled response by
+        # pulling the action (and tool) out with regex — breaks the unknown-action
+        # loop instead of returning a leaf fragment.
+        am = _re.search(r'"action"\s*:\s*"([a-z_]+)"', raw)
+        if am:
+            out: dict = {"action": am.group(1)}
+            tm = _re.search(r'"tool"\s*:\s*"([\w.-]+)"', raw)
+            if tm:
+                out["tool"] = tm.group(1)
+            return out
+
+        if _candidates:
+            return _candidates[0]
         return {}
 
     def _system_prompt(self) -> str:
