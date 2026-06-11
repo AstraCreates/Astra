@@ -34,6 +34,13 @@ _SEARCH_CACHE: dict[str, tuple[float, list[dict]]] = {}
 _SEARCH_CACHE_TTL = 300.0  # 5 min — research bursts re-ask the same queries
 _SEARCH_CACHE_MAX = 256
 
+# Per-URL fetch cache (success AND failure). Without caching failures, a dead
+# URL that every search re-surfaces (e.g. a 307 redirect-loop) gets re-fetched
+# on every query — the research agent appears "stuck" hammering one bad link.
+_FETCH_CACHE: dict[str, tuple[float, dict]] = {}
+_FETCH_CACHE_TTL = 600.0  # 10 min
+_FETCH_CACHE_MAX = 512
+
 
 def _robust_search(query: str, max_results: int = 12) -> list[dict]:
     """Return search results, rotating reliable ddgs backends with retries.
@@ -274,36 +281,52 @@ def fetch_and_read(url: str) -> dict:
     """
     if _is_blocked(url):
         return {"url": url, "skipped": "blocked domain", "content": ""}
+    # Serve a cached result (success or prior failure) so dead/looping URLs that
+    # keep showing up in search results aren't re-fetched on every query.
+    _now = _time.time()
+    hit = _FETCH_CACHE.get(url)
+    if hit and (_now - hit[0]) < _FETCH_CACHE_TTL:
+        return hit[1]
     # Encode non-ASCII chars so urllib doesn't choke
     try:
         url.encode("ascii")
     except UnicodeEncodeError:
         from urllib.parse import quote
         url = quote(url, safe=":/?#[]@!$&'()*+,;=%")
+
+    def _remember(result: dict) -> dict:
+        if len(_FETCH_CACHE) >= _FETCH_CACHE_MAX:
+            oldest = min(_FETCH_CACHE, key=lambda k: _FETCH_CACHE[k][0])
+            _FETCH_CACHE.pop(oldest, None)
+        _FETCH_CACHE[url] = (_time.time(), result)
+        return result
+
     try:
         html = _http_get(url, timeout=8.0)
         if not html:
-            return {"url": url, "skipped": "empty response", "content": ""}
+            return _remember({"url": url, "skipped": "empty response", "content": ""})
 
         title_match = re.search(r"<title[^>]*>([^<]+)</title>", html, re.IGNORECASE)
         title = title_match.group(1).strip() if title_match else ""
         content = _extract_text(html, max_chars=8000)
 
-        return {
+        return _remember({
             "url": url,
             "title": title,
             "content": content,
             "content_length": len(content),
-        }
+        })
     except Exception as e:
         es = str(e)
-        # Expected HTTP errors — silent, fall back to snippet
-        if any(code in es for code in ("400", "401", "403", "404", "410", "429", "302", "301", "503", "521", "444", "codec",
+        # Expected HTTP errors (incl. 307 / redirect loops) — silent, cached so the
+        # same dead URL is never re-fetched within the TTL.
+        if any(code in es for code in ("400", "401", "403", "404", "410", "429", "302", "301", "307", "308",
+                                        "redirect", "infinite loop", "503", "521", "444", "codec",
                                         "SSL", "CERTIFICATE", "certificate", "timed out", "Operation timed out", "TLSV1",
                                         "nodename nor servname", "Name or service not known", "Errno 8", "Errno 11001")):
-            return {"url": url, "skipped": es[:40], "content": ""}
+            return _remember({"url": url, "skipped": es[:40], "content": ""})
         logger.warning("fetch_and_read failed for %s: %s", url, e)
-        return {"url": url, "skipped": str(e)[:80], "content": ""}
+        return _remember({"url": url, "skipped": str(e)[:80], "content": ""})
 
 
 def search_and_fetch(query: str, max_results: int = 16) -> dict:
