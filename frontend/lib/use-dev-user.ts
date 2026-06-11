@@ -25,11 +25,15 @@ export function useDevUser() {
   const isSignedIn = status === "authenticated" && !!session?.user?.email;
 
   const googleEmail = session?.user?.email ?? null;
+  // Identity MUST stay stable across the auth-loading flicker. Returning a
+  // transient "anon" while `status === "loading"` made the app fetch a
+  // different founder's workspace (and 4403'd the terminal takeover) until
+  // auth resolved. getOrCreateUserId() returns the persisted id — which the
+  // effect below keeps set to google_<email> for returning signed-in users —
+  // so a brief loading state no longer swaps the founder out from under us.
   const userId = isSignedIn && googleEmail
     ? "google_" + googleEmail.replace(/[^a-z0-9]/g, "_")
-    : isLoading
-      ? "anon"
-      : getOrCreateUserId();
+    : getOrCreateUserId();
 
   // Keep localStorage in sync so ApiAuthBridge always sends the right founder ID.
   useEffect(() => {

@@ -45,7 +45,10 @@ export default function TerminalPane({ sessionId, founderId, onClose }: { sessio
       fit = new FitAddon();
       term.loadAddon(fit);
       term.open(hostRef.current);
-      try { fit.fit(); } catch {}
+      term.write("\x1b[2m connecting to openclaude…\x1b[0m\r\n");
+      // Refit after the container has its final layout size (avoids a 0×0 grid
+      // that renders as a black box on first paint).
+      requestAnimationFrame(() => { try { fit?.fit(); } catch {} });
 
       const sendResize = () => {
         if (!fit || !term || !ws || ws.readyState !== WebSocket.OPEN) return;
