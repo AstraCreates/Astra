@@ -2560,15 +2560,20 @@ async def terminal_takeover(websocket: WebSocket, session_id: str, founder_id: s
     await websocket.accept()
     main_loop = asyncio.get_running_loop()
 
-    # ── Auth: caller must own this run (fails closed when auth is enabled) ──
+    # ── Auth: caller must own this run. This endpoint spawns interactive
+    # openclaude (RCE as `astra`), so the ownership gate FAILS CLOSED on every
+    # branch — no dev-mode escape, no empty-owner pass-through. ──
     try:
-        # require_founder_access reads headers off the connection like a Request.
-        require_founder_access(websocket, founder_id, min_role="operator")
-        # Verify the run belongs to this founder.
+        # Resolve the authenticated principal; trust this, not the query string.
+        auth_user = require_founder_access(websocket, founder_id, min_role="operator")
         from backend.core.session_store import get_session_meta as _meta
         meta = _meta(session_id) or {}
         owner = str(meta.get("founder_id") or "")
-        if owner and founder_id and owner != founder_id and not _dev_auth_off():
+        if not auth_user:
+            raise PermissionError("authentication required")
+        if not owner:
+            raise PermissionError("session has no recorded owner")
+        if owner != auth_user:
             raise PermissionError("session does not belong to caller")
     except Exception as e:
         try:
@@ -2660,14 +2665,6 @@ async def _safe_send_bytes(websocket: WebSocket, data: bytes) -> None:
         await websocket.send_bytes(data)
     except Exception:
         pass
-
-
-def _dev_auth_off() -> bool:
-    try:
-        from backend.config import settings
-        return not bool(settings.astra_require_auth)
-    except Exception:
-        return True
 
 
 # ── Generic Playwright WebSocket runner ───────────────────────────────────────
