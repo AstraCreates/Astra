@@ -122,9 +122,9 @@ html, body { margin: 0; padding: 0; }
 .lg-card {
   position: relative;
   isolation: isolate;
-  background: rgba(255,255,255,0.22);
-  backdrop-filter: blur(24px) saturate(2);
-  -webkit-backdrop-filter: blur(24px) saturate(2);
+  background: rgba(255,255,255,0.15);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
   border: 1px solid rgba(255,255,255,0.7);
   border-top: 1.5px solid rgba(255,255,255,0.95);
   box-shadow:
