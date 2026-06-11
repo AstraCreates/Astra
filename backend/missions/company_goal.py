@@ -113,6 +113,20 @@ def _read(founder_id: str, company_id: str | None = None) -> dict[str, Any] | No
             legacy = None
         if isinstance(legacy, dict) and legacy.get("company_id") == resolved_company_id:
             path.write_text(json.dumps(legacy, indent=2, sort_keys=True))
+    # When querying as founder (company_id == founder_id) and no direct file, fall back
+    # to the most recently updated workspace-level goal file in the founder's subdirectory.
+    if not path.exists() and resolved_company_id == founder_id:
+        workspace_dir = _root() / _safe_id(founder_id, "founder")
+        if workspace_dir.is_dir():
+            candidates = list(workspace_dir.glob("*.json"))
+            if candidates:
+                best = max(candidates, key=lambda p: p.stat().st_mtime)
+                try:
+                    goal = json.loads(best.read_text())
+                    goal.setdefault("company_id", resolved_company_id)
+                    return goal
+                except Exception:
+                    pass
     if not path.exists():
         return None
     try:
