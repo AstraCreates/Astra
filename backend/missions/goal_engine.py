@@ -144,12 +144,24 @@ def ensure_launch_goal(founder_id: str, session_id: str, agents: list[str], goal
         # session, so /goals tracks the latest launch (not a stale earlier company).
         from backend.core.session_store import get_session_meta
         session_meta = get_session_meta(session_id) or {}
-        # New company → wipe the prior company's brain + knowledge map so it starts
-        # clean (child/operating runs never reach this path, so they keep theirs).
+        # Wipe the brain + map ONLY when this launch is a genuinely DIFFERENT
+        # company than the one already in the brain — re-running or continuing the
+        # same company must NOT nuke its accumulated knowledge. Companies share one
+        # founder scope, so without this guard launching company B erases company A.
         try:
-            from backend.tools.company_brain import reset_company_brain
-            reset_company_brain(founder_id, company_id)
-            logger.info("goal_engine: reset brain+map for new company %s/%s", founder_id, company_id)
+            from backend.tools.company_brain import reset_company_brain, get_company_name as _brain_name
+            new_name = ""
+            m = re.search(r"[Cc]ompany(?:[ /](?:project|product))?\s+name[:\s]+\"?([A-Za-z0-9][A-Za-z0-9 .&-]{1,40})", goal_text or "")
+            if m:
+                new_name = m.group(1).strip().lower()
+            existing = (_brain_name(founder_id, company_id=company_id) or "").strip().lower()
+            same_company = bool(new_name and existing and (new_name == existing or new_name in existing or existing in new_name))
+            if same_company:
+                logger.info("goal_engine: same company %r — keeping brain+map", new_name)
+            else:
+                reset_company_brain(founder_id, company_id)
+                logger.info("goal_engine: reset brain+map for new company %s/%s (was %r, now %r)",
+                            founder_id, company_id, existing or "?", new_name or "?")
         except Exception as e:
             logger.warning("goal_engine: brain reset on launch failed for %s: %s", founder_id, e)
         reset_for_new_launch(

@@ -20,15 +20,16 @@ _BH_SRC = "/tmp/browser-harness/src"
 _SEARCH_BACKENDS = ("auto", "bing", "yahoo")
 
 # Several research agents run in parallel and hammer the same search backends,
-# which is exactly when they start rate-limiting. A process-wide throttle
-# (serialize + minimum gap between calls) plus a short-TTL result cache keeps
-# concurrent agents from triggering that — duplicate queries are answered from
-# cache and distinct queries are spaced out instead of fired simultaneously.
+# which is exactly when they start rate-limiting. Cap CONCURRENCY (semaphore) and
+# add a small inter-call gap rather than fully serializing — a single global lock
+# at a 1s gap throttled all research across every session to 1 search/sec, which
+# made researchers crawl. A bounded pool keeps backends happy while staying fast;
+# the short-TTL result cache absorbs duplicate queries.
 import threading as _threading
 import time as _time
 
-_SEARCH_GATE = _threading.Lock()
-_SEARCH_MIN_INTERVAL = 1.0  # seconds between actual backend hits
+_SEARCH_GATE = _threading.BoundedSemaphore(4)  # up to 4 concurrent searches
+_SEARCH_MIN_INTERVAL = 0.15  # small global spacing, not a 1/sec bottleneck
 _last_search_at = 0.0
 _SEARCH_CACHE: dict[str, tuple[float, list[dict]]] = {}
 _SEARCH_CACHE_TTL = 300.0  # 5 min — research bursts re-ask the same queries
