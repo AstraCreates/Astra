@@ -2,11 +2,14 @@
 import { useEffect, useState, useCallback } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 
-function urlBase64ToUint8Array(base64: string): Uint8Array {
+function vapidKeyToBuffer(base64: string): ArrayBuffer {
   const padding = "=".repeat((4 - (base64.length % 4)) % 4);
   const b64 = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
   const raw = atob(b64);
-  return new Uint8Array(Array.from(raw).map((c) => c.charCodeAt(0)));
+  const buffer = new ArrayBuffer(raw.length);
+  const view = new Uint8Array(buffer);
+  for (let i = 0; i < raw.length; i++) view[i] = raw.charCodeAt(i);
+  return buffer;
 }
 
 async function doSubscribe(userId: string): Promise<void> {
@@ -16,9 +19,7 @@ async function doSubscribe(userId: string): Promise<void> {
   if (!publicKey) return;
   const sub = await reg.pushManager.subscribe({
     userVisibleOnly: true,
-    // Cast: TS 5.7 types Uint8Array as Uint8Array<ArrayBufferLike>, which
-    // applicationServerKey (BufferSource over ArrayBuffer) rejects. Runtime is fine.
-    applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+    applicationServerKey: vapidKeyToBuffer(publicKey),
   });
   await fetch("/api/notifications/subscribe", {
     method: "POST",
