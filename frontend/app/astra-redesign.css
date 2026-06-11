@@ -617,15 +617,19 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
     0 2px 6px rgba(0, 0, 0, 0.06) !important;
 }
 
-/* Frosted blur + SVG distortion on a separate layer so content stays sharp */
+/* Frosted blur layer — backdrop-filter and filter are SEPARATE properties.
+   backdrop-filter blurs the page behind the card; filter (CSS) distorts the
+   element's own rendering (which includes the blurred backdrop) to add the
+   lenticular warp + specular highlight from the SVG bump map. */
 .sc::after, .sc-row::after, .dept-card::after {
   content: "";
   position: absolute;
   inset: 0;
   z-index: 0;
   border-radius: inherit;
-  backdrop-filter: blur(14px) saturate(1.8) url(#glass-distortion);
-  -webkit-backdrop-filter: blur(14px) saturate(1.8);
+  backdrop-filter: blur(8px) saturate(1.5);
+  -webkit-backdrop-filter: blur(8px) saturate(1.5);
+  filter: url(#glass-distortion);
   pointer-events: none;
 }
 
@@ -663,8 +667,9 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   inset: 0;
   z-index: 0;
   border-radius: inherit;
-  backdrop-filter: blur(10px) saturate(1.6) url(#glass-distortion);
-  -webkit-backdrop-filter: blur(10px) saturate(1.6);
+  backdrop-filter: blur(8px) saturate(1.5);
+  -webkit-backdrop-filter: blur(8px) saturate(1.5);
+  filter: url(#glass-distortion);
   pointer-events: none;
 }
 
