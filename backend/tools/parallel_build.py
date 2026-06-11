@@ -189,6 +189,12 @@ async def spawn_parallel_coders(
                 publish_sync(session_id, {"type": "agent_build", "agent": agent, "kind": "deploy", "url": deploy_url, "local": True})
         except Exception as e:
             logger.warning("parallel build deploy failed: %s", e)
+    except Exception as e:
+        # Merge/build/deploy can fail when a coder's worker tree or the external
+        # claude-code CLI worktree vanishes mid-run. Don't discard the modules
+        # that were already built — log and fall through to a partial result.
+        logger.warning("parallel build merge/build phase failed: %s", e)
+        _phase(session_id, agent, f"Merge/build phase hit an error ({type(e).__name__}); returning {len(built)} built modules")
     finally:
         # Always clean up worker clones, even if merge/build raised.
         for wd in worker_dirs:
