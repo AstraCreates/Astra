@@ -3,8 +3,10 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+
+from backend.tenant_auth import require_founder_access
 
 router = APIRouter()
 
@@ -20,18 +22,21 @@ class UnsubscribeRequest(BaseModel):
 
 
 @router.post("/notifications/subscribe")
-def subscribe(req: SubscribeRequest):
+def subscribe(req: SubscribeRequest, request: Request):
     from backend.notifications.store import save_subscription
+    # IDOR guard: caller may only manage their own (or their org's) endpoints.
+    founder_id = require_founder_access(request, req.founder_id, min_role="viewer")
     if not req.subscription.get("endpoint"):
         raise HTTPException(400, "Missing subscription.endpoint")
-    save_subscription(req.founder_id, req.subscription)
+    save_subscription(founder_id, req.subscription)
     return {"ok": True}
 
 
 @router.delete("/notifications/subscribe")
-def unsubscribe(req: UnsubscribeRequest):
+def unsubscribe(req: UnsubscribeRequest, request: Request):
     from backend.notifications.store import remove_subscription
-    remove_subscription(req.founder_id, req.endpoint)
+    founder_id = require_founder_access(request, req.founder_id, min_role="viewer")
+    remove_subscription(founder_id, req.endpoint)
     return {"ok": True}
 
 
