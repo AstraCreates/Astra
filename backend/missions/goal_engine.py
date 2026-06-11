@@ -144,6 +144,14 @@ def ensure_launch_goal(founder_id: str, session_id: str, agents: list[str], goal
         # session, so /goals tracks the latest launch (not a stale earlier company).
         from backend.core.session_store import get_session_meta
         session_meta = get_session_meta(session_id) or {}
+        # New company → wipe the prior company's brain + knowledge map so it starts
+        # clean (child/operating runs never reach this path, so they keep theirs).
+        try:
+            from backend.tools.company_brain import reset_company_brain
+            reset_company_brain(founder_id, company_id)
+            logger.info("goal_engine: reset brain+map for new company %s/%s", founder_id, company_id)
+        except Exception as e:
+            logger.warning("goal_engine: brain reset on launch failed for %s: %s", founder_id, e)
         reset_for_new_launch(
             founder_id, session_id,
             north_star=(goal_text or "Get the company on its feet")[:400],

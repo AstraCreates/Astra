@@ -328,6 +328,31 @@ def _load(founder_id: str, company_id: str | None = None) -> dict[str, Any]:
     return data
 
 
+def reset_company_brain(founder_id: str, company_id: str | None = None) -> None:
+    """Wipe the company's brain to an empty state, then clear its GraphRAG map.
+
+    Called when a FRESH COMPANY launches so its brain/knowledge-map starts clean
+    instead of inheriting the previous company's records (which otherwise re-mix
+    in via the founder-wide graph sync). Child/operating runs never call this."""
+    try:
+        _save(founder_id, _empty_brain(founder_id, company_id or founder_id), company_id)
+    except Exception as exc:
+        logger.warning("reset_company_brain failed for %s: %s", founder_id, exc)
+    # Drop the GraphRAG index so the map rebuilds empty (and won't re-ingest the
+    # old records we just cleared).
+    try:
+        from backend.tools.graph_rag_v2 import graph_db_path
+        from pathlib import Path as _Path
+        base = str(graph_db_path(founder_id))
+        for suffix in ("", "-wal", "-shm"):
+            try:
+                _Path(base + suffix).unlink()
+            except FileNotFoundError:
+                pass
+    except Exception as exc:
+        logger.warning("reset_company_brain: graph wipe failed for %s: %s", founder_id, exc)
+
+
 def _save(
     founder_id: str,
     data: dict[str, Any],
