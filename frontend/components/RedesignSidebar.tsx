@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
 import { useDevUser } from "@/lib/use-dev-user";
 import CreditsDisplay from "@/components/CreditsDisplay";
+import NotificationBell from "@/components/NotificationBell";
 import { useEffect, useState } from "react";
 
 const LINKS: { href: string; ic: string; label: string; match: (p: string) => boolean }[] = [
@@ -52,6 +53,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
             <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{companyName}</span>
           </div>
         )}
+        <NotificationBell />
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 2 }}>
           <Link data-tour="new-goal-btn" href="/?new=1" className="btn" style={{ display: "flex", justifyContent: "center", gap: 7, textDecoration: "none" }}>＋ New run</Link>
         </div>

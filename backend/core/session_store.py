@@ -198,12 +198,28 @@ def append_event(session_id: str, event_id: int, event: dict) -> None:
         etype = event.get("type")
         if etype == "goal_done":
             update_session_status(session_id, "done")
+            _notify_run_done(session_id, success=True)
         elif etype == "goal_error":
             update_session_status(session_id, "error")
+            _notify_run_done(session_id, success=False)
         elif etype == "stack_artifact":
             _increment_artifacts(session_id)
     except Exception as exc:
         logger.warning("session_store.append_event failed for %s: %s", session_id, exc)
+
+
+def _notify_run_done(session_id: str, success: bool) -> None:
+    try:
+        meta = get_session_meta(session_id) or {}
+        founder_id = meta.get("founder_id", "")
+        if not founder_id:
+            return
+        goal = (meta.get("goal", "Run") or "Run")[:60]
+        title = "Run complete ✓" if success else "Run failed"
+        from backend.notifications.push import notify_founder
+        notify_founder(founder_id, title, goal)
+    except Exception as exc:
+        logger.debug("_notify_run_done failed: %s", exc)
 
 
 def add_session_credits(session_id: str, credits: int) -> None:
