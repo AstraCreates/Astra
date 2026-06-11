@@ -33,6 +33,16 @@ GENERIC_WORDS = {
 }
 
 
+# Standalone tokens that are platform internals (workspace names, agent/workstream
+# codes, the test org) — not company knowledge. Matched case-insensitively for
+# SINGLE-token candidates only; multi-word phrases like "primary research" survive.
+INTERNAL_NAMES = {
+    "primary", "astratesting", "agent", "founder", "workspace", "session",
+    "technical", "research", "sales", "marketing", "design", "legal", "ops",
+    "web", "finance", "specialist", "orchestrator", "copilot",
+}
+
+
 def _is_internal_token(name: str) -> bool:
     """True for machine identifiers leaked from agent-output JSON — repo/workspace
     names, snake_case field/tool keys, agent codes, domain fragments, hash suffixes.
@@ -41,6 +51,8 @@ def _is_internal_token(name: str) -> bool:
     n = name.strip()
     if " " in n:
         return False                       # real multi-word concept
+    if n.lower() in INTERNAL_NAMES:        # workspace/agent/org internal name
+        return True
     if "/" in n:                           # path: astratesting/goon-44a472
         return True
     if re.search(r"-[0-9a-f]{6,}$", n.lower()):   # workspace/repo hash suffix
