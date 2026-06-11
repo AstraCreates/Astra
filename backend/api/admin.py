@@ -509,7 +509,7 @@ async def system_info():
         pass
 
     return {
-        "host": platform.node(),
+        "host": "redacted",
         "os": f"{platform.system()} {platform.release()}",
         "python": platform.python_version(),
         "uptime": _uptime(),
@@ -623,10 +623,7 @@ async def network_interfaces():
             "errout": counters.errout,
             "speed_mbps": stats[name].speed if name in stats else None,
             "is_up": stats[name].isup if name in stats else None,
-            "addresses": [
-                {"family": str(a.family), "address": a.address, "netmask": a.netmask}
-                for a in addrs.get(name, [])
-            ],
+            "addresses": [{"family": str(a.family)} for a in addrs.get(name, [])],
         }
 
     # Active connections summary

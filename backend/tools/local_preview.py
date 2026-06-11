@@ -69,11 +69,9 @@ def _public_host() -> str:
     host = os.environ.get("ASTRA_PUBLIC_HOST", "")
     if host:
         return host
-    url = getattr(settings, "nextauth_url", "") or os.environ.get("NEXTAUTH_URL", "")
-    if url:
-        h = urlparse(url).hostname
-        if h:
-            return h
+    # Do not infer or expose the underlying machine hostname/IP here. Keep the
+    # preview URL generic unless the deploy environment explicitly sets a public
+    # host.
     return "localhost"
 
 

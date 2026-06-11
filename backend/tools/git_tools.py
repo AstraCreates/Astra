@@ -164,8 +164,17 @@ def _sh(cmd: list, cwd: str = None, timeout: int = 60) -> str:
 
 def _workspace_dir(session_id: str, repo_url: str) -> Path:
     """Deterministic persistent workspace path for a session + repo."""
-    repo_name = repo_url.rstrip("/").split("/")[-1]
-    return WORKSPACE_ROOT / session_id / repo_name
+    repo_name = re.sub(r"[^a-zA-Z0-9._-]+", "-", repo_url.rstrip("/").split("/")[-1])[:80] or "repo"
+    safe_session = re.sub(r"[^a-zA-Z0-9._-]+", "-", session_id)[:80] or "session"
+    return (WORKSPACE_ROOT / safe_session / repo_name).resolve()
+
+
+def _ensure_within_workspace_root(path: Path) -> Path:
+    root = WORKSPACE_ROOT.resolve()
+    resolved = path.resolve()
+    if resolved == root or root in resolved.parents:
+        return resolved
+    raise ValueError(f"workspace path escapes ASTRA_WORKSPACE: {resolved}")
 
 
 def remove_workspace(session_id: str) -> bool:
@@ -199,7 +208,7 @@ def _ensure_clone(repo_url: str, session_id: str = "default") -> str:
     key = f"{session_id}:{repo_url}"
     if key in _clones and os.path.isdir(_clones[key]):
         return _clones[key]
-    workspace = _workspace_dir(session_id, repo_url)
+    workspace = _ensure_within_workspace_root(_workspace_dir(session_id, repo_url))
     workspace.parent.mkdir(parents=True, exist_ok=True)
     if workspace.exists():
         # Already cloned in a prior run — just pull
@@ -260,7 +269,7 @@ def _get_workspace(repo_url: str, session_id: str) -> tuple[str, bool]:
         except Exception as e:
             # Repo creation blocked/failed → don't let the build die; build locally.
             logger.warning("clone failed (%s) — building in a local workspace instead", str(e)[:160])
-    ws = WORKSPACE_ROOT / session_id / "mvp"
+    ws = _ensure_within_workspace_root(WORKSPACE_ROOT / re.sub(r"[^a-zA-Z0-9._-]+", "-", session_id)[:80] / "mvp")
     ws.mkdir(parents=True, exist_ok=True)
     if not (ws / ".git").exists():
         try:

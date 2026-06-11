@@ -318,8 +318,8 @@ def platform_status() -> dict[str, Any]:
         "checks": checks,
         "state": _state_metrics(),
         "release": {
-            "pid": os.getpid(),
-            "cwd": os.getcwd(),
+            "build": "astra-backend",
+            "runtime": "containerized",
         },
     }
 

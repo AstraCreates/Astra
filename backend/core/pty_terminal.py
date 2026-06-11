@@ -133,12 +133,20 @@ def open_takeover(app_session_id: str, cols: int = 120, rows: int = 32) -> PtyTe
         _get_workspace,
         _root_session_id,
         _make_env,
+        WORKSPACE_ROOT,
     )
     from backend.config import settings
 
     root_sid = _root_session_id(app_session_id)
     local, _is_github = _get_workspace("", root_sid)
     workspace = str(local)
+    try:
+        resolved_workspace = Path(workspace).resolve()
+        resolved_root = WORKSPACE_ROOT.resolve()
+        if not (resolved_workspace == resolved_root or resolved_root in resolved_workspace.parents):
+            raise ValueError(f"refusing takeover outside workspace root: {resolved_workspace}")
+    except Exception as exc:
+        raise RuntimeError(str(exc))
 
     oc_session_id = ""
     try:
