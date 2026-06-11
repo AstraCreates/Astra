@@ -109,10 +109,9 @@ body,
   font-family: var(--font-instrument), "Instrument Sans", sans-serif;
   color: var(--fg);
   background:
-    radial-gradient(ellipse 80% 60% at 15% 10%, rgba(180,200,255,0.55) 0%, transparent 65%),
-    radial-gradient(ellipse 70% 50% at 85% 80%, rgba(200,185,255,0.45) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 70% at 50% 50%, rgba(220,235,255,0.3) 0%, transparent 70%),
-    #eef2ff;
+    radial-gradient(ellipse 70% 55% at 10% 5%, rgba(170,195,255,0.6) 0%, transparent 60%),
+    radial-gradient(ellipse 65% 50% at 90% 85%, rgba(195,178,255,0.5) 0%, transparent 58%),
+    #edf1ff;
   background-attachment: fixed;
 }
 
