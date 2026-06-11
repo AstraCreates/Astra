@@ -7,7 +7,7 @@ from typing import Any
 
 from backend.genome.store import get_genome
 from backend.outcomes.store import list_outcomes
-from backend.connector_coverage import get_coverage
+from backend.connector_coverage import build_connector_coverage
 from backend.missions.company_goal import get_company_goal
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ def score_team_map(
         genome = get_genome(founder_id, resolved_company) or {}
         goals = get_company_goal(founder_id, resolved_company) or {}
         outcomes = list_outcomes(founder_id, resolved_company)
-        coverage = get_coverage(founder_id, resolved_company) or {}
+        coverage = build_connector_coverage(founder_id) or {}
     except Exception as e:
         logger.warning("Failed to load company data for team map: %s", e)
         return {"ok": False, "error": str(e)}
