@@ -102,6 +102,7 @@ def _default_org(founder_id: str, org_id: str | None = None) -> dict[str, Any]:
             "allowed_connectors": ["github", "vercel", "supabase", "clerk", "gmail", "google_drive", "slack", "notion", "obsidian"],
         },
         "audit_log": [],
+        "invites": {},
     }
 
 
@@ -167,6 +168,88 @@ def with_entitlements(data: dict[str, Any]) -> dict[str, Any]:
         "remaining_team_seats": max(0, int(plan["team_seats"]) - len([m for m in members.values() if m.get("status") == "active"])),
     }
     return {**data, "entitlements": entitlements}
+
+
+def _invite_token() -> str:
+    import uuid
+    return uuid.uuid4().hex
+
+
+def _invite_expiry(hours: int = 72) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + hours * 3600))
+
+
+def create_org_invite(
+    org_id: str,
+    *,
+    actor_id: str,
+    email: str = "",
+    role: str = "viewer",
+) -> dict[str, Any]:
+    data = _load(org_id)
+    members = data.get("members") or {}
+    actor = members.get(actor_id) or {}
+    if actor_id != data.get("owner_id") and actor.get("role") not in {"owner", "admin"}:
+        raise PermissionError("Only owners and admins can invite members.")
+    invite = {
+        "token": _invite_token(),
+        "org_id": org_id,
+        "kind": "org",
+        "invited_by": actor_id,
+        "email": email or "",
+        "role": role if role in {"owner", "admin", "operator", "viewer"} else "viewer",
+        "status": "pending",
+        "created_at": _now(),
+        "expires_at": _invite_expiry(),
+    }
+    invites = data.setdefault("invites", {})
+    invites[invite["token"]] = invite
+    _audit(data, actor_id, "invite.created", {"email": email, "role": invite["role"]})
+    _save(data)
+    return invite
+
+
+def get_org_invite(token: str) -> dict[str, Any] | None:
+    for path in _root().glob("*.json"):
+        try:
+            data = json.loads(path.read_text())
+        except Exception:
+            continue
+        invite = (data.get("invites") or {}).get(token)
+        if invite:
+            return {**invite, "org_name": data.get("name") or data.get("org_id") or ""}
+    return None
+
+
+def accept_org_invite(token: str, *, user_id: str) -> dict[str, Any]:
+    for path in _root().glob("*.json"):
+        try:
+            data = json.loads(path.read_text())
+        except Exception:
+            continue
+        invites = data.get("invites") or {}
+        invite = invites.get(token)
+        if not invite:
+            continue
+        if invite.get("status") != "pending":
+            raise ValueError(f"Invite is {invite.get('status')}")
+        if invite.get("expires_at") and invite["expires_at"] < _now():
+            invite["status"] = "expired"
+            path.write_text(json.dumps(data, indent=2, sort_keys=True))
+            raise ValueError("Invite has expired")
+        members = data.setdefault("members", {})
+        members[user_id] = {
+            **members.get(user_id, {"user_id": user_id, "joined_at": _now()}),
+            "role": invite.get("role") or "viewer",
+            "status": "active",
+            "updated_at": _now(),
+        }
+        invite["status"] = "accepted"
+        invite["accepted_at"] = _now()
+        _audit(data, user_id, "invite.accepted", {"token": token, "role": invite.get("role")})
+        _save(data)
+        return with_entitlements(data)
+    raise ValueError("Invite not found")
 
 
 def update_subscription(

@@ -3,12 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useDevUser } from "@/lib/use-dev-user";
-
-interface InviteInfo {
-  team_name: string;
-  invited_by: string;
-  expires_at?: string;
-}
+import { acceptOrganizationInvite, getOrganizationInvite, type OrganizationInvite } from "@/lib/api";
 
 export default function AcceptInvitePage() {
   const params = useParams();
@@ -16,24 +11,16 @@ export default function AcceptInvitePage() {
   const { userId } = useDevUser();
   const token = params.token as string;
 
-  const [invite, setInvite] = useState<InviteInfo | null>(null);
+  const [invite, setInvite] = useState<OrganizationInvite | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
 
   useEffect(() => {
     if (!token) return;
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
-    fetch(`${apiBase}/api/invites/${token}`)
-      .then((res) => {
-        if (!res.ok) {
-          if (res.status === 410 || res.status === 404) throw new Error("This invite link has expired or is invalid.");
-          throw new Error("Failed to load invite details.");
-        }
-        return res.json();
-      })
-      .then((data) => setInvite(data))
-      .catch((err) => setError(err.message))
+    getOrganizationInvite(token)
+      .then(setInvite)
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load invite details."))
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -41,17 +28,8 @@ export default function AcceptInvitePage() {
     if (!userId || userId === "anon") return;
     setAccepting(true);
     setError(null);
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
     try {
-      const res = await fetch(`${apiBase}/api/invites/${token}/accept`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ founder_id: userId }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.detail ?? "Failed to accept invite.");
-      }
+      await acceptOrganizationInvite(token, userId);
       router.push("/");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -60,14 +38,9 @@ export default function AcceptInvitePage() {
   }
 
   if (loading) {
-    return (
-      <div className="site-shell" style={{ paddingTop: 80, textAlign: "center" }}>
-        <p style={{ opacity: 0.5 }}>Loading…</p>
-      </div>
-    );
+    return <div className="site-shell" style={{ paddingTop: 80, textAlign: "center" }}><p style={{ opacity: 0.5 }}>Loading…</p></div>;
   }
 
-  // Error loading invite
   if (error && !invite) {
     return (
       <div className="site-shell" style={{ paddingTop: 80, textAlign: "center" }}>
@@ -82,51 +55,20 @@ export default function AcceptInvitePage() {
 
   return (
     <div className="site-shell" style={{ paddingTop: 80, textAlign: "center" }}>
-      <div
-        style={{
-          maxWidth: 440,
-          margin: "0 auto",
-          background: "var(--surface, rgba(255,255,255,0.04))",
-          border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: 16,
-          padding: "40px 36px",
-        }}
-      >
-        <div
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: "50%",
-            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-            margin: "0 auto 20px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 24,
-          }}
-        >
-          ▲
-        </div>
+      <div style={{ maxWidth: 440, margin: "0 auto", background: "var(--surface, rgba(255,255,255,0.04))", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "40px 36px" }}>
+        <div style={{ width: 56, height: 56, borderRadius: "50%", background: "linear-gradient(135deg, #6366f1, #8b5cf6)", margin: "0 auto 20px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>▲</div>
         <h1 style={{ marginBottom: 8, fontSize: 22 }}>You&apos;re invited</h1>
         {invite && (
           <>
-            <p style={{ opacity: 0.7, marginBottom: 4 }}>
-              You&apos;ve been invited to join
-            </p>
-            <p style={{ fontSize: 20, fontWeight: 700, marginBottom: 28 }}>{invite.team_name}</p>
+            <p style={{ opacity: 0.7, marginBottom: 4 }}>You&apos;ve been invited to join</p>
+            <p style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>{invite.org_name || invite.org_id}</p>
+            <p style={{ opacity: 0.6, marginBottom: 28, fontSize: 13 }}>Role: {invite.role || "viewer"}{invite.email ? ` · ${invite.email}` : ""}</p>
           </>
         )}
 
-        {error && (
-          <p style={{ color: "var(--color-error, #f87171)", marginBottom: 16, fontSize: 14 }}>{error}</p>
-        )}
+        {error && <p style={{ color: "var(--color-error, #f87171)", marginBottom: 16, fontSize: 14 }}>{error}</p>}
 
-        <button
-          className="site-btn site-btn-primary"
-          style={{ width: "100%", justifyContent: "center", padding: "10px 0", fontSize: 15 }}
-          onClick={handleAccept}
-          disabled={accepting}
-        >
+        <button className="site-btn site-btn-primary" style={{ width: "100%", justifyContent: "center", padding: "10px 0", fontSize: 15 }} onClick={handleAccept} disabled={accepting}>
           {accepting ? "Joining…" : "Accept & Join"}
         </button>
 

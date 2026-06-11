@@ -7,6 +7,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import {
   createOrganizationBillingPortal,
   createOrganizationCheckout,
+  createOrganizationInvite,
   getDeployEvidence,
   getLaunchReadiness,
   getOrganization,
@@ -154,7 +155,7 @@ interface Team {
 }
 
 // ─── TeamSection ──────────────────────────────────────────────────────────────
-function TeamSection({ founderId }: { founderId: string }) {
+function TeamSection({ founderId, org }: { founderId: string; org: OrganizationAccount | null }) {
   const [team, setTeam] = useState<Team | null>(null);
   const [loading, setLoading] = useState(true);
   const [createName, setCreateName] = useState("");
@@ -163,8 +164,10 @@ function TeamSection({ founderId }: { founderId: string }) {
   const [createError, setCreateError] = useState("");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"viewer" | "operator" | "admin">("viewer");
   const [inviteBusy, setInviteBusy] = useState(false);
   const [inviteError, setInviteError] = useState("");
+  const [inviteUrl, setInviteUrl] = useState("");
   const [removingUid, setRemovingUid] = useState<string | null>(null);
 
   const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -202,21 +205,17 @@ function TeamSection({ founderId }: { founderId: string }) {
   };
 
   const handleInvite = async () => {
-    if (!team) return;
-    setInviteBusy(true);
-    setInviteError("");
-    try {
-      const body: Record<string, string> = { founder_id: founderId };
-      if (inviteEmail.trim()) body.email = inviteEmail.trim();
-      const res = await fetch(`${BASE}/api/teams/${team.id}/invites`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      const url: string = data.invite_url ?? data.url ?? "";
-      if (url) await navigator.clipboard.writeText(url);
+      if (!team && !org) return;
+      setInviteBusy(true);
+      setInviteError("");
+      try {
+        const data = await createOrganizationInvite(org?.org_id || founderId, {
+          email: inviteEmail.trim() || undefined,
+          role: inviteRole,
+        });
+        const url: string = data.invite_url ?? "";
+        setInviteUrl(url);
+        if (url) await navigator.clipboard.writeText(url);
       setInviteEmail("");
       setShowInviteModal(false);
     } catch (err) {
@@ -380,8 +379,8 @@ function TeamSection({ founderId }: { founderId: string }) {
             padding: 28, display: "grid", gap: 18,
           }}>
             <div>
-              <h2 style={{ margin: 0, fontSize: 17, color: c.text, fontWeight: 600, letterSpacing: "-0.01em" }}>Invite to {team.name}</h2>
-              <p style={{ margin: "5px 0 0", fontSize: 13, color: c.grey }}>Enter an email to send a targeted invite, or skip to copy a generic link.</p>
+              <h2 style={{ margin: 0, fontSize: 17, color: c.text, fontWeight: 600, letterSpacing: "-0.01em" }}>Invite to {org?.name || team?.name || "Company"}</h2>
+              <p style={{ margin: "5px 0 0", fontSize: 13, color: c.grey }}>Invite someone into the company workspace. Copy the link or send it to an email address.</p>
             </div>
             <label style={{ display: "grid", gap: 6 }}>
               <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.textMuted, fontWeight: 500 }}>Email (optional)</span>
@@ -396,6 +395,24 @@ function TeamSection({ founderId }: { founderId: string }) {
                 onKeyDown={(e) => e.key === "Enter" && handleInvite()}
               />
             </label>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.textMuted, fontWeight: 500 }}>Role</span>
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value as typeof inviteRole)}
+                style={inputStyle()}
+              >
+                <option value="viewer">Viewer</option>
+                <option value="operator">Operator</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+            {inviteUrl && (
+              <MiniCard>
+                <div style={{ fontSize: 11, color: c.grey, marginBottom: 4 }}>Copied invite link</div>
+                <div style={{ fontSize: 12, color: c.textSecondary, wordBreak: "break-all" }}>{inviteUrl}</div>
+              </MiniCard>
+            )}
             {inviteError && (
               <span style={{ fontSize: 12, color: c.red }}>{inviteError}</span>
             )}
@@ -981,7 +998,7 @@ export default function SettingsPage() {
 
       {/* Team */}
       <Section title="Team">
-        <TeamSection founderId={founderId} />
+        <TeamSection founderId={founderId} org={org} />
       </Section>
 
       {/* Data */}

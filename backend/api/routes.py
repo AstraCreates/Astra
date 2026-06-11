@@ -917,6 +917,49 @@ async def get_org(org_id: str, request: Request, founder_id: str = ""):
     return get_or_create_org(founder_id or org_id, org_id)
 
 
+@router.post("/orgs/{org_id}/invites")
+async def create_org_invite(org_id: str, body: dict, request: Request):
+    actor_id = require_org_access(request, org_id, min_role="admin")
+    from backend.accounts import create_org_invite
+    try:
+        invite = create_org_invite(
+            org_id,
+            actor_id=actor_id,
+            email=str(body.get("email") or ""),
+            role=str(body.get("role") or "viewer"),
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    invite_url = f"{str(request.base_url).rstrip('/')}/invite/{invite['token']}"
+    return {"ok": True, "invite": invite, "invite_url": invite_url}
+
+
+@router.get("/invites/{token}")
+async def get_org_invite(token: str):
+    from backend.accounts import get_org_invite
+    invite = get_org_invite(token)
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    if invite.get("status") != "pending":
+        raise HTTPException(status_code=410, detail=f"Invite is {invite.get('status')}")
+    return invite
+
+
+@router.post("/invites/{token}/accept")
+async def accept_org_invite(token: str, body: dict, request: Request):
+    user_id = str(body.get("founder_id") or actor_or_body(request)).strip()
+    if not user_id:
+        raise HTTPException(status_code=400, detail="founder_id required")
+    from backend.accounts import accept_org_invite
+    try:
+        org = accept_org_invite(token, user_id=user_id)
+    except ValueError as exc:
+        detail = str(exc)
+        code = 410 if "expired" in detail.lower() or "not found" in detail.lower() else 400
+        raise HTTPException(status_code=code, detail=detail)
+    return {"ok": True, "org": org}
+
+
 @router.post("/orgs/{org_id}/members")
 async def org_member(org_id: str, body: OrgMemberRequest, request: Request):
     actor_id = require_org_access(request, org_id, min_role="admin")

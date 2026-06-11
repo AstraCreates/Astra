@@ -1806,6 +1806,48 @@ export async function getOrganization(orgId: string, founderId = ""): Promise<Or
   return res.json();
 }
 
+export interface OrganizationInvite {
+  token: string;
+  org_id: string;
+  org_name?: string;
+  kind?: string;
+  invited_by: string;
+  email: string;
+  role?: string;
+  status: string;
+  created_at?: string;
+  expires_at?: string;
+}
+
+export async function createOrganizationInvite(
+  orgId: string,
+  body: { email?: string; role?: string }
+): Promise<{ ok: boolean; invite: OrganizationInvite; invite_url: string }> {
+  const res = await apiFetch(`${BASE}/orgs/${encodeURIComponent(orgId)}/invites`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function getOrganizationInvite(token: string): Promise<OrganizationInvite> {
+  const res = await apiFetch(`${BASE}/invites/${encodeURIComponent(token)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function acceptOrganizationInvite(token: string, founderId: string): Promise<{ ok: boolean; org: OrganizationAccount }> {
+  const res = await apiFetch(`${BASE}/invites/${encodeURIComponent(token)}/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ founder_id: founderId }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function updateOrganizationMember(
   orgId: string,
   body: { actor_id: string; user_id: string; role?: string; status?: string }
