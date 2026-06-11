@@ -108,12 +108,7 @@ body,
 [data-theme="light"] body {
   font-family: var(--font-instrument), "Instrument Sans", sans-serif;
   color: var(--fg);
-  background:
-    radial-gradient(ellipse 80% 60% at 15% 20%, rgba(0,46,255,0.55) 0%, transparent 55%),
-    radial-gradient(ellipse 60% 70% at 85% 15%, rgba(0,180,255,0.40) 0%, transparent 50%),
-    radial-gradient(ellipse 70% 60% at 75% 85%, rgba(0,200,140,0.45) 0%, transparent 55%),
-    radial-gradient(ellipse 50% 50% at 20% 80%, rgba(100,60,255,0.30) 0%, transparent 50%),
-    #dbeeff;
+  background: linear-gradient(160deg, #d6e8ff 0%, #c8deff 30%, #ceeef5 60%, #d4f5ea 100%);
   background-attachment: fixed;
 }
 
