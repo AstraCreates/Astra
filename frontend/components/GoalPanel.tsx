@@ -302,46 +302,23 @@ export default function GoalPanel() {
               </div>
             </div>
 
-            {/* Task pill chips */}
+            {/* Task summary */}
             {tasks.length > 0 && (
-              <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
-                {/* Active tasks */}
-                {tasks.filter(t => t.status === "in_progress" || t.status === "awaiting_approval").length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--blue)", fontFamily: "var(--font-code)", marginBottom: 6 }}>Active</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                      {tasks.filter(t => t.status === "in_progress" || t.status === "awaiting_approval").map(t => (
-                        <span key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 100, background: t.status === "awaiting_approval" ? "rgba(245,158,11,0.1)" : "rgba(0,46,255,0.08)", border: `1px solid ${t.status === "awaiting_approval" ? "rgba(245,158,11,0.3)" : "rgba(0,46,255,0.18)"}`, fontSize: 10.5, color: t.status === "awaiting_approval" ? "var(--amber)" : "var(--blue)", fontWeight: 500, maxWidth: "100%", overflow: "hidden" }}>
-                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: t.status === "awaiting_approval" ? "var(--amber)" : "var(--blue)", flexShrink: 0 }} />
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.status === "awaiting_approval" ? "⚠ " : ""}{t.title}</span>
-                        </span>
-                      ))}
-                    </div>
+              <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+                {/* Active tasks only — as slim rows */}
+                {tasks.filter(t => t.status === "in_progress" || t.status === "awaiting_approval").map(t => (
+                  <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", flexShrink: 0, background: t.status === "awaiting_approval" ? "var(--amber)" : "var(--blue)" }} />
+                    <span style={{ fontSize: 11.5, color: "var(--fg)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
+                    {t.status === "awaiting_approval" && <span style={{ fontSize: 9, color: "var(--amber)", fontWeight: 700, fontFamily: "var(--font-code)", flexShrink: 0 }}>APPROVAL</span>}
                   </div>
-                )}
-                {/* Queued tasks (first 5) */}
-                {tasks.filter(t => t.status === "pending" || t.status === "blocked").length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--fd)", fontFamily: "var(--font-code)", marginBottom: 6 }}>Queued</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                      {tasks.filter(t => t.status === "pending" || t.status === "blocked").slice(0, 5).map(t => (
-                        <span key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 100, background: t.status === "blocked" ? "rgba(239,68,68,0.07)" : "var(--s2, #f5f5f5)", border: `1px solid ${t.status === "blocked" ? "rgba(239,68,68,0.2)" : "var(--bd)"}`, fontSize: 10.5, color: t.status === "blocked" ? "var(--red)" : "var(--fm)", fontWeight: 500, maxWidth: "100%", overflow: "hidden" }}>
-                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: t.status === "blocked" ? "var(--red)" : "var(--fd)", flexShrink: 0 }} />
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
-                        </span>
-                      ))}
-                      {tasks.filter(t => t.status === "pending" || t.status === "blocked").length > 5 && (
-                        <span style={{ fontSize: 10, color: "var(--fd)", padding: "4px 8px", fontFamily: "var(--font-code)" }}>+{tasks.filter(t => t.status === "pending" || t.status === "blocked").length - 5} more</span>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {/* Done count */}
-                {tasksDone > 0 && (
-                  <div style={{ fontSize: 10, color: "var(--green)", fontFamily: "var(--font-code)", fontWeight: 600 }}>
-                    ✓ {tasksDone} task{tasksDone !== 1 ? "s" : ""} completed
-                  </div>
-                )}
+                ))}
+                {/* Compact counts row */}
+                <div style={{ display: "flex", gap: 12, paddingTop: tasks.filter(t => t.status === "in_progress" || t.status === "awaiting_approval").length ? 4 : 0 }}>
+                  {tasksDone > 0 && <span style={{ fontSize: 10, color: "var(--green)", fontFamily: "var(--font-code)", fontWeight: 600 }}>✓ {tasksDone} done</span>}
+                  {tasks.filter(t => t.status === "pending").length > 0 && <span style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)" }}>◌ {tasks.filter(t => t.status === "pending").length} queued</span>}
+                  {tasks.filter(t => t.status === "blocked").length > 0 && <span style={{ fontSize: 10, color: "var(--red)", fontFamily: "var(--font-code)", fontWeight: 600 }}>✗ {tasks.filter(t => t.status === "blocked").length} blocked</span>}
+                </div>
               </div>
             )}
           </div>
