@@ -109,30 +109,12 @@ body {
 
 /* Subtle grain texture on body so backdrop-filter blur has something to show.
    No gradient — just SVG noise at very low opacity for the glass effect. */
-/* Soft ambient colour orbs sit behind the app so translucent glass cards have
-   something to refract — without them, glass over solid white just reads gray.
-   Orbs are low-opacity + fixed, so the page still feels light and clean. */
+/* Clean flat surfaces — glass is sold by edge refraction + shadow, not by
+   anything behind it. Keep the page white. */
 body,
-[data-theme="light"] body {
-  background-image:
-    radial-gradient(46vw 46vw at 12% 14%, rgba(0, 46, 255, 0.13), transparent 60%),
-    radial-gradient(40vw 40vw at 88% 22%, rgba(124, 110, 255, 0.11), transparent 62%),
-    radial-gradient(48vw 48vw at 78% 88%, rgba(0, 180, 200, 0.10), transparent 60%),
-    radial-gradient(38vw 38vw at 22% 86%, rgba(255, 120, 200, 0.08), transparent 62%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
-  background-size: cover, cover, cover, cover, 220px 220px;
-  background-attachment: fixed, fixed, fixed, fixed, fixed;
-}
-
+[data-theme="light"] body,
 [data-theme="dark"] body {
-  background-image:
-    radial-gradient(46vw 46vw at 12% 14%, rgba(61, 95, 255, 0.20), transparent 60%),
-    radial-gradient(40vw 40vw at 88% 22%, rgba(150, 110, 255, 0.16), transparent 62%),
-    radial-gradient(48vw 48vw at 78% 88%, rgba(0, 200, 220, 0.13), transparent 60%),
-    radial-gradient(38vw 38vw at 22% 86%, rgba(255, 90, 190, 0.12), transparent 62%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E");
-  background-size: cover, cover, cover, cover, 256px 256px;
-  background-attachment: fixed, fixed, fixed, fixed, fixed;
+  background-image: none;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -614,88 +596,64 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 }
 
 /* ══ Liquid Glass Cards ════════════════════════════════════════════════════
-   Translucent fill + backdrop blur/distort lets the page's ambient colour
-   orbs refract through the card = real glass, not a gray panel. The card's
-   own ::before / ::after are already used for the status-accent bar in
-   DashboardView/session views, so the frosted backdrop + sheen go on a single
-   wrapper layer (.lg-glaze) injected here via the background + box-shadow of
-   the element itself, plus a backdrop layer that does NOT touch ::before.
-
-   Layering:
-     element background  — translucent tint + diagonal sheen gradient
-     backdrop-filter via the element (blur+saturate) on the SURFACE itself
-     box-shadow rim      — lit glass edge
-   We keep the existing status bar (::before) intact. */
+   Clear glass on WHITE — like the Apple reference pill. The look is pure edge
+   refraction, no backdrop colour:
+     • near-transparent body (white page shows straight through)
+     • bright top-left inner rim  = light catching the bevel
+     • dark  bottom-right inner rim = thick refracted glass edge
+     • soft outer drop shadow      = the card floats
+     • backdrop-filter blur + url(#glass-distortion) bends the white + the
+       drop shadows at the rim → the liquid lens warp
+   No gradients, no tint — keeps the white aesthetic. */
 
 .sc, .sc-row, .dept-card, .dc {
   position: relative;
   isolation: isolate;
-  /* Translucent base tint + glossy diagonal sheen baked into the fill */
-  background:
-    linear-gradient(125deg,
-      rgba(255, 255, 255, 0.55) 0%,
-      rgba(255, 255, 255, 0.12) 24%,
-      rgba(255, 255, 255, 0.04) 46%,
-      rgba(255, 255, 255, 0.10) 62%,
-      rgba(255, 255, 255, 0.30) 88%,
-      rgba(255, 255, 255, 0.48) 100%),
-    radial-gradient(130% 90% at 0% 0%,
-      rgba(255, 255, 255, 0.45) 0%,
-      rgba(255, 255, 255, 0) 46%),
-    rgba(255, 255, 255, 0.10) !important;
-  /* Frost + colour boost of the orbs behind; distortion = liquid ripple */
-  backdrop-filter: blur(8px) saturate(2.2) brightness(1.04) url(#glass-distortion);
-  -webkit-backdrop-filter: blur(8px) saturate(2.2) brightness(1.04);
-  border: 1px solid rgba(255, 255, 255, 0.78) !important;
-  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.45) !important;
+  backdrop-filter: blur(3px) url(#glass-distortion);
+  -webkit-backdrop-filter: blur(3px);
+  border: 1px solid rgba(255, 255, 255, 0.30) !important;
+  border-radius: 18px;
   box-shadow:
-    inset 0 1px 0 1px rgba(255, 255, 255, 0.85),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
-    inset 0 -12px 28px -14px rgba(0, 0, 0, 0.10),
-    0 12px 32px -8px rgba(17, 16, 24, 0.18),
-    0 2px 6px -2px rgba(17, 16, 24, 0.10) !important;
+    /* top-left bright bevel (specular) */
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 1),
+    inset 3px 3px 6px -3px rgba(255, 255, 255, 0.9),
+    /* bottom-right dark refracted rim (the thick glass edge) */
+    inset -1.5px -1.5px 1px -1px rgba(0, 0, 0, 0.20),
+    inset -4px -4px 10px -6px rgba(0, 0, 0, 0.22),
+    /* faint hairline edge so it reads against white */
+    0 0 0 1px rgba(0, 0, 0, 0.04),
+    /* float */
+    0 10px 24px -8px rgba(0, 0, 0, 0.18),
+    0 4px 8px -4px rgba(0, 0, 0, 0.12) !important;
 }
 
-/* ── Dark theme: smoked glass ── */
+.sc:hover, .sc-row:hover, .dept-card:hover, .dc:hover {
+  box-shadow:
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 1),
+    inset 3px 3px 7px -3px rgba(255, 255, 255, 0.95),
+    inset -1.5px -1.5px 1px -1px rgba(0, 0, 0, 0.22),
+    inset -5px -5px 12px -6px rgba(0, 0, 0, 0.24),
+    0 0 0 1px rgba(0, 0, 0, 0.05),
+    0 16px 34px -8px rgba(0, 0, 0, 0.24),
+    0 6px 12px -4px rgba(0, 0, 0, 0.16) !important;
+}
+
+/* ── Dark theme: same refraction recipe, inverted bevel weights ── */
 [data-theme="dark"] .sc,
 [data-theme="dark"] .sc-row,
 [data-theme="dark"] .dept-card,
 [data-theme="dark"] .dc {
-  background:
-    linear-gradient(125deg,
-      rgba(255, 255, 255, 0.18) 0%,
-      rgba(255, 255, 255, 0.05) 24%,
-      rgba(255, 255, 255, 0.02) 50%,
-      rgba(255, 255, 255, 0.05) 70%,
-      rgba(255, 255, 255, 0.12) 100%),
-    radial-gradient(130% 90% at 0% 0%,
-      rgba(255, 255, 255, 0.16) 0%,
-      rgba(255, 255, 255, 0) 46%),
-    rgba(23, 21, 31, 0.34) !important;
-  border-color: rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.10) !important;
   box-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.16),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
-    inset 0 -12px 28px -14px rgba(0, 0, 0, 0.45),
-    0 12px 34px -8px rgba(0, 0, 0, 0.55),
-    0 2px 6px -2px rgba(0, 0, 0, 0.40) !important;
-}
-
-.sc:hover, .sc-row:hover, .dept-card:hover, .dc:hover {
-  border-color: rgba(255, 255, 255, 0.95) !important;
-  box-shadow:
-    inset 0 1px 0 1px rgba(255, 255, 255, 0.95),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.30),
-    inset 0 -12px 28px -14px rgba(0, 0, 0, 0.10),
-    0 18px 44px -8px rgba(17, 16, 24, 0.24),
-    0 3px 8px -2px rgba(17, 16, 24, 0.12) !important;
-}
-
-[data-theme="dark"] .sc:hover,
-[data-theme="dark"] .sc-row:hover,
-[data-theme="dark"] .dept-card:hover,
-[data-theme="dark"] .dc:hover {
-  border-color: rgba(255, 255, 255, 0.22) !important;
+    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.45),
+    inset 3px 3px 6px -3px rgba(255, 255, 255, 0.20),
+    inset -1.5px -1.5px 1px -1px rgba(0, 0, 0, 0.45),
+    inset -4px -4px 10px -6px rgba(0, 0, 0, 0.40),
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 10px 26px -8px rgba(0, 0, 0, 0.55),
+    0 4px 8px -4px rgba(0, 0, 0, 0.40) !important;
 }
 
 @keyframes moveBackground {
