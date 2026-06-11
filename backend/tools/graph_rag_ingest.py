@@ -17,6 +17,30 @@ ENTITY_STOPWORDS = {
     "record", "records", "decision", "source", "truth", "session", "founder",
 }
 
+# Single generic words that are NOT concepts — these polluted the graph as
+# per-word nodes. Blocked for single-token candidates; multi-word phrases and
+# proper nouns are unaffected (e.g. "data pipeline" / "Webull" still pass).
+GENERIC_WORDS = {
+    "website", "websites", "online", "their", "system", "systems", "feature",
+    "features", "data", "users", "user", "product", "products", "service",
+    "services", "platform", "platforms", "market", "markets", "business",
+    "businesses", "customer", "customers", "tool", "tools", "team", "teams",
+    "page", "pages", "content", "value", "growth", "model", "models", "plan",
+    "plans", "goal", "goals", "time", "people", "things", "thing", "based",
+    "using", "real", "make", "build", "need", "needs", "want", "help", "work",
+    "works", "good", "great", "best", "more", "most", "other", "into", "than",
+    "they", "them", "have", "will", "your", "about", "which", "these", "those",
+}
+
+
+def _is_generic_single(name: str) -> bool:
+    """True for a bare single-token generic/stopword (the node-spam class)."""
+    n = name.strip()
+    if " " in n:
+        return False
+    low = n.lower()
+    return low in GENERIC_WORDS or low in ENTITY_STOPWORDS
+
 
 def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -50,23 +74,109 @@ def _chunk_text(text: str, size: int = 1_200, overlap: int = 160) -> list[str]:
     return chunks
 
 
-def _extract_entities(title: str, text: str, limit: int = 12) -> list[dict[str, str]]:
+_VALID_ENTITY_TYPES = {"person", "org", "product", "technology", "metric", "location", "concept"}
+
+
+def _clean_entity_name(name: str) -> str:
+    return re.sub(r"\s+", " ", str(name or "")).strip(" .,:;\"'`-")
+
+
+def _is_meaningful_entity(name: str) -> bool:
+    """Reject the single-generic-word noise that polluted the graph. Keep named
+    entities (proper nouns, products with caps/digits) and multi-word concepts."""
+    n = _clean_entity_name(name)
+    if len(n) < 3 or len(n) > 60:
+        return False
+    if n.lower() in ENTITY_STOPWORDS:
+        return False
+    if " " in n:                                  # multi-word concept
+        return True
+    if n[0].isupper():                            # proper noun (Goon, Bloomberg, GPT4)
+        return True
+    if any(c.isdigit() for c in n):               # versioned term (v2, h100)
+        return True
+    return False                                  # bare single lowercase word → drop
+
+
+def _llm_extract_entities(title: str, combined: str, limit: int) -> list[dict[str, str]]:
+    """Pull real entities + multi-word concepts via the LLM (one call per record)."""
+    try:
+        from backend.tools._llm import generate
+    except Exception:
+        return []
+    prompt = (
+        "Extract the key ENTITIES and CONCEPTS from this company-knowledge text for a "
+        "knowledge graph. Return named entities (people, companies, products, technologies, "
+        "places), metrics, and meaningful MULTI-WORD concepts (e.g. 'confidence scoring', "
+        "'retail investors'). Do NOT return generic single words like 'website', 'online', "
+        "'their', 'system', 'feature', 'data', 'users'. "
+        f"At most {limit} items, most important first.\n\n"
+        f"TITLE: {title}\nTEXT: {combined[:3000]}\n\n"
+        'Respond with ONLY a JSON array: '
+        '[{"name": "...", "type": "person|org|product|technology|metric|location|concept"}]'
+    )
+    try:
+        raw = generate(prompt, max_tokens=500, model="fast", temperature=0.2, json_mode=True)
+    except Exception:
+        return []
+    m = re.search(r"\[.*\]", raw or "", re.DOTALL)
+    if not m:
+        return []
+    try:
+        items = json.loads(m.group(0))
+    except Exception:
+        return []
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for it in items if isinstance(items, list) else []:
+        if not isinstance(it, dict):
+            continue
+        name = _clean_entity_name(it.get("name"))
+        # Trust the LLM's typing, but drop empties, generics, and dupes.
+        if not name or len(name) < 3 or _is_generic_single(name):
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        etype = str(it.get("type") or "concept").lower()
+        if etype not in _VALID_ENTITY_TYPES:
+            etype = "concept"
+        out.append({"name": name, "type": etype, "description": f"Mentioned in {title}"})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _heuristic_entities(title: str, combined: str, limit: int) -> list[dict[str, str]]:
+    """LLM-free fallback: capitalized proper-noun phrases + multi-word terms ONLY.
+    Never emits bare single lowercase words (the original node-spam bug)."""
     candidates: Counter[str] = Counter()
-    combined = f"{title}\n{text}"
-    for match in re.findall(r"\b[A-Z][A-Za-z0-9&_.-]*(?:\s+[A-Z][A-Za-z0-9&_.-]*){0,3}\b", combined):
-        name = match.strip(" .,:;")
-        if len(name) > 2 and name.lower() not in ENTITY_STOPWORDS:
-            candidates[name] += 3
-    for word in re.findall(r"\b[a-zA-Z][a-zA-Z0-9_-]{3,}\b", combined.lower()):
-        if word not in ENTITY_STOPWORDS:
-            candidates[word] += 1
+    for match in re.findall(r"\b[A-Z][A-Za-z0-9&_-]*(?:[ ]+[A-Z][A-Za-z0-9&_-]*){0,3}\b", combined):
+        name = _clean_entity_name(match)
+        if _is_meaningful_entity(name):
+            candidates[name] += 1
     entities = []
     for name, _count in candidates.most_common(limit):
-        entity_type = "concept"
-        if any(ch.isupper() for ch in name[1:]) or " " in name:
-            entity_type = "proper_noun"
-        entities.append({"name": name, "type": entity_type, "description": f"Mentioned in {title}"})
+        etype = "org" if (" " in name or any(c.isupper() for c in name[1:])) else "concept"
+        entities.append({"name": name, "type": etype, "description": f"Mentioned in {title}"})
     return entities
+
+
+def _extract_entities(title: str, text: str, limit: int = 12) -> list[dict[str, str]]:
+    """Real entities/concepts only — no per-word node spam.
+
+    LLM extraction (concepts + named entities) first; strict heuristic fallback
+    (proper-noun / multi-word phrases) if the LLM is unavailable. Every candidate
+    must pass _is_meaningful_entity, so single generic words never become nodes."""
+    combined = f"{title}\n{text}".strip()
+    if not combined:
+        return []
+    ents = _llm_extract_entities(title, combined, limit)
+    if not ents:
+        ents = _heuristic_entities(title, combined, limit)
+    # Final backstop regardless of source: never emit a generic single word.
+    return [e for e in ents if not _is_generic_single(e["name"]) and len(e["name"]) >= 3][:limit]
 
 
 def _node_id(founder_id: str, name: str) -> str:
@@ -170,6 +280,23 @@ def run_graph_rag_sync(founder_id: str) -> dict[str, Any]:
         "community_count": communities,
         "snapshot_path": str(context_snapshot_path(founder_id)),
     }
+
+
+def rebuild_graph_rag(founder_id: str) -> dict[str, Any]:
+    """Wipe the founder's graph DB and re-ingest from brain JSON with the CURRENT
+    extractor. Use this to clear legacy single-word node spam — the graph is
+    derived from the brain records (source of truth), so nothing is lost."""
+    from pathlib import Path as _Path
+    from backend.tools.graph_rag_v2 import graph_db_path
+    base = str(graph_db_path(founder_id))
+    for suffix in ("", "-wal", "-shm"):
+        try:
+            _Path(base + suffix).unlink()
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
+    return run_graph_rag_sync(founder_id)
 
 
 def _build_communities(founder_id: str, conn) -> int:
