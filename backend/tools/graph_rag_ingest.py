@@ -33,9 +33,33 @@ GENERIC_WORDS = {
 }
 
 
-def _is_generic_single(name: str) -> bool:
-    """True for a bare single-token generic/stopword (the node-spam class)."""
+def _is_internal_token(name: str) -> bool:
+    """True for machine identifiers leaked from agent-output JSON — repo/workspace
+    names, snake_case field/tool keys, agent codes, domain fragments, hash suffixes.
+    These are never business concepts. Multi-word phrases and proper-noun tech
+    (e.g. 'Next.js') are preserved."""
     n = name.strip()
+    if " " in n:
+        return False                       # real multi-word concept
+    if "/" in n:                           # path: astratesting/goon-44a472
+        return True
+    if re.search(r"-[0-9a-f]{6,}$", n.lower()):   # workspace/repo hash suffix
+        return True
+    if "_" in n and n.lower() == n:        # snake_case key: market_brief, t_technical
+        return True
+    if "." in n and n.lower() == n:        # lowercase domain fragment: nip.io
+        return True
+    if re.fullmatch(r"t_[a-z]+", n):       # agent code: t_technical
+        return True
+    return False
+
+
+def _is_generic_single(name: str) -> bool:
+    """True for a bare single-token generic/stopword, or a machine identifier
+    (the node-spam class)."""
+    n = name.strip()
+    if _is_internal_token(n):
+        return True
     if " " in n:
         return False
     low = n.lower()
