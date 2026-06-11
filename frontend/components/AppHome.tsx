@@ -38,7 +38,7 @@ export default function AppHome() {
   // Post-onboarding celebration screen
   if (showWelcome) {
     const name = welcomeName || (typeof window !== "undefined" ? localStorage.getItem("astra_onboarding_name") || "" : "");
-    return <PostOnboardingScreen name={name} />;
+    return <PostOnboardingScreen name={name} onComplete={() => router.replace("/")} />;
   }
 
   // Not onboarded — show animated landing, not a redirect (avoids flash)
