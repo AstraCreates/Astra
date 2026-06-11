@@ -1,5 +1,7 @@
 "use client";
 
+// Injects the SVG glass-distortion filter once into the document.
+// Used by .lg-card::after via filter: url(#glass-distortion)
 export default function LiquidGlassFilter() {
   return (
     <svg
@@ -9,62 +11,19 @@ export default function LiquidGlassFilter() {
       style={{ position: "absolute", overflow: "hidden" }}
     >
       <defs>
-        <filter
-          id="glass-distortion"
-          x="-10%"
-          y="-10%"
-          width="120%"
-          height="120%"
-          filterUnits="objectBoundingBox"
-        >
-          {/* Organic noise map */}
+        <filter id="glass-distortion" x="0%" y="0%" width="100%" height="100%">
           <feTurbulence
             type="fractalNoise"
-            baseFrequency="0.003 0.007"
-            numOctaves="1"
-            seed="17"
-            result="turbulence"
+            baseFrequency="0.01 0.01"
+            numOctaves="2"
+            seed="92"
+            result="noise"
           />
-          {/* Sharpen noise into ridge-like bumps for specular */}
-          <feComponentTransfer in="turbulence" result="mapped">
-            <feFuncR type="gamma" amplitude="1" exponent="10" offset="0.5" />
-            <feFuncG type="gamma" amplitude="0" exponent="1" offset="0" />
-            <feFuncB type="gamma" amplitude="0" exponent="1" offset="0.5" />
-          </feComponentTransfer>
-          <feGaussianBlur in="turbulence" stdDeviation="3" result="softMap" />
-          {/* Compute specular highlights off the bump map */}
-          <feSpecularLighting
-            in="softMap"
-            surfaceScale="5"
-            specularConstant="1"
-            specularExponent="100"
-            lightingColor="white"
-            result="specLight"
-          >
-            <fePointLight x="-200" y="-200" z="300" />
-          </feSpecularLighting>
-          {/* Clip specular to source shape, then screen it over source */}
-          <feComposite
-            in="specLight"
-            in2="SourceGraphic"
-            operator="in"
-            result="litImage"
-          />
-          <feComposite
-            in="SourceGraphic"
-            in2="litImage"
-            operator="arithmetic"
-            k1="0"
-            k2="1"
-            k3="0.28"
-            k4="0"
-            result="combined"
-          />
-          {/* Lenticular displacement — subtle warp */}
+          <feGaussianBlur in="noise" stdDeviation="2" result="blurred" />
           <feDisplacementMap
-            in="combined"
-            in2="softMap"
-            scale="160"
+            in="SourceGraphic"
+            in2="blurred"
+            scale="55"
             xChannelSelector="R"
             yChannelSelector="G"
           />

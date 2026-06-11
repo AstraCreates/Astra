@@ -16,10 +16,10 @@ html.antialiased {
 /* ── Token remap ──────────────────────────────────────────────── */
 :root,
 [data-theme="light"] {
-  /* White application canvas — glass cards read against pure white. */
-  --bg:           #FFFFFF;
+  /* Cool neutral application surfaces. Paper stays a brand swatch, not a wall color. */
+  --bg:           #F3F4F7;
   --bg-surface:   #FFFFFF;
-  --bg-sunken:    #F1F2F5;
+  --bg-sunken:    #EAECEF;
   --surface:      #FFFFFF;
   --s2:           #F7F8FA;
   --s3:           #EAEAEA;
@@ -107,10 +107,7 @@ body {
   color: var(--fg);
 }
 
-/* Subtle grain texture on body so backdrop-filter blur has something to show.
-   No gradient — just SVG noise at very low opacity for the glass effect. */
-/* Clean flat surfaces — glass is sold by edge refraction + shadow, not by
-   anything behind it. Keep the page white. */
+/* Quiet, flat surfaces — kill the grid-line / radial-gradient backdrop. */
 body,
 [data-theme="light"] body,
 [data-theme="dark"] body {
@@ -593,82 +590,6 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   .btn:hover, .btn.pri:hover, .btn.primary:hover, .sc:hover { transform: none; }
   button:not(:disabled):active { transform: none; }
   .blink { animation: none; opacity: 1; }
-}
-
-/* ══ Liquid Glass Cards ════════════════════════════════════════════════════
-   Clear glass on WHITE — like the Apple reference pill. The look is pure edge
-   refraction, no backdrop colour:
-     • near-transparent body (white page shows straight through)
-     • bright top-left inner rim  = light catching the bevel
-     • dark  bottom-right inner rim = thick refracted glass edge
-     • soft outer drop shadow      = the card floats
-     • backdrop-filter blur + url(#glass-distortion) bends the white + the
-       drop shadows at the rim → the liquid lens warp
-   No gradients, no tint — keeps the white aesthetic. */
-
-.sc, .sc-row, .dept-card, .dc, .glass-panel {
-  position: relative;
-  isolation: isolate;
-  /* faint top sheen so the surface brightens like real glass, stays white */
-  background:
-    linear-gradient(157deg,
-      rgba(255, 255, 255, 0.82) 0%,
-      rgba(255, 255, 255, 0.50) 44%,
-      rgba(255, 255, 255, 0.62) 100%) !important;
-  backdrop-filter: blur(6px) saturate(1.4) url(#glass-distortion);
-  -webkit-backdrop-filter: blur(6px) saturate(1.4);
-  border: 1px solid rgba(255, 255, 255, 0.65) !important;
-  border-radius: 18px;
-  box-shadow:
-    /* top-left bright bevel (specular catch) */
-    inset 2px 2px 1px -1px rgba(255, 255, 255, 1),
-    inset 5px 5px 10px -5px rgba(255, 255, 255, 0.95),
-    /* bottom-right dark refracted rim (thick glass edge) */
-    inset -2px -2px 1px -1px rgba(0, 0, 0, 0.26),
-    inset -7px -7px 16px -8px rgba(0, 0, 0, 0.20),
-    /* hairline so it separates from white bg */
-    0 0 0 1px rgba(0, 0, 0, 0.05),
-    /* float */
-    0 16px 38px -10px rgba(0, 0, 0, 0.24),
-    0 6px 14px -6px rgba(0, 0, 0, 0.15) !important;
-}
-
-.sc:hover, .sc-row:hover, .dept-card:hover, .dc:hover, .glass-panel.glass-hover:hover {
-  box-shadow:
-    inset 2px 2px 1px -1px rgba(255, 255, 255, 1),
-    inset 5px 5px 11px -5px rgba(255, 255, 255, 1),
-    inset -2px -2px 1px -1px rgba(0, 0, 0, 0.28),
-    inset -8px -8px 18px -8px rgba(0, 0, 0, 0.22),
-    0 0 0 1px rgba(0, 0, 0, 0.06),
-    0 22px 48px -10px rgba(0, 0, 0, 0.30),
-    0 8px 18px -6px rgba(0, 0, 0, 0.18) !important;
-}
-
-/* ── Dark theme: same refraction recipe, inverted bevel weights ── */
-[data-theme="dark"] .sc,
-[data-theme="dark"] .sc-row,
-[data-theme="dark"] .dept-card,
-[data-theme="dark"] .dc,
-[data-theme="dark"] .glass-panel {
-  background:
-    linear-gradient(157deg,
-      rgba(255, 255, 255, 0.07) 0%,
-      rgba(255, 255, 255, 0.02) 44%,
-      rgba(255, 255, 255, 0.05) 100%) !important;
-  border-color: rgba(255, 255, 255, 0.12) !important;
-  box-shadow:
-    inset 2px 2px 1px -1px rgba(255, 255, 255, 0.50),
-    inset 5px 5px 10px -5px rgba(255, 255, 255, 0.18),
-    inset -2px -2px 1px -1px rgba(0, 0, 0, 0.50),
-    inset -7px -7px 16px -8px rgba(0, 0, 0, 0.42),
-    0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 16px 38px -10px rgba(0, 0, 0, 0.60),
-    0 6px 14px -6px rgba(0, 0, 0, 0.42) !important;
-}
-
-@keyframes moveBackground {
-  from { background-position: 0% 0%; }
-  to   { background-position: 0% -1000%; }
 }
 
 /* ── Mobile / responsive ──────────────────────────────────────────────────

@@ -63,7 +63,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   // ── Mobile: full-width content, hamburger, off-canvas drawer ────────────────
   if (isMobile) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", minHeight: "100dvh", background: "transparent" }}>
+      <div style={{ display: "flex", flexDirection: "column", minHeight: "100dvh", background: "var(--bg)" }}>
         {tour}
         <RedesignSidebar mobile open={drawerOpen} onClose={() => setDrawerOpen(false)} />
         {/* Backdrop */}
@@ -104,7 +104,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
 
   // ── Desktop: fixed sidebar + main ───────────────────────────────────────────
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "transparent" }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg)" }}>
       {tour}
       <RedesignSidebar />
       {isHome ? (

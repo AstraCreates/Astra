@@ -138,8 +138,34 @@ export default function StarField() {
       }
     }
 
-    function drawCelestialBody(_now: number) {
-      // No celestial body in either theme — the top-right sun glow was removed.
+    function drawCelestialBody(now: number) {
+      if (theme === "light") {
+        const x = w * 0.82;
+        const y = h * 0.16;
+        const r = Math.max(78, Math.min(w, h) * 0.12);
+        const pulse = reduceMotion ? 1 : 0.94 + 0.06 * Math.sin(now / 1400);
+        const glow = ctx.createRadialGradient(x, y, r * 0.04, x, y, r * 1.8 * pulse);
+        glow.addColorStop(0, "rgba(255,255,255,0.58)");
+        glow.addColorStop(0.22, "rgba(255,236,170,0.28)");
+        glow.addColorStop(0.58, "rgba(11,49,255,0.055)");
+        glow.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(x, y, r * 1.8 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+
+        const disk = ctx.createRadialGradient(x - r * 0.22, y - r * 0.26, 0, x, y, r);
+        disk.addColorStop(0, "rgba(255,255,255,0.82)");
+        disk.addColorStop(0.54, "rgba(255,244,190,0.24)");
+        disk.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = disk;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+        return;
+      }
+
+      // dark mode: no celestial body drawn
     }
 
     let t0 = performance.now();

@@ -266,7 +266,7 @@ export default function GoalPanel() {
             </span>
           </div>
 
-          <div className="glass-panel" style={{ overflow: "hidden" }}>
+          <div style={{ border: "1px solid var(--bd2)", background: "var(--surface)", overflow: "hidden" }}>
             {/* Title + progress */}
             <div style={{ padding: "10px 14px", borderBottom: tasks.length ? "1px solid var(--bd)" : "none" }}>
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
