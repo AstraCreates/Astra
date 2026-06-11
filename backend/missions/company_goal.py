@@ -152,6 +152,31 @@ def set_root_session(founder_id: str, session_id: str, company_id: str | None = 
             _save(goal)
 
 
+def get_company_repo(founder_id: str, company_id: str | None = None) -> str:
+    """The company's pinned product repo_url, or '' if none built yet."""
+    with _lock:
+        goal = _read(founder_id, company_id)
+        return str((goal or {}).get("repo_url") or "")
+
+
+def set_company_repo(founder_id: str, company_id: str | None = None, repo_url: str = "") -> None:
+    """Pin the company's product repo_url the FIRST time a build produces one.
+
+    Every later build reuses this repo instead of creating a new one, so the
+    product is extended in place rather than rebuilt from scratch under a new
+    name each run."""
+    repo_url = (repo_url or "").strip()
+    if not repo_url:
+        return
+    with _lock:
+        goal = _read(founder_id, company_id)
+        if goal is None:
+            return
+        if not goal.get("repo_url"):
+            goal["repo_url"] = repo_url
+            _save(goal)
+
+
 def add_operating_session(
     founder_id: str,
     session_id: str,

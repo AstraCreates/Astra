@@ -1260,9 +1260,40 @@ def run_mvp_loop(
         required_files = MVP_REQUIRED
 
     try:
+        # Pin the company's product repo: reuse the SAME repo across every run so
+        # operating goals EXTEND the product in place (→ incremental build) instead
+        # of cloning a brand-new repo under a freshly-invented company name each
+        # time. The agent may still pass a new repo_url; if the company already has
+        # a pinned repo we override to it.
+        _company_id = founder_id or ""
+        try:
+            from backend.core.session_store import get_session_meta as _gsm
+            if founder_id:
+                _company_id = str((_gsm(session_id) or {}).get("company_id") or founder_id)
+        except Exception:
+            pass
+        if founder_id and _company_id:
+            try:
+                from backend.missions.company_goal import get_company_repo
+                _pinned = get_company_repo(founder_id, _company_id)
+                if _pinned and _pinned != repo_url:
+                    logger.info("run_mvp_loop: reusing pinned company repo %s (agent passed %r)", _pinned, repo_url)
+                    repo_url = _pinned
+            except Exception:
+                pass
+
         # GitHub-optional: clone if a repo+token exist, else build in a local
         # workspace and stream files to the preview (no GitHub required).
         local, is_github = _get_workspace(repo_url, session_id)
+
+        # First build that produced a real GitHub repo → pin it for all future runs.
+        if founder_id and _company_id and is_github and repo_url:
+            try:
+                from backend.missions.company_goal import set_company_repo
+                set_company_repo(founder_id, _company_id, repo_url)
+            except Exception:
+                pass
+
         oc_session_id = str(uuid.uuid4())
         Path(local, ".oc_session_id").write_text(oc_session_id)
         commits = []
