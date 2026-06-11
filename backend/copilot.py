@@ -49,6 +49,123 @@ def _save_history(session_id: str, history: list[dict[str, Any]]) -> None:
         logger.warning("copilot history save failed for %s: %s", session_id, exc)
 
 
+def _clip(text: Any, limit: int = 280) -> str:
+    value = str(text or "").replace("\n", " ").strip()
+    return value[:limit]
+
+
+async def _load_live_context(session_id: str, founder_id: str) -> dict[str, Any]:
+    """Fetch the latest durable session snapshot for the copilot prompt."""
+    import asyncio
+
+    try:
+        from backend.api.routes import _load_session_events
+        from backend.workflow_state import build_session_state
+        events = await _load_session_events(session_id)
+        state = await asyncio.to_thread(build_session_state, session_id, events or [])
+    except Exception as exc:
+        logger.warning("copilot live context load failed for %s: %s", session_id, exc)
+        state = {}
+
+    try:
+        from backend.core.session_store import get_session_meta
+        meta = get_session_meta(session_id) or {}
+    except Exception:
+        meta = {}
+
+    workboard = state.get("workboard") or {}
+    agents = state.get("agents") or {}
+    approvals = state.get("approvals") or []
+    artifacts = state.get("artifacts") or []
+
+    running_agents = sorted([name for name, ag in agents.items() if (ag or {}).get("status") == "running"])
+    blocked_agents = sorted([
+        item.get("agent", "")
+        for item in (workboard.get("items") or [])
+        if item.get("blockers")
+    ])
+    recent_artifacts = [
+        {
+            "key": art.get("key"),
+            "title": art.get("title"),
+            "agent": art.get("owner_agent") or art.get("agent"),
+            "status": art.get("status"),
+            "preview": _clip(art.get("preview") or art.get("content") or art.get("description") or ""),
+        }
+        for art in artifacts[-8:]
+        if isinstance(art, dict)
+    ]
+    recent_approvals = [
+        {
+            "key": approval.get("key") or approval.get("gate_key"),
+            "title": approval.get("title"),
+            "status": approval.get("status"),
+            "agent": approval.get("agent") or approval.get("triggered_by"),
+        }
+        for approval in approvals[-8:]
+        if isinstance(approval, dict)
+    ]
+
+    latest_events = []
+    for event in (state.get("digest") or {}).get("recent_events", [])[:10]:
+        if not isinstance(event, dict):
+            continue
+        latest_events.append({
+            "type": event.get("type"),
+            "agent": event.get("agent"),
+            "text": _clip(event.get("summary") or event.get("message") or event.get("error") or event.get("instruction")),
+        })
+
+    return {
+        "session_id": session_id,
+        "founder_id": founder_id,
+        "session_meta": {
+            "status": meta.get("status"),
+            "goal": _clip(meta.get("goal"), 280),
+            "stack_id": meta.get("stack_id"),
+            "company_id": meta.get("company_id"),
+            "kind": meta.get("kind"),
+        },
+        "state": {
+            "status": state.get("status"),
+            "event_count": state.get("event_count"),
+            "last_event_id": state.get("last_event_id"),
+            "goal": _clip((state.get("digest") or {}).get("goal") or meta.get("goal"), 280),
+        },
+        "goal": state.get("company_goal"),
+        "workboard": {
+            "summary": workboard.get("summary"),
+            "counts": workboard.get("counts") or {},
+            "items": [
+                {
+                    "agent": item.get("agent"),
+                    "title": item.get("title"),
+                    "status": item.get("status"),
+                    "next_actor": item.get("next_actor"),
+                    "blockers": item.get("blockers") or [],
+                    "summary": _clip(item.get("summary")),
+                }
+                for item in (workboard.get("items") or [])[:20]
+                if isinstance(item, dict)
+            ],
+        },
+        "agents": [
+            {
+                "agent": name,
+                "status": (agent or {}).get("status"),
+                "instruction": _clip((agent or {}).get("instruction"), 220),
+                "summary": _clip((agent or {}).get("summary") or (agent or {}).get("result")),
+            }
+            for name, agent in sorted(agents.items())
+        ],
+        "running_agents": running_agents,
+        "blocked_agents": blocked_agents,
+        "recent_artifacts": recent_artifacts,
+        "recent_approvals": recent_approvals,
+        "recent_events": latest_events,
+    }
+
+
 # ── Tools (in-process, curated from the MCP surface) ─────────────────────────────
 
 def _company_for_session(session_id: str, founder_id: str) -> str:
@@ -280,6 +397,7 @@ async def run_copilot(founder_id: str, session_id: str, message: str) -> dict[st
     from backend.tools._llm import generate
 
     history = get_history(session_id)
+    live = await _load_live_context(session_id, founder_id)
     tool_docs = "\n".join(f"- {name}: {doc}" for name, (doc, _) in _TOOLS.items())
     system = (
         "You are the founder's Copilot inside an Astra session — a hands-on operator that ACTS on "
@@ -302,6 +420,8 @@ async def run_copilot(founder_id: str, session_id: str, message: str) -> dict[st
         "commanding.\n"
         "Never answer an imperative by restating the goal and asking 'what next' — take the action, then "
         "say exactly what you dispatched in one line.\n\n"
+        "LIVE SESSION SNAPSHOT (ground truth, refreshes every turn):\n"
+        f"{json.dumps(live, indent=2, sort_keys=True)[:9000]}\n\n"
         'Respond with ONE JSON object per step:\n'
         '  to use a tool: {"action":"tool","tool":"<name>","args":{...}}\n'
         '  to answer:     {"action":"reply","text":"<your message to the founder>"}\n'
