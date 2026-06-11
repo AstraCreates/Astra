@@ -600,6 +600,10 @@ class Agent:
         tc = _re.search(r'<tool_call>\s*(.*?)\s*</tool_call>', raw, _re.DOTALL)
         if tc:
             raw = tc.group(1)
+        # Strip ```json ... ``` fences (models often wrap the final object + prose)
+        fence = _re.search(r'```(?:json)?\s*(.*?)```', raw, _re.DOTALL)
+        if fence:
+            raw = fence.group(1)
 
         # Strategy 1: direct parse
         try:
@@ -903,6 +907,16 @@ class Agent:
             if action is None and isinstance(parsed.get("output"), dict) and parsed["output"].get("action"):
                 parsed = parsed["output"]
                 action = parsed.get("action")
+            # Model returned a bare RESULT object with no action envelope (common
+            # drift: dumps {"documents":...} / {"design_spec":...} instead of
+            # {"action":"done","output":{...}}). If it carries substantive content
+            # (not just reasoning) and isn't a tool attempt, treat it as an implicit
+            # done so the agent completes with its result instead of looping.
+            if action is None and isinstance(parsed, dict) and parsed and "tool" not in parsed:
+                _noise = {"reasoning", "thinking", "thought", "text", "message", "summary"}
+                if any(k not in _noise for k in parsed):
+                    parsed = {"action": "done", "output": parsed}
+                    action = "done"
             reasoning = parsed.get("reasoning", "")
             tool_hint = parsed.get("tool", "")
             logger.info("[%s] iter=%d  action=%-12s  %s", self.name, i, action, (tool_hint or reasoning)[:80])
