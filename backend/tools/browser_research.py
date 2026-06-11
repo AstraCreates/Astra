@@ -412,12 +412,29 @@ def batch_search(queries: list, max_results_each: int = 8) -> dict:
 
     with ThreadPoolExecutor(max_workers=min(len(queries), 8)) as ex:
         futures = {ex.submit(search_and_fetch, q, max_results_each): q for q in queries}
-        for fut in as_completed(futures, timeout=50):
-            q = futures[fut]
-            try:
-                results_by_query[q] = fut.result()
-            except Exception as e:
-                results_by_query[q] = {"query": q, "results": [], "error": str(e)}
+        # Process-wide search gate serializes calls (~1s apart) and each query
+        # retries with backoff, so a parallel batch can take well over a minute.
+        # Catch the overall timeout and return whatever finished — partial
+        # results beat an all-or-nothing "N futures unfinished" failure.
+        try:
+            for fut in as_completed(futures, timeout=110):
+                q = futures[fut]
+                try:
+                    results_by_query[q] = fut.result()
+                except Exception as e:
+                    results_by_query[q] = {"query": q, "results": [], "error": str(e)}
+        except TimeoutError:
+            for fut, q in futures.items():
+                if q in results_by_query:
+                    continue
+                if fut.done() and not fut.cancelled():
+                    try:
+                        results_by_query[q] = fut.result()
+                    except Exception as e:
+                        results_by_query[q] = {"query": q, "results": [], "error": str(e)}
+                else:
+                    fut.cancel()
+                    results_by_query[q] = {"query": q, "results": [], "error": "search_timeout"}
 
     combined = []
     all_sources = []
