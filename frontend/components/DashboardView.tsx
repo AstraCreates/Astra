@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { listSessions, deleteSessionRemote, killSession, type SessionIndexEntry } from "@/lib/api";
+import { listSessions, deleteSessionRemote, killSession, getSessionDigest, AGENT_LABELS, type SessionIndexEntry, type SessionDigest } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import AstraGradient from "./AstraGradient";
@@ -15,6 +15,17 @@ const GREETINGS = [
   "Good to see you",
   "Let's keep building",
 ];
+
+function extractGoalTitle(raw: string): string {
+  return raw
+    .replace(/^FOLLOW-UP RUN for GOAL:\s*/i, "")
+    .replace(/^GOAL:\s*/i, "")
+    .replace(/\s*An earlier run already completed[\s\S]*$/i, "")
+    .replace(/\s*Work together to complete these major tasks[\s\S]*$/i, "")
+    .replace(/\s*Each agent: deliver[\s\S]*$/i, "")
+    .replace(/\s*Finish ONLY the \d+[\s\S]*$/i, "")
+    .trim() || raw;
+}
 
 function ago(ts: string | undefined): string {
   if (!ts) return "";
@@ -45,6 +56,7 @@ export default function DashboardView() {
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
   const [firstName, setFirstName] = useState("");
   const [greeting, setGreeting] = useState("");
+  const [digests, setDigests] = useState<Map<string, SessionDigest>>(new Map());
   useEffect(() => {
     if (typeof window !== "undefined") {
       const fullName = localStorage.getItem("astra_onboarding_name") || "";
@@ -86,6 +98,27 @@ export default function DashboardView() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!sessions) return;
+    const running = sessions.filter(s => s.status === "running");
+    if (!running.length) return;
+    const fetchAll = async () => {
+      const results = await Promise.allSettled(
+        running.map(s => getSessionDigest(s.session_id).then(d => [s.session_id, d] as [string, SessionDigest]))
+      );
+      setDigests(prev => {
+        const next = new Map(prev);
+        for (const r of results) {
+          if (r.status === "fulfilled") next.set(r.value[0], r.value[1]);
+        }
+        return next;
+      });
+    };
+    void fetchAll();
+    const t = setInterval(fetchAll, 15_000);
+    return () => clearInterval(t);
+  }, [sessions]);
+
   const running = (sessions || []).filter((s) => s.status === "running").length;
   const stalled = (sessions || []).filter((s) => s.status === "stalled").length;
 
@@ -95,16 +128,22 @@ export default function DashboardView() {
     <>
       <style>{`
         @keyframes dv-fade { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes sc-shimmer { 0%,100% { opacity: 1; } 50% { opacity: .6; } }
+        @keyframes sc-indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
         .greeting-text { transition: opacity 0.3s ease; }
-        .sc-row { cursor: pointer; padding: 14px 16px; border: 1px solid var(--bd); background: var(--surface); display: flex; align-items: flex-start; gap: 14; transition: border-color .15s, box-shadow .15s; position: relative; overflow: hidden; }
-        .sc-row::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--bd); transition: background .15s; }
+        .sc-row { cursor: pointer; padding: 14px 16px; border: 1px solid var(--bd); background: var(--surface); display: flex; align-items: flex-start; gap: 14; transition: border-color .15s, box-shadow .15s; position: relative; overflow: hidden; border-radius: 8px; }
+        .sc-row::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--bd); transition: background .15s; border-radius: 8px 8px 0 0; }
         .sc-row:hover { border-color: var(--bb) !important; box-shadow: 0 4px 16px rgba(0,46,255,.07); }
         .sc-row:hover::before { background: linear-gradient(90deg, var(--blue), var(--mint)); }
         .sc-row.stalled { border-color: var(--ab) !important; background: var(--adim) !important; }
         .sc-row.stalled::before { background: var(--amber); }
         .sc-row.running { border-color: var(--bb) !important; }
         .sc-row.running::before { background: linear-gradient(90deg, var(--blue), var(--mint)); animation: sc-shimmer 2s ease-in-out infinite; }
-        @keyframes sc-shimmer { 0%,100% { opacity: 1; } 50% { opacity: .6; } }
+        .sc-child { margin-left: 20px; border-left: 3px solid var(--bb) !important; border-radius: 0 8px 8px 0 !important; }
+        .sc-child::before { border-radius: 0 8px 0 0 !important; }
+        .sc-progress-track { height: 5px; background: var(--bd); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+        .sc-progress-fill { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
+        .sc-progress-indeterminate { height: 100%; width: 35%; border-radius: 3px; animation: sc-indeterminate 1.4s ease-in-out infinite; }
       `}</style>
 
       <div style={{ flex: 1, overflowY: "auto" }}>
@@ -244,10 +283,20 @@ export default function DashboardView() {
                 return ordered.map(({ s, child }, idx) => {
                 const isStalled = s.status === "stalled";
                 const isRunning = s.status === "running";
+                const isDone = s.status === "done";
+                const digest = digests.get(s.session_id);
+                const totalAgents = digest?.counts.planned_agents ?? 0;
+                const doneAgents = digest?.counts.done_agents ?? 0;
+                const progressPct = isDone ? 100
+                  : (isRunning && totalAgents > 0) ? Math.round((doneAgents / totalAgents) * 100)
+                  : null;
+                const currentAgents = (digest?.running_agents ?? [])
+                  .map(a => AGENT_LABELS[a as keyof typeof AGENT_LABELS] ?? a);
+                const cleanTitle = extractGoalTitle(s.goal || "Untitled run");
                 return (
                   <div
                     key={s.session_id}
-                    className={`sc-row${isStalled ? " stalled" : isRunning ? " running" : ""}`}
+                    className={`sc-row${isStalled ? " stalled" : isRunning ? " running" : ""}${child ? " sc-child" : ""}`}
                     onClick={() => router.push(`/s/${s.session_id}`)}
                     style={{ position: "relative", '--i': idx } as CSSProperties}
                   >
@@ -260,14 +309,14 @@ export default function DashboardView() {
                       onPointerDown={(e) => e.stopPropagation()}
                       onTouchStart={(e) => e.stopPropagation()}
                       style={{
-                        position: "absolute", top: 6, right: 6,
-                        width: pendingDel.has(s.session_id) ? "auto" : 36, height: 36,
-                        padding: pendingDel.has(s.session_id) ? "0 10px" : 0,
+                        position: "absolute", top: 8, right: 8,
+                        width: pendingDel.has(s.session_id) ? "auto" : 28, height: 28,
+                        padding: pendingDel.has(s.session_id) ? "0 8px" : 0,
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        background: pendingDel.has(s.session_id) ? "var(--rdim)" : "var(--surface)",
-                        border: pendingDel.has(s.session_id) ? "1px solid var(--rb)" : "1px solid var(--bd)",
-                        color: pendingDel.has(s.session_id) ? "var(--red)" : "var(--fm)",
-                        cursor: "pointer", fontSize: pendingDel.has(s.session_id) ? 9 : 14, borderRadius: 8,
+                        background: pendingDel.has(s.session_id) ? "var(--rdim)" : "transparent",
+                        border: pendingDel.has(s.session_id) ? "1px solid var(--rb)" : "1px solid transparent",
+                        color: pendingDel.has(s.session_id) ? "var(--red)" : "var(--fd)",
+                        cursor: "pointer", fontSize: pendingDel.has(s.session_id) ? 9 : 12, borderRadius: 6,
                         opacity: deleting.has(s.session_id) ? 0.4 : 1,
                         transition: "opacity .15s, background .15s, border-color .15s, color .15s",
                         touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
@@ -275,54 +324,72 @@ export default function DashboardView() {
                       }}
                     >{deleting.has(s.session_id) ? "…" : pendingDel.has(s.session_id) ? "DELETE?" : "✕"}</button>
 
-                    <div style={{ flex: 1, paddingRight: 44 }}>
-                      {/* Sub-run indicator */}
-                      {child && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                          <span style={{ width: 14, height: 1, background: "var(--bb)", display: "inline-block", flexShrink: 0 }} />
-                          <span style={{ fontSize: 9, color: "var(--blue)", fontFamily: "var(--font-code)", letterSpacing: ".06em", fontWeight: 700, textTransform: "uppercase" }}>sub-run</span>
-                        </div>
-                      )}
-                      {/* Goal */}
-                      <div style={{
-                        fontSize: 12.5, fontWeight: 600, color: "var(--fg)",
-                        lineHeight: 1.45, marginBottom: 7,
-                        display: "-webkit-box", WebkitLineClamp: 2,
-                        WebkitBoxOrient: "vertical", overflow: "hidden",
-                      }}>
-                        {s.goal || "Untitled run"}
-                      </div>
-
-                      {/* Running progress dots */}
-                      {isRunning && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 7 }}>
-                          {["diagnose", "design", "deploy", "govern", "operate"].map((ph) => (
-                            <div key={ph} style={{
-                              width: 28, height: 3, borderRadius: 2,
-                              background: "rgba(0,46,255,0.25)",
-                              position: "relative", overflow: "hidden",
-                            }}>
-                              <div style={{
-                                position: "absolute", inset: 0,
-                                background: "rgba(0,46,255,0.7)",
-                                animation: "dv-fade 1.5s ease-in-out infinite alternate",
-                              }} />
-                            </div>
-                          ))}
-                          <span style={{ fontSize: 9, color: "var(--blue)", marginLeft: 4, fontWeight: 600 }}>IN PROGRESS</span>
-                        </div>
-                      )}
-
-                      {/* Meta row */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <StatusPill status={s.status} />
-                        <span style={{ fontSize: 10, color: "var(--fm)" }}>{ago(s.created_at)}</span>
+                    <div style={{ flex: 1, paddingRight: 36 }}>
+                      {/* Header row: stack chip + sub-run badge | status + time */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                        {child && (
+                          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--blue)", fontFamily: "var(--font-code)" }}>↳ sub-run</span>
+                        )}
                         {s.stack_id && (
-                          <span style={{ fontSize: 9, color: "var(--fm)", fontFamily: "var(--font-code)", marginLeft: "auto" }}>
+                          <span style={{ fontSize: 9, color: "var(--fm)", fontFamily: "var(--font-code)", padding: "2px 7px", background: "var(--s2, #f5f5f5)", border: "1px solid var(--bd)", borderRadius: 4 }}>
                             {s.stack_id}
                           </span>
                         )}
+                        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          <StatusPill status={s.status} />
+                          <span style={{ fontSize: 10, color: "var(--fm)" }}>{ago(s.created_at)}</span>
+                        </div>
                       </div>
+
+                      {/* Goal title — cleaned up */}
+                      <div style={{
+                        fontSize: 13, fontWeight: 600, color: "var(--fg)",
+                        lineHeight: 1.45, marginBottom: 10,
+                        display: "-webkit-box", WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical", overflow: "hidden",
+                      }}>
+                        {cleanTitle}
+                      </div>
+
+                      {/* Progress bar */}
+                      {(isRunning || isDone) && (
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)" }}>
+                              {isDone
+                                ? "All agents done"
+                                : totalAgents > 0
+                                  ? `${doneAgents} / ${totalAgents} agents`
+                                  : "Loading…"}
+                            </span>
+                            {progressPct !== null && (
+                              <span style={{ fontSize: 10, color: isDone ? "var(--green)" : "var(--blue)", fontFamily: "var(--font-code)", fontWeight: 600 }}>
+                                {progressPct}%
+                              </span>
+                            )}
+                          </div>
+                          <div className="sc-progress-track">
+                            {progressPct !== null ? (
+                              <div className="sc-progress-fill" style={{ width: `${progressPct}%`, background: isDone ? "var(--green)" : "var(--blue)" }} />
+                            ) : (
+                              <div className="sc-progress-indeterminate" style={{ background: "var(--blue)" }} />
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Currently doing */}
+                      {isRunning && currentAgents.length > 0 && (
+                        <div style={{ fontSize: 10, color: "var(--blue)", fontFamily: "var(--font-code)", marginTop: 7, display: "flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", flexShrink: 0, animation: "sc-shimmer 1.5s ease-in-out infinite" }} />
+                          {currentAgents.join(" · ")}
+                        </div>
+                      )}
+                      {isRunning && currentAgents.length === 0 && totalAgents === 0 && (
+                        <div style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)", marginTop: 7 }}>
+                          Initializing agents…
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

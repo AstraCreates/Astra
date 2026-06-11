@@ -187,7 +187,8 @@ export default function GoalPanel() {
           <button onClick={runNow} disabled={!!busy} style={{
             padding: "9px 18px", fontSize: 12, fontWeight: 600,
             color: "#002EFF", background: "#fff",
-            border: "1px solid #001AFF", cursor: "pointer",
+            border: "1px solid #001AFF", borderRadius: 8, cursor: "pointer",
+            fontFamily: "var(--font-instrument), sans-serif",
           }}>
             {busy === "run" ? "Starting…" : "+ Start first run"}
           </button>
@@ -252,52 +253,97 @@ export default function GoalPanel() {
         </div>
       )}
 
-      {/* ── Active goal ── */}
+      {/* ── Active goal — Option C: arc ring + pill chips ── */}
       {!proposed && (
         <div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <SecLabel>Current goal {currentEntry.kind === "launch" ? "· launch" : ""}</SecLabel>
-            <span style={{
-              fontSize: 9, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase",
-              color: paused ? "var(--amber)" : "var(--blue)",
-              fontFamily: "var(--font-code)",
-            }}>
-              {paused ? "paused" : "operating"}
-            </span>
-          </div>
-
-          <div style={{ border: "1px solid var(--bd2)", background: "var(--surface)", overflow: "hidden" }}>
-            {/* Title + progress */}
-            <div style={{ padding: "10px 14px", borderBottom: tasks.length ? "1px solid var(--bd)" : "none" }}>
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--fg)", lineHeight: 1.35, flex: 1 }}>
-                  {currentEntry.title}
-                </div>
-                {tasks.length > 0 && (
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: tasksDone === tasks.length ? "var(--green)" : "var(--blue)", fontFamily: "var(--font-code)", lineHeight: 1 }}>
-                      {tasksDone}
-                    </div>
-                    <div style={{ fontSize: 9, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".06em" }}>
-                      of {tasks.length}
-                    </div>
+          <div style={{ border: "1px solid var(--bd2)", background: "var(--surface)", borderRadius: 10, overflow: "hidden" }}>
+            {/* Header: status badge + arc ring */}
+            <div style={{ padding: "14px 16px 12px", borderBottom: tasks.length ? "1px solid var(--bd)" : "none" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                {/* Left: label + title + credits */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", fontFamily: "var(--font-code)", marginBottom: 6, color: paused ? "var(--amber)" : currentEntry.kind === "launch" ? "var(--blue)" : "var(--blue)" }}>
+                    {paused ? "⏸ Paused" : currentEntry.kind === "launch" ? "◎ Launch goal" : "◈ Operating"}
                   </div>
-                )}
-              </div>
-              {tasks.length > 0 && (
-                <div style={{ height: 3, background: "var(--bd)", overflow: "hidden", marginTop: 8 }}>
-                  <div style={{ height: "100%", width: `${pct}%`, background: tasksDone === tasks.length ? "var(--green)" : "var(--blue)", transition: "width .4s" }} />
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "var(--fg)", lineHeight: 1.3 }}>
+                    {currentEntry.title}
+                  </div>
+                  <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 5, fontFamily: "var(--font-code)" }}>
+                    ◈ {(currentEntry.credits_used ?? 0).toLocaleString()} credits used
+                  </div>
                 </div>
-              )}
-              <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 5, fontFamily: "var(--font-code)" }}>
-                ◈ {(currentEntry.credits_used ?? 0).toLocaleString()} credits
+                {/* Right: arc progress ring */}
+                {tasks.length > 0 && (() => {
+                  const r = 30;
+                  const circ = 2 * Math.PI * r;
+                  const offset = circ * (1 - pct / 100);
+                  const allDone = tasksDone === tasks.length;
+                  return (
+                    <div style={{ position: "relative", width: 76, height: 76, flexShrink: 0 }}>
+                      <svg width={76} height={76} viewBox="0 0 76 76" style={{ transform: "rotate(-90deg)" }}>
+                        <circle cx={38} cy={38} r={r} fill="none" stroke="var(--bd)" strokeWidth={5} />
+                        <circle
+                          cx={38} cy={38} r={r} fill="none"
+                          stroke={allDone ? "var(--green)" : "var(--blue)"}
+                          strokeWidth={5}
+                          strokeDasharray={circ}
+                          strokeDashoffset={offset}
+                          strokeLinecap="round"
+                          style={{ transition: "stroke-dashoffset .6s ease" }}
+                        />
+                      </svg>
+                      <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                        <div style={{ fontSize: 22, fontWeight: 800, color: allDone ? "var(--green)" : "var(--fg)", fontFamily: "var(--font-code)", lineHeight: 1 }}>{tasksDone}</div>
+                        <div style={{ fontSize: 9, color: "var(--fm)", letterSpacing: ".04em" }}>/ {tasks.length}</div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
-            {/* Tasks */}
-            {tasks.map((t, i) => (
-              <TaskRow key={t.id} task={t} last={i === tasks.length - 1} />
-            ))}
+            {/* Task pill chips */}
+            {tasks.length > 0 && (
+              <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 10 }}>
+                {/* Active tasks */}
+                {tasks.filter(t => t.status === "in_progress" || t.status === "awaiting_approval").length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--blue)", fontFamily: "var(--font-code)", marginBottom: 6 }}>Active</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                      {tasks.filter(t => t.status === "in_progress" || t.status === "awaiting_approval").map(t => (
+                        <span key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 100, background: t.status === "awaiting_approval" ? "rgba(245,158,11,0.1)" : "rgba(0,46,255,0.08)", border: `1px solid ${t.status === "awaiting_approval" ? "rgba(245,158,11,0.3)" : "rgba(0,46,255,0.18)"}`, fontSize: 10.5, color: t.status === "awaiting_approval" ? "var(--amber)" : "var(--blue)", fontWeight: 500, maxWidth: "100%", overflow: "hidden" }}>
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: t.status === "awaiting_approval" ? "var(--amber)" : "var(--blue)", flexShrink: 0 }} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.status === "awaiting_approval" ? "⚠ " : ""}{t.title}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Queued tasks (first 5) */}
+                {tasks.filter(t => t.status === "pending" || t.status === "blocked").length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--fd)", fontFamily: "var(--font-code)", marginBottom: 6 }}>Queued</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                      {tasks.filter(t => t.status === "pending" || t.status === "blocked").slice(0, 5).map(t => (
+                        <span key={t.id} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 100, background: t.status === "blocked" ? "rgba(239,68,68,0.07)" : "var(--s2, #f5f5f5)", border: `1px solid ${t.status === "blocked" ? "rgba(239,68,68,0.2)" : "var(--bd)"}`, fontSize: 10.5, color: t.status === "blocked" ? "var(--red)" : "var(--fm)", fontWeight: 500, maxWidth: "100%", overflow: "hidden" }}>
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: t.status === "blocked" ? "var(--red)" : "var(--fd)", flexShrink: 0 }} />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
+                        </span>
+                      ))}
+                      {tasks.filter(t => t.status === "pending" || t.status === "blocked").length > 5 && (
+                        <span style={{ fontSize: 10, color: "var(--fd)", padding: "4px 8px", fontFamily: "var(--font-code)" }}>+{tasks.filter(t => t.status === "pending" || t.status === "blocked").length - 5} more</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {/* Done count */}
+                {tasksDone > 0 && (
+                  <div style={{ fontSize: 10, color: "var(--green)", fontFamily: "var(--font-code)", fontWeight: 600 }}>
+                    ✓ {tasksDone} task{tasksDone !== 1 ? "s" : ""} completed
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -306,18 +352,21 @@ export default function GoalPanel() {
       {!proposed && (
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={runNow} disabled={paused || !!busy} style={{
-            flex: 1, padding: "8px 12px", fontSize: 12, fontWeight: 600,
+            flex: 1, padding: "9px 14px", fontSize: 12, fontWeight: 600,
             color: "#002EFF", background: "#fff", border: "1px solid #001AFF",
-            cursor: paused || busy ? "not-allowed" : "pointer",
+            borderRadius: 8, cursor: paused || busy ? "not-allowed" : "pointer",
             opacity: paused || busy ? 0.5 : 1,
+            fontFamily: "var(--font-instrument), sans-serif",
           }}>
             {busy === "run" ? "Starting…" : "▶ Run now"}
           </button>
           <button onClick={togglePause} disabled={!!busy} style={{
-            padding: "8px 12px", fontSize: 12,
+            padding: "9px 14px", fontSize: 12,
             color: "var(--fm)", background: "transparent",
-            border: "1px solid var(--bd2)", cursor: busy ? "not-allowed" : "pointer",
+            border: "1px solid var(--bd2)", borderRadius: 8,
+            cursor: busy ? "not-allowed" : "pointer",
             opacity: busy ? 0.5 : 1,
+            fontFamily: "var(--font-instrument), sans-serif",
           }}>
             {busy === "pause" ? "…" : paused ? "Resume" : "Pause"}
           </button>
