@@ -222,6 +222,35 @@ async def _tool_session_status(founder_id: str, session_id: str, args: dict) -> 
             "credits_used": meta.get("credits_used", 0), "kind": meta.get("kind")}
 
 
+# ── MCP parity: expose the rest of the astra MCP surface in-process ──────────────
+# Reuses the exact MCP handlers (run AS this session's founder), so the copilot has
+# the same toolset as the MCP without reimplementing anything. Session-scoped tools
+# default session_id to the current session.
+_MCP_TOOLS = {
+    "submit_goal":      ("astra_submit_goal", "LAUNCH a brand-new company/run from a goal (resets to a fresh company). args: {goal, stack_id?}"),
+    "session_digest":   ("astra_session_digest", "summary of a run's progress. args: {session_id?}"),
+    "session_artifacts":("astra_session_artifacts", "list the deliverables/artifacts a run produced. args: {session_id?}"),
+    "workboard":        ("astra_session_workboard", "active work + blockers for a run. args: {session_id?}"),
+    "chat_agent":       ("astra_chat_agent", "ask ONE specific agent a question. args: {agent, message, session_id?}"),
+    "list_stacks":      ("astra_list_stacks", "list available agent stacks. args: {}"),
+    "recommend_stack":  ("astra_recommend_stack", "recommend a stack for a goal. args: {goal}"),
+    "approve":          ("astra_approve", "approve/deny a pending SafeRun action. args: {session_id?, gate_key, approved}"),
+    "search_brain":     ("astra_search_brain", "keyword search the company brain. args: {query}"),
+    "brain_graph":      ("astra_brain_graph", "the company knowledge-map nodes/edges. args: {}"),
+    "credits":          ("astra_credits", "credit balance + usage. args: {}"),
+}
+
+
+def _make_mcp_tool(mcp_name: str):
+    async def _fn(founder_id: str, session_id: str, args: dict) -> Any:
+        import asyncio
+        from backend import astra_mcp
+        a = dict(args or {})
+        a.setdefault("session_id", session_id)
+        return await asyncio.to_thread(astra_mcp.call_tool, mcp_name, a, founder_id)
+    return _fn
+
+
 _TOOLS = {
     "ask_brain": ("ask the company brain a question (returns a cited answer). args: {question}", _tool_ask_brain),
     "company_goal": ("get the company north star, current goal + status, and goal list. args: {}", _tool_company_goal),
@@ -233,6 +262,11 @@ _TOOLS = {
     "run_cycle": ("dispatch the team on the current approved goal now. args: {}", _tool_run_cycle),
     "session_status": ("status of a session (defaults to the current one). args: {session_id?}", _tool_session_status),
 }
+
+# Fold in the MCP parity tools (in-process proxies).
+for _cp_name, (_mcp_name, _doc) in _MCP_TOOLS.items():
+    if _cp_name not in _TOOLS:
+        _TOOLS[_cp_name] = (_doc, _make_mcp_tool(_mcp_name))
 
 
 def _parse_action(raw: str) -> dict:

@@ -49,8 +49,39 @@ SERVER_INFO = {"name": "astra", "version": "1.1.0"}
 def _api_url() -> str:
     return os.environ.get("ASTRA_API_URL", "http://localhost:8000").rstrip("/")
 
+import contextvars as _contextvars
+_FOUNDER_OVERRIDE: "_contextvars.ContextVar[str | None]" = _contextvars.ContextVar("astra_mcp_founder", default=None)
+
+
+def set_founder_override(founder_id: str | None):
+    """In-process callers (e.g. the copilot) run these tools AS a specific founder
+    instead of the env default. Returns a token; pass it to reset_founder_override."""
+    return _FOUNDER_OVERRIDE.set(founder_id or None)
+
+
+def reset_founder_override(token) -> None:
+    try:
+        _FOUNDER_OVERRIDE.reset(token)
+    except Exception:
+        pass
+
+
+def call_tool(name: str, arguments: dict, founder_id: str | None = None) -> Any:
+    """Invoke an MCP tool by name in-process, as `founder_id`. Returns the raw
+    handler payload (not MCP-wrapped). Raises on unknown tool."""
+    fn = _DISPATCH.get(name)
+    if fn is None:
+        raise ValueError(f"Unknown tool: {name}")
+    token = set_founder_override(founder_id) if founder_id else None
+    try:
+        return fn(arguments or {})
+    finally:
+        if token is not None:
+            reset_founder_override(token)
+
+
 def _founder_id() -> str:
-    return os.environ.get("ASTRA_FOUNDER_ID", "founder_001")
+    return _FOUNDER_OVERRIDE.get() or os.environ.get("ASTRA_FOUNDER_ID", "founder_001")
 
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
 
