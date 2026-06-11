@@ -15,7 +15,11 @@ class Settings(BaseSettings):
     # tool decisions; the heavy code generation is still done by mvp_build_model in
     # run_mvp_loop / openclaude. Few wrapper calls, so the cost impact is small.
     technical_agent_model: str = "deepseek/deepseek-v4-pro"
-    technical_agent_max_iterations: int = 12
+    # 12 was too tight: the build workflow (resolve repo → run_mvp_loop →
+    # provision → QA → obsidian_log → done) plus tool-failure retries blew the
+    # cap and force-synthesized BEFORE deploy/log finished. 20 matches the other
+    # build-heavy agents (legal 20, finance/marketing 20-25).
+    technical_agent_max_iterations: int = 20
     # Web agent wrapper model (drives its tool calls: repo create, run_mvp_loop).
     # Dedicated so it isn't pinned by the env-overridden or_planner_model (hy3).
     web_agent_model: str = "xiaomi/mimo-v2.5-pro"
