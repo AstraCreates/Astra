@@ -15,7 +15,10 @@ import SessionTour from "@/components/SessionTour";
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 type LogEntry = { ts: number; type: string; text: string };
-type Agent = { key: string; status: string; log: LogEntry[]; visitedUrls: string[]; currentTool: string | null; result: unknown; instruction: string };
+// Raw openclaude (claude-code CLI) stream lines for the technical/web terminal.
+// kind: command | output | error | file | log | plan | tool | phase | deploy
+type TermEntry = { ts: number; kind: string; text: string; agent: string };
+type Agent = { key: string; status: string; log: LogEntry[]; term: TermEntry[]; visitedUrls: string[]; currentTool: string | null; result: unknown; instruction: string };
 type Artifact = { key?: string; title?: string; status?: string; preview?: string; content?: string; description?: string; owner_agent?: string };
 type Approval = { gate_key: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string; preview?: string }[] };
 
@@ -254,7 +257,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   }, []);
 
   const ensureAg = (key: string) => {
-    if (!S.current.agents[key]) S.current.agents[key] = { key, status: "waiting", log: [], visitedUrls: [], currentTool: null, result: null, instruction: "" };
+    if (!S.current.agents[key]) S.current.agents[key] = { key, status: "waiting", log: [], term: [], visitedUrls: [], currentTool: null, result: null, instruction: "" };
   };
   const addLog = (agentKey: string, type: string, text: unknown) => {
     ensureAg(agentKey);
@@ -265,6 +268,15 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     if (ag.log.length > 300) ag.log.shift();
     const m = str.match(/https?:\/\/[^\s"',>)]+/);
     if (m && !ag.visitedUrls.includes(m[0])) ag.visitedUrls.push(m[0]);
+  };
+  // Raw terminal buffer for the technical/web openclaude stream. Keeps fuller
+  // text than addLog (4k vs 500) so the terminal view shows real command output.
+  const pushTerm = (agentKey: string, kind: string, text: unknown) => {
+    ensureAg(agentKey);
+    const ag = S.current.agents[agentKey];
+    if (!ag.term) ag.term = [];
+    ag.term.push({ ts: Date.now(), kind, text: safeText(text).slice(0, 4000), agent: agentKey });
+    if (ag.term.length > 400) ag.term.shift();
   };
 
   const handleEvent = useCallback((ev: Record<string, any>) => {
@@ -299,15 +311,18 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       case "agent_action_result": case "tool_result":
         if (ev.agent) addLog(ev.agent, "result", safeText(ev.result || ev.output || ev.content || "").slice(0, 300)); break;
       case "agent_build": {
-        // Technical build stream — fold into the technical agent log.
+        // Technical build stream — fold into the agent log (Updates) AND keep the
+        // raw lines in the terminal buffer (full text) for the technical terminal.
         const a = ev.agent || "technical"; ensureAg(a);
         const k = ev.kind;
-        if (k === "deploy" && ev.url) { st.liveUrl = String(ev.url); addLog(a, "result", `Deployed → ${ev.url}`); }
-        else if (k === "file") addLog(a, "tool", `${ev.verb || "wrote"} ${ev.path} (${ev.size ?? 0}b)`);
-        else if (k === "command") addLog(a, "tool", `$ ${ev.command || ""}`);
-        else if (k === "output") addLog(a, "result", safeText(ev.text || "").slice(0, 300));
-        else if (k === "error") addLog(a, "error", safeText(ev.text || "").slice(0, 300));
-        else if (k === "phase" || k === "plan" || k === "build_start") addLog(a, "think", ev.text || ev.goal || "");
+        if (k === "deploy" && ev.url) { st.liveUrl = String(ev.url); addLog(a, "result", `Deployed → ${ev.url}`); pushTerm(a, "deploy", `Deployed → ${ev.url}`); }
+        else if (k === "file") { addLog(a, "tool", `${ev.verb || "wrote"} ${ev.path} (${ev.size ?? 0}b)`); pushTerm(a, "file", `${ev.verb || "wrote"} ${ev.path} (${ev.size ?? 0}b)`); }
+        else if (k === "command") { addLog(a, "tool", `$ ${ev.command || ""}`); pushTerm(a, "command", `${ev.command || ""}${ev.desc ? `  # ${ev.desc}` : ""}`); }
+        else if (k === "output") { addLog(a, "result", safeText(ev.text || "").slice(0, 300)); pushTerm(a, "output", ev.text || ""); }
+        else if (k === "error") { addLog(a, "error", safeText(ev.text || "").slice(0, 300)); pushTerm(a, "error", ev.text || ""); }
+        else if (k === "log") pushTerm(a, "log", ev.text || "");
+        else if (k === "tool") pushTerm(a, "tool", `${ev.tool || ""}${ev.target ? ` ${ev.target}` : ""}`);
+        else if (k === "phase" || k === "plan" || k === "build_start") { addLog(a, "think", ev.text || ev.goal || ""); pushTerm(a, "phase", ev.text || ev.goal || ""); }
         break;
       }
       case "agent_done": {
@@ -439,6 +454,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               S.current.agents[k] = {
                 key: k, status: ag.status || existing?.status || "waiting",
                 log,
+                term: existing?.term || [],
                 visitedUrls: ag.visitedUrls || ag.visited_urls || existing?.visitedUrls || [],
                 currentTool: existing?.currentTool ?? null, result: ag.result || existing?.result || null,
                 instruction: ag.instruction || existing?.instruction || "",
@@ -533,7 +549,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       S.current.paused = next; force();
     } catch {}
   };
-  const sel = (dept: string | null, art: string | null) => { S.current.selDept = dept; S.current.selArt = art; S.current.tab = art ? "read" : "updates"; force(); };
+  const sel = (dept: string | null, art: string | null) => { S.current.selDept = dept; S.current.selArt = art; S.current.tab = art ? "read" : (dept === "technical" ? "terminal" : "updates"); force(); };
 
   // ── Derived render data ──
   const st = S.current;
@@ -816,7 +832,9 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             {st.selArt
               ? <div className={`dtab${st.tab === "read" ? " on" : ""}`} onClick={() => { st.tab = "read"; force(); }}>Read it</div>
               : st.selDept ? <>
-                  <div className={`dtab${st.tab === "updates" ? " on" : ""}`} onClick={() => { st.tab = "updates"; force(); }}>Updates</div>
+                  {st.selDept === "technical"
+                    ? <div className={`dtab${st.tab === "terminal" ? " on" : ""}`} onClick={() => { st.tab = "terminal"; force(); }}>Terminal</div>
+                    : <div className={`dtab${st.tab === "updates" ? " on" : ""}`} onClick={() => { st.tab = "updates"; force(); }}>Updates</div>}
                   <div className={`dtab${st.tab === "tech" ? " on" : ""}`} onClick={() => { st.tab = "tech"; force(); }}>Technical logs</div>
                   <div className={`dtab${st.tab === "sources" ? " on" : ""}`} onClick={() => { st.tab = "sources"; force(); }}>Sources</div>
                 </>
@@ -1037,6 +1055,33 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               const all: (LogEntry & { agent: string })[] = [];
               for (const k of ags) for (const e of st.agents[k].log) all.push({ ...e, agent: k });
               all.sort((a, b) => a.ts - b.ts);
+
+              // Terminal tab — raw openclaude (claude-code CLI) stream for the
+              // technical/web build. Only the technical dept arms it; if the tab
+              // is stale after switching depts, fall through to Updates below.
+              if (st.tab === "terminal" && st.selDept === "technical") {
+                const term: TermEntry[] = [];
+                for (const k of ags) for (const e of (st.agents[k].term || [])) term.push(e);
+                term.sort((a, b) => a.ts - b.ts);
+                const isRunning = ags.some((a) => st.agents[a].status === "running");
+                if (!term.length) {
+                  return <div style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10.5, color: "var(--fm)", padding: "10px 12px", background: "#0c0d10", borderRadius: 8, lineHeight: 1.6 }}>
+                    {isRunning ? "▌ Waiting for the build agent to start its terminal…" : "No terminal output yet — start a build run."}
+                  </div>;
+                }
+                const C: Record<string, string> = { command: "#7dd3fc", output: "#d4d4d8", error: "#fca5a5", file: "#86efac", log: "#e4e4e7", plan: "#fcd34d", tool: "#a5b4fc", phase: "#fcd34d", deploy: "#86efac" };
+                return <div style={{ background: "#0c0d10", borderRadius: 8, padding: "10px 12px", maxHeight: "60vh", overflowY: "auto", fontFamily: "var(--font-mono, monospace)", fontSize: 10.5, lineHeight: 1.55 }}>
+                  {term.map((e, i) => {
+                    const color = C[e.kind] || "#d4d4d8";
+                    const prefix = e.kind === "command" ? "$ " : e.kind === "error" ? "✗ " : e.kind === "file" ? "✎ " : e.kind === "phase" ? "▸ " : e.kind === "deploy" ? "→ " : "";
+                    return <div key={i} style={{ display: "flex", gap: 6, padding: "1px 0", alignItems: "flex-start" }}>
+                      {ags.length > 1 && <span style={{ color: "#6b7280", flexShrink: 0, fontSize: 9, minWidth: 70 }}>{e.agent}</span>}
+                      <pre style={{ margin: 0, color, whiteSpace: "pre-wrap", wordBreak: "break-word", flex: 1 }}>{prefix}{e.text}</pre>
+                    </div>;
+                  })}
+                  {isRunning && <div style={{ color: "#7dd3fc" }}>▌</div>}
+                </div>;
+              }
 
               if (st.tab === "sources") {
                 const urls: string[] = [];
