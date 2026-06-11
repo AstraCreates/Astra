@@ -40,6 +40,7 @@ INTERNAL_NAMES = {
     "primary", "astratesting", "agent", "founder", "workspace", "session",
     "technical", "research", "sales", "marketing", "design", "legal", "ops",
     "web", "finance", "specialist", "orchestrator", "copilot",
+    "auto-logged", "untitled", "n/a", "tbd",
 }
 
 
