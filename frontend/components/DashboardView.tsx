@@ -275,17 +275,16 @@ export default function DashboardView() {
                   else roots.push(s);
                 }
 
-                const activeRoots = roots.filter(r => r.status !== "done");
-                const completedRoots = roots.filter(r => r.status === "done");
-
-                const toOrdered = (rootList: SessionIndexEntry[]) => {
-                  const result: { s: SessionIndexEntry; child: boolean }[] = [];
-                  for (const r of rootList) {
-                    result.push({ s: r, child: false });
-                    for (const k of kids[r.session_id] || []) result.push({ s: k, child: true });
+                // Root (main) runs always visible; only DONE sub-runs collapse
+                const activeItems: { s: SessionIndexEntry; child: boolean }[] = [];
+                const completedSubruns: { s: SessionIndexEntry; child: boolean }[] = [];
+                for (const r of roots) {
+                  activeItems.push({ s: r, child: false });
+                  for (const k of kids[r.session_id] || []) {
+                    if (k.status === "done") completedSubruns.push({ s: k, child: true });
+                    else activeItems.push({ s: k, child: true });
                   }
-                  return result;
-                };
+                }
 
                 const renderCard = ({ s, child }: { s: SessionIndexEntry; child: boolean }, idx: number) => {
                   const isStalled = s.status === "stalled";
@@ -347,7 +346,8 @@ export default function DashboardView() {
                         </div>
 
                         <div style={{
-                          fontSize: 13, fontWeight: 600, color: "var(--fg)",
+                          fontSize: child ? 12.5 : 14, fontWeight: child ? 500 : 700,
+                          color: child ? "var(--fm)" : "var(--fg)",
                           lineHeight: 1.45, marginBottom: 10,
                           display: "-webkit-box", WebkitLineClamp: 2,
                           WebkitBoxOrient: "vertical", overflow: "hidden",
@@ -393,21 +393,12 @@ export default function DashboardView() {
                   );
                 };
 
-                const activeItems = toOrdered(activeRoots);
-                const completedItems = toOrdered(completedRoots);
-                const completedRunCount = completedRoots.length;
-
                 return (
                   <>
-                    {activeItems.length === 0 && completedItems.length > 0 && (
-                      <div style={{ fontSize: 12, color: "var(--fm)", padding: "4px 0 8px" }}>
-                        No active runs. {completedRunCount} completed below.
-                      </div>
-                    )}
                     {activeItems.map((item, idx) => renderCard(item, idx))}
 
-                    {completedRunCount > 0 && (
-                      <div style={{ marginTop: activeItems.length ? 8 : 0 }}>
+                    {completedSubruns.length > 0 && (
+                      <div style={{ marginTop: 8 }}>
                         <button
                           onClick={() => setShowCompleted(v => !v)}
                           style={{
@@ -421,13 +412,13 @@ export default function DashboardView() {
                           onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--bd)")}
                         >
                           <span style={{ fontSize: 10, color: "var(--fm)", transform: showCompleted ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block", transition: "transform .2s" }}>▶</span>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)" }}>Completed runs</span>
-                          <span style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)", marginLeft: 4 }}>{completedRunCount}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)" }}>Completed sub-runs</span>
+                          <span style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)", marginLeft: 4 }}>{completedSubruns.length}</span>
                           <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--fm)" }}>{showCompleted ? "Hide" : "Show"}</span>
                         </button>
                         {showCompleted && (
                           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
-                            {completedItems.map((item, idx) => renderCard(item, idx))}
+                            {completedSubruns.map((item, idx) => renderCard(item, idx))}
                           </div>
                         )}
                       </div>
