@@ -96,7 +96,7 @@ export default function DashboardView() {
       <style>{`
         @keyframes dv-fade { from { opacity: 0; } to { opacity: 1; } }
         .greeting-text { transition: opacity 0.3s ease; }
-        .sc-row { cursor: pointer; padding: 14px 16px; border: 1px solid rgba(255,255,255,0.5); background: rgba(255,255,255,0.26); display: flex; align-items: flex-start; gap: 14; transition: border-color .15s, box-shadow .15s; position: relative; overflow: hidden; backdrop-filter: blur(32px) saturate(1.8); -webkit-backdrop-filter: blur(32px) saturate(1.8); box-shadow: 0 2px 12px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.65); }
+        .sc-row { cursor: pointer; padding: 14px 16px; border: 1px solid rgba(255,255,255,0.65); background: rgba(255,255,255,0.18); display: flex; align-items: flex-start; gap: 14; transition: border-color .15s, box-shadow .15s; position: relative; overflow: hidden; backdrop-filter: blur(48px) saturate(3) brightness(1.06); -webkit-backdrop-filter: blur(48px) saturate(3) brightness(1.06); box-shadow: inset 0 1.5px 0 rgba(255,255,255,0.85), 0 4px 16px rgba(0,0,0,0.06); }
         .sc-row::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--bd); transition: background .15s; }
         .sc-row:hover { border-color: rgba(0,46,255,0.18) !important; box-shadow: 0 4px 20px rgba(0,46,255,.08), inset 0 1px 0 rgba(255,255,255,0.95); }
         .sc-row:hover::before { background: linear-gradient(90deg, var(--blue), var(--mint)); }

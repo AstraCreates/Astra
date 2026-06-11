@@ -96,7 +96,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
           <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zIndex: 100 }}>{children}</main>
         ) : (
           <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-            <div style={{ height: 46, display: "flex", alignItems: "center", padding: "0 14px", borderBottom: "1px solid rgba(255,255,255,0.45)", background: "rgba(255,255,255,0.22)", backdropFilter: "blur(36px) saturate(2)", WebkitBackdropFilter: "blur(36px) saturate(2)", flexShrink: 0 }}>
+            <div style={{ height: 46, display: "flex", alignItems: "center", padding: "0 14px", borderBottom: "1px solid rgba(255,255,255,0.65)", background: "rgba(255,255,255,0.18)", backdropFilter: "blur(48px) saturate(3) brightness(1.06)", WebkitBackdropFilter: "blur(48px) saturate(3) brightness(1.06)", flexShrink: 0 }}>
               <div className="topbar-title">{title || "Astra"}</div>
             </div>
             <div key={pathname} className="page-fade" style={{ flex: 1, padding: 0 }}>{children}</div>
@@ -115,7 +115,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
         <main style={{ flex: 1, minWidth: 0, height: "100vh", overflow: "hidden", position: "relative", zIndex: 100 }}>{children}</main>
       ) : (
         <main style={{ flex: 1, minWidth: 0, height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 18px", borderBottom: "1px solid rgba(255,255,255,0.45)", background: "rgba(255,255,255,0.22)", backdropFilter: "blur(36px) saturate(2)", WebkitBackdropFilter: "blur(36px) saturate(2)", flexShrink: 0 }}>
+          <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 18px", borderBottom: "1px solid rgba(255,255,255,0.65)", background: "rgba(255,255,255,0.18)", backdropFilter: "blur(48px) saturate(3) brightness(1.06)", WebkitBackdropFilter: "blur(48px) saturate(3) brightness(1.06)", flexShrink: 0 }}>
             <div className="topbar-title">{title || "Astra"}</div>
           </div>
           <div key={pathname} className="page-fade" style={{ flex: 1, overflowY: "auto", padding: 0 }}>{children}</div>

@@ -117,44 +117,31 @@
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 
-/* ── Liquid Glass — global card/panel pattern ─────────────────────────────
-   .lg-panel: full physics-based refraction via SVG filter (Chromium)
-   .lg:       CSS-only frosted glass fallback (all browsers)
-   Apply either class to any element that should look glassy.           */
-.lg-panel {
-  background: rgba(255,255,255,0.26);
-  border: 1px solid rgba(255,255,255,0.55);
+/* ── Apple Liquid Glass ───────────────────────────────────────────────────
+   Heavy blur + high saturate + specular inset highlight.
+   This is the real Apple-style glass — requires colorful content behind. */
+.lg-panel, .lg {
+  background: rgba(255,255,255,0.18);
+  border: 1px solid rgba(255,255,255,0.65);
+  backdrop-filter: blur(48px) saturate(3) brightness(1.06);
+  -webkit-backdrop-filter: blur(48px) saturate(3) brightness(1.06);
   box-shadow:
-    0 4px 24px rgba(0,0,0,0.08),
-    inset 0 1px 0 rgba(255,255,255,0.7);
-}
-
-/* SVG filter layer — child div inside .lg-panel */
-.lg-refract {
-  position: absolute; inset: 0;
-  border-radius: inherit;
-  backdrop-filter: url(#lg-filter) blur(1px);
-  -webkit-backdrop-filter: url(#lg-filter) blur(1px);
-}
-
-/* Pure CSS frosted glass */
-.lg {
-  background: rgba(255,255,255,0.26);
-  border: 1px solid rgba(255,255,255,0.55);
-  backdrop-filter: blur(32px) saturate(1.8);
-  -webkit-backdrop-filter: blur(32px) saturate(1.8);
-  box-shadow:
-    0 4px 24px rgba(0,0,0,0.08),
-    inset 0 1px 0 rgba(255,255,255,0.7);
+    inset 0 1.5px 0 rgba(255,255,255,0.85),
+    inset 0 -1px 0 rgba(255,255,255,0.2),
+    0 8px 32px rgba(0,0,0,0.10),
+    0 2px 8px rgba(0,0,0,0.06);
 }
 
 [data-theme="dark"] .lg-panel,
 [data-theme="dark"] .lg {
-  background: rgba(20,18,30,0.72);
-  border-color: rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.15);
+  backdrop-filter: blur(48px) saturate(2.5) brightness(1.1);
+  -webkit-backdrop-filter: blur(48px) saturate(2.5) brightness(1.1);
   box-shadow:
-    0 2px 24px rgba(0,0,0,0.28),
-    inset 0 1px 0 rgba(255,255,255,0.08);
+    inset 0 1.5px 0 rgba(255,255,255,0.15),
+    0 8px 32px rgba(0,0,0,0.3),
+    0 2px 8px rgba(0,0,0,0.2);
 }
 
 html {
