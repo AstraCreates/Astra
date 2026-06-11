@@ -31,8 +31,8 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
   // On mobile the sidebar is an off-canvas drawer (fixed, slides in over content);
   // on desktop it's the usual sticky in-flow column.
   const navStyle: React.CSSProperties = mobile
-    ? { width: 240, maxWidth: "82vw", display: "flex", flexDirection: "column", background: "rgba(255,255,255,0.18)", borderRight: "1px solid rgba(255,255,255,0.65)", height: "100dvh", boxShadow: "inset -1px 0 0 rgba(255,255,255,0.5), 4px 0 40px rgba(0,0,0,0.08)", position: "fixed", top: 0, left: 0, zIndex: 60, transform: open ? "translateX(0)" : "translateX(-104%)", transition: "transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)", backdropFilter: "blur(22px)", WebkitBackdropFilter: "blur(22px)" }
-    : { width: 210, flexShrink: 0, display: "flex", flexDirection: "column", background: "rgba(255,255,255,0.18)", borderRight: "1px solid rgba(255,255,255,0.65)", height: "100vh", boxShadow: "inset -1px 0 0 rgba(255,255,255,0.5), 4px 0 40px rgba(0,0,0,0.08)", position: "sticky", top: 0, zIndex: 3, backdropFilter: "blur(22px)", WebkitBackdropFilter: "blur(22px)" };
+    ? { width: 240, maxWidth: "82vw", display: "flex", flexDirection: "column", background: "rgba(255,255,255,0.18)", borderRight: "1px solid rgba(255,255,255,0.65)", height: "100dvh", boxShadow: "inset -1px 0 0 rgba(255,255,255,0.5), 4px 0 40px rgba(0,0,0,0.08)", position: "fixed", top: 0, left: 0, zIndex: 60, transform: open ? "translateX(0)" : "translateX(-104%)", transition: "transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)", backdropFilter: "blur(20px) saturate(1.8)", WebkitBackdropFilter: "blur(20px) saturate(1.8)" }
+    : { width: 210, flexShrink: 0, display: "flex", flexDirection: "column", background: "rgba(255,255,255,0.18)", borderRight: "1px solid rgba(255,255,255,0.65)", height: "100vh", boxShadow: "inset -1px 0 0 rgba(255,255,255,0.5), 4px 0 40px rgba(0,0,0,0.08)", position: "sticky", top: 0, zIndex: 3, backdropFilter: "blur(20px) saturate(1.8)", WebkitBackdropFilter: "blur(20px) saturate(1.8)" };
 
   // Close the drawer after any in-drawer navigation on mobile.
   const closeOnNav = mobile ? onClose : undefined;
