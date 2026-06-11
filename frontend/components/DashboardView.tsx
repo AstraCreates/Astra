@@ -57,6 +57,7 @@ export default function DashboardView() {
   const [firstName, setFirstName] = useState("");
   const [greeting, setGreeting] = useState("");
   const [digests, setDigests] = useState<Map<string, SessionDigest>>(new Map());
+  const [showCompleted, setShowCompleted] = useState(false);
   useEffect(() => {
     if (typeof window !== "undefined") {
       const fullName = localStorage.getItem("astra_onboarding_name") || "";
@@ -265,8 +266,6 @@ export default function DashboardView() {
           ) : (
             <div data-tour="dash-sessions" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {(() => {
-                // Nest operating/continuation runs UNDER their launch session, indented,
-                // to show the hierarchy (parent run → the goals it spawned).
                 const ids = new Set(sessions.map((x) => x.session_id));
                 const kids: Record<string, SessionIndexEntry[]> = {};
                 const roots: SessionIndexEntry[] = [];
@@ -275,125 +274,166 @@ export default function DashboardView() {
                   if (p && ids.has(p)) (kids[p] ||= []).push(s);
                   else roots.push(s);
                 }
-                const ordered: { s: SessionIndexEntry; child: boolean }[] = [];
-                for (const r of roots) {
-                  ordered.push({ s: r, child: false });
-                  for (const k of kids[r.session_id] || []) ordered.push({ s: k, child: true });
-                }
-                return ordered.map(({ s, child }, idx) => {
-                const isStalled = s.status === "stalled";
-                const isRunning = s.status === "running";
-                const isDone = s.status === "done";
-                const digest = digests.get(s.session_id);
-                const totalAgents = digest?.counts.planned_agents ?? 0;
-                const doneAgents = digest?.counts.done_agents ?? 0;
-                const progressPct = isDone ? 100
-                  : (isRunning && totalAgents > 0) ? Math.round((doneAgents / totalAgents) * 100)
-                  : null;
-                const currentAgents = (digest?.running_agents ?? [])
-                  .map(a => AGENT_LABELS[a as keyof typeof AGENT_LABELS] ?? a);
-                const cleanTitle = extractGoalTitle(s.goal || "Untitled run");
-                return (
-                  <div
-                    key={s.session_id}
-                    className={`sc-row${isStalled ? " stalled" : isRunning ? " running" : ""}${child ? " sc-child" : ""}`}
-                    onClick={() => router.push(`/s/${s.session_id}`)}
-                    style={{ position: "relative", '--i': idx } as CSSProperties}
-                  >
-                    {/* Delete */}
-                    <button
-                      title={pendingDel.has(s.session_id) ? "Click again to confirm delete" : "Delete run"}
-                      aria-label={pendingDel.has(s.session_id) ? "Confirm delete" : "Delete run"}
-                      disabled={deleting.has(s.session_id)}
-                      onClick={(e) => del(e, s)}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onTouchStart={(e) => e.stopPropagation()}
-                      style={{
-                        position: "absolute", top: 8, right: 8,
-                        width: pendingDel.has(s.session_id) ? "auto" : 28, height: 28,
-                        padding: pendingDel.has(s.session_id) ? "0 8px" : 0,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        background: pendingDel.has(s.session_id) ? "var(--rdim)" : "transparent",
-                        border: pendingDel.has(s.session_id) ? "1px solid var(--rb)" : "1px solid transparent",
-                        color: pendingDel.has(s.session_id) ? "var(--red)" : "var(--fd)",
-                        cursor: "pointer", fontSize: pendingDel.has(s.session_id) ? 9 : 12, borderRadius: 6,
-                        opacity: deleting.has(s.session_id) ? 0.4 : 1,
-                        transition: "opacity .15s, background .15s, border-color .15s, color .15s",
-                        touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
-                        zIndex: 3, fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap",
-                      }}
-                    >{deleting.has(s.session_id) ? "…" : pendingDel.has(s.session_id) ? "DELETE?" : "✕"}</button>
 
-                    <div style={{ flex: 1, paddingRight: 36 }}>
-                      {/* Header row: stack chip + sub-run badge | status + time */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                        {child && (
-                          <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--blue)", fontFamily: "var(--font-code)" }}>↳ sub-run</span>
-                        )}
-                        {s.stack_id && (
-                          <span style={{ fontSize: 9, color: "var(--fm)", fontFamily: "var(--font-code)", padding: "2px 7px", background: "var(--s2, #f5f5f5)", border: "1px solid var(--bd)", borderRadius: 4 }}>
-                            {s.stack_id}
-                          </span>
-                        )}
-                        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                          <StatusPill status={s.status} />
-                          <span style={{ fontSize: 10, color: "var(--fm)" }}>{ago(s.created_at)}</span>
-                        </div>
-                      </div>
+                const activeRoots = roots.filter(r => r.status !== "done");
+                const completedRoots = roots.filter(r => r.status === "done");
 
-                      {/* Goal title — cleaned up */}
-                      <div style={{
-                        fontSize: 13, fontWeight: 600, color: "var(--fg)",
-                        lineHeight: 1.45, marginBottom: 10,
-                        display: "-webkit-box", WebkitLineClamp: 2,
-                        WebkitBoxOrient: "vertical", overflow: "hidden",
-                      }}>
-                        {cleanTitle}
-                      </div>
+                const toOrdered = (rootList: SessionIndexEntry[]) => {
+                  const result: { s: SessionIndexEntry; child: boolean }[] = [];
+                  for (const r of rootList) {
+                    result.push({ s: r, child: false });
+                    for (const k of kids[r.session_id] || []) result.push({ s: k, child: true });
+                  }
+                  return result;
+                };
 
-                      {/* Progress bar */}
-                      {(isRunning || isDone) && (
-                        <div>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                            <span style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)" }}>
-                              {isDone
-                                ? "All agents done"
-                                : totalAgents > 0
-                                  ? `${doneAgents} / ${totalAgents} agents`
-                                  : "Loading…"}
+                const renderCard = ({ s, child }: { s: SessionIndexEntry; child: boolean }, idx: number) => {
+                  const isStalled = s.status === "stalled";
+                  const isRunning = s.status === "running";
+                  const isDone = s.status === "done";
+                  const digest = digests.get(s.session_id);
+                  const totalAgents = digest?.counts.planned_agents ?? 0;
+                  const doneAgents = digest?.counts.done_agents ?? 0;
+                  const progressPct = isDone ? 100
+                    : (isRunning && totalAgents > 0) ? Math.round((doneAgents / totalAgents) * 100)
+                    : null;
+                  const currentAgents = (digest?.running_agents ?? [])
+                    .map(a => AGENT_LABELS[a as keyof typeof AGENT_LABELS] ?? a);
+                  const cleanTitle = extractGoalTitle(s.goal || "Untitled run");
+                  return (
+                    <div
+                      key={s.session_id}
+                      className={`sc-row${isStalled ? " stalled" : isRunning ? " running" : ""}${child ? " sc-child" : ""}`}
+                      onClick={() => router.push(`/s/${s.session_id}`)}
+                      style={{ position: "relative", '--i': idx } as CSSProperties}
+                    >
+                      <button
+                        title={pendingDel.has(s.session_id) ? "Click again to confirm delete" : "Delete run"}
+                        aria-label={pendingDel.has(s.session_id) ? "Confirm delete" : "Delete run"}
+                        disabled={deleting.has(s.session_id)}
+                        onClick={(e) => del(e, s)}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onTouchStart={(e) => e.stopPropagation()}
+                        style={{
+                          position: "absolute", top: 8, right: 8,
+                          width: pendingDel.has(s.session_id) ? "auto" : 28, height: 28,
+                          padding: pendingDel.has(s.session_id) ? "0 8px" : 0,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          background: pendingDel.has(s.session_id) ? "var(--rdim)" : "transparent",
+                          border: pendingDel.has(s.session_id) ? "1px solid var(--rb)" : "1px solid transparent",
+                          color: pendingDel.has(s.session_id) ? "var(--red)" : "var(--fd)",
+                          cursor: "pointer", fontSize: pendingDel.has(s.session_id) ? 9 : 12, borderRadius: 6,
+                          opacity: deleting.has(s.session_id) ? 0.4 : 1,
+                          transition: "opacity .15s, background .15s, border-color .15s, color .15s",
+                          touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
+                          zIndex: 3, fontWeight: 700, letterSpacing: "0.04em", whiteSpace: "nowrap",
+                        }}
+                      >{deleting.has(s.session_id) ? "…" : pendingDel.has(s.session_id) ? "DELETE?" : "✕"}</button>
+
+                      <div style={{ flex: 1, paddingRight: 36 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                          {child && (
+                            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--blue)", fontFamily: "var(--font-code)" }}>↳ sub-run</span>
+                          )}
+                          {s.stack_id && (
+                            <span style={{ fontSize: 9, color: "var(--fm)", fontFamily: "var(--font-code)", padding: "2px 7px", background: "var(--s2, #f5f5f5)", border: "1px solid var(--bd)", borderRadius: 4 }}>
+                              {s.stack_id}
                             </span>
-                            {progressPct !== null && (
-                              <span style={{ fontSize: 10, color: isDone ? "var(--green)" : "var(--blue)", fontFamily: "var(--font-code)", fontWeight: 600 }}>
-                                {progressPct}%
-                              </span>
-                            )}
-                          </div>
-                          <div className="sc-progress-track">
-                            {progressPct !== null ? (
-                              <div className="sc-progress-fill" style={{ width: `${progressPct}%`, background: isDone ? "var(--green)" : "var(--blue)" }} />
-                            ) : (
-                              <div className="sc-progress-indeterminate" style={{ background: "var(--blue)" }} />
-                            )}
+                          )}
+                          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                            <StatusPill status={s.status} />
+                            <span style={{ fontSize: 10, color: "var(--fm)" }}>{ago(s.created_at)}</span>
                           </div>
                         </div>
-                      )}
 
-                      {/* Currently doing */}
-                      {isRunning && currentAgents.length > 0 && (
-                        <div style={{ fontSize: 10, color: "var(--blue)", fontFamily: "var(--font-code)", marginTop: 7, display: "flex", alignItems: "center", gap: 5 }}>
-                          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", flexShrink: 0, animation: "sc-shimmer 1.5s ease-in-out infinite" }} />
-                          {currentAgents.join(" · ")}
+                        <div style={{
+                          fontSize: 13, fontWeight: 600, color: "var(--fg)",
+                          lineHeight: 1.45, marginBottom: 10,
+                          display: "-webkit-box", WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical", overflow: "hidden",
+                        }}>
+                          {cleanTitle}
                         </div>
-                      )}
-                      {isRunning && currentAgents.length === 0 && totalAgents === 0 && (
-                        <div style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)", marginTop: 7 }}>
-                          Initializing agents…
-                        </div>
-                      )}
+
+                        {(isRunning || isDone) && (
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                              <span style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)" }}>
+                                {isDone ? "All agents done" : totalAgents > 0 ? `${doneAgents} / ${totalAgents} agents` : "Loading…"}
+                              </span>
+                              {progressPct !== null && (
+                                <span style={{ fontSize: 10, color: isDone ? "var(--green)" : "var(--blue)", fontFamily: "var(--font-code)", fontWeight: 600 }}>
+                                  {progressPct}%
+                                </span>
+                              )}
+                            </div>
+                            <div className="sc-progress-track">
+                              {progressPct !== null ? (
+                                <div className="sc-progress-fill" style={{ width: `${progressPct}%`, background: isDone ? "var(--green)" : "var(--blue)" }} />
+                              ) : (
+                                <div className="sc-progress-indeterminate" style={{ background: "var(--blue)" }} />
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {isRunning && currentAgents.length > 0 && (
+                          <div style={{ fontSize: 10, color: "var(--blue)", fontFamily: "var(--font-code)", marginTop: 7, display: "flex", alignItems: "center", gap: 5 }}>
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", flexShrink: 0, animation: "sc-shimmer 1.5s ease-in-out infinite" }} />
+                            {currentAgents.join(" · ")}
+                          </div>
+                        )}
+                        {isRunning && currentAgents.length === 0 && totalAgents === 0 && (
+                          <div style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)", marginTop: 7 }}>
+                            Initializing agents…
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  );
+                };
+
+                const activeItems = toOrdered(activeRoots);
+                const completedItems = toOrdered(completedRoots);
+                const completedRunCount = completedRoots.length;
+
+                return (
+                  <>
+                    {activeItems.length === 0 && completedItems.length > 0 && (
+                      <div style={{ fontSize: 12, color: "var(--fm)", padding: "4px 0 8px" }}>
+                        No active runs. {completedRunCount} completed below.
+                      </div>
+                    )}
+                    {activeItems.map((item, idx) => renderCard(item, idx))}
+
+                    {completedRunCount > 0 && (
+                      <div style={{ marginTop: activeItems.length ? 8 : 0 }}>
+                        <button
+                          onClick={() => setShowCompleted(v => !v)}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 8, width: "100%",
+                            padding: "10px 14px", background: "var(--surface)",
+                            border: "1px solid var(--bd)", borderRadius: 8,
+                            cursor: "pointer", textAlign: "left",
+                            transition: "border-color .15s",
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.borderColor = "var(--bb)")}
+                          onMouseLeave={e => (e.currentTarget.style.borderColor = "var(--bd)")}
+                        >
+                          <span style={{ fontSize: 10, color: "var(--fm)", transform: showCompleted ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block", transition: "transform .2s" }}>▶</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)" }}>Completed runs</span>
+                          <span style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)", marginLeft: 4 }}>{completedRunCount}</span>
+                          <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--fm)" }}>{showCompleted ? "Hide" : "Show"}</span>
+                        </button>
+                        {showCompleted && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                            {completedItems.map((item, idx) => renderCard(item, idx))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 );
-                });
               })()}
             </div>
           )}
