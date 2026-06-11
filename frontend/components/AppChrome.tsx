@@ -29,25 +29,21 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    function triggerTour() {
-      if (window.matchMedia("(max-width: 768px)").matches) {
+    // Tour spotlights the desktop sidebar, which is an off-canvas drawer on phones —
+    // skip on mobile and consume the flag so it doesn't linger.
+    if (window.matchMedia("(max-width: 768px)").matches) {
+      if (localStorage.getItem("astra_show_tour") === "1") {
         try { localStorage.removeItem("astra_show_tour"); localStorage.setItem("astra_tour_done", "1"); } catch {}
-        return;
       }
-      if (localStorage.getItem("astra_tour_done")) return;
-      setTimeout(() => setShowTour(true), 500);
+      return;
     }
-
-    // Check on mount for hard-refreshes after tour flag was already set
-    const shouldShowOnMount = localStorage.getItem("astra_show_tour") === "1"
-      && !localStorage.getItem("astra_tour_done")
-      && !window.location.search.includes("welcome=1");
-    if (shouldShowOnMount) triggerTour();
-
-    // Listen for the event dispatched by AppHome when the welcome animation completes
-    window.addEventListener("astra:show-tour", triggerTour);
-    return () => window.removeEventListener("astra:show-tour", triggerTour);
+    const shouldShow = localStorage.getItem("astra_show_tour") === "1"
+      && !localStorage.getItem("astra_tour_done");
+    if (shouldShow) {
+      // Small delay so sidebar is fully mounted before tour measures elements
+      const t = setTimeout(() => setShowTour(true), 600);
+      return () => clearTimeout(t);
+    }
   }, []);
 
   // Close the drawer whenever the route changes.
@@ -67,7 +63,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   // ── Mobile: full-width content, hamburger, off-canvas drawer ────────────────
   if (isMobile) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", minHeight: "100dvh", background: "transparent", position: "relative", zIndex: 2 }}>
+      <div style={{ display: "flex", flexDirection: "column", minHeight: "100dvh", background: "var(--bg)" }}>
         {tour}
         <RedesignSidebar mobile open={drawerOpen} onClose={() => setDrawerOpen(false)} />
         {/* Backdrop */}
@@ -96,7 +92,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
           <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zIndex: 100 }}>{children}</main>
         ) : (
           <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-            <div style={{ height: 46, display: "flex", alignItems: "center", padding: "0 14px", borderBottom: "1px solid rgba(255,255,255,0.65)", background: "rgba(120,120,130,0.12)", backdropFilter: "blur(24px) saturate(1.2)", WebkitBackdropFilter: "blur(24px) saturate(1.2)", flexShrink: 0 }}>
+            <div style={{ height: 46, display: "flex", alignItems: "center", padding: "0 14px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
               <div className="topbar-title">{title || "Astra"}</div>
             </div>
             <div key={pathname} className="page-fade" style={{ flex: 1, padding: 0 }}>{children}</div>
@@ -108,14 +104,14 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
 
   // ── Desktop: fixed sidebar + main ───────────────────────────────────────────
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "transparent", position: "relative", zIndex: 2 }}>
+    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg)" }}>
       {tour}
       <RedesignSidebar />
       {isHome ? (
         <main style={{ flex: 1, minWidth: 0, height: "100vh", overflow: "hidden", position: "relative", zIndex: 100 }}>{children}</main>
       ) : (
         <main style={{ flex: 1, minWidth: 0, height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 18px", borderBottom: "1px solid rgba(255,255,255,0.65)", background: "rgba(120,120,130,0.12)", backdropFilter: "blur(24px) saturate(1.2)", WebkitBackdropFilter: "blur(24px) saturate(1.2)", flexShrink: 0 }}>
+          <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
             <div className="topbar-title">{title || "Astra"}</div>
           </div>
           <div key={pathname} className="page-fade" style={{ flex: 1, overflowY: "auto", padding: 0 }}>{children}</div>
