@@ -1292,6 +1292,10 @@ def search_company_brain(
 ) -> dict[str, Any]:
     """Search the company brain for human and agent context retrieval."""
     try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = 8
+    try:
         from backend.tools.graph_rag_v2 import graph_exists, graph_rag_search
         if (not company_id or company_id == founder_id) and graph_exists(founder_id):
             graph_result = graph_rag_search(founder_id, query, limit=limit)

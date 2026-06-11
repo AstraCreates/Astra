@@ -25,6 +25,10 @@ def find_leads(
     Search for potential leads matching criteria. Returns enriched contact list.
     Set no_website=True to target businesses that likely lack their own website (searches Yelp/GMaps listings).
     """
+    try:
+        max_results = int(max_results)
+    except (TypeError, ValueError):
+        max_results = 10
     if no_website:
         # Search local directory listings — these surface businesses without dedicated sites
         query_parts = [f'site:yelp.com OR site:maps.google.com "{industry}"']
@@ -123,6 +127,10 @@ def build_outreach_sequence(
     Generate a multi-touch cold outreach email sequence for a lead.
     Returns list of emails with subject, body, and send_day.
     """
+    try:
+        sequence_length = int(sequence_length)
+    except (TypeError, ValueError):
+        sequence_length = 3
     _SEND_DAYS = [1, 4, 10]
     _TYPES = ["intro", "follow_up_1", "break_up"]
 

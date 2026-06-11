@@ -111,6 +111,7 @@ class ToolRegistry:
             if field_name in context:
                 call_args.setdefault(field_name, context[field_name])
         signature = inspect.signature(entry.handler)
+        call_args = _coerce_args_to_annotations(signature, call_args)
         if not any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()):
             call_args = {key: value for key, value in call_args.items() if key in signature.parameters}
         if entry.is_async:
@@ -131,6 +132,96 @@ class ToolRegistry:
         return result
 
 
+def _base_type_name(annotation: Any) -> str:
+    """Reduce an annotation (type object OR string) to a base type name.
+
+    Handles both runtime types (``int``) and stringified annotations produced
+    by ``from __future__ import annotations`` (``"int"``, ``"Optional[int]"``,
+    ``"int | None"``). Returns one of: int, float, bool, str, list, dict, or "".
+    """
+    # Type object path
+    if not isinstance(annotation, str):
+        ann = annotation
+        ann_args = getattr(ann, "__args__", None)
+        if ann_args:
+            non_none = [a for a in ann_args if a is not type(None)]
+            if len(non_none) == 1:
+                ann = non_none[0]
+        for typ, label in ((bool, "bool"), (int, "int"), (float, "float"), (str, "str")):
+            if ann is typ:
+                return label
+        origin = getattr(ann, "__origin__", None)
+        if ann in (list, tuple) or origin in (list, tuple):
+            return "list"
+        if ann is dict or origin is dict:
+            return "dict"
+        return ""
+    # Stringified annotation path
+    text = annotation.strip()
+    # Strip Optional[...] / Union wrapper and " | None" tails
+    inner = text
+    if inner.startswith("Optional[") and inner.endswith("]"):
+        inner = inner[len("Optional["):-1].strip()
+    inner = inner.replace("| None", "").replace("|None", "").strip()
+    inner = inner.split("|")[0].strip()  # X | Y -> X
+    low = inner.lower()
+    if low.startswith("bool"):
+        return "bool"
+    if low.startswith("int"):
+        return "int"
+    if low.startswith("float"):
+        return "float"
+    if low.startswith("str"):
+        return "str"
+    if low.startswith("list") or low.startswith("tuple") or low.startswith("sequence"):
+        return "list"
+    if low.startswith("dict") or low.startswith("mapping"):
+        return "dict"
+    return ""
+
+
+def _coerce_args_to_annotations(signature: inspect.Signature, args: dict[str, Any]) -> dict[str, Any]:
+    """Coerce string args to their annotated types.
+
+    LLMs frequently emit numbers/bools as JSON strings ("10", "true"). Tool
+    handlers annotated int/float/bool then crash on type mismatch. Coerce
+    defensively based on the handler signature. Best-effort: leave value as-is
+    on failure so the handler's own validation/defaults still apply.
+    """
+    coerced = dict(args)
+    for key, value in args.items():
+        param = signature.parameters.get(key)
+        if param is None or param.annotation is inspect.Parameter.empty:
+            continue
+        base = _base_type_name(param.annotation)
+        try:
+            if base == "bool" and isinstance(value, str):
+                low = value.strip().lower()
+                if low in {"true", "1", "yes"}:
+                    coerced[key] = True
+                elif low in {"false", "0", "no"}:
+                    coerced[key] = False
+            elif base == "int" and isinstance(value, (str, float)):
+                coerced[key] = int(float(value))
+            elif base == "float" and isinstance(value, (str, int)):
+                coerced[key] = float(value)
+        except (TypeError, ValueError):
+            pass  # leave original; handler default/validation applies
+    return coerced
+
+
+def _json_type_for(annotation: Any) -> str:
+    """Map a Python annotation to a JSON-schema type string."""
+    base = _base_type_name(annotation)
+    return {
+        "bool": "boolean",
+        "int": "integer",
+        "float": "number",
+        "list": "array",
+        "dict": "object",
+    }.get(base, "string")
+
+
 def schema_from_callable(name: str, fn: Callable) -> dict[str, Any]:
     properties: dict[str, Any] = {}
     required: list[str] = []
@@ -142,7 +233,10 @@ def schema_from_callable(name: str, fn: Callable) -> dict[str, Any]:
         for param_name, param in signature.parameters.items():
             if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
                 continue
-            properties[param_name] = {"type": "string"}
+            if param.annotation is inspect.Parameter.empty:
+                properties[param_name] = {"type": "string"}
+            else:
+                properties[param_name] = {"type": _json_type_for(param.annotation)}
             if param.default is inspect.Parameter.empty:
                 required.append(param_name)
     return {
