@@ -11,7 +11,7 @@ from backend.missions.company_goal import get_company_goal
 from backend.genome.store import get_genome, get_conflicts
 from backend.outcomes.store import weekly_rollup
 from backend.missions.goal_engine import plan_next_goal
-from backend.core.session_store import get_latest_session_meta, get_session_events
+from backend.core.session_store import list_sessions, load_events
 from backend.workboard import build_session_workboard
 
 logger = logging.getLogger(__name__)
@@ -23,15 +23,7 @@ async def company_overview_route(
     company_id: str,
     request: Request = None,
 ) -> dict[str, Any]:
-    """Get company command center overview: goals, outcomes, active run, next action.
-
-    Aggregates:
-    - Current goal + bucket goals (now/next/later)
-    - This week's outcomes + rollup
-    - Active run blockers/status
-    - Recommended next goal
-    - Genome facts + conflicts
-    """
+    """Get company command center overview: goals, outcomes, active run, next action."""
     try:
         founder_id = request_user_id(request)
     except Exception:
@@ -44,8 +36,6 @@ async def company_overview_route(
     require_company_access(request, founder_id, resolved_company_id, min_role="viewer")
 
     overview = {}
-
-    # Already resolved company_id, reuse it below
 
     # Goals: current + bucketed
     try:
@@ -80,10 +70,12 @@ async def company_overview_route(
 
     # Active run: blockers + status
     try:
-        latest_meta = get_latest_session_meta(founder_id, company_id)
+        sessions = list_sessions(founder_id, company_id=company_id, limit=1)
+        latest_meta = sessions[0] if sessions else None
         if latest_meta and latest_meta.get("status") == "running":
-            session_id = latest_meta.get("id")
-            events = get_session_events(session_id) or []
+            session_id = latest_meta.get("session_id") or latest_meta.get("id")
+            raw_events = load_events(session_id) or []
+            events = [e for _, e in raw_events]
             workboard = build_session_workboard(session_id, events)
             overview["active_run"] = {
                 "session_id": session_id,
