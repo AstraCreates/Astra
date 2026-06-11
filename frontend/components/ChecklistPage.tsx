@@ -104,6 +104,12 @@ function SidebarRow({
 
 // ── Section wrapper ────────────────────────────────────────────────────────
 
+const SECTION_STYLES: Record<string, { stripe: string; bg: string; border: string; labelColor: string; icon: string }> = {
+  Active:   { stripe: "#001AFF", bg: "rgba(0,26,255,0.04)",   border: "rgba(0,26,255,0.14)",  labelColor: "#001AFF", icon: "▶" },
+  Done:     { stripe: "#16a34a", bg: "rgba(22,163,74,0.04)",  border: "rgba(22,163,74,0.14)", labelColor: "#16a34a", icon: "✓" },
+  "Up Next":{ stripe: "#737373", bg: "rgba(115,115,115,0.03)",border: "rgba(0,0,0,0.07)",     labelColor: "#737373", icon: "◈" },
+};
+
 function Section({
   title, count, accent, collapsible, collapsed, onToggle, empty, children,
 }: {
@@ -111,41 +117,70 @@ function Section({
   collapsible?: boolean; collapsed?: boolean; onToggle?: () => void;
   empty?: string; children?: React.ReactNode;
 }) {
+  const s = SECTION_STYLES[title];
+  const stripe = s?.stripe ?? accent ?? "var(--bd2)";
+  const bg     = s?.bg     ?? "transparent";
+  const border = s?.border ?? "var(--bd)";
+  const lc     = s?.labelColor ?? accent ?? "var(--fd)";
+
   return (
-    <div style={{ marginBottom: 32 }}>
+    <div style={{
+      marginBottom: 28,
+      background: bg,
+      border: `1px solid ${border}`,
+      borderRadius: 12,
+      overflow: "hidden",
+      backdropFilter: "blur(20px) saturate(1.5)",
+      WebkitBackdropFilter: "blur(20px) saturate(1.5)",
+      boxShadow: "0 2px 16px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.9)",
+    }}>
+      {/* Colored top stripe */}
+      <div style={{ height: 3, background: stripe, width: "100%" }} />
+
+      {/* Header */}
       <div
         onClick={collapsible ? onToggle : undefined}
         style={{
-          display: "flex", alignItems: "center", gap: 8, marginBottom: 12,
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "10px 16px",
+          borderBottom: collapsed ? "none" : `1px solid ${border}`,
           cursor: collapsible ? "pointer" : "default",
           userSelect: "none",
+          background: "rgba(255,255,255,0.5)",
         }}
       >
+        <span style={{ fontSize: 11, color: stripe, fontWeight: 700 }}>{s?.icon}</span>
         <span style={{
           fontSize: 10, fontWeight: 700, letterSpacing: ".1em",
-          textTransform: "uppercase", color: accent ?? "var(--fd)",
+          textTransform: "uppercase", color: lc,
           fontFamily: "var(--font-code)",
         }}>
           {title}
         </span>
         <span style={{
-          fontSize: 10, fontWeight: 600, color: accent ?? "var(--fd)",
-          background: accent ? `${accent}18` : "var(--surface)",
-          border: `1px solid ${accent ? `${accent}30` : "var(--bd)"}`,
+          fontSize: 10, fontWeight: 600, color: lc,
+          background: `${stripe}18`,
+          border: `1px solid ${stripe}30`,
           padding: "1px 7px", fontFamily: "var(--font-code)",
+          borderRadius: 999,
         }}>
           {count}
         </span>
         {collapsible && (
           <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--fd)" }}>
-            {collapsed ? "▶ show" : "▼ hide"}
+            {collapsed ? "show" : "hide"}
           </span>
         )}
       </div>
-      {empty && count === 0 ? (
-        <p style={{ fontSize: 12, color: "var(--fd)", margin: 0, padding: "10px 0" }}>{empty}</p>
-      ) : (
-        !collapsed && children
+
+      {/* Body */}
+      {!(empty && count === 0) && !collapsed && (
+        <div style={{ padding: "12px 16px" }}>
+          {children}
+        </div>
+      )}
+      {empty && count === 0 && (
+        <p style={{ fontSize: 12, color: "var(--fd)", margin: 0, padding: "12px 16px" }}>{empty}</p>
       )}
     </div>
   );
