@@ -1289,12 +1289,21 @@ def run_mvp_loop(
         if is_github:
             _pull(local)
 
+        # Incremental mode: this agent already built the product in this workspace
+        # once (a .built_<agent> marker exists). Operating/follow-up goals must NOT
+        # rebuild the whole site — apply ONLY this goal's change and preserve the
+        # existing pages, design system, and prior work. First build = full build.
+        built_marker = Path(local) / f".built_{agent}"
+        incremental = built_marker.exists()
+        if incremental:
+            _phase("Incremental update — changing only what this goal needs (existing product preserved)")
+
         # Plan the product with MiniMax-M3 BEFORE building (the MVP planner), so
         # openclaude implements a real app from a concrete spec instead of improvising.
         # Only for the product build (technical) — the web/landing agent skips it (no
-        # separate website planner).
+        # separate website planner). Skipped on incremental (no full re-plan).
         plan_info = {"plan": "", "files": [], "model": ""}
-        if agent != "web":
+        if agent != "web" and not incremental:
             _phase("Planning the product (MiniMax-M3)…")
             plan_info = _generate_build_plan(goal, context, kind="app", founder_id=founder_id)
         build_plan = plan_info.get("plan") or ""
@@ -1364,15 +1373,36 @@ def run_mvp_loop(
               "curl-test routes: the sandbox blocks `sleep`, has no `lsof`, and rate limiters trip your own "
               "requests. A clean build is the bar; the live preview is started separately.")
         )
-        logger.info("Pass 1: holistic MVP build (%d target files, plan=%s)", len(required_files), bool(build_plan))
-        _phase("Pass 1/4 — building the full product" + (" from plan" if build_plan else ""))
+        # Incremental: replace the holistic build prompt with a targeted change
+        # that preserves the existing site. Keeps the shared verify/deploy tail.
+        if incremental:
+            build_prompt = (
+                "The product ALREADY EXISTS in this repo with an established design and working "
+                f"features. Make ONLY the change this goal requires — nothing else:\n{goal}\n\n"
+                + (f"Context:\n{context}\n\n" if context else "")
+                + "STRICT: do NOT rebuild, restyle, or rewrite existing pages/components. Do NOT touch "
+                  "globals.css theme, the tailwind config, fonts, or the landing/dashboard unless this "
+                  "goal is specifically about them. Add or edit only the minimum files needed for this "
+                  "one change, reusing the existing design system. No dead UI — wire every control to a "
+                  "real route/action. Verify with `npm run build` / `npx tsc --noEmit` only."
+            )
+        logger.info("Pass 1: %s build (%d target files, plan=%s)",
+                    "incremental" if incremental else "holistic MVP", len(required_files), bool(build_plan))
+        _phase(("Applying incremental change" if incremental else "Pass 1/4 — building the full product")
+               + ("" if incremental else (" from plan" if build_plan else "")))
         _run_claude(local, build_prompt, session_id=build_sid, timeout=1800,
                     founder_id=founder_id, app_session_id=session_id, agent=agent)
+        # Mark this agent's product as built so future goals run incrementally.
+        try:
+            built_marker.write_text(build_sid)
+        except Exception:
+            pass
 
         # Completion loop: keep going until required files exist. Default is one
         # follow-up; extra rounds are configurable because each round is an
-        # expensive autonomous coding pass.
-        completion_rounds = max(0, int(getattr(settings, "mvp_max_completion_rounds", 1) or 1))
+        # expensive autonomous coding pass. Skipped on incremental (no file-chasing
+        # — the change set is intentionally small, not the full MVP manifest).
+        completion_rounds = 0 if incremental else max(0, int(getattr(settings, "mvp_max_completion_rounds", 1) or 1))
         for _round in range(completion_rounds):
             _stage_all(local)
             missing = _missing_mvp_files(local, required_files)
