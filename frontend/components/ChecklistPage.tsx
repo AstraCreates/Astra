@@ -112,7 +112,7 @@ function Section({
   empty?: string; children?: React.ReactNode;
 }) {
   return (
-    <div style={{ marginBottom: 32 }}>
+    <div className="glass-panel" style={{ marginBottom: 18, padding: "16px 18px" }}>
       <div
         onClick={collapsible ? onToggle : undefined}
         style={{

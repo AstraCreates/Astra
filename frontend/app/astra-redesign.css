@@ -16,10 +16,10 @@ html.antialiased {
 /* ── Token remap ──────────────────────────────────────────────── */
 :root,
 [data-theme="light"] {
-  /* Cool neutral application surfaces. Paper stays a brand swatch, not a wall color. */
-  --bg:           #F3F4F7;
+  /* White application canvas — glass cards read against pure white. */
+  --bg:           #FFFFFF;
   --bg-surface:   #FFFFFF;
-  --bg-sunken:    #EAECEF;
+  --bg-sunken:    #F1F2F5;
   --surface:      #FFFFFF;
   --s2:           #F7F8FA;
   --s3:           #EAEAEA;
@@ -606,54 +606,64 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
        drop shadows at the rim → the liquid lens warp
    No gradients, no tint — keeps the white aesthetic. */
 
-.sc, .sc-row, .dept-card, .dc {
+.sc, .sc-row, .dept-card, .dc, .glass-panel {
   position: relative;
   isolation: isolate;
-  background: rgba(255, 255, 255, 0.45) !important;
-  backdrop-filter: blur(3px) url(#glass-distortion);
-  -webkit-backdrop-filter: blur(3px);
-  border: 1px solid rgba(255, 255, 255, 0.30) !important;
+  /* faint top sheen so the surface brightens like real glass, stays white */
+  background:
+    linear-gradient(157deg,
+      rgba(255, 255, 255, 0.82) 0%,
+      rgba(255, 255, 255, 0.50) 44%,
+      rgba(255, 255, 255, 0.62) 100%) !important;
+  backdrop-filter: blur(6px) saturate(1.4) url(#glass-distortion);
+  -webkit-backdrop-filter: blur(6px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.65) !important;
   border-radius: 18px;
   box-shadow:
-    /* top-left bright bevel (specular) */
-    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 1),
-    inset 3px 3px 6px -3px rgba(255, 255, 255, 0.9),
-    /* bottom-right dark refracted rim (the thick glass edge) */
-    inset -1.5px -1.5px 1px -1px rgba(0, 0, 0, 0.20),
-    inset -4px -4px 10px -6px rgba(0, 0, 0, 0.22),
-    /* faint hairline edge so it reads against white */
-    0 0 0 1px rgba(0, 0, 0, 0.04),
+    /* top-left bright bevel (specular catch) */
+    inset 2px 2px 1px -1px rgba(255, 255, 255, 1),
+    inset 5px 5px 10px -5px rgba(255, 255, 255, 0.95),
+    /* bottom-right dark refracted rim (thick glass edge) */
+    inset -2px -2px 1px -1px rgba(0, 0, 0, 0.26),
+    inset -7px -7px 16px -8px rgba(0, 0, 0, 0.20),
+    /* hairline so it separates from white bg */
+    0 0 0 1px rgba(0, 0, 0, 0.05),
     /* float */
-    0 10px 24px -8px rgba(0, 0, 0, 0.18),
-    0 4px 8px -4px rgba(0, 0, 0, 0.12) !important;
+    0 16px 38px -10px rgba(0, 0, 0, 0.24),
+    0 6px 14px -6px rgba(0, 0, 0, 0.15) !important;
 }
 
-.sc:hover, .sc-row:hover, .dept-card:hover, .dc:hover {
+.sc:hover, .sc-row:hover, .dept-card:hover, .dc:hover, .glass-panel.glass-hover:hover {
   box-shadow:
-    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 1),
-    inset 3px 3px 7px -3px rgba(255, 255, 255, 0.95),
-    inset -1.5px -1.5px 1px -1px rgba(0, 0, 0, 0.22),
-    inset -5px -5px 12px -6px rgba(0, 0, 0, 0.24),
-    0 0 0 1px rgba(0, 0, 0, 0.05),
-    0 16px 34px -8px rgba(0, 0, 0, 0.24),
-    0 6px 12px -4px rgba(0, 0, 0, 0.16) !important;
+    inset 2px 2px 1px -1px rgba(255, 255, 255, 1),
+    inset 5px 5px 11px -5px rgba(255, 255, 255, 1),
+    inset -2px -2px 1px -1px rgba(0, 0, 0, 0.28),
+    inset -8px -8px 18px -8px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 22px 48px -10px rgba(0, 0, 0, 0.30),
+    0 8px 18px -6px rgba(0, 0, 0, 0.18) !important;
 }
 
 /* ── Dark theme: same refraction recipe, inverted bevel weights ── */
 [data-theme="dark"] .sc,
 [data-theme="dark"] .sc-row,
 [data-theme="dark"] .dept-card,
-[data-theme="dark"] .dc {
-  background: rgba(255, 255, 255, 0.04) !important;
-  border-color: rgba(255, 255, 255, 0.10) !important;
+[data-theme="dark"] .dc,
+[data-theme="dark"] .glass-panel {
+  background:
+    linear-gradient(157deg,
+      rgba(255, 255, 255, 0.07) 0%,
+      rgba(255, 255, 255, 0.02) 44%,
+      rgba(255, 255, 255, 0.05) 100%) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
   box-shadow:
-    inset 1.5px 1.5px 1px -1px rgba(255, 255, 255, 0.45),
-    inset 3px 3px 6px -3px rgba(255, 255, 255, 0.20),
-    inset -1.5px -1.5px 1px -1px rgba(0, 0, 0, 0.45),
-    inset -4px -4px 10px -6px rgba(0, 0, 0, 0.40),
-    0 0 0 1px rgba(255, 255, 255, 0.04),
-    0 10px 26px -8px rgba(0, 0, 0, 0.55),
-    0 4px 8px -4px rgba(0, 0, 0, 0.40) !important;
+    inset 2px 2px 1px -1px rgba(255, 255, 255, 0.50),
+    inset 5px 5px 10px -5px rgba(255, 255, 255, 0.18),
+    inset -2px -2px 1px -1px rgba(0, 0, 0, 0.50),
+    inset -7px -7px 16px -8px rgba(0, 0, 0, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 16px 38px -10px rgba(0, 0, 0, 0.60),
+    0 6px 14px -6px rgba(0, 0, 0, 0.42) !important;
 }
 
 @keyframes moveBackground {
