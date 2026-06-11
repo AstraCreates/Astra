@@ -107,11 +107,17 @@ body {
   color: var(--fg);
 }
 
-/* Quiet, flat surfaces — kill the grid-line / radial-gradient backdrop. */
+/* Subtle grain texture on body so backdrop-filter blur has something to show.
+   No gradient — just SVG noise at very low opacity for the glass effect. */
 body,
-[data-theme="light"] body,
+[data-theme="light"] body {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
+}
+
 [data-theme="dark"] body {
-  background-image: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E");
+  background-size: 256px 256px;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -593,43 +599,83 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 }
 
 /* ── Liquid Glass Cards ───────────────────────────────────────────────────
-   Applied to session rows, dept cards, and session cards. The SVG filter
-   #glass-distortion (LiquidGlassFilter) must be mounted in the DOM (layout.tsx).
-   backdrop-filter blurs the page content behind each card; filter: url() adds
-   the lenticular warp + specular highlight from the SVG bump map. */
+   Semi-transparent white + backdrop-filter blur shows body grain texture
+   through the card (frosted glass). ::after applies SVG warp distortion as
+   a separate layer so children are unaffected. Strong inset specular
+   simulates the glass edge highlight. */
 
 .sc, .sc-row, .dept-card {
-  background: rgba(255, 255, 255, 0.80) !important;
-  backdrop-filter: blur(10px) saturate(1.5);
-  -webkit-backdrop-filter: blur(10px) saturate(1.5);
-  border: 1px solid rgba(255, 255, 255, 0.62) !important;
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.52) !important;
+  border: 1px solid rgba(255, 255, 255, 0.72) !important;
   box-shadow:
-    inset 0 1.5px 0 rgba(255, 255, 255, 0.96),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.04),
-    0 2px 14px rgba(0, 0, 0, 0.07) !important;
+    inset 0 2px 0 rgba(255, 255, 255, 1),
+    inset 2px 0 0 rgba(255, 255, 255, 0.55),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.06),
+    0 8px 32px rgba(0, 0, 0, 0.10),
+    0 2px 6px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Frosted blur + SVG distortion on a separate layer so content stays sharp */
+.sc::after, .sc-row::after, .dept-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  backdrop-filter: blur(14px) saturate(1.8) url(#glass-distortion);
+  -webkit-backdrop-filter: blur(14px) saturate(1.8);
+  pointer-events: none;
+}
+
+/* Lift children above the blur layer */
+.sc > *, .sc-row > *, .dept-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 [data-theme="dark"] .sc,
 [data-theme="dark"] .sc-row,
 [data-theme="dark"] .dept-card {
-  background: rgba(17, 16, 24, 0.80) !important;
-  border-color: rgba(240, 238, 255, 0.11) !important;
+  background: rgba(17, 16, 24, 0.62) !important;
+  border-color: rgba(240, 238, 255, 0.14) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.07),
-    0 2px 14px rgba(0, 0, 0, 0.30) !important;
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.10),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+    0 8px 32px rgba(0, 0, 0, 0.32),
+    0 2px 6px rgba(0, 0, 0, 0.18) !important;
 }
 
 .dc {
-  background: rgba(255, 255, 255, 0.78) !important;
-  backdrop-filter: blur(8px) saturate(1.4);
-  -webkit-backdrop-filter: blur(8px) saturate(1.4);
-  border: 1px solid rgba(255, 255, 255, 0.58) !important;
-  box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, 0.95) !important;
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.50) !important;
+  border: 1px solid rgba(255, 255, 255, 0.68) !important;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 1),
+    0 4px 16px rgba(0, 0, 0, 0.08) !important;
+}
+
+.dc::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  backdrop-filter: blur(10px) saturate(1.6) url(#glass-distortion);
+  -webkit-backdrop-filter: blur(10px) saturate(1.6);
+  pointer-events: none;
+}
+
+.dc > * {
+  position: relative;
+  z-index: 1;
 }
 
 [data-theme="dark"] .dc {
-  background: rgba(17, 16, 24, 0.78) !important;
-  border-color: rgba(240, 238, 255, 0.09) !important;
+  background: rgba(17, 16, 24, 0.60) !important;
+  border-color: rgba(240, 238, 255, 0.10) !important;
 }
 
 @keyframes moveBackground {
