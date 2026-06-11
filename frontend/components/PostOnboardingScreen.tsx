@@ -1,95 +1,119 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import AstraGradient from "./AstraGradient";
 
-export default function PostOnboardingScreen({ name }: { name: string }) {
-  const router = useRouter();
+export default function PostOnboardingScreen({
+  name,
+  onComplete,
+}: {
+  name: string;
+  onComplete: () => void;
+}) {
   const [phase, setPhase] = useState(0);
+  const [pullingUp, setPullingUp] = useState(false);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  const displayName = (name.split(" ")[0] || name).trim() || "Founder";
 
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase(1), 200);
-    const t2 = setTimeout(() => setPhase(2), 800);
-    const t3 = setTimeout(() => setPhase(3), 1500);
-    const t4 = setTimeout(() => router.replace("/"), 3800);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4); };
-  }, [router]);
-
-  const displayName = name.split(" ")[0] || name;
+    const t1 = setTimeout(() => setPhase(1), 300);   // "Welcome,"
+    const t2 = setTimeout(() => setPhase(2), 1000);  // "[Name]"
+    const t3 = setTimeout(() => setPhase(3), 2000);  // tagline
+    const t4 = setTimeout(() => {
+      setPullingUp(true);
+      onCompleteRef.current();
+    }, 3400);
+    return () => [t1, t2, t3, t4].forEach(clearTimeout);
+  }, []);
 
   return (
     <>
       <style>{`
-        @keyframes pos-up {
-          from { opacity: 0; transform: translateY(20px); }
+        @keyframes pos-fade-up {
+          from { opacity: 0; transform: translateY(22px); }
           to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes pos-progress {
-          from { width: 0%; }
-          to   { width: 100%; }
         }
       `}</style>
 
-      <div style={{
-        minHeight: "100vh", display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
-        position: "relative", overflow: "hidden",
-        background: "#001aff",
-      }}>
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 9999,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+          background: "#000814",
+          transform: pullingUp ? "translateY(-100%)" : "translateY(0)",
+          transition: pullingUp
+            ? "transform 0.9s cubic-bezier(0.76, 0, 0.24, 1)"
+            : "none",
+        }}
+      >
         <AstraGradient />
 
-        <div style={{ position: "relative", zIndex: 2, textAlign: "center", padding: "0 32px" }}>
-          <p style={{
-            fontSize: 15, fontWeight: 400, color: "rgba(0,0,0,0.55)",
-            marginBottom: 16, letterSpacing: "0.01em",
-            opacity: phase >= 1 ? 1 : 0,
-            animation: phase >= 1 ? "pos-up 0.6s cubic-bezier(0.22,1,0.36,1) forwards" : "none",
-            fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-          }}>
-            You&rsquo;re all set.
+        <div
+          style={{
+            position: "relative",
+            zIndex: 2,
+            textAlign: "center",
+            padding: "0 40px",
+            userSelect: "none",
+          }}
+        >
+          {/* "Welcome," */}
+          <p
+            style={{
+              fontSize: 16,
+              fontWeight: 400,
+              color: "rgba(255,255,255,0.5)",
+              margin: "0 0 12px",
+              letterSpacing: "0.02em",
+              fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
+              opacity: phase >= 1 ? 1 : 0,
+              animation: phase >= 1 ? "pos-fade-up 0.65s cubic-bezier(0.22,1,0.36,1) forwards" : "none",
+            }}
+          >
+            Welcome,
           </p>
 
-          <h1 style={{
-            fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-            fontSize: "clamp(48px, 9vw, 80px)",
-            fontWeight: 700,
-            color: "#0a0a0a",
-            lineHeight: 1.05,
-            letterSpacing: "-0.02em",
-            margin: "0 0 36px",
-            opacity: phase >= 2 ? 1 : 0,
-            animation: phase >= 2 ? "pos-up 0.8s cubic-bezier(0.22,1,0.36,1) forwards" : "none",
-          }}>
-            Let&rsquo;s build,<br />{displayName || "Founder"}.
+          {/* "[Name]" */}
+          <h1
+            style={{
+              fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
+              fontSize: "clamp(56px, 11vw, 96px)",
+              fontWeight: 700,
+              color: "#ffffff",
+              lineHeight: 1,
+              letterSpacing: "-0.03em",
+              margin: "0 0 28px",
+              opacity: phase >= 2 ? 1 : 0,
+              animation: phase >= 2 ? "pos-fade-up 0.8s cubic-bezier(0.22,1,0.36,1) forwards" : "none",
+            }}
+          >
+            {displayName}
           </h1>
 
-          <div style={{
-            opacity: phase >= 3 ? 1 : 0,
-            animation: phase >= 3 ? "pos-up 0.6s cubic-bezier(0.22,1,0.36,1) forwards" : "none",
-          }}>
-            <button
-              onClick={() => router.replace("/")}
-              style={{
-                padding: "12px 36px", fontSize: 13, fontWeight: 500,
-                fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-                color: "#ffffff", background: "#0a0a0a",
-                border: "none", borderRadius: 100, cursor: "pointer",
-                transition: "opacity 0.18s",
-              }}
-              onMouseEnter={e => (e.currentTarget.style.opacity = "0.85")}
-              onMouseLeave={e => (e.currentTarget.style.opacity = "1")}
-            >
-              Go to dashboard
-            </button>
-          </div>
+          {/* Tagline */}
+          <p
+            style={{
+              fontSize: "clamp(16px, 2.5vw, 22px)",
+              fontWeight: 400,
+              color: "rgba(255,255,255,0.65)",
+              margin: 0,
+              letterSpacing: "-0.01em",
+              fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
+              opacity: phase >= 3 ? 1 : 0,
+              animation: phase >= 3 ? "pos-fade-up 0.65s cubic-bezier(0.22,1,0.36,1) forwards" : "none",
+            }}
+          >
+            It&rsquo;s time to change the world.
+          </p>
         </div>
-
-        {phase >= 3 && (
-          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2, background: "rgba(0,0,0,0.1)", zIndex: 2 }}>
-            <div style={{ height: "100%", background: "rgba(0,30,255,0.5)", animation: "pos-progress 2.3s linear forwards" }} />
-          </div>
-        )}
       </div>
     </>
   );

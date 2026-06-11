@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getSetupStatus, saveServiceCredential, getComposioOAuthUrls, setupAccounts, submitGoal } from "@/lib/api";
 import ServiceLogo from "@/components/ServiceLogo";
+import PostOnboardingScreen from "@/components/PostOnboardingScreen";
 import type { AgentStackTemplate, AgentCatalogEntry, StackReadiness } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -986,6 +987,7 @@ export default function OnboardingWizard() {
   const stackName = selectedStackId === "custom" ? "Custom Stack" : (selectedStack?.name ?? "Idea to Revenue Stack");
 
   const [launching, setLaunching] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   // localStorage may be full (quota exceeded). A thrown setItem must never block
   // navigation, AND the onboarding-done flag MUST persist — AppHome gates the whole
@@ -1002,9 +1004,9 @@ export default function OnboardingWizard() {
 
   async function handleLaunch() {
     if (launching) return;
+    setLaunching(true);
     lsSet("astra_onboarding_done", "1");
     lsSet("astra_show_tour", "1");
-    // Persist for any consumer that reads these (tour, prefill, etc.).
     if (name.trim()) lsSet("astra_onboarding_name", name.trim());
     if (goal.trim()) lsSet("astra_onboarding_goal", goal.trim());
     if (company.trim()) lsSet("astra_onboarding_company", company.trim());
@@ -1014,30 +1016,23 @@ export default function OnboardingWizard() {
     } else {
       lsSet("astra_onboarding_stack", selectedStackId);
     }
+
+    // Show welcome screen immediately, submit goal in background.
+    setShowWelcome(true);
+
     const g = goal.trim();
-    const nm = (company.trim() || name.trim());
-    const stack = selectedStackId || "idea_to_revenue";
-    // No goal yet → land on the dashboard (now onboarded) so the user can start one.
-    if (!g) { router.push("/"); return; }
-    setLaunching(true);
-    try {
-      // Same launch path as the New Goal view: submit, then open the live session.
+    if (g) {
+      const nm = (company.trim() || name.trim());
+      const stack = selectedStackId || "idea_to_revenue";
       const instruction = nm ? `Company/project name: ${nm}\n\n${g}` : g;
       const constraints = (selectedStackId === "custom" && customAgents.length > 0)
         ? { custom_agents: customAgents } : {};
-      const data = await submitGoal(founderId, instruction, constraints, stack);
-      if (!data.session_id) throw new Error("No session_id returned");
-      // Mark the new workspace as the active company so the dashboard switches to it.
-      if (data.workspace_id) {
-        lsSet(`astra_company_id:${founderId}`, data.workspace_id);
-      }
-      window.location.assign(`/s/${data.session_id}`);
-    } catch (e) {
-      // Never leave the button dead — fall back to the dashboard.
-      console.error("onboarding launch failed:", e);
-      setLaunching(false);
-      router.push("/");
+      submitGoal(founderId, instruction, constraints, stack).catch(() => {});
     }
+  }
+
+  function handleWelcomeComplete() {
+    router.replace("/");
   }
 
   async function handleSkip() {
@@ -1046,6 +1041,10 @@ export default function OnboardingWizard() {
   }
 
   return (
+    <>
+    {showWelcome && (
+      <PostOnboardingScreen name={name} onComplete={handleWelcomeComplete} />
+    )}
     <div style={{
       minHeight: "100vh",
       display: "flex",
@@ -1131,7 +1130,6 @@ export default function OnboardingWizard() {
         </div>
       </div>
     </div>
+    </>
   );
 }
-
-
