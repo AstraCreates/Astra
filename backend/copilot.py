@@ -62,13 +62,14 @@ def _company_for_session(session_id: str, founder_id: str) -> str:
 async def _tool_ask_brain(founder_id: str, session_id: str, args: dict) -> Any:
     from backend.tools.company_brain import ask_company_brain
     import asyncio
-    company_id = _company_for_session(session_id, founder_id)
+    # Brain is founder-scoped (agent outputs, GraphRAG map, identity all live at
+    # founder-root). Read there so the copilot sees what the agents logged.
     return await asyncio.to_thread(
         ask_company_brain,
         founder_id,
         str(args.get("question", "")),
         8,
-        company_id,
+        founder_id,
     )
 
 

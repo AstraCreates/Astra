@@ -179,16 +179,10 @@ def obsidian_log(
     try:
         if founder_id and (summary or output_dict):
             from backend.tools.company_brain import add_company_brain_record
-            # Scope the record to the run's COMPANY (workspace), not founder-root.
-            # Reads (copilot ask_brain, agent context) are company-scoped via the
-            # session's company_id; without matching that here, agent outputs land
-            # at founder-root and become invisible to those reads.
-            company_id = founder_id
-            try:
-                from backend.core.session_store import get_session_meta
-                company_id = str((get_session_meta(session_id) or {}).get("company_id") or founder_id)
-            except Exception:
-                pass
+            # Write to FOUNDER-ROOT scope — that's what the GraphRAG sync, the
+            # knowledge-map UI, and ask_company_brain all read. Scoping to the
+            # session's ws_<id> company stranded agent outputs in subdirs the map
+            # never reads, leaving the brain map empty. (One company per founder.)
             body = summary or ""
             if output_dict:
                 body += "\n\n" + json.dumps(output_dict, indent=2)[:6000]
@@ -198,8 +192,7 @@ def obsidian_log(
                 title=f"{agent} — {date} {time_str}",
                 content=body[:8000],
                 kind="agent_output",
-                company_id=company_id,
-                metadata={"session_id": session_id, "agent": agent, "company_id": company_id},
+                metadata={"session_id": session_id, "agent": agent},
             )
     except Exception:
         pass

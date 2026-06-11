@@ -154,14 +154,15 @@ def ensure_launch_goal(founder_id: str, session_id: str, agents: list[str], goal
             m = re.search(r"[Cc]ompany(?:[ /](?:project|product))?\s+name[:\s]+\"?([A-Za-z0-9][A-Za-z0-9 .&-]{1,40})", goal_text or "")
             if m:
                 new_name = m.group(1).strip().lower()
-            existing = (_brain_name(founder_id, company_id=company_id) or "").strip().lower()
+            # Brain is founder-scoped (graph/map/copilot all read founder-root).
+            existing = (_brain_name(founder_id, company_id=founder_id) or "").strip().lower()
             same_company = bool(new_name and existing and (new_name == existing or new_name in existing or existing in new_name))
             if same_company:
                 logger.info("goal_engine: same company %r — keeping brain+map", new_name)
             else:
-                reset_company_brain(founder_id, company_id)
-                logger.info("goal_engine: reset brain+map for new company %s/%s (was %r, now %r)",
-                            founder_id, company_id, existing or "?", new_name or "?")
+                reset_company_brain(founder_id, founder_id)
+                logger.info("goal_engine: reset brain+map for new company %s (was %r, now %r)",
+                            founder_id, existing or "?", new_name or "?")
         except Exception as e:
             logger.warning("goal_engine: brain reset on launch failed for %s: %s", founder_id, e)
         reset_for_new_launch(
@@ -178,7 +179,8 @@ def ensure_launch_goal(founder_id: str, session_id: str, agents: list[str], goal
             company_id=company_id,
         )
         logger.info("goal_engine: reset+seeded launch goal for %s session=%s (%d tasks)", founder_id, session_id, len(tasks))
-        _seed_company_identity(founder_id, goal_text, company_id)
+        # Seed identity at founder-root so the founder-scoped brain/map sees it.
+        _seed_company_identity(founder_id, goal_text, founder_id)
     except Exception as e:
         logger.warning("goal_engine.ensure_launch_goal failed for %s: %s", founder_id, e)
 
