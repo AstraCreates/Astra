@@ -6,6 +6,7 @@ import SessionWrapper from "@/components/SessionWrapper";
 import AppChrome from "@/components/AppChrome";
 import { CompanyProvider } from "@/lib/company-context";
 import StarField from "./components/StarField";
+import LiquidGlassFilter from "@/components/LiquidGlassFilter";
 import "./globals.css";
 import "./astra-redesign.css";
 
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body suppressHydrationWarning>
+        <LiquidGlassFilter />
         <StarField />
         <SessionWrapper>
           <ApiAuthBridge />

@@ -13,7 +13,7 @@ export interface LiquidGlassProps {
 }
 
 const LiquidGlass = forwardRef<HTMLDivElement, LiquidGlassProps>(
-  ({ children, className, style, contentStyle, borderRadius = 12, tintOpacity = 0.05 }, ref) => {
+  ({ children, className, style, contentStyle, borderRadius = 12, tintOpacity = 0.15 }, ref) => {
     const r = typeof borderRadius === "number" ? `${borderRadius}px` : borderRadius;
 
     return (
@@ -25,33 +25,49 @@ const LiquidGlass = forwardRef<HTMLDivElement, LiquidGlassProps>(
           borderRadius: r,
           isolation: "isolate",
           overflow: "hidden",
+          border: "1px solid rgba(255,255,255,0.55)",
+          boxShadow: "0 6px 24px rgba(0,0,0,0.10), 0 1px 3px rgba(0,0,0,0.05)",
           ...style,
         }}
       >
-        {/* Refraction layer */}
+        {/* Refraction layer: blurs backdrop + SVG distortion warp */}
         <div
           aria-hidden="true"
           style={{
             position: "absolute", inset: 0,
             borderRadius: "inherit",
-            backdropFilter: "url(#lg-filter) blur(1px)",
-            WebkitBackdropFilter: "url(#lg-filter) blur(1px)",
+            backdropFilter: "blur(8px) saturate(1.5)",
+            WebkitBackdropFilter: "blur(8px) saturate(1.5)",
+            filter: "url(#glass-distortion)",
             zIndex: 0,
           }}
         />
-        {/* Tint + specular inset shadow */}
+        {/* Frosted white tint */}
         <div
           aria-hidden="true"
           style={{
             position: "absolute", inset: 0,
             borderRadius: "inherit",
             background: `rgba(255,255,255,${tintOpacity})`,
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(0,0,0,0.04)",
             zIndex: 1,
             pointerEvents: "none",
           }}
         />
-        <div style={{ position: "relative", zIndex: 2, ...contentStyle }}>
+        {/* Specular edge highlights */}
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute", inset: 0,
+            borderRadius: "inherit",
+            boxShadow:
+              "inset 0 1.5px 0 rgba(255,255,255,0.95), " +
+              "inset 2px 0 0 rgba(255,255,255,0.4), " +
+              "inset 0 -1px 0 rgba(0,0,0,0.04)",
+            zIndex: 2,
+            pointerEvents: "none",
+          }}
+        />
+        <div style={{ position: "relative", zIndex: 3, ...contentStyle }}>
           {children}
         </div>
       </div>
