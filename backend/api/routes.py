@@ -2543,6 +2543,133 @@ async def llc_stream(websocket: WebSocket, founder_id: str, company_name: str = 
         stop_event.set()
 
 
+@router.websocket("/terminal/{session_id}")
+async def terminal_takeover(websocket: WebSocket, session_id: str, founder_id: str = ""):
+    """Interactive openclaude takeover for a technical/web run.
+
+    Resumes the agent's openclaude session inside a PTY and bridges it to an
+    xterm.js terminal in the browser. The founder grabs the keyboard mid-build.
+
+    SECURITY: this exposes RCE as the `astra` user. Authenticate the founder and
+    verify the run belongs to them BEFORE spawning the PTY. Fail closed.
+    """
+    import queue
+    import threading
+    from backend.core import pty_terminal, cancellation
+
+    await websocket.accept()
+    main_loop = asyncio.get_running_loop()
+
+    # ── Auth: caller must own this run (fails closed when auth is enabled) ──
+    try:
+        # require_founder_access reads headers off the connection like a Request.
+        require_founder_access(websocket, founder_id, min_role="operator")
+        # Verify the run belongs to this founder.
+        from backend.core.session_store import get_session_meta as _meta
+        meta = _meta(session_id) or {}
+        owner = str(meta.get("founder_id") or "")
+        if owner and founder_id and owner != founder_id and not _dev_auth_off():
+            raise PermissionError("session does not belong to caller")
+    except Exception as e:
+        try:
+            await websocket.send_text(json.dumps({"t": "error", "message": f"unauthorized: {e}"}))
+        except Exception:
+            pass
+        await websocket.close(code=4403)
+        return
+
+    # Pause the autonomous agent so it stops stepping on the openclaude session
+    # while the founder drives it by hand.
+    try:
+        cancellation.pause_session(session_id)
+    except Exception:
+        pass
+
+    closed = threading.Event()
+
+    def _on_output(data: bytes) -> None:
+        if closed.is_set():
+            return
+        fut = asyncio.run_coroutine_threadsafe(_safe_send_bytes(websocket, data), main_loop)
+        try:
+            fut.result(timeout=5)
+        except Exception:
+            pass
+
+    try:
+        term = await asyncio.to_thread(pty_terminal.open_takeover, session_id)
+    except Exception as e:
+        logger.error("terminal takeover spawn failed: %s", e)
+        try:
+            await websocket.send_text(json.dumps({"t": "error", "message": f"spawn failed: {e}"}))
+        except Exception:
+            pass
+        await websocket.close(code=1011)
+        try:
+            cancellation.resume_session(session_id)
+        except Exception:
+            pass
+        return
+
+    term.set_output(_on_output)
+
+    try:
+        while True:
+            msg = await websocket.receive()
+            if msg.get("type") == "websocket.disconnect":
+                break
+            data_b = msg.get("bytes")
+            if data_b is not None:
+                term.write(data_b)
+                continue
+            text = msg.get("text")
+            if text is None:
+                continue
+            try:
+                ctrl = json.loads(text)
+            except Exception:
+                # Plain text frame → treat as keystrokes.
+                term.write(text.encode("utf-8", "ignore"))
+                continue
+            if isinstance(ctrl, dict) and ctrl.get("t") == "resize":
+                try:
+                    term.resize(int(ctrl.get("cols", 120)), int(ctrl.get("rows", 32)))
+                except Exception:
+                    pass
+            elif isinstance(ctrl, dict) and ctrl.get("t") == "input":
+                term.write(str(ctrl.get("data", "")).encode("utf-8", "ignore"))
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.warning("terminal ws loop error: %s", e)
+    finally:
+        closed.set()
+        term.set_output(None)
+        try:
+            pty_terminal.close_takeover(session_id)
+        except Exception:
+            pass
+        try:
+            cancellation.resume_session(session_id)
+        except Exception:
+            pass
+
+
+async def _safe_send_bytes(websocket: WebSocket, data: bytes) -> None:
+    try:
+        await websocket.send_bytes(data)
+    except Exception:
+        pass
+
+
+def _dev_auth_off() -> bool:
+    try:
+        from backend.config import settings
+        return not bool(settings.astra_require_auth)
+    except Exception:
+        return True
+
+
 # ── Generic Playwright WebSocket runner ───────────────────────────────────────
 
 async def _run_playwright_ws(websocket: WebSocket, coro_fn) -> None:

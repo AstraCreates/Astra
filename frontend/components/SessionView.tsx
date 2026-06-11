@@ -10,7 +10,11 @@ import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submit
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import { signIn } from "next-auth/react";
+import dynamic from "next/dynamic";
 import SessionTour from "@/components/SessionTour";
+
+// xterm touches `window`; load the takeover terminal client-only.
+const TerminalPane = dynamic(() => import("@/components/TerminalPane"), { ssr: false });
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -228,6 +232,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [accessDenied, setAccessDenied] = useState(false);
   const [toastErr, setToastErr] = useState("");
   const [restartConfirm, setRestartConfirm] = useState(false);
+  const [takeover, setTakeover] = useState(false);
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
   const imgsFetched = useRef(false);
 
@@ -1060,27 +1065,49 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               // technical/web build. Only the technical dept arms it; if the tab
               // is stale after switching depts, fall through to Updates below.
               if (st.tab === "terminal" && st.selDept === "technical") {
+                // Live interactive takeover — user drives the agent's openclaude session.
+                if (takeover) {
+                  return <TerminalPane sessionId={sessionId} founderId={founderId || ""} onClose={() => setTakeover(false)} />;
+                }
                 const term: TermEntry[] = [];
                 for (const k of ags) for (const e of (st.agents[k].term || [])) term.push(e);
                 term.sort((a, b) => a.ts - b.ts);
                 const isRunning = ags.some((a) => st.agents[a].status === "running");
+                const takeoverBtn = (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <button
+                      onClick={() => setTakeover(true)}
+                      title="Resume the agent's openclaude session and drive it yourself"
+                      style={{ fontSize: 10.5, fontFamily: "var(--font-mono, monospace)", fontWeight: 700, color: "#0c0d10", background: "#7dd3fc", border: "none", borderRadius: 6, padding: "5px 12px", cursor: "pointer" }}
+                    >
+                      ⚡ Take over session
+                    </button>
+                    <span style={{ fontSize: 9, color: "var(--fm)" }}>pauses the agent · you type into the live openclaude</span>
+                  </div>
+                );
                 if (!term.length) {
-                  return <div style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10.5, color: "var(--fm)", padding: "10px 12px", background: "#0c0d10", borderRadius: 8, lineHeight: 1.6 }}>
-                    {isRunning ? "▌ Waiting for the build agent to start its terminal…" : "No terminal output yet — start a build run."}
-                  </div>;
+                  return <>
+                    {takeoverBtn}
+                    <div style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 10.5, color: "var(--fm)", padding: "10px 12px", background: "#0c0d10", borderRadius: 8, lineHeight: 1.6 }}>
+                      {isRunning ? "▌ Waiting for the build agent to start its terminal…" : "No terminal output yet — start a build run, or take over now."}
+                    </div>
+                  </>;
                 }
                 const C: Record<string, string> = { command: "#7dd3fc", output: "#d4d4d8", error: "#fca5a5", file: "#86efac", log: "#e4e4e7", plan: "#fcd34d", tool: "#a5b4fc", phase: "#fcd34d", deploy: "#86efac" };
-                return <div style={{ background: "#0c0d10", borderRadius: 8, padding: "10px 12px", maxHeight: "60vh", overflowY: "auto", fontFamily: "var(--font-mono, monospace)", fontSize: 10.5, lineHeight: 1.55 }}>
-                  {term.map((e, i) => {
-                    const color = C[e.kind] || "#d4d4d8";
-                    const prefix = e.kind === "command" ? "$ " : e.kind === "error" ? "✗ " : e.kind === "file" ? "✎ " : e.kind === "phase" ? "▸ " : e.kind === "deploy" ? "→ " : "";
-                    return <div key={i} style={{ display: "flex", gap: 6, padding: "1px 0", alignItems: "flex-start" }}>
-                      {ags.length > 1 && <span style={{ color: "#6b7280", flexShrink: 0, fontSize: 9, minWidth: 70 }}>{e.agent}</span>}
-                      <pre style={{ margin: 0, color, whiteSpace: "pre-wrap", wordBreak: "break-word", flex: 1 }}>{prefix}{e.text}</pre>
-                    </div>;
-                  })}
-                  {isRunning && <div style={{ color: "#7dd3fc" }}>▌</div>}
-                </div>;
+                return <>
+                  {takeoverBtn}
+                  <div style={{ background: "#0c0d10", borderRadius: 8, padding: "10px 12px", maxHeight: "60vh", overflowY: "auto", fontFamily: "var(--font-mono, monospace)", fontSize: 10.5, lineHeight: 1.55 }}>
+                    {term.map((e, i) => {
+                      const color = C[e.kind] || "#d4d4d8";
+                      const prefix = e.kind === "command" ? "$ " : e.kind === "error" ? "✗ " : e.kind === "file" ? "✎ " : e.kind === "phase" ? "▸ " : e.kind === "deploy" ? "→ " : "";
+                      return <div key={i} style={{ display: "flex", gap: 6, padding: "1px 0", alignItems: "flex-start" }}>
+                        {ags.length > 1 && <span style={{ color: "#6b7280", flexShrink: 0, fontSize: 9, minWidth: 70 }}>{e.agent}</span>}
+                        <pre style={{ margin: 0, color, whiteSpace: "pre-wrap", wordBreak: "break-word", flex: 1 }}>{prefix}{e.text}</pre>
+                      </div>;
+                    })}
+                    {isRunning && <div style={{ color: "#7dd3fc" }}>▌</div>}
+                  </div>
+                </>;
               }
 
               if (st.tab === "sources") {
