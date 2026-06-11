@@ -16,7 +16,9 @@ async function doSubscribe(userId: string): Promise<void> {
   if (!publicKey) return;
   const sub = await reg.pushManager.subscribe({
     userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(publicKey),
+    // Cast: TS 5.7 types Uint8Array as Uint8Array<ArrayBufferLike>, which
+    // applicationServerKey (BufferSource over ArrayBuffer) rejects. Runtime is fine.
+    applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
   });
   await fetch("/api/notifications/subscribe", {
     method: "POST",
