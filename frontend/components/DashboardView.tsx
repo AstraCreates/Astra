@@ -109,7 +109,7 @@ export default function DashboardView() {
 
       <div style={{ flex: 1, overflowY: "auto" }}>
         {/* Header hero */}
-        <div className="dv-hero" style={{ padding: "28px 24px 24px", borderBottom: "1px solid var(--bd)", position: "relative", overflow: "hidden", background: "#001aff", minHeight: 140 }}>
+        <div className="dv-hero" style={{ padding: "28px 24px 24px", borderBottom: "1px solid var(--bd)", position: "relative", overflow: "hidden", background: "var(--blue)", minHeight: 140 }}>
           <AstraGradient />
           {/* Scrim so text stays readable over the animated gradient */}
           <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.18)", pointerEvents: "none", zIndex: 1 }} />
@@ -149,11 +149,11 @@ export default function DashboardView() {
               <button
                 data-tour="dash-new-run"
                 onClick={() => router.push("/?new=1")}
-                style={{ padding: "9px 20px", fontSize: 12, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", cursor: "pointer", letterSpacing: "0.01em" }}
+                style={{ padding: "9px 20px", fontSize: 12, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", cursor: "pointer", letterSpacing: "0.01em", borderRadius: 8, fontFamily: "var(--font-instrument), sans-serif" }}
               >+ New run</button>
               <button
                 onClick={load}
-                style={{ padding: "9px 16px", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.85)", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", cursor: "pointer" }}
+                style={{ padding: "9px 16px", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.85)", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", cursor: "pointer", borderRadius: 8, fontFamily: "var(--font-instrument), sans-serif" }}
               >Refresh</button>
             </div>
           </div>

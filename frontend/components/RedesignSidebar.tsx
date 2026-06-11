@@ -48,7 +48,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
           </div>
         </Link>
         {companyName && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 8px", marginBottom: 8, background: "var(--s2)", border: "1px solid var(--bd)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", marginBottom: 8, background: "var(--s2)", border: "1px solid var(--bd)", borderRadius: 6 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", flexShrink: 0 }} />
             <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{companyName}</span>
           </div>
@@ -82,15 +82,15 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
       <div style={{ padding: "0 8px 14px", display: "flex", flexDirection: "column", gap: 1 }}>
         <Link href="/settings" className={`nl${pathname.startsWith("/settings") ? " on" : ""}`} style={{ textDecoration: "none" }}><span style={{ width: 18, textAlign: "center" }}>⚙</span>Settings</Link>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px" }}>
-          <div style={{ width: 24, height: 24, background: isSignedIn ? "var(--green)" : "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-chakra)", fontSize: 9, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{initials(userId)}</div>
+          <div style={{ width: 28, height: 28, borderRadius: "50%", background: isSignedIn ? "var(--green)" : "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-chakra)", fontSize: 10, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{initials(userId)}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 9, color: "var(--fm)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div style={{ fontSize: 11, color: "var(--fg)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {isSignedIn ? (user.fullName || userId) : `${userId.replace(/^user_/, "").slice(0, 12)}…`}
             </div>
           </div>
           {isSignedIn
-            ? <button onClick={() => signOut({ callbackUrl: "/" })} style={{ background: "none", border: "none", fontSize: 9, color: "var(--fm)", cursor: "pointer", fontFamily: "var(--font-code)" }}>sign out</button>
-            : <button onClick={() => signIn("google", { callbackUrl: "/" })} style={{ background: "none", border: "none", fontSize: 9, color: "var(--blue)", cursor: "pointer", fontFamily: "var(--font-code)" }}>sign in</button>}
+            ? <button onClick={() => signOut({ callbackUrl: "/" })} style={{ background: "none", border: "none", fontSize: 10, color: "var(--fm)", cursor: "pointer", fontFamily: "var(--font-instrument), sans-serif", padding: "2px 4px", borderRadius: 4, flexShrink: 0 }}>sign out</button>
+            : <button onClick={() => signIn("google", { callbackUrl: "/" })} style={{ background: "none", border: "none", fontSize: 10, color: "var(--blue)", cursor: "pointer", fontFamily: "var(--font-instrument), sans-serif", padding: "2px 4px", borderRadius: 4, flexShrink: 0, fontWeight: 600 }}>sign in</button>}
         </div>
       </div>
     </nav>
