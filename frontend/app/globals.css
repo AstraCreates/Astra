@@ -117,31 +117,71 @@
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 
-/* ── Apple Liquid Glass ───────────────────────────────────────────────────
-   Heavy blur + high saturate + specular inset highlight.
-   This is the real Apple-style glass — requires colorful content behind. */
-.lg-panel, .lg {
-  background: rgba(255,255,255,0.18);
-  border: 1px solid rgba(255,255,255,0.65);
-  backdrop-filter: blur(48px) saturate(3) brightness(1.06);
-  -webkit-backdrop-filter: blur(48px) saturate(3) brightness(1.06);
-  box-shadow:
-    inset 0 1.5px 0 rgba(255,255,255,0.85),
-    inset 0 -1px 0 rgba(255,255,255,0.2),
-    0 8px 32px rgba(0,0,0,0.10),
-    0 2px 8px rgba(0,0,0,0.06);
+/* ── Liquid Glass — SVG turbulence distortion + backdrop blur ─────────────
+   Pattern from archisvaze/liquid-glass.
+   Requires: <LiquidGlassFilter /> mounted (injects #glass-distortion SVG).  */
+
+/* Base: outer glow only. ::before = inset glow. ::after = blur+distort. */
+.lg-card {
+  position: relative;
+  isolation: isolate;
+  box-shadow: 0px 0px 21px -8px rgba(255,255,255,0.3);
 }
 
+/* Inner glow layer */
+.lg-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 14px -4px rgba(255,255,255,0.7);
+  background-color: rgba(255,255,255,0);
+  pointer-events: none;
+}
+
+/* Blur + distortion backdrop layer */
+.lg-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  filter: url(#glass-distortion);
+  -webkit-filter: url(#glass-distortion);
+  isolation: isolate;
+  pointer-events: none;
+}
+
+/* Content inside .lg-card must sit above the pseudo-elements */
+.lg-card > * { position: relative; z-index: 1; }
+
+/* ── .lg — simplified glass for elements that already use ::before/::after */
+.lg-panel, .lg {
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.55);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  box-shadow:
+    inset 0 0 14px -4px rgba(255,255,255,0.7),
+    0px 0px 21px -8px rgba(255,255,255,0.3);
+}
+
+[data-theme="dark"] .lg-card {
+  box-shadow: 0px 0px 21px -8px rgba(255,255,255,0.15);
+}
+[data-theme="dark"] .lg-card::before {
+  box-shadow: inset 0 0 14px -4px rgba(255,255,255,0.25);
+}
 [data-theme="dark"] .lg-panel,
 [data-theme="dark"] .lg {
-  background: rgba(255,255,255,0.08);
-  border-color: rgba(255,255,255,0.15);
-  backdrop-filter: blur(48px) saturate(2.5) brightness(1.1);
-  -webkit-backdrop-filter: blur(48px) saturate(2.5) brightness(1.1);
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.12);
   box-shadow:
-    inset 0 1.5px 0 rgba(255,255,255,0.15),
-    0 8px 32px rgba(0,0,0,0.3),
-    0 2px 8px rgba(0,0,0,0.2);
+    inset 0 0 14px -4px rgba(255,255,255,0.15),
+    0px 0px 21px -8px rgba(255,255,255,0.1);
 }
 
 html {
