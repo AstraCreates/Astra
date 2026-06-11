@@ -78,6 +78,13 @@ def _seed_company_identity(founder_id: str, goal_text: str, company_id: str | No
             kind="identity", canonical=True, stale_risk="low",
             metadata={"company_name": name, "company_id": company_id or founder_id},
         )
+        # Pin the name on the company record so child/operating runs can't rename it.
+        if name:
+            try:
+                from backend.missions.company_goal import set_company_name
+                set_company_name(founder_id, company_id, name)
+            except Exception:
+                pass
         logger.info("goal_engine: seeded company identity record for %s (%s)", founder_id, name or "?")
     except Exception as e:
         logger.warning("goal_engine._seed_company_identity failed for %s: %s", founder_id, e)

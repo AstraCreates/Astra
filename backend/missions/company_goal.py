@@ -152,6 +152,29 @@ def set_root_session(founder_id: str, session_id: str, company_id: str | None = 
             _save(goal)
 
 
+def get_company_name(founder_id: str, company_id: str | None = None) -> str:
+    """The company's pinned display name, or '' if none set yet."""
+    with _lock:
+        goal = _read(founder_id, company_id)
+        return str((goal or {}).get("company_name") or "")
+
+
+def set_company_name(founder_id: str, company_id: str | None = None, company_name: str = "") -> None:
+    """Pin the company's name the FIRST time one is established. Every later run
+    reuses it so child/operating runs can't rename the company (the amay → alex →
+    WellSync drift). First-write-wins."""
+    company_name = (company_name or "").strip()
+    if not company_name:
+        return
+    with _lock:
+        goal = _read(founder_id, company_id)
+        if goal is None:
+            return
+        if not goal.get("company_name"):
+            goal["company_name"] = company_name
+            _save(goal)
+
+
 def get_company_repo(founder_id: str, company_id: str | None = None) -> str:
     """The company's pinned product repo_url, or '' if none built yet."""
     with _lock:
@@ -391,6 +414,10 @@ def reset_for_new_launch(
             "current_goal_id": "",
             "operating_sessions": [],
             "kpis": data.get("kpis") or [],
+            # Fresh launch = new company → clear the pinned identity so it re-pins
+            # from THIS launch (don't inherit the prior company's name/repo).
+            "company_name": "",
+            "repo_url": "",
         })
         data.setdefault("budget", {"max_runs_per_day": 12, "max_cost_usd_per_run": 1.0})
         _save(data)

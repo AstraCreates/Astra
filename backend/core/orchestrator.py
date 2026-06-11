@@ -1789,14 +1789,22 @@ class Orchestrator:
             "company_id": company_id,
         }
         # Propagate the SAME company name the launch run chose, so operating-run agents
-        # don't invent a new one (the "Goon → TrueNorth" bug). Resolve: brain identity
-        # record → prior launch session meta → launch goal title ("Launch X" → X).
+        # don't invent a new one (the "Goon → TrueNorth / amay / WellSync" drift).
+        # Resolve: PINNED name on the company record → brain identity record → prior
+        # launch session meta → launch goal title ("Launch X" → X). Whatever resolves
+        # first is pinned so it can never change again.
         _company_name = ""
         try:
-            from backend.tools.company_brain import get_company_name as _gcn
-            _company_name = _gcn(founder_id, company_id=company_id) or ""
+            from backend.missions.company_goal import get_company_name as _pinned_name
+            _company_name = _pinned_name(founder_id, company_id) or ""
         except Exception:
             pass
+        if not _company_name:
+            try:
+                from backend.tools.company_brain import get_company_name as _gcn
+                _company_name = _gcn(founder_id, company_id=company_id) or ""
+            except Exception:
+                pass
         if not _company_name and prior_session_id:
             try:
                 from backend.core.session_store import get_session_meta as _gsm
@@ -1816,6 +1824,12 @@ class Orchestrator:
             except Exception:
                 pass
         if _company_name:
+            # Pin it (first-write-wins) so no later run can rename the company.
+            try:
+                from backend.missions.company_goal import set_company_name
+                set_company_name(founder_id, company_id, _company_name)
+            except Exception:
+                pass
             shared["company_name"] = _company_name
             await publish(session_id, {"type": "company_name", "name": _company_name})
             logger.info("continue_run: propagated company_name=%r for %s", _company_name, founder_id)
