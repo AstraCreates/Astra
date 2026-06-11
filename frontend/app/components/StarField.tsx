@@ -55,11 +55,11 @@ export default function StarField() {
           canvasOpacity: 1,
         }
         : {
-          count: 80,
-          radiusMin: 0.24,
-          radiusMax: 0.78,
-          alphaMin: 0.035,
-          alphaMax: 0.18,
+          count: 100,
+          radiusMin: 0.28,
+          radiusMax: 0.90,
+          alphaMin: 0.06,
+          alphaMax: 0.28,
           drift: 0.012,
           cool: "44,82,180",
           warm: "92,112,160",
@@ -67,7 +67,7 @@ export default function StarField() {
           glowWarm: "92,112,160",
           crossChance: 0.06,
           shootingChance: reduceMotion ? 0 : 0.00018,
-          canvasOpacity: 0.34,
+          canvasOpacity: 0.65,
         };
     }
 

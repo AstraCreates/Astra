@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getSetupStatus, saveServiceCredential, getComposioOAuthUrls, setupAccounts, submitGoal } from "@/lib/api";
 import ServiceLogo from "@/components/ServiceLogo";
-import PostOnboardingScreen from "@/components/PostOnboardingScreen";
 import type { AgentStackTemplate, AgentCatalogEntry, StackReadiness } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -987,7 +986,6 @@ export default function OnboardingWizard() {
   const stackName = selectedStackId === "custom" ? "Custom Stack" : (selectedStack?.name ?? "Idea to Revenue Stack");
 
   const [launching, setLaunching] = useState(false);
-  const [showWelcome, setShowWelcome] = useState(false);
 
   // localStorage may be full (quota exceeded). A thrown setItem must never block
   // navigation, AND the onboarding-done flag MUST persist — AppHome gates the whole
@@ -1006,7 +1004,6 @@ export default function OnboardingWizard() {
     if (launching) return;
     setLaunching(true);
     lsSet("astra_onboarding_done", "1");
-    lsSet("astra_show_tour", "1");
     if (name.trim()) lsSet("astra_onboarding_name", name.trim());
     if (goal.trim()) lsSet("astra_onboarding_goal", goal.trim());
     if (company.trim()) lsSet("astra_onboarding_company", company.trim());
@@ -1017,9 +1014,6 @@ export default function OnboardingWizard() {
       lsSet("astra_onboarding_stack", selectedStackId);
     }
 
-    // Show welcome screen immediately, submit goal in background.
-    setShowWelcome(true);
-
     const g = goal.trim();
     if (g) {
       const nm = (company.trim() || name.trim());
@@ -1029,10 +1023,10 @@ export default function OnboardingWizard() {
         ? { custom_agents: customAgents } : {};
       submitGoal(founderId, instruction, constraints, stack).catch(() => {});
     }
-  }
 
-  function handleWelcomeComplete() {
-    router.replace("/");
+    // Navigate to dashboard with welcome flag — PostOnboardingScreen runs there
+    // so the pull-up reveals the real dashboard (not this wizard page).
+    router.replace(`/?welcome=1&name=${encodeURIComponent(name.trim())}`);
   }
 
   async function handleSkip() {
@@ -1042,8 +1036,8 @@ export default function OnboardingWizard() {
 
   return (
     <>
-    {showWelcome && (
-      <PostOnboardingScreen name={name} onComplete={handleWelcomeComplete} />
+    {launching && (
+      <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "linear-gradient(135deg, #002eff 0%, #1a45ff 25%, #5df5e0 65%, #fefff6 100%)" }} />
     )}
     <div style={{
       minHeight: "100vh",

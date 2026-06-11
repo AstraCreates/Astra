@@ -40,11 +40,10 @@ export default function PostOnboardingScreen({
     const t1 = setTimeout(() => setPhrase("welcome"), 300);
     // Swap to tagline 2.5s after welcome appears
     const t2 = setTimeout(() => setPhrase("tagline"), 2800);
-    // Start pull-up 2.2s after tagline appears
-    const t3 = setTimeout(() => setPullingUp(true), 5200);
-    // Navigate AFTER pull-up animation finishes (0.9s) — this is why it
-    // sometimes didn't work: navigating early unmounted the component mid-animation.
-    const t4 = setTimeout(() => onCompleteRef.current(), 6100);
+    // Start pull-up 4.2s after tagline appears (tagline stays for ~4s)
+    const t3 = setTimeout(() => setPullingUp(true), 7000);
+    // Navigate AFTER pull-up animation finishes (0.9s)
+    const t4 = setTimeout(() => onCompleteRef.current(), 7900);
     return () => [t1, t2, t3, t4].forEach(clearTimeout);
   }, []);
 
@@ -58,7 +57,8 @@ export default function PostOnboardingScreen({
         alignItems: "center",
         justifyContent: "center",
         overflow: "hidden",
-        background: "#fff",
+        /* Static gradient shows instantly; shader overlays once loaded */
+        background: "linear-gradient(135deg, #002eff 0%, #1a45ff 25%, #5df5e0 65%, #fefff6 100%)",
         transform: pullingUp ? "translateY(-100%)" : "translateY(0)",
         transition: pullingUp
           ? "transform 0.9s cubic-bezier(0.76, 0, 0.24, 1)"

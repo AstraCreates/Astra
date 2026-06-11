@@ -30,15 +30,20 @@ export default function AppHome() {
     }
   }, []);
 
-  // Still checking localStorage — cover with blank screen matching preloader bg to avoid sidebar flash
+  // Still checking localStorage — transparent cover so body gradient shows (no flash)
   if (onboarded === null) return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#F3F4F7" }} />
+    <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "transparent" }} />
   );
 
-  // Post-onboarding celebration screen
+  // Post-onboarding celebration screen — runs here so pull-up reveals the real dashboard
   if (showWelcome) {
     const name = welcomeName || (typeof window !== "undefined" ? localStorage.getItem("astra_onboarding_name") || "" : "");
-    return <PostOnboardingScreen name={name} onComplete={() => router.replace("/")} />;
+    function handleWelcomeDone() {
+      try { localStorage.setItem("astra_show_tour", "1"); } catch {}
+      router.replace("/");
+      setTimeout(() => window.dispatchEvent(new CustomEvent("astra:show-tour")), 200);
+    }
+    return <PostOnboardingScreen name={name} onComplete={handleWelcomeDone} />;
   }
 
   // Not onboarded — show animated landing, not a redirect (avoids flash)
