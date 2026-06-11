@@ -104,11 +104,12 @@ html.antialiased {
   --red:   #ef4444; --rdim: rgba(239,68,68,.09);  --rb: rgba(239,68,68,.28);
 }
 
-body {
+body,
+[data-theme="light"] body {
   font-family: var(--font-instrument), "Instrument Sans", sans-serif;
   color: var(--fg);
-  background: linear-gradient(140deg, #c0d8ff 0%, #a8c4ff 18%, #bde0ff 38%, #c4f0e8 62%, #d4ffe8 80%, #e8fff4 100%) fixed;
-  background-color: #b8d4ff;
+  background: linear-gradient(140deg, #8ab4ff 0%, #6d9cff 18%, #96ccff 38%, #8ae0c8 62%, #a8ffd2 80%, #c8ffea 100%) fixed;
+  background-color: #8ab4ff;
 }
 
 [data-theme="dark"] body {
