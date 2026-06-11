@@ -14,6 +14,7 @@ in-flight buffer for the current run.
 """
 from __future__ import annotations
 
+import calendar
 import json
 import logging
 import os
@@ -55,8 +56,12 @@ def _vault() -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
 
+def _safe_session_id(session_id: str) -> str:
+    return "".join(c for c in session_id if c.isalnum() or c in ("_", "-"))[:128] or "unknown"
+
+
 def session_dir(session_id: str) -> Path:
-    d = _vault() / "sessions" / session_id
+    d = _vault() / "sessions" / _safe_session_id(session_id)
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -83,7 +88,10 @@ def _load_index() -> dict[str, Any]:
         return {}
 
 def _save_index(index: dict[str, Any]) -> None:
-    _index_path().write_text(json.dumps(index, indent=2, sort_keys=True))
+    p = _index_path()
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(index, indent=2, sort_keys=True))
+    tmp.replace(p)  # atomic on POSIX; best-effort on Windows
 
 
 def _with_company_id(record: dict[str, Any]) -> dict[str, Any]:
@@ -245,7 +253,7 @@ def load_events(session_id: str) -> list[tuple[int, dict]] | None:
                 line = line.strip()
                 if not line:
                     continue
-                candidate = line if not pending else f"{pending}\\n{line}"
+                candidate = line if not pending else f"{pending}\n{line}"
                 try:
                     obj = json.loads(candidate)
                 except json.JSONDecodeError:
@@ -309,7 +317,7 @@ def has_active_run(
             continue
         ts = s.get("created_at") or ""
         try:
-            epoch = time.mktime(time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")) - time.timezone
+            epoch = calendar.timegm(time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ"))
         except Exception:
             return True  # unknown age → assume active (safe: avoid duplicate dispatch)
         if (now - epoch) < stale_seconds:
@@ -321,14 +329,16 @@ def delete_session(session_id: str) -> bool:
     """Permanently remove a session's directory and index entry. Returns True if anything was removed."""
     import shutil
     removed = False
-    with _lock:
-        d = _vault() / "sessions" / session_id
-        if d.exists():
-            try:
-                shutil.rmtree(d)
-                removed = True
-            except Exception as exc:
-                logger.warning("session_store.delete_session rmtree failed for %s: %s", session_id, exc)
+    # rmtree outside the index lock — can take seconds on large dirs and would
+    # otherwise block every list_sessions / _load_index call globally.
+    d = _vault() / "sessions" / session_id
+    if d.exists():
+        try:
+            shutil.rmtree(d)
+            removed = True
+        except Exception as exc:
+            logger.warning("session_store.delete_session rmtree failed for %s: %s", session_id, exc)
+    with _index_lock:
         index = _load_index()
         if session_id in index:
             del index[session_id]

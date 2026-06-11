@@ -42,8 +42,12 @@ def _credits_dir() -> Path:
     return d
 
 
+def _safe_id(raw: str) -> str:
+    return "".join(c for c in raw if c.isalnum() or c in ("_", "-", "."))[:120] or "unknown"
+
+
 def _credits_path(founder_id: str) -> Path:
-    return _credits_dir() / f"{founder_id}.json"
+    return _credits_dir() / f"{_safe_id(founder_id)}.json"
 
 
 # ── Internal helpers ───────────────────────────────────────────────────────────
@@ -84,7 +88,10 @@ def _save(data: dict[str, Any]) -> None:
     data["updated_at"] = _now()
     if len(data.get("transactions", [])) > _MAX_TRANSACTIONS:
         data["transactions"] = data["transactions"][-_MAX_TRANSACTIONS:]
-    _credits_path(data["founder_id"]).write_text(json.dumps(data, indent=2))
+    p = _credits_path(data["founder_id"])
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2))
+    tmp.replace(p)  # atomic on POSIX
 
 
 def _make_tx(

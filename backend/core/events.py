@@ -111,7 +111,7 @@ def _redis_active_sessions() -> list[str]:
         r = _redis()
         if not r:
             return []
-        keys = r.keys("events:*")
+        keys = list(r.scan_iter("events:*", count=100))
         interrupted = []
         for key in keys:
             sid = key.split(":", 1)[1]

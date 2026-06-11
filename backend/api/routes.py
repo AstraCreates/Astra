@@ -49,7 +49,8 @@ def _write_env_key(key: str, value: str) -> None:
     env_path = ".env"
     try:
         try:
-            lines = open(env_path).readlines()
+            with open(env_path) as fh:
+                lines = fh.readlines()
         except FileNotFoundError:
             lines = []
         updated = False
@@ -60,7 +61,8 @@ def _write_env_key(key: str, value: str) -> None:
                 break
         if not updated:
             lines.append(f"{key}={value}\n")
-        open(env_path, "w").writelines(lines)
+        with open(env_path, "w") as fh:
+            fh.writelines(lines)
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("Could not write %s to .env: %s", key, e)
