@@ -210,14 +210,11 @@ Return ONLY valid JSON:
     try:
         response = generate(prompt, max_tokens=300, temperature=0.7)
 
-        # Extract JSON
-        import re
-
-        match = re.search(r"\{.*\}", response, re.DOTALL)
-        if not match:
+        # Extract JSON (resilient to truncation/prose wrappers).
+        from backend.core.json_extract import extract_json
+        goal_data = extract_json(response, prefer_keys=("title", "description"))
+        if not goal_data:
             return {"ok": False, "error": "invalid_llm_response"}
-
-        goal_data = json.loads(match.group(0))
 
         # Add to company_goal "next" bucket
         company_goal = get_company_goal(founder_id, resolved_company) or {

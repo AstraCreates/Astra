@@ -71,14 +71,12 @@ Now goals are 1-2 weeks, Next are 2-4 weeks, Later are after that."""
     try:
         response = generate(prompt, max_tokens=1500, model="large", temperature=0.7)
 
-        # Extract JSON from response
-        import re
-        match = re.search(r'\{.*\}', response, re.DOTALL)
-        if not match:
+        # Extract JSON from response (resilient to truncation/prose wrappers).
+        from backend.core.json_extract import extract_json
+        roadmap = extract_json(response, prefer_keys=("now", "next", "later"))
+        if not roadmap:
             logger.warning("No JSON in roadmap response: %s", response[:200])
             return {"ok": False, "error": "invalid_response"}
-
-        roadmap = json.loads(match.group(0))
         return {"ok": True, "roadmap": roadmap}
 
     except Exception as e:

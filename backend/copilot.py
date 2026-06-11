@@ -136,16 +136,9 @@ _TOOLS = {
 
 
 def _parse_action(raw: str) -> dict:
-    s = (raw or "").strip()
-    import re
-    m = re.search(r"\{.*\}", s, re.DOTALL)
-    if not m:
-        return {"action": "reply", "text": s}
-    try:
-        v = json.loads(m.group(0))
-        return v if isinstance(v, dict) else {"action": "reply", "text": s}
-    except Exception:
-        return {"action": "reply", "text": s}
+    from backend.core.json_extract import extract_json
+    v = extract_json(raw, prefer_keys=("action",))
+    return v if v else {"action": "reply", "text": (raw or "").strip()}
 
 
 async def run_copilot(founder_id: str, session_id: str, message: str) -> dict[str, Any]:

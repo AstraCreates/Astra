@@ -218,15 +218,8 @@ def tick_from_agent(session_id: str, agent: str) -> None:
 # ── Planner: next goal ───────────────────────────────────────────────────────────
 
 def _parse_obj(raw: str) -> dict[str, Any]:
-    s = (raw or "").strip()
-    m = re.search(r"\{.*\}", s, re.DOTALL)
-    if m:
-        s = m.group(0)
-    try:
-        v = json.loads(s)
-        return v if isinstance(v, dict) else {}
-    except Exception:
-        return {}
+    from backend.core.json_extract import extract_json
+    return extract_json(raw, prefer_keys=("title", "tasks"))
 
 
 def plan_next_goal(founder_id: str, company_id: str | None = None) -> dict[str, Any] | None:

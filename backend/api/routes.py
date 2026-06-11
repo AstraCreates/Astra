@@ -2969,10 +2969,10 @@ async def parse_audience_prompt(body: dict, request: Request):
     try:
         from backend.tools._llm import generate
         raw = await asyncio.to_thread(generate, llm_prompt, 400, False, "fast", 0.1)
-        m = _re.search(r'\{.*\}', raw, _re.DOTALL)
-        if not m:
+        from backend.core.json_extract import extract_json
+        parsed = extract_json(raw, prefer_keys=("titles", "industries"))
+        if not parsed:
             raise ValueError("no JSON in response")
-        parsed = json.loads(m.group())
         return {
             "titles":       str(parsed.get("titles") or ""),
             "locations":    str(parsed.get("locations") or ""),
