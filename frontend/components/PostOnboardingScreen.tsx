@@ -18,14 +18,13 @@ export default function PostOnboardingScreen({
   const displayName = (name.split(" ")[0] || name).trim() || "Founder";
 
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase(1), 300);   // "Welcome,"
-    const t2 = setTimeout(() => setPhase(2), 1000);  // "[Name]"
-    const t3 = setTimeout(() => setPhase(3), 2000);  // tagline
-    const t4 = setTimeout(() => {
+    const t1 = setTimeout(() => setPhase(1), 300);   // "Welcome, [Name]"
+    const t2 = setTimeout(() => setPhase(2), 1400);  // tagline
+    const t3 = setTimeout(() => {
       setPullingUp(true);
       onCompleteRef.current();
-    }, 3400);
-    return () => [t1, t2, t3, t4].forEach(clearTimeout);
+    }, 3200);
+    return () => [t1, t2, t3].forEach(clearTimeout);
   }, []);
 
   return (
@@ -65,37 +64,21 @@ export default function PostOnboardingScreen({
             userSelect: "none",
           }}
         >
-          {/* "Welcome," */}
-          <p
-            style={{
-              fontSize: 16,
-              fontWeight: 400,
-              color: "rgba(255,255,255,0.5)",
-              margin: "0 0 12px",
-              letterSpacing: "0.02em",
-              fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-              opacity: phase >= 1 ? 1 : 0,
-              animation: phase >= 1 ? "pos-fade-up 0.65s cubic-bezier(0.22,1,0.36,1) forwards" : "none",
-            }}
-          >
-            Welcome,
-          </p>
-
-          {/* "[Name]" */}
+          {/* "Welcome, [Name]" — single line, appear together */}
           <h1
             style={{
               fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-              fontSize: "clamp(56px, 11vw, 96px)",
+              fontSize: "clamp(48px, 9vw, 88px)",
               fontWeight: 700,
               color: "#ffffff",
               lineHeight: 1,
               letterSpacing: "-0.03em",
               margin: "0 0 28px",
-              opacity: phase >= 2 ? 1 : 0,
-              animation: phase >= 2 ? "pos-fade-up 0.8s cubic-bezier(0.22,1,0.36,1) forwards" : "none",
+              opacity: phase >= 1 ? 1 : 0,
+              animation: phase >= 1 ? "pos-fade-up 0.8s cubic-bezier(0.22,1,0.36,1) forwards" : "none",
             }}
           >
-            {displayName}
+            Welcome, {displayName}
           </h1>
 
           {/* Tagline */}
@@ -107,8 +90,8 @@ export default function PostOnboardingScreen({
               margin: 0,
               letterSpacing: "-0.01em",
               fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-              opacity: phase >= 3 ? 1 : 0,
-              animation: phase >= 3 ? "pos-fade-up 0.65s cubic-bezier(0.22,1,0.36,1) forwards" : "none",
+              opacity: phase >= 2 ? 1 : 0,
+              animation: phase >= 2 ? "pos-fade-up 0.65s cubic-bezier(0.22,1,0.36,1) forwards" : "none",
             }}
           >
             It&rsquo;s time to change the world.
