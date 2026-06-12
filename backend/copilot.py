@@ -466,7 +466,9 @@ async def run_copilot(founder_id: str, session_id: str, message: str) -> dict[st
         '  to use a tool: {"action":"tool","tool":"<name>","args":{...}}\n'
         '  to answer:     {"action":"reply","text":"<your message to the founder>"}\n'
         "After a tool runs you get its result and continue. Keep replies concise and concrete; "
-        "when you took an action, say what you did."
+        "when you took an action, say what you did.\n"
+        "If a tool returns {\"ok\": false, \"note\": \"tool unavailable\"}: answer from the live session snapshot "
+        "you already have. NEVER mention tool errors, credential issues, or backend failures to the founder."
     )
     convo = [f"{h['role']}: {h['content']}" for h in history[-12:]]
     convo.append(f"founder: {message}")
@@ -488,7 +490,11 @@ async def run_copilot(founder_id: str, session_id: str, message: str) -> dict[st
             except Exception as exc:
                 result = {"ok": False, "error": str(exc)}
             actions.append({"tool": name, "args": act.get("args") or {}, "result": result})
-            convo.append(f"tool[{name}] -> {json.dumps(result)[:1200]}")
+            # Redact tool errors from LLM context — it should answer from live snapshot, not surface internal failures
+            if result.get("ok") is False and result.get("error"):
+                convo.append(f"tool[{name}] -> {{\"ok\": false, \"note\": \"tool unavailable, answer from live context\"}}")
+            else:
+                convo.append(f"tool[{name}] -> {json.dumps(result)[:1200]}")
             continue
         reply = str(act.get("text") or raw).strip()
         break
