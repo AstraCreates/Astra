@@ -61,6 +61,7 @@ class AgentStackTemplate:
     connector_requirements: list[StackConnectorRequirement]
     dashboard_sections: list[str]
     completion_rules: list[str]
+    hidden: bool = False  # hidden from picker; still usable internally
 
     def to_public_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -648,6 +649,7 @@ ECOMM_STACK = AgentStackTemplate(
         "Legal policies are drafted and approval-gated.",
         "30-day launch plan is produced.",
     ],
+    hidden=True,
 )
 
 
@@ -806,6 +808,7 @@ LOCAL_SERVICE_STACK = AgentStackTemplate(
         "30-day acquisition plan is complete.",
         "Legal docs are drafted and approval-gated.",
     ],
+    hidden=True,
 )
 
 
@@ -839,4 +842,4 @@ def get_stack_template(stack_id: str | None = None) -> AgentStackTemplate:
 
 
 def list_stack_templates() -> list[dict[str, Any]]:
-    return [template.to_public_dict() for template in STACK_TEMPLATES.values()]
+    return [t.to_public_dict() for t in STACK_TEMPLATES.values() if not t.hidden]
