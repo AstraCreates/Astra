@@ -2811,6 +2811,42 @@ async def connect_sendgrid_stream(websocket: WebSocket, founder_id: str):
     await _run_playwright_ws(websocket, lambda sm, wi, eq: connect_sendgrid_live(founder_id, sm, wi, eq))
 
 
+@router.websocket("/connect/klaviyo/stream/{founder_id}")
+async def connect_klaviyo_stream(websocket: WebSocket, founder_id: str):
+    from backend.tools.provision_integrations import provision_klaviyo_live
+    await _run_playwright_ws(websocket, lambda sm, wi, eq: provision_klaviyo_live(founder_id, sm, wi, eq))
+
+
+@router.websocket("/connect/printful/stream/{founder_id}")
+async def connect_printful_stream(websocket: WebSocket, founder_id: str):
+    from backend.tools.provision_integrations import provision_printful_live
+    await _run_playwright_ws(websocket, lambda sm, wi, eq: provision_printful_live(founder_id, sm, wi, eq))
+
+
+@router.websocket("/connect/yelp/stream/{founder_id}")
+async def connect_yelp_stream(websocket: WebSocket, founder_id: str):
+    from backend.tools.provision_integrations import provision_yelp_live
+    await _run_playwright_ws(websocket, lambda sm, wi, eq: provision_yelp_live(founder_id, sm, wi, eq))
+
+
+@router.websocket("/connect/lemonsqueezy/stream/{founder_id}")
+async def connect_lemonsqueezy_stream(websocket: WebSocket, founder_id: str):
+    from backend.tools.provision_integrations import provision_lemonsqueezy_live
+    await _run_playwright_ws(websocket, lambda sm, wi, eq: provision_lemonsqueezy_live(founder_id, sm, wi, eq))
+
+
+@router.websocket("/connect/square/stream/{founder_id}")
+async def connect_square_stream(websocket: WebSocket, founder_id: str):
+    from backend.tools.provision_integrations import provision_square_sandbox_live
+    await _run_playwright_ws(websocket, lambda sm, wi, eq: provision_square_sandbox_live(founder_id, sm, wi, eq))
+
+
+@router.get("/connect/twilio/guide/{founder_id}")
+async def connect_twilio_guide(founder_id: str, request: Request):
+    from backend.tools.provision_integrations import provision_twilio_guide
+    return provision_twilio_guide(founder_id)
+
+
 @router.get("/setup/composio/connected/{founder_id}")
 async def composio_connected(founder_id: str, request: Request):
     """Return per-app Composio connection status for the founder."""

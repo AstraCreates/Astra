@@ -69,6 +69,64 @@ const SERVICES = [
   },
 ] as const;
 
+const ECOMM_SERVICES = [
+  {
+    key: "klaviyo",
+    credKey: "api_key",
+    label: "Klaviyo",
+    icon: "◻",
+    desc: "Email flows & campaigns for ecomm",
+    placeholder: "pk_xxxxxxxxxxxxxxxx",
+    createUrl: "https://www.klaviyo.com/account#api-keys-tab",
+    createLabel: "klaviyo.com/account",
+    steps: 3,
+  },
+  {
+    key: "printful",
+    credKey: "api_key",
+    label: "Printful",
+    icon: "◻",
+    desc: "Print-on-demand fulfillment",
+    placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    createUrl: "https://www.printful.com/dashboard/settings/api",
+    createLabel: "printful.com/dashboard/settings/api",
+    steps: 3,
+  },
+  {
+    key: "lemonsqueezy",
+    credKey: "api_key",
+    label: "Lemon Squeezy",
+    icon: "◻",
+    desc: "Digital product sales (5%+50¢/txn)",
+    placeholder: "eyJhbGciOiJSUzI1...",
+    createUrl: "https://app.lemonsqueezy.com/settings/api",
+    createLabel: "app.lemonsqueezy.com/settings/api",
+    steps: 3,
+  },
+  {
+    key: "square",
+    credKey: "access_token",
+    label: "Square",
+    icon: "◻",
+    desc: "POS, bookings & payments (sandbox first)",
+    placeholder: "EAAAlb...",
+    createUrl: "https://developer.squareup.com/apps",
+    createLabel: "developer.squareup.com/apps",
+    steps: 3,
+  },
+  {
+    key: "yelp",
+    credKey: "api_key",
+    label: "Yelp Fusion",
+    icon: "◻",
+    desc: "Competitor & market research (500 req/day free)",
+    placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    createUrl: "https://www.yelp.com/developers/v3/manage_app",
+    createLabel: "yelp.com/developers",
+    steps: 3,
+  },
+] as const;
+
 const COMPOSIO_APPS = [
   { key: "gmail", label: "Gmail", icon: "◻", desc: "Send from your inbox" },
   { key: "linkedin", label: "LinkedIn", icon: "▪", desc: "Post announcements" },
@@ -417,10 +475,12 @@ function IntegrationModal({
 
 // ── ServiceCard ────────────────────────────────────────────────────────────
 
+type AnyService = typeof SERVICES[number] | typeof ECOMM_SERVICES[number];
+
 function ServiceCard({
   svc, connected, founderId, onSaved,
 }: {
-  svc: typeof SERVICES[number];
+  svc: AnyService;
   connected: boolean;
   founderId: string;
   onSaved: () => void;
@@ -896,6 +956,75 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ── TwilioGuideCard ────────────────────────────────────────────────────────
+
+function TwilioGuideCard({ connected }: { connected: boolean }) {
+  const [open, setOpen] = useState(false);
+  const steps = [
+    "Go to twilio.com/try-twilio and sign up (free trial includes $15 credit)",
+    "Verify your phone number when prompted",
+    "In Console → Account Info, copy Account SID and Auth Token",
+    "Get a free number: Console → Phone Numbers → Manage → Buy a Number",
+    "Paste Account SID and Auth Token in the fields below",
+  ];
+  const [sid, setSid] = useState("");
+  const [token, setToken] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  return (
+    <div style={cardStyle(connected || saved, open)}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: (connected || saved) ? c.greenTint : c.bg }}>
+        <ServiceLogo serviceKey="twilio" label="Twilio" size={26} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: c.text }}>Twilio</span>
+            <StatusDot connected={connected || saved} />
+            {(connected || saved) && <span style={{ fontSize: 11, color: c.green, fontWeight: 500 }}>Connected</span>}
+          </div>
+          <span style={{ fontSize: 12, color: c.grey }}>SMS reminders for local service bookings (~$0.008/SMS)</span>
+        </div>
+        <button
+          onClick={() => setOpen(v => !v)}
+          style={{
+            padding: "6px 14px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
+            background: (connected || saved) ? c.greenTint : c.bg,
+            border: `1px solid ${(connected || saved) ? c.greenBorder : c.border}`,
+            color: (connected || saved) ? c.green : c.textSecondary,
+            cursor: "pointer",
+          }}
+        >
+          {(connected || saved) ? "Reconnect ↗" : "Setup guide →"}
+        </button>
+      </div>
+      {open && (
+        <div style={{ borderTop: `1px solid ${c.border}`, padding: "14px 18px", background: c.surface, display: "flex", flexDirection: "column", gap: 12 }}>
+          <p style={{ margin: 0, fontSize: 12, color: c.textSecondary, fontWeight: 600 }}>Requires phone verification — follow these steps:</p>
+          <ol style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 4 }}>
+            {steps.map((s, i) => (
+              <li key={i} style={{ fontSize: 13, color: c.text, lineHeight: 1.5 }}>{s}</li>
+            ))}
+          </ol>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input value={sid} onChange={e => setSid(e.target.value)} placeholder="Account SID (ACxxxxxxxx)"
+              style={{ flex: 1, minWidth: 180, padding: "8px 12px", fontSize: 13, borderRadius: 8, border: `1px solid ${c.border}`, background: c.bg, color: c.text, outline: "none", fontFamily: "var(--font-geist-mono, monospace)" }}
+              onFocus={e => (e.target.style.borderColor = c.blue)} onBlur={e => (e.target.style.borderColor = c.border)}
+            />
+            <input value={token} onChange={e => setToken(e.target.value)} placeholder="Auth Token"
+              style={{ flex: 1, minWidth: 180, padding: "8px 12px", fontSize: 13, borderRadius: 8, border: `1px solid ${c.border}`, background: c.bg, color: c.text, outline: "none", fontFamily: "var(--font-geist-mono, monospace)" }}
+              onFocus={e => (e.target.style.borderColor = c.blue)} onBlur={e => (e.target.style.borderColor = c.border)}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noopener noreferrer"
+              style={{ fontSize: 13, color: c.blue, textDecoration: "none" }}>twilio.com/try-twilio ↗</a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export default function SetupPage() {
@@ -918,6 +1047,13 @@ export default function SetupPage() {
     github: !!status?.github,
     vercel: !!status?.vercel,
     sendgrid: !!status?.sendgrid,
+  };
+  const ecommConnected: Partial<Record<(typeof ECOMM_SERVICES)[number]["key"], boolean>> = {
+    klaviyo: !!status?.klaviyo,
+    printful: !!status?.printful,
+    lemonsqueezy: !!status?.lemonsqueezy,
+    square: !!status?.square,
+    yelp: !!status?.yelp,
   };
 
   const loadStatus = useCallback(async () => {
@@ -1059,6 +1195,24 @@ export default function SetupPage() {
               Load OAuth links →
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Ecomm & Local Service */}
+      <div>
+        <SectionLabel>Ecomm &amp; Local Service</SectionLabel>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {ECOMM_SERVICES.map(svc => (
+            <ServiceCard
+              key={svc.key}
+              svc={svc}
+              connected={ecommConnected[svc.key] ?? false}
+              founderId={founderId}
+              onSaved={loadStatus}
+            />
+          ))}
+          {/* Twilio — guide only (phone verify required) */}
+          <TwilioGuideCard connected={!!status?.twilio} />
         </div>
       </div>
 

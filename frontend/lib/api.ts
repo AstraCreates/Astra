@@ -472,6 +472,12 @@ export interface SetupStatus {
   instagram: boolean;
   tiktok: boolean;
   meta_ads: boolean;
+  klaviyo?: boolean;
+  printful?: boolean;
+  yelp?: boolean;
+  lemonsqueezy?: boolean;
+  square?: boolean;
+  twilio?: boolean;
   composio?: boolean;
   apps?: Record<string, boolean>;
   zero_touch?: {
