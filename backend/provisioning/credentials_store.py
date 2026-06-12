@@ -15,6 +15,11 @@ _ENC_VERSION = 2
 _STORE_DIR: Path | None = None
 
 
+class CredentialsUnreadable(RuntimeError):
+    """Credentials file is encrypted but cannot be decrypted with the current key.
+    Raised to prevent silent overwrite of existing ciphertext with a fresh empty store."""
+
+
 def _store_dir() -> Path:
     if _STORE_DIR is not None:
         return Path(_STORE_DIR)
@@ -125,9 +130,11 @@ def _read_file(path: Path) -> tuple[dict, bool]:
         try:
             key = _require_creds_key()
             return _decrypt_payload(raw, key), False
-        except Exception:
-            # Wrong key or corrupted file — start fresh rather than crash
-            return {}, False
+        except Exception as exc:
+            raise CredentialsUnreadable(
+                f"Credentials file exists and is encrypted but cannot be decrypted "
+                f"(wrong key or corrupted). Original error: {exc}"
+            ) from exc
     return (raw if isinstance(raw, dict) else {}), True
 
 
