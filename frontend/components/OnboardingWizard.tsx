@@ -846,8 +846,9 @@ function StepQuiz({ onComplete, onBack, onSkip }: {
     sub:      { h: bizType === "local" ? "What kind of service?" : "What are you selling?", p: "Narrows agent instructions to your specific category." },
   };
 
-  const optionRow = (selected: boolean, onClick: () => void, label: string, desc: string, icon?: string) => (
+  const optionRow = (key: string, selected: boolean, onClick: () => void, label: string, desc: string, icon?: string) => (
     <div
+      key={key}
       onClick={onClick}
       style={{
         ...(selected ? CARD_SELECTED : CARD),
@@ -880,22 +881,22 @@ function StepQuiz({ onComplete, onBack, onSkip }: {
 
       {sub === "type" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {BIZ_TYPES.map(t => optionRow(bizType === t.id, () => setBizType(t.id), t.label, t.desc, t.icon))}
+          {BIZ_TYPES.map(t => optionRow(t.id, bizType === t.id, () => setBizType(t.id), t.label, t.desc, t.icon))}
         </div>
       )}
       {sub === "customer" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {CUSTOMER_TYPES.map(c => optionRow(customer === c.id, () => setCustomer(c.id), c.label, c.desc))}
+          {CUSTOMER_TYPES.map(c => optionRow(c.id, customer === c.id, () => setCustomer(c.id), c.label, c.desc))}
         </div>
       )}
       {sub === "stage" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {STAGES.map(s => optionRow(stage === s.id, () => setStage(s.id), s.label, s.desc))}
+          {STAGES.map(s => optionRow(s.id, stage === s.id, () => setStage(s.id), s.label, s.desc))}
         </div>
       )}
       {sub === "sub" && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          {subOptions.map(c => optionRow(subCat === c.id, () => setSubCat(c.id), c.label, c.desc))}
+          {subOptions.map(c => optionRow(c.id, subCat === c.id, () => setSubCat(c.id), c.label, c.desc))}
         </div>
       )}
 

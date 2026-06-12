@@ -49,7 +49,7 @@ export default function CookieNotice() {
         left: "50%",
         bottom: 20,
         transform: "translateX(-50%)",
-        zIndex: 180,
+        zIndex: 10000,
         width: "min(720px, calc(100vw - 32px))",
         borderRadius: 28,
         border: "1px solid var(--bd2)",
