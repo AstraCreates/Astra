@@ -16,14 +16,6 @@ const BARE_PREFIXES = ["/sign-in", "/sign-up", "/onboarding", "/invite", "/cooki
 // Public routes accessible without login (shareable session links)
 const PUBLIC_PREFIXES = [...BARE_PREFIXES, "/s/"];
 
-const TITLES: { match: (p: string) => boolean; title: string }[] = [
-  { match: (p) => p.startsWith("/goals"), title: "Checklist" },
-  { match: (p) => p.startsWith("/brain"), title: "Company Brain" },
-  { match: (p) => p.startsWith("/integrations"), title: "Integrations" },
-  { match: (p) => p.startsWith("/payments"), title: "Payments" },
-  { match: (p) => p.startsWith("/settings"), title: "Settings" },
-  { match: (p) => p.startsWith("/outreach"), title: "Outreach" },
-];
 
 function SignInScreen() {
   return (
@@ -162,7 +154,6 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   const tour = showTour ? <WorkspaceTour onDone={() => { localStorage.removeItem("astra_show_tour"); setShowTour(false); }} /> : null;
 
   const isHome = pathname === "/";
-  const title = TITLES.find((t) => t.match(pathname))?.title;
 
   // ── Mobile: full-width content, hamburger, off-canvas drawer ────────────────
   if (isMobile) {
@@ -196,9 +187,8 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
           <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zIndex: 100 }}>{children}</main>
         ) : (
           <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-            <div style={{ height: 46, display: "flex", alignItems: "center", padding: "0 14px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
-              <div className="topbar-title">{title || "Astra"}</div>
-            </div>
+            {/* Slim spacer so page content clears the floating hamburger */}
+            <div style={{ height: 46, flexShrink: 0 }} />
             <div key={pathname} className="page-fade" style={{ flex: 1, padding: 0 }}>{children}</div>
           </main>
         )}
@@ -215,9 +205,6 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
         <main style={{ flex: 1, minWidth: 0, height: "100vh", overflow: "hidden", position: "relative", zIndex: 100 }}>{children}</main>
       ) : (
         <main style={{ flex: 1, minWidth: 0, height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-          <div style={{ height: 44, display: "flex", alignItems: "center", padding: "0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
-            <div className="topbar-title">{title || "Astra"}</div>
-          </div>
           <div key={pathname} className="page-fade" style={{ flex: 1, overflowY: "auto", padding: 0 }}>{children}</div>
         </main>
       )}
