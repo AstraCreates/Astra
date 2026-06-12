@@ -744,7 +744,7 @@ function StepWelcome({ name, setName, company, setCompany, goal, setGoal, onNext
           Welcome to Astra
         </h1>
         <p style={{ fontSize: 14, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>
-          8 AI agents working in parallel to build your startup. Let's get you set up.
+          A team of AI agents working in parallel to build your startup. Let's get you set up.
         </p>
       </div>
 
@@ -1034,7 +1034,7 @@ function StepDone({ name, company, stackName, onLaunch }: {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, width: "100%", maxWidth: 420 }}>
         {[
-          ["🤖", "8 AI agents", "working in parallel"],
+          ["🤖", "AI agents", "working in parallel"],
           ["📦", "Artifacts", "docs, code, plans"],
           ["⚡", "Real actions", "deploy, send, file"],
         ].map(([icon, label, desc]) => (

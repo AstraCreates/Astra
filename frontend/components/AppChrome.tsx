@@ -50,7 +50,7 @@ function SignInScreen() {
           Your AI founding team
         </h1>
         <p style={{ fontSize: 13.5, color: "#737373", margin: "0 0 28px", lineHeight: 1.65, maxWidth: 290 }}>
-          8 specialized agents working in parallel — research, strategy, engineering, and marketing.
+          A team of specialized agents working in parallel — research, strategy, engineering, and marketing.
         </p>
 
         {/* White Google button */}
@@ -79,24 +79,6 @@ function SignInScreen() {
           </svg>
           Continue with Google
         </button>
-
-        {/* Feature grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 20, width: "100%" }}>
-          {[
-            { ic: "◈", label: "Research" },
-            { ic: "⚙", label: "Technical" },
-            { ic: "✦", label: "Marketing" },
-          ].map(({ ic, label }) => (
-            <div key={label} style={{
-              background: "#F3F4F7", borderRadius: 10,
-              padding: "12px 8px",
-              display: "flex", flexDirection: "column", alignItems: "center", gap: 5,
-            }}>
-              <span style={{ fontSize: 15, color: "#002EFF" }}>{ic}</span>
-              <span style={{ fontSize: 10, color: "#737373", fontWeight: 500, letterSpacing: "0.03em" }}>{label}</span>
-            </div>
-          ))}
-        </div>
 
         <p style={{ fontSize: 11, color: "#9CA3AF", margin: "20px 0 0", lineHeight: 1.5 }}>
           By continuing, you agree to our terms and privacy policy.
