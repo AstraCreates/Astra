@@ -1087,7 +1087,7 @@ export default function OnboardingWizard() {
   function onQuizComplete(r: QuizResult) {
     setQuizContext(r.contextBlock);
     setManualOverride(true);            // quiz pick beats goal-text recommendation
-    setSelectedStackId(r.stackId);
+    if (r.stackId) setSelectedStackId(r.stackId);
     setStep(2);
   }
 
