@@ -116,6 +116,43 @@ async def _load_live_context(session_id: str, founder_id: str) -> dict[str, Any]
             "text": _clip(event.get("summary") or event.get("message") or event.get("error") or event.get("instruction")),
         })
 
+    # Scan child sessions — agents dispatched by goal_engine run in children, not the
+    # parent. Without this the copilot sees an empty running_agents list even when
+    # web/technical are actively building.
+    child_running: list[dict] = []
+    try:
+        from backend.core.session_store import list_sessions
+        company_id_for_scan = meta.get("company_id") or founder_id
+        all_sessions = list_sessions(founder_id, limit=30, company_id=company_id_for_scan)
+        for s in all_sessions:
+            if s.get("status") != "running":
+                continue
+            sid = s.get("session_id") or ""
+            if sid == session_id:
+                continue
+            parent = s.get("parent_session_id") or ""
+            # Include direct children AND sibling sessions rooted at the same parent.
+            if parent == session_id or (parent and parent == (meta.get("parent_session_id") or "")):
+                child_running.append({
+                    "session_id": sid,
+                    "goal": _clip(s.get("goal"), 200),
+                    "kind": s.get("kind"),
+                    "parent_session_id": parent,
+                })
+    except Exception as exc:
+        logger.warning("copilot child session scan failed: %s", exc)
+
+    # Merge child-session agent names into running_agents so the prompt reflects reality.
+    child_agents_running: list[str] = []
+    for cs in child_running:
+        g = cs.get("goal") or ""
+        # Infer agent name from goal text heuristically (good enough for prompt context).
+        for token in ("technical", "web", "marketing", "sales", "legal", "design", "ops", "research", "finance"):
+            if token in g.lower():
+                child_agents_running.append(token)
+    child_agents_running = sorted(set(child_agents_running))
+    all_running = sorted(set(running_agents + child_agents_running))
+
     return {
         "session_id": session_id,
         "founder_id": founder_id,
@@ -158,11 +195,12 @@ async def _load_live_context(session_id: str, founder_id: str) -> dict[str, Any]
             }
             for name, agent in sorted(agents.items())
         ],
-        "running_agents": running_agents,
+        "running_agents": all_running,
         "blocked_agents": blocked_agents,
         "recent_artifacts": recent_artifacts,
         "recent_approvals": recent_approvals,
         "recent_events": latest_events,
+        "child_sessions_running": child_running,
     }
 
 
@@ -415,11 +453,13 @@ async def run_copilot(founder_id: str, session_id: str, message: str) -> dict[st
         "  - Other concrete work -> dispatch_agents with the right agents (marketing for GTM, sales for "
         "pipeline, legal for docs, design for brand, research for validation). Call list_agents if unsure.\n"
         "  - A broader objective -> set_goal with per-workstream tasks (it dispatches automatically).\n"
-        "  - If agents are already running and you just want to nudge them -> steer_agents.\n"
-        "  - Only company_goal/session_status/ask_brain when the founder is ASKING a question, not "
-        "commanding.\n"
-        "Never answer an imperative by restating the goal and asking 'what next' — take the action, then "
-        "say exactly what you dispatched in one line.\n\n"
+        "  - If running_agents or child_sessions_running is NON-EMPTY and the request is about that work "
+        "-> use steer_agents (don't dispatch again — agents are already on it). Tell the founder they're "
+        "already running and what you steered them with.\n"
+        "  - Only call company_goal/session_status/ask_brain when the founder is ASKING a question, NEVER "
+        "for imperatives.\n"
+        "NEVER dispatch_agents if running_agents or child_sessions_running already covers the task. "
+        "NEVER answer an imperative by restating the goal and listing options — take the action.\n\n"
         "LIVE SESSION SNAPSHOT (ground truth, refreshes every turn):\n"
         f"{json.dumps(live, indent=2, sort_keys=True)[:9000]}\n\n"
         'Respond with ONE JSON object per step:\n'
