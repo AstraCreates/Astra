@@ -57,6 +57,42 @@ from backend.tools.contact_scraper import (
     get_hn_hiring_contacts,
     discover_via_web_search,
 )
+from backend.tools.klaviyo_tools import (
+    klaviyo_create_list,
+    klaviyo_add_to_list,
+    klaviyo_create_campaign,
+    klaviyo_get_metrics,
+)
+from backend.tools.twilio_tools import (
+    twilio_send_sms,
+    twilio_send_bulk_sms,
+    twilio_create_messaging_service,
+    twilio_get_usage,
+)
+from backend.tools.square_tools import (
+    square_list_services,
+    square_create_service,
+    square_create_booking,
+    square_list_bookings,
+    square_get_revenue,
+)
+from backend.tools.printful_tools import (
+    printful_get_products,
+    printful_create_store_product,
+    printful_get_orders,
+    printful_create_order,
+)
+from backend.tools.yelp_tools import (
+    yelp_search_businesses,
+    yelp_get_business,
+    yelp_get_reviews,
+    yelp_search_categories,
+)
+from backend.tools.lemonsqueezy_tools import (
+    ls_create_product,
+    ls_get_sales,
+    ls_create_discount,
+)
 
 TOOL_REGISTRY: dict[str, callable] = {
     # Research
@@ -127,6 +163,42 @@ TOOL_REGISTRY: dict[str, callable] = {
     "company_brain_run_due_syncs": run_due_company_brain_syncs,
     "company_brain_import_source": import_company_brain_source,
     "company_brain_import_sources": import_company_brain_sources,
+
+    # Ecommerce — Klaviyo email marketing
+    "klaviyo_create_list": klaviyo_create_list,
+    "klaviyo_add_to_list": klaviyo_add_to_list,
+    "klaviyo_create_campaign": klaviyo_create_campaign,
+    "klaviyo_get_metrics": klaviyo_get_metrics,
+
+    # Ecommerce — Printful print-on-demand
+    "printful_get_products": printful_get_products,
+    "printful_create_store_product": printful_create_store_product,
+    "printful_get_orders": printful_get_orders,
+    "printful_create_order": printful_create_order,
+
+    # Ecommerce — Lemon Squeezy digital products
+    "ls_create_product": ls_create_product,
+    "ls_get_sales": ls_get_sales,
+    "ls_create_discount": ls_create_discount,
+
+    # Local service — Square POS + appointments
+    "square_list_services": square_list_services,
+    "square_create_service": square_create_service,
+    "square_create_booking": square_create_booking,
+    "square_list_bookings": square_list_bookings,
+    "square_get_revenue": square_get_revenue,
+
+    # Local service — Twilio SMS
+    "twilio_send_sms": twilio_send_sms,
+    "twilio_send_bulk_sms": twilio_send_bulk_sms,
+    "twilio_create_messaging_service": twilio_create_messaging_service,
+    "twilio_get_usage": twilio_get_usage,
+
+    # Local service — Yelp competitor/market research
+    "yelp_search_businesses": yelp_search_businesses,
+    "yelp_get_business": yelp_get_business,
+    "yelp_get_reviews": yelp_get_reviews,
+    "yelp_search_categories": yelp_search_categories,
 }
 
 

@@ -34,6 +34,15 @@ _CONNECTOR_SERVICE_ALIASES: dict[str, tuple[str, ...]] = {
     "product_tracker": ("linear", "jira", "github", "composio"),
     "figma": ("figma", "composio"),
     "obsidian": ("obsidian",),
+    # Ecommerce connectors
+    "email_marketing": ("klaviyo", "sendgrid", "resend", "mailchimp"),
+    "fulfillment": ("printful", "printify"),
+    "digital_sales": ("lemonsqueezy", "gumroad", "stripe"),
+    # Local service connectors
+    "sms": ("twilio",),
+    "pos_payments": ("square", "stripe"),
+    "booking": ("square", "acuity", "calendly"),
+    "reviews_data": ("yelp",),
 }
 
 

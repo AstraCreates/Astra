@@ -43,6 +43,14 @@ _FIELD_SPECS: dict[str, list[dict[str, Any]]] = {
     "figma": [{"key": "token", "required": True}],
     "sendgrid": [{"key": "api_key", "required": True}],
     "obsidian": [{"key": "vault_path", "required": True}],
+    # Ecommerce
+    "klaviyo": [{"key": "api_key", "required": True}],
+    "printful": [{"key": "api_key", "required": True}],
+    "lemonsqueezy": [{"key": "api_key", "required": True}],
+    # Local service
+    "twilio": [{"key": "account_sid", "required": True}, {"key": "auth_token", "required": True}],
+    "square": [{"key": "access_token", "required": True}, {"key": "location_id", "required": False}],
+    "yelp": [{"key": "api_key", "required": True}],
 }
 
 _WEBHOOK_CAPABLE = {"github", "slack", "discord", "notion", "google_drive", "linear", "crm", "helpdesk", "product_tracker"}
@@ -289,6 +297,60 @@ def _sendgrid_check(saved: dict[str, Any]) -> dict[str, Any]:
     return _bearer_get("https://api.sendgrid.com/v3/user/profile", str(saved.get("api_key") or saved.get("token") or ""))
 
 
+def _klaviyo_check(saved: dict[str, Any]) -> dict[str, Any]:
+    key = str(saved.get("api_key") or "")
+    response = requests.get(
+        "https://a.klaviyo.com/api/accounts/",
+        headers={"Authorization": f"Klaviyo-API-Key {key}", "revision": "2024-02-15"},
+        timeout=DEFAULT_TIMEOUT,
+    )
+    if response.status_code < 400:
+        return {"status": "ok", "ok": True, "http_status": response.status_code}
+    return {"status": "error", "ok": False, "http_status": response.status_code, "detail": response.text[:240]}
+
+
+def _twilio_check(saved: dict[str, Any]) -> dict[str, Any]:
+    sid = str(saved.get("account_sid") or "")
+    token = str(saved.get("auth_token") or "")
+    response = requests.get(
+        f"https://api.twilio.com/2010-04-01/Accounts/{sid}.json",
+        auth=(sid, token),
+        timeout=DEFAULT_TIMEOUT,
+    )
+    if response.status_code < 400:
+        return {"status": "ok", "ok": True, "http_status": response.status_code}
+    return {"status": "error", "ok": False, "http_status": response.status_code, "detail": response.text[:240]}
+
+
+def _square_check(saved: dict[str, Any]) -> dict[str, Any]:
+    return _bearer_get(
+        "https://connect.squareup.com/v2/locations",
+        str(saved.get("access_token") or ""),
+        extra_headers={"Square-Version": "2024-01-17"},
+    )
+
+
+def _printful_check(saved: dict[str, Any]) -> dict[str, Any]:
+    return _bearer_get("https://api.printful.com/store", str(saved.get("api_key") or ""))
+
+
+def _yelp_check(saved: dict[str, Any]) -> dict[str, Any]:
+    response = requests.get(
+        "https://api.yelp.com/v3/businesses/search",
+        headers={"Authorization": f"Bearer {saved.get('api_key', '')}"},
+        params={"term": "coffee", "location": "NYC", "limit": "1"},
+        timeout=DEFAULT_TIMEOUT,
+    )
+    if response.status_code < 400:
+        return {"status": "ok", "ok": True, "http_status": response.status_code}
+    return {"status": "error", "ok": False, "http_status": response.status_code, "detail": response.text[:240]}
+
+
+def _lemonsqueezy_check(saved: dict[str, Any]) -> dict[str, Any]:
+    return _bearer_get("https://api.lemonsqueezy.com/v1/stores", str(saved.get("api_key") or ""),
+                       extra_headers={"Accept": "application/vnd.api+json"})
+
+
 def _sanitize_provider_result(value: Any, saved: dict[str, Any]) -> Any:
     if isinstance(value, dict):
         return {key: _sanitize_provider_result(item, saved) for key, item in value.items()}
@@ -335,6 +397,12 @@ _LIVE_CHECKS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "sendgrid": _sendgrid_check,
     "website_cms": _vercel_check,
     "product_tracker": _linear_check,
+    "klaviyo": _klaviyo_check,
+    "twilio": _twilio_check,
+    "square": _square_check,
+    "printful": _printful_check,
+    "yelp": _yelp_check,
+    "lemonsqueezy": _lemonsqueezy_check,
 }
 
 

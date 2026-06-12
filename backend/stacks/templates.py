@@ -507,7 +507,7 @@ ECOMM_STACK = AgentStackTemplate(
     target_user="Founders launching or scaling an online store (physical goods, digital products, subscriptions, or print-on-demand).",
     primary_outcome="Launch a complete ecommerce operation: store, product copy, email flows, paid + organic acquisition, and supply chain basics.",
     description=(
-        "End-to-end ecommerce launch kit: Shopify store setup, product catalog, brand and visual direction, "
+        "End-to-end ecommerce launch kit: Medusa.js store (free, open-source), product catalog, brand and visual direction, "
         "email marketing flows, social + paid acquisition strategy, SEO, legal/compliance, and a 30-day launch plan."
     ),
     input_prompts=[
@@ -533,7 +533,7 @@ ECOMM_STACK = AgentStackTemplate(
             title="Store brand direction",
             instruction=(
                 "Create brand direction for an ecommerce store: color palette, typography, product image style, "
-                "homepage layout, and packaging/unboxing concept. Shopify theme recommendation."
+                "homepage layout, and packaging/unboxing concept. Medusa.js storefront style direction."
             ),
             depends_on=["t_research"],
             artifacts=["brand_direction", "theme_recommendation"],
@@ -543,11 +543,12 @@ ECOMM_STACK = AgentStackTemplate(
             agent="web",
             title="Store build",
             instruction=(
-                "Build and deploy the ecommerce storefront. Options in priority order: "
-                "(1) Shopify store via Shopify API/CLI (preferred — most reliable, best conversion), "
-                "(2) Next.js + Stripe + Supabase custom store if Shopify token unavailable. "
-                "Include: homepage, product pages with compelling copy, cart/checkout, email capture, "
-                "about page, and contact. All pages must be demo-accessible without account creation."
+                "Build and deploy the ecommerce storefront using Medusa.js (free, open-source): "
+                "scaffold with `npx create-medusa-app`, backend on Railway free tier, Next.js storefront on Vercel. "
+                "Do NOT use Shopify (paid). "
+                "Include: homepage with product grid, product detail pages with compelling copy, cart/checkout "
+                "via Stripe, email capture, about page, and contact. "
+                "All pages must be demo-accessible without account creation — seed demo product data."
             ),
             depends_on=["t_research", "t_design"],
             artifacts=["store_url", "product_pages", "checkout_flow"],
@@ -605,7 +606,7 @@ ECOMM_STACK = AgentStackTemplate(
         StackArtifact("product_brief", "Product brief", "research", "Product positioning, key claims, differentiation."),
         StackArtifact("pricing_hypothesis", "Pricing hypothesis", "research", "Pricing and margin model."),
         StackArtifact("brand_direction", "Brand direction", "design", "Visual identity, theme rec, packaging concept."),
-        StackArtifact("theme_recommendation", "Theme recommendation", "design", "Shopify theme + customisation notes."),
+        StackArtifact("theme_recommendation", "Store style direction", "design", "Medusa.js storefront visual direction."),
         StackArtifact("store_url", "Store URL", "web", "Live store or preview URL."),
         StackArtifact("product_pages", "Product pages", "web", "Built and copy-complete product pages."),
         StackArtifact("checkout_flow", "Checkout flow", "web", "Cart + checkout configured."),
@@ -629,11 +630,14 @@ ECOMM_STACK = AgentStackTemplate(
         StackApprovalGate("legal_publish", "Publish legal docs", "policies are drafted", "publishing policies to live store", "Policies must be founder-reviewed before they bind customers."),
     ],
     connector_requirements=[
-        StackConnectorRequirement("shopify", "Shopify", "ecomm_platform", "Create and configure the store, products, and checkout.", True),
+        StackConnectorRequirement("github", "GitHub", "code", "Host the Medusa.js store codebase.", True),
+        StackConnectorRequirement("vercel", "Vercel", "deployment", "Deploy the Next.js storefront.", True),
         StackConnectorRequirement("stripe", "Stripe", "payments", "Payment processing if building a custom store (fallback to Shopify Payments if Shopify).", False),
         StackConnectorRequirement("github", "GitHub", "code", "Store codebase if building custom Next.js store.", False),
         StackConnectorRequirement("vercel", "Vercel", "deployment", "Deploy custom store if not using Shopify hosting.", False),
-        StackConnectorRequirement("klaviyo", "Klaviyo", "email_marketing", "Email flows, abandoned cart, post-purchase automation.", False),
+        StackConnectorRequirement("email_marketing", "Klaviyo", "email_marketing", "Email flows, abandoned cart, post-purchase automation.", False),
+        StackConnectorRequirement("fulfillment", "Printful", "fulfillment", "Print-on-demand product fulfillment.", False),
+        StackConnectorRequirement("digital_sales", "Lemon Squeezy", "digital_sales", "Digital product sales and license delivery.", False),
         StackConnectorRequirement("gmail", "Gmail", "outreach", "Founder-approved transactional and launch emails.", False),
         StackConnectorRequirement("meta_ads", "Meta Ads", "paid_social", "Run paid acquisition campaigns.", False),
     ],
@@ -690,11 +694,13 @@ LOCAL_SERVICE_STACK = AgentStackTemplate(
             agent="web",
             title="Booking website",
             instruction=(
-                "Build and deploy a local service booking website. Must include: "
+                "Build and deploy a local service booking website on Next.js via Vercel. Must include: "
                 "hero with service name + location + CTA, services menu with pricing, "
-                "online booking integration (embed Acuity Scheduling widget, or Square Appointments, or Calendly), "
-                "staff/team section, photo gallery placeholder, customer reviews section, contact + map embed, "
-                "and a mobile-first layout. Deploy via Vercel on Next.js. "
+                "online booking via Cal.com embed (free, open-source — use the inline iframe widget: "
+                "`<iframe src='https://cal.com/{username}' />` or the @calcom/embed-react package). "
+                "Do NOT use Acuity Scheduling (paid). "
+                "Staff/team section, photo gallery placeholder, customer reviews section, contact + map embed, "
+                "and a mobile-first layout. "
                 "All pages must be accessible without login — demo mode with sample data."
             ),
             depends_on=["t_research", "t_design"],
@@ -786,9 +792,10 @@ LOCAL_SERVICE_STACK = AgentStackTemplate(
     connector_requirements=[
         StackConnectorRequirement("github", "GitHub", "code", "Host and version the booking site codebase.", True),
         StackConnectorRequirement("vercel", "Vercel", "deployment", "Deploy the booking website.", True),
-        StackConnectorRequirement("square", "Square", "payments_pos", "In-person and online payments, appointments, and POS.", False),
-        StackConnectorRequirement("acuity", "Acuity Scheduling", "booking", "Online appointment booking and calendar sync.", False),
-        StackConnectorRequirement("twilio", "Twilio", "sms", "Automated appointment reminder and confirmation SMS.", False),
+        StackConnectorRequirement("pos_payments", "Square", "payments_pos", "In-person and online payments, appointments, and POS.", False),
+        StackConnectorRequirement("booking", "Cal.com", "booking", "Online appointment booking (Cal.com embed — free, open source).", False),
+        StackConnectorRequirement("sms", "Twilio", "sms", "Automated appointment reminder and confirmation SMS.", False),
+        StackConnectorRequirement("reviews_data", "Yelp", "reviews_data", "Competitor and market research via Yelp Fusion.", False),
         StackConnectorRequirement("instagram", "Instagram", "social", "Post organic content and run local paid campaigns.", False),
         StackConnectorRequirement("gmail", "Gmail", "email", "Booking confirmations and marketing emails.", False),
     ],

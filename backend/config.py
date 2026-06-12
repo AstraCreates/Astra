@@ -183,6 +183,18 @@ class Settings(BaseSettings):
     notion_token: str = ""
     notion_operating_parent_id: str = ""
 
+    # Ecommerce integrations
+    klaviyo_api_key: str = ""
+    printful_api_key: str = ""
+    lemonsqueezy_api_key: str = ""
+
+    # Local service integrations
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    square_access_token: str = ""
+    square_location_id: str = ""
+    yelp_api_key: str = ""
+
     # Frontend env vars that may leak into .env — ignored by backend
     next_public_clerk_publishable_key: str = ""
 
