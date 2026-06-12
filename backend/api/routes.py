@@ -58,7 +58,7 @@ def _infer_stack_id(instruction: str) -> str | None:
             "- saas: software, app, platform, dashboard, API, SaaS, web tool, agency, content/media\n\n"
             "Reply with ONLY one word: ecomm, local_service, or saas"
         )
-        result = generate(prompt, max_tokens=10, model="fast", temperature=0.0).strip().lower()
+        result = generate(prompt, model="fast", temperature=0.0).strip().lower()
         if result in ("ecomm", "local_service"):
             return result
         return None
