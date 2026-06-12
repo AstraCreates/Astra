@@ -6,6 +6,10 @@ import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getSetupStatus, saveServiceCredential, getComposioOAuthUrls, setupAccounts, submitGoal } from "@/lib/api";
 import ServiceLogo from "@/components/ServiceLogo";
 import type { AgentStackTemplate, AgentCatalogEntry, StackReadiness } from "@/lib/api";
+import {
+  BIZ_TYPES, CUSTOMER_TYPES, STAGES, LOCAL_CATEGORIES, ECOMM_CATEGORIES,
+  STACK_MAP, buildQuizContext, type QuizResult,
+} from "@/components/BusinessQuizModal";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -795,6 +799,126 @@ function StepWelcome({ name, setName, company, setCompany, goal, setGoal, onNext
   );
 }
 
+// ── Step 1.5: Business quiz ────────────────────────────────────────────────────
+
+type QuizSub = "type" | "customer" | "stage" | "sub";
+
+function StepQuiz({ onComplete, onBack, onSkip }: {
+  onComplete: (result: QuizResult) => void;
+  onBack: () => void;
+  onSkip: () => void;
+}) {
+  const [sub, setSub] = useState<QuizSub>("type");
+  const [bizType, setBizType] = useState("");
+  const [customer, setCustomer] = useState("");
+  const [stage, setStage] = useState("");
+  const [subCat, setSubCat] = useState("");
+
+  const needsSub = bizType === "local" || bizType === "ecomm";
+  const subOptions = bizType === "local" ? LOCAL_CATEGORIES : ECOMM_CATEGORIES;
+  const SUBS: QuizSub[] = needsSub ? ["type", "customer", "stage", "sub"] : ["type", "customer", "stage"];
+  const subIdx = SUBS.indexOf(sub);
+  const isLast = sub === "sub" || (!needsSub && sub === "stage");
+
+  const canAdvance =
+    (sub === "type" && bizType) ||
+    (sub === "customer" && customer) ||
+    (sub === "stage" && stage) ||
+    (sub === "sub" && subCat);
+
+  function finish(subVal: string) {
+    const stackId = STACK_MAP[bizType] || "idea_to_revenue";
+    const contextBlock = buildQuizContext(bizType, customer, stage, subVal);
+    onComplete({ stackId, contextBlock, businessType: bizType, customerType: customer, stage, subCategory: subVal });
+  }
+
+  function advance() {
+    if (sub === "type") { setSub("customer"); return; }
+    if (sub === "customer") { setSub("stage"); return; }
+    if (sub === "stage") { needsSub ? setSub("sub") : finish(""); return; }
+    if (sub === "sub") { finish(subCat); return; }
+  }
+
+  const TITLES: Record<QuizSub, { h: string; p: string }> = {
+    type:     { h: "What type of business is this?", p: "Astra picks the right agents and stack for you." },
+    customer: { h: "Who are your customers?",        p: "Shapes sales motion, channels, and pricing model." },
+    stage:    { h: "Where are you right now?",       p: "Agents adjust their output to your starting point." },
+    sub:      { h: bizType === "local" ? "What kind of service?" : "What are you selling?", p: "Narrows agent instructions to your specific category." },
+  };
+
+  const optionRow = (selected: boolean, onClick: () => void, label: string, desc: string, icon?: string) => (
+    <div
+      onClick={onClick}
+      style={{
+        ...(selected ? CARD_SELECTED : CARD),
+        display: "flex", alignItems: "center", gap: 12, padding: "13px 16px",
+      }}
+    >
+      {icon && <span style={{ fontSize: 18, lineHeight: 1, color: T.grey }}>{icon}</span>}
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>{label}</div>
+        <div style={{ fontSize: 11, color: T.textMuted, marginTop: 2 }}>{desc}</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <span style={SECTION_LABEL}>Step {subIdx + 1} of {SUBS.length}</span>
+        <button onClick={onSkip} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: T.textMuted, padding: 0 }}>
+          Skip quiz →
+        </button>
+      </div>
+
+      <div>
+        <h2 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 6px", color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif", letterSpacing: "-0.02em" }}>
+          {TITLES[sub].h}
+        </h2>
+        <p style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>{TITLES[sub].p}</p>
+      </div>
+
+      {sub === "type" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {BIZ_TYPES.map(t => optionRow(bizType === t.id, () => setBizType(t.id), t.label, t.desc, t.icon))}
+        </div>
+      )}
+      {sub === "customer" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {CUSTOMER_TYPES.map(c => optionRow(customer === c.id, () => setCustomer(c.id), c.label, c.desc))}
+        </div>
+      )}
+      {sub === "stage" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {STAGES.map(s => optionRow(stage === s.id, () => setStage(s.id), s.label, s.desc))}
+        </div>
+      )}
+      {sub === "sub" && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          {subOptions.map(c => optionRow(subCat === c.id, () => setSubCat(c.id), c.label, c.desc))}
+        </div>
+      )}
+
+      {bizType && (
+        <div style={{ padding: "10px 14px", background: T.blueTint, border: `1px solid ${T.blueMid}`, borderRadius: 12, fontSize: 12, color: T.textSecondary }}>
+          Stack: <span style={{ color: T.blue, fontWeight: 600 }}>
+            {STACK_MAP[bizType] === "ecomm" ? "Ecommerce Stack" :
+             STACK_MAP[bizType] === "local_service" ? "Local Service Stack" :
+             "Idea to Revenue Stack"}
+          </span>
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <button style={BTN_GHOST} onClick={() => { subIdx > 0 ? setSub(SUBS[subIdx - 1]) : onBack(); }}>← Back</button>
+        <button style={{ ...BTN_PRIMARY, opacity: canAdvance ? 1 : 0.4 }} disabled={!canAdvance} onClick={advance}>
+          {isLast ? "Continue →" : "Next →"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Step 2: Choose stack ──────────────────────────────────────────────────────
 
 function StepChooseStack({ stacks, selectedStackId, onSelect, recommendation, onBack, onNext }: {
@@ -943,9 +1067,9 @@ function StepDone({ name, company, stackName, onLaunch }: {
 
 export default function OnboardingWizard() {
   const router = useRouter();
-  const { userId } = useDevUser();
+  const { userId, user } = useDevUser();
   const founderId = userId === "anon" ? "founder_001" : userId;
-  const userEmail = "";
+  const userEmail = user.email ?? "";
 
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
@@ -958,6 +1082,14 @@ export default function OnboardingWizard() {
   const [recommendation, setRecommendation] = useState<{ stack_id: string; reason: string } | null>(null);
   const [manualOverride, setManualOverride] = useState(false);
   const [readiness, setReadiness] = useState<StackReadiness | null>(null);
+  const [quizContext, setQuizContext] = useState("");
+
+  function onQuizComplete(r: QuizResult) {
+    setQuizContext(r.contextBlock);
+    setManualOverride(true);            // quiz pick beats goal-text recommendation
+    setSelectedStackId(r.stackId);
+    setStep(2);
+  }
 
   function toggleCustomAgent(id: string) {
     if (REQUIRED_AGENTS.has(id)) return;
@@ -1018,9 +1150,10 @@ export default function OnboardingWizard() {
     if (g) {
       const nm = (company.trim() || name.trim());
       const stack = selectedStackId || "idea_to_revenue";
-      const instruction = nm ? `Company/project name: ${nm}\n\n${g}` : g;
+      const base = nm ? `Company/project name: ${nm}\n\n${g}` : g;
+      const instruction = quizContext ? `${quizContext}\n\n---\n${base}` : base;
       const constraints = (selectedStackId === "custom" && customAgents.length > 0)
-        ? { custom_agents: customAgents } : {};
+        ? { agents: customAgents } : {};
       submitGoal(founderId, instruction, constraints, stack).catch(() => {});
     }
 
@@ -1071,7 +1204,10 @@ export default function OnboardingWizard() {
         boxShadow: T.shadowMd,
         padding: "36px 40px",
       }}>
-        <StepDots step={step} total={4} />
+        <StepDots
+          step={selectedStackId === "custom" ? step : (step >= 4 ? step - 1 : step)}
+          total={selectedStackId === "custom" ? 6 : 5}
+        />
 
         {step === 0 && (
           <StepWelcome
@@ -1083,30 +1219,38 @@ export default function OnboardingWizard() {
         )}
 
         {step === 1 && (
+          <StepQuiz
+            onComplete={onQuizComplete}
+            onBack={() => setStep(0)}
+            onSkip={() => setStep(2)}
+          />
+        )}
+
+        {step === 2 && (
           <StepChooseStack
             stacks={stacks} selectedStackId={selectedStackId}
             onSelect={id => { setManualOverride(true); setSelectedStackId(id); }}
-            recommendation={recommendation} onBack={() => setStep(0)}
-            onNext={() => setStep(selectedStackId === "custom" ? 2 : 3)}
+            recommendation={recommendation} onBack={() => setStep(1)}
+            onNext={() => setStep(selectedStackId === "custom" ? 3 : 4)}
           />
         )}
 
-        {step === 2 && selectedStackId === "custom" && (
+        {step === 3 && selectedStackId === "custom" && (
           <StepCustomStack
             selected={customAgents} onToggle={toggleCustomAgent}
-            onBack={() => setStep(1)} onNext={() => setStep(4)}
-          />
-        )}
-
-        {step === 3 && (
-          <StepConnectIntegrations
-            stackName={stackName} readiness={readiness}
-            founderId={founderId} userEmail={userEmail}
-            onBack={() => setStep(1)} onNext={() => setStep(4)}
+            onBack={() => setStep(2)} onNext={() => setStep(4)}
           />
         )}
 
         {step === 4 && (
+          <StepConnectIntegrations
+            stackName={stackName} readiness={readiness}
+            founderId={founderId} userEmail={userEmail}
+            onBack={() => setStep(selectedStackId === "custom" ? 3 : 2)} onNext={() => setStep(5)}
+          />
+        )}
+
+        {step === 5 && (
           <StepDone name={name} company={company} stackName={stackName} onLaunch={handleLaunch} />
         )}
 

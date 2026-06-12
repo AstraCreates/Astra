@@ -48,6 +48,7 @@ export function useDevUser() {
     isLoading,
     user: {
       id: userId,
+      email: googleEmail,
       fullName: session?.user?.name ?? googleEmail ?? "Dev User",
       imageUrl: session?.user?.image ?? null,
     },

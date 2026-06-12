@@ -18,7 +18,7 @@ interface Props {
 
 type Step = "type" | "customer" | "stage" | "sub" | "done";
 
-const BIZ_TYPES = [
+export const BIZ_TYPES = [
   { id: "saas", label: "SaaS / Web App", icon: "⬡", desc: "Software, tools, platforms, dashboards" },
   { id: "ecomm", label: "Ecommerce", icon: "◈", desc: "Online store — physical, digital, or POD" },
   { id: "local", label: "Local Service", icon: "◉", desc: "Salon, gym, restaurant, cleaning, tutoring…" },
@@ -26,19 +26,19 @@ const BIZ_TYPES = [
   { id: "content", label: "Content / Creator", icon: "◈", desc: "Media, newsletter, community, info products" },
 ];
 
-const CUSTOMER_TYPES = [
+export const CUSTOMER_TYPES = [
   { id: "b2c", label: "Consumers (B2C)", desc: "Individuals or households" },
   { id: "b2b", label: "Businesses (B2B)", desc: "Companies, teams, or professionals" },
   { id: "both", label: "Both / Marketplace", desc: "Serve both sides or a two-sided market" },
 ];
 
-const STAGES = [
+export const STAGES = [
   { id: "idea", label: "Idea — build from scratch", desc: "No product yet, starting fresh" },
   { id: "mvp", label: "Have a prototype / MVP", desc: "Something exists, needs shipping or improving" },
   { id: "live", label: "Already live, need to grow", desc: "Customers exist, focus is scale or expansion" },
 ];
 
-const LOCAL_CATEGORIES = [
+export const LOCAL_CATEGORIES = [
   { id: "beauty", label: "Beauty & Wellness", desc: "Salons, barbershops, spas, nails" },
   { id: "fitness", label: "Fitness & Sports", desc: "Gyms, yoga, personal training" },
   { id: "food", label: "Food & Beverage", desc: "Restaurants, cafes, catering, bakeries" },
@@ -47,14 +47,14 @@ const LOCAL_CATEGORIES = [
   { id: "retail", label: "Retail / Boutique", desc: "Physical shop or pop-up" },
 ];
 
-const ECOMM_CATEGORIES = [
+export const ECOMM_CATEGORIES = [
   { id: "physical", label: "Physical Products", desc: "Ship tangible goods to customers" },
   { id: "digital", label: "Digital Products", desc: "Files, templates, software, courses" },
   { id: "subscription", label: "Subscriptions / Box", desc: "Recurring physical or digital deliveries" },
   { id: "pod", label: "Print-on-Demand", desc: "Custom merch via Printful/Printify" },
 ];
 
-const STACK_MAP: Record<string, string> = {
+export const STACK_MAP: Record<string, string> = {
   saas: "idea_to_revenue",
   ecomm: "ecomm",
   local: "local_service",
@@ -62,7 +62,7 @@ const STACK_MAP: Record<string, string> = {
   content: "idea_to_revenue",
 };
 
-function buildContext(type: string, customer: string, stage: string, sub: string): string {
+export function buildQuizContext(type: string, customer: string, stage: string, sub: string): string {
   const typeLabel = BIZ_TYPES.find(t => t.id === type)?.label || type;
   const customerLabel = CUSTOMER_TYPES.find(c => c.id === customer)?.label || customer;
   const stageLabel = STAGES.find(s => s.id === stage)?.label || stage;
@@ -101,7 +101,7 @@ export default function BusinessQuizModal({ onComplete, onSkip }: Props) {
 
   const finish = (subVal: string) => {
     const stackId = STACK_MAP[bizType] || "idea_to_revenue";
-    const contextBlock = buildContext(bizType, customer, stage, subVal);
+    const contextBlock = buildQuizContext(bizType, customer, stage, subVal);
     onComplete({ stackId, contextBlock, businessType: bizType, customerType: customer, stage, subCategory: subVal });
   };
 
