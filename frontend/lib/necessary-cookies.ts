@@ -9,8 +9,8 @@ export const NECESSARY_COOKIES = [
     duration: "180 days",
   },
   {
-    name: "__clerk_*",
-    purpose: "Maintains authentication, session security, and account access through Clerk.",
-    duration: "Managed by Clerk based on session state.",
+    name: "authjs.session-token",
+    purpose: "Maintains authentication, session security, and account access.",
+    duration: "Managed by NextAuth based on session state.",
   },
 ];

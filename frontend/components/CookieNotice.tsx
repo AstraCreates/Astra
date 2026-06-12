@@ -52,11 +52,11 @@ export default function CookieNotice() {
         zIndex: 180,
         width: "min(720px, calc(100vw - 32px))",
         borderRadius: 28,
-        border: "1px solid var(--line)",
-        background: "var(--glass)",
-        backdropFilter: "var(--blur)",
-        WebkitBackdropFilter: "var(--blur)",
-        boxShadow: "var(--shadow-lg)",
+        border: "1px solid var(--bd2)",
+        background: "var(--surface)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
         padding: "14px 16px",
         display: "flex",
         alignItems: "center",
@@ -73,7 +73,7 @@ export default function CookieNotice() {
       </div>
       <button
         type="button"
-        className="site-btn site-btn-primary"
+        className="btn pri"
         onClick={() => {
           writeNoticeCookie();
           setVisible(false);

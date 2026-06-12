@@ -96,11 +96,11 @@ function Row({ label, desc, action }: { label: string; desc?: string; action: Re
       display: "flex", alignItems: "center", justifyContent: "space-between",
       gap: 20, padding: "14px 20px", borderBottom: `1px solid ${c.border}`,
     }}>
-      <div>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ margin: 0, fontSize: 13, color: c.text, fontWeight: 500 }}>{label}</p>
         {desc && <p style={{ margin: "2px 0 0", fontSize: 12, color: c.grey, lineHeight: 1.5 }}>{desc}</p>}
       </div>
-      {action}
+      {action != null && <div style={{ flexShrink: 0 }}>{action}</div>}
     </div>
   );
 }
@@ -617,7 +617,7 @@ export default function SettingsPage() {
                 fontSize: 13, padding: "6px 14px", borderRadius: 8,
                 background: c.bg, color: c.textSecondary,
                 border: `1px solid ${c.border}`, textDecoration: "none", fontWeight: 500,
-                display: "inline-block",
+                display: "inline-block", whiteSpace: "nowrap",
               }}
             >
               Manage →
