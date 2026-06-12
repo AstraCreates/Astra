@@ -53,7 +53,7 @@ export default function NewRunView({ workspaceId }: { workspaceId: string }) {
       if (attachments.length) {
         instruction += "\n\nAdditional context for this run:\n" + attachments.map((a) => `--- ${a.name} ---\n${a.content.slice(0, 6000)}`).join("\n\n");
       }
-      const stackId = (quiz?.stackId) || selStack || workspace?.stack_id || "idea_to_revenue";
+      const stackId = selStack || workspace?.stack_id || "idea_to_revenue";
       const data = await submitGoal(userId, instruction, {}, stackId);
       if (!data.session_id) throw new Error("No session_id returned");
       window.location.assign(`/s/${data.session_id}`);
@@ -77,13 +77,17 @@ export default function NewRunView({ workspaceId }: { workspaceId: string }) {
   const onQuizComplete = (result: QuizResult) => {
     setQuizResult(result);
     setShowQuiz(false);
-    setSelStack(result.stackId);
     doLaunch(result);
   };
 
   const onQuizSkip = () => {
     setShowQuiz(false);
     doLaunch(null);
+  };
+
+  const BIZ_TYPE_LABELS: Record<string, string> = {
+    saas: "SaaS / Web App", ecomm: "Ecommerce", local: "Local Service",
+    agency: "Agency / Consulting", content: "Content / Creator",
   };
 
   return (
@@ -103,14 +107,11 @@ export default function NewRunView({ workspaceId }: { workspaceId: string }) {
 
         {quizResult ? (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 12px", border: "1px solid var(--blue, #3b82f6)", background: "rgba(59,130,246,0.08)", marginBottom: 20, fontSize: 11, borderRadius: 6 }}>
-            <span style={{ color: "var(--fg)", fontWeight: 600 }}>
-              {quizResult.stackId === "ecomm" ? "Ecommerce Stack" :
-               quizResult.stackId === "local_service" ? "Local Service Stack" :
-               "Idea to Revenue Stack"}
-            </span>
-            <span style={{ color: "var(--fm)" }}>· {quizResult.businessType}{quizResult.subCategory ? ` · ${quizResult.subCategory}` : ""}</span>
+            <span style={{ color: "var(--fg)", fontWeight: 600 }}>{BIZ_TYPE_LABELS[quizResult.businessType] || quizResult.businessType}</span>
+            {quizResult.subCategory && <span style={{ color: "var(--fm)" }}>· {quizResult.subCategory}</span>}
+            <span style={{ color: "var(--fm)" }}>· {quizResult.stage}</span>
             <button
-              onClick={() => { setQuizResult(null); setSelStack(""); }}
+              onClick={() => { setQuizResult(null); }}
               style={{ fontSize: 10, color: "var(--fm)", background: "none", border: "none", cursor: "pointer", padding: 0, marginLeft: 4 }}
             >
               ✕ change

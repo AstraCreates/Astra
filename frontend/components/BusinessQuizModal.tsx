@@ -3,7 +3,6 @@
 import { useState } from "react";
 
 export interface QuizResult {
-  stackId: string;
   contextBlock: string;
   businessType: string;
   customerType: string;
@@ -18,7 +17,7 @@ interface Props {
 
 type Step = "type" | "customer" | "stage" | "sub" | "done";
 
-export const BIZ_TYPES = [
+const BIZ_TYPES = [
   { id: "saas", label: "SaaS / Web App", icon: "⬡", desc: "Software, tools, platforms, dashboards" },
   { id: "ecomm", label: "Ecommerce", icon: "◈", desc: "Online store — physical, digital, or POD" },
   { id: "local", label: "Local Service", icon: "◉", desc: "Salon, gym, restaurant, cleaning, tutoring…" },
@@ -26,19 +25,19 @@ export const BIZ_TYPES = [
   { id: "content", label: "Content / Creator", icon: "◈", desc: "Media, newsletter, community, info products" },
 ];
 
-export const CUSTOMER_TYPES = [
+const CUSTOMER_TYPES = [
   { id: "b2c", label: "Consumers (B2C)", desc: "Individuals or households" },
   { id: "b2b", label: "Businesses (B2B)", desc: "Companies, teams, or professionals" },
   { id: "both", label: "Both / Marketplace", desc: "Serve both sides or a two-sided market" },
 ];
 
-export const STAGES = [
+const STAGES = [
   { id: "idea", label: "Idea — build from scratch", desc: "No product yet, starting fresh" },
   { id: "mvp", label: "Have a prototype / MVP", desc: "Something exists, needs shipping or improving" },
   { id: "live", label: "Already live, need to grow", desc: "Customers exist, focus is scale or expansion" },
 ];
 
-export const LOCAL_CATEGORIES = [
+const LOCAL_CATEGORIES = [
   { id: "beauty", label: "Beauty & Wellness", desc: "Salons, barbershops, spas, nails" },
   { id: "fitness", label: "Fitness & Sports", desc: "Gyms, yoga, personal training" },
   { id: "food", label: "Food & Beverage", desc: "Restaurants, cafes, catering, bakeries" },
@@ -47,22 +46,15 @@ export const LOCAL_CATEGORIES = [
   { id: "retail", label: "Retail / Boutique", desc: "Physical shop or pop-up" },
 ];
 
-export const ECOMM_CATEGORIES = [
+const ECOMM_CATEGORIES = [
   { id: "physical", label: "Physical Products", desc: "Ship tangible goods to customers" },
   { id: "digital", label: "Digital Products", desc: "Files, templates, software, courses" },
   { id: "subscription", label: "Subscriptions / Box", desc: "Recurring physical or digital deliveries" },
   { id: "pod", label: "Print-on-Demand", desc: "Custom merch via Printful/Printify" },
 ];
 
-export const STACK_MAP: Record<string, string> = {
-  saas: "idea_to_revenue",
-  ecomm: "ecomm",
-  local: "local_service",
-  agency: "idea_to_revenue",
-  content: "idea_to_revenue",
-};
 
-export function buildQuizContext(type: string, customer: string, stage: string, sub: string): string {
+function buildContext(type: string, customer: string, stage: string, sub: string): string {
   const typeLabel = BIZ_TYPES.find(t => t.id === type)?.label || type;
   const customerLabel = CUSTOMER_TYPES.find(c => c.id === customer)?.label || customer;
   const stageLabel = STAGES.find(s => s.id === stage)?.label || stage;
@@ -100,9 +92,8 @@ export default function BusinessQuizModal({ onComplete, onSkip }: Props) {
   };
 
   const finish = (subVal: string) => {
-    const stackId = STACK_MAP[bizType] || "idea_to_revenue";
-    const contextBlock = buildQuizContext(bizType, customer, stage, subVal);
-    onComplete({ stackId, contextBlock, businessType: bizType, customerType: customer, stage, subCategory: subVal });
+    const contextBlock = buildContext(bizType, customer, stage, subVal);
+    onComplete({ contextBlock, businessType: bizType, customerType: customer, stage, subCategory: subVal });
   };
 
   const canAdvance =
@@ -149,7 +140,7 @@ export default function BusinessQuizModal({ onComplete, onSkip }: Props) {
               What type of business is this?
             </div>
             <div style={{ fontSize: 12, color: "var(--fm)", marginBottom: 20 }}>
-              Astra picks the right agents and stack for you.
+              Helps Astra tailor agent prompts and suggested integrations.
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {BIZ_TYPES.map(t => (
@@ -286,16 +277,6 @@ export default function BusinessQuizModal({ onComplete, onSkip }: Props) {
           </button>
         </div>
 
-        {/* Stack preview */}
-        {bizType && (
-          <div style={{ marginTop: 16, padding: "8px 12px", background: "var(--surface2, #1a1a1a)", borderRadius: 6, fontSize: 11, color: "var(--fm)" }}>
-            Stack: <span style={{ color: "var(--fg)", fontWeight: 600 }}>
-              {STACK_MAP[bizType] === "ecomm" ? "Ecommerce Stack" :
-               STACK_MAP[bizType] === "local_service" ? "Local Service Stack" :
-               "Idea to Revenue Stack"}
-            </span>
-          </div>
-        )}
       </div>
     </div>
   );
