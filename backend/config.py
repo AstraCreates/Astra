@@ -183,6 +183,12 @@ class Settings(BaseSettings):
     notion_token: str = ""
     notion_operating_parent_id: str = ""
 
+    # Local research model — self-hosted Qwen3/llama.cpp endpoint (optional)
+    # If set, research agents use this instead of OpenRouter or_light_model.
+    local_research_base_url: str = ""   # e.g. https://xxx.trycloudflare.com/v1
+    local_research_model: str = ""      # e.g. Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
+    local_research_api_key: str = "none"  # llama.cpp doesn't require auth
+
     # Ecommerce integrations
     klaviyo_api_key: str = ""
     printful_api_key: str = ""

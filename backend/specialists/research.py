@@ -118,9 +118,11 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     from backend.config import settings
     from backend.core.key_rotator import get_openrouter_key
     focus_searches = _FOCUS_ROLES.get(agent_name, _FOCUS_ROLES["research"])
-    model = kwargs.pop("model", settings.or_light_model)
-    model_base_url = kwargs.pop("model_base_url", settings.openrouter_base_url)
-    model_api_key = kwargs.pop("model_api_key", get_openrouter_key() or settings.agent_model_api_key)
+    # Use local self-hosted model if configured, fall back to OpenRouter
+    _use_local = bool(settings.local_research_base_url and settings.local_research_model)
+    model = kwargs.pop("model", settings.local_research_model if _use_local else settings.or_light_model)
+    model_base_url = kwargs.pop("model_base_url", settings.local_research_base_url if _use_local else settings.openrouter_base_url)
+    model_api_key = kwargs.pop("model_api_key", settings.local_research_api_key if _use_local else (get_openrouter_key() or settings.agent_model_api_key))
     agent = Agent(
         name=agent_name,
         model=model,
