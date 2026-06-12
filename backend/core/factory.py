@@ -82,6 +82,8 @@ def get_orchestrator() -> Orchestrator:
             "research": build_research_agent(agent_name="research", use_computer=True, **_small_kwargs),
             "research_competitors": build_research_agent(agent_name="research_competitors", use_computer=True, **_small_kwargs),
             "research_execution": build_research_agent(agent_name="research_execution", use_computer=True, **_small_kwargs),
+            "research_customers": build_research_agent(agent_name="research_customers", use_computer=True, **_small_kwargs),
+            "research_gtm": build_research_agent(agent_name="research_gtm", use_computer=True, **_small_kwargs),
             "research_market": build_research_market_agent(use_computer=True, **_small_kwargs),
             "research_financial": build_research_financial_agent(use_computer=True, **_small_kwargs),
             "research_regulatory": build_research_regulatory_agent(use_computer=True, **_small_kwargs),

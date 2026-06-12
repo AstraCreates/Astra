@@ -73,25 +73,45 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
 _FOCUS_ROLES = {
     "research": (
         "MARKET INTELLIGENCE:\n"
+        "FIRST: call obsidian_read to see what prior research passes already found. Skip any URLs/sources already cited.\n"
         "1. Call run_research_pipeline(topic='{topic}', focus='market') for the core evidence package.\n"
-        "   Then call build_research_queries(topic='{topic}', focus='market') and run 2-4 batch_search rounds using those queries.\n"
-        "   The query plan covers: market size/TAM, CAGR/growth forecasts, "
-        "customer segments/ICP, pricing benchmarks, regulation, funding/news, and analyst reports.\n"
-        "2. Run news_search for latest 2025/2026 developments.\n"
-        "3. Run research_papers when academic/user-behavior evidence is relevant.\n"
-        "4. fetch_and_read the 8-15 highest-value URLs from the searches, prioritizing primary/analyst/competitor sources.\n\n"
-        "obsidian_log with: MARKET SIZE, GROWTH RATE, TAM/SAM/SOM, KEY SEGMENTS, REGULATORY, VC FUNDING DATA, and SOURCES."
+        "   Then build_research_queries(topic='{topic}', focus='market') and run 2-4 batch_search rounds.\n"
+        "   Covers: market size/TAM, CAGR/growth forecasts, customer segments, pricing benchmarks, regulation, funding, analyst reports.\n"
+        "2. news_search for latest 2025/2026 developments.\n"
+        "3. research_papers when academic/user-behavior evidence is relevant.\n"
+        "4. fetch_and_read the 8-15 highest-value NEW URLs (not already in research notes).\n\n"
+        "obsidian_log with: MARKET SIZE, GROWTH RATE, TAM/SAM/SOM, KEY SEGMENTS, REGULATORY, VC FUNDING DATA, SOURCES."
     ),
     "research_competitors": (
-        "COMPETITOR INTELLIGENCE (named companies, pricing, features, weaknesses — NOT market size or financial benchmarks):\n"
-        "1. Call run_research_pipeline(topic='{topic}', focus='competitors') for the core evidence package.\n"
-        "   Then call build_research_queries(topic='{topic}', focus='competitors') and run 2-4 batch_search rounds using those queries.\n"
-        "   The query plan covers: named competitors, G2/Capterra/ProductHunt alternatives, "
-        "Crunchbase/funding, pricing pages, reviews/complaints, YC/a16z/VC-backed startups, and market maps.\n"
-        "2. Extract at least 8 named competitors. Run additional targeted batch_search rounds with narrower terms until you have 8+.\n"
-        "3. fetch_and_read homepage/pricing pages for 8-12 competitors.\n"
-        "4. Run patent_search and youtube_research when product demos/reviews matter.\n\n"
-        "obsidian_log with: COMPETITOR TABLE (name, URL, pricing, funding, strengths, weaknesses, market position), WHITESPACE OPPORTUNITIES, and SOURCES."
+        "COMPETITOR INTELLIGENCE (named companies, pricing, features, weaknesses):\n"
+        "FIRST: call obsidian_read to see what prior research passes already found. Skip any URLs/sources already cited.\n"
+        "1. run_research_pipeline(topic='{topic}', focus='competitors') then build_research_queries + 2-4 batch_search rounds.\n"
+        "   Covers: named competitors, G2/Capterra/ProductHunt alternatives, Crunchbase/funding, pricing pages, reviews, YC/VC-backed startups.\n"
+        "2. Extract at least 8 named competitors. Fetch homepage/pricing for each — only NEW URLs not already read.\n"
+        "3. patent_search and youtube_research when product demos/reviews matter.\n\n"
+        "obsidian_log with: COMPETITOR TABLE (name, URL, pricing, funding, strengths, weaknesses), WHITESPACE OPPORTUNITIES, SOURCES."
+    ),
+    "research_customers": (
+        "CUSTOMER & ICP INTELLIGENCE (who buys, why, how, pain severity):\n"
+        "FIRST: call obsidian_read to see what prior research passes already found. Skip any URLs/sources already cited.\n"
+        "1. build_research_queries(topic='{topic}', focus='customers') then 2-4 batch_search rounds.\n"
+        "   Covers: Reddit/forum complaints, App Store/G2 reviews, Twitter/LinkedIn pain signals, "
+        "buyer demographics, job-to-be-done, willingness to pay, churn reasons, buying triggers.\n"
+        "2. tiktok_research and youtube_research for consumer sentiment and creator commentary.\n"
+        "3. fetch_and_read 6-10 highest-signal community/review pages — only NEW URLs not already read.\n\n"
+        "obsidian_log with: ICP PROFILE (demographics, job title, company size), TOP PAIN POINTS (quoted), "
+        "BUYING TRIGGERS, WILLINGNESS TO PAY, CHURN REASONS, SOURCES."
+    ),
+    "research_gtm": (
+        "GO-TO-MARKET & DISTRIBUTION INTELLIGENCE (channels, growth tactics, pricing models):\n"
+        "FIRST: call obsidian_read to see what prior research passes already found. Skip any URLs/sources already cited.\n"
+        "1. build_research_queries(topic='{topic}', focus='gtm') then 2-3 batch_search rounds.\n"
+        "   Covers: how competitors acquire customers, CAC benchmarks, successful launch channels (PH, HN, Reddit, "
+        "cold email, SEO, paid), pricing page patterns, freemium vs trial vs direct-sales split.\n"
+        "2. news_search for recent launches and growth stories in this space.\n"
+        "3. fetch_and_read 6-8 competitor growth/marketing pages — only NEW URLs not already read.\n\n"
+        "obsidian_log with: CHANNEL MAP (channel, fit, cost, speed), PRICING MODEL PATTERNS, "
+        "LAUNCH PLAYBOOK (what worked for others), CAC BENCHMARKS, SOURCES."
     ),
 }
 
@@ -123,12 +143,14 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     model = kwargs.pop("model", settings.local_research_model if _use_local else settings.or_light_model)
     model_base_url = kwargs.pop("model_base_url", settings.local_research_base_url if _use_local else settings.openrouter_base_url)
     model_api_key = kwargs.pop("model_api_key", settings.local_research_api_key if _use_local else (get_openrouter_key() or settings.agent_model_api_key))
+    # Local model: fewer iterations per pass (4 agents run in parallel instead)
+    _max_iter = kwargs.pop("max_iterations", 12 if _use_local else 40)
     agent = Agent(
         name=agent_name,
         model=model,
         model_base_url=model_base_url,
         model_api_key=model_api_key,
-        max_iterations=40,
+        max_iterations=_max_iter,
         role=(
             "You are an elite deep research specialist. Your ONLY domain is MARKET OPPORTUNITY — "
             "TAM/SAM/SOM, market growth trends, timing thesis, and investment narrative. "

@@ -35,6 +35,15 @@ _RESEARCH_LANE_FOCUS = {
         "Lane focus: execution strategy only. Ground GTM, launch motion, channel choices, product wedge, "
         "and technical implementation recommendations in concrete evidence and case studies."
     ),
+    "research_customers": (
+        "Lane focus: customer and ICP intelligence only. Find real buyer pain (Reddit, reviews, forums), "
+        "demographics, job-to-be-done, willingness to pay, churn signals. Do NOT repeat market size or competitor data."
+    ),
+    "research_gtm": (
+        "Lane focus: go-to-market and distribution only. Map acquisition channels, CAC benchmarks, "
+        "pricing model patterns, and what launch tactics actually worked for comparable products. "
+        "Do NOT repeat competitor profiles or market size data."
+    ),
 }
 
 
@@ -902,6 +911,8 @@ class Orchestrator:
             "research",
             "research_competitors",
             "research_execution",
+            "research_customers",
+            "research_gtm",
         }
         stack_task_by_agent = {t.agent: t for t in stack_template.tasks}
         research_task = next((t for t in initial_tasks if t["agent"] == "research"), None)
@@ -1018,7 +1029,8 @@ class Orchestrator:
         candidate_research = [
             ("r_market",          "research"),
             ("r_competitors",     "research_competitors"),
-            ("r_execution",       "research_execution"),
+            ("r_customers",       "research_customers"),
+            ("r_gtm",             "research_gtm"),
         ]
         parallel_research_tasks = [
             {
