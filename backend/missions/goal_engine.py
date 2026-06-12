@@ -203,9 +203,47 @@ def mark_running(session_id: str, agent: str) -> None:
         logger.debug("goal_engine.mark_running skipped: %s", e)
 
 
-def tick_from_agent(session_id: str, agent: str) -> None:
-    """An agent finished — mark the current goal's tasks it owns. Called from the
-    central event publisher for every agent_done, so it must be cheap and safe."""
+# An agent_done event does NOT prove the agent delivered. The forced-synthesis
+# path (MAX_ITERATIONS) emits status="partial", and a hollow/empty output means
+# the agent ran but produced nothing real. Refuse to check off a task in those
+# cases — otherwise agents "complete" work they never actually did.
+_NON_DELIVERY_STATUSES = {"partial", "error", "failed", "blocked", "incomplete", "timeout"}
+_HOLLOW_PHRASES = (
+    "placeholder", "lorem ipsum", "coming soon", "to be determined",
+    "not provided", "unable to", "could not", "no output", "tbd",
+)
+
+
+def _agent_delivered(output: Any) -> bool:
+    """Best-effort check that an agent_done payload represents real delivered work."""
+    if output is None:
+        # No payload at all (older callers / unknown path) — preserve prior
+        # behavior and assume delivery rather than stalling the goal.
+        return True
+    if isinstance(output, str):
+        text = output.strip()
+        if len(text) < 12:
+            return False
+        return not any(p in text.lower() for p in _HOLLOW_PHRASES)
+    if isinstance(output, dict):
+        status = str(output.get("status") or "").lower().strip()
+        if status in _NON_DELIVERY_STATUSES:
+            return False
+        # An output with literally no content fields is not a delivery.
+        meaningful = {k: v for k, v in output.items() if k != "status" and v}
+        if not meaningful:
+            return False
+        summary = str(output.get("summary") or "").lower()
+        if summary and len(summary) < 12 and not (set(meaningful) - {"summary"}):
+            return False
+        return True
+    return True
+
+
+def tick_from_agent(session_id: str, agent: str, output: Any = None) -> None:
+    """An agent finished — mark the current goal's tasks it owns, IF it actually
+    delivered. Called from the central event publisher for every agent_done, so it
+    must be cheap and safe."""
     try:
         founder_id = _founder_for_session(session_id)
         company_id = _company_for_session(session_id, founder_id)
@@ -218,6 +256,11 @@ def tick_from_agent(session_id: str, agent: str) -> None:
         # Only touch the store if this agent actually owns an open task.
         owns = any(agent in (t.get("owner_agents") or []) for t in cg.get("tasks") or [])
         if not owns:
+            return
+        if not _agent_delivered(output):
+            # Agent ran but didn't deliver — leave the task open (it stays
+            # in_progress via mark_running) instead of falsely checking it off.
+            logger.info("goal_engine: %s emitted agent_done without real delivery — NOT completing task", agent)
             return
         complete_agent_workstream(
             founder_id,

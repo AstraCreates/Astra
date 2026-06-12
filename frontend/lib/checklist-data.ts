@@ -1,11 +1,22 @@
-export interface CLItem { id: string; label: string; autoAgent?: string; detail?: string; }
+// owner:
+//   "agent"  — Astra agents fully deliver this (default when autoAgent is set)
+//   "assist" — agent preps/drafts, but the founder must finish (account creation,
+//              purchases, government filings, signatures, talking to real people)
+//   "founder"— only the founder can do this (default when no autoAgent)
+export type CLOwner = "agent" | "assist" | "founder";
+export interface CLItem { id: string; label: string; autoAgent?: string; detail?: string; owner?: CLOwner; }
 export interface CLCategory { id: string; label: string; icon: string; items: CLItem[]; }
+
+/** Resolve an item's owner: explicit override, else inferred from autoAgent. */
+export function itemOwner(item: CLItem): CLOwner {
+  return item.owner ?? (item.autoAgent ? "agent" : "founder");
+}
 
 export const CHECKLIST_CATEGORIES: CLCategory[] = [
   {
     id: "validation", label: "Customer Validation", icon: "🔎",
     items: [
-      { id: "problem_interviews", label: "Run 10+ customer discovery interviews", autoAgent: "research", detail: "Talk to real buyers before building — validate the pain, not the solution." },
+      { id: "problem_interviews", label: "Run 10+ customer discovery interviews", autoAgent: "research", owner: "assist", detail: "Astra drafts the interview script & target list — you run the real conversations." },
       { id: "competitor_teardown", label: "Map competitors & differentiation", autoAgent: "research_competitors", detail: "Feature, pricing, and positioning teardown of the top 5 alternatives." },
       { id: "market_sizing",      label: "Size the market (TAM / SAM / SOM)", autoAgent: "research_market", detail: "Bottom-up estimate you can defend to investors." },
       { id: "value_prop",         label: "Write a one-line value proposition", autoAgent: "marketing", detail: "Who it's for, the pain it kills, and why you're 10x better." },
@@ -20,9 +31,9 @@ export const CHECKLIST_CATEGORIES: CLCategory[] = [
       { id: "founders_agmt",     label: "Draft founders' agreement",            autoAgent: "legal_entity", detail: "Equity split, roles, decision rights, and exit terms in writing." },
       { id: "vesting",           label: "Set founder vesting schedules (4yr/1yr)", autoAgent: "legal_entity", detail: "Protects the company if a co-founder leaves early." },
       { id: "ip_assign",         label: "Assign all IP to the company",         autoAgent: "legal_docs", detail: "Every founder and contractor signs an IP assignment." },
-      { id: "ein",               label: "Get an EIN from the IRS", autoAgent: "legal_entity", detail: "Free, takes minutes online — needed for banking and payroll." },
+      { id: "ein",               label: "Get an EIN from the IRS", autoAgent: "legal_entity", owner: "assist", detail: "Astra preps the details — you submit the IRS form (founder identity required)." },
       { id: "83b",               label: "File 83(b) election within 30 days", detail: "Hard deadline — missing it creates a large future tax bill." },
-      { id: "trademark",         label: "Research trademark clearance & prepare filing", autoAgent: "legal_ip", detail: "Agent clears the name; you file at USPTO." },
+      { id: "trademark",         label: "Research trademark clearance & prepare filing", autoAgent: "legal_ip", owner: "assist", detail: "Astra clears the name & preps the filing — you submit at USPTO." },
       { id: "nda",               label: "Draft NDA template",                   autoAgent: "legal_docs" },
       { id: "privacy_tos",       label: "Publish Privacy Policy & Terms of Service", autoAgent: "legal_docs", detail: "Required before collecting any user data or payments." },
       { id: "contractor_agmt",   label: "Create contractor agreement templates", autoAgent: "legal_docs" },
@@ -50,7 +61,7 @@ export const CHECKLIST_CATEGORIES: CLCategory[] = [
   {
     id: "infra", label: "Domain & Infrastructure", icon: "🌐",
     items: [
-      { id: "domain_primary",    label: "Purchase primary domain name", autoAgent: "web_navigator" },
+      { id: "domain_primary",    label: "Purchase primary domain name", autoAgent: "web_navigator", owner: "assist", detail: "Astra checks availability & recommends — you complete the purchase." },
       { id: "domain_variants",   label: "Buy brand-protecting domain variants", detail: "Common misspellings and .com/.io/.ai to prevent squatting." },
       { id: "ssl",               label: "Configure SSL certificate (HTTPS)",    autoAgent: "technical_infra" },
       { id: "dns_records",       label: "Set SPF, DKIM, and DMARC DNS records", autoAgent: "technical_infra", detail: "Stops your launch emails from landing in spam." },
@@ -84,7 +95,7 @@ export const CHECKLIST_CATEGORIES: CLCategory[] = [
       { id: "seo_foundation",    label: "Set up SEO foundations (meta, sitemap)", autoAgent: "marketing_seo" },
       { id: "waitlist",          label: "Build pre-launch waitlist / email list", autoAgent: "marketing", detail: "Warm audience to convert on day one." },
       { id: "blog_post",         label: "Write and publish first blog post",    autoAgent: "marketing_content" },
-      { id: "product_hunt",      label: "Create Product Hunt launch page", autoAgent: "marketing_content", detail: "Line up hunters and supporters a week ahead." },
+      { id: "product_hunt",      label: "Create Product Hunt launch page", autoAgent: "marketing_content", owner: "assist", detail: "Astra writes the listing copy & assets — you publish it under your PH account." },
       { id: "press_kit",         label: "Draft press kit and founder bio",      autoAgent: "marketing_content" },
       { id: "demo_video",        label: "Record a 60–90s product demo video", detail: "Single highest-converting asset on most landing pages." },
     ],
@@ -94,7 +105,7 @@ export const CHECKLIST_CATEGORIES: CLCategory[] = [
     items: [
       { id: "claim_handles",     label: "Claim handles on all major platforms", detail: "Secure your brand name on Twitter/X, Instagram, TikTok, LinkedIn before launch." },
       { id: "focus_channels",    label: "Choose 2–3 primary channels to focus on", detail: "Go deep where your ICP actually hangs out." },
-      { id: "linkedin_page",     label: "Set up LinkedIn company page", autoAgent: "marketing_outreach" },
+      { id: "linkedin_page",     label: "Set up LinkedIn company page", autoAgent: "marketing_outreach", owner: "assist", detail: "Astra writes the page copy & assets — you create the page on your account." },
       { id: "content_calendar",  label: "Create 30-day pre-launch content calendar", autoAgent: "marketing_content" },
       { id: "community_engage",  label: "Engage in niche communities (Reddit, X, Slack)" },
       { id: "founder_story",     label: "Post founder story / build-in-public content" },
@@ -118,7 +129,7 @@ export const CHECKLIST_CATEGORIES: CLCategory[] = [
   {
     id: "sales", label: "Sales & CRM", icon: "🤝",
     items: [
-      { id: "crm_setup",         label: "Set up CRM (HubSpot / Pipedrive)",     autoAgent: "sales" },
+      { id: "crm_setup",         label: "Set up CRM (HubSpot / Pipedrive)",     autoAgent: "sales", owner: "assist", detail: "Astra recommends the setup & imports your leads — you create the account." },
       { id: "sales_pipeline",    label: "Define sales pipeline stages",         autoAgent: "sales_pipeline" },
       { id: "icp_target_list",   label: "Build a list of 50 target accounts", autoAgent: "sales", detail: "Named companies and buyers, not a vague segment." },
       { id: "cold_outreach",     label: "Write cold outreach email templates",  autoAgent: "sales" },

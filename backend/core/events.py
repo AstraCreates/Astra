@@ -342,8 +342,18 @@ async def publish(session_id: str, event: dict) -> None:
     if _etype in ("agent_done", "agent_start") and event.get("agent"):
         try:
             from backend.missions.goal_engine import tick_from_agent, mark_running
-            fn = tick_from_agent if _etype == "agent_done" else mark_running
-            loop.run_in_executor(None, fn, session_id, str(event.get("agent")))
+            _agent = str(event.get("agent"))
+            if _etype == "agent_done":
+                # Pass the agent's actual output so the goal engine can refuse to
+                # check off a task the agent didn't really deliver (partial/error/
+                # hollow output). The done payload lives under "result" (normal
+                # path) or "output" (forced-synthesis path).
+                _out = event.get("result")
+                if _out is None:
+                    _out = event.get("output")
+                loop.run_in_executor(None, tick_from_agent, session_id, _agent, _out)
+            else:
+                loop.run_in_executor(None, mark_running, session_id, _agent)
             loop.run_in_executor(None, _persist_goal_status_memory, session_id, dict(event))
         except Exception:
             pass

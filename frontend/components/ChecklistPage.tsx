@@ -4,30 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import { useCompany } from "@/lib/company-context";
 import PageHeader from "@/components/PageHeader";
-import { CHECKLIST_CATEGORIES, type CLItem, type CLCategory } from "@/lib/checklist-data";
-import { getCompanyGoal, type CompanyTask } from "@/lib/api";
+import { CHECKLIST_CATEGORIES, itemOwner, type CLItem, type CLCategory, type CLOwner } from "@/lib/checklist-data";
+import { getCompanyGoal, AGENT_LABELS, type CompanyTask } from "@/lib/api";
 
-// ── Storage ────────────────────────────────────────────────────────────────
+// ── Status model ─────────────────────────────────────────────────────────────
+// Status is derived ENTIRELY from agent task state — the founder cannot check
+// anything off by hand. Owner decides how a finished agent task reads:
+//   agent  → "done" when the agent delivers
+//   assist → "ready" when the agent finishes its prep (founder still acts)
+//   founder→ always "founder" (informational; no agent works it)
 
-const KEY_DONE = "astra_cl_done";
-
-function doneKey(companyId: string, founderId: string): string {
-  return companyId === founderId ? KEY_DONE : `${KEY_DONE}:${companyId}`;
-}
-
-function loadDone(companyId: string, founderId: string): Set<string> {
-  if (typeof window === "undefined") return new Set();
-  try {
-    const r = localStorage.getItem(doneKey(companyId, founderId));
-    return r ? new Set(JSON.parse(r) as string[]) : new Set();
-  }
-  catch { return new Set(); }
-}
-function saveDone(companyId: string, founderId: string, s: Set<string>) {
-  try { localStorage.setItem(doneKey(companyId, founderId), JSON.stringify([...s])); } catch {}
-}
-
-// ── Status helpers ─────────────────────────────────────────────────────────
+type RowState = "active" | "awaiting" | "blocked" | "done" | "ready" | "pending" | "founder";
 
 function agentMatches(taskAgents: string[], autoAgent: string): boolean {
   return taskAgents.some(a =>
@@ -35,26 +22,176 @@ function agentMatches(taskAgents: string[], autoAgent: string): boolean {
   );
 }
 
-type ItemStatus = "active" | "awaiting" | "done" | "blocked" | "pending";
-
-function getItemStatus(item: CLItem, tasks: CompanyTask[], doneSet: Set<string>): ItemStatus {
-  if (doneSet.has(item.id)) return "done";
-  if (!item.autoAgent) return "pending";
-  const task = tasks.find(t => agentMatches(t.owner_agents ?? [], item.autoAgent!));
-  if (!task) return "pending";
-  if (task.status === "done") return "done";
-  if (task.status === "in_progress") return "active";
-  if (task.status === "awaiting_approval") return "awaiting";
-  if (task.status === "blocked") return "blocked";
-  return "pending";
-}
-
 function matchingTask(item: CLItem, tasks: CompanyTask[]): CompanyTask | null {
   if (!item.autoAgent) return null;
   return tasks.find(t => agentMatches(t.owner_agents ?? [], item.autoAgent!)) ?? null;
 }
 
-// ── Left sidebar item ──────────────────────────────────────────────────────
+function getRowState(item: CLItem, tasks: CompanyTask[]): RowState {
+  const owner = itemOwner(item);
+  if (owner === "founder") return "founder";
+  const task = matchingTask(item, tasks);
+  if (!task) return "pending";
+  if (task.status === "in_progress") return "active";
+  if (task.status === "awaiting_approval") return "awaiting";
+  if (task.status === "blocked") return "blocked";
+  if (task.status === "done") return owner === "assist" ? "ready" : "done";
+  return "pending";
+}
+
+// "Settled" = nothing more the system is actively doing on it.
+const SETTLED: RowState[] = ["done"];
+// "Needs you" = a handoff is waiting on the founder.
+const NEEDS_YOU: RowState[] = ["awaiting", "ready"];
+const IN_PROGRESS: RowState[] = ["active", "blocked"];
+
+// ── Visual config ────────────────────────────────────────────────────────────
+
+const STATE_META: Record<RowState, { label: string; color: string }> = {
+  active:   { label: "Running",   color: "#001AFF" },
+  awaiting: { label: "Approve",   color: "#D97706" },
+  ready:    { label: "Your turn", color: "#D97706" },
+  blocked:  { label: "Blocked",   color: "#DC2626" },
+  done:     { label: "Done",      color: "#16A34A" },
+  pending:  { label: "Up next",   color: "var(--fd)" },
+  founder:  { label: "Your task", color: "var(--fm)" },
+};
+
+const OWNER_META: Record<CLOwner, { label: string; color: string; bg: string }> = {
+  agent:   { label: "Astra",       color: "#001AFF", bg: "rgba(0,26,255,0.07)" },
+  assist:  { label: "Astra + You", color: "#D97706", bg: "rgba(217,119,6,0.09)" },
+  founder: { label: "You",         color: "var(--fm)", bg: "var(--s2, rgba(0,0,0,0.04))" },
+};
+
+// ── Status glyph ─────────────────────────────────────────────────────────────
+
+function Glyph({ state }: { state: RowState }) {
+  const c = STATE_META[state].color;
+  if (state === "done") {
+    return (
+      <span style={{ width: 18, height: 18, borderRadius: "50%", flexShrink: 0, background: "#16A34A", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <svg width="10" height="8" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </span>
+    );
+  }
+  if (state === "active") {
+    return <span style={{ width: 18, height: 18, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ width: 9, height: 9, borderRadius: "50%", background: c, animation: "cl-pulse 1.5s ease-in-out infinite" }} />
+    </span>;
+  }
+  if (state === "awaiting" || state === "ready") {
+    return <span style={{ width: 18, height: 18, borderRadius: "50%", flexShrink: 0, border: `2px solid ${c}`, background: `${c}1a`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: c }} />
+    </span>;
+  }
+  if (state === "blocked") {
+    return <span style={{ width: 18, height: 18, borderRadius: "50%", flexShrink: 0, background: c, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 11, fontWeight: 700 }}>!</span>;
+  }
+  // pending / founder — hollow ring
+  return <span style={{ width: 18, height: 18, borderRadius: "50%", flexShrink: 0, border: `1.5px solid var(--bd)`, background: "transparent" }} />;
+}
+
+// ── Owner badge ──────────────────────────────────────────────────────────────
+
+function OwnerBadge({ owner }: { owner: CLOwner }) {
+  const m = OWNER_META[owner];
+  return (
+    <span style={{
+      fontSize: 9.5, fontWeight: 600, color: m.color, background: m.bg,
+      padding: "2px 8px", borderRadius: 100, flexShrink: 0, whiteSpace: "nowrap",
+      letterSpacing: ".01em",
+    }}>
+      {m.label}
+    </span>
+  );
+}
+
+// ── Task row ─────────────────────────────────────────────────────────────────
+
+function TaskRow({ item, state }: { item: CLItem; state: RowState }) {
+  const owner = itemOwner(item);
+  const meta = STATE_META[state];
+  const settled = state === "done";
+  return (
+    <div style={{
+      display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px",
+      borderRadius: 10,
+      background: NEEDS_YOU.includes(state) ? "rgba(217,119,6,0.04)"
+                : state === "active" ? "rgba(0,26,255,0.03)"
+                : "transparent",
+      opacity: settled ? 0.62 : 1,
+      transition: "background 0.15s",
+    }}>
+      <div style={{ marginTop: 1 }}><Glyph state={state} /></div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+          <span style={{
+            fontSize: 13, fontWeight: 500, color: settled ? "var(--fd)" : "var(--fg)",
+            textDecoration: settled ? "line-through" : "none", lineHeight: 1.4,
+          }}>
+            {item.label}
+          </span>
+        </div>
+        {item.detail && !settled && (
+          <p style={{ fontSize: 11.5, color: "var(--fd)", margin: "3px 0 0", lineHeight: 1.5 }}>
+            {item.detail}
+          </p>
+        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 7 }}>
+          <OwnerBadge owner={owner} />
+          {item.autoAgent && owner !== "founder" && (
+            <span style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)" }}>
+              {AGENT_LABELS[item.autoAgent] ?? item.autoAgent}
+            </span>
+          )}
+        </div>
+      </div>
+      <span style={{
+        fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase",
+        color: meta.color, flexShrink: 0, fontFamily: "var(--font-code)", marginTop: 3,
+        whiteSpace: "nowrap",
+      }}>
+        {meta.label}
+      </span>
+    </div>
+  );
+}
+
+// ── Group ────────────────────────────────────────────────────────────────────
+
+function Group({
+  title, hint, count, accent, collapsible, defaultOpen = true, children,
+}: {
+  title: string; hint?: string; count: number; accent?: string;
+  collapsible?: boolean; defaultOpen?: boolean; children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  if (count === 0) return null;
+  return (
+    <section style={{ marginBottom: 26 }}>
+      <button
+        onClick={collapsible ? () => setOpen(v => !v) : undefined}
+        style={{
+          display: "flex", alignItems: "center", gap: 9, width: "100%",
+          padding: 0, marginBottom: 10, border: "none", background: "transparent",
+          cursor: collapsible ? "pointer" : "default", textAlign: "left",
+        }}
+      >
+        <span style={{ fontSize: 13, fontWeight: 700, color: accent ?? "var(--fg)", letterSpacing: "-0.01em" }}>{title}</span>
+        <span style={{
+          fontSize: 11, fontWeight: 600, color: accent ?? "var(--fd)",
+          background: accent ? `${accent}14` : "var(--s2, rgba(0,0,0,0.04))",
+          padding: "1px 8px", borderRadius: 100, fontFamily: "var(--font-code)",
+        }}>{count}</span>
+        {hint && <span style={{ fontSize: 11, color: "var(--fd)" }}>{hint}</span>}
+        {collapsible && <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--fd)" }}>{open ? "▾" : "▸"}</span>}
+      </button>
+      {open && <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>{children}</div>}
+    </section>
+  );
+}
+
+// ── Sidebar row ──────────────────────────────────────────────────────────────
 
 function SidebarRow({
   icon, label, done, total, hasActive, selected, onClick,
@@ -67,13 +204,10 @@ function SidebarRow({
     <button
       onClick={onClick}
       style={{
-        width: "100%", display: "flex", alignItems: "center", gap: 9,
-        padding: "7px 14px",
-        background: selected ? "rgba(0,26,255,0.07)" : "transparent",
-        borderLeft: `3px solid ${selected ? "#001AFF" : "transparent"}`,
-        border: "none",
-        cursor: "pointer",
-        textAlign: "left",
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "8px 12px", margin: "1px 8px", width: "calc(100% - 16px)",
+        background: selected ? "rgba(0,26,255,0.06)" : "transparent",
+        border: "none", borderRadius: 8, cursor: "pointer", textAlign: "left",
         transition: "background 0.12s",
       }}
     >
@@ -82,236 +216,21 @@ function SidebarRow({
         flex: 1, fontSize: 12, fontWeight: selected ? 600 : 400,
         color: selected ? "#001AFF" : "var(--fg)",
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
-        {label}
-      </span>
-      {hasActive && (
-        <span style={{
-          width: 6, height: 6, borderRadius: "50%", background: "#001AFF",
-          flexShrink: 0, boxShadow: "0 0 5px rgba(0,26,255,0.5)",
-        }} />
-      )}
-      <span style={{
-        fontSize: 10, color: done === total && total > 0 ? "#16a34a" : "var(--fd)",
-        fontFamily: "var(--font-code)", flexShrink: 0,
-        fontWeight: 500,
-      }}>
-        {pct}%
-      </span>
+      }}>{label}</span>
+      {hasActive && <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#001AFF", flexShrink: 0, boxShadow: "0 0 5px rgba(0,26,255,0.5)" }} />}
+      <span style={{ fontSize: 10, color: done === total && total > 0 ? "#16a34a" : "var(--fd)", fontFamily: "var(--font-code)", flexShrink: 0, fontWeight: 500 }}>{pct}%</span>
     </button>
   );
 }
 
-// ── Section wrapper ────────────────────────────────────────────────────────
-
-function Section({
-  title, count, accent, collapsible, collapsed, onToggle, empty, children,
-}: {
-  title: string; count: number; accent?: string;
-  collapsible?: boolean; collapsed?: boolean; onToggle?: () => void;
-  empty?: string; children?: React.ReactNode;
-}) {
-  return (
-    <div style={{ marginBottom: 32 }}>
-      <div
-        onClick={collapsible ? onToggle : undefined}
-        style={{
-          display: "flex", alignItems: "center", gap: 8, marginBottom: 12,
-          cursor: collapsible ? "pointer" : "default",
-          userSelect: "none",
-        }}
-      >
-        <span style={{
-          fontSize: 10, fontWeight: 700, letterSpacing: ".1em",
-          textTransform: "uppercase", color: accent ?? "var(--fd)",
-          fontFamily: "var(--font-code)",
-        }}>
-          {title}
-        </span>
-        <span style={{
-          fontSize: 10, fontWeight: 600, color: accent ?? "var(--fd)",
-          background: accent ? `${accent}18` : "var(--surface)",
-          border: `1px solid ${accent ? `${accent}30` : "var(--bd)"}`,
-          padding: "1px 7px", fontFamily: "var(--font-code)",
-        }}>
-          {count}
-        </span>
-        {collapsible && (
-          <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--fd)" }}>
-            {collapsed ? "▶ show" : "▼ hide"}
-          </span>
-        )}
-      </div>
-      {empty && count === 0 ? (
-        <p style={{ fontSize: 12, color: "var(--fd)", margin: 0, padding: "10px 0" }}>{empty}</p>
-      ) : (
-        !collapsed && children
-      )}
-    </div>
-  );
-}
-
-// ── Active card ────────────────────────────────────────────────────────────
-
-const STATUS_CONFIG = {
-  active:   { label: "Running",  color: "#001AFF", bg: "rgba(0,26,255,0.06)",  stripe: "#001AFF" },
-  awaiting: { label: "Approval", color: "#D97706", bg: "rgba(217,119,6,0.06)", stripe: "#D97706" },
-  blocked:  { label: "Blocked",  color: "#DC2626", bg: "rgba(220,38,38,0.06)", stripe: "#DC2626" },
-};
-
-function ActiveCard({ item, status, task }: { item: CLItem; status: "active" | "awaiting" | "blocked"; task?: CompanyTask | null }) {
-  const cfg = STATUS_CONFIG[status];
-  return (
-    <div style={{
-      display: "flex", gap: 0, marginBottom: 8,
-      background: cfg.bg,
-      border: `1px solid ${cfg.color}30`,
-      overflow: "hidden",
-    }}>
-      <div style={{ width: 3, flexShrink: 0, background: cfg.stripe }} />
-      <div style={{ flex: 1, padding: "12px 14px" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-          <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)", lineHeight: 1.35, flex: 1 }}>
-            {item.label}
-          </span>
-          <span style={{
-            fontSize: 9, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase",
-            color: cfg.color, background: `${cfg.color}18`,
-            border: `1px solid ${cfg.color}40`,
-            padding: "2px 8px", flexShrink: 0, fontFamily: "var(--font-code)",
-          }}>
-            {cfg.label}
-          </span>
-        </div>
-        {item.detail && (
-          <p style={{ fontSize: 11, color: "var(--fd)", margin: "5px 0 0", lineHeight: 1.5 }}>
-            {item.detail}
-          </p>
-        )}
-        {item.autoAgent && (
-          <span style={{ fontSize: 10, color: cfg.color, marginTop: 6, display: "inline-block", fontFamily: "var(--font-code)" }}>
-            {item.autoAgent}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ── Done row ───────────────────────────────────────────────────────────────
-
-function DoneRow({ item, canUncheck, onUncheck }: { item: CLItem; canUncheck: boolean; onUncheck: () => void }) {
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 10, padding: "7px 0",
-      borderBottom: "1px solid var(--bd)",
-    }}>
-      <span style={{
-        width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
-        background: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center",
-        cursor: canUncheck ? "pointer" : "default",
-      }} onClick={canUncheck ? onUncheck : undefined}>
-        <svg width="9" height="7" viewBox="0 0 9 7" fill="none">
-          <path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </span>
-      <span style={{
-        flex: 1, fontSize: 12, color: "var(--fd)",
-        textDecoration: "line-through", lineHeight: 1.4,
-      }}>
-        {item.label}
-      </span>
-      {item.autoAgent && (
-        <span style={{ fontSize: 10, color: "var(--fd)", fontFamily: "var(--font-code)", flexShrink: 0 }}>
-          {item.autoAgent}
-        </span>
-      )}
-    </div>
-  );
-}
-
-// ── Pending row ────────────────────────────────────────────────────────────
-
-function PendingRow({ item, onCheck }: { item: CLItem; onCheck: () => void }) {
-  const [hovered, setHovered] = useState(false);
-  return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: "flex", alignItems: "center", gap: 10, padding: "7px 0",
-        borderBottom: "1px solid var(--bd)",
-        background: hovered ? "rgba(0,26,255,0.02)" : "transparent",
-        transition: "background 0.1s",
-      }}
-    >
-      <button
-        onClick={onCheck}
-        style={{
-          width: 16, height: 16, borderRadius: "50%", flexShrink: 0,
-          border: "1.5px solid var(--bd)",
-          background: hovered ? "rgba(0,26,255,0.08)" : "transparent",
-          cursor: "pointer", padding: 0,
-          transition: "border-color 0.12s, background 0.12s",
-          borderColor: hovered ? "#001AFF" : undefined,
-        }}
-      />
-      <span style={{ flex: 1, fontSize: 12, color: "var(--fg)", lineHeight: 1.4 }}>
-        {item.label}
-      </span>
-      {item.autoAgent && (
-        <span style={{
-          fontSize: 9, color: "var(--fd)", fontFamily: "var(--font-code)", flexShrink: 0,
-          background: "var(--surface)", border: "1px solid var(--bd)",
-          padding: "1px 6px",
-        }}>
-          {item.autoAgent}
-        </span>
-      )}
-    </div>
-  );
-}
-
-// ── Category group (Up Next) ───────────────────────────────────────────────
-
-function CategoryGroup({ cat, items, onCheck }: { cat: CLCategory; items: CLItem[]; onCheck: (id: string) => void }) {
-  const [open, setOpen] = useState(true);
-  return (
-    <div style={{ marginBottom: 20 }}>
-      <button
-        onClick={() => setOpen(v => !v)}
-        style={{
-          display: "flex", alignItems: "center", gap: 8, width: "100%",
-          padding: "6px 0", border: "none", background: "transparent",
-          cursor: "pointer", textAlign: "left",
-        }}
-      >
-        <span style={{ fontSize: 13 }}>{cat.icon}</span>
-        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)", flex: 1 }}>{cat.label}</span>
-        <span style={{ fontSize: 10, color: "var(--fd)", fontFamily: "var(--font-code)" }}>{items.length}</span>
-        <span style={{ fontSize: 10, color: "var(--fd)", marginLeft: 4 }}>{open ? "▼" : "▶"}</span>
-      </button>
-      {open && items.map(item => (
-        <PendingRow key={item.id} item={item} onCheck={() => onCheck(item.id)} />
-      ))}
-    </div>
-  );
-}
-
-// ── Main component ─────────────────────────────────────────────────────────
+// ── Main ─────────────────────────────────────────────────────────────────────
 
 export default function ChecklistPage() {
   const { user } = useDevUser();
   const { companyId, activeCompany } = useCompany();
   const founderId = user?.id || "";
   const [tasks, setTasks] = useState<CompanyTask[]>([]);
-  const [doneSet, setDoneSet] = useState<Set<string>>(new Set());
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
-  const [showDone, setShowDone] = useState(false);
-
-  useEffect(() => {
-    setDoneSet(loadDone(companyId, founderId));
-  }, [companyId, founderId]);
 
   const load = useCallback(async () => {
     if (!founderId) return;
@@ -328,161 +247,102 @@ export default function ChecklistPage() {
     return () => clearInterval(t);
   }, [load]);
 
-  const toggleDone = useCallback((id: string) => {
-    setDoneSet(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      saveDone(companyId, founderId, next);
-      return next;
-    });
-  }, [companyId, founderId]);
-
   const allItems = useMemo(() => CHECKLIST_CATEGORIES.flatMap(c => c.items), []);
-
   const visibleItems = useMemo(() =>
     selectedCat ? (CHECKLIST_CATEGORIES.find(c => c.id === selectedCat)?.items ?? []) : allItems,
     [selectedCat, allItems]
   );
 
-  const { activeItems, doneItems, pendingItems } = useMemo(() => {
-    const active: CLItem[] = [], done: CLItem[] = [], pending: CLItem[] = [];
+  // Bucket visible items by resolved state.
+  const buckets = useMemo(() => {
+    const needsYou: { item: CLItem; state: RowState }[] = [];
+    const inProgress: { item: CLItem; state: RowState }[] = [];
+    const upNext: { item: CLItem; state: RowState }[] = [];
+    const done: { item: CLItem; state: RowState }[] = [];
     for (const item of visibleItems) {
-      const s = getItemStatus(item, tasks, doneSet);
-      if (s === "active" || s === "awaiting" || s === "blocked") active.push(item);
-      else if (s === "done") done.push(item);
-      else pending.push(item);
+      const state = getRowState(item, tasks);
+      if (NEEDS_YOU.includes(state)) needsYou.push({ item, state });
+      else if (IN_PROGRESS.includes(state)) inProgress.push({ item, state });
+      else if (SETTLED.includes(state)) done.push({ item, state });
+      else upNext.push({ item, state }); // pending + founder
     }
-    return { activeItems: active, doneItems: done, pendingItems: pending };
-  }, [visibleItems, tasks, doneSet]);
+    return { needsYou, inProgress, upNext, done };
+  }, [visibleItems, tasks]);
 
-  const pendingByCategory = useMemo(() => {
-    const groups: { cat: CLCategory; items: CLItem[] }[] = [];
-    for (const cat of CHECKLIST_CATEGORIES) {
-      const items = pendingItems.filter(item => cat.items.some(ci => ci.id === item.id));
-      if (items.length > 0) groups.push({ cat, items });
+  // Header + sidebar stats (across ALL items, regardless of filter).
+  const stats = useMemo(() => {
+    let done = 0, active = 0, needsYou = 0;
+    for (const item of allItems) {
+      const s = getRowState(item, tasks);
+      if (s === "done") done++;
+      else if (s === "active" || s === "blocked") active++;
+      else if (NEEDS_YOU.includes(s)) needsYou++;
     }
-    return groups;
-  }, [pendingItems]);
+    return { done, active, needsYou };
+  }, [allItems, tasks]);
 
-  // Sidebar stats per category
   const catStats = useMemo(() => {
     const map: Record<string, { done: number; hasActive: boolean }> = {};
     for (const cat of CHECKLIST_CATEGORIES) {
       let done = 0, hasActive = false;
       for (const item of cat.items) {
-        const s = getItemStatus(item, tasks, doneSet);
+        const s = getRowState(item, tasks);
         if (s === "done") done++;
-        if (s === "active" || s === "awaiting") hasActive = true;
+        if (s === "active" || NEEDS_YOU.includes(s)) hasActive = true;
       }
       map[cat.id] = { done, hasActive };
     }
     return map;
-  }, [tasks, doneSet]);
-
-  const totalDone = useMemo(() => allItems.filter(i => getItemStatus(i, tasks, doneSet) === "done").length, [allItems, tasks, doneSet]);
-  const totalActive = useMemo(() => allItems.filter(i => { const s = getItemStatus(i, tasks, doneSet); return s === "active" || s === "awaiting"; }).length, [allItems, tasks, doneSet]);
+  }, [tasks]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      <style>{`@keyframes cl-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.82); } }`}</style>
+
       <PageHeader
         title={`${activeCompany?.name || "Company"} Checklist`}
-        badge={totalActive > 0 ? { label: `${totalActive} active`, color: "blue" } : { label: "ready", color: "green" }}
+        badge={stats.needsYou > 0 ? { label: `${stats.needsYou} needs you`, color: "amber" }
+             : stats.active > 0 ? { label: `${stats.active} active`, color: "blue" }
+             : { label: "all clear", color: "green" }}
         stats={[
-          { label: "Done",      value: String(totalDone) },
-          { label: "Active",    value: String(totalActive) },
-          { label: "Remaining", value: String(allItems.length - totalDone - totalActive) },
+          { label: "Done",      value: String(stats.done) },
+          { label: "Active",    value: String(stats.active) },
+          { label: "Needs you", value: String(stats.needsYou) },
           { label: "Total",     value: String(allItems.length) },
         ]}
       />
 
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-
-        {/* ── Left sidebar ── */}
-        <aside style={{
-          width: 216, flexShrink: 0,
-          borderRight: "1px solid var(--bd)",
-          overflowY: "auto",
-          background: "var(--surface)",
-          padding: "10px 0 24px",
-        }}>
-          <SidebarRow
-            icon="≡"
-            label="All"
-            done={totalDone}
-            total={allItems.length}
-            hasActive={totalActive > 0}
-            selected={selectedCat === null}
-            onClick={() => setSelectedCat(null)}
-          />
-          <div style={{ height: 1, background: "var(--bd)", margin: "8px 12px 6px" }} />
+        {/* Sidebar */}
+        <aside style={{ width: 224, flexShrink: 0, borderRight: "1px solid var(--bd)", overflowY: "auto", background: "var(--surface)", padding: "10px 0 24px" }}>
+          <SidebarRow icon="≡" label="Everything" done={stats.done} total={allItems.length} hasActive={stats.active > 0} selected={selectedCat === null} onClick={() => setSelectedCat(null)} />
+          <div style={{ height: 1, background: "var(--bd)", margin: "8px 16px 6px" }} />
           {CHECKLIST_CATEGORIES.map(cat => (
-            <SidebarRow
-              key={cat.id}
-              icon={cat.icon}
-              label={cat.label}
-              done={catStats[cat.id]?.done ?? 0}
-              total={cat.items.length}
-              hasActive={catStats[cat.id]?.hasActive ?? false}
-              selected={selectedCat === cat.id}
-              onClick={() => setSelectedCat(cat.id)}
-            />
+            <SidebarRow key={cat.id} icon={cat.icon} label={cat.label} done={catStats[cat.id]?.done ?? 0} total={cat.items.length} hasActive={catStats[cat.id]?.hasActive ?? false} selected={selectedCat === cat.id} onClick={() => setSelectedCat(cat.id)} />
           ))}
         </aside>
 
-        {/* ── Right content ── */}
-        <main style={{ flex: 1, overflowY: "auto", padding: "24px 28px 48px" }}>
+        {/* Content */}
+        <main style={{ flex: 1, overflowY: "auto", padding: "26px 30px 56px", maxWidth: 760 }}>
+          <Group title="Needs you" count={buckets.needsYou.length} accent="#D97706" hint="agents handed these back to you">
+            {buckets.needsYou.map(({ item, state }) => <TaskRow key={item.id} item={item} state={state} />)}
+          </Group>
 
-          {/* Active section */}
-          <Section
-            title="Active"
-            count={activeItems.length}
-            accent="#001AFF"
-            empty="No items running right now — agents are idle."
-          >
-            {activeItems.map(item => {
-              const s = getItemStatus(item, tasks, doneSet);
-              const validStatus = (s === "active" || s === "awaiting" || s === "blocked") ? s : "active";
-              return (
-                <ActiveCard
-                  key={item.id}
-                  item={item}
-                  status={validStatus}
-                  task={matchingTask(item, tasks)}
-                />
-              );
-            })}
-          </Section>
+          <Group title="In progress" count={buckets.inProgress.length} accent="#001AFF">
+            {buckets.inProgress.map(({ item, state }) => <TaskRow key={item.id} item={item} state={state} />)}
+          </Group>
 
-          {/* Done section */}
-          <Section
-            title="Done"
-            count={doneItems.length}
-            collapsible
-            collapsed={!showDone}
-            onToggle={() => setShowDone(v => !v)}
-          >
-            {doneItems.map(item => (
-              <DoneRow
-                key={item.id}
-                item={item}
-                canUncheck={doneSet.has(item.id)}
-                onUncheck={() => toggleDone(item.id)}
-              />
-            ))}
-          </Section>
+          <Group title="Up next" count={buckets.upNext.length}>
+            {buckets.upNext.map(({ item, state }) => <TaskRow key={item.id} item={item} state={state} />)}
+          </Group>
 
-          {/* Up Next section */}
-          <Section title="Up Next" count={pendingItems.length}>
-            {pendingByCategory.map(({ cat, items }) => (
-              <CategoryGroup
-                key={cat.id}
-                cat={cat}
-                items={items}
-                onCheck={toggleDone}
-              />
-            ))}
-          </Section>
+          <Group title="Done" count={buckets.done.length} accent="#16A34A" collapsible defaultOpen={false}>
+            {buckets.done.map(({ item, state }) => <TaskRow key={item.id} item={item} state={state} />)}
+          </Group>
 
+          {buckets.needsYou.length + buckets.inProgress.length + buckets.upNext.length + buckets.done.length === 0 && (
+            <p style={{ fontSize: 13, color: "var(--fd)", padding: "20px 0" }}>Nothing here yet — start a run and Astra will begin working the checklist.</p>
+          )}
         </main>
       </div>
     </div>
