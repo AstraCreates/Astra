@@ -72,15 +72,13 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
 
 _FOCUS_ROLES = {
     "research": (
-        "MARKET INTELLIGENCE:\n"
-        "FIRST: call obsidian_read to see what prior research passes already found. Skip any URLs/sources already cited.\n"
-        "1. Call run_research_pipeline(topic='{topic}', focus='market') for the core evidence package.\n"
-        "   Then build_research_queries(topic='{topic}', focus='market') and run 2-4 batch_search rounds.\n"
-        "   Covers: market size/TAM, CAGR/growth forecasts, customer segments, pricing benchmarks, regulation, funding, analyst reports.\n"
-        "2. news_search for latest 2025/2026 developments.\n"
-        "3. research_papers when academic/user-behavior evidence is relevant.\n"
-        "4. fetch_and_read the 8-15 highest-value NEW URLs (not already in research notes).\n\n"
-        "obsidian_log with: MARKET SIZE, GROWTH RATE, TAM/SAM/SOM, KEY SEGMENTS, REGULATORY, VC FUNDING DATA, SOURCES."
+        "COMPREHENSIVE RESEARCH — cover all 4 areas in sequence:\n\n"
+        "1. MARKET (TAM/SAM/SOM, growth, regulation, funding): run_research_pipeline(focus='market') + 2 batch_search rounds + fetch 5-8 URLs.\n"
+        "2. COMPETITORS (named companies, pricing, features, weaknesses): run_research_pipeline(focus='competitors') + 2 batch_search rounds + fetch 6-10 competitor pages.\n"
+        "3. CUSTOMERS (ICP, buyer pain, Reddit/reviews, WTP): build_research_queries(focus='customers') + 2 batch_search rounds + fetch 5-8 community/review pages.\n"
+        "4. GTM (acquisition channels, CAC benchmarks, launch tactics): build_research_queries(focus='gtm') + 1-2 batch_search rounds + news_search.\n\n"
+        "Do NOT revisit URLs already fetched. Move through all 4 areas before logging.\n\n"
+        "obsidian_log with ALL sections: MARKET SIZE, COMPETITOR TABLE, ICP PROFILE, PAIN POINTS, GTM CHANNELS, SOURCES."
     ),
     "research_competitors": (
         "COMPETITOR INTELLIGENCE (named companies, pricing, features, weaknesses):\n"
@@ -143,8 +141,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     model = kwargs.pop("model", settings.local_research_model if _use_local else settings.or_light_model)
     model_base_url = kwargs.pop("model_base_url", settings.local_research_base_url if _use_local else settings.openrouter_base_url)
     model_api_key = kwargs.pop("model_api_key", settings.local_research_api_key if _use_local else (get_openrouter_key() or settings.agent_model_api_key))
-    # Local model: fewer iterations per pass (4 agents run in parallel instead)
-    _max_iter = kwargs.pop("max_iterations", 12 if _use_local else 40)
+    _max_iter = kwargs.pop("max_iterations", 40)
     agent = Agent(
         name=agent_name,
         model=model,

@@ -1026,12 +1026,18 @@ class Orchestrator:
 
         # Run only configured research specialists in parallel.
         research_instruction = research_task["instruction"] if research_task else f"Research market, competitors, and execution strategy for: {goal}"
-        candidate_research = [
-            ("r_market",          "research"),
-            ("r_competitors",     "research_competitors"),
-            ("r_customers",       "research_customers"),
-            ("r_gtm",             "research_gtm"),
-        ]
+        from backend.config import settings as _settings
+        # Local model = single GPU, parallel requests just queue. Run one broad agent.
+        # OpenRouter = distributed, parallel is free — run 4 focused agents.
+        if _settings.local_research_base_url and _settings.local_research_model:
+            candidate_research = [("r_market", "research")]
+        else:
+            candidate_research = [
+                ("r_market",      "research"),
+                ("r_competitors", "research_competitors"),
+                ("r_customers",   "research_customers"),
+                ("r_gtm",         "research_gtm"),
+            ]
         parallel_research_tasks = [
             {
                 "id": tid,
