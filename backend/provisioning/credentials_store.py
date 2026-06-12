@@ -122,8 +122,12 @@ def _read_file(path: Path) -> tuple[dict, bool]:
     except Exception:
         return {}, False
     if isinstance(raw, dict) and raw.get("encrypted") is True:
-        key = _require_creds_key()
-        return _decrypt_payload(raw, key), False
+        try:
+            key = _require_creds_key()
+            return _decrypt_payload(raw, key), False
+        except Exception:
+            # Wrong key or corrupted file — start fresh rather than crash
+            return {}, False
     return (raw if isinstance(raw, dict) else {}), True
 
 
