@@ -229,18 +229,31 @@ class Orchestrator:
             logger.warning("Planner attempt %d unparseable", attempt + 1)
         return []
 
-    async def _initial_plan(self, goal: str) -> list[dict]:
-        """Phase 1: decide which agents to use. Always puts research first if relevant."""
+    async def _initial_plan(self, goal: str, stack_template=None) -> list[dict]:
+        """Phase 1: decide which agents to use based on stack + goal. research always first."""
+        stack_roster = ""
+        if stack_template:
+            roster_lines = [
+                f"  {t.agent}: {t.title} — {t.instruction[:120]}"
+                for t in stack_template.tasks
+                if t.agent in self.specialists
+            ]
+            if roster_lines:
+                stack_roster = (
+                    f"\nStack: {stack_template.name} — {stack_template.primary_outcome}\n"
+                    "Agents available for this stack (select only what the goal needs):\n"
+                    + "\n".join(roster_lines)
+                    + "\n"
+                )
         system = (
             "You are a planning coordinator for an AI startup assistant. Output ONLY a JSON object, no prose.\n\n"
-            + self._AGENT_CAPS +
-            "\nRules:\n"
+            + (stack_roster or self._AGENT_CAPS)
+            + "\nRules:\n"
             "- Each agent appears AT MOST ONCE.\n"
-            "- Only include agents whose work is actually needed for this goal.\n"
-            "- ALWAYS include research as the first task (id: t1, depends_on: []).\n"
-            "- ALWAYS include web — every startup needs a public landing page.\n"
-            "- ALWAYS include technical — every startup needs an MVP codebase.\n"
+            "- Only include agents whose work is genuinely needed for this specific goal.\n"
+            "- Always include research as the first task (id: t1, depends_on: []).\n"
             "- All other agents MUST have depends_on: [\"t1\"] — they wait for research.\n"
+            "- DO NOT add agents that are not in the stack roster above.\n"
             "- Instructions at this stage are brief placeholders — they will be rewritten with research context later.\n\n"
             "Format: {\"tasks\": [{\"id\": \"t1\", \"agent\": \"research\", \"instruction\": \"...\", \"depends_on\": []}, ...]}"
         )
@@ -874,7 +887,7 @@ class Orchestrator:
             if template_task:
                 task["instruction"] = f"{task['instruction']}\n\n{task_execution_guidance(stack_template, template_task)}"
         if not initial_tasks:
-            initial_tasks = await self._initial_plan(goal)
+            initial_tasks = await self._initial_plan(goal, stack_template=stack_template)
         if not initial_tasks:
             initial_tasks = [{"id": "t1", "agent": "research", "instruction": f"Research the market and competitive landscape for: {goal}", "depends_on": []}]
 
@@ -904,14 +917,17 @@ class Orchestrator:
                 if _ag not in _existing_agents and _ag in self.specialists and _ag not in _RESEARCH_AGENTS:
                     other_agents_initial.append({"id": f"custom_{_ag}", "agent": _ag, "instruction": goal, "depends_on": []})
         else:
-            # Default: add web + technical if missing
-            _mandatory = [
-                ("web", "Build and deploy a public landing page for this product."),
-                ("technical", f"Build a complete working MVP for: {goal}"),
-            ]
-            for _i, (_ag, _instr) in enumerate(_mandatory):
-                if _ag not in _existing_agents and _ag in self.specialists:
-                    other_agents_initial.append({"id": f"forced_{_ag}", "agent": _ag, "instruction": _instr, "depends_on": []})
+            # For SaaS/default stack only: ensure web + technical are present.
+            # Ecomm/local_service stacks define their own build agents — don't override.
+            _stack_id = getattr(stack_template, "stack_id", "idea_to_revenue")
+            if _stack_id == "idea_to_revenue":
+                _mandatory = [
+                    ("web", "Build and deploy a public landing page for this product."),
+                    ("technical", f"Build a complete working MVP for: {goal}"),
+                ]
+                for _ag, _instr in _mandatory:
+                    if _ag not in _existing_agents and _ag in self.specialists:
+                        other_agents_initial.append({"id": f"forced_{_ag}", "agent": _ag, "instruction": _instr, "depends_on": []})
 
         # bypass_planner: skip research wave + replan, dispatch requested agents immediately
         if _bypass_planner and _is_custom:
