@@ -45,6 +45,33 @@ from backend.api.schemas import (
 from backend.provisioning.credentials_store import store_credentials
 
 
+_ECOMM_SIGNALS = {
+    "store", "shop", "ecommerce", "e-commerce", "online store", "shopify", "woocommerce",
+    "medusa", "print on demand", "printful", "printify", "dropship", "dropshipping",
+    "inventory", "checkout", "shopping cart", "sku", "wholesale", "fulfillment",
+    "sell products", "sell online", "digital product", "digital download", "merch",
+    "subscription box", "physical product",
+}
+_LOCAL_SIGNALS = {
+    "salon", "barbershop", "barber shop", "spa", "nail salon", "gym", "fitness studio",
+    "yoga", "personal trainer", "restaurant", "cafe", "bakery", "catering",
+    "cleaning service", "landscaping", "lawn care", "plumber", "electrician",
+    "tutor", "tutoring", "coaching", "local business", "local service",
+    "appointment", "booking system", "walk-in", "haircut", "massage",
+    "home service", "repair service",
+}
+
+
+def _infer_stack_id(instruction: str) -> str | None:
+    """Keyword-based stack inference. Returns stack_id or None (= keep default)."""
+    text = instruction.lower()
+    ecomm_hits = sum(1 for kw in _ECOMM_SIGNALS if kw in text)
+    local_hits = sum(1 for kw in _LOCAL_SIGNALS if kw in text)
+    if ecomm_hits == 0 and local_hits == 0:
+        return None
+    return "ecomm" if ecomm_hits >= local_hits else "local_service"
+
+
 def _write_env_key(key: str, value: str) -> None:
     env_path = ".env"
     try:
@@ -294,8 +321,9 @@ async def submit_goal(body: GoalRequest, request: Request):
     if not _unlimited and get_balance(body.founder_id) < 1:
         raise HTTPException(status_code=402, detail="Insufficient credits. Purchase more to continue.")
     constraints = dict(body.constraints or {})
-    if body.stack_id:
-        constraints["stack_id"] = body.stack_id
+    _effective_stack = body.stack_id or _infer_stack_id(body.instruction) or ""
+    if _effective_stack:
+        constraints["stack_id"] = _effective_stack
     constraints["unlimited_credits"] = _unlimited
 
     # Create or resolve workspace + chapter
@@ -330,7 +358,7 @@ async def submit_goal(body: GoalRequest, request: Request):
                     founder_id=body.founder_id,
                     name=_ws_name,
                     goal=body.instruction,
-                    stack_id=body.stack_id or "idea_to_revenue",
+                    stack_id=_effective_stack or "idea_to_revenue",
                 )
                 _workspace_id = _ws["workspace_id"]
         _ch = _wss.create_chapter(workspace_id=_workspace_id, session_id=session_id)
@@ -349,7 +377,7 @@ async def submit_goal(body: GoalRequest, request: Request):
             session_id=session_id,
             founder_id=body.founder_id,
             goal=body.instruction,
-            stack_id=body.stack_id or "",
+            stack_id=_effective_stack,
             company_name=str(constraints.get("company_name", "")),
             agents=list(constraints.get("agents", [])),
             workspace_id=_workspace_id,
