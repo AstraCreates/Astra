@@ -45,31 +45,25 @@ from backend.api.schemas import (
 from backend.provisioning.credentials_store import store_credentials
 
 
-_ECOMM_SIGNALS = {
-    "store", "shop", "ecommerce", "e-commerce", "online store", "shopify", "woocommerce",
-    "medusa", "print on demand", "printful", "printify", "dropship", "dropshipping",
-    "inventory", "checkout", "shopping cart", "sku", "wholesale", "fulfillment",
-    "sell products", "sell online", "digital product", "digital download", "merch",
-    "subscription box", "physical product",
-}
-_LOCAL_SIGNALS = {
-    "salon", "barbershop", "barber shop", "spa", "nail salon", "gym", "fitness studio",
-    "yoga", "personal trainer", "restaurant", "cafe", "bakery", "catering",
-    "cleaning service", "landscaping", "lawn care", "plumber", "electrician",
-    "tutor", "tutoring", "coaching", "local business", "local service",
-    "appointment", "booking system", "walk-in", "haircut", "massage",
-    "home service", "repair service",
-}
-
-
 def _infer_stack_id(instruction: str) -> str | None:
-    """Keyword-based stack inference. Returns stack_id or None (= keep default)."""
-    text = instruction.lower()
-    ecomm_hits = sum(1 for kw in _ECOMM_SIGNALS if kw in text)
-    local_hits = sum(1 for kw in _LOCAL_SIGNALS if kw in text)
-    if ecomm_hits == 0 and local_hits == 0:
+    """LLM-based stack inference. Returns 'ecomm', 'local_service', or None."""
+    try:
+        from backend.tools._llm import generate
+        prompt = (
+            "Classify this business goal into exactly one category.\n\n"
+            f"Goal: {instruction}\n\n"
+            "Categories:\n"
+            "- ecomm: online store, physical/digital products, print-on-demand, dropshipping, Shopify-style business\n"
+            "- local_service: brick-and-mortar, appointment-based, in-person services (salon, gym, restaurant, cleaning, tutoring, etc.)\n"
+            "- saas: software, app, platform, dashboard, API, SaaS, web tool, agency, content/media\n\n"
+            "Reply with ONLY one word: ecomm, local_service, or saas"
+        )
+        result = generate(prompt, max_tokens=10, model="fast", temperature=0.0).strip().lower()
+        if result in ("ecomm", "local_service"):
+            return result
         return None
-    return "ecomm" if ecomm_hits >= local_hits else "local_service"
+    except Exception:
+        return None
 
 
 def _write_env_key(key: str, value: str) -> None:
