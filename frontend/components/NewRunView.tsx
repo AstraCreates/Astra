@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getStacks, getWorkspace, submitGoal, ingestAttachment, type AgentStackTemplate, type Workspace } from "@/lib/api";
 import { useDevUser } from "@/lib/use-dev-user";
+import BusinessQuizModal, { type QuizResult } from "@/components/BusinessQuizModal";
 
 export default function NewRunView({ workspaceId }: { workspaceId: string }) {
   const router = useRouter();
@@ -17,6 +18,8 @@ export default function NewRunView({ workspaceId }: { workspaceId: string }) {
   const [uploading, setUploading] = useState(false);
   const [attachments, setAttachments] = useState<{ name: string; content: string }[]>([]);
   const [chars, setChars] = useState(0);
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [quizResult, setQuizResult] = useState<QuizResult | null>(null);
 
   useEffect(() => {
     getWorkspace(workspaceId).then(setWorkspace).catch(() => {});
@@ -36,21 +39,23 @@ export default function NewRunView({ workspaceId }: { workspaceId: string }) {
     setUploading(false);
   };
 
-  const submit = async () => {
+  const doLaunch = async (quiz: QuizResult | null) => {
     const goal = goalRef.current?.value.trim() || "";
     if (goal.length < 10) { setErr("⚠ Please describe your goal in more detail."); return; }
     setBusy(true);
     setErr("");
     try {
-      // Build instruction: company context from workspace + this run's goal
       const companyCtx = workspace?.goal || "";
       let instruction = companyCtx ? `${companyCtx}\n\n---\nRun goal: ${goal}` : goal;
+      if (quiz) {
+        instruction = `${quiz.contextBlock}\n\n---\n${instruction}`;
+      }
       if (attachments.length) {
         instruction += "\n\nAdditional context for this run:\n" + attachments.map((a) => `--- ${a.name} ---\n${a.content.slice(0, 6000)}`).join("\n\n");
       }
-      const data = await submitGoal(userId, instruction, {}, selStack || workspace?.stack_id || "idea_to_revenue");
+      const stackId = (quiz?.stackId) || selStack || workspace?.stack_id || "idea_to_revenue";
+      const data = await submitGoal(userId, instruction, {}, stackId);
       if (!data.session_id) throw new Error("No session_id returned");
-      // Open the live session (AppHome is session-based). Hard nav so it always lands.
       window.location.assign(`/s/${data.session_id}`);
     } catch (e) {
       setBusy(false);
@@ -58,8 +63,34 @@ export default function NewRunView({ workspaceId }: { workspaceId: string }) {
     }
   };
 
+  const submit = () => {
+    const goal = goalRef.current?.value.trim() || "";
+    if (goal.length < 10) { setErr("⚠ Please describe your goal in more detail."); return; }
+    // Show quiz only if no stack has been manually selected and quiz hasn't run yet
+    if (!quizResult && !selStack) {
+      setShowQuiz(true);
+    } else {
+      doLaunch(quizResult);
+    }
+  };
+
+  const onQuizComplete = (result: QuizResult) => {
+    setQuizResult(result);
+    setShowQuiz(false);
+    setSelStack(result.stackId);
+    doLaunch(result);
+  };
+
+  const onQuizSkip = () => {
+    setShowQuiz(false);
+    doLaunch(null);
+  };
+
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
+      {showQuiz && (
+        <BusinessQuizModal onComplete={onQuizComplete} onSkip={onQuizSkip} />
+      )}
       <div className="new-wrap" style={{ maxWidth: 580 }}>
         {/* Company context chip */}
         {workspace && (
@@ -70,6 +101,22 @@ export default function NewRunView({ workspaceId }: { workspaceId: string }) {
           </div>
         )}
 
+        {quizResult ? (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 12px", border: "1px solid var(--blue, #3b82f6)", background: "rgba(59,130,246,0.08)", marginBottom: 20, fontSize: 11, borderRadius: 6 }}>
+            <span style={{ color: "var(--fg)", fontWeight: 600 }}>
+              {quizResult.stackId === "ecomm" ? "Ecommerce Stack" :
+               quizResult.stackId === "local_service" ? "Local Service Stack" :
+               "Idea to Revenue Stack"}
+            </span>
+            <span style={{ color: "var(--fm)" }}>· {quizResult.businessType}{quizResult.subCategory ? ` · ${quizResult.subCategory}` : ""}</span>
+            <button
+              onClick={() => { setQuizResult(null); setSelStack(""); }}
+              style={{ fontSize: 10, color: "var(--fm)", background: "none", border: "none", cursor: "pointer", padding: 0, marginLeft: 4 }}
+            >
+              ✕ change
+            </button>
+          </div>
+        ) : null}
         <div className="new-ht">What do you want to build?</div>
         <div className="new-sub">Describe the goal for this run. Astra already knows your company context.</div>
 

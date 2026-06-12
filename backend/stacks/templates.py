@@ -501,6 +501,307 @@ PRODUCT_STACK = AgentStackTemplate(
 )
 
 
+ECOMM_STACK = AgentStackTemplate(
+    stack_id="ecomm",
+    name="Ecommerce Stack",
+    target_user="Founders launching or scaling an online store (physical goods, digital products, subscriptions, or print-on-demand).",
+    primary_outcome="Launch a complete ecommerce operation: store, product copy, email flows, paid + organic acquisition, and supply chain basics.",
+    description=(
+        "End-to-end ecommerce launch kit: Shopify store setup, product catalog, brand and visual direction, "
+        "email marketing flows, social + paid acquisition strategy, SEO, legal/compliance, and a 30-day launch plan."
+    ),
+    input_prompts=[
+        "What are you selling and to whom?",
+        "Do you have inventory/supply ready or are you still sourcing?",
+        "What does success look like at the end of this run?",
+    ],
+    tasks=[
+        StackTaskTemplate(
+            id="t_research",
+            agent="research",
+            title="Market & product validation",
+            instruction=(
+                "Research the product category, target buyer, top competitors (Shopify stores, Amazon listings), "
+                "pricing benchmarks, supplier options (Alibaba/Printful/Printify if relevant), and winning ad angles. "
+                "Produce a product brief, ICP, and channel hypothesis."
+            ),
+            artifacts=["market_brief", "icp_brief", "product_brief", "pricing_hypothesis"],
+        ),
+        StackTaskTemplate(
+            id="t_design",
+            agent="design",
+            title="Store brand direction",
+            instruction=(
+                "Create brand direction for an ecommerce store: color palette, typography, product image style, "
+                "homepage layout, and packaging/unboxing concept. Shopify theme recommendation."
+            ),
+            depends_on=["t_research"],
+            artifacts=["brand_direction", "theme_recommendation"],
+        ),
+        StackTaskTemplate(
+            id="t_web",
+            agent="web",
+            title="Store build",
+            instruction=(
+                "Build and deploy the ecommerce storefront. Options in priority order: "
+                "(1) Shopify store via Shopify API/CLI (preferred — most reliable, best conversion), "
+                "(2) Next.js + Stripe + Supabase custom store if Shopify token unavailable. "
+                "Include: homepage, product pages with compelling copy, cart/checkout, email capture, "
+                "about page, and contact. All pages must be demo-accessible without account creation."
+            ),
+            depends_on=["t_research", "t_design"],
+            artifacts=["store_url", "product_pages", "checkout_flow"],
+        ),
+        StackTaskTemplate(
+            id="t_marketing",
+            agent="marketing",
+            title="Acquisition & retention",
+            instruction=(
+                "Design the ecommerce acquisition and retention system: paid social angles (Meta/TikTok), "
+                "SEO product descriptions, email welcome + abandoned cart + post-purchase flows (Klaviyo-compatible), "
+                "influencer/UGC brief, and launch sequence. Deliverable: ready-to-run email sequences + ad copy."
+            ),
+            depends_on=["t_research"],
+            artifacts=["email_flows", "ad_copy", "seo_descriptions", "launch_sequence"],
+        ),
+        StackTaskTemplate(
+            id="t_sales",
+            agent="sales",
+            title="Revenue & wholesale",
+            instruction=(
+                "Map the revenue model: pricing tiers, bundle/upsell strategy, wholesale/B2B channel if relevant, "
+                "affiliate program brief, and customer lifetime value model. Include initial outreach for any B2B wholesale."
+            ),
+            depends_on=["t_research"],
+            artifacts=["revenue_model", "upsell_strategy"],
+        ),
+        StackTaskTemplate(
+            id="t_legal",
+            agent="legal",
+            title="Ecommerce compliance",
+            instruction=(
+                "Draft ecommerce legal essentials: return/refund policy, shipping policy, privacy policy (GDPR/CCPA), "
+                "terms of service, sales tax obligations summary, and any product-specific compliance notes "
+                "(FDA if consumables, FTC if supplements/claims, age verification if needed)."
+            ),
+            depends_on=["t_research"],
+            artifacts=["return_policy", "privacy_policy", "terms", "compliance_notes"],
+        ),
+        StackTaskTemplate(
+            id="t_ops",
+            agent="ops",
+            title="Launch operating plan",
+            instruction=(
+                "Synthesize into a founder launch plan: 30-day execution plan, supply chain checklist, "
+                "fulfilment/shipping setup steps, weekly revenue targets, and post-launch review cadence."
+            ),
+            depends_on=["t_research", "t_web", "t_marketing", "t_sales", "t_legal"],
+            artifacts=["thirty_day_plan", "supply_chain_checklist", "founder_next_actions"],
+        ),
+    ],
+    artifacts=[
+        StackArtifact("market_brief", "Market brief", "research", "Category, buyer, competitive landscape, pricing."),
+        StackArtifact("icp_brief", "ICP brief", "research", "Target buyer, purchase trigger, objections."),
+        StackArtifact("product_brief", "Product brief", "research", "Product positioning, key claims, differentiation."),
+        StackArtifact("pricing_hypothesis", "Pricing hypothesis", "research", "Pricing and margin model."),
+        StackArtifact("brand_direction", "Brand direction", "design", "Visual identity, theme rec, packaging concept."),
+        StackArtifact("theme_recommendation", "Theme recommendation", "design", "Shopify theme + customisation notes."),
+        StackArtifact("store_url", "Store URL", "web", "Live store or preview URL."),
+        StackArtifact("product_pages", "Product pages", "web", "Built and copy-complete product pages."),
+        StackArtifact("checkout_flow", "Checkout flow", "web", "Cart + checkout configured."),
+        StackArtifact("email_flows", "Email flows", "marketing", "Welcome, abandoned cart, post-purchase sequences."),
+        StackArtifact("ad_copy", "Ad copy", "marketing", "Meta/TikTok ad creative and copy."),
+        StackArtifact("seo_descriptions", "SEO descriptions", "marketing", "Optimised product and collection descriptions."),
+        StackArtifact("launch_sequence", "Launch sequence", "marketing", "Day-by-day launch playbook."),
+        StackArtifact("revenue_model", "Revenue model", "sales", "Pricing, bundles, LTV, wholesale tier."),
+        StackArtifact("upsell_strategy", "Upsell strategy", "sales", "Post-purchase and bundle upsell flows."),
+        StackArtifact("return_policy", "Return policy", "legal", "Published returns and refund policy."),
+        StackArtifact("privacy_policy", "Privacy policy", "legal", "GDPR/CCPA compliant privacy policy."),
+        StackArtifact("terms", "Terms of service", "legal", "Ecommerce terms of service."),
+        StackArtifact("compliance_notes", "Compliance notes", "legal", "Product-specific legal and regulatory notes."),
+        StackArtifact("thirty_day_plan", "30-day plan", "ops", "Launch execution plan."),
+        StackArtifact("supply_chain_checklist", "Supply chain checklist", "ops", "Supplier, inventory, and fulfilment steps."),
+        StackArtifact("founder_next_actions", "Founder next actions", "ops", "Prioritised actions after this run."),
+    ],
+    approval_gates=[
+        StackApprovalGate("store_publish", "Publish store", "store is built and ready", "going live on custom domain", "Public store launch needs founder sign-off."),
+        StackApprovalGate("outbound_send", "Send outbound email", "email sequences are drafted", "sending to real subscribers", "Email sends affect deliverability and legal compliance."),
+        StackApprovalGate("legal_publish", "Publish legal docs", "policies are drafted", "publishing policies to live store", "Policies must be founder-reviewed before they bind customers."),
+    ],
+    connector_requirements=[
+        StackConnectorRequirement("shopify", "Shopify", "ecomm_platform", "Create and configure the store, products, and checkout.", True),
+        StackConnectorRequirement("stripe", "Stripe", "payments", "Payment processing if building a custom store (fallback to Shopify Payments if Shopify).", False),
+        StackConnectorRequirement("github", "GitHub", "code", "Store codebase if building custom Next.js store.", False),
+        StackConnectorRequirement("vercel", "Vercel", "deployment", "Deploy custom store if not using Shopify hosting.", False),
+        StackConnectorRequirement("klaviyo", "Klaviyo", "email_marketing", "Email flows, abandoned cart, post-purchase automation.", False),
+        StackConnectorRequirement("gmail", "Gmail", "outreach", "Founder-approved transactional and launch emails.", False),
+        StackConnectorRequirement("meta_ads", "Meta Ads", "paid_social", "Run paid acquisition campaigns.", False),
+    ],
+    dashboard_sections=["Store", "Products", "Acquisition", "Email flows", "Revenue model", "Operations"],
+    completion_rules=[
+        "Store is live or has a deployable preview.",
+        "Email flows are drafted and ready to activate.",
+        "Legal policies are drafted and approval-gated.",
+        "30-day launch plan is produced.",
+    ],
+)
+
+
+LOCAL_SERVICE_STACK = AgentStackTemplate(
+    stack_id="local_service",
+    name="Local Service Stack",
+    target_user="Small service businesses: salons, barbershops, gyms, restaurants, cleaning, tutoring, pet care, and other local/appointment-based operations.",
+    primary_outcome="Launch a complete local service operation: booking site, Google Business presence, local acquisition, and operational playbook.",
+    description=(
+        "End-to-end local service launch kit: booking website with Square/Acuity integration, Google Business Profile, "
+        "local SEO and reviews strategy, SMS/email reminders, social content calendar, pricing model, "
+        "compliance basics, and a 30-day customer acquisition plan."
+    ),
+    input_prompts=[
+        "What service do you offer and where?",
+        "How do customers currently book or find you?",
+        "What does a successful first month look like?",
+    ],
+    tasks=[
+        StackTaskTemplate(
+            id="t_research",
+            agent="research",
+            title="Local market research",
+            instruction=(
+                "Research the local service category: typical pricing in the area, top competitors (Yelp, Google Maps), "
+                "customer acquisition channels (Instagram, Google, word-of-mouth, Yelp), review strategies, "
+                "and peak demand patterns. Produce a local ICP and positioning brief."
+            ),
+            artifacts=["local_market_brief", "icp_brief", "competitive_landscape"],
+        ),
+        StackTaskTemplate(
+            id="t_design",
+            agent="design",
+            title="Brand & visual identity",
+            instruction=(
+                "Create brand direction for a local service business: logo concept, color palette, social media templates "
+                "(Instagram grid style, story templates), booking confirmation email design, and signage brief."
+            ),
+            depends_on=["t_research"],
+            artifacts=["brand_direction", "social_templates"],
+        ),
+        StackTaskTemplate(
+            id="t_web",
+            agent="web",
+            title="Booking website",
+            instruction=(
+                "Build and deploy a local service booking website. Must include: "
+                "hero with service name + location + CTA, services menu with pricing, "
+                "online booking integration (embed Acuity Scheduling widget, or Square Appointments, or Calendly), "
+                "staff/team section, photo gallery placeholder, customer reviews section, contact + map embed, "
+                "and a mobile-first layout. Deploy via Vercel on Next.js. "
+                "All pages must be accessible without login — demo mode with sample data."
+            ),
+            depends_on=["t_research", "t_design"],
+            artifacts=["website_url", "booking_flow"],
+        ),
+        StackTaskTemplate(
+            id="t_marketing",
+            agent="marketing",
+            title="Local acquisition",
+            instruction=(
+                "Design the local customer acquisition system: "
+                "Google Business Profile optimisation guide (hours, photos, posts, review asks), "
+                "Yelp listing setup steps, Instagram content calendar (30 posts), "
+                "SMS reminder template for appointments (Twilio/SimpleTexting), "
+                "referral program design (e.g. refer a friend, get 20% off), "
+                "and Google/Meta local ad campaign brief. "
+                "Output: ready-to-post captions, review-ask SMS templates, and ad creative brief."
+            ),
+            depends_on=["t_research"],
+            artifacts=["google_business_guide", "social_calendar", "sms_templates", "referral_program", "local_ad_brief"],
+        ),
+        StackTaskTemplate(
+            id="t_sales",
+            agent="sales",
+            title="Pricing & retention",
+            instruction=(
+                "Design the pricing model and retention system: service menu pricing, membership/package tiers "
+                "(e.g. 10-session pack, monthly unlimited), upsell opportunities at point of service, "
+                "loyalty program brief, gift card strategy, and corporate/group booking angle if applicable."
+            ),
+            depends_on=["t_research"],
+            artifacts=["pricing_menu", "membership_tiers", "retention_playbook"],
+        ),
+        StackTaskTemplate(
+            id="t_legal",
+            agent="legal",
+            title="Local business compliance",
+            instruction=(
+                "Draft local service legal essentials: service agreement / waiver template (especially for beauty, "
+                "fitness, or food), cancellation and no-show policy, privacy policy for booking data, "
+                "local business license checklist for the relevant service category and state, "
+                "health and safety compliance notes (if beauty/food/fitness), and tip/gratuity policy."
+            ),
+            depends_on=["t_research"],
+            artifacts=["service_agreement", "cancellation_policy", "license_checklist", "compliance_notes"],
+        ),
+        StackTaskTemplate(
+            id="t_ops",
+            agent="ops",
+            title="Operations playbook",
+            instruction=(
+                "Synthesize into a 30-day launch operating plan: staff scheduling template, daily opening/closing "
+                "checklist, supply/product inventory list, customer onboarding flow (first visit experience), "
+                "weekly revenue targets, and review/feedback collection process."
+            ),
+            depends_on=["t_research", "t_web", "t_marketing", "t_sales", "t_legal"],
+            artifacts=["thirty_day_plan", "ops_checklist", "founder_next_actions"],
+        ),
+    ],
+    artifacts=[
+        StackArtifact("local_market_brief", "Local market brief", "research", "Category pricing, competitors, acquisition channels."),
+        StackArtifact("icp_brief", "ICP brief", "research", "Target customer, booking trigger, retention drivers."),
+        StackArtifact("competitive_landscape", "Competitive landscape", "research", "Top local competitors on Yelp/Google."),
+        StackArtifact("brand_direction", "Brand direction", "design", "Logo concept, palette, social templates."),
+        StackArtifact("social_templates", "Social templates", "design", "Instagram grid and story templates."),
+        StackArtifact("website_url", "Website URL", "web", "Live booking site URL."),
+        StackArtifact("booking_flow", "Booking flow", "web", "Configured online booking integration."),
+        StackArtifact("google_business_guide", "Google Business guide", "marketing", "Profile optimisation checklist."),
+        StackArtifact("social_calendar", "Social calendar", "marketing", "30-post Instagram content calendar."),
+        StackArtifact("sms_templates", "SMS templates", "marketing", "Appointment reminder and review-ask SMS."),
+        StackArtifact("referral_program", "Referral program", "marketing", "Refer-a-friend mechanics and copy."),
+        StackArtifact("local_ad_brief", "Local ad brief", "marketing", "Google/Meta local campaign brief."),
+        StackArtifact("pricing_menu", "Pricing menu", "sales", "Service menu with prices."),
+        StackArtifact("membership_tiers", "Membership tiers", "sales", "Package and membership pricing."),
+        StackArtifact("retention_playbook", "Retention playbook", "sales", "Loyalty, upsell, and rebooking strategy."),
+        StackArtifact("service_agreement", "Service agreement", "legal", "Client waiver and service terms."),
+        StackArtifact("cancellation_policy", "Cancellation policy", "legal", "No-show and cancellation terms."),
+        StackArtifact("license_checklist", "License checklist", "legal", "Local permits and license requirements."),
+        StackArtifact("compliance_notes", "Compliance notes", "legal", "Health, safety, and regulatory notes."),
+        StackArtifact("thirty_day_plan", "30-day plan", "ops", "Launch week-by-week execution plan."),
+        StackArtifact("ops_checklist", "Ops checklist", "ops", "Daily/weekly operations checklist."),
+        StackArtifact("founder_next_actions", "Founder next actions", "ops", "Prioritised actions after this run."),
+    ],
+    approval_gates=[
+        StackApprovalGate("site_publish", "Publish booking site", "site is built and tested", "going live on custom domain", "Public site with booking needs founder sign-off."),
+        StackApprovalGate("legal_publish", "Use legal docs with clients", "docs are drafted", "presenting to real clients or posting publicly", "Client-facing legal docs must be founder-reviewed."),
+        StackApprovalGate("paid_ads", "Run paid local ads", "ad creative is ready", "spending real ad budget", "Ad spend needs founder approval."),
+    ],
+    connector_requirements=[
+        StackConnectorRequirement("github", "GitHub", "code", "Host and version the booking site codebase.", True),
+        StackConnectorRequirement("vercel", "Vercel", "deployment", "Deploy the booking website.", True),
+        StackConnectorRequirement("square", "Square", "payments_pos", "In-person and online payments, appointments, and POS.", False),
+        StackConnectorRequirement("acuity", "Acuity Scheduling", "booking", "Online appointment booking and calendar sync.", False),
+        StackConnectorRequirement("twilio", "Twilio", "sms", "Automated appointment reminder and confirmation SMS.", False),
+        StackConnectorRequirement("instagram", "Instagram", "social", "Post organic content and run local paid campaigns.", False),
+        StackConnectorRequirement("gmail", "Gmail", "email", "Booking confirmations and marketing emails.", False),
+    ],
+    dashboard_sections=["Booking site", "Local presence", "Acquisition", "Pricing & retention", "Operations", "Legal"],
+    completion_rules=[
+        "Booking site is live or has a deployable preview.",
+        "Google Business and social setup guides are produced.",
+        "30-day acquisition plan is complete.",
+        "Legal docs are drafted and approval-gated.",
+    ],
+)
+
+
 STACK_TEMPLATES: dict[str, AgentStackTemplate] = {
     IDEA_TO_REVENUE_STACK.stack_id: IDEA_TO_REVENUE_STACK,
     SALES_STACK.stack_id: SALES_STACK,
@@ -508,6 +809,8 @@ STACK_TEMPLATES: dict[str, AgentStackTemplate] = {
     FOUNDER_OPS_STACK.stack_id: FOUNDER_OPS_STACK,
     SUPPORT_STACK.stack_id: SUPPORT_STACK,
     PRODUCT_STACK.stack_id: PRODUCT_STACK,
+    ECOMM_STACK.stack_id: ECOMM_STACK,
+    LOCAL_SERVICE_STACK.stack_id: LOCAL_SERVICE_STACK,
 }
 
 # Product contract: Astra must cover "start from zero" founders plus existing
