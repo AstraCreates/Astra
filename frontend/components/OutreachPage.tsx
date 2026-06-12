@@ -385,6 +385,7 @@ const Btn = ({ children, onClick, disabled, variant = "ghost", style: s }: {
     <button
       onClick={onClick}
       disabled={disabled}
+      className="m-tap"
       style={{
         padding: "0 18px", height: 36, fontSize: 12, fontWeight: 600,
         fontFamily: "var(--font-geist-sans), sans-serif",
@@ -756,6 +757,7 @@ export default function OutreachPage() {
         actions={
           <button
             onClick={() => setShowNewCampaign(true)}
+            className="m-tap"
             style={{
               padding: "8px 18px", fontSize: 12, fontWeight: 600, color: "#002EFF",
               background: "#fff", border: "none", cursor: "pointer",

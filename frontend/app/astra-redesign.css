@@ -607,4 +607,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   .detail { width: 100% !important; min-width: 0 !important; flex: 1; }
   /* Prevent any fixed/min widths from overflowing the viewport. */
   body { overflow-x: hidden; }
+  /* Touch targets: 44px minimum for interactive elements on phones */
+  .m-tap { min-height: 44px !important; }
+  .btn { min-height: 44px; }
 }

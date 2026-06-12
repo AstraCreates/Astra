@@ -581,6 +581,7 @@ function ServiceCard({
         <button
           onClick={isGitHub ? connectGitHubOAuth : openPopup}
           disabled={connecting}
+          className="m-tap"
           style={{
             padding: "6px 14px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
             background: isConnected ? c.greenTint : c.bg,
@@ -705,6 +706,7 @@ function StripeCard({ founderId, email }: { founderId: string; email: string }) 
           <button
             onClick={connect}
             disabled={connecting}
+            className="m-tap"
             style={{
               padding: "6px 14px", borderRadius: 8, fontSize: 13, fontWeight: 500, flexShrink: 0,
               background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer",
@@ -781,6 +783,7 @@ function ComposioKeyCard({ connected, saving, error, onSave }: {
         </div>
         <button
           onClick={openPopup}
+          className="m-tap"
           style={{
             padding: "6px 14px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
             background: connected ? c.greenTint : c.bg,
@@ -986,6 +989,7 @@ function TwilioGuideCard({ connected }: { connected: boolean }) {
         </div>
         <button
           onClick={() => setOpen(v => !v)}
+          className="m-tap"
           style={{
             padding: "6px 14px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
             background: (connected || saved) ? c.greenTint : c.bg,

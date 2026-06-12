@@ -89,8 +89,8 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
             </div>
           </div>
           {isSignedIn
-            ? <button onClick={() => signOut({ callbackUrl: "/" })} style={{ background: "none", border: "none", fontSize: 10, color: "var(--fm)", cursor: "pointer", fontFamily: "var(--font-instrument), sans-serif", padding: "2px 4px", borderRadius: 4, flexShrink: 0 }}>sign out</button>
-            : <button onClick={() => signIn("google", { callbackUrl: "/" })} style={{ background: "none", border: "none", fontSize: 10, color: "var(--blue)", cursor: "pointer", fontFamily: "var(--font-instrument), sans-serif", padding: "2px 4px", borderRadius: 4, flexShrink: 0, fontWeight: 600 }}>sign in</button>}
+            ? <button onClick={() => signOut({ callbackUrl: "/" })} className="m-tap" style={{ background: "none", border: "none", fontSize: 10, color: "var(--fm)", cursor: "pointer", fontFamily: "var(--font-instrument), sans-serif", padding: "2px 4px", borderRadius: 4, flexShrink: 0 }}>sign out</button>
+            : <button onClick={() => signIn("google", { callbackUrl: "/" })} className="m-tap" style={{ background: "none", border: "none", fontSize: 10, color: "var(--blue)", cursor: "pointer", fontFamily: "var(--font-instrument), sans-serif", padding: "2px 4px", borderRadius: 4, flexShrink: 0, fontWeight: 600 }}>sign in</button>}
         </div>
       </div>
     </nav>

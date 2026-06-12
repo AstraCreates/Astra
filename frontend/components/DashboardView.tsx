@@ -133,6 +133,7 @@ export default function DashboardView() {
         @keyframes sc-indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
         .greeting-text { transition: opacity 0.3s ease; }
         .sc-row { cursor: pointer; padding: 14px 16px; border: 1px solid var(--bd); background: var(--surface); display: flex; align-items: flex-start; gap: 14; transition: border-color .15s, box-shadow .15s; position: relative; overflow: hidden; border-radius: 8px; }
+        @media (max-width: 600px) { .dv-content { flex-direction: column !important; } .dv-goals { width: 100% !important; } .dv-hero button { min-height: 44px; } }
         .sc-row::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--bd); transition: background .15s; border-radius: 8px 8px 0 0; }
         .sc-row:hover { border-color: var(--bb) !important; box-shadow: 0 4px 16px rgba(0,46,255,.07); }
         .sc-row:hover::before { background: linear-gradient(90deg, var(--blue), var(--mint)); }
@@ -206,10 +207,10 @@ export default function DashboardView() {
             <button onClick={() => setToastErr("")} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 14, padding: 0, lineHeight: 1 }}>✕</button>
           </div>
         )}
-        <div style={{ padding: "20px 24px 40px", display: "flex", gap: 24, alignItems: "flex-start" }}>
+        <div className="dv-content" style={{ padding: "20px 24px 40px", display: "flex", gap: 24, alignItems: "flex-start" }}>
 
           {/* ── Left: Goal panel ── */}
-          <div style={{ width: 340, flexShrink: 0 }}>
+          <div className="dv-goals" style={{ width: 340, flexShrink: 0 }}>
             <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fd)", fontFamily: "var(--font-code)", marginBottom: 12 }}>
               Goals
             </div>
