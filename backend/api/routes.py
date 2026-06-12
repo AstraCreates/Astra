@@ -45,25 +45,39 @@ from backend.api.schemas import (
 from backend.provisioning.credentials_store import store_credentials
 
 
-def _infer_stack_id(instruction: str) -> str | None:
-    """LLM-based stack inference. Returns 'ecomm', 'local_service', or None."""
+def _analyze_goal(instruction: str) -> tuple[str | None, str | None]:
+    """LLM analysis of goal. Returns (stack_id, business_profile).
+    stack_id: 'ecomm' | 'local_service' | None (saas/default)
+    business_profile: 2-3 sentence summary of the business for agent context.
+    Fails open: returns (None, None) on any error.
+    """
     try:
+        import json as _json
         from backend.tools._llm import generate
         prompt = (
-            "Classify this business goal into exactly one category.\n\n"
-            f"Goal: {instruction}\n\n"
-            "Categories:\n"
-            "- ecomm: online store, physical/digital products, print-on-demand, dropshipping, Shopify-style business\n"
-            "- local_service: brick-and-mortar, appointment-based, in-person services (salon, gym, restaurant, cleaning, tutoring, etc.)\n"
-            "- saas: software, app, platform, dashboard, API, SaaS, web tool, agency, content/media\n\n"
-            "Reply with ONLY one word: ecomm, local_service, or saas"
+            "You are analyzing a founder's business goal to understand what they are building.\n\n"
+            f"Goal text:\n{instruction}\n\n"
+            "Tasks:\n"
+            "1. Write a concise 2-3 sentence business profile that captures: what they're building, "
+            "who it serves, and what problem it solves. This will be injected as context for AI agents "
+            "— be specific, not generic.\n"
+            "2. Classify the business type:\n"
+            "   - ecomm: online store selling physical/digital products, print-on-demand, dropshipping\n"
+            "   - local_service: brick-and-mortar, appointment-based, in-person services\n"
+            "   - saas: software, app, platform, API, agency, content/creator\n\n"
+            "Respond with a JSON object:\n"
+            '{"stack_id": "ecomm"|"local_service"|"saas", "business_profile": "..."}'
         )
-        result = generate(prompt, model="fast", temperature=0.0).strip().lower()
-        if result in ("ecomm", "local_service"):
-            return result
-        return None
+        raw = generate(prompt, model="fast", temperature=0.0, json_mode=True)
+        # Strip markdown fences if present
+        import re as _re
+        raw = _re.sub(r"```(?:json)?|```", "", raw).strip()
+        data = _json.loads(raw)
+        stack_id = data.get("stack_id", "saas")
+        profile = (data.get("business_profile") or "").strip()
+        return (stack_id if stack_id in ("ecomm", "local_service") else None, profile or None)
     except Exception:
-        return None
+        return (None, None)
 
 
 def _write_env_key(key: str, value: str) -> None:
@@ -315,10 +329,15 @@ async def submit_goal(body: GoalRequest, request: Request):
     if not _unlimited and get_balance(body.founder_id) < 1:
         raise HTTPException(status_code=402, detail="Insufficient credits. Purchase more to continue.")
     constraints = dict(body.constraints or {})
-    _effective_stack = body.stack_id or _infer_stack_id(body.instruction) or ""
+    _inferred_stack, _business_profile = _analyze_goal(body.instruction)
+    _effective_stack = body.stack_id or _inferred_stack or ""
     if _effective_stack:
         constraints["stack_id"] = _effective_stack
     constraints["unlimited_credits"] = _unlimited
+    # Prepend LLM-generated business profile so all agents have full context
+    _goal_instruction = body.instruction
+    if _business_profile and "---" not in body.instruction[:80]:
+        _goal_instruction = f"Business profile:\n{_business_profile}\n\n---\n{body.instruction}"
 
     # Create or resolve workspace + chapter
     _workspace_id: str = ""
@@ -351,7 +370,7 @@ async def submit_goal(body: GoalRequest, request: Request):
                 _ws = _wss.create_workspace(
                     founder_id=body.founder_id,
                     name=_ws_name,
-                    goal=body.instruction,
+                    goal=_goal_instruction,
                     stack_id=_effective_stack or "idea_to_revenue",
                 )
                 _workspace_id = _ws["workspace_id"]
@@ -370,7 +389,7 @@ async def submit_goal(body: GoalRequest, request: Request):
         _reg(
             session_id=session_id,
             founder_id=body.founder_id,
-            goal=body.instruction,
+            goal=_goal_instruction,
             stack_id=_effective_stack,
             company_name=str(constraints.get("company_name", "")),
             agents=list(constraints.get("agents", [])),
@@ -391,7 +410,7 @@ async def submit_goal(body: GoalRequest, request: Request):
         _final_status = "done"
         try:
             await orch.run(
-                goal=body.instruction,
+                goal=_goal_instruction,
                 founder_id=body.founder_id,
                 constraints=constraints,
                 session_id=session_id,
