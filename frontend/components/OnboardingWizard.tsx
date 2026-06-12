@@ -192,11 +192,46 @@ const GROUP_EMOJI: Record<string, string> = {
 
 const _REQUIRED = new Set(["research"]);
 
-function StepCustomStack({ selected, onToggle, onBack, onNext }: {
+// Fallback catalog — mirrors backend/stacks/catalog.py exactly.
+// Used when the backend is unreachable so the UI always works.
+const FALLBACK_CATALOG: AgentCatalogEntry[] = [
+  { id: "research",             name: "Research",              description: "Market sizing, competitor analysis, TAM/SAM/SOM, customer profile. Deep web, news, patent, and video research.", produces: ["market_research_report","competitor_analysis","customer_personas","market_brief"], depends_on: [] },
+  { id: "research_competitors", name: "Competitor Intel",      description: "Deep competitor intelligence: named competitors, pricing pages, funding and review mining, market maps.",           produces: ["competitor_table","whitespace_opportunities"],                                    depends_on: [] },
+  { id: "research_execution",   name: "Execution Strategy",    description: "GTM strategy, revenue model, recommended tech stack, unit economics, and a first-90-days plan.",                  produces: ["execution_strategy","gtm_strategy","recommended_tech_stack"],                     depends_on: [] },
+  { id: "research_market",      name: "Market Research",       description: "Deep TAM/SAM/SOM sizing, ICP profiling, pricing benchmarks, competitor landscape.",                                produces: ["tam_sam_som_report","icp_brief","pricing_benchmark"],                             depends_on: [] },
+  { id: "research_financial",   name: "Financial Research",    description: "Unit economics benchmarks, fundraising comps, burn rate analysis, investor readiness scoring.",                   produces: ["unit_economics_report","fundraising_comps"],                                      depends_on: ["research_market"] },
+  { id: "research_regulatory",  name: "Regulatory Research",   description: "GDPR/HIPAA/SOC2 compliance mapping, regulatory risk flags, compliance checklist PDF.",                            produces: ["compliance_checklist","regulatory_risk_report"],                                  depends_on: ["research_market"] },
+  { id: "legal",                name: "Legal",                 description: "Privacy policies, terms of service, founder agreements, IP assignment, entity formation guidance.",               produces: ["legal_checklist","policy_outline","founder_agreement"],                          depends_on: ["research"] },
+  { id: "legal_docs",           name: "Legal Documents",       description: "Privacy policy, terms of service, NDA, IP assignment — full PDFs.",                                               produces: ["privacy_policy_pdf","tos_pdf","nda_pdf"],                                         depends_on: ["research"] },
+  { id: "legal_entity",         name: "Entity Formation",      description: "LLC/C-Corp formation guidance, EIN walkthrough, founder agreement, cap table setup.",                             produces: ["entity_formation_guide","founder_agreement_pdf"],                                 depends_on: ["research"] },
+  { id: "legal_ip",             name: "IP Strategy",           description: "Patent search, trademark clearance, IP assignment, trade secret playbook.",                                       produces: ["patent_landscape","trademark_report"],                                            depends_on: ["research"] },
+  { id: "marketing",            name: "Marketing",             description: "Go-to-market strategy, social media content, Meta ad copy, email campaigns, and growth channel planning.",        produces: ["gtm_plan","launch_content","ad_creatives","email_sequence"],                     depends_on: ["research"] },
+  { id: "marketing_content",    name: "Content Marketing",     description: "Instagram Reels scripts, TikTok packages, Meta ad copy, 30-day content calendar PDF.",                           produces: ["reels_scripts","tiktok_package","meta_ads","content_calendar_pdf"],              depends_on: ["research"] },
+  { id: "marketing_outreach",   name: "Outreach & Lead Gen",   description: "Hunter lead discovery, cold email sequences, SendGrid campaign execution.",                                       produces: ["lead_list","email_sequence","outreach_report"],                                   depends_on: ["research"] },
+  { id: "marketing_seo",        name: "SEO Strategy",          description: "Keyword research, content calendar, blog outlines, on-page SEO checklist PDF.",                                  produces: ["keyword_research","seo_content_calendar"],                                        depends_on: ["research"] },
+  { id: "marketing_paid",       name: "Paid Advertising",      description: "Google/Meta campaign strategy, budget allocation, creative briefs, audience targeting PDF.",                     produces: ["paid_strategy_pdf","campaign_briefs"],                                            depends_on: ["research"] },
+  { id: "sales",                name: "Sales & Outreach",      description: "Lead discovery, personalized multi-step outreach sequences, and CRM contact records.",                            produces: ["leads","outreach_sequences","crm_contacts"],                                      depends_on: ["research"] },
+  { id: "sales_pipeline",       name: "Sales Pipeline",        description: "CRM stage design, MEDDIC/BANT qualification, objection scripts, sales playbook PDF.",                            produces: ["sales_playbook_pdf","crm_stage_map"],                                             depends_on: ["research"] },
+  { id: "sales_enablement",     name: "Sales Enablement",      description: "Pitch deck, one-pager, case study templates, competitive battlecards PDFs.",                                     produces: ["pitch_deck_pdf","one_pager_pdf","battlecards_pdf"],                               depends_on: ["research"] },
+  { id: "technical",            name: "Technical",             description: "Software architecture, MVP development, GitHub repo creation, Vercel deployment, full-stack planning.",           produces: ["mvp_roadmap","technical_plan","github_repo","deployed_app"],                     depends_on: ["research"] },
+  { id: "technical_scaffold",   name: "Code Scaffold",         description: "GitHub repo creation, Claude Code CLI scaffolding — 20-30 working files committed.",                              produces: ["github_repo","scaffolded_codebase"],                                              depends_on: ["research"] },
+  { id: "technical_infra",      name: "Infrastructure",        description: "CI/CD pipeline, Docker setup, hosting config, monitoring, runbook PDF.",                                          produces: ["cicd_config","docker_compose","infra_runbook_pdf"],                               depends_on: ["technical_scaffold"] },
+  { id: "technical_data",       name: "Data Architecture",     description: "ER diagram, Postgres schema, analytics event plan, data pipeline spec PDF.",                                     produces: ["er_diagram","postgres_schema"],                                                    depends_on: ["research"] },
+  { id: "finance_model",        name: "Financial Model",       description: "12-month revenue model, 3 scenarios (base/bull/bear), unit economics, P&L PDF.",                                 produces: ["financial_model_pdf","unit_economics_sheet"],                                     depends_on: ["research_financial"] },
+  { id: "finance_fundraise",    name: "Fundraising Strategy",  description: "Raise recommendation, investor target list, SAFE/priced terms, pitch narrative PDF.",                            produces: ["raise_recommendation","investor_list"],                                           depends_on: ["finance_model"] },
+  { id: "ops",                  name: "Operations",            description: "Synthesizes every agent lane into a founder operating plan: 30-day calendar, investor memo, Notion/Linear setup.", produces: ["thirty_day_plan","investor_memo","founder_next_actions"],                        depends_on: ["research"] },
+  { id: "web",                  name: "Web",                   description: "Landing page generation, Vercel deployment, conversion-focused copy and website architecture.",                  produces: ["landing_page","website_copy","deployed_url"],                                     depends_on: ["research"] },
+  { id: "design",               name: "Design & Brand",        description: "Visual identity, logo and wordmark generation, brand color systems, wireframes, and design spec.",               produces: ["design_spec","brand_direction","logo"],                                           depends_on: ["research"] },
+];
+
+function StepCustomStack({ selected, onToggle, onBack, onNext, stackName, setStackName }: {
   selected: string[]; onToggle: (id: string) => void; onBack: () => void; onNext: () => void;
+  stackName: string; setStackName: (v: string) => void;
 }) {
-  const [catalog, setCatalog] = useState<AgentCatalogEntry[]>([]);
-  useEffect(() => { getAgentCatalog().then(setCatalog).catch(() => {}); }, []);
+  const [catalog, setCatalog] = useState<AgentCatalogEntry[]>(FALLBACK_CATALOG);
+  const [teamNames, setTeamNames] = useState<Record<string, string>>({});
+  const [editingTeam, setEditingTeam] = useState<string | null>(null);
+  useEffect(() => { getAgentCatalog().then(c => { if (c.length > 0) setCatalog(c); }).catch(() => {}); }, []);
 
   const grouped: Record<string, AgentCatalogEntry[]> = {};
   catalog.forEach(agent => {
@@ -205,6 +240,8 @@ function StepCustomStack({ selected, onToggle, onBack, onNext }: {
     grouped[group].push(agent);
   });
 
+  const getTeamLabel = (group: string) => teamNames[group] ?? GROUP_LABELS[group] ?? group;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div>
@@ -212,63 +249,89 @@ function StepCustomStack({ selected, onToggle, onBack, onNext }: {
           Build your stack
         </h2>
         <p style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>
-          Pick the specific agents you need. Select at least 1.
+          Name your stack, rename sub-teams, then pick the agents you need.
         </p>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 14, maxHeight: 420, overflowY: "auto", paddingRight: 4 }}>
-        {GROUP_ORDER.filter(g => grouped[g]).map(group => (
-          <div key={group}>
-            <div style={{ ...SECTION_LABEL, display: "flex", alignItems: "center", gap: 5, marginBottom: 8 }}>
-              <span>{GROUP_EMOJI[group]}</span>
-              {GROUP_LABELS[group]}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {grouped[group].map(agent => {
-                const active = selected.includes(agent.id);
-                const required = _REQUIRED.has(agent.id);
-                return (
-                  <div
-                    key={agent.id}
-                    onClick={() => { if (!required) onToggle(agent.id); }}
-                    style={{
-                      borderRadius: 12,
-                      border: `1.5px solid ${active ? T.blue : T.border}`,
-                      background: active ? T.blueTint : T.white,
-                      padding: "10px 12px",
-                      cursor: required ? "default" : "pointer",
-                      transition: "border-color 0.15s, background 0.15s",
-                      opacity: required ? 0.75 : 1,
-                      boxShadow: T.shadow,
-                    }}
-                  >
-                    <div style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: active ? T.blue : T.textPrimary,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-                    }}>
-                      {agent.name}
-                      {required
-                        ? <span style={{ fontSize: 9, color: T.blue, textTransform: "uppercase", letterSpacing: "0.06em" }}>required</span>
-                        : active && <span style={{ color: T.blue, fontSize: 13 }}>✓</span>}
+      {/* Stack name */}
+      <div>
+        <label style={{ ...SECTION_LABEL, display: "block", marginBottom: 6 }}>Stack name</label>
+        <input
+          value={stackName}
+          onChange={e => setStackName(e.target.value)}
+          placeholder="e.g. My Growth Stack"
+          style={{ width: "100%", padding: "9px 12px", fontSize: 14, fontWeight: 600, border: `1.5px solid ${T.border}`, borderRadius: 10, background: T.white, color: T.textPrimary, outline: "none", fontFamily: "var(--font-geist-sans), sans-serif", boxSizing: "border-box" }}
+        />
+      </div>
+
+      {/* Agent groups */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, maxHeight: 460, overflowY: "auto", paddingRight: 4 }}>
+        {GROUP_ORDER.filter(g => grouped[g]).map(group => {
+          const groupAgents = grouped[group];
+          const groupSelected = groupAgents.filter(a => selected.includes(a.id)).length;
+          return (
+            <div key={group}>
+              {/* Group header with inline rename */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 13 }}>{GROUP_EMOJI[group]}</span>
+                {editingTeam === group ? (
+                  <input
+                    autoFocus
+                    value={teamNames[group] ?? GROUP_LABELS[group]}
+                    onChange={e => setTeamNames(p => ({ ...p, [group]: e.target.value }))}
+                    onBlur={() => setEditingTeam(null)}
+                    onKeyDown={e => { if (e.key === "Enter" || e.key === "Escape") setEditingTeam(null); }}
+                    style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", border: `1px solid ${T.blue}`, borderRadius: 6, padding: "2px 7px", background: T.blueTint, color: T.blue, outline: "none", width: 130, fontFamily: "var(--font-geist-sans), sans-serif" }}
+                  />
+                ) : (
+                  <span style={{ ...SECTION_LABEL, cursor: "pointer" }} onClick={() => setEditingTeam(group)} title="Click to rename">
+                    {getTeamLabel(group)}
+                    <span style={{ marginLeft: 5, fontSize: 9, color: T.textMuted, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>✎</span>
+                  </span>
+                )}
+                <span style={{ marginLeft: "auto", fontSize: 10, color: groupSelected > 0 ? T.blue : T.textMuted }}>
+                  {groupSelected}/{groupAgents.length}
+                </span>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {groupAgents.map(agent => {
+                  const active = selected.includes(agent.id);
+                  const required = _REQUIRED.has(agent.id);
+                  return (
+                    <div
+                      key={agent.id}
+                      onClick={() => { if (!required) onToggle(agent.id); }}
+                      style={{
+                        borderRadius: 10,
+                        border: `1.5px solid ${active ? T.blue : T.border}`,
+                        background: active ? T.blueTint : T.white,
+                        padding: "9px 11px",
+                        cursor: required ? "default" : "pointer",
+                        transition: "border-color 0.12s, background 0.12s",
+                        opacity: required ? 0.75 : 1,
+                        boxShadow: T.shadow,
+                      }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 600, color: active ? T.blue : T.textPrimary, display: "flex", justifyContent: "space-between", alignItems: "center", fontFamily: "var(--font-geist-sans), sans-serif" }}>
+                        {agent.name}
+                        {required
+                          ? <span style={{ fontSize: 8, color: T.blue, textTransform: "uppercase", letterSpacing: "0.06em" }}>required</span>
+                          : active && <span style={{ color: T.blue, fontSize: 12 }}>✓</span>}
+                      </div>
+                      <p style={{ fontSize: 9.5, color: T.textMuted, margin: "3px 0 0", lineHeight: 1.4 }}>
+                        {agent.description.slice(0, 60)}{agent.description.length > 60 ? "…" : ""}
+                      </p>
                     </div>
-                    <p style={{ fontSize: 10, color: T.textMuted, margin: "3px 0 0", lineHeight: 1.4 }}>
-                      {agent.description.slice(0, 55)}…
-                    </p>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div style={{ fontSize: 12, color: T.textMuted, textAlign: "center" }}>
-        {selected.length === 0 ? "Select at least 1 agent" : `${selected.length} agent${selected.length === 1 ? "" : "s"} selected`}
+        {selected.length === 0 ? "Select at least 1 agent" : `${selected.length} agent${selected.length === 1 ? "" : "s"} selected across ${GROUP_ORDER.filter(g => grouped[g] && grouped[g].some(a => selected.includes(a.id))).length} team${GROUP_ORDER.filter(g => grouped[g] && grouped[g].some(a => selected.includes(a.id))).length === 1 ? "" : "s"}`}
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -1079,6 +1142,7 @@ export default function OnboardingWizard() {
   const [selectedStackId, setSelectedStackId] = useState("idea_to_revenue");
   const REQUIRED_AGENTS = new Set(["research"]);
   const [customAgents, setCustomAgents] = useState<string[]>(["research", "web", "technical", "marketing"]);
+  const [customStackName, setCustomStackName] = useState("My Custom Stack");
   const [stacks, setStacks] = useState<AgentStackTemplate[]>([]);
   const [recommendation, setRecommendation] = useState<{ stack_id: string; reason: string } | null>(null);
   const [manualOverride, setManualOverride] = useState(false);
@@ -1116,7 +1180,7 @@ export default function OnboardingWizard() {
   }, [founderId, selectedStackId]);
 
   const selectedStack = stacks.find(s => s.stack_id === selectedStackId);
-  const stackName = selectedStackId === "custom" ? "Custom Stack" : (selectedStack?.name ?? "Idea to Revenue Stack");
+  const stackName = selectedStackId === "custom" ? customStackName : (selectedStack?.name ?? "Idea to Revenue Stack");
 
   const [launching, setLaunching] = useState(false);
 
@@ -1142,6 +1206,7 @@ export default function OnboardingWizard() {
     if (company.trim()) lsSet("astra_onboarding_company", company.trim());
     if (selectedStackId === "custom" && customAgents.length > 0) {
       lsSet("astra_custom_agents", JSON.stringify(customAgents));
+      lsSet("astra_custom_stack_name", customStackName);
       lsSet("astra_onboarding_stack", "custom");
     } else {
       lsSet("astra_onboarding_stack", selectedStackId);
@@ -1240,6 +1305,7 @@ export default function OnboardingWizard() {
           <StepCustomStack
             selected={customAgents} onToggle={toggleCustomAgent}
             onBack={() => setStep(2)} onNext={() => setStep(4)}
+            stackName={customStackName} setStackName={setCustomStackName}
           />
         )}
 
