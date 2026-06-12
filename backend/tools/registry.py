@@ -16,7 +16,7 @@ from backend.tools.apollo_tools import (
     apollo_search_people,
     apollo_search_companies,
     apollo_enrich_person,
-    apollo_enrich_company,
+    apollo_enrich_batch,
 )
 from backend.tools.web_search import web_search, news_search
 from backend.tools.patent_search import patent_search
@@ -147,7 +147,7 @@ TOOL_REGISTRY: dict[str, callable] = {
     "apollo_search_people": apollo_search_people,
     "apollo_search_companies": apollo_search_companies,
     "apollo_enrich_person": apollo_enrich_person,
-    "apollo_enrich_company": apollo_enrich_company,
+    "apollo_enrich_batch": apollo_enrich_batch,
 
     # Company brain — normalized cross-tool context for humans and agents
     "company_brain_search": search_company_brain,
