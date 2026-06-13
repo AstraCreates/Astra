@@ -8,10 +8,10 @@ services:
 
   backend:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile.backend
     restart: unless-stopped
-    env_file: .env
+    env_file: ../.env
     environment:
       - REDIS_URL=redis://redis:6379
       - OBSIDIAN_VAULT=/data/astra_docs
@@ -28,7 +28,7 @@ services:
 
   frontend:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile.frontend
       args:
         - BACKEND_URL=http://backend:8000
@@ -38,7 +38,7 @@ services:
         - NEXTAUTH_URL=${NEXTAUTH_URL:-}
         - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-}
     restart: unless-stopped
-    env_file: .env
+    env_file: ../.env
     environment:
       - BACKEND_URL=http://backend:8000
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
@@ -57,8 +57,8 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./deploy/certs:/etc/nginx/certs:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
     depends_on:
       - backend
       - frontend
