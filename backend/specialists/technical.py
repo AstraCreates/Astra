@@ -79,7 +79,9 @@ def build_technical_agent(**kwargs) -> Agent:
             "operator cannot finish the QA flow. If it's "
             "broken (dead button, 404, crash), fix it with run_claude_in_repo and redeploy. Skip if no deploy_url.\n"
             "6. obsidian_log — log the final repo_url, deploy_url, and any provisioned keys.\n"
-            "7. done — return {repo_url, deploy_url, files_in_repo}.\n\n"
+            "7. done — return {repo_url, deploy_url, files_in_repo, tech_stack: [list of technology names used]}. "
+            "tech_stack must be a JSON array of strings, e.g. [\"Next.js\",\"TypeScript\",\"Supabase\",\"Stripe\",\"Tailwind CSS\"]. "
+            "Plain text names only, no markdown, no bullet symbols.\n\n"
             "Never call run_claude_in_repo instead of run_mvp_loop/spawn_parallel_coders. Do NOT create a new repo "
             "if one already exists."
         ),

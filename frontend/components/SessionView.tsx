@@ -642,10 +642,22 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       .filter(a => a.result && typeof a.result === "object")
       .map(a => ({ key: a.key, r: a.result as Record<string, unknown> }));
 
+    const stripMd = (s: string): string => s
+      .replace(/\*\*([^*]+)\*\*/g, "$1")
+      .replace(/\*([^*]+)\*/g, "$1")
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/`([^`]+)`/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/^[-•*]\s+/gm, "")
+      .replace(/[\u{1F300}-\u{1F9FF}]/gu, "")
+      .replace(/[\u{2600}-\u{26FF}]/gu, "")
+      .replace(/[\u{2700}-\u{27BF}]/gu, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
     const str = (v: unknown): string => {
       if (!v) return "";
-      if (typeof v === "string") return v.trim();
-      if (Array.isArray(v)) return (v as unknown[]).map(x => typeof x === "string" ? x : String(x)).filter(Boolean).join(", ");
+      if (typeof v === "string") return stripMd(v);
+      if (Array.isArray(v)) return (v as unknown[]).map(x => typeof x === "string" ? stripMd(x) : String(x)).filter(Boolean).join(", ");
       return "";
     };
     const find = (...keys: string[]): string => {
