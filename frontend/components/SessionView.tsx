@@ -679,36 +679,39 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       for (const h of hexes) { const u = h.toUpperCase(); if (!seen.has(u)) { seen.add(u); palette.push(u); } }
     }
 
-    const name        = st.projectName || st.company;
-    const tagline     = find("tagline", "headline", "value_proposition", "one_liner", "pitch", "positioning_statement", "slogan");
-    const mission     = find("mission", "mission_statement", "north_star", "vision", "company_mission");
-    const problem     = find("problem", "pain_point", "problem_statement", "customer_pain", "core_problem");
-    const solution    = find("solution", "solution_description", "product_description", "how_it_works", "offering");
-    const icp         = find("icp", "ideal_customer_profile", "target_market", "customer_profile", "target_segment", "primary_customer");
-    const persona     = find("customer_persona", "buyer_persona", "user_persona", "persona", "target_persona", "ideal_buyer");
+    const name           = st.projectName || st.company;
+    const tagline        = find("tagline", "headline", "value_proposition", "one_liner", "pitch", "positioning_statement", "slogan");
+    const mission        = find("mission", "mission_statement", "north_star", "vision", "company_mission");
+    const problem        = find("problem", "pain_point", "problem_statement", "customer_pain", "core_problem");
+    const solution       = find("solution", "solution_description", "product_description", "how_it_works", "offering");
+    const icp            = find("icp", "ideal_customer_profile", "target_market", "customer_profile", "target_segment", "primary_customer");
+    const persona        = find("customer_persona", "buyer_persona", "user_persona", "persona", "target_persona", "ideal_buyer");
     const differentiator = find("differentiator", "unique_value", "competitive_advantage", "what_makes_us_different", "usp", "unique_selling_point");
-    const moat        = find("moat", "defensibility", "competitive_moat", "barriers_to_entry", "unique_advantage");
-    const revenue     = find("revenue_model", "business_model", "monetization", "revenue_strategy");
-    const pricing     = find("pricing", "pricing_model", "price_points", "pricing_tiers", "pricing_strategy");
-    const salesMotion = find("sales_motion", "sales_strategy", "sales_approach", "selling_motion", "sales_model");
-    const gtm         = find("go_to_market", "gtm", "distribution_strategy", "marketing_strategy", "acquisition_strategy");
-    const channels    = find("channels", "acquisition_channels", "marketing_channels", "distribution_channels", "growth_channels");
-    const keyMetrics  = find("key_metrics", "metrics", "kpis", "success_metrics", "north_star_metric", "target_mrr");
-    const team        = find("team", "founders", "founding_team", "team_description", "leadership_team");
-    const keyHires    = find("key_hires", "hiring_plan", "open_roles", "key_roles", "hires_needed");
-    const legalEntity = find("legal_entity", "entity_type", "legal_structure", "incorporation", "company_type");
-    const competitors = findArr("competitors", "competition", "competitive_landscape", "main_competitors", "key_competitors", "top_competitors");
-    const techStack   = findArr("tech_stack", "stack", "technologies", "tech_choices", "technology_stack");
+    const moat           = find("moat", "defensibility", "competitive_moat", "barriers_to_entry", "unique_advantage");
+    const marketSize     = find("market_size", "tam", "total_addressable_market", "market_opportunity", "addressable_market", "opportunity_size");
+    const revenue        = find("revenue_model", "business_model", "monetization", "revenue_strategy");
+    const pricing        = find("pricing", "pricing_model", "price_points", "pricing_tiers", "pricing_strategy");
+    const salesMotion    = find("sales_motion", "sales_strategy", "sales_approach", "selling_motion", "sales_model");
+    const gtm            = find("go_to_market", "gtm", "distribution_strategy", "marketing_strategy", "acquisition_strategy");
+    const channels       = find("channels", "acquisition_channels", "marketing_channels", "distribution_channels", "growth_channels");
+    const keyMetrics     = find("key_metrics", "metrics", "kpis", "success_metrics", "north_star_metric", "target_mrr");
+    const risks          = find("risks", "key_risks", "risk_factors", "main_risks", "risk_assessment", "key_assumptions", "assumptions");
+    const regulation     = find("regulation", "regulatory", "compliance", "legal_requirements", "regulatory_landscape", "compliance_requirements", "regulatory_environment");
+    const partnerships   = find("partnerships", "partner_opportunities", "key_partners", "distribution_partners", "strategic_partners", "ecosystem", "integrations");
+    const competitors    = findArr("competitors", "competition", "competitive_landscape", "main_competitors", "key_competitors", "top_competitors");
+    const techStack      = findArr("tech_stack", "stack", "technologies", "tech_choices", "technology_stack");
 
-    const allFields = [name, tagline, problem, solution, icp, persona, differentiator, moat, revenue, pricing, salesMotion, gtm, channels, keyMetrics, team, legalEntity];
+    const team        = find("team", "founders", "founding_team", "team_description", "leadership_team");
+
+    const allFields = [name, tagline, problem, solution, icp, persona, differentiator, moat, marketSize, revenue, pricing, salesMotion, gtm, channels, keyMetrics, risks, regulation, partnerships, team];
     const filled = allFields.filter(Boolean).length + (palette.length > 0 ? 1 : 0) + (competitors.length > 0 ? 1 : 0);
 
     return {
       name, tagline, mission, problem, solution, icp, persona, differentiator, moat,
-      revenue, pricing, salesMotion, gtm, channels, keyMetrics, team, keyHires, legalEntity,
-      competitors, techStack, palette,
-      pct: Math.round((filled / 18) * 100),
-      researchRunning:  agRunning("research", "research_market", "research_competitors", "research_financial"),
+      marketSize, revenue, pricing, salesMotion, gtm, channels, keyMetrics, risks, regulation, partnerships,
+      team, competitors, techStack, palette,
+      pct: Math.round((filled / 20) * 100),
+      researchRunning:  agRunning("research", "research_market", "research_competitors", "research_financial", "research_regulatory"),
       designRunning:    agRunning("design"),
       salesRunning:     agRunning("sales", "sales_pipeline", "ops"),
       marketingRunning: agRunning("marketing", "marketing_outreach"),
@@ -1405,18 +1408,23 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                         }
                       </div>
                     </div>
-                    {/* Fonts */}
+                    {/* Market Size */}
                     <div style={{ ...cellBorder, padding: "10px 14px" }}>
-                      <Lbl label="Fonts" running={p.designRunning} val={[]} />
-                      {p.designRunning && p.palette.length === 0
-                        ? <div style={{ display: "flex", flexDirection: "column", gap: 5 }}><S w="70%" /><S w="55%" i={1} /></div>
-                        : <div style={{ display: "flex", flexDirection: "column", gap: 5 }}><Sdead w="70%" /><Sdead w="55%" /></div>
+                      <Lbl label="Market Size / TAM" running={p.researchRunning} val={p.marketSize} />
+                      {p.marketSize
+                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.marketSize}</div>
+                        : p.researchRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 5 }}><S w="75%" /><S w="55%" i={1} /></div>
+                        : <div style={{ display: "flex", flexDirection: "column", gap: 5 }}><Sdead w="70%" /><Sdead w="50%" /></div>
                       }
                     </div>
-                    {/* Stage */}
+                    {/* Risks */}
                     <div style={{ ...cellBorder, padding: "10px 14px" }}>
-                      <Lbl label="Stage" running={p.researchRunning} val={[]} />
-                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}><Sdead w="60%" /><Sdead w="80%" /></div>
+                      <Lbl label="Key Risks" running={p.researchRunning} val={p.risks} />
+                      {p.risks
+                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.risks}</div>
+                        : p.researchRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 5 }}><S w="80%" /><S w="60%" i={1} /></div>
+                        : <div style={{ display: "flex", flexDirection: "column", gap: 5 }}><Sdead w="70%" /><Sdead w="50%" /></div>
+                      }
                     </div>
                     {/* Geography */}
                     <div style={{ ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
@@ -1472,15 +1480,15 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                         : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="78%" /><Sdead w="55%" /></div>}
                     </div>
 
-                    {/* Row 5: Team · Key Hires · Legal Entity */}
-                    <TextField label="Team"            val={p.team}       running={p.researchRunning} />
-                    <TextField label="Key hires needed" val={p.keyHires}  running={p.researchRunning} />
+                    {/* Row 5: Team · Partnerships · Regulation */}
+                    <TextField label="Team"         val={p.team}         running={p.researchRunning} />
+                    <TextField label="Partnerships" val={p.partnerships} running={p.salesRunning} />
                     <div style={{ ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
-                      <Lbl label="Legal entity" running={p.legalRunning} val={p.legalEntity} />
-                      {p.legalEntity
-                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.legalEntity}</div>
-                        : p.legalRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="65%" /><S w="45%" i={1} /></div>
-                        : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="60%" /><Sdead w="40%" /></div>}
+                      <Lbl label="Regulation" running={p.researchRunning} val={p.regulation} />
+                      {p.regulation
+                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.regulation}</div>
+                        : p.researchRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="80%" /><S w="55%" i={1} /></div>
+                        : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="72%" /><Sdead w="48%" /></div>}
                     </div>
 
                     {/* Competitors — full width */}
