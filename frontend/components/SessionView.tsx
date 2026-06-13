@@ -1260,7 +1260,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 return <div className="empty"><div style={{ fontSize: 34, opacity: .12 }}>◈</div><div className="empty-title">Waiting for agents…</div></div>;
               }
               return (
-                <div style={{ padding: "8px 2px 0" }}>
+                <div style={{ padding: "8px 0 0" }}>
                   <AgentSwarm agents={swarmAgents} coreLabel={displayName} coreSub={coreSub} />
                 </div>
               );
