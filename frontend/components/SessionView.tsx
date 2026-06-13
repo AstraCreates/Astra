@@ -43,6 +43,8 @@ type WebTaskPrompt = {
   submitting?: boolean;
 };
 
+type AgentQuestion = { request_id: string; question: string; options: string[]; hint: string };
+
 type SState = {
   status: string; goal: string; company: string; projectName: string; stackId: string;
   agents: Record<string, Agent>;
@@ -54,6 +56,7 @@ type SState = {
   parentId: string;
   startedAt: number;
   credits: number;
+  agentQuestion: AgentQuestion | null;
 };
 
 function fmtElapsed(ms: number): string {
@@ -214,6 +217,72 @@ function cacheSession(id: string, state: SState) {
   }
 }
 
+function AgentQuestionCard({ sessionId, question, onDone }: {
+  sessionId: string;
+  question: AgentQuestion;
+  onDone: () => void;
+}) {
+  const [answer, setAnswer] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (val?: string) => {
+    const ans = val ?? answer.trim();
+    if (!ans) { setError("Please provide an answer."); return; }
+    setSubmitting(true); setError("");
+    try {
+      const res = await apiFetch(`${API}/input/${sessionId}/${question.request_id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: { answer: ans } }),
+      });
+      if (!res.ok) throw new Error("Submit failed");
+      onDone();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to submit");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 9000, width: "100%", maxWidth: 520, padding: "0 16px" }}>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--bd)", borderRadius: 14, boxShadow: "0 8px 32px rgba(0,0,0,0.18)", overflow: "hidden" }}>
+        <div style={{ padding: "14px 18px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+            <span style={{ fontSize: 15, marginTop: 1 }}>💬</span>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--fg)", lineHeight: 1.4 }}>{question.question}</p>
+          </div>
+          <button onClick={onDone} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--fm)", padding: 0, lineHeight: 1, flexShrink: 0, marginTop: 1 }}>✕</button>
+        </div>
+        <div style={{ padding: "12px 18px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+          {question.options.length > 0 ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {question.options.map((opt) => (
+                <button key={opt} onClick={() => submit(opt)} disabled={submitting}
+                  style={{ padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 500, border: "1px solid var(--bd)", background: "var(--bg)", color: "var(--fg)", cursor: "pointer", fontFamily: "inherit" }}>
+                  {opt}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 8 }}>
+              <input autoFocus type="text" value={answer} onChange={e => setAnswer(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()}
+                placeholder={question.hint || "Type your answer…"}
+                style={{ flex: 1, padding: "8px 12px", fontSize: 13, border: "1px solid var(--bd)", borderRadius: 8, background: "var(--bg)", color: "var(--fg)", fontFamily: "inherit" }} />
+              <button onClick={() => submit()} disabled={submitting || !answer.trim()}
+                style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "var(--blue)", color: "#fff", border: "none", cursor: "pointer", opacity: !answer.trim() ? 0.5 : 1, fontFamily: "inherit" }}>
+                {submitting ? "…" : "Send"}
+              </button>
+            </div>
+          )}
+          {error && <p style={{ margin: 0, fontSize: 12, color: "var(--red)" }}>{error}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SessionView({ sessionId }: { sessionId: string }) {
   const { userId, isSignedIn, isLoading: authLoading } = useDevUser();
   const founderId = userId;
@@ -224,7 +293,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const S = useRef<SState>({
     status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], webTasks: {},
     decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false,
-    revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0,
+    revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0, agentQuestion: null,
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
   const sseRef = useRef<EventSource | null>(null);
@@ -511,6 +580,11 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         st.status = "done"; sseRef.current?.close(); break;
       case "goal_error":
         st.status = "error"; sseRef.current?.close(); break;
+      case "agent_question":
+        st.agentQuestion = { request_id: String(ev.request_id || ""), question: String(ev.question || ""), options: Array.isArray(ev.options) ? ev.options : [], hint: String(ev.hint || "") };
+        break;
+      case "agent_question_answered":
+        st.agentQuestion = null; break;
       default: return; // ignore pings/unknown without re-render
     }
     force();
@@ -527,7 +601,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     if (cached) {
       S.current = cached;
     } else {
-      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], webTasks: {}, decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0 };
+      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], webTasks: {}, decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0, agentQuestion: null };
       cacheSession(sessionId, S.current);
     }
     force();
@@ -1562,6 +1636,13 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         </div>
       </div>
 
+      {st.agentQuestion && (
+        <AgentQuestionCard
+          sessionId={sessionId}
+          question={st.agentQuestion}
+          onDone={() => { S.current.agentQuestion = null; force(); }}
+        />
+      )}
       {showSessionTour && (
         <SessionTour onDone={() => { localStorage.setItem("astra_session_tour_done", "1"); setShowSessionTour(false); }} />
       )}
