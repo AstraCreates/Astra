@@ -79,6 +79,8 @@ export default function DashboardCanvas({ founderId }: Props) {
   const [elements, setElements] = useState<DashboardElement[]>([]);
   const [liveConfigs, setLiveConfigs] = useState<Record<string, Record<string, unknown>>>({});
   const [refreshingIds, setRefreshingIds] = useState<Set<string>>(new Set());
+  const [booting, setBooting] = useState(false);
+  const bootDone = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
@@ -97,6 +99,17 @@ export default function DashboardCanvas({ founderId }: Props) {
     pollRef.current = setInterval(load, 30_000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [load]);
+
+  // One-time "power-on" sequence the first time tiles arrive. Tiles stagger their
+  // own build (TileShell); this just shows the system-online microcopy over it.
+  useEffect(() => {
+    if (bootDone.current || elements.length === 0) return;
+    bootDone.current = true;
+    setBooting(true);
+    const dur = Math.min(elements.length, 12) * 90 + 600;
+    const t = setTimeout(() => setBooting(false), dur);
+    return () => clearTimeout(t);
+  }, [elements.length]);
 
   // Per-tile refresh for data_source tiles
   useEffect(() => {
@@ -144,6 +157,9 @@ export default function DashboardCanvas({ founderId }: Props) {
     grouped.get(k)!.push(el);
   }
 
+  // Sequential index across all sections → canvas-wide power-on order.
+  let bootIdx = -1;
+
   return (
     <>
       <style>{`
@@ -151,7 +167,20 @@ export default function DashboardCanvas({ founderId }: Props) {
           0%, 100% { opacity: 0.5; transform: scale(1); }
           50% { opacity: 1; transform: scale(1.3); }
         }
+        @keyframes dc-boot-fade { 0% { opacity: 0; transform: translateY(-4px); } 12% { opacity: 1; transform: translateY(0); } 80% { opacity: 1; } 100% { opacity: 0; } }
+        @keyframes dc-boot-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
       `}</style>
+      {booting && (
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: 7, marginBottom: 12,
+          fontFamily: "var(--font-code)", fontSize: 10, letterSpacing: ".08em",
+          textTransform: "uppercase", color: "var(--blue)",
+          animation: "dc-boot-fade 2s ease-in-out both",
+        }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", animation: "dc-boot-blink 0.7s ease-in-out infinite" }} />
+          Powering on workspace
+        </div>
+      )}
       <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
         {Array.from(grouped.entries()).map(([section, items]) => (
           <div key={section}>
@@ -178,20 +207,24 @@ export default function DashboardCanvas({ founderId }: Props) {
                 gap: 12,
               }}
             >
-              {items.map((el) => (
-                <TileErrorBoundary key={el.id}>
-                  <TileShell
-                    element={el}
-                    onRemove={handleRemove}
-                    isRefreshing={refreshingIds.has(el.id)}
-                  >
-                    <TileContent
+              {items.map((el) => {
+                bootIdx += 1;
+                return (
+                  <TileErrorBoundary key={el.id}>
+                    <TileShell
                       element={el}
-                      liveConfig={liveConfigs[el.id] ?? null}
-                    />
-                  </TileShell>
-                </TileErrorBoundary>
-              ))}
+                      onRemove={handleRemove}
+                      isRefreshing={refreshingIds.has(el.id)}
+                      index={bootIdx}
+                    >
+                      <TileContent
+                        element={el}
+                        liveConfig={liveConfigs[el.id] ?? null}
+                      />
+                    </TileShell>
+                  </TileErrorBoundary>
+                );
+              })}
             </div>
           </div>
         ))}

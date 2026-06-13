@@ -6,7 +6,8 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, type SessionImages } from "@/lib/api";
+import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, AGENT_LABELS, sortAgentNamesByOrder, type SessionImages } from "@/lib/api";
+import AgentSwarm, { type SwarmAgent } from "@/components/AgentSwarm";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import { signIn } from "next-auth/react";
@@ -233,6 +234,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [toastErr, setToastErr] = useState("");
   const [restartConfirm, setRestartConfirm] = useState(false);
   const [takeover, setTakeover] = useState(false);
+  const [showSwarm, setShowSwarm] = useState(true);
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
   const imgsFetched = useRef(false);
 
@@ -636,6 +638,15 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
   const ready = st.artifacts.filter((a) => a.status === "ready");
   const live = st.artifacts.filter((a) => a.status !== "ready");
+
+  // Live founding-team constellation feed — sorted by canonical agent order.
+  const swarmAgents: SwarmAgent[] = sortAgentNamesByOrder(Object.keys(st.agents)).map((k) => ({
+    key: k,
+    label: AGENT_LABELS[k as keyof typeof AGENT_LABELS] ?? k,
+    status: st.agents[k].status,
+    currentTool: st.agents[k].currentTool,
+  }));
+
   const displayName = st.projectName || st.company || "";
   const shortGoal = st.goal ? st.goal.slice(0, 70) + (st.goal.length > 70 ? "…" : "") : `Session ${sessionId.slice(0, 8)}`;
   const ICONS: Record<string, string> = { think: "◈", tool: "◎", result: "→", done: "✓", error: "✗", start: "↳" };
@@ -798,6 +809,30 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             {artReady > 0 && <><div className="s-sep" /><span className="sv g">{artReady}</span> deliverable{artReady !== 1 ? "s" : ""}</>}
           </>}
       </div>
+
+      {/* live founding-team constellation */}
+      {swarmAgents.length > 0 && (
+        <div style={{ flexShrink: 0, padding: "8px 14px 0" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: showSwarm ? 6 : 0 }}>
+            <button
+              onClick={() => setShowSwarm((v) => !v)}
+              style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--fm)" }}
+              aria-label={showSwarm ? "Hide founding team" : "Show founding team"}
+            >
+              <span style={{ fontSize: 9, transform: showSwarm ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block", transition: "transform .2s" }}>▶</span>
+              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", fontFamily: "var(--font-code)" }}>Founding team</span>
+            </button>
+          </div>
+          {showSwarm && (
+            <AgentSwarm
+              agents={swarmAgents}
+              coreLabel={displayName || "Astra"}
+              coreSub={st.status === "done" ? "operating" : st.approvals.length ? "awaiting you" : run > 0 ? "building" : "planning"}
+              height={300}
+            />
+          )}
+        </div>
+      )}
 
       {/* dept cards */}
       <div data-tour="session-depts" className="depts">
