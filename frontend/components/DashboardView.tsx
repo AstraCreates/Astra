@@ -7,6 +7,7 @@ import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import AstraGradient from "./AstraGradient";
 import GoalPanel from "./GoalPanel";
+import DashboardCanvas from "./DashboardCanvas";
 
 const GREETINGS = [
   "Welcome back",
@@ -440,6 +441,13 @@ export default function DashboardView() {
           )}
           </div>{/* end sessions col */}
         </div>
+
+        {/* ── Modular agent dashboard ── */}
+        {userId && (
+          <div style={{ padding: "0 24px 48px" }}>
+            <DashboardCanvas founderId={userId} />
+          </div>
+        )}
       </div>
     </>
   );

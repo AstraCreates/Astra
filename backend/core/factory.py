@@ -152,6 +152,83 @@ def get_orchestrator() -> Orchestrator:
             agent.tools.setdefault("company_brain_run_due_syncs", run_due_company_brain_syncs)
             agent.tools.setdefault("company_brain_import_source", import_company_brain_source)
             agent.tools.setdefault("company_brain_import_sources", import_company_brain_sources)
+        # Dashboard tools — available to every agent so any specialist can add tiles
+        from backend.tools.dashboard_tools import (
+            dashboard_add_element,
+            dashboard_remove_element,
+            dashboard_clear,
+            dashboard_get,
+        )
+        for agent in specialists.values():
+            agent.tools.setdefault("dashboard_add_element", dashboard_add_element)
+            agent.tools.setdefault("dashboard_remove_element", dashboard_remove_element)
+            agent.tools.setdefault("dashboard_clear", dashboard_clear)
+            agent.tools.setdefault("dashboard_get", dashboard_get)
+
+        # Integration tools — ops, marketing, and content agents for ecomm/local_service stacks
+        from backend.tools.klaviyo_tools import (
+            klaviyo_create_list, klaviyo_add_to_list,
+            klaviyo_create_campaign, klaviyo_get_metrics,
+        )
+        from backend.tools.printful_tools import (
+            printful_get_products, printful_create_store_product,
+            printful_get_orders, printful_create_order,
+        )
+        from backend.tools.lemonsqueezy_tools import (
+            ls_create_product, ls_get_sales, ls_create_discount,
+        )
+        from backend.tools.square_tools import (
+            square_list_services, square_create_service,
+            square_create_booking, square_list_bookings, square_get_revenue,
+        )
+        from backend.tools.twilio_tools import (
+            twilio_send_sms, twilio_send_bulk_sms,
+            twilio_create_messaging_service, twilio_get_usage,
+        )
+        from backend.tools.yelp_tools import (
+            yelp_search_businesses, yelp_get_business,
+            yelp_get_reviews, yelp_search_categories,
+        )
+        _integration_agent_names = {
+            "ops", "marketing", "marketing_content", "marketing_outreach",
+            "marketing_seo", "marketing_paid", "sales", "sales_pipeline",
+            "sales_enablement", "research", "research_competitors",
+            "research_customers", "research_gtm",
+        }
+        for name, agent in specialists.items():
+            if name not in _integration_agent_names:
+                continue
+            # Klaviyo / email marketing
+            agent.tools.setdefault("klaviyo_create_list", klaviyo_create_list)
+            agent.tools.setdefault("klaviyo_add_to_list", klaviyo_add_to_list)
+            agent.tools.setdefault("klaviyo_create_campaign", klaviyo_create_campaign)
+            agent.tools.setdefault("klaviyo_get_metrics", klaviyo_get_metrics)
+            # Printful / POD
+            agent.tools.setdefault("printful_get_products", printful_get_products)
+            agent.tools.setdefault("printful_create_store_product", printful_create_store_product)
+            agent.tools.setdefault("printful_get_orders", printful_get_orders)
+            agent.tools.setdefault("printful_create_order", printful_create_order)
+            # Lemon Squeezy / digital sales
+            agent.tools.setdefault("ls_create_product", ls_create_product)
+            agent.tools.setdefault("ls_get_sales", ls_get_sales)
+            agent.tools.setdefault("ls_create_discount", ls_create_discount)
+            # Square / POS + bookings
+            agent.tools.setdefault("square_list_services", square_list_services)
+            agent.tools.setdefault("square_create_service", square_create_service)
+            agent.tools.setdefault("square_create_booking", square_create_booking)
+            agent.tools.setdefault("square_list_bookings", square_list_bookings)
+            agent.tools.setdefault("square_get_revenue", square_get_revenue)
+            # Twilio / SMS
+            agent.tools.setdefault("twilio_send_sms", twilio_send_sms)
+            agent.tools.setdefault("twilio_send_bulk_sms", twilio_send_bulk_sms)
+            agent.tools.setdefault("twilio_create_messaging_service", twilio_create_messaging_service)
+            agent.tools.setdefault("twilio_get_usage", twilio_get_usage)
+            # Yelp / local business research
+            agent.tools.setdefault("yelp_search_businesses", yelp_search_businesses)
+            agent.tools.setdefault("yelp_get_business", yelp_get_business)
+            agent.tools.setdefault("yelp_get_reviews", yelp_get_reviews)
+            agent.tools.setdefault("yelp_search_categories", yelp_search_categories)
+
         from backend.runtime.catalog import migrate_agent, validate_catalog
         for agent in specialists.values():
             migrate_agent(agent)
@@ -159,7 +236,12 @@ def get_orchestrator() -> Orchestrator:
         planner = Agent(
             name="planner",
             role="planning coordinator. Decompose founder goals into specialist tasks scoped to each agent's actual capabilities.",
-            tools={},
+            tools={
+                "dashboard_add_element": dashboard_add_element,
+                "dashboard_remove_element": dashboard_remove_element,
+                "dashboard_clear": dashboard_clear,
+                "dashboard_get": dashboard_get,
+            },
             sub_agents=list(specialists.values()),
             model=settings.or_planner_model,
             model_base_url=_or_base,

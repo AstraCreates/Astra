@@ -23,6 +23,13 @@ export default function NewGoalView() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       setCompany(localStorage.getItem("astra_onboarding_company") || "");
+      // Pre-fill from dashboard button tile
+      const prefill = sessionStorage.getItem("astra_prefill_goal");
+      if (prefill && goalRef.current) {
+        goalRef.current.value = prefill;
+        setChars(prefill.length);
+        try { sessionStorage.removeItem("astra_prefill_goal"); } catch {}
+      }
     }
     getStacks().then((s) => {
       setStacks(s);

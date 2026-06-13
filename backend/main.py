@@ -20,6 +20,7 @@ from backend.api.company_routes import router as company_router
 from backend.api.team_map_routes import router as team_map_router
 from backend.api.connectors_routes import router as connectors_router
 from backend.api.notification_routes import router as notification_router
+from backend.api.dashboard_routes import router as dashboard_router
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ app.include_router(company_router, prefix="/api")
 app.include_router(team_map_router, prefix="/api")
 app.include_router(connectors_router, prefix="/api")
 app.include_router(notification_router, prefix="/api")
+app.include_router(dashboard_router, prefix="/api")
 
 
 @app.on_event("startup")
