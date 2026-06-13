@@ -601,6 +601,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   }
 
   // active depts
+  const agToDept = (k: string) => Object.keys(DEPTS).find(dk => DEPTS[dk].ags.includes(k));
   const activeDepts: [string, { n: string; ic: string; ags: string[]; inS: string[] }][] = [];
   for (const [dk, d] of Object.entries(DEPTS)) {
     const inS = d.ags.filter((a) => st.agents[a]);
