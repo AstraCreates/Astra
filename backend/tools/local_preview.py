@@ -226,6 +226,7 @@ def start_local_preview(local: str, session_id: str, company_name: str = "") -> 
     # Tear down any prior preview for this session (kills its server + frees port).
     stop_local_preview(session_id)
 
+    slug = ""
     with _lock:
         port = _alloc_port()
         if not port:

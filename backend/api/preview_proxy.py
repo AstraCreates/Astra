@@ -65,7 +65,8 @@ async def _proxy(slug: str, path: str, request: Request) -> StreamingResponse:
             media_type="text/html",
         )
 
-    # Strip hop-by-hop response headers + content-encoding (we buffer full body above)
+    # Strip hop-by-hop headers. content-encoding must be dropped because httpx
+    # auto-decompresses the body — forwarding the header would cause double-decompress.
     skip_resp = {"transfer-encoding", "connection", "keep-alive", "content-encoding"}
     resp_headers = {k: v for k, v in resp.headers.items() if k.lower() not in skip_resp}
 

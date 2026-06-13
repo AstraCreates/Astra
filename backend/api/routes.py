@@ -555,7 +555,7 @@ async def _teardown_session_artifacts(session_id: str) -> None:
     try:
         from backend.tools.local_preview import stop_local_preview
         from backend.core.session_store import get_session_meta
-        meta = get_session_meta(session_id)
+        meta = await asyncio.to_thread(get_session_meta, session_id)
         # Root session has no parent — stop its preview; child deletes leave it running
         if not (meta or {}).get("parent_session_id"):
             await asyncio.to_thread(stop_local_preview, session_id)
