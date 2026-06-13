@@ -7,7 +7,6 @@ import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import AstraGradient from "./AstraGradient";
 import GoalPanel from "./GoalPanel";
-import DashboardCanvas from "./DashboardCanvas";
 
 const GREETINGS = [
   "Welcome back",
@@ -211,7 +210,7 @@ export default function DashboardView() {
         <div className="dv-content" style={{ padding: "20px 24px 40px", display: "flex", gap: 24, alignItems: "flex-start" }}>
 
           {/* ── Left: Goal panel ── */}
-          <div className="dv-goals" style={{ width: 340, flexShrink: 0 }}>
+          <div className="dv-goals" style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fd)", fontFamily: "var(--font-code)", marginBottom: 12 }}>
               Goals
             </div>
@@ -442,12 +441,6 @@ export default function DashboardView() {
           </div>{/* end sessions col */}
         </div>
 
-        {/* ── Modular agent dashboard ── */}
-        {userId && (
-          <div style={{ padding: "0 24px 48px" }}>
-            <DashboardCanvas founderId={userId} />
-          </div>
-        )}
       </div>
     </>
   );
