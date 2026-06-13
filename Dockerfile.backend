@@ -8,7 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g @gitlawb/openclaude 2>/dev/null || true \
     && useradd -m -s /bin/bash astra \
-    && echo "astra ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+    && echo "astra ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
+    && mkdir -p /home/astra/.openclaude && chown astra:astra /home/astra/.openclaude
 
 COPY requirements.txt .
 # setuptools/wheel are needed to build sdist-only deps (e.g. pyarrow); newer pip
