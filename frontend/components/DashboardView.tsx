@@ -214,7 +214,7 @@ export default function DashboardView() {
             <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fd)", fontFamily: "var(--font-code)", marginBottom: 12 }}>
               Goals
             </div>
-            <GoalPanel />
+            <GoalPanel defaultShowDone />
           </div>
 
           {/* ── Right: Sessions ── */}
@@ -297,9 +297,10 @@ export default function DashboardView() {
                   const isDone = s.status === "done";
                   const digest = digests.get(s.session_id);
                   const totalAgents = digest?.counts.planned_agents ?? 0;
-                  const doneAgents = digest?.counts.done_agents ?? 0;
+                  const rawDoneAgents = digest?.counts.done_agents ?? 0;
+                  const doneAgents = Math.min(rawDoneAgents, totalAgents);
                   const progressPct = isDone ? 100
-                    : (isRunning && totalAgents > 0) ? Math.round((doneAgents / totalAgents) * 100)
+                    : (isRunning && totalAgents > 0) ? Math.min(100, Math.round((rawDoneAgents / totalAgents) * 100))
                     : null;
                   const currentAgents = (digest?.running_agents ?? [])
                     .map(a => AGENT_LABELS[a as keyof typeof AGENT_LABELS] ?? a);
