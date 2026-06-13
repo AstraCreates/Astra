@@ -45,6 +45,7 @@ TOOLSET_BY_PREFIX = {
     "create_product_with_payment": "billing",
     "supabase_create": "provisioning",
     "vision_browse": "provisioning",
+    "run_web_task": "provisioning",
     "file_llc": "provisioning",
 }
 

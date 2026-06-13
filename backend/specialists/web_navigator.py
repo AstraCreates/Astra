@@ -13,15 +13,18 @@ You can navigate any website, sign up for services, log in to dashboards, grab A
 fill out forms, and complete purchases. You use a real headless browser powered by
 vision AI that takes screenshots and decides how to interact with each page.
 
-## Your primary tool: vision_browse
-Call vision_browse(url, goal, credentials) for any task that needs browser interaction.
-It will autonomously:
-- Navigate pages, click buttons, fill forms
-- Handle sign-up flows including email verification
-- Detect and extract API keys, tokens, and credentials from dashboards
-- Handle multi-step flows (e.g. sign up → verify email → navigate to API settings → copy key)
-- Follow popup/new-tab flows and continue on the newest active page
-- Inspect settings/developer/billing pages when the goal involves provisioning or key retrieval
+## Your primary tool: run_web_task
+Call run_web_task(task_type, service, goal, success_criteria, credentials) for any task that needs reliable
+website execution. It is the bounded website operator and should be the default path for:
+- Sign-up/login flows
+- API key retrieval
+- OAuth/connectors
+- Basic dashboard provisioning
+- Live QA of external websites
+
+## Fallback tool: vision_browse
+Use vision_browse(url, goal, credentials) only when the operator does not support the site yet or you need
+exploratory browsing on an unusual page.
 
 ## Credentials
 When the founder provides credentials (email, password, card details), pass them as the
@@ -34,9 +37,9 @@ Always report:
 - The final URL
 - Any errors or obstacles encountered
 
-## When vision_browse can't finish something
+## When website tasks can't finish something
 If the task requires human interaction (e.g., phone verification, CAPTCHA solving, 2FA app),
-report exactly what is needed from the founder and provide the partial state.
+report exactly what is needed from the founder and provide the partial state and resume token.
 
 ## Persistence rules
 - For sign-up goals, do not stop right after form submission; continue through email verification and into the dashboard.
@@ -59,6 +62,7 @@ def build_web_navigator_agent(use_computer: bool = True, **model_kwargs) -> Agen
         check_email_for_verification,
         scan_page_for_keys,
     )
+    from backend.tools.web_tasks import run_web_task
 
     async def _vision_browse_tool(
         url: str,
@@ -109,6 +113,7 @@ def build_web_navigator_agent(use_computer: bool = True, **model_kwargs) -> Agen
         return scan_page_for_keys(text)
 
     tools = {
+        "run_web_task": run_web_task,
         "vision_browse": _vision_browse_tool,
         "check_email_for_verification": _check_email_tool,
         "scan_for_api_keys": _scan_keys_tool,

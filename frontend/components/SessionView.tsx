@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, AGENT_LABELS, sortAgentNamesByOrder, type SessionImages } from "@/lib/api";
+import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, respondWebTask, AGENT_LABELS, sortAgentNamesByOrder, type SessionImages } from "@/lib/api";
 import AgentSwarm, { type SwarmAgent } from "@/components/AgentSwarm";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
@@ -26,11 +26,27 @@ type TermEntry = { ts: number; kind: string; text: string; agent: string };
 type Agent = { key: string; status: string; log: LogEntry[]; term: TermEntry[]; visitedUrls: string[]; currentTool: string | null; result: unknown; instruction: string };
 type Artifact = { key?: string; title?: string; status?: string; preview?: string; content?: string; description?: string; owner_agent?: string };
 type Approval = { gate_key: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string; preview?: string }[] };
+type WebTaskField = { key: string; label?: string; type?: string; required?: boolean };
+type WebTaskPrompt = {
+  task_id: string;
+  service: string;
+  task_type: string;
+  agent: string;
+  status: string;
+  state?: string;
+  note?: string;
+  blocker?: { kind?: string; message?: string; fields?: WebTaskField[] };
+  evidence?: { final_url?: string; page_summary?: string; checks_passed?: string[] };
+  resume_token?: string;
+  formValues?: Record<string, string>;
+  formError?: string;
+  submitting?: boolean;
+};
 
 type SState = {
   status: string; goal: string; company: string; projectName: string; stackId: string;
   agents: Record<string, Agent>;
-  artifacts: Artifact[]; approvals: Approval[]; decidedKeys: Set<string>;
+  artifacts: Artifact[]; approvals: Approval[]; webTasks: Record<string, WebTaskPrompt>; decidedKeys: Set<string>;
   selDept: string | null; selArt: string | null; tab: string; paused: boolean;
   revisionGate: string | null; revisionNote: string;
   liveUrl: string;
@@ -206,7 +222,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const sessFounder = useRef<string>("");
   const router = useRouter();
   const S = useRef<SState>({
-    status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
+    status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], webTasks: {},
     decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false,
     revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0,
   });
@@ -374,6 +390,119 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       case "stack_approval_decision":
         if (ev.gate_key) st.decidedKeys.add(ev.gate_key);
         st.approvals = st.approvals.filter((a) => a.gate_key !== ev.gate_key); break;
+      case "web_task_started": {
+        const agent = ev.agent || "web_navigator";
+        ensureAg(agent);
+        st.agents[agent].status = "running";
+        addLog(agent, "tool", `Website task started: ${ev.service || "site"} · ${ev.task_type || "task"}`);
+        const taskId = String(ev.task_id || "");
+        if (taskId) {
+          st.webTasks[taskId] = {
+            ...(st.webTasks[taskId] || { formValues: {} }),
+            task_id: taskId,
+            service: String(ev.service || ""),
+            task_type: String(ev.task_type || ""),
+            agent,
+            status: "running",
+          };
+        }
+        break;
+      }
+      case "web_task_state": {
+        const agent = ev.agent || "web_navigator";
+        ensureAg(agent);
+        addLog(agent, "think", [ev.service, ev.state, ev.note].filter(Boolean).join(" · ") || "Website task progressing");
+        const taskId = String(ev.task_id || "");
+        if (taskId) {
+          st.webTasks[taskId] = {
+            ...(st.webTasks[taskId] || { formValues: {} }),
+            task_id: taskId,
+            service: String(ev.service || st.webTasks[taskId]?.service || ""),
+            task_type: String(ev.task_type || st.webTasks[taskId]?.task_type || ""),
+            agent,
+            status: st.webTasks[taskId]?.status || "running",
+            state: String(ev.state || ""),
+            note: String(ev.note || ""),
+            evidence: {
+              ...(st.webTasks[taskId]?.evidence || {}),
+              final_url: String(ev.url || st.webTasks[taskId]?.evidence?.final_url || ""),
+            },
+          };
+        }
+        break;
+      }
+      case "web_task_needs_user": {
+        const agent = ev.agent || "web_navigator";
+        ensureAg(agent);
+        const blocker = ev.blocker || ev.result?.blocker || {};
+        addLog(agent, "error", blocker.message || `Website task needs founder input for ${ev.service || "site"}`);
+        const taskId = String(ev.task_id || ev.result?.resume_token || "");
+        if (taskId) {
+          st.webTasks[taskId] = {
+            ...(st.webTasks[taskId] || { formValues: {} }),
+            task_id: taskId,
+            service: String(ev.service || st.webTasks[taskId]?.service || ""),
+            task_type: String(ev.task_type || st.webTasks[taskId]?.task_type || ""),
+            agent,
+            status: "needs_user",
+            state: "needs_user",
+            blocker,
+            evidence: ev.result?.evidence || st.webTasks[taskId]?.evidence || {},
+            resume_token: String(ev.result?.resume_token || taskId),
+            formValues: st.webTasks[taskId]?.formValues || {},
+            submitting: false,
+            formError: "",
+          };
+        }
+        break;
+      }
+      case "web_task_resumed": {
+        const taskId = String(ev.task_id || "");
+        const agent = ev.agent || st.webTasks[taskId]?.agent || "web_navigator";
+        ensureAg(agent);
+        addLog(agent, "start", `Resumed website task for ${ev.service || "site"}`);
+        if (taskId && st.webTasks[taskId]) {
+          st.webTasks[taskId] = {
+            ...st.webTasks[taskId],
+            agent,
+            status: "running",
+            formError: "",
+            submitting: false,
+          };
+        }
+        break;
+      }
+      case "web_task_completed": {
+        const taskId = String(ev.task_id || "");
+        const agent = ev.agent || st.webTasks[taskId]?.agent || "web_navigator";
+        ensureAg(agent);
+        addLog(agent, "done", `${ev.service || "Website"} task completed`);
+        if (taskId) delete st.webTasks[taskId];
+        break;
+      }
+      case "web_task_failed": {
+        const result = ev.result || {};
+        const taskId = String(ev.task_id || result.resume_token || "");
+        const agent = ev.agent || st.webTasks[taskId]?.agent || "web_navigator";
+        ensureAg(agent);
+        const blocker = result.blocker || {};
+        addLog(agent, "error", blocker.message || `${ev.service || "Website"} task failed`);
+        if (taskId) {
+          st.webTasks[taskId] = {
+            ...(st.webTasks[taskId] || { formValues: {} }),
+            task_id: taskId,
+            service: String(ev.service || st.webTasks[taskId]?.service || ""),
+            task_type: String(ev.task_type || st.webTasks[taskId]?.task_type || ""),
+            agent,
+            status: String(result.status || "failed"),
+            blocker,
+            evidence: result.evidence || st.webTasks[taskId]?.evidence || {},
+            resume_token: String(result.resume_token || taskId),
+            submitting: false,
+          };
+        }
+        break;
+      }
       case "company_operating":
         st.status = "done";
         st.operating = { count: Number(ev.mission_count || (ev.missions?.length ?? 0)), summary: String(ev.summary || "") };
@@ -398,7 +527,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     if (cached) {
       S.current = cached;
     } else {
-      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0 };
+      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], webTasks: {}, decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0 };
       cacheSession(sessionId, S.current);
     }
     force();
@@ -448,6 +577,29 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             S.current.approvals = d.approvals
               .filter((a: any) => PENDING.has(a.status) && (a.gate_key || a.key))
               .map((a: any) => ({ ...a, gate_key: a.gate_key || a.key }));
+          }
+          if (Array.isArray(d.web_tasks)) {
+            const restored: Record<string, WebTaskPrompt> = {};
+            d.web_tasks.forEach((task: any) => {
+              const taskId = String(task.task_id || "");
+              if (!taskId) return;
+              restored[taskId] = {
+                task_id: taskId,
+                service: String(task.service || ""),
+                task_type: String(task.task_type || ""),
+                agent: String(task.agent || "web_navigator"),
+                status: String(task.status || "running"),
+                state: String(task.state || ""),
+                note: String(task.note || ""),
+                blocker: task.blocker || {},
+                evidence: task.evidence || {},
+                resume_token: String(task.resume_token || taskId),
+                formValues: S.current.webTasks[taskId]?.formValues || {},
+                formError: "",
+                submitting: false,
+              };
+            });
+            S.current.webTasks = restored;
           }
           if (d.agents && typeof d.agents === "object") {
             for (const [k, ag] of Object.entries<any>(d.agents)) {
@@ -507,6 +659,31 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       showErr(`Approval failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
+  const submitWebTaskInput = async (taskId: string) => {
+    const task = S.current.webTasks[taskId];
+    if (!task) return;
+    const fields = task.blocker?.fields || [];
+    const values = { ...(task.formValues || {}) };
+    const missing = fields.filter((field) => field.required !== false && !String(values[field.key] || "").trim());
+    if (missing.length) {
+      task.formError = `Required: ${missing.map((field) => field.label || field.key).join(", ")}`;
+      force();
+      return;
+    }
+    task.submitting = true;
+    task.formError = "";
+    force();
+    try {
+      await respondWebTask(task.resume_token || task.task_id, values);
+      task.status = "running";
+      task.submitting = false;
+      force();
+    } catch (e) {
+      task.submitting = false;
+      task.formError = e instanceof Error ? e.message : String(e);
+      force();
+    }
+  };
   const sendCopilot = async () => {
     const msg = steerRef.current?.value.trim(); if (!msg || copilotBusy) return;
     if (steerRef.current) steerRef.current.value = "";
@@ -564,6 +741,9 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const total = agents.length, run = agents.filter((a) => a.status === "running").length,
     done = agents.filter((a) => a.status === "done").length, err = agents.filter((a) => a.status === "error").length;
   const artReady = st.artifacts.filter((a) => a.status === "ready").length;
+  const webTaskList = Object.values(st.webTasks);
+  const actionableWebTasks = webTaskList.filter((task) => task.status === "needs_user");
+  const blockedWebTasks = webTaskList.filter((task) => task.status === "blocked" || task.status === "failed");
 
   const plan = PHASE_PLANS[st.stackId];
   let phases: [string, string][];
@@ -748,7 +928,22 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       )}
 
       {/* urgent banner */}
-      {st.approvals.length > 0 && (() => {
+      {(st.approvals.length > 0 || actionableWebTasks.length > 0) && (() => {
+        if (actionableWebTasks.length > 0) {
+          const first = actionableWebTasks[0];
+          const sub = first.blocker?.message || `Astra needs your input to continue ${first.service}.`;
+          return (
+            <div style={{ background: "var(--red)", flexShrink: 0, animation: "astraSlideDown .25s ease both" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px" }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff" }} className="blink" />
+                <div>
+                  <div style={{ fontFamily: "var(--font-chakra)", fontSize: 12, fontWeight: 700, color: "#fff" }}>Action Required — website task waiting on you</div>
+                  <div style={{ fontSize: 9.5, color: "rgba(255,255,255,.7)" }}>{sub}</div>
+                </div>
+              </div>
+            </div>
+          );
+        }
         const first = st.approvals[0];
         const isPhaseGate = first.is_phase_gate;
         const bg = isPhaseGate ? "var(--blue)" : "var(--red)";
@@ -801,11 +996,13 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         {st.status === "done" ? <><span className="sv g">✓</span> Complete · <span className="sv g">{done}</span> agents · <span className="sv g">{artReady}</span> deliverable{artReady !== 1 ? "s" : ""}</>
         : st.status === "error" ? <><span className="sv r">✗</span> Failed · <span className="sv r">{err}</span> error{err !== 1 ? "s" : ""}</>
         : !total ? <><div className="live-dot" /><span style={{ color: "var(--fd)" }}>Planning your goal…</span></>
+        : actionableWebTasks.length ? <><span className="sv r">⚠</span> Website input needed <div className="s-sep" /> <span className="sv g">{done}</span> done</>
         : st.approvals.length ? <><span className="sv r">⚠</span> Approval needed — run paused <div className="s-sep" /> <span className="sv g">{done}</span> done</>
         : <>
             {run > 0 && <><div className="live-dot" /><span className="sv b">{run}</span> working</>}
             {done > 0 && <><div className="s-sep" /><span className="sv g">{done}</span> done</>}
             {err > 0 && <><div className="s-sep" /><span className="sv r">{err}</span> error{err !== 1 ? "s" : ""}</>}
+            {blockedWebTasks.length > 0 && <><div className="s-sep" /><span className="sv r">{blockedWebTasks.length}</span> blocked</>}
             {artReady > 0 && <><div className="s-sep" /><span className="sv g">{artReady}</span> deliverable{artReady !== 1 ? "s" : ""}</>}
           </>}
       </div>
@@ -882,6 +1079,57 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           </div>
           <div className="dscroll">
             {/* approval cards always first */}
+            {webTaskList.map((task) => (
+              <div key={task.task_id} style={{ border: task.status === "needs_user" ? "1.5px solid var(--red)" : "1px solid var(--bd)", background: task.status === "needs_user" ? "rgba(239,68,68,.05)" : "var(--surface)", padding: "14px 16px 12px", marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 16 }}>{task.status === "needs_user" ? "⚠" : task.status === "running" ? "◎" : task.status === "completed" ? "✓" : "✗"}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontFamily: "var(--font-chakra)", fontSize: 13, fontWeight: 700, color: "var(--fg)" }}>
+                      {task.service || "Website"} · {task.task_type || "task"}
+                    </div>
+                    <div style={{ fontSize: 10, color: task.status === "needs_user" ? "var(--red)" : "var(--fm)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".08em" }}>
+                      {task.status.replace(/_/g, " ")}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--fd)", lineHeight: 1.6, marginBottom: 10 }}>
+                  {task.blocker?.message || task.note || "Website operator is working through this flow."}
+                </div>
+                {task.evidence?.final_url && (
+                  <div style={{ fontSize: 10.5, color: "var(--fm)", marginBottom: 8, wordBreak: "break-all" }}>
+                    {task.evidence.final_url}
+                  </div>
+                )}
+                {task.status === "needs_user" && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {(task.blocker?.fields || []).map((field) => (
+                      <label key={field.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <span style={{ fontSize: 10.5, color: "var(--fd)", fontWeight: 600 }}>{field.label || field.key}</span>
+                        <input
+                          type={field.type === "password" ? "password" : field.type === "tel" ? "tel" : "text"}
+                          value={task.formValues?.[field.key] || ""}
+                          onChange={(e) => {
+                            task.formValues = { ...(task.formValues || {}), [field.key]: e.target.value };
+                            force();
+                          }}
+                          style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--bd)", background: "var(--bg)", color: "var(--fg)", fontSize: 11.5, boxSizing: "border-box" }}
+                        />
+                      </label>
+                    ))}
+                    {task.formError && <div style={{ fontSize: 10.5, color: "var(--red)" }}>{task.formError}</div>}
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        style={{ flex: 1, padding: "9px 0", border: "none", background: "var(--blue)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: task.submitting ? "progress" : "pointer", opacity: task.submitting ? 0.7 : 1 }}
+                        disabled={task.submitting}
+                        onClick={() => { void submitWebTaskInput(task.task_id); }}
+                      >
+                        {task.submitting ? "Resuming..." : "Resume website task"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
             {st.approvals.map((ap) => ap.is_phase_gate ? (
               /* ── Phase checkpoint card ── */
               <div key={ap.gate_key} style={{ border: "1.5px solid var(--blue)", background: "rgba(59,130,246,.06)", padding: "16px 16px 12px", marginBottom: 8 }}>
@@ -1269,7 +1517,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             })()}
 
             {/* empty */}
-            {!st.selDept && !st.selArt && st.approvals.length === 0 && (
+            {!st.selDept && !st.selArt && st.approvals.length === 0 && webTaskList.length === 0 && (
               <div className="empty"><div style={{ fontSize: 34, opacity: .12 }}>◈</div><div className="empty-title">Select a department</div><div className="empty-sub" style={{ fontSize: 10.5, maxWidth: 260, lineHeight: 1.6 }}>Click a card above to see what that team is working on.</div></div>
             )}
           </div>

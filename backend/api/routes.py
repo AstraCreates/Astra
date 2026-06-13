@@ -2832,54 +2832,227 @@ async def _run_playwright_ws(websocket: WebSocket, coro_fn) -> None:
         stop_event.set()
 
 
+async def _run_web_task_ws(
+    websocket: WebSocket,
+    *,
+    founder_id: str,
+    service: str,
+    task_type: str,
+    goal: str,
+    success_criteria: list[str] | None = None,
+) -> None:
+    import uuid
+
+    from backend.tools.web_tasks import get_web_task_session, resume_web_task_session, start_web_task_background
+
+    try:
+        require_founder_access(websocket, founder_id, min_role="viewer")
+    except HTTPException:
+        await websocket.accept()
+        await websocket.close(code=4403)
+        return
+
+    await websocket.accept()
+    task_id = str(uuid.uuid4())
+    request_obj = start_web_task_background(
+        task_type=task_type,
+        service=service,
+        goal=goal,
+        success_criteria=success_criteria or [],
+        founder_id=founder_id,
+        session_id=task_id,
+        task_id=task_id,
+        agent="web_navigator",
+    )
+    session = get_web_task_session(request_obj.task_id)
+    if not session:
+        await websocket.send_text(json.dumps({"type": "error", "message": "Could not start website task."}))
+        await websocket.close()
+        return
+
+    def _map_fields(fields: list[dict]) -> list[dict]:
+        mapped = []
+        for field in fields or []:
+            mapped.append({
+                "name": field.get("key") or field.get("name") or "",
+                "label": field.get("label") or field.get("key") or "Field",
+                "type": field.get("type") or "text",
+                "required": field.get("required", True),
+            })
+        return mapped
+
+    async def _recv_loop() -> None:
+        try:
+            async for msg_text in websocket.iter_text():
+                try:
+                    msg = json.loads(msg_text)
+                except Exception:
+                    continue
+                if msg.get("type") == "founder_input":
+                    ok = resume_web_task_session(task_id, msg.get("data", {}))
+                    if not ok:
+                        await websocket.send_text(json.dumps({
+                            "type": "error",
+                            "message": "This website task is not currently waiting for founder input.",
+                        }))
+                elif msg.get("type") == "cancel":
+                    break
+        except WebSocketDisconnect:
+            pass
+
+    async def _send_loop() -> None:
+        queue = session["event_queue"]
+        while True:
+            event = await queue.get()
+            if event is None:
+                break
+            event_type = event.get("type")
+            if event_type in {"web_task_started", "web_task_state", "web_task_resumed"}:
+                state = str(event.get("state") or event.get("task_type") or "working").replace("_", " ")
+                note = str(event.get("note") or "")
+                await websocket.send_text(json.dumps({
+                    "type": "status",
+                    "step": state.title(),
+                    "step_num": 1,
+                    "total": 3,
+                    "message": note,
+                }))
+            elif event_type == "web_task_needs_user":
+                blocker = event.get("blocker") or {}
+                await websocket.send_text(json.dumps({
+                    "type": "interaction_needed",
+                    "step": str(event.get("service") or "Website task").title(),
+                    "message": blocker.get("message") or "Astra needs your input to continue.",
+                    "fields": _map_fields(blocker.get("fields") or []),
+                }))
+            elif event_type == "web_task_completed":
+                await websocket.send_text(json.dumps({
+                    "type": "done",
+                    "service": event.get("service"),
+                    "result": (event.get("result") or {}).get("artifacts") or {},
+                }))
+                break
+            elif event_type == "web_task_failed":
+                result = event.get("result") or {}
+                blocker = result.get("blocker") or {}
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "message": blocker.get("message") or "Website task failed.",
+                }))
+                break
+
+    recv_task = asyncio.create_task(_recv_loop())
+    send_task = asyncio.create_task(_send_loop())
+    done, pending = await asyncio.wait({recv_task, send_task}, return_when=asyncio.FIRST_COMPLETED)
+    for task in pending:
+        task.cancel()
+    for task in done:
+        try:
+            await task
+        except Exception:
+            pass
+    try:
+        await websocket.close()
+    except Exception:
+        pass
+
+
 # ── Integration connect WebSocket endpoints ───────────────────────────────────
 
 @router.websocket("/connect/github/stream/{founder_id}")
 async def connect_github_stream(websocket: WebSocket, founder_id: str):
-    from backend.tools.integration_connect import connect_github_live
-    await _run_playwright_ws(websocket, lambda sm, wi, eq: connect_github_live(founder_id, sm, wi, eq))
+    await _run_web_task_ws(
+        websocket,
+        founder_id=founder_id,
+        service="github",
+        task_type="retrieve_api_key",
+        goal="Sign in to GitHub and retrieve a personal access token.",
+        success_criteria=["github_token_extracted"],
+    )
 
 
 @router.websocket("/connect/vercel/stream/{founder_id}")
 async def connect_vercel_stream(websocket: WebSocket, founder_id: str):
-    from backend.tools.integration_connect import connect_vercel_live
-    await _run_playwright_ws(websocket, lambda sm, wi, eq: connect_vercel_live(founder_id, sm, wi, eq))
+    await _run_web_task_ws(
+        websocket,
+        founder_id=founder_id,
+        service="vercel",
+        task_type="retrieve_deploy_token",
+        goal="Sign in to Vercel and retrieve a deploy token.",
+        success_criteria=["deploy_token_extracted"],
+    )
 
 
 @router.websocket("/connect/sendgrid/stream/{founder_id}")
 async def connect_sendgrid_stream(websocket: WebSocket, founder_id: str):
-    from backend.tools.integration_connect import connect_sendgrid_live
-    await _run_playwright_ws(websocket, lambda sm, wi, eq: connect_sendgrid_live(founder_id, sm, wi, eq))
+    await _run_web_task_ws(
+        websocket,
+        founder_id=founder_id,
+        service="sendgrid",
+        task_type="retrieve_api_key",
+        goal="Sign in to SendGrid and retrieve an API key.",
+        success_criteria=["api_key_extracted"],
+    )
 
 
 @router.websocket("/connect/klaviyo/stream/{founder_id}")
 async def connect_klaviyo_stream(websocket: WebSocket, founder_id: str):
-    from backend.tools.provision_integrations import provision_klaviyo_live
-    await _run_playwright_ws(websocket, lambda sm, wi, eq: provision_klaviyo_live(founder_id, sm, wi, eq))
+    await _run_web_task_ws(
+        websocket,
+        founder_id=founder_id,
+        service="klaviyo",
+        task_type="retrieve_api_key",
+        goal="Sign in to Klaviyo and retrieve an API key.",
+        success_criteria=["api_key_extracted"],
+    )
 
 
 @router.websocket("/connect/printful/stream/{founder_id}")
 async def connect_printful_stream(websocket: WebSocket, founder_id: str):
-    from backend.tools.provision_integrations import provision_printful_live
-    await _run_playwright_ws(websocket, lambda sm, wi, eq: provision_printful_live(founder_id, sm, wi, eq))
+    await _run_web_task_ws(
+        websocket,
+        founder_id=founder_id,
+        service="printful",
+        task_type="retrieve_api_key",
+        goal="Sign in to Printful and retrieve an API key.",
+        success_criteria=["api_key_extracted"],
+    )
 
 
 @router.websocket("/connect/yelp/stream/{founder_id}")
 async def connect_yelp_stream(websocket: WebSocket, founder_id: str):
-    from backend.tools.provision_integrations import provision_yelp_live
-    await _run_playwright_ws(websocket, lambda sm, wi, eq: provision_yelp_live(founder_id, sm, wi, eq))
+    await _run_web_task_ws(
+        websocket,
+        founder_id=founder_id,
+        service="yelp",
+        task_type="retrieve_api_key",
+        goal="Sign in to Yelp Fusion and retrieve an API key.",
+        success_criteria=["api_key_extracted"],
+    )
 
 
 @router.websocket("/connect/lemonsqueezy/stream/{founder_id}")
 async def connect_lemonsqueezy_stream(websocket: WebSocket, founder_id: str):
-    from backend.tools.provision_integrations import provision_lemonsqueezy_live
-    await _run_playwright_ws(websocket, lambda sm, wi, eq: provision_lemonsqueezy_live(founder_id, sm, wi, eq))
+    await _run_web_task_ws(
+        websocket,
+        founder_id=founder_id,
+        service="lemonsqueezy",
+        task_type="retrieve_api_key",
+        goal="Sign in to Lemon Squeezy and retrieve an API key.",
+        success_criteria=["api_key_extracted"],
+    )
 
 
 @router.websocket("/connect/square/stream/{founder_id}")
 async def connect_square_stream(websocket: WebSocket, founder_id: str):
-    from backend.tools.provision_integrations import provision_square_sandbox_live
-    await _run_playwright_ws(websocket, lambda sm, wi, eq: provision_square_sandbox_live(founder_id, sm, wi, eq))
+    await _run_web_task_ws(
+        websocket,
+        founder_id=founder_id,
+        service="square_sandbox",
+        task_type="retrieve_api_key",
+        goal="Sign in to Square Developer and retrieve a sandbox access token.",
+        success_criteria=["sandbox_token_extracted"],
+    )
 
 
 @router.get("/connect/twilio/guide/{founder_id}")
@@ -4112,27 +4285,48 @@ async def track_click(founder_id: str, campaign_id: str, cc_id: str, step_index:
 async def web_navigator_start(body: dict, request: Request):
     """Start a web navigator session. Returns session_id for streaming."""
     import uuid
-    url = body.get("url", "").strip()
-    goal = body.get("goal", "").strip()
-    if not url or not goal:
-        raise HTTPException(status_code=400, detail="url and goal are required")
+    from backend.tools.web_tasks import create_web_task_session, start_web_task_background
 
-    from backend.tools.web_navigator_tools import create_nav_session, vision_browse_streaming
-    session_id = str(uuid.uuid4())
-    create_nav_session(session_id)
-    asyncio.create_task(vision_browse_streaming(session_id, url, goal, max_steps=30))
-    return {"session_id": session_id}
+    founder_id = str(body.get("founder_id") or "")
+    if founder_id:
+        require_founder_access(request, founder_id, min_role="viewer")
+    goal = body.get("goal", "").strip()
+    if not goal:
+        raise HTTPException(status_code=400, detail="goal is required")
+    task_type = str(body.get("task_type") or ("generic" if body.get("url") else "")).strip() or "generic"
+    service = str(body.get("service") or ("generic" if body.get("url") else "")).strip() or "generic"
+    start_url = body.get("url", "").strip()
+    success_criteria = body.get("success_criteria") or (["dashboard"] if start_url else [])
+    task_id = str(body.get("task_id") or uuid.uuid4())
+    create_web_task_session(task_id)
+    request_obj = start_web_task_background(
+        task_type=task_type,
+        service=service,
+        goal=goal,
+        success_criteria=success_criteria,
+        credentials=body.get("credentials") or {},
+        founder_id=founder_id,
+        session_id=str(body.get("session_id") or task_id),
+        task_id=task_id,
+        start_url=start_url,
+        metadata=dict(body.get("metadata") or {}),
+    )
+    return {"session_id": request_obj.task_id, "task_id": request_obj.task_id}
 
 
 @router.get("/web-navigator/stream/{session_id}")
 async def web_navigator_stream(session_id: str, request: Request):
     """SSE stream of events for a running web navigator session."""
     from fastapi.responses import StreamingResponse
-    from backend.tools.web_navigator_tools import get_nav_session
+    from backend.tools.web_tasks import get_web_task_session
 
-    session = get_nav_session(session_id)
+    session = get_web_task_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+    request_obj = session.get("request")
+    founder_id = str(getattr(request_obj, "founder_id", "") or "")
+    if founder_id:
+        require_founder_access(request, founder_id, min_role="viewer")
 
     async def _gen():
         queue: asyncio.Queue = session["event_queue"]
@@ -4157,8 +4351,16 @@ async def web_navigator_stream(session_id: str, request: Request):
 @router.post("/web-navigator/respond/{session_id}")
 async def web_navigator_respond(session_id: str, body: dict, request: Request):
     """Provide user input to a paused web navigator session."""
-    from backend.tools.web_navigator_tools import resume_nav_session
-    ok = resume_nav_session(session_id, body.get("fields", {}))
+    from backend.tools.web_tasks import get_web_task_session, resume_web_task_session
+    from backend.tools.web_tasks.store import load_snapshot
+
+    task_session = get_web_task_session(session_id) or {}
+    request_obj = task_session.get("request")
+    snapshot_session_id = getattr(request_obj, "session_id", "") or session_id
+    snapshot = load_snapshot(snapshot_session_id, session_id)
+    if snapshot and snapshot.request.session_id:
+        await _require_session_access(request, snapshot.request.session_id, min_role="viewer")
+    ok = resume_web_task_session(session_id, body.get("fields", {}))
     if not ok:
         raise HTTPException(status_code=404, detail="Session not found or not waiting for input")
     return {"ok": True}

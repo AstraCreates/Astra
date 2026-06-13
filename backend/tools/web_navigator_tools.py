@@ -613,9 +613,21 @@ async def vision_browse(
         if event.get("type") == "done":
             result = {k: v for k, v in event.items() if k != "type"}
         elif event.get("type") == "need_input":
-            # In non-streaming mode, can't pause — skip and continue
-            session["input_data"] = {}
-            session["input_event"].set()
+            result = {
+                "status": "needs_user",
+                "success": False,
+                "message": event.get("prompt", "Additional input is required."),
+                "extracted": {},
+                "steps": event.get("step", 0),
+                "blocker": {
+                    "kind": "needs_input",
+                    "message": event.get("prompt", "Additional input is required."),
+                    "fields": event.get("fields", []),
+                },
+                "resume_token": sid,
+                "url": event.get("url", ""),
+            }
+            break
 
     await task
     _nav_sessions.pop(sid, None)
