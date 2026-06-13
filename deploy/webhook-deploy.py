@@ -43,6 +43,10 @@ def deploy():
     if result.returncode != 0:
         log.error("Compose failed with exit=%s", result.returncode)
 
+    # Prune dangling images after every build to prevent disk exhaustion.
+    prune = subprocess.run(["docker", "image", "prune", "-f"], capture_output=True, text=True)
+    log.info("prune -> %s", prune.stdout.strip() or prune.stderr.strip())
+
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def log_message(self, *args):
