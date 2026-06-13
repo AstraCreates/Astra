@@ -1,0 +1,6 @@
+services:
+  backend:
+    volumes:
+      - astra_docs_data:/data/astra_docs
+      - astra_workspaces_data:/data/astra-workspaces
+      - brain_data:/app/.astra

@@ -2044,7 +2044,7 @@ async def gmail_oauth_url(founder_id: str, request: Request):
     if not settings.google_client_id:
         raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID not configured")
 
-    redirect_uri = f"{settings.backend_url}/gmail/callback"
+    redirect_uri = f"{settings.backend_url}/api/gmail/callback"
     params = urlencode({
         "client_id": settings.google_client_id,
         "redirect_uri": redirect_uri,
@@ -2077,7 +2077,7 @@ async def gmail_callback(code: str = "", state: str = "", error: str = ""):
         return RedirectResponse(url=f"{fe_base}/integrations?gmail_error=missing_params")
 
     founder_id = state
-    redirect_uri = f"{settings.backend_url}/gmail/callback"
+    redirect_uri = f"{settings.backend_url}/api/gmail/callback"
 
     async with httpx.AsyncClient() as client:
         token_resp = await client.post(
