@@ -15,14 +15,15 @@ interface Props {
   coreSub?: string;
 }
 
-const VBW = 700, VBH = 440;
+const VBW = 500, VBH = 500;
 const CX = VBW / 2, CY = VBH / 2;
-const SUN_R = 30;
-const PLANET_R = 8;
-const MOON_R = 4;
-const MOON_ORBIT_R = 19;
+const SUN_R = 26;
+const PLANET_R = 7;
+const MOON_R = 3;
+const MOON_ORBIT_R = 14;
 
-const ORBIT_R = [88, 122, 154, 183, 210, 234, 256, 275];
+// Max radius: CY(250) - label(20) - margin(18) = 212
+const ORBIT_R = [62, 85, 107, 127, 147, 164, 180, 195];
 const ORBIT_T = [12, 17, 22, 28, 34, 41, 48, 56];
 const MOON_T_BASE = 3.2;
 
@@ -135,7 +136,7 @@ export default function AgentSwarm({ agents, coreLabel, coreSub }: Props) {
   return (
     <div style={{
       position: "relative", width: "100%",
-      height: "min(58vw, 300px)",
+      height: "min(55vw, 340px)",
       background: "var(--s2, #f8f9fa)", borderRadius: 12,
       border: "1px solid var(--bd)", overflow: "hidden",
     }}>

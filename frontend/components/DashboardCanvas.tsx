@@ -136,10 +136,12 @@ export default function DashboardCanvas({ founderId }: Props) {
     try { await removeDashboardElement(founderId, id); } catch {}
   };
 
-  if (!elements.length) return null;
+  // Markdown tiles are agent text-dumps — not meaningful dashboard content.
+  const meaningful = elements.filter(el => el.type !== "markdown");
+  if (!meaningful.length) return null;
 
   const grouped = new Map<string, DashboardElement[]>();
-  for (const el of elements) {
+  for (const el of meaningful) {
     const k = el.section ?? "";
     if (!grouped.has(k)) grouped.set(k, []);
     grouped.get(k)!.push(el);
