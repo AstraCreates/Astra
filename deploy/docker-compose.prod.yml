@@ -1,6 +1,7 @@
 services:
   redis:
     image: redis:7-alpine
+    container_name: astra-redis
     restart: unless-stopped
     volumes:
       - redis_data:/data
@@ -10,6 +11,7 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile.backend
+    container_name: backend
     restart: unless-stopped
     env_file: ../.env
     environment:
@@ -30,6 +32,7 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile.frontend
+    container_name: frontend
       args:
         - BACKEND_URL=http://backend:8000
         - NEXT_PUBLIC_API_URL=/api
@@ -52,6 +55,7 @@ services:
 
   nginx:
     image: nginx:alpine
+    container_name: astra-nginx
     restart: unless-stopped
     ports:
       - "80:80"
