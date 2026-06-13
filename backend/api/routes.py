@@ -734,16 +734,6 @@ async def session_images(session_id: str, request: Request):
     return {"logos": logos, "brand_images": brand_images[:12]}
 
 
-@router.get("/sessions/{session_id}/meta")
-async def session_meta(session_id: str, request: Request):
-    """Full session metadata from durable store."""
-    from backend.core.session_store import get_session_meta
-    meta = get_session_meta(session_id)
-    if not meta:
-        raise HTTPException(status_code=404, detail="Session not found in store")
-    return meta
-
-
 @router.get("/sessions/{session_id}/replay")
 async def replay_session(session_id: str, request: Request):
     """Stream the full event log for a session as SSE — rebuilds frontend from scratch."""
@@ -857,6 +847,7 @@ async def session_meta_public(session_id: str, request: Request):
         "created_at": meta.get("created_at", ""),
         "parent_session_id": meta.get("parent_session_id", ""),
         "kind": meta.get("kind", ""),
+        "credits_used": int(meta.get("credits_used", 0)),
     }
 
 

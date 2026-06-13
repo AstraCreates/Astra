@@ -710,7 +710,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       name, tagline, mission, problem, solution, icp, persona, differentiator, moat,
       marketSize, revenue, pricing, salesMotion, gtm, channels, keyMetrics, risks, regulation, partnerships,
       team, competitors, techStack, palette,
-      pct: Math.round((filled / 20) * 100),
+      pct: Math.min(100, Math.round((filled / 21) * 100)),
       researchRunning:  agRunning("research", "research_market", "research_competitors", "research_financial", "research_regulatory"),
       designRunning:    agRunning("design"),
       salesRunning:     agRunning("sales", "sales_pipeline", "ops"),
@@ -1429,7 +1429,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                     {/* Geography */}
                     <div style={{ ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
                       <Lbl label="Geography" running={p.researchRunning} val={[]} />
-                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="80%" /><Sdead w="65%" /></div>
+                      {p.researchRunning
+                        ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="80%" /><S w="65%" i={1} /></div>
+                        : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="80%" /><Sdead w="65%" /></div>
+                      }
                     </div>
                   </div>
 
