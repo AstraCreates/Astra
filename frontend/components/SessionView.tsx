@@ -12,6 +12,7 @@ import { useDevUser } from "@/lib/use-dev-user";
 import { signIn } from "next-auth/react";
 import dynamic from "next/dynamic";
 import SessionTour from "@/components/SessionTour";
+import AgentSwarm, { type SwarmAgent } from "@/components/AgentSwarm";
 
 // xterm touches `window`; load the takeover terminal client-only.
 const TerminalPane = dynamic(() => import("@/components/TerminalPane"), { ssr: false });
@@ -1237,10 +1238,25 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               </div>;
             })()}
 
-            {/* empty */}
-            {!st.selDept && !st.selArt && st.approvals.length === 0 && (
-              <div className="empty"><div style={{ fontSize: 34, opacity: .12 }}>◈</div><div className="empty-title">Select a department</div><div className="empty-sub" style={{ fontSize: 10.5, maxWidth: 260, lineHeight: 1.6 }}>Click a card above to see what that team is working on.</div></div>
-            )}
+            {/* team solar system — default view when no dept/art selected */}
+            {!st.selDept && !st.selArt && st.approvals.length === 0 && (() => {
+              const swarmAgents: SwarmAgent[] = Object.values(st.agents).map(a => ({
+                key: a.key,
+                label: (AGENT_LABELS as Record<string, string>)[a.key] ?? a.key.replace(/_/g, " "),
+                status: a.status,
+                currentTool: a.currentTool,
+              }));
+              const displayName = st.projectName || st.company || "Astra";
+              const coreSub = st.status === "running" ? "working" : st.status === "done" ? "complete" : undefined;
+              if (swarmAgents.length === 0) {
+                return <div className="empty"><div style={{ fontSize: 34, opacity: .12 }}>◈</div><div className="empty-title">Waiting for agents…</div></div>;
+              }
+              return (
+                <div style={{ padding: "8px 2px 0" }}>
+                  <AgentSwarm agents={swarmAgents} coreLabel={displayName} coreSub={coreSub} />
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
