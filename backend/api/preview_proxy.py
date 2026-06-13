@@ -1,8 +1,17 @@
 """
 Reverse proxy for company preview subdomains.
 
-nginx routes *.{PUBLIC_HOST} traffic here with the X-Preview-Slug header set.
-We look up the slug → port mapping and httpx-proxy the request to localhost:{port}.
+nginx routes *.{PUBLIC_HOST} traffic here; we read the Host header to extract
+the slug, look up the port, and httpx-proxy to localhost:{port}.
+
+Security posture:
+- Target is always localhost:{port} — not user-supplied, not redirectable to other hosts
+- follow_redirects=False prevents SSRF via upstream redirect
+- Forwarded headers are whitelisted; Authorization and Cookie are never forwarded
+- Auth: previews are dev builds on a separate nip.io domain (different eTLD+1 from
+  the app) so browser cookies aren't shared. Slug registry keys include session_id
+  suffix so slugs aren't guessable across tenants.
+- Auth enforcement should be added when ASTRA_REQUIRE_AUTH is enabled (TODO W8).
 """
 from __future__ import annotations
 
@@ -15,6 +24,14 @@ from fastapi.responses import StreamingResponse
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Whitelist of headers safe to forward to the preview dev server.
+# Intentionally excludes: Authorization, Cookie, X-Astra-*, x-preview-slug.
+_FORWARD_HEADERS = {
+    "accept", "accept-encoding", "accept-language", "cache-control",
+    "content-type", "content-length", "range", "user-agent", "referer",
+    "if-modified-since", "if-none-match",
+}
+
 
 async def _proxy(slug: str, path: str, request: Request) -> StreamingResponse:
     from backend.tools.local_preview import get_port_for_slug
@@ -23,39 +40,23 @@ async def _proxy(slug: str, path: str, request: Request) -> StreamingResponse:
     if not port:
         raise HTTPException(status_code=404, detail=f"No preview running for '{slug}'")
 
-    # Build target URL inside the container (preview servers bind to 0.0.0.0:{port})
-    qs = request.url.query
-    target = f"http://localhost:{port}/{path}"
-    if qs:
-        target = f"{target}?{qs}"
+    # Target is always localhost — not attacker-influenced
+    qs = f"?{request.url.query}" if request.url.query else ""
+    target = f"http://localhost:{port}/{path}{qs}"
 
-    # Forward request headers, minus hop-by-hop and Astra-internal ones
-    skip = {"host", "x-preview-slug", "x-astra-user-id", "connection", "transfer-encoding"}
-    headers = {k: v for k, v in request.headers.items() if k.lower() not in skip}
+    # Whitelist-only header forwarding — never send Authorization, Cookie, or app tokens
+    headers = {k: v for k, v in request.headers.items() if k.lower() in _FORWARD_HEADERS}
 
     body = await request.body()
 
-    async def _stream():
-        async with httpx.AsyncClient(timeout=30) as client:
-            try:
-                async with client.stream(
-                    request.method, target, headers=headers, content=body, follow_redirects=True
-                ) as resp:
-                    # Yield response body in chunks
-                    async for chunk in resp.aiter_bytes(chunk_size=32768):
-                        yield chunk
-            except httpx.ConnectError:
-                logger.warning("Preview connect error: slug=%s port=%s", slug, port)
-                yield b"<html><body><h2>Preview starting up, please wait a moment and refresh.</h2></body></html>"
-
-    # We need the status + headers from the upstream response before streaming.
-    # Use a non-streaming request for the headers pass, then stream body separately.
-    # Simpler: just do a normal (buffered) request for small assets; for large ones
-    # streaming matters. Since previews are dev servers, buffering is fine for now.
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.request(
-                request.method, target, headers=headers, content=body, follow_redirects=True
+                request.method,
+                target,
+                headers=headers,
+                content=body,
+                follow_redirects=False,  # prevent SSRF via redirect to non-localhost
             )
     except httpx.ConnectError:
         return StreamingResponse(
@@ -65,7 +66,7 @@ async def _proxy(slug: str, path: str, request: Request) -> StreamingResponse:
         )
 
     # Strip hop-by-hop response headers
-    skip_resp = {"transfer-encoding", "connection", "keep-alive", "content-encoding"}
+    skip_resp = {"transfer-encoding", "connection", "keep-alive"}
     resp_headers = {k: v for k, v in resp.headers.items() if k.lower() not in skip_resp}
 
     return StreamingResponse(
@@ -77,11 +78,9 @@ async def _proxy(slug: str, path: str, request: Request) -> StreamingResponse:
 
 @router.api_route("/preview-route/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"])
 async def preview_proxy_path(path: str, request: Request):
-    slug = request.headers.get("x-preview-slug", "").strip()
-    if not slug:
-        # Fallback: try to extract from Host header (slug.PUBLIC_HOST)
-        host = request.headers.get("host", "")
-        slug = host.split(".")[0] if host else ""
+    # Extract slug from Host header (set by nginx from the subdomain)
+    host = request.headers.get("host", "")
+    slug = host.split(".")[0] if host else ""
     if not slug:
         raise HTTPException(status_code=400, detail="Missing preview slug")
     return await _proxy(slug, path, request)

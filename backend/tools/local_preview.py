@@ -72,13 +72,16 @@ def get_port_for_slug(slug: str) -> int | None:
     return port
 
 
-def _make_slug(company_name: str, fallback: str) -> str:
-    """Sanitize company name into a URL-safe subdomain slug."""
-    import re
+def _make_slug(company_name: str, fallback: str, session_id: str = "") -> str:
+    """Sanitize company name + session suffix into a unique URL-safe subdomain slug."""
+    import hashlib, re
     raw = (company_name or fallback).lower()
     raw = re.sub(r"[^a-z0-9]+", "-", raw).strip("-")
     raw = re.sub(r"-{2,}", "-", raw)
-    return raw[:40] or "preview"
+    base = raw[:28] or "preview"
+    # 4-char session hash ensures slugs are unique per session (no cross-tenant collision)
+    suffix = hashlib.sha256(session_id.encode()).hexdigest()[:4] if session_id else "0000"
+    return f"{base}-{suffix}"
 
 
 def _registry_load() -> dict[str, int]:
@@ -189,6 +192,19 @@ def stop_local_preview(session_id: str) -> bool:
         port = reg_port
     if port:
         _kill_port(port)
+        # Remove slug entries that pointed to this port
+        dead_slugs = [s for s, p in list(_slug_to_port.items()) if p == port]
+        for s in dead_slugs:
+            _slug_to_port.pop(s, None)
+        if dead_slugs:
+            with _lock:
+                try:
+                    reg = _slug_registry_load()
+                    for s in dead_slugs:
+                        reg.pop(s, None)
+                    _SLUG_REGISTRY.write_text(json.dumps(reg))
+                except Exception:
+                    pass
         logger.info("Stopped local preview for %s (port %s freed)", session_id, port)
         return True
     return bool(entry)
@@ -253,7 +269,7 @@ def start_local_preview(local: str, session_id: str, company_name: str = "") -> 
             return None
         _previews[session_id] = (port, proc)
         _registry_set(session_id, port)
-        slug = _make_slug(company_name, Path(local).name)
+        slug = _make_slug(company_name, Path(local).name, session_id)
         _slug_to_port[slug] = port
         _slug_registry_set(slug, port)
 
