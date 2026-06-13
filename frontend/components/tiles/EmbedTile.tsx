@@ -7,13 +7,14 @@ interface Config {
 
 export default function EmbedTile({ config }: { config: Config }) {
   const { url = "", height = 300 } = config;
-  if (!url) {
+  const safeUrl = /^https?:\/\//i.test(url) ? url : "";
+  if (!safeUrl) {
     return <div style={{ fontSize: 12, color: "var(--fm)", paddingTop: 8 }}>No URL configured.</div>;
   }
   return (
     <iframe
-      src={url}
-      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+      src={safeUrl}
+      sandbox="allow-scripts allow-forms allow-popups"
       style={{
         width: "100%",
         height: height,

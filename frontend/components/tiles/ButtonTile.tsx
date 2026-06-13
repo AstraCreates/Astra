@@ -23,7 +23,7 @@ export default function ButtonTile({ config }: { config: Config }) {
       router.push("/?new=1");
     } else if (action === "open_url") {
       const url = String(payload.url ?? "");
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
+      if (/^https?:\/\//i.test(url)) window.open(url, "_blank", "noopener,noreferrer");
     }
   };
 

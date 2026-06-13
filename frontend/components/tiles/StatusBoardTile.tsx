@@ -61,7 +61,7 @@ export default function StatusBoardTile({ config }: { config: Config }) {
             />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, color: "var(--fg)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {ind.url ? (
+                {ind.url && /^https?:\/\//i.test(ind.url) ? (
                   <a href={ind.url} target="_blank" rel="noopener noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>
                     {ind.label ?? "—"}
                   </a>
