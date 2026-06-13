@@ -2,8 +2,35 @@ import hashlib
 import hmac
 import json
 import logging
+import secrets
+import threading
 import time
 import uuid
+
+# Short-TTL nonce store for OAuth state parameters.
+# Maps random nonce → (founder_id, expiry_unix). Consumed on use.
+_oauth_states: dict[str, tuple[str, float]] = {}
+_oauth_states_lock = threading.Lock()
+_OAUTH_STATE_TTL = 600  # 10 minutes
+
+
+def _oauth_state_create(founder_id: str) -> str:
+    nonce = secrets.token_urlsafe(32)
+    with _oauth_states_lock:
+        _oauth_states[nonce] = (founder_id, time.time() + _OAUTH_STATE_TTL)
+    return nonce
+
+
+def _oauth_state_consume(nonce: str) -> str | None:
+    """Return founder_id and delete the entry, or None if missing/expired."""
+    with _oauth_states_lock:
+        entry = _oauth_states.pop(nonce, None)
+    if entry is None:
+        return None
+    founder_id, expiry = entry
+    if time.time() > expiry:
+        return None
+    return founder_id
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 
@@ -2052,7 +2079,7 @@ async def gmail_oauth_url(founder_id: str, request: Request):
         "access_type": "offline",
         "prompt": "consent",
         "scope": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email",
-        "state": founder_id,
+        "state": _oauth_state_create(founder_id),
         "include_granted_scopes": "true",
     })
     return {"url": f"https://accounts.google.com/o/oauth2/v2/auth?{params}"}
@@ -2076,7 +2103,9 @@ async def gmail_callback(code: str = "", state: str = "", error: str = ""):
     if not code or not state:
         return RedirectResponse(url=f"{fe_base}/integrations?gmail_error=missing_params")
 
-    founder_id = state
+    founder_id = _oauth_state_consume(state)
+    if not founder_id:
+        return RedirectResponse(url=f"{fe_base}/integrations?gmail_error=invalid_state")
     redirect_uri = f"{settings.backend_url}/api/gmail/callback"
 
     async with httpx.AsyncClient() as client:
@@ -2144,7 +2173,7 @@ async def github_oauth_url(founder_id: str, request: Request):
         "client_id": settings.github_client_id,
         "redirect_uri": redirect_uri,
         "scope": "repo workflow read:org",
-        "state": founder_id,
+        "state": _oauth_state_create(founder_id),
     })
     return {"url": f"https://github.com/login/oauth/authorize?{params}"}
 
@@ -2168,7 +2197,9 @@ async def github_callback(code: str = "", state: str = "", error: str = ""):
     if not code or not state:
         return RedirectResponse(url=f"{fe_base}/integrations?github_error=missing_params")
 
-    founder_id = state
+    founder_id = _oauth_state_consume(state)
+    if not founder_id:
+        return RedirectResponse(url=f"{fe_base}/integrations?github_error=invalid_state")
     redirect_uri = f"{settings.backend_url}/api/github/callback"
 
     async with httpx.AsyncClient() as client:
@@ -4453,10 +4484,17 @@ async def web_navigator_respond(session_id: str, body: dict, request: Request):
 
     task_session = get_web_task_session(session_id) or {}
     request_obj = task_session.get("request")
-    snapshot_session_id = getattr(request_obj, "session_id", "") or session_id
-    snapshot = load_snapshot(snapshot_session_id, session_id)
-    if snapshot and snapshot.request.session_id:
-        await _require_session_access(request, snapshot.request.session_id, min_role="viewer")
+    founder_id_wt = str(getattr(request_obj, "founder_id", "") or "")
+    if not founder_id_wt:
+        # Fall back to snapshot-derived session for legacy records
+        snapshot_session_id = getattr(request_obj, "session_id", "") or session_id
+        snapshot = load_snapshot(snapshot_session_id, session_id)
+        if snapshot and snapshot.request.session_id:
+            await _require_session_access(request, snapshot.request.session_id, min_role="viewer")
+        else:
+            raise HTTPException(status_code=403, detail="Cannot verify session ownership")
+    else:
+        require_founder_access(request, founder_id_wt, min_role="viewer")
     ok = resume_web_task_session(session_id, body.get("fields", {}))
     if not ok:
         raise HTTPException(status_code=404, detail="Session not found or not waiting for input")

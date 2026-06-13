@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 import hashlib, hmac, http.server, logging, os, subprocess, threading
 
-SECRET = b"2809ef752954e8d9c2bf657ebc89fde2726b09c310c47e07bf350782d558ac26"
+_secret_val = os.environ.get("ASTRA_DEPLOY_WEBHOOK_SECRET", "")
+if not _secret_val:
+    raise RuntimeError("ASTRA_DEPLOY_WEBHOOK_SECRET env var not set")
+SECRET = _secret_val.encode()
 REPO = "/opt/astra/repo"
 BRANCH = os.environ.get("ASTRA_DEPLOY_BRANCH", "codex/website-operator-layer-v1")
 COMPOSE_FILE = "deploy/docker-compose.prod.yml"
