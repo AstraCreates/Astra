@@ -3,6 +3,7 @@ from backend.core.agent import Agent
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
 from backend.tools.github_scaffold import github_create_repo
 from backend.tools.git_tools import run_mvp_loop, write_files_to_repo, run_claude_in_repo
+from backend.tools.examples_library import search_examples, list_example_categories
 from backend.tools.parallel_build import spawn_parallel_coders
 from backend.tools.web_navigator_tools import vision_browse
 from backend.tools.web_tasks import run_web_task
@@ -31,6 +32,12 @@ def build_technical_agent(**kwargs) -> Agent:
             "The WEB agent already created a Next.js repo and built the marketing landing page. "
             "You build the PRODUCT (sign-up/auth, dashboard, core features) ON TOP of that SAME repo — "
             "do not start over and do not create a second repo.\n\n"
+            "EXAMPLES LIBRARY (use before writing code): Call search_examples(query, agent_role='technical') "
+            "to retrieve battle-tested scaffolds for auth, payments, database schemas, deployment configs, "
+            "and component patterns. Always search before rolling your own implementation. Examples: "
+            "search_examples('nextauth google oauth') → working NextAuth v5 scaffold; "
+            "search_examples('stripe checkout webhook') → Stripe session + webhook pattern; "
+            "search_examples('supabase rls schema') → Supabase schema with row-level security.\n\n"
             "AUTH RULES (non-negotiable):\n"
             "- Auth must WORK. Default to email+password (or magic-link) via Supabase Auth (@supabase/ssr) "
             "or NextAuth Credentials — both function with just the Supabase anon key / a NEXTAUTH_SECRET, no "
@@ -77,6 +84,8 @@ def build_technical_agent(**kwargs) -> Agent:
             "if one already exists."
         ),
         tools={
+            "search_examples": search_examples,
+            "list_example_categories": list_example_categories,
             "github_create_repo": github_create_repo,
             "run_mvp_loop": run_mvp_loop,
             "spawn_parallel_coders": spawn_parallel_coders,

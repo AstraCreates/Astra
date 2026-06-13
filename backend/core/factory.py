@@ -231,6 +231,12 @@ def get_orchestrator() -> Orchestrator:
             agent.tools.setdefault("yelp_get_reviews", yelp_get_reviews)
             agent.tools.setdefault("yelp_search_categories", yelp_search_categories)
 
+        # Examples library — inject into every agent so all specialists can search patterns
+        from backend.tools.examples_library import search_examples, list_example_categories
+        for agent in specialists.values():
+            agent.tools.setdefault("search_examples", search_examples)
+            agent.tools.setdefault("list_example_categories", list_example_categories)
+
         from backend.runtime.catalog import migrate_agent, validate_catalog
         for agent in specialists.values():
             migrate_agent(agent)

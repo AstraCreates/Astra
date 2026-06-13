@@ -89,6 +89,7 @@ from backend.tools.yelp_tools import (
     yelp_search_categories,
 )
 from backend.tools.web_tasks import run_web_task
+from backend.tools.examples_library import search_examples, list_example_categories
 from backend.tools.lemonsqueezy_tools import (
     ls_create_product,
     ls_get_sales,
@@ -203,6 +204,10 @@ TOOL_REGISTRY: dict[str, callable] = {
 
     # Website operator
     "run_web_task": run_web_task,
+
+    # Examples library — searchable code patterns and templates for all agents
+    "search_examples": search_examples,
+    "list_example_categories": list_example_categories,
 }
 
 
