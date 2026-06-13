@@ -743,11 +743,31 @@ class Agent:
         if self._skills:
             skills_section = "\n---\n".join(self._skills) + "\n---\n"
 
+        # Dashboard guidance injected only when the agent has the tool
+        dashboard_section = ""
+        if "dashboard_add_element" in self.tools:
+            dashboard_section = (
+                "\nDASHBOARD: When you produce a key output, call dashboard_add_element(founder_id=<FOUNDER_ID from context>, ...) "
+                "to surface it on the founder's dashboard. Use the right type:\n"
+                "  metric      — a single number/KPI (revenue, count, score, rating)\n"
+                "  status_board — integration or system health checks\n"
+                "  table       — lists of leads, products, bookings, competitors\n"
+                "  chart       — trend data over time (line/bar/area)\n"
+                "  progress    — task completion (value, max)\n"
+                "  list        — action items, next steps, recommendations\n"
+                "  markdown    — summaries, analysis, brief reports\n"
+                "  button      — action='new_goal' to propose a follow-up goal\n"
+                f"Call dashboard_add_element BEFORE calling done. One tile per major output. "
+                "Use section= to group related tiles (e.g. 'Revenue', 'Competitors', 'Operations'). "
+                f"Pass agent='{self.name}' so the tile is attributed correctly.\n"
+            )
+
         return (
             skills_section +
             f"You are {self.name}, {self.role}.\n\n"
             f"TOOLS:\n{tool_list or '  (none)'}\n\n"
             f"SUB-AGENTS YOU CAN DELEGATE TO:\n{sub_list or '  (none)'}\n\n"
+            + dashboard_section +
             "RESPONSE FORMAT — YOU MUST RESPOND WITH A SINGLE JSON OBJECT ONLY. NO PROSE. NO MARKDOWN. NO EXPLANATION.\n\n"
             "Call a tool:\n"
             '{"action": "tool", "tool": "<name>", "args": {<kwargs>}, "reasoning": "<one line>"}\n\n'
