@@ -1,5 +1,21 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Component, useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+
+class TileErrorBoundary extends Component<{ children: ReactNode }, { error: boolean }> {
+  state = { error: false };
+  static getDerivedStateFromError() { return { error: true }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ fontSize: 11, color: "var(--fm)", padding: "12px 8px", textAlign: "center" }}>
+          Tile error
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import {
   getDashboardElements,
   removeDashboardElement,
@@ -163,17 +179,18 @@ export default function DashboardCanvas({ founderId }: Props) {
               }}
             >
               {items.map((el) => (
-                <TileShell
-                  key={el.id}
-                  element={el}
-                  onRemove={handleRemove}
-                  isRefreshing={refreshingIds.has(el.id)}
-                >
-                  <TileContent
+                <TileErrorBoundary key={el.id}>
+                  <TileShell
                     element={el}
-                    liveConfig={liveConfigs[el.id] ?? null}
-                  />
-                </TileShell>
+                    onRemove={handleRemove}
+                    isRefreshing={refreshingIds.has(el.id)}
+                  >
+                    <TileContent
+                      element={el}
+                      liveConfig={liveConfigs[el.id] ?? null}
+                    />
+                  </TileShell>
+                </TileErrorBoundary>
               ))}
             </div>
           </div>
