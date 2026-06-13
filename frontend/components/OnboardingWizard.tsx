@@ -18,7 +18,19 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const STACK_ICONS: Record<string, string> = {
   idea_to_revenue: "▲", sales: "⊕", marketing: "✦",
   founder_ops: "◎", support: "◈", product: "◇", custom: "✦",
+  ecomm: "◈", local_service: "⬡",
 };
+
+const FALLBACK_STACKS: AgentStackTemplate[] = [
+  { stack_id: "idea_to_revenue", name: "Idea to Revenue Stack", target_user: "Founders starting from a rough startup idea.", primary_outcome: "Turn a startup idea into a launch-ready company foundation.", description: "", input_prompts: [], tasks: [], artifacts: [], approval_gates: [], connector_requirements: [], dashboard_sections: [], completion_rules: [] },
+  { stack_id: "sales", name: "Sales Stack", target_user: "Existing teams that need repeatable pipeline without hiring a full sales team.", primary_outcome: "Turn a revenue goal into a measurable outbound and CRM operating system.", description: "", input_prompts: [], tasks: [], artifacts: [], approval_gates: [], connector_requirements: [], dashboard_sections: [], completion_rules: [] },
+  { stack_id: "marketing", name: "Marketing Stack", target_user: "Teams that need campaigns, positioning, content, and launch execution.", primary_outcome: "Turn a growth goal into a campaign engine with assets, channels, and measurement.", description: "", input_prompts: [], tasks: [], artifacts: [], approval_gates: [], connector_requirements: [], dashboard_sections: [], completion_rules: [] },
+  { stack_id: "founder_ops", name: "Founder Ops Stack", target_user: "Founders who need an operating system for priorities, fundraising, decisions, and execution.", primary_outcome: "Turn company context into a weekly operating cadence and founder command center.", description: "", input_prompts: [], tasks: [], artifacts: [], approval_gates: [], connector_requirements: [], dashboard_sections: [], completion_rules: [] },
+  { stack_id: "support", name: "Customer Support Stack", target_user: "Teams that need support workflows, knowledge base, and customer feedback loops.", primary_outcome: "Turn support chaos into a support operating system with triage, answers, and escalation.", description: "", input_prompts: [], tasks: [], artifacts: [], approval_gates: [], connector_requirements: [], dashboard_sections: [], completion_rules: [] },
+  { stack_id: "product", name: "Product Stack", target_user: "Teams that need product strategy, roadmap, specs, and delivery coordination.", primary_outcome: "Turn product ambiguity into a roadmap, specs, architecture, and delivery plan.", description: "", input_prompts: [], tasks: [], artifacts: [], approval_gates: [], connector_requirements: [], dashboard_sections: [], completion_rules: [] },
+  { stack_id: "ecomm", name: "Ecommerce Stack", target_user: "Founders launching or scaling an online store (physical goods, digital products, subscriptions, or print-on-demand).", primary_outcome: "Launch a complete ecommerce operation: store, product copy, email flows, paid + organic acquisition, and supply chain basics.", description: "", input_prompts: [], tasks: [], artifacts: [], approval_gates: [], connector_requirements: [], dashboard_sections: [], completion_rules: [] },
+  { stack_id: "local_service", name: "Local Service Stack", target_user: "Small service businesses: salons, barbershops, gyms, restaurants, cleaning, tutoring, pet care, and other local/appointment-based operations.", primary_outcome: "Launch a complete local service operation: booking site, Google Business presence, local acquisition, and operational playbook.", description: "", input_prompts: [], tasks: [], artifacts: [], approval_gates: [], connector_requirements: [], dashboard_sections: [], completion_rules: [] },
+];
 
 const TOKEN_CONFIG: Record<string, { service: string; credKey: string; createUrl: string; placeholder: string }> = {
   vercel:           { service: "vercel",   credKey: "token",            createUrl: "https://vercel.com/account/tokens",              placeholder: "xxxxxxxxxxxxxxxx" },
@@ -1143,7 +1155,7 @@ export default function OnboardingWizard() {
   const REQUIRED_AGENTS = new Set(["research"]);
   const [customAgents, setCustomAgents] = useState<string[]>(["research", "web", "technical", "marketing"]);
   const [customStackName, setCustomStackName] = useState("My Custom Stack");
-  const [stacks, setStacks] = useState<AgentStackTemplate[]>([]);
+  const [stacks, setStacks] = useState<AgentStackTemplate[]>(FALLBACK_STACKS);
   const [recommendation, setRecommendation] = useState<{ stack_id: string; reason: string } | null>(null);
   const [manualOverride, setManualOverride] = useState(false);
   const [readiness, setReadiness] = useState<StackReadiness | null>(null);
@@ -1161,7 +1173,7 @@ export default function OnboardingWizard() {
     setCustomAgents(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
   }
 
-  useEffect(() => { getStacks().then(setStacks).catch(() => setStacks([])); }, []);
+  useEffect(() => { getStacks().then(s => setStacks(s.length > 0 ? s : FALLBACK_STACKS)).catch(() => setStacks(FALLBACK_STACKS)); }, []);
 
   useEffect(() => {
     if (goal.trim().length < 16) { setRecommendation(null); return; }
