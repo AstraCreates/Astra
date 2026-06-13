@@ -58,15 +58,15 @@ async def _proxy(slug: str, path: str, request: Request) -> StreamingResponse:
                 content=body,
                 follow_redirects=False,  # prevent SSRF via redirect to non-localhost
             )
-    except httpx.ConnectError:
+    except (httpx.ConnectError, httpx.TimeoutException):
         return StreamingResponse(
             iter([b"<html><body><h2>Preview starting up, please wait and refresh.</h2></body></html>"]),
             status_code=503,
             media_type="text/html",
         )
 
-    # Strip hop-by-hop response headers
-    skip_resp = {"transfer-encoding", "connection", "keep-alive"}
+    # Strip hop-by-hop response headers + content-encoding (we buffer full body above)
+    skip_resp = {"transfer-encoding", "connection", "keep-alive", "content-encoding"}
     resp_headers = {k: v for k, v in resp.headers.items() if k.lower() not in skip_resp}
 
     return StreamingResponse(
@@ -80,7 +80,8 @@ async def _proxy(slug: str, path: str, request: Request) -> StreamingResponse:
 async def preview_proxy_path(path: str, request: Request):
     # Extract slug from Host header (set by nginx from the subdomain)
     host = request.headers.get("host", "")
-    slug = host.split(".")[0] if host else ""
+    # Only extract slug from subdomain requests (host must contain a dot)
+    slug = host.split(".")[0] if "." in host else ""
     if not slug:
         raise HTTPException(status_code=400, detail="Missing preview slug")
     return await _proxy(slug, path, request)

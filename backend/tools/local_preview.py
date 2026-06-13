@@ -12,9 +12,11 @@ dict is lost on restart, but the detached preview servers keep running).
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -74,7 +76,6 @@ def get_port_for_slug(slug: str) -> int | None:
 
 def _make_slug(company_name: str, fallback: str, session_id: str = "") -> str:
     """Sanitize company name + session suffix into a unique URL-safe subdomain slug."""
-    import hashlib, re
     raw = (company_name or fallback).lower()
     raw = re.sub(r"[^a-z0-9]+", "-", raw).strip("-")
     raw = re.sub(r"-{2,}", "-", raw)
@@ -271,8 +272,9 @@ def start_local_preview(local: str, session_id: str, company_name: str = "") -> 
         _registry_set(session_id, port)
         slug = _make_slug(company_name, Path(local).name, session_id)
         _slug_to_port[slug] = port
-        _slug_registry_set(slug, port)
 
+    # Write slug registry outside _lock — _slug_registry_set acquires _lock internally
+    _slug_registry_set(slug, port)
     url = _preview_url(slug, port)
     logger.info("Local preview for %s starting at %s (slug=%s; ready in ~1-2 min)", session_id, url, slug)
     return url

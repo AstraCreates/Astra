@@ -536,6 +536,15 @@ async def list_sessions(
     return {"sessions": sessions}
 
 
+async def _teardown_workspace(session_id: str) -> None:
+    """Delete the workspace tree for a session. Best-effort, offloaded to thread."""
+    try:
+        from backend.tools.git_tools import remove_workspace
+        await asyncio.to_thread(remove_workspace, session_id)
+    except Exception as e:
+        logger.warning("workspace teardown failed for %s: %s", session_id, e)
+
+
 async def _teardown_session_artifacts(session_id: str) -> None:
     """Stop the session's live preview (free its port) and delete its workspace
     tree. Best-effort, offloaded to threads (rmtree + subprocess can block).
@@ -545,18 +554,14 @@ async def _teardown_session_artifacts(session_id: str) -> None:
     """
     try:
         from backend.tools.local_preview import stop_local_preview
-        from backend.tools.git_tools import _root_session_id
-        root_sid = await asyncio.to_thread(_root_session_id, session_id)
-        # Only stop preview if this IS the root session (not a child)
-        if root_sid == session_id:
+        from backend.core.session_store import get_session_meta
+        meta = get_session_meta(session_id)
+        # Root session has no parent — stop its preview; child deletes leave it running
+        if not (meta or {}).get("parent_session_id"):
             await asyncio.to_thread(stop_local_preview, session_id)
     except Exception as e:
         logger.warning("preview teardown failed for %s: %s", session_id, e)
-    try:
-        from backend.tools.git_tools import remove_workspace
-        await asyncio.to_thread(remove_workspace, session_id)
-    except Exception as e:
-        logger.warning("workspace teardown failed for %s: %s", session_id, e)
+    await _teardown_workspace(session_id)
 
 
 @router.delete("/sessions/{session_id}")
@@ -645,11 +650,7 @@ async def kill_session(session_id: str, request: Request):
     await _reconcile_orphaned_agents(session_id, "Run stopped by user.")
     # Do NOT tear down the preview on kill — the site stays live until the session
     # is explicitly deleted. Only delete the workspace (build artifacts).
-    try:
-        from backend.tools.git_tools import remove_workspace
-        await asyncio.to_thread(remove_workspace, session_id)
-    except Exception as e:
-        logger.warning("workspace teardown failed for %s: %s", session_id, e)
+    await _teardown_workspace(session_id)
     try:
         await publish(session_id, {"type": "goal_error", "error": "Run stopped by user.", "killed": True})
     except Exception:
