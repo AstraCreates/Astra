@@ -32,7 +32,6 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile.frontend
-    container_name: frontend
       args:
         - BACKEND_URL=http://backend:8000
         - NEXT_PUBLIC_API_URL=/api
@@ -40,6 +39,7 @@ services:
         - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
         - NEXTAUTH_URL=${NEXTAUTH_URL:-}
         - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-}
+    container_name: frontend
     restart: unless-stopped
     env_file: ../.env
     environment:
