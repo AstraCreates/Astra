@@ -27,7 +27,7 @@ export default function ListTile({ config }: { config: Config }) {
       <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 5 }}>
         {visible.map((item, i) => (
           <li
-            key={i}
+            key={item}
             onClick={() => toggle(i)}
             style={{
               display: "flex",

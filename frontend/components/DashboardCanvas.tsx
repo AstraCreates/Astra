@@ -138,18 +138,6 @@ export default function DashboardCanvas({ founderId }: Props) {
 
   if (!elements.length) return null;
 
-  // Group by section
-  const sections: { name: string; items: DashboardElement[] }[] = [];
-  const seen = new Set<string>();
-  for (const el of elements) {
-    const sec = el.section ?? "";
-    if (!seen.has(sec)) {
-      seen.add(sec);
-      sections.push({ name: sec, items: [] });
-    }
-    sections[sections.length - 1].items.push(el);
-  }
-  // Fix: sections array may have items from previous group, rebuild properly
   const grouped = new Map<string, DashboardElement[]>();
   for (const el of elements) {
     const k = el.section ?? "";

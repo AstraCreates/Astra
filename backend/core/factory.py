@@ -159,11 +159,13 @@ def get_orchestrator() -> Orchestrator:
             dashboard_clear,
             dashboard_get,
         )
+        from backend.tools.ask_user_tool import ask_user
         for agent in specialists.values():
             agent.tools.setdefault("dashboard_add_element", dashboard_add_element)
             agent.tools.setdefault("dashboard_remove_element", dashboard_remove_element)
             agent.tools.setdefault("dashboard_clear", dashboard_clear)
             agent.tools.setdefault("dashboard_get", dashboard_get)
+            agent.tools.setdefault("ask_user", ask_user)
 
         # Integration tools — ops, marketing, and content agents for ecomm/local_service stacks
         from backend.tools.klaviyo_tools import (
@@ -241,6 +243,7 @@ def get_orchestrator() -> Orchestrator:
                 "dashboard_remove_element": dashboard_remove_element,
                 "dashboard_clear": dashboard_clear,
                 "dashboard_get": dashboard_get,
+                "ask_user": ask_user,
             },
             sub_agents=list(specialists.values()),
             model=settings.or_planner_model,

@@ -46,7 +46,8 @@ export default function MonitorTile({ element }: { element: DashboardElement }) 
     try {
       if (element.data_source) {
         const updated = await refreshElement(element.founder_id, element.id);
-        setInfo((prev) => ({ ...prev, ...updated, last_updated: new Date().toISOString() }));
+        const { label, status, fields } = updated as { label?: string; status?: string; fields?: Record<string, unknown> };
+        setInfo((prev) => ({ ...prev, label, status, fields, last_updated: new Date().toISOString() }));
       } else if (config.poll_url && /^https?:\/\//i.test(config.poll_url)) {
         const res = await fetch(config.poll_url, { credentials: "omit" });
         if (res.ok) {
