@@ -61,6 +61,66 @@ async def test_stack_package_endpoint_compiles_goal_to_deployable_stack():
 
 
 @pytest.mark.asyncio
+async def test_gmail_oauth_url_returns_google_authorize_link(monkeypatch):
+    access_calls = []
+
+    monkeypatch.setattr(routes, "require_founder_access", lambda request, founder_id, min_role="viewer": access_calls.append((founder_id, min_role)) or founder_id)
+    monkeypatch.setattr("backend.config.settings.google_client_id", "google-client-id")
+    monkeypatch.setattr("backend.config.settings.backend_url", "https://api.example.com")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/gmail/oauth-url/founder-gmail")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "accounts.google.com/o/oauth2/v2/auth" in body["url"]
+    assert "access_type=offline" in body["url"]
+    assert "prompt=consent" in body["url"]
+    assert access_calls == [("founder-gmail", "admin")]
+
+
+@pytest.mark.asyncio
+async def test_gmail_callback_exchanges_code_and_stores_tokens(monkeypatch):
+    stored = {}
+
+    class _FakeHttpxClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        async def post(self, url, data=None, timeout=None):
+            return MagicMock(json=lambda: {
+                "access_token": "ya29.access",
+                "refresh_token": "refresh-123",
+                "expires_in": 3600,
+                "scope": "https://www.googleapis.com/auth/gmail.readonly",
+            })
+
+        async def get(self, url, headers=None, timeout=None):
+            return MagicMock(json=lambda: {"email": "founder@gmail.com"})
+
+    monkeypatch.setattr("httpx.AsyncClient", _FakeHttpxClient)
+    monkeypatch.setattr("backend.config.settings.google_client_id", "google-client-id")
+    monkeypatch.setattr("backend.config.settings.google_client_secret", "google-client-secret")
+    monkeypatch.setattr("backend.config.settings.backend_url", "https://api.example.com")
+    monkeypatch.setattr("backend.config.settings.frontend_url", "https://app.example.com")
+    monkeypatch.setattr("backend.provisioning.credentials_store.store_credentials", lambda founder_id, service, creds: stored.update({"founder_id": founder_id, "service": service, "creds": creds}))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", follow_redirects=False) as client:
+        response = await client.get("/gmail/callback?code=oauth-code&state=founder-gmail")
+
+    assert response.status_code in {302, 307}
+    assert response.headers["location"] == "https://app.example.com/integrations?gmail_connected=1"
+    assert stored["founder_id"] == "founder-gmail"
+    assert stored["service"] == "gmail"
+    assert stored["creds"]["access_token"] == "ya29.access"
+    assert stored["creds"]["refresh_token"] == "refresh-123"
+    assert stored["creds"]["email"] == "founder@gmail.com"
+
+
+@pytest.mark.asyncio
 async def test_legacy_connector_routes_delegate_supported_services_to_web_task_engine(monkeypatch):
     calls = []
 

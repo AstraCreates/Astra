@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
+import urllib.request
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
+from urllib.parse import quote
 
 from backend.computer_use.browser import BrowserSession
 from backend.core.events import publish
 from backend.provisioning.credentials_store import load_credentials, store_credentials
+from backend.testing.email_reader import wait_for_verification_code, wait_for_verification_url
+from backend.tools.gmail_api import fetch_gmail_verification
 from backend.tools.page_fetcher import _extract
 from backend.tools.web_navigator_tools import (
     _looks_like_email_verification,
@@ -231,6 +237,266 @@ class WebTaskContext:
         merged.update(self.snapshot.input_data)
         self.snapshot.credentials = merged
 
+    async def _maybe_fill_otp_code(self) -> bool:
+        code = str(
+            self.snapshot.input_data.get("otp_code")
+            or self.snapshot.credentials.get("otp_code")
+            or ""
+        ).strip()
+        if not code:
+            return False
+        page = await self.page()
+        selectors = (
+            "input[autocomplete='one-time-code']",
+            "input[name*='otp' i]",
+            "input[id*='otp' i]",
+            "input[name*='code' i]",
+            "input[id*='code' i]",
+            "input[inputmode='numeric']",
+        )
+        for selector in selectors:
+            try:
+                await page.fill(selector, code, timeout=5_000)
+                try:
+                    await page.keyboard.press("Enter")
+                except Exception:
+                    pass
+                await self.set_state(WebTaskState.VERIFY_EMAIL, "Filled 2FA code from resume input.")
+                return True
+            except Exception:
+                continue
+        return False
+
+    async def _submit_code_to_current_page(self, code: str, note: str) -> bool:
+        page = await self.page()
+        selectors = (
+            "input[autocomplete='one-time-code']",
+            "input[name*='otp' i]",
+            "input[id*='otp' i]",
+            "input[name*='code' i]",
+            "input[id*='code' i]",
+            "input[inputmode='numeric']",
+        )
+        for selector in selectors:
+            try:
+                await page.fill(selector, code, timeout=6_000)
+                try:
+                    await page.keyboard.press("Enter")
+                except Exception:
+                    pass
+                await self.set_state(WebTaskState.VERIFY_EMAIL, note)
+                return True
+            except Exception:
+                continue
+        return False
+
+    async def _maybe_solve_turnstile(self) -> bool:
+        from backend.config import settings
+
+        api_key = (settings.capsolver_api_key or "").strip()
+        if not api_key:
+            return False
+        page = await self.page()
+        url = getattr(page, "url", "") or self.snapshot.current_url or self.request.start_url
+        site_key = ""
+        try:
+            site_key = await page.evaluate(
+                """() => {
+                    const el = document.querySelector('[data-sitekey]');
+                    return (el && el.getAttribute('data-sitekey')) || '';
+                }"""
+            ) or ""
+        except Exception:
+            site_key = ""
+        if not site_key:
+            try:
+                html = await page.content()
+            except Exception:
+                html = ""
+            match = re.search(r'sitekey["\\s:=]+["\\\']([^"\\\']{10,})["\\\']', html, re.I)
+            if match:
+                site_key = match.group(1).strip()
+        if not site_key:
+            return False
+
+        def _solve() -> str:
+            payload = json.dumps({
+                "clientKey": api_key,
+                "task": {
+                    "type": "AntiTurnstileTaskProxyLess",
+                    "websiteURL": url,
+                    "websiteKey": site_key,
+                },
+            }).encode()
+            req = urllib.request.Request(
+                "https://api.capsolver.com/createTask",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode())
+            task_id = data.get("taskId")
+            if not task_id:
+                return ""
+            for _ in range(30):
+                import time
+                time.sleep(3)
+                poll = urllib.request.Request(
+                    "https://api.capsolver.com/getTaskResult",
+                    data=json.dumps({"clientKey": api_key, "taskId": task_id}).encode(),
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(poll, timeout=15) as resp:
+                    status = json.loads(resp.read().decode())
+                if status.get("status") == "ready":
+                    return str(status.get("solution", {}).get("token") or "")
+                if status.get("status") == "failed":
+                    return ""
+            return ""
+
+        token = await asyncio.to_thread(_solve)
+        if not token:
+            return False
+        try:
+            await page.evaluate(
+                """(token) => {
+                    const resp = document.querySelector('[name="cf-turnstile-response"]');
+                    if (resp) resp.value = token;
+                    const cb = window.__cfTurnstileCallback || window.turnstileCallback;
+                    if (typeof cb === 'function') cb(token);
+                }""",
+                token,
+            )
+        except Exception:
+            return False
+        await self.set_state(WebTaskState.LOGIN, "Solved Turnstile challenge with configured CapSolver.")
+        return True
+
+    async def _handle_google_login(self, inbox, email: str, password: str) -> None:
+        try:
+            current_text = (await inbox.inner_text("body")).lower()
+        except Exception:
+            current_text = ""
+        try:
+            if "@gmail.com" in email or "@googlemail.com" in email:
+                try:
+                    await inbox.get_by_text(email, exact=False).first.click(timeout=3_000)
+                except Exception:
+                    try:
+                        await inbox.get_by_text("Use another account", exact=False).first.click(timeout=3_000)
+                    except Exception:
+                        pass
+            for selector in ("input[type='email']", "input[name='identifier']"):
+                try:
+                    await inbox.fill(selector, email, timeout=5_000)
+                    break
+                except Exception:
+                    continue
+            for selector in ("#identifierNext", "button:has-text('Next')"):
+                try:
+                    await inbox.click(selector, timeout=5_000)
+                    break
+                except Exception:
+                    continue
+            for selector in ("input[type='password']", "input[name='Passwd']"):
+                try:
+                    await inbox.fill(selector, password, timeout=8_000)
+                    break
+                except Exception:
+                    continue
+            for selector in ("#passwordNext", "button:has-text('Next')"):
+                try:
+                    await inbox.click(selector, timeout=5_000)
+                    break
+                except Exception:
+                    continue
+            if "choose an account" in current_text or "select an account" in current_text:
+                try:
+                    await inbox.get_by_text(email, exact=False).first.click(timeout=3_000)
+                except Exception:
+                    pass
+            for label in ("Continue", "Allow", "Accept", "Continue as", "Grant access"):
+                try:
+                    await inbox.get_by_text(label, exact=False).first.click(timeout=2_000)
+                    break
+                except Exception:
+                    continue
+        except Exception:
+            return
+
+    def _gmail_service_query(self, service: str) -> str:
+        service = (service or "").lower()
+        if service == "notion":
+            return "from:(notion.so OR notion.com OR mail.notion.so) newer_than:1d"
+        if service == "linear":
+            return "from:(linear.app OR linear.com) newer_than:1d"
+        return f"from:{service} newer_than:1d"
+
+    async def _maybe_handle_gmail_webmail_verification(
+        self,
+        mailbox_email: str,
+        mailbox_password: str,
+        service_hint: str,
+    ) -> bool:
+        if not mailbox_email or not mailbox_password:
+            return False
+        if not mailbox_email.lower().endswith(("@gmail.com", "@googlemail.com")):
+            return False
+        page = await self.page()
+        original_page = page
+        try:
+            inbox = await page.context.new_page()
+            await inbox.goto("https://mail.google.com", wait_until="domcontentloaded", timeout=30_000)
+            try:
+                await inbox.wait_for_load_state("networkidle", timeout=5_000)
+            except Exception:
+                pass
+            if "accounts.google.com" in ((getattr(inbox, "url", "") or "").lower()):
+                await self._handle_google_login(inbox, mailbox_email, mailbox_password)
+                try:
+                    await inbox.wait_for_load_state("domcontentloaded", timeout=10_000)
+                except Exception:
+                    pass
+                await inbox.wait_for_timeout(2_000)
+            if "mail.google.com" not in ((getattr(inbox, "url", "") or "").lower()):
+                await inbox.close()
+                return False
+            query = quote(self._gmail_service_query(service_hint))
+            try:
+                await inbox.goto(f"https://mail.google.com/mail/u/0/#search/{query}", wait_until="domcontentloaded", timeout=30_000)
+                await inbox.wait_for_timeout(3_000)
+            except Exception:
+                pass
+            for selector in ("tr.zA", "div[role='main'] tr", "table[role='grid'] tr"):
+                try:
+                    await inbox.locator(selector).first.click(timeout=5_000)
+                    await inbox.wait_for_timeout(2_000)
+                    break
+                except Exception:
+                    continue
+            try:
+                body = await inbox.inner_text("body")
+            except Exception:
+                body = ""
+            code_match = re.search(r"(?<!\d)(\d{6,8})(?!\d)", body)
+            if code_match:
+                code = code_match.group(1)
+                await inbox.close()
+                return await self._submit_code_to_current_page(code, "Filled email verification code from Gmail webmail.")
+            links = re.findall(r'https?://[^\s<>"\')\]]+', body)
+            for link in links:
+                lower = link.lower()
+                if any(marker in lower for marker in ("verify", "confirm", "activate", "magic", "token", "code", "login")):
+                    link = re.sub(r'[.,;!?\'"]+$', "", link)
+                    await inbox.close()
+                    await original_page.goto(link, wait_until="domcontentloaded", timeout=30_000)
+                    await self.set_state(WebTaskState.VERIFY_EMAIL, "Opened email verification link from Gmail webmail.")
+                    return True
+            await inbox.close()
+        except Exception:
+            return False
+        return False
+
     async def detect_human_blocker(self) -> WebTaskBlocker | None:
         page = await self.page()
         text = ""
@@ -240,12 +506,29 @@ class WebTaskContext:
             pass
         lowered = text.lower()
         if "captcha" in lowered or "turnstile" in lowered or "verify you are human" in lowered:
+            if await self._maybe_solve_turnstile():
+                return None
             return WebTaskBlocker(
                 kind="captcha",
                 message="This flow requires CAPTCHA or bot-verification.",
                 fields=[],
             )
+        if _looks_like_email_verification(text):
+            if await self._maybe_fill_otp_code():
+                return None
+            if await self.maybe_handle_email_verification():
+                return None
+            return WebTaskBlocker(
+                kind="email_verification",
+                message="This flow requires an email verification code or mailbox app password.",
+                fields=[
+                    {"key": "otp_code", "label": "Email code", "type": "text"},
+                    {"key": "imap_password", "label": "Mailbox app password", "type": "password"},
+                ],
+            )
         if "two-factor" in lowered or "two factor" in lowered or "authenticator app" in lowered:
+            if await self._maybe_fill_otp_code():
+                return None
             return WebTaskBlocker(
                 kind="2fa",
                 message="This flow requires a two-factor authentication code.",
@@ -278,9 +561,50 @@ class WebTaskContext:
         if not _looks_like_email_verification(text):
             return False
         service_hint = self.request.service or self.request.goal
-        verification = await check_email_for_verification(service_hint, timeout_seconds=45)
-        link = verification.get("link", "")
-        code = verification.get("code", "")
+        login_email = str(self.snapshot.credentials.get("email") or "").strip()
+        email_password = str(
+            self.snapshot.input_data.get("email_password")
+            or self.snapshot.credentials.get("email_password")
+            or self.snapshot.credentials.get("password")
+            or ""
+        ).strip()
+        imap_password = str(
+            self.snapshot.input_data.get("imap_password")
+            or self.snapshot.credentials.get("imap_password")
+            or ""
+        ).strip()
+        link = ""
+        code = ""
+        gmail_verification = fetch_gmail_verification(
+            self.request.founder_id,
+            service_hint,
+            inline_credentials=self.snapshot.credentials,
+        )
+        link = str(gmail_verification.get("link") or "")
+        code = str(gmail_verification.get("code") or "")
+        if login_email and imap_password:
+            if not code and not link:
+                code = await asyncio.to_thread(
+                    wait_for_verification_code,
+                    login_email,
+                    imap_password,
+                    service_hint,
+                    45,
+                    5,
+                ) or ""
+            if not code and not link:
+                link = await asyncio.to_thread(
+                    wait_for_verification_url,
+                    login_email,
+                    imap_password,
+                    service_hint,
+                    45,
+                    5,
+                ) or ""
+        if not link and not code:
+            verification = await check_email_for_verification(service_hint, timeout_seconds=45)
+            link = verification.get("link", "")
+            code = verification.get("code", "")
         if link:
             await page.goto(link, wait_until="domcontentloaded", timeout=30_000)
             await self.set_state(WebTaskState.VERIFY_EMAIL, "Opened email verification link.")
@@ -296,6 +620,9 @@ class WebTaskContext:
                 pass
             await self.set_state(WebTaskState.VERIFY_EMAIL, "Filled email verification code.")
             return True
+        if login_email and email_password:
+            if await self._maybe_handle_gmail_webmail_verification(login_email, email_password, service_hint):
+                return True
         return False
 
     async def execute_vision_fallback(self, goal: str) -> bool:

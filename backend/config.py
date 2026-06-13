@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     github_client_id: str = ""
     github_client_secret: str = ""
 
+    # Google OAuth — for sanctioned Gmail API mailbox access.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
     # Vercel OAuth Integration — for one-click token generation via OAuth flow
     vercel_client_id: str = ""
     vercel_client_secret: str = ""
@@ -183,8 +187,13 @@ class Settings(BaseSettings):
     notion_token: str = ""
     notion_operating_parent_id: str = ""
 
+    # Research provider default.
+    # Keep this on "openrouter" unless we explicitly want all default research
+    # agents to collapse onto a single local endpoint.
+    research_default_provider: str = "openrouter"  # "openrouter" | "local"
+
     # Local research model — self-hosted Qwen3/llama.cpp endpoint (optional)
-    # If set, research agents use this instead of OpenRouter or_light_model.
+    # Only used by default when research_default_provider="local".
     local_research_base_url: str = ""   # e.g. https://xxx.trycloudflare.com/v1
     local_research_model: str = ""      # e.g. Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
     local_research_api_key: str = "none"  # llama.cpp doesn't require auth
@@ -221,3 +230,10 @@ if _existing_settings is not None and isinstance(_existing_settings, BaseSetting
     settings = _existing_settings
 else:
     settings = _reloaded_settings
+
+
+def research_default_is_local() -> bool:
+    provider = (settings.research_default_provider or "openrouter").strip().lower()
+    if provider != "local":
+        return False
+    return bool(settings.local_research_base_url and settings.local_research_model)

@@ -41,6 +41,9 @@ class _FakePage:
     async def fill(self, selector: str, value: str, timeout: int | None = None):
         self.filled.append((selector, value))
 
+    async def wait_for_load_state(self, state: str, timeout: int | None = None):
+        return None
+
     async def select_option(self, selector: str, value=None, index=None, timeout: int | None = None):
         picked = value if value is not None else str(index)
         self.selected.append((selector, str(picked)))
@@ -142,6 +145,42 @@ async def test_vercel_adapter_extracts_deploy_token(monkeypatch):
     assert result.artifacts["vercel"]["token"] == "vercel_token_123456789012345"
     assert "deploy_token_extracted" in ctx.checks
     assert ctx.persisted == [("vercel", {"token": "vercel_token_123456789012345"})]
+
+
+@pytest.mark.asyncio
+async def test_vercel_adapter_handles_email_then_password_login():
+    adapter = VercelAdapter()
+    page = _FakePage("https://vercel.com/login")
+    ctx = _FakeCtx(
+        "retrieve_deploy_token",
+        page,
+        credentials={"email": "founder@example.com", "password": "secret"},
+    )
+
+    await adapter._submit_vercel_login(ctx)
+
+    assert ("input[type='email'], input[name='email']", "founder@example.com") in page.filled
+    assert ("input[type='password']", "secret") in page.filled
+    assert page.clicked[0].startswith("button:has-text('Continue with Email')")
+
+
+@pytest.mark.asyncio
+async def test_vercel_adapter_stops_after_email_code_prompt():
+    adapter = VercelAdapter()
+    page = _FakePage(
+        "https://vercel.com/login",
+        body_text="Check your email. We sent a code to continue.",
+    )
+    ctx = _FakeCtx(
+        "retrieve_deploy_token",
+        page,
+        credentials={"email": "founder@example.com", "password": "secret"},
+    )
+
+    await adapter._submit_vercel_login(ctx)
+
+    assert ("input[type='email'], input[name='email']", "founder@example.com") in page.filled
+    assert ("input[type='password']", "secret") not in page.filled
 
 
 @pytest.mark.asyncio

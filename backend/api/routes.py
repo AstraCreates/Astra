@@ -2034,6 +2034,103 @@ async def stripe_upgrade_ein(founder_id: str, body: StripeEINUpgradeRequest, req
 
 # ── GitHub OAuth ──────────────────────────────────────────────────────────────
 
+@router.get("/gmail/oauth-url/{founder_id}")
+async def gmail_oauth_url(founder_id: str, request: Request):
+    """Return the Google OAuth authorization URL for Gmail API access."""
+    require_founder_access(request, founder_id, min_role="admin")
+    from backend.config import settings
+    from urllib.parse import urlencode
+
+    if not settings.google_client_id:
+        raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID not configured")
+
+    redirect_uri = f"{settings.backend_url}/api/gmail/callback"
+    params = urlencode({
+        "client_id": settings.google_client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "access_type": "offline",
+        "prompt": "consent",
+        "scope": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email",
+        "state": founder_id,
+        "include_granted_scopes": "true",
+    })
+    return {"url": f"https://accounts.google.com/o/oauth2/v2/auth?{params}"}
+
+
+@router.get("/gmail/callback")
+async def gmail_callback(code: str = "", state: str = "", error: str = ""):
+    """
+    Google OAuth callback for Gmail API access. Exchanges the code for tokens,
+    stores access + refresh token, then redirects to the integrations page.
+    """
+    import httpx
+    from fastapi.responses import RedirectResponse
+    from backend.config import settings
+    from backend.provisioning.credentials_store import store_credentials
+
+    fe_base = settings.frontend_url
+
+    if error:
+        return RedirectResponse(url=f"{fe_base}/integrations?gmail_error={error}")
+    if not code or not state:
+        return RedirectResponse(url=f"{fe_base}/integrations?gmail_error=missing_params")
+
+    founder_id = state
+    redirect_uri = f"{settings.backend_url}/api/gmail/callback"
+
+    async with httpx.AsyncClient() as client:
+        token_resp = await client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": settings.google_client_id,
+                "client_secret": settings.google_client_secret,
+                "code": code,
+                "grant_type": "authorization_code",
+                "redirect_uri": redirect_uri,
+            },
+            timeout=15,
+        )
+
+        data = token_resp.json()
+        access_token = data.get("access_token")
+        refresh_token = data.get("refresh_token")
+
+        if not access_token:
+            logger.error("Google OAuth exchange failed: %s", data)
+            return RedirectResponse(url=f"{fe_base}/integrations?gmail_error=exchange_failed")
+
+        account_email = ""
+        try:
+            userinfo_resp = await client.get(
+                "https://www.googleapis.com/oauth2/v2/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=15,
+            )
+            account_email = str(userinfo_resp.json().get("email") or "")
+        except Exception:
+            account_email = ""
+
+    creds = {
+        "access_token": access_token,
+        "connected_via": "google_oauth",
+        "client_id": settings.google_client_id,
+        "client_secret": settings.google_client_secret,
+    }
+    if refresh_token:
+        creds["refresh_token"] = refresh_token
+    if data.get("expires_in") is not None:
+        creds["expires_in"] = data.get("expires_in")
+    if data.get("scope"):
+        creds["scope"] = data.get("scope")
+    if account_email:
+        creds["email"] = account_email
+
+    store_credentials(founder_id, "gmail", creds)
+    logger.info("Gmail OAuth connected for founder %s", founder_id)
+
+    return RedirectResponse(url=f"{fe_base}/integrations?gmail_connected=1")
+
 @router.get("/github/oauth-url/{founder_id}")
 async def github_oauth_url(founder_id: str, request: Request):
     """Return the GitHub OAuth authorization URL."""

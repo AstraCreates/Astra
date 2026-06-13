@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from backend.tools.web_tasks.base import WebTaskAdapter, WebTaskContext
 from backend.tools.web_tasks.models import WebTaskResult, WebTaskState
+from backend.tools.web_navigator_tools import _looks_like_email_verification
 
 
 class VercelAdapter(WebTaskAdapter):
@@ -15,12 +16,7 @@ class VercelAdapter(WebTaskAdapter):
             maybe = await self._require_login_credentials(ctx)
             if maybe:
                 return maybe
-            await self._submit_login_form(
-                ctx,
-                "input[type='email'], input[name='email']",
-                "input[type='password'], input[name='password']",
-                "button[type='submit'], button:has-text('Continue')",
-            )
+            await self._submit_vercel_login(ctx)
         blocker = await ctx.detect_human_blocker()
         if blocker:
             return await ctx.needs_user(blocker.kind, blocker.message, blocker.fields)
@@ -77,3 +73,52 @@ class VercelAdapter(WebTaskAdapter):
         ctx.persist_credentials("vercel", {"token": token})
         await ctx.add_check("deploy_token_extracted")
         return await ctx.complete({"vercel": {"token": token, "account_url": page.url}})
+
+    async def _submit_vercel_login(self, ctx: WebTaskContext) -> None:
+        page = await ctx.page()
+        email = str(ctx.credentials.get("email") or ctx.credentials.get("username") or "")
+        password = str(ctx.credentials.get("password") or "")
+
+        await page.fill("input[type='email'], input[name='email']", email, timeout=8_000)
+        try:
+            await page.click(
+                "button:has-text('Continue with Email'), button:has-text('Continue'), button[type='submit']",
+                timeout=8_000,
+            )
+        except Exception:
+            pass
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=10_000)
+        except Exception:
+            pass
+        try:
+            if _looks_like_email_verification(await page.inner_text("body")):
+                return
+        except Exception:
+            pass
+
+        password_filled = False
+        for selector in (
+            "input[type='password']",
+            "input[name='password']",
+            "input[autocomplete='current-password']",
+        ):
+            try:
+                await page.fill(selector, password, timeout=8_000)
+                password_filled = True
+                break
+            except Exception:
+                continue
+        if not password_filled:
+            return
+        try:
+            await page.click(
+                "button:has-text('Continue'), button:has-text('Log In'), button[type='submit']",
+                timeout=8_000,
+            )
+        except Exception:
+            pass
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=10_000)
+        except Exception:
+            pass

@@ -2,7 +2,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.core.orchestrator import Orchestrator
+from backend.config import settings
+from backend.core.orchestrator import Orchestrator, candidate_research_agents_for_default_provider
 
 
 class _FakePlanner:
@@ -55,3 +56,16 @@ async def test_orchestrator_adds_lane_specific_focus_to_initial_research_tasks(m
     tasks_by_agent = {task["agent"]: task for task in first_plan.get("tasks", [])}
     assert "named competitors only" in tasks_by_agent["research_competitors"]["instruction"]
     assert "execution strategy only" in tasks_by_agent["research_execution"]["instruction"]
+
+
+def test_candidate_research_agents_keep_parallel_openrouter_default_even_if_local_endpoint_exists(monkeypatch):
+    monkeypatch.setattr(settings, "research_default_provider", "openrouter")
+    monkeypatch.setattr(settings, "local_research_base_url", "http://localhost:1234/v1")
+    monkeypatch.setattr(settings, "local_research_model", "qwen-local")
+
+    assert candidate_research_agents_for_default_provider() == [
+        ("r_market", "research"),
+        ("r_competitors", "research_competitors"),
+        ("r_customers", "research_customers"),
+        ("r_gtm", "research_gtm"),
+    ]
