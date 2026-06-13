@@ -37,6 +37,48 @@ _lock = threading.Lock()
 # Survives backend restarts so we can still tear down a detached preview server
 # whose Popen handle we no longer hold.
 _REGISTRY = Path(os.environ.get("ASTRA_PREVIEW_REGISTRY", "/tmp/astra_previews.json"))
+# Slug registry: maps company slug → port for subdomain routing
+_SLUG_REGISTRY = Path(os.environ.get("ASTRA_PREVIEW_SLUG_REGISTRY", "/tmp/astra_preview_slugs.json"))
+# In-memory slug→port map (populated on start + recovered from disk on miss)
+_slug_to_port: dict[str, int] = {}
+
+
+def _slug_registry_load() -> dict[str, int]:
+    try:
+        return {str(k): int(v) for k, v in json.loads(_SLUG_REGISTRY.read_text()).items()}
+    except Exception:
+        return {}
+
+
+def _slug_registry_set(slug: str, port: int) -> None:
+    with _lock:
+        try:
+            reg = _slug_registry_load()
+            reg[slug] = port
+            _SLUG_REGISTRY.write_text(json.dumps(reg))
+        except Exception as e:
+            logger.debug("slug registry write failed: %s", e)
+
+
+def get_port_for_slug(slug: str) -> int | None:
+    """Return the preview port for a company slug, or None if not running."""
+    if slug in _slug_to_port:
+        return _slug_to_port[slug]
+    # Fall back to disk registry (survives backend restart)
+    reg = _slug_registry_load()
+    port = reg.get(slug)
+    if port:
+        _slug_to_port[slug] = port
+    return port
+
+
+def _make_slug(company_name: str, fallback: str) -> str:
+    """Sanitize company name into a URL-safe subdomain slug."""
+    import re
+    raw = (company_name or fallback).lower()
+    raw = re.sub(r"[^a-z0-9]+", "-", raw).strip("-")
+    raw = re.sub(r"-{2,}", "-", raw)
+    return raw[:40] or "preview"
 
 
 def _registry_load() -> dict[str, int]:
@@ -66,13 +108,15 @@ def _registry_pop(session_id: str) -> int | None:
 
 
 def _public_host() -> str:
-    host = os.environ.get("ASTRA_PUBLIC_HOST", "")
-    if host:
-        return host
-    # Do not infer or expose the underlying machine hostname/IP here. Keep the
-    # preview URL generic unless the deploy environment explicitly sets a public
-    # host.
-    return "localhost"
+    return os.environ.get("ASTRA_PUBLIC_HOST", "localhost")
+
+
+def _preview_url(slug: str, port: int) -> str:
+    """Return the public URL for a preview. Subdomain if ASTRA_PUBLIC_HOST is set, else port-based."""
+    host = _public_host()
+    if host and host != "localhost":
+        return f"http://{slug}.{host}"
+    return f"http://{host}:{port}"
 
 
 def _port_is_free(port: int) -> bool:
@@ -150,7 +194,7 @@ def stop_local_preview(session_id: str) -> bool:
     return bool(entry)
 
 
-def start_local_preview(local: str, session_id: str) -> str | None:
+def start_local_preview(local: str, session_id: str, company_name: str = "") -> str | None:
     """Start the MVP locally and return its public URL, or None if not possible."""
     pkg = Path(local) / "package.json"
     deps: dict = {}
@@ -209,7 +253,10 @@ def start_local_preview(local: str, session_id: str) -> str | None:
             return None
         _previews[session_id] = (port, proc)
         _registry_set(session_id, port)
+        slug = _make_slug(company_name, Path(local).name)
+        _slug_to_port[slug] = port
+        _slug_registry_set(slug, port)
 
-    url = f"http://{_public_host()}:{port}"
-    logger.info("Local preview for %s starting at %s (installing deps; ready in ~1-2 min)", session_id, url)
+    url = _preview_url(slug, port)
+    logger.info("Local preview for %s starting at %s (slug=%s; ready in ~1-2 min)", session_id, url, slug)
     return url

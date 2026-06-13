@@ -183,7 +183,8 @@ async def spawn_parallel_coders(
 
         try:
             from backend.tools.local_preview import start_local_preview
-            deploy_url = start_local_preview(main_local, session_id) or ""
+            from pathlib import Path as _Path
+            deploy_url = start_local_preview(main_local, session_id, company_name=_Path(main_local).name) or ""
             if deploy_url:
                 from backend.core.events import publish_sync
                 publish_sync(session_id, {"type": "agent_build", "agent": agent, "kind": "deploy", "url": deploy_url, "local": True})
