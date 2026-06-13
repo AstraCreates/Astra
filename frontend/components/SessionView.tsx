@@ -685,38 +685,30 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     const problem        = find("problem", "pain_point", "problem_statement", "customer_pain", "core_problem");
     const solution       = find("solution", "solution_description", "product_description", "how_it_works", "offering");
     const icp            = find("icp", "ideal_customer_profile", "target_market", "customer_profile", "target_segment", "primary_customer");
-    const persona        = find("customer_persona", "buyer_persona", "user_persona", "persona", "target_persona", "ideal_buyer");
     const differentiator = find("differentiator", "unique_value", "competitive_advantage", "what_makes_us_different", "usp", "unique_selling_point");
     const moat           = find("moat", "defensibility", "competitive_moat", "barriers_to_entry", "unique_advantage");
     const marketSize     = find("market_size", "tam", "total_addressable_market", "market_opportunity", "addressable_market", "opportunity_size");
     const revenue        = find("revenue_model", "business_model", "monetization", "revenue_strategy");
-    const pricing        = find("pricing", "pricing_model", "price_points", "pricing_tiers", "pricing_strategy");
-    const salesMotion    = find("sales_motion", "sales_strategy", "sales_approach", "selling_motion", "sales_model");
     const gtm            = find("go_to_market", "gtm", "distribution_strategy", "marketing_strategy", "acquisition_strategy");
-    const channels       = find("channels", "acquisition_channels", "marketing_channels", "distribution_channels", "growth_channels");
-    const keyMetrics     = find("key_metrics", "metrics", "kpis", "success_metrics", "north_star_metric", "target_mrr");
     const risks          = find("risks", "key_risks", "risk_factors", "main_risks", "risk_assessment", "key_assumptions", "assumptions");
-    const regulation     = find("regulation", "regulatory", "compliance", "legal_requirements", "regulatory_landscape", "compliance_requirements", "regulatory_environment");
-    const partnerships   = find("partnerships", "partner_opportunities", "key_partners", "distribution_partners", "strategic_partners", "ecosystem", "integrations");
     const competitors    = findArr("competitors", "competition", "competitive_landscape", "main_competitors", "key_competitors", "top_competitors");
     const techStack      = findArr("tech_stack", "stack", "technologies", "tech_choices", "technology_stack");
 
     const team        = find("team", "founders", "founding_team", "team_description", "leadership_team");
 
-    const allFields = [name, tagline, problem, solution, icp, persona, differentiator, moat, marketSize, revenue, pricing, salesMotion, gtm, channels, keyMetrics, risks, regulation, partnerships, team];
+    const allFields = [name, tagline, problem, solution, icp, differentiator, moat, marketSize, revenue, gtm, risks, team];
     const filled = allFields.filter(Boolean).length + (palette.length > 0 ? 1 : 0) + (competitors.length > 0 ? 1 : 0);
 
     return {
-      name, tagline, mission, problem, solution, icp, persona, differentiator, moat,
-      marketSize, revenue, pricing, salesMotion, gtm, channels, keyMetrics, risks, regulation, partnerships,
+      name, tagline, mission, problem, solution, icp, differentiator, moat,
+      marketSize, revenue, gtm, risks,
       team, competitors, techStack, palette,
-      pct: Math.min(100, Math.round((filled / 21) * 100)),
+      pct: Math.min(100, Math.round((filled / 14) * 100)),
       researchRunning:  agRunning("research", "research_market", "research_competitors", "research_financial", "research_regulatory"),
       designRunning:    agRunning("design"),
       salesRunning:     agRunning("sales", "sales_pipeline", "ops"),
       marketingRunning: agRunning("marketing", "marketing_outreach"),
       techRunning:      agRunning("technical", "technical_scaffold"),
-      legalRunning:     agRunning("legal", "legal_docs", "legal_entity"),
     };
   })();
 
@@ -1334,185 +1326,134 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               // helpers
               const ease = "var(--ease-out-expo, cubic-bezier(0.16,1,0.3,1))";
               const S = ({ w = "100%", i = 0 }: { w?: string; i?: number }) => (
-                <div style={{ width: w, height: 8, borderRadius: 2, background: "rgba(240,238,255,0.06)", animation: `portraitShimmer 1.9s ease-in-out ${i * 200}ms infinite` }} />
+                <div style={{ width: w, height: 7, borderRadius: 3, background: "rgba(240,238,255,0.07)", animation: `portraitShimmer 1.9s ease-in-out ${i * 220}ms infinite` }} />
               );
               const Sdead = ({ w = "100%" }: { w?: string }) => (
-                <div style={{ width: w, height: 8, borderRadius: 2, background: "rgba(240,238,255,0.04)" }} />
+                <div style={{ width: w, height: 7, borderRadius: 3, background: "rgba(240,238,255,0.03)" }} />
               );
               const Dot = ({ on, done }: { on: boolean; done: boolean }) => done
-                ? <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--green)", display: "inline-block", flexShrink: 0 }} />
+                ? <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--green)", display: "inline-block", flexShrink: 0 }} />
                 : on
-                  ? <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--blue)", display: "inline-block", flexShrink: 0, animation: "blink 1.3s ease-in-out infinite" }} />
+                  ? <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--blue)", display: "inline-block", flexShrink: 0, animation: "blink 1.3s ease-in-out infinite" }} />
                   : null;
               const Lbl = ({ label, running, val }: { label: string; running: boolean; val: string | string[] }) => {
                 const hasVal = Array.isArray(val) ? val.length > 0 : val.length > 0;
                 return (
-                  <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 7 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 8 }}>
                     <Dot on={running && !hasVal} done={hasVal} />
-                    <span style={{ fontSize: 7, fontFamily: "var(--font-code)", fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--fm)" }}>{label}</span>
+                    <span style={{ fontSize: 8, fontFamily: "var(--font-code)", fontWeight: 600, letterSpacing: ".13em", textTransform: "uppercase", color: "var(--fm)" }}>{label}</span>
                   </div>
                 );
               };
-              const TextField = ({ label, val, running }: { label: string; val: string; running: boolean }) => (
-                <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--bd)", borderRight: "1px solid var(--bd)" }}>
+
+              const valStyle: React.CSSProperties = { fontSize: 11, color: "var(--fd)", lineHeight: 1.65, animation: `portraitFadeIn .35s ${ease} both` };
+              const skels = (running: boolean) => running
+                ? <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><S w="90%" /><S w="68%" i={1} /></div>
+                : <div style={{ display: "flex", flexDirection: "column", gap: 6 }}><Sdead w="85%" /><Sdead w="60%" /></div>;
+              const bR: React.CSSProperties = { borderRight: "1px solid var(--bd)" };
+              const bB: React.CSSProperties = { borderBottom: "1px solid var(--bd)" };
+              const Cell = ({ label, val, running, noRight = false, padTop = 14 }: { label: string; val: string; running: boolean; noRight?: boolean; padTop?: number }) => (
+                <div style={{ padding: `${padTop}px 16px 14px`, ...bB, ...(noRight ? {} : bR) }}>
                   <Lbl label={label} running={running} val={val} />
-                  {val
-                    ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{val}</div>
-                    : running
-                      ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="95%" /><S w="72%" i={1} /><S w="82%" i={2} /></div>
-                      : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="85%" /><Sdead w="60%" /></div>
-                  }
+                  {val ? <div style={valStyle}>{val}</div> : skels(running)}
                 </div>
               );
-
-              const cellBorder: React.CSSProperties = { borderBottom: "1px solid var(--bd)", borderRight: "1px solid var(--bd)" };
-              const noBorderR: React.CSSProperties = { borderRight: "none" };
 
               return (
                 <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
 
                   {/* ── Header ── */}
-                  <div style={{ padding: "15px 18px 13px", borderBottom: "1px solid var(--bd)", display: "grid", gridTemplateColumns: "auto 1fr auto", gap: "0 24px", alignItems: "start" }}>
+                  <div style={{ padding: "20px 20px 18px", ...bB, display: "grid", gridTemplateColumns: "auto 1fr auto", gap: "0 32px", alignItems: "start" }}>
                     <div>
-                      <div style={{ fontSize: 7, fontFamily: "var(--font-code)", fontWeight: 600, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--fm)", marginBottom: 6 }}>Company Dossier</div>
+                      <div style={{ fontSize: 7, fontFamily: "var(--font-code)", fontWeight: 600, letterSpacing: ".2em", textTransform: "uppercase", color: "var(--fm)", marginBottom: 8, opacity: 0.7 }}>Company Dossier</div>
                       {p.name
-                        ? <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.025em", lineHeight: 1.05, color: "var(--fg)", animation: `portraitFadeIn .35s ${ease} both` }}>{p.name}</div>
-                        : <div style={{ fontSize: 18, color: "rgba(240,238,255,0.13)", fontStyle: "italic" }}>Company forming…</div>
+                        ? <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-.03em", lineHeight: 1.0, color: "var(--fg)", animation: `portraitFadeIn .35s ${ease} both` }}>{p.name}</div>
+                        : <div style={{ fontSize: 20, color: "rgba(240,238,255,0.13)", fontStyle: "italic", fontWeight: 400 }}>Company forming…</div>
                       }
                       {p.tagline
-                        ? <div style={{ fontSize: 11.5, color: "var(--fd)", fontStyle: "italic", marginTop: 3, animation: `portraitFadeIn .35s ${ease} both` }}>{p.tagline}</div>
-                        : <div style={{ fontSize: 10.5, color: "rgba(240,238,255,0.1)", fontStyle: "italic", marginTop: 3 }}>Tagline forming…</div>
+                        ? <div style={{ fontSize: 12, color: "var(--fd)", marginTop: 5, animation: `portraitFadeIn .35s ${ease} both` }}>{p.tagline}</div>
+                        : <div style={{ fontSize: 11, color: "rgba(240,238,255,0.1)", marginTop: 5 }}>Tagline forming…</div>
                       }
                     </div>
-                    <div style={{ paddingTop: 20, fontSize: 10.5, color: "var(--fm)", lineHeight: 1.7, maxWidth: 360 }}>
-                      {p.mission || st.goal?.slice(0, 160) || ""}
+                    <div style={{ paddingTop: 4, fontSize: 10.5, color: "var(--fm)", lineHeight: 1.8, maxWidth: 400 }}>
+                      {p.mission || st.goal?.slice(0, 180) || ""}
                     </div>
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, paddingTop: 20 }}>
-                      <div style={{ fontFamily: "var(--font-code)", fontSize: 20, fontWeight: 600, color: "var(--blue)", lineHeight: 1 }}>{p.pct}%</div>
-                      <div style={{ fontSize: 7, fontFamily: "var(--font-code)", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fm)" }}>Profile complete</div>
-                      <div style={{ width: 110, height: 2, background: "var(--bd)", marginTop: 4, overflow: "hidden" }}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, paddingTop: 4 }}>
+                      <div style={{ fontFamily: "var(--font-code)", fontSize: 22, fontWeight: 700, color: "var(--blue)", lineHeight: 1, letterSpacing: "-.02em" }}>{p.pct}%</div>
+                      <div style={{ fontSize: 8, fontFamily: "var(--font-code)", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fm)" }}>Profile complete</div>
+                      <div style={{ width: 120, height: 2, background: "var(--bd)", overflow: "hidden", marginTop: 2 }}>
                         <div style={{ width: `${p.pct}%`, height: "100%", background: "var(--blue)", transition: `width .7s ${ease}` }} />
                       </div>
                     </div>
                   </div>
 
-                  {/* ── Identity row: 4-col ── */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", borderBottom: "1px solid var(--bd)" }}>
+                  {/* ── Vitals strip (3-col) ── */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", ...bB, background: "var(--s2)" }}>
                     {/* Colors */}
-                    <div style={{ ...cellBorder, padding: "10px 14px" }}>
-                      <Lbl label="Colors" running={p.designRunning} val={p.palette} />
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <div style={{ padding: "12px 16px", ...bR }}>
+                      <Lbl label="Brand colors" running={p.designRunning} val={p.palette} />
+                      <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
                         {p.palette.length > 0
-                          ? p.palette.slice(0, 6).map((hex, i) => <div key={hex} title={hex} style={{ width: 18, height: 18, borderRadius: "50%", background: hex, border: "1px solid rgba(255,255,255,0.1)", flexShrink: 0, animation: `portraitFadeIn .3s ${ease} ${i * 50}ms both` }} />)
-                          : [1,2,3,4,5].map(i => <div key={i} style={{ width: 18, height: 18, borderRadius: "50%", background: "rgba(240,238,255,0.06)", border: "1px solid rgba(240,238,255,0.07)", animation: `portraitShimmer 1.9s ease-in-out ${i * 170}ms infinite` }} />)
+                          ? p.palette.slice(0, 6).map((hex, i) => <div key={hex} title={hex} style={{ width: 22, height: 22, borderRadius: "50%", background: hex, border: "1px solid rgba(255,255,255,0.12)", flexShrink: 0, animation: `portraitFadeIn .3s ${ease} ${i * 50}ms both` }} />)
+                          : [1,2,3,4,5].map(i => <div key={i} style={{ width: 22, height: 22, borderRadius: "50%", background: "rgba(240,238,255,0.06)", border: "1px solid rgba(240,238,255,0.07)", animation: p.designRunning ? `portraitShimmer 1.9s ease-in-out ${i * 170}ms infinite` : undefined, opacity: p.designRunning ? undefined : 0.4 }} />)
                         }
                       </div>
                     </div>
                     {/* Market Size */}
-                    <div style={{ ...cellBorder, padding: "10px 14px" }}>
-                      <Lbl label="Market Size / TAM" running={p.researchRunning} val={p.marketSize} />
-                      {p.marketSize
-                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.marketSize}</div>
-                        : p.researchRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 5 }}><S w="75%" /><S w="55%" i={1} /></div>
-                        : <div style={{ display: "flex", flexDirection: "column", gap: 5 }}><Sdead w="70%" /><Sdead w="50%" /></div>
-                      }
+                    <div style={{ padding: "12px 16px", ...bR }}>
+                      <Lbl label="Market size" running={p.researchRunning} val={p.marketSize} />
+                      {p.marketSize ? <div style={valStyle}>{p.marketSize}</div> : skels(p.researchRunning)}
                     </div>
-                    {/* Risks */}
-                    <div style={{ ...cellBorder, padding: "10px 14px" }}>
-                      <Lbl label="Key Risks" running={p.researchRunning} val={p.risks} />
-                      {p.risks
-                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.risks}</div>
-                        : p.researchRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 5 }}><S w="80%" /><S w="60%" i={1} /></div>
-                        : <div style={{ display: "flex", flexDirection: "column", gap: 5 }}><Sdead w="70%" /><Sdead w="50%" /></div>
-                      }
-                    </div>
-                    {/* Geography */}
-                    <div style={{ ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
-                      <Lbl label="Geography" running={p.researchRunning} val={[]} />
-                      {p.researchRunning
-                        ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="80%" /><S w="65%" i={1} /></div>
-                        : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="80%" /><Sdead w="65%" /></div>
-                      }
+                    {/* Key Risks */}
+                    <div style={{ padding: "12px 16px" }}>
+                      <Lbl label="Key risks" running={p.researchRunning} val={p.risks} />
+                      {p.risks ? <div style={valStyle}>{p.risks}</div> : skels(p.researchRunning)}
                     </div>
                   </div>
 
-                  {/* ── 3-col grid ── */}
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)" }}>
+                  {/* ── Main grid (3-col) ── */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gridAutoRows: "minmax(72px, auto)" }}>
 
-                    {/* Row 1: Problem · Solution · Differentiator */}
-                    <TextField label="Problem"       val={p.problem}       running={p.researchRunning} />
-                    <TextField label="Solution"      val={p.solution}      running={p.researchRunning} />
-                    <div style={{ ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
-                      <Lbl label="Differentiator" running={p.researchRunning} val={p.differentiator} />
-                      {p.differentiator
-                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.differentiator}</div>
-                        : p.researchRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="95%" /><S w="72%" i={1} /><S w="82%" i={2} /></div>
-                        : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="85%" /><Sdead w="60%" /></div>}
-                    </div>
+                    {/* Row 1 — core identity */}
+                    <Cell label="Problem"        val={p.problem}       running={p.researchRunning} padTop={18} />
+                    <Cell label="Solution"       val={p.solution}      running={p.researchRunning} padTop={18} />
+                    <Cell label="Differentiator" val={p.differentiator} running={p.researchRunning} noRight padTop={18} />
 
-                    {/* Row 2: Target Market · Customer Persona · Moat */}
-                    <TextField label="Target market"    val={p.icp}     running={p.researchRunning} />
-                    <TextField label="Customer persona" val={p.persona} running={p.researchRunning} />
-                    <div style={{ ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
-                      <Lbl label="Moat" running={p.researchRunning} val={p.moat} />
-                      {p.moat
-                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.moat}</div>
-                        : p.researchRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="88%" /><S w="65%" i={1} /></div>
-                        : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="75%" /><Sdead w="50%" /></div>}
-                    </div>
+                    {/* Row 2 */}
+                    <Cell label="Target market" val={p.icp}     running={p.researchRunning} />
+                    <Cell label="Revenue model" val={p.revenue}  running={p.salesRunning} />
+                    <Cell label="Moat"          val={p.moat}     running={p.researchRunning} noRight />
 
-                    {/* Row 3: Revenue · Pricing · Sales Motion */}
-                    <TextField label="Revenue model" val={p.revenue}    running={p.salesRunning} />
-                    <TextField label="Pricing"        val={p.pricing}    running={p.salesRunning} />
-                    <div style={{ ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
-                      <Lbl label="Sales motion" running={p.salesRunning} val={p.salesMotion} />
-                      {p.salesMotion
-                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.salesMotion}</div>
-                        : p.salesRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="80%" /><S w="58%" i={1} /></div>
-                        : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="72%" /><Sdead w="50%" /></div>}
+                    {/* Row 3 — GTM wide, Team narrow */}
+                    <div style={{ gridColumn: "span 2", padding: "14px 16px", ...bB, ...bR }}>
+                      <Lbl label="Go-to-market" running={p.marketingRunning} val={p.gtm} />
+                      {p.gtm ? <div style={valStyle}>{p.gtm}</div> : skels(p.marketingRunning)}
                     </div>
-
-                    {/* Row 4: GTM · Channels · Key Metrics */}
-                    <TextField label="Go-to-market" val={p.gtm}        running={p.marketingRunning} />
-                    <TextField label="Channels"      val={p.channels}   running={p.marketingRunning} />
-                    <div style={{ ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
-                      <Lbl label="Key metrics" running={p.researchRunning} val={p.keyMetrics} />
-                      {p.keyMetrics
-                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.keyMetrics}</div>
-                        : p.researchRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="85%" /><S w="62%" i={1} /></div>
-                        : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="78%" /><Sdead w="55%" /></div>}
-                    </div>
-
-                    {/* Row 5: Team · Partnerships · Regulation */}
-                    <TextField label="Team"         val={p.team}         running={p.researchRunning} />
-                    <TextField label="Partnerships" val={p.partnerships} running={p.salesRunning} />
-                    <div style={{ ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
-                      <Lbl label="Regulation" running={p.researchRunning} val={p.regulation} />
-                      {p.regulation
-                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.regulation}</div>
-                        : p.researchRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="80%" /><S w="55%" i={1} /></div>
-                        : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="72%" /><Sdead w="48%" /></div>}
-                    </div>
+                    <Cell label="Team" val={p.team} running={p.researchRunning} noRight />
 
                     {/* Competitors — full width */}
-                    <div style={{ gridColumn: "1/-1", ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
+                    <div style={{ gridColumn: "1/-1", padding: "12px 18px", ...bB }}>
                       <Lbl label="Competitors" running={p.researchRunning} val={p.competitors} />
                       {p.competitors.length > 0
-                        ? <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                            {p.competitors.map((c, i) => <span key={i} style={{ fontSize: 9.5, padding: "2px 8px", border: "1px solid var(--bd2)", color: "var(--fd)", animation: `portraitFadeIn .3s ${ease} ${i * 50}ms both` }}>{c}</span>)}
+                        ? <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                            {p.competitors.map((c, i) => <span key={i} style={{ fontSize: 10, padding: "3px 10px", border: "1px solid var(--bd2)", color: "var(--fd)", background: "rgba(240,238,255,0.03)", animation: `portraitFadeIn .3s ${ease} ${i * 50}ms both` }}>{c}</span>)}
                           </div>
-                        : <div style={{ display: "flex", gap: 4 }}>{[62,48,74,54,68,50].map((w,i) => <div key={i} style={{ width: w, height: 22, background: "rgba(240,238,255,0.04)", border: "1px solid rgba(240,238,255,0.05)" }} />)}</div>
+                        : <div style={{ display: "flex", gap: 5 }}>
+                            {[64,50,76,56,70,52].map((w, i) => <div key={i} style={{ width: w, height: 24, background: "rgba(240,238,255,0.04)", border: "1px solid rgba(240,238,255,0.05)", animation: p.researchRunning ? `portraitShimmer 1.9s ease-in-out ${i * 160}ms infinite` : undefined, opacity: p.researchRunning ? undefined : 0.5 }} />)}
+                          </div>
                       }
                     </div>
 
                     {/* Tech Stack — full width, last */}
-                    <div style={{ gridColumn: "1/-1", padding: "10px 14px" }}>
+                    <div style={{ gridColumn: "1/-1", padding: "12px 18px" }}>
                       <Lbl label="Tech stack" running={p.techRunning} val={p.techStack} />
                       {p.techStack.length > 0
-                        ? <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                            {p.techStack.map((t, i) => <span key={i} style={{ fontSize: 9.5, padding: "2px 8px", border: "1px solid var(--bd2)", color: "var(--fd)", background: "rgba(240,238,255,0.03)", animation: `portraitFadeIn .3s ${ease} ${i * 50}ms both` }}>{t}</span>)}
+                        ? <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                            {p.techStack.map((t, i) => <span key={i} style={{ fontSize: 10, padding: "3px 10px", border: "1px solid var(--bd2)", color: "var(--fd)", background: "rgba(240,238,255,0.04)", animation: `portraitFadeIn .3s ${ease} ${i * 50}ms both` }}>{t}</span>)}
                           </div>
-                        : <div style={{ display: "flex", gap: 4 }}>{[54,76,60,70,52].map((w,i) => <div key={i} style={{ width: w, height: 22, background: p.techRunning ? "rgba(240,238,255,0.06)" : "rgba(240,238,255,0.03)", border: "1px solid rgba(240,238,255,0.05)", animation: p.techRunning ? `portraitShimmer 1.9s ease-in-out ${i * 180}ms infinite` : undefined }} />)}</div>
+                        : <div style={{ display: "flex", gap: 5 }}>
+                            {[56,78,62,72,54].map((w, i) => <div key={i} style={{ width: w, height: 24, background: p.techRunning ? "rgba(240,238,255,0.06)" : "rgba(240,238,255,0.03)", border: "1px solid rgba(240,238,255,0.05)", animation: p.techRunning ? `portraitShimmer 1.9s ease-in-out ${i * 180}ms infinite` : undefined }} />)}
+                          </div>
                       }
                     </div>
 
