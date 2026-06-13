@@ -747,19 +747,12 @@ class Agent:
         dashboard_section = ""
         if "dashboard_add_element" in self.tools:
             dashboard_section = (
-                "\nDASHBOARD: When you produce a key output, call dashboard_add_element(founder_id=<FOUNDER_ID from context>, ...) "
-                "to surface it on the founder's dashboard. Use the right type:\n"
-                "  metric      — a single number/KPI (revenue, count, score, rating)\n"
-                "  status_board — integration or system health checks\n"
-                "  table       — lists of leads, products, bookings, competitors\n"
-                "  chart       — trend data over time (line/bar/area)\n"
-                "  progress    — task completion (value, max)\n"
-                "  list        — action items, next steps, recommendations\n"
-                "  markdown    — summaries, analysis, brief reports\n"
-                "  button      — action='new_goal' to propose a follow-up goal\n"
-                f"Call dashboard_add_element BEFORE calling done. One tile per major output. "
-                "Use section= to group related tiles (e.g. 'Revenue', 'Competitors', 'Operations'). "
-                f"Pass agent='{self.name}' so the tile is attributed correctly.\n"
+                "\nDASHBOARD (optional): If you produce something a founder would want to monitor at a glance "
+                "— a key metric, competitor table, status check, action list — you may call "
+                "dashboard_add_element(founder_id=<FOUNDER_ID from context>, ...) before done. "
+                "Don't tile routine steps or intermediate progress. "
+                f"Types: metric, chart, table, status_board, progress, list, markdown, button. "
+                f"Use section= to group. Pass agent='{self.name}'.\n"
             )
 
         return (
