@@ -32,6 +32,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token;
     },
   },
+  session: {
+    maxAge: 30 * 24 * 60 * 60, // 30 days — used when "Stay signed in" is checked
+  },
   pages: {
     signIn: "/",
     error: "/",

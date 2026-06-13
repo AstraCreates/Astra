@@ -210,7 +210,7 @@ export default function DashboardView() {
         <div className="dv-content" style={{ padding: "20px 24px 40px", display: "flex", gap: 24, alignItems: "flex-start" }}>
 
           {/* ── Left: Goal panel ── */}
-          <div className="dv-goals" style={{ flex: "0 0 300px", minWidth: 0 }}>
+          <div className="dv-goals" style={{ flex: "0 0 350px", minWidth: 0 }}>
             <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fd)", fontFamily: "var(--font-code)", marginBottom: 12 }}>
               Goals
             </div>

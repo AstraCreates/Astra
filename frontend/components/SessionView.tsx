@@ -203,7 +203,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const S = useRef<SState>({
     status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
-    decidedKeys: new Set(), selDept: null, selArt: null, tab: "team", paused: false,
+    decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false,
     revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0,
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
@@ -394,7 +394,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     if (cached) {
       S.current = cached;
     } else {
-      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "team", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0 };
+      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0 };
       cacheSession(sessionId, S.current);
     }
     force();
@@ -835,10 +835,6 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         {/* detail */}
         <div data-tour="session-detail" className="detail">
           <div className="dtabs">
-            <div className={`dtab${st.tab === "team" ? " on" : ""}`}
-              onClick={() => { S.current.selDept = null; S.current.selArt = null; S.current.tab = "team"; force(); }}>
-              ◎ Team
-            </div>
             {st.selArt
               ? <div className={`dtab${st.tab === "read" ? " on" : ""}`} onClick={() => { st.tab = "read"; force(); }}>Read it</div>
               : st.selDept ? <>
@@ -1058,11 +1054,11 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               </>;
             })()}
 
-            {/* back to Team button — shown whenever a dept is drilled into */}
+            {/* back button — clear dept selection */}
             {st.selDept && !st.selArt && (
-              <button onClick={() => { S.current.selDept = null; S.current.selArt = null; S.current.tab = "team"; force(); }}
+              <button onClick={() => { S.current.selDept = null; S.current.selArt = null; S.current.tab = "updates"; force(); }}
                 style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", padding: "0 0 10px", color: "var(--fm)", fontSize: 10.5, fontFamily: "var(--font-geist-sans), system-ui, sans-serif" }}>
-                ← Team
+                ← Back
               </button>
             )}
 
@@ -1246,25 +1242,28 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               </div>;
             })()}
 
-            {/* team solar system — default view when no dept/art selected */}
-            {!st.selDept && !st.selArt && st.approvals.length === 0 && (() => {
-              const swarmAgents: SwarmAgent[] = Object.values(st.agents).map(a => ({
-                key: a.key,
-                label: (AGENT_LABELS as Record<string, string>)[a.key] ?? a.key.replace(/_/g, " "),
-                status: a.status,
-                currentTool: a.currentTool,
-              }));
-              const displayName = st.projectName || st.company || "Astra";
-              const coreSub = st.status === "running" ? "working" : st.status === "done" ? "complete" : undefined;
-              if (swarmAgents.length === 0) {
-                return <div className="empty"><div style={{ fontSize: 34, opacity: .12 }}>◈</div><div className="empty-title">Waiting for agents…</div></div>;
-              }
-              return (
-                <div style={{ padding: "8px 0 0" }}>
-                  <AgentSwarm agents={swarmAgents} coreLabel={displayName} coreSub={coreSub} />
-                </div>
-              );
-            })()}
+            {/* default view — no dept/art selected, no approvals */}
+            {!st.selDept && !st.selArt && st.approvals.length === 0 && (
+              Object.keys(st.agents).length === 0
+                ? <div className="empty"><div style={{ fontSize: 34, opacity: .12 }}>◈</div><div className="empty-title">Waiting for agents…</div></div>
+                : <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 4 }}>
+                    {Object.values(st.agents).map(a => {
+                      const label = (AGENT_LABELS as Record<string, string>)[a.key] ?? a.key.replace(/_/g, " ");
+                      const dot = a.status === "running" ? "var(--blue)" : a.status === "done" ? "var(--green)" : "var(--fm)";
+                      return (
+                        <div key={a.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "1px solid var(--bd)", borderRadius: 7, background: "var(--surface)", cursor: "pointer" }}
+                          onClick={() => sel(a.key in (DEPTS as Record<string, unknown>) ? a.key : "__other", null)}>
+                          <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, color: "var(--fg)", fontWeight: 500, flex: 1 }}>{label}</span>
+                          {a.status === "running" && a.currentTool && (
+                            <span style={{ fontSize: 9, color: "var(--blue)", fontFamily: "var(--font-code)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>{a.currentTool}</span>
+                          )}
+                          <span style={{ fontSize: 9, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".05em", fontFamily: "var(--font-code)" }}>{a.status}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+            )}
           </div>
         </div>
       </div>
