@@ -6,8 +6,8 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, respondWebTask, AGENT_LABELS, sortAgentNamesByOrder, type SessionImages } from "@/lib/api";
-import AgentSwarm, { type SwarmAgent } from "@/components/AgentSwarm";
+import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, AGENT_LABELS, sortAgentNamesByOrder, type SessionImages } from "@/lib/api";
+import AgentSwarm, { placeAgents, VB_W, VB_H, type SwarmAgent } from "@/components/AgentSwarm";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import { signIn } from "next-auth/react";
@@ -26,29 +26,11 @@ type TermEntry = { ts: number; kind: string; text: string; agent: string };
 type Agent = { key: string; status: string; log: LogEntry[]; term: TermEntry[]; visitedUrls: string[]; currentTool: string | null; result: unknown; instruction: string };
 type Artifact = { key?: string; title?: string; status?: string; preview?: string; content?: string; description?: string; owner_agent?: string };
 type Approval = { gate_key: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string; preview?: string }[] };
-type WebTaskField = { key: string; label?: string; type?: string; required?: boolean };
-type WebTaskPrompt = {
-  task_id: string;
-  service: string;
-  task_type: string;
-  agent: string;
-  status: string;
-  state?: string;
-  note?: string;
-  blocker?: { kind?: string; message?: string; fields?: WebTaskField[] };
-  evidence?: { final_url?: string; page_summary?: string; checks_passed?: string[] };
-  resume_token?: string;
-  formValues?: Record<string, string>;
-  formError?: string;
-  submitting?: boolean;
-};
-
-type AgentQuestion = { request_id: string; question: string; options: string[]; hint: string };
 
 type SState = {
   status: string; goal: string; company: string; projectName: string; stackId: string;
   agents: Record<string, Agent>;
-  artifacts: Artifact[]; approvals: Approval[]; webTasks: Record<string, WebTaskPrompt>; decidedKeys: Set<string>;
+  artifacts: Artifact[]; approvals: Approval[]; decidedKeys: Set<string>;
   selDept: string | null; selArt: string | null; tab: string; paused: boolean;
   revisionGate: string | null; revisionNote: string;
   liveUrl: string;
@@ -56,7 +38,6 @@ type SState = {
   parentId: string;
   startedAt: number;
   credits: number;
-  agentQuestion: AgentQuestion | null;
 };
 
 function fmtElapsed(ms: number): string {
@@ -217,72 +198,6 @@ function cacheSession(id: string, state: SState) {
   }
 }
 
-function AgentQuestionCard({ sessionId, question, onDone }: {
-  sessionId: string;
-  question: AgentQuestion;
-  onDone: () => void;
-}) {
-  const [answer, setAnswer] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-
-  const submit = async (val?: string) => {
-    const ans = val ?? answer.trim();
-    if (!ans) { setError("Please provide an answer."); return; }
-    setSubmitting(true); setError("");
-    try {
-      const res = await apiFetch(`${API}/input/${sessionId}/${question.request_id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: { answer: ans } }),
-      });
-      if (!res.ok) throw new Error("Submit failed");
-      onDone();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to submit");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div style={{ position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)", zIndex: 9000, width: "100%", maxWidth: 520, padding: "0 16px" }}>
-      <div style={{ background: "var(--surface)", border: "1px solid var(--bd)", borderRadius: 14, boxShadow: "0 8px 32px rgba(0,0,0,0.18)", overflow: "hidden" }}>
-        <div style={{ padding: "14px 18px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-            <span style={{ fontSize: 15, marginTop: 1 }}>💬</span>
-            <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--fg)", lineHeight: 1.4 }}>{question.question}</p>
-          </div>
-          <button onClick={onDone} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--fm)", padding: 0, lineHeight: 1, flexShrink: 0, marginTop: 1 }}>✕</button>
-        </div>
-        <div style={{ padding: "12px 18px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
-          {question.options.length > 0 ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {question.options.map((opt) => (
-                <button key={opt} onClick={() => submit(opt)} disabled={submitting}
-                  style={{ padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 500, border: "1px solid var(--bd)", background: "var(--bg)", color: "var(--fg)", cursor: "pointer", fontFamily: "inherit" }}>
-                  {opt}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div style={{ display: "flex", gap: 8 }}>
-              <input autoFocus type="text" value={answer} onChange={e => setAnswer(e.target.value)} onKeyDown={e => e.key === "Enter" && submit()}
-                placeholder={question.hint || "Type your answer…"}
-                style={{ flex: 1, padding: "8px 12px", fontSize: 13, border: "1px solid var(--bd)", borderRadius: 8, background: "var(--bg)", color: "var(--fg)", fontFamily: "inherit" }} />
-              <button onClick={() => submit()} disabled={submitting || !answer.trim()}
-                style={{ padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "var(--blue)", color: "#fff", border: "none", cursor: "pointer", opacity: !answer.trim() ? 0.5 : 1, fontFamily: "inherit" }}>
-                {submitting ? "…" : "Send"}
-              </button>
-            </div>
-          )}
-          {error && <p style={{ margin: 0, fontSize: 12, color: "var(--red)" }}>{error}</p>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function SessionView({ sessionId }: { sessionId: string }) {
   const { userId, isSignedIn, isLoading: authLoading } = useDevUser();
   const founderId = userId;
@@ -291,9 +206,9 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const sessFounder = useRef<string>("");
   const router = useRouter();
   const S = useRef<SState>({
-    status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], webTasks: {},
+    status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
     decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false,
-    revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0, agentQuestion: null,
+    revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0,
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
   const sseRef = useRef<EventSource | null>(null);
@@ -320,6 +235,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [restartConfirm, setRestartConfirm] = useState(false);
   const [takeover, setTakeover] = useState(false);
   const [showSwarm, setShowSwarm] = useState(true);
+  const swarmContainerRef = useRef<HTMLDivElement | null>(null);
+  const deptRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
+  type Beam = { key: string; x1: number; y1: number; x2: number; y2: number };
+  const [beams, setBeams] = useState<Beam[]>([]);
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
   const imgsFetched = useRef(false);
 
@@ -459,119 +378,6 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       case "stack_approval_decision":
         if (ev.gate_key) st.decidedKeys.add(ev.gate_key);
         st.approvals = st.approvals.filter((a) => a.gate_key !== ev.gate_key); break;
-      case "web_task_started": {
-        const agent = ev.agent || "web_navigator";
-        ensureAg(agent);
-        st.agents[agent].status = "running";
-        addLog(agent, "tool", `Website task started: ${ev.service || "site"} · ${ev.task_type || "task"}`);
-        const taskId = String(ev.task_id || "");
-        if (taskId) {
-          st.webTasks[taskId] = {
-            ...(st.webTasks[taskId] || { formValues: {} }),
-            task_id: taskId,
-            service: String(ev.service || ""),
-            task_type: String(ev.task_type || ""),
-            agent,
-            status: "running",
-          };
-        }
-        break;
-      }
-      case "web_task_state": {
-        const agent = ev.agent || "web_navigator";
-        ensureAg(agent);
-        addLog(agent, "think", [ev.service, ev.state, ev.note].filter(Boolean).join(" · ") || "Website task progressing");
-        const taskId = String(ev.task_id || "");
-        if (taskId) {
-          st.webTasks[taskId] = {
-            ...(st.webTasks[taskId] || { formValues: {} }),
-            task_id: taskId,
-            service: String(ev.service || st.webTasks[taskId]?.service || ""),
-            task_type: String(ev.task_type || st.webTasks[taskId]?.task_type || ""),
-            agent,
-            status: st.webTasks[taskId]?.status || "running",
-            state: String(ev.state || ""),
-            note: String(ev.note || ""),
-            evidence: {
-              ...(st.webTasks[taskId]?.evidence || {}),
-              final_url: String(ev.url || st.webTasks[taskId]?.evidence?.final_url || ""),
-            },
-          };
-        }
-        break;
-      }
-      case "web_task_needs_user": {
-        const agent = ev.agent || "web_navigator";
-        ensureAg(agent);
-        const blocker = ev.blocker || ev.result?.blocker || {};
-        addLog(agent, "error", blocker.message || `Website task needs founder input for ${ev.service || "site"}`);
-        const taskId = String(ev.task_id || ev.result?.resume_token || "");
-        if (taskId) {
-          st.webTasks[taskId] = {
-            ...(st.webTasks[taskId] || { formValues: {} }),
-            task_id: taskId,
-            service: String(ev.service || st.webTasks[taskId]?.service || ""),
-            task_type: String(ev.task_type || st.webTasks[taskId]?.task_type || ""),
-            agent,
-            status: "needs_user",
-            state: "needs_user",
-            blocker,
-            evidence: ev.result?.evidence || st.webTasks[taskId]?.evidence || {},
-            resume_token: String(ev.result?.resume_token || taskId),
-            formValues: st.webTasks[taskId]?.formValues || {},
-            submitting: false,
-            formError: "",
-          };
-        }
-        break;
-      }
-      case "web_task_resumed": {
-        const taskId = String(ev.task_id || "");
-        const agent = ev.agent || st.webTasks[taskId]?.agent || "web_navigator";
-        ensureAg(agent);
-        addLog(agent, "start", `Resumed website task for ${ev.service || "site"}`);
-        if (taskId && st.webTasks[taskId]) {
-          st.webTasks[taskId] = {
-            ...st.webTasks[taskId],
-            agent,
-            status: "running",
-            formError: "",
-            submitting: false,
-          };
-        }
-        break;
-      }
-      case "web_task_completed": {
-        const taskId = String(ev.task_id || "");
-        const agent = ev.agent || st.webTasks[taskId]?.agent || "web_navigator";
-        ensureAg(agent);
-        addLog(agent, "done", `${ev.service || "Website"} task completed`);
-        if (taskId) delete st.webTasks[taskId];
-        break;
-      }
-      case "web_task_failed": {
-        const result = ev.result || {};
-        const taskId = String(ev.task_id || result.resume_token || "");
-        const agent = ev.agent || st.webTasks[taskId]?.agent || "web_navigator";
-        ensureAg(agent);
-        const blocker = result.blocker || {};
-        addLog(agent, "error", blocker.message || `${ev.service || "Website"} task failed`);
-        if (taskId) {
-          st.webTasks[taskId] = {
-            ...(st.webTasks[taskId] || { formValues: {} }),
-            task_id: taskId,
-            service: String(ev.service || st.webTasks[taskId]?.service || ""),
-            task_type: String(ev.task_type || st.webTasks[taskId]?.task_type || ""),
-            agent,
-            status: String(result.status || "failed"),
-            blocker,
-            evidence: result.evidence || st.webTasks[taskId]?.evidence || {},
-            resume_token: String(result.resume_token || taskId),
-            submitting: false,
-          };
-        }
-        break;
-      }
       case "company_operating":
         st.status = "done";
         st.operating = { count: Number(ev.mission_count || (ev.missions?.length ?? 0)), summary: String(ev.summary || "") };
@@ -580,11 +386,6 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         st.status = "done"; sseRef.current?.close(); break;
       case "goal_error":
         st.status = "error"; sseRef.current?.close(); break;
-      case "agent_question":
-        st.agentQuestion = { request_id: String(ev.request_id || ""), question: String(ev.question || ""), options: Array.isArray(ev.options) ? ev.options : [], hint: String(ev.hint || "") };
-        break;
-      case "agent_input_received":
-        st.agentQuestion = null; break;
       default: return; // ignore pings/unknown without re-render
     }
     force();
@@ -601,7 +402,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     if (cached) {
       S.current = cached;
     } else {
-      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], webTasks: {}, decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0, agentQuestion: null };
+      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0 };
       cacheSession(sessionId, S.current);
     }
     force();
@@ -651,29 +452,6 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             S.current.approvals = d.approvals
               .filter((a: any) => PENDING.has(a.status) && (a.gate_key || a.key))
               .map((a: any) => ({ ...a, gate_key: a.gate_key || a.key }));
-          }
-          if (Array.isArray(d.web_tasks)) {
-            const restored: Record<string, WebTaskPrompt> = {};
-            d.web_tasks.forEach((task: any) => {
-              const taskId = String(task.task_id || "");
-              if (!taskId) return;
-              restored[taskId] = {
-                task_id: taskId,
-                service: String(task.service || ""),
-                task_type: String(task.task_type || ""),
-                agent: String(task.agent || "web_navigator"),
-                status: String(task.status || "running"),
-                state: String(task.state || ""),
-                note: String(task.note || ""),
-                blocker: task.blocker || {},
-                evidence: task.evidence || {},
-                resume_token: String(task.resume_token || taskId),
-                formValues: S.current.webTasks[taskId]?.formValues || {},
-                formError: "",
-                submitting: false,
-              };
-            });
-            S.current.webTasks = restored;
           }
           if (d.agents && typeof d.agents === "object") {
             for (const [k, ag] of Object.entries<any>(d.agents)) {
@@ -733,31 +511,6 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       showErr(`Approval failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
-  const submitWebTaskInput = async (taskId: string) => {
-    const task = S.current.webTasks[taskId];
-    if (!task) return;
-    const fields = task.blocker?.fields || [];
-    const values = { ...(task.formValues || {}) };
-    const missing = fields.filter((field) => field.required !== false && !String(values[field.key] || "").trim());
-    if (missing.length) {
-      task.formError = `Required: ${missing.map((field) => field.label || field.key).join(", ")}`;
-      force();
-      return;
-    }
-    task.submitting = true;
-    task.formError = "";
-    force();
-    try {
-      await respondWebTask(task.resume_token || task.task_id, values);
-      task.status = "running";
-      task.submitting = false;
-      force();
-    } catch (e) {
-      task.submitting = false;
-      task.formError = e instanceof Error ? e.message : String(e);
-      force();
-    }
-  };
   const sendCopilot = async () => {
     const msg = steerRef.current?.value.trim(); if (!msg || copilotBusy) return;
     if (steerRef.current) steerRef.current.value = "";
@@ -815,9 +568,6 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const total = agents.length, run = agents.filter((a) => a.status === "running").length,
     done = agents.filter((a) => a.status === "done").length, err = agents.filter((a) => a.status === "error").length;
   const artReady = st.artifacts.filter((a) => a.status === "ready").length;
-  const webTaskList = Object.values(st.webTasks);
-  const actionableWebTasks = webTaskList.filter((task) => task.status === "needs_user");
-  const blockedWebTasks = webTaskList.filter((task) => task.status === "blocked" || task.status === "failed");
 
   const plan = PHASE_PLANS[st.stackId];
   let phases: [string, string][];
@@ -900,6 +650,36 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     status: st.agents[k].status,
     currentTool: st.agents[k].currentTool,
   }));
+
+  // Beam computation: running agent node → its dept card. Re-runs when running
+  // agent set changes (keyed by stable string so effect doesn't fire every render).
+  const _runningKeys = swarmAgents.filter(a => a.status === "running").map(a => a.key).sort().join(",");
+  useEffect(() => {
+    if (!showSwarm || !swarmContainerRef.current) { setBeams([]); return; }
+    const cr = swarmContainerRef.current.getBoundingClientRect();
+    if (!cr.width || !cr.height) return;
+    const placedAll = placeAgents(swarmAgents);
+    const next: { key: string; x1: number; y1: number; x2: number; y2: number }[] = [];
+    for (const ag of swarmAgents) {
+      if (ag.status !== "running") continue;
+      const deptKey = agToDept(ag.key);
+      if (!deptKey) continue;
+      const deptEl = deptRefsMap.current.get(deptKey);
+      if (!deptEl) continue;
+      const p = placedAll.find(pl => pl.key === ag.key);
+      if (!p) continue;
+      const dr = deptEl.getBoundingClientRect();
+      next.push({
+        key: ag.key,
+        x1: cr.left + (p.x / VB_W) * cr.width,
+        y1: cr.top + (p.y / VB_H) * cr.height,
+        x2: dr.left + dr.width / 2,
+        y2: dr.top + dr.height / 2,
+      });
+    }
+    setBeams(next);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [_runningKeys, showSwarm]);
 
   const displayName = st.projectName || st.company || "";
   const shortGoal = st.goal ? st.goal.slice(0, 70) + (st.goal.length > 70 ? "…" : "") : `Session ${sessionId.slice(0, 8)}`;
@@ -1002,22 +782,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       )}
 
       {/* urgent banner */}
-      {(st.approvals.length > 0 || actionableWebTasks.length > 0) && (() => {
-        if (actionableWebTasks.length > 0) {
-          const first = actionableWebTasks[0];
-          const sub = first.blocker?.message || `Astra needs your input to continue ${first.service}.`;
-          return (
-            <div style={{ background: "var(--red)", flexShrink: 0, animation: "astraSlideDown .25s ease both" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px" }}>
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#fff" }} className="blink" />
-                <div>
-                  <div style={{ fontFamily: "var(--font-chakra)", fontSize: 12, fontWeight: 700, color: "#fff" }}>Action Required — website task waiting on you</div>
-                  <div style={{ fontSize: 9.5, color: "rgba(255,255,255,.7)" }}>{sub}</div>
-                </div>
-              </div>
-            </div>
-          );
-        }
+      {st.approvals.length > 0 && (() => {
         const first = st.approvals[0];
         const isPhaseGate = first.is_phase_gate;
         const bg = isPhaseGate ? "var(--blue)" : "var(--red)";
@@ -1070,13 +835,11 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         {st.status === "done" ? <><span className="sv g">✓</span> Complete · <span className="sv g">{done}</span> agents · <span className="sv g">{artReady}</span> deliverable{artReady !== 1 ? "s" : ""}</>
         : st.status === "error" ? <><span className="sv r">✗</span> Failed · <span className="sv r">{err}</span> error{err !== 1 ? "s" : ""}</>
         : !total ? <><div className="live-dot" /><span style={{ color: "var(--fd)" }}>Planning your goal…</span></>
-        : actionableWebTasks.length ? <><span className="sv r">⚠</span> Website input needed <div className="s-sep" /> <span className="sv g">{done}</span> done</>
         : st.approvals.length ? <><span className="sv r">⚠</span> Approval needed — run paused <div className="s-sep" /> <span className="sv g">{done}</span> done</>
         : <>
             {run > 0 && <><div className="live-dot" /><span className="sv b">{run}</span> working</>}
             {done > 0 && <><div className="s-sep" /><span className="sv g">{done}</span> done</>}
             {err > 0 && <><div className="s-sep" /><span className="sv r">{err}</span> error{err !== 1 ? "s" : ""}</>}
-            {blockedWebTasks.length > 0 && <><div className="s-sep" /><span className="sv r">{blockedWebTasks.length}</span> blocked</>}
             {artReady > 0 && <><div className="s-sep" /><span className="sv g">{artReady}</span> deliverable{artReady !== 1 ? "s" : ""}</>}
           </>}
       </div>
@@ -1095,12 +858,14 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             </button>
           </div>
           {showSwarm && (
-            <AgentSwarm
-              agents={swarmAgents}
-              coreLabel={displayName || "Astra"}
-              coreSub={st.status === "done" ? "operating" : st.approvals.length ? "awaiting you" : run > 0 ? "building" : "planning"}
-              height={300}
-            />
+            <div style={{ maxWidth: 500 }}>
+              <AgentSwarm
+                agents={swarmAgents}
+                coreLabel={displayName || "Astra"}
+                coreSub={st.status === "done" ? "operating" : st.approvals.length ? "awaiting you" : run > 0 ? "building" : "planning"}
+                containerRef={swarmContainerRef}
+              />
+            </div>
           )}
         </div>
       )}
@@ -1114,7 +879,9 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           const bc = s === "done" ? "var(--green)" : s === "run" ? "var(--blue)" : s === "err" ? "var(--red)" : "var(--fm)";
           const badge = s === "run" ? "Working" : s === "done" ? "Done" : s === "err" ? "Error" : "Queued";
           return (
-            <div key={dk} className={`dc ${s}${st.selDept === dk ? " sel" : ""}`} title={d.n} aria-label={`${d.n} department — ${badge}`} onClick={() => sel(dk, null)}>
+            <div key={dk}
+              ref={el => { if (el) deptRefsMap.current.set(dk, el); else deptRefsMap.current.delete(dk); }}
+              className={`dc ${s}${st.selDept === dk ? " sel" : ""}`} title={d.n} aria-label={`${d.n} department — ${badge}`} onClick={() => sel(dk, null)}>
               <div className="dc-top"><div className="dc-ico">{d.ic}</div><div className="dc-name">{d.n}</div><div className={`dc-badge ${s}`}>{badge}</div></div>
               <div className="dc-what">{deptWhat(d.inS)}</div>
               <div className="dc-prog"><div className="dc-bar" style={{ transform: `scaleX(${prog / 100})`, background: bc }} /></div>
@@ -1153,57 +920,6 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           </div>
           <div className="dscroll">
             {/* approval cards always first */}
-            {webTaskList.map((task) => (
-              <div key={task.task_id} style={{ border: task.status === "needs_user" ? "1.5px solid var(--red)" : "1px solid var(--bd)", background: task.status === "needs_user" ? "rgba(239,68,68,.05)" : "var(--surface)", padding: "14px 16px 12px", marginBottom: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontSize: 16 }}>{task.status === "needs_user" ? "⚠" : task.status === "running" ? "◎" : task.status === "completed" ? "✓" : "✗"}</span>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontFamily: "var(--font-chakra)", fontSize: 13, fontWeight: 700, color: "var(--fg)" }}>
-                      {task.service || "Website"} · {task.task_type || "task"}
-                    </div>
-                    <div style={{ fontSize: 10, color: task.status === "needs_user" ? "var(--red)" : "var(--fm)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".08em" }}>
-                      {task.status.replace(/_/g, " ")}
-                    </div>
-                  </div>
-                </div>
-                <div style={{ fontSize: 11.5, color: "var(--fd)", lineHeight: 1.6, marginBottom: 10 }}>
-                  {task.blocker?.message || task.note || "Website operator is working through this flow."}
-                </div>
-                {task.evidence?.final_url && (
-                  <div style={{ fontSize: 10.5, color: "var(--fm)", marginBottom: 8, wordBreak: "break-all" }}>
-                    {task.evidence.final_url}
-                  </div>
-                )}
-                {task.status === "needs_user" && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {(task.blocker?.fields || []).map((field) => (
-                      <label key={field.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                        <span style={{ fontSize: 10.5, color: "var(--fd)", fontWeight: 600 }}>{field.label || field.key}</span>
-                        <input
-                          type={field.type === "password" ? "password" : field.type === "tel" ? "tel" : "text"}
-                          value={task.formValues?.[field.key] || ""}
-                          onChange={(e) => {
-                            task.formValues = { ...(task.formValues || {}), [field.key]: e.target.value };
-                            force();
-                          }}
-                          style={{ width: "100%", padding: "8px 10px", border: "1px solid var(--bd)", background: "var(--bg)", color: "var(--fg)", fontSize: 11.5, boxSizing: "border-box" }}
-                        />
-                      </label>
-                    ))}
-                    {task.formError && <div style={{ fontSize: 10.5, color: "var(--red)" }}>{task.formError}</div>}
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        style={{ flex: 1, padding: "9px 0", border: "none", background: "var(--blue)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: task.submitting ? "progress" : "pointer", opacity: task.submitting ? 0.7 : 1 }}
-                        disabled={task.submitting}
-                        onClick={() => { void submitWebTaskInput(task.task_id); }}
-                      >
-                        {task.submitting ? "Resuming..." : "Resume website task"}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
             {st.approvals.map((ap) => ap.is_phase_gate ? (
               /* ── Phase checkpoint card ── */
               <div key={ap.gate_key} style={{ border: "1.5px solid var(--blue)", background: "rgba(59,130,246,.06)", padding: "16px 16px 12px", marginBottom: 8 }}>
@@ -1591,7 +1307,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             })()}
 
             {/* empty */}
-            {!st.selDept && !st.selArt && st.approvals.length === 0 && webTaskList.length === 0 && (
+            {!st.selDept && !st.selArt && st.approvals.length === 0 && (
               <div className="empty"><div style={{ fontSize: 34, opacity: .12 }}>◈</div><div className="empty-title">Select a department</div><div className="empty-sub" style={{ fontSize: 10.5, maxWidth: 260, lineHeight: 1.6 }}>Click a card above to see what that team is working on.</div></div>
             )}
           </div>
@@ -1636,15 +1352,42 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         </div>
       </div>
 
-      {st.agentQuestion && (
-        <AgentQuestionCard
-          sessionId={sessionId}
-          question={st.agentQuestion}
-          onDone={() => { S.current.agentQuestion = null; force(); }}
-        />
-      )}
       {showSessionTour && (
         <SessionTour onDone={() => { localStorage.setItem("astra_session_tour_done", "1"); setShowSessionTour(false); }} />
+      )}
+
+      {/* Node → dept-card beams: fixed SVG overlay, pointer-events none */}
+      {beams.length > 0 && (
+        <svg
+          style={{ position: "fixed", inset: 0, width: "100vw", height: "100vh", pointerEvents: "none", zIndex: 997 }}
+          aria-hidden="true"
+        >
+          <defs>
+            <style>{`
+              @keyframes sv-beam-flow { from { stroke-dashoffset: 80; } to { stroke-dashoffset: 0; } }
+            `}</style>
+          </defs>
+          {beams.map(b => {
+            const len = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
+            return (
+              <g key={b.key}>
+                {/* faint static path — shows the connection */}
+                <line x1={b.x1} y1={b.y1} x2={b.x2} y2={b.y2}
+                  stroke="var(--blue)" strokeWidth={0.75} strokeOpacity={0.18} />
+                {/* flowing dashes — animate offset to make them travel node → card */}
+                <line x1={b.x1} y1={b.y1} x2={b.x2} y2={b.y2}
+                  stroke="var(--blue)" strokeWidth={1} strokeOpacity={0.55}
+                  strokeDasharray="5 9" strokeLinecap="round">
+                  <animate attributeName="stroke-dashoffset"
+                    from={String(len)} to="0"
+                    dur="1.1s" repeatCount="indefinite" />
+                </line>
+                {/* leading dot at node origin */}
+                <circle cx={b.x1} cy={b.y1} r={2.5} fill="var(--mint)" opacity={0.85} />
+              </g>
+            );
+          })}
+        </svg>
       )}
     </div>
   );
