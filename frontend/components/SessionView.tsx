@@ -6,8 +6,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, AGENT_LABELS, sortAgentNamesByOrder, type SessionImages } from "@/lib/api";
-import AgentSwarm, { placeAgents, VB_W, VB_H, type SwarmAgent } from "@/components/AgentSwarm";
+import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, AGENT_LABELS, type SessionImages } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import { signIn } from "next-auth/react";
@@ -114,10 +113,6 @@ const DEPTS: Record<string, { n: string; ic: string; ags: string[] }> = {
 // moment the run starts — showing it as an approval card means "approve nothing".
 const PENDING = new Set(["pending", "triggered", "waiting_approval"]);
 
-function agToDept(k: string): string | null {
-  for (const [dk, d] of Object.entries(DEPTS)) if (d.ags.includes(k)) return dk;
-  return null;
-}
 function ago(ts: number | string | undefined): string {
   if (!ts) return "";
   const diff = Date.now() - (typeof ts === "number" ? ts : new Date(ts).getTime());
@@ -234,11 +229,6 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [toastErr, setToastErr] = useState("");
   const [restartConfirm, setRestartConfirm] = useState(false);
   const [takeover, setTakeover] = useState(false);
-  const [teamTab, setTeamTab] = useState(true);
-  const swarmContainerRef = useRef<HTMLDivElement | null>(null);
-  const deptRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
-  type Beam = { key: string; x1: number; y1: number; x2: number; y2: number };
-  const [beams, setBeams] = useState<Beam[]>([]);
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
   const imgsFetched = useRef(false);
 
@@ -643,44 +633,6 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const ready = st.artifacts.filter((a) => a.status === "ready");
   const live = st.artifacts.filter((a) => a.status !== "ready");
 
-  // Live founding-team constellation feed — sorted by canonical agent order.
-  const swarmAgents: SwarmAgent[] = sortAgentNamesByOrder(Object.keys(st.agents)).map((k) => ({
-    key: k,
-    label: AGENT_LABELS[k as keyof typeof AGENT_LABELS] ?? k,
-    status: st.agents[k].status,
-    currentTool: st.agents[k].currentTool,
-  }));
-
-  // Beam computation: running agent node → its dept card. Re-runs when running
-  // agent set changes (keyed by stable string so effect doesn't fire every render).
-  const _runningKeys = swarmAgents.filter(a => a.status === "running").map(a => a.key).sort().join(",");
-  useEffect(() => {
-    if (!teamTab || !swarmContainerRef.current) { setBeams([]); return; }
-    const cr = swarmContainerRef.current.getBoundingClientRect();
-    if (!cr.width || !cr.height) return;
-    const placedAll = placeAgents(swarmAgents);
-    const next: { key: string; x1: number; y1: number; x2: number; y2: number }[] = [];
-    for (const ag of swarmAgents) {
-      if (ag.status !== "running") continue;
-      const deptKey = agToDept(ag.key);
-      if (!deptKey) continue;
-      const deptEl = deptRefsMap.current.get(deptKey);
-      if (!deptEl) continue;
-      const p = placedAll.find(pl => pl.key === ag.key);
-      if (!p) continue;
-      const dr = deptEl.getBoundingClientRect();
-      next.push({
-        key: ag.key,
-        x1: cr.left + (p.x / VB_W) * cr.width,
-        y1: cr.top + (p.y / VB_H) * cr.height,
-        x2: dr.left + dr.width / 2,
-        y2: dr.top + dr.height / 2,
-      });
-    }
-    setBeams(next);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [_runningKeys, teamTab]);
-
   const displayName = st.projectName || st.company || "";
   const shortGoal = st.goal ? st.goal.slice(0, 70) + (st.goal.length > 70 ? "…" : "") : `Session ${sessionId.slice(0, 8)}`;
   const ICONS: Record<string, string> = { think: "◈", tool: "◎", result: "→", done: "✓", error: "✗", start: "↳" };
@@ -854,7 +806,6 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           const badge = s === "run" ? "Working" : s === "done" ? "Done" : s === "err" ? "Error" : "Queued";
           return (
             <div key={dk}
-              ref={el => { if (el) deptRefsMap.current.set(dk, el); else deptRefsMap.current.delete(dk); }}
               className={`dc ${s}${st.selDept === dk ? " sel" : ""}`} title={d.n} aria-label={`${d.n} department — ${badge}`} onClick={() => sel(dk, null)}>
               <div className="dc-top"><div className="dc-ico">{d.ic}</div><div className="dc-name">{d.n}</div><div className={`dc-badge ${s}`}>{badge}</div></div>
               <div className="dc-what">{deptWhat(d.inS)}</div>
@@ -882,7 +833,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         <div data-tour="session-detail" className="detail">
           <div className="dtabs">
             <div className={`dtab${st.tab === "team" ? " on" : ""}`}
-              onClick={() => { S.current.selDept = null; S.current.selArt = null; S.current.tab = "team"; setTeamTab(true); force(); }}>
+              onClick={() => { S.current.selDept = null; S.current.selArt = null; S.current.tab = "team"; force(); }}>
               ◎ Team
             </div>
             {st.selArt
@@ -897,19 +848,6 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               : null}
           </div>
           <div className="dscroll">
-            {/* team constellation — default view */}
-            {st.tab === "team" && swarmAgents.length > 0 && (
-              <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 4px" }}>
-                <div style={{ width: "100%", maxWidth: 480 }}>
-                  <AgentSwarm
-                    agents={swarmAgents}
-                    coreLabel={displayName || "Astra"}
-                    coreSub={st.status === "done" ? "operating" : st.approvals.length ? "awaiting you" : run > 0 ? "building" : "planning"}
-                    containerRef={swarmContainerRef}
-                  />
-                </div>
-              </div>
-            )}
             {/* approval cards always first */}
             {st.approvals.map((ap) => ap.is_phase_gate ? (
               /* ── Phase checkpoint card ── */
@@ -1347,39 +1285,6 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         <SessionTour onDone={() => { localStorage.setItem("astra_session_tour_done", "1"); setShowSessionTour(false); }} />
       )}
 
-      {/* Node → dept-card beams: fixed SVG overlay, pointer-events none */}
-      {beams.length > 0 && (
-        <svg
-          style={{ position: "fixed", inset: 0, width: "100vw", height: "100vh", pointerEvents: "none", zIndex: 997 }}
-          aria-hidden="true"
-        >
-          <defs>
-            <style>{`
-              @keyframes sv-beam-flow { from { stroke-dashoffset: 80; } to { stroke-dashoffset: 0; } }
-            `}</style>
-          </defs>
-          {beams.map(b => {
-            const len = Math.hypot(b.x2 - b.x1, b.y2 - b.y1);
-            return (
-              <g key={b.key}>
-                {/* faint static path — shows the connection */}
-                <line x1={b.x1} y1={b.y1} x2={b.x2} y2={b.y2}
-                  stroke="var(--blue)" strokeWidth={0.75} strokeOpacity={0.18} />
-                {/* flowing dashes — animate offset to make them travel node → card */}
-                <line x1={b.x1} y1={b.y1} x2={b.x2} y2={b.y2}
-                  stroke="var(--blue)" strokeWidth={1} strokeOpacity={0.55}
-                  strokeDasharray="5 9" strokeLinecap="round">
-                  <animate attributeName="stroke-dashoffset"
-                    from={String(len)} to="0"
-                    dur="1.1s" repeatCount="indefinite" />
-                </line>
-                {/* leading dot at node origin */}
-                <circle cx={b.x1} cy={b.y1} r={2.5} fill="var(--mint)" opacity={0.85} />
-              </g>
-            );
-          })}
-        </svg>
-      )}
     </div>
   );
 }
