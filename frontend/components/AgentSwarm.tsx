@@ -73,7 +73,7 @@ export default function AgentSwarm({ agents, coreLabel, coreSub }: Props) {
   const pAngles = useRef<Record<string, number>>({});
   const mAngles = useRef<Record<string, number[]>>({});
   const lastTs  = useRef(0);
-  const rafId   = useRef<number>();
+  const rafId   = useRef<number>(0);
 
   // One counter-increment per RAF tick → triggers React re-render for new positions.
   const [frame, setFrame] = useState(0);
