@@ -296,11 +296,11 @@ export default function DashboardView() {
                   const isRunning = s.status === "running";
                   const isDone = s.status === "done";
                   const digest = digests.get(s.session_id);
-                  const totalAgents = digest?.counts.planned_agents ?? 0;
-                  const rawDoneAgents = digest?.counts.done_agents ?? 0;
-                  const doneAgents = Math.min(rawDoneAgents, totalAgents);
+                  const plannedAgents = digest?.counts.planned_agents ?? 0;
+                  const doneAgents = digest?.counts.done_agents ?? 0;
+                  const totalAgents = Math.max(plannedAgents, doneAgents);
                   const progressPct = isDone ? 100
-                    : (isRunning && totalAgents > 0) ? Math.min(100, Math.round((rawDoneAgents / totalAgents) * 100))
+                    : (isRunning && totalAgents > 0) ? Math.min(100, Math.round((doneAgents / totalAgents) * 100))
                     : null;
                   const currentAgents = (digest?.running_agents ?? [])
                     .map(a => AGENT_LABELS[a as keyof typeof AGENT_LABELS] ?? a);
