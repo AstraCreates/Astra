@@ -229,6 +229,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [toastErr, setToastErr] = useState("");
   const [restartConfirm, setRestartConfirm] = useState(false);
   const [takeover, setTakeover] = useState(false);
+  const [teamTab, setTeamTab] = useState(false);
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
   const imgsFetched = useRef(false);
 
