@@ -16,6 +16,7 @@ from backend.stacks.templates import (
     StackConnectorRequirement,
     StackTaskTemplate,
 )
+from backend.stacks.ai_gates import generate_ai_approval_gates
 
 # ── Per-agent task templates (trimmed from IDEA_TO_REVENUE_STACK) ─────────────
 
@@ -679,19 +680,32 @@ def build_custom_stack_package(
                 "required": artifact.required,
             })
 
-    # Build approval queue — only gates relevant to selected agents
+    # Build approval queue — AI-generated gates, static dict as fallback
+    static_fallback = {
+        agent_id: {
+            "key": g.key, "title": g.title,
+            "trigger": g.trigger, "required_before": g.required_before, "reason": g.reason,
+        }
+        for agent_id, g in _AGENT_APPROVAL_GATES.items()
+        if agent_id in set(selected)
+    }
+    ai_gates = generate_ai_approval_gates(
+        tasks=tasks,
+        instruction=instruction,
+        fallback=static_fallback,
+    )
     approval_queue: list[dict[str, Any]] = []
     seen_gate_keys: set[str] = set()
     for agent_id in selected:
-        gate = _AGENT_APPROVAL_GATES.get(agent_id)
-        if gate and gate.key not in seen_gate_keys:
-            seen_gate_keys.add(gate.key)
+        gate = ai_gates.get(agent_id)
+        if gate and gate["key"] not in seen_gate_keys:
+            seen_gate_keys.add(gate["key"])
             approval_queue.append({
-                "key": gate.key,
-                "title": gate.title,
-                "trigger": gate.trigger,
-                "required_before": gate.required_before,
-                "reason": gate.reason,
+                "key": gate["key"],
+                "title": gate["title"],
+                "trigger": gate["trigger"],
+                "required_before": gate["required_before"],
+                "reason": gate["reason"],
                 "status": "armed",
                 "triggered_by": None,
             })
