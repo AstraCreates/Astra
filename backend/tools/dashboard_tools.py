@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 import uuid
 from pathlib import Path
 from typing import Any, Optional
+
+_FOUNDER_ID_RE = re.compile(r"^[A-Za-z0-9_@.-]{1,128}$")
 
 from backend.config import settings
 
@@ -37,9 +40,14 @@ def _vault() -> Path:
 
 
 def _store_path(founder_id: str) -> Path:
+    if not _FOUNDER_ID_RE.match(founder_id):
+        raise ValueError(f"invalid founder_id: {founder_id!r}")
     d = _vault() / "dashboard"
     d.mkdir(parents=True, exist_ok=True)
-    return d / f"{founder_id}.json"
+    p = (d / f"{founder_id}.json").resolve()
+    if d.resolve() not in p.parents:
+        raise ValueError("path escape detected")
+    return p
 
 
 def _load(founder_id: str) -> list[dict]:
