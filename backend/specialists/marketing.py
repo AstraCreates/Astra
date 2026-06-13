@@ -2,7 +2,17 @@
 from backend.core.agent import Agent
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
 from backend.tools.social_content import generate_reel_package, generate_tiktok_package, generate_meta_ad
-from backend.tools._llm import generate_image as generate_ad_image, composite_logo_on_image
+from backend.tools._llm import generate_image as _generate_image_raw, composite_logo_on_image
+
+
+def generate_ad_image(description: str = "", prompt: str = "", concept: str = "",
+                      width: int = 1024, height: int = 1024,
+                      founder_id: str = "", session_id: str = "") -> dict:
+    """Generate a cinematic ad image. Pass description (or prompt/concept as aliases)."""
+    desc = description or prompt or concept
+    if not desc:
+        return {"error": "generate_ad_image requires a description argument"}
+    return _generate_image_raw(desc, width=width, height=height, founder_id=founder_id, session_id=session_id)
 from backend.tools.email_campaign import send_email_campaign, build_email_html
 from backend.tools.browser_research import search_and_fetch
 from backend.tools.composio_tools import (
