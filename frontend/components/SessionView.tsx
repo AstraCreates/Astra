@@ -207,7 +207,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const S = useRef<SState>({
     status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
-    decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false,
+    decidedKeys: new Set(), selDept: null, selArt: null, tab: "team", paused: false,
     revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0,
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
@@ -234,7 +234,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [toastErr, setToastErr] = useState("");
   const [restartConfirm, setRestartConfirm] = useState(false);
   const [takeover, setTakeover] = useState(false);
-  const [showSwarm, setShowSwarm] = useState(true);
+  const [teamTab, setTeamTab] = useState(true);
   const swarmContainerRef = useRef<HTMLDivElement | null>(null);
   const deptRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
   type Beam = { key: string; x1: number; y1: number; x2: number; y2: number };
@@ -402,7 +402,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     if (cached) {
       S.current = cached;
     } else {
-      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0 };
+      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "team", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0 };
       cacheSession(sessionId, S.current);
     }
     force();
@@ -560,7 +560,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       S.current.paused = next; force();
     } catch {}
   };
-  const sel = (dept: string | null, art: string | null) => { S.current.selDept = dept; S.current.selArt = art; S.current.tab = art ? "read" : (dept === "technical" ? "terminal" : "updates"); force(); };
+  const sel = (dept: string | null, art: string | null) => { S.current.selDept = dept; S.current.selArt = art; S.current.tab = art ? "read" : (dept === "technical" ? "terminal" : "updates"); if (dept || art) setTeamTab(false); force(); };
 
   // ── Derived render data ──
   const st = S.current;
@@ -655,7 +655,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   // agent set changes (keyed by stable string so effect doesn't fire every render).
   const _runningKeys = swarmAgents.filter(a => a.status === "running").map(a => a.key).sort().join(",");
   useEffect(() => {
-    if (!showSwarm || !swarmContainerRef.current) { setBeams([]); return; }
+    if (!teamTab || !swarmContainerRef.current) { setBeams([]); return; }
     const cr = swarmContainerRef.current.getBoundingClientRect();
     if (!cr.width || !cr.height) return;
     const placedAll = placeAgents(swarmAgents);
@@ -679,7 +679,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     }
     setBeams(next);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [_runningKeys, showSwarm]);
+  }, [_runningKeys, teamTab]);
 
   const displayName = st.projectName || st.company || "";
   const shortGoal = st.goal ? st.goal.slice(0, 70) + (st.goal.length > 70 ? "…" : "") : `Session ${sessionId.slice(0, 8)}`;
@@ -844,32 +844,6 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           </>}
       </div>
 
-      {/* live founding-team constellation */}
-      {swarmAgents.length > 0 && (
-        <div style={{ flexShrink: 0, padding: "8px 14px 0" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: showSwarm ? 6 : 0 }}>
-            <button
-              onClick={() => setShowSwarm((v) => !v)}
-              style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--fm)" }}
-              aria-label={showSwarm ? "Hide founding team" : "Show founding team"}
-            >
-              <span style={{ fontSize: 9, transform: showSwarm ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block", transition: "transform .2s" }}>▶</span>
-              <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", fontFamily: "var(--font-code)" }}>Founding team</span>
-            </button>
-          </div>
-          {showSwarm && (
-            <div style={{ maxWidth: 500 }}>
-              <AgentSwarm
-                agents={swarmAgents}
-                coreLabel={displayName || "Astra"}
-                coreSub={st.status === "done" ? "operating" : st.approvals.length ? "awaiting you" : run > 0 ? "building" : "planning"}
-                containerRef={swarmContainerRef}
-              />
-            </div>
-          )}
-        </div>
-      )}
-
       {/* dept cards */}
       <div data-tour="session-depts" className="depts">
         {activeDepts.length === 0 ? <div style={{ padding: 6, fontSize: 9.5, color: "var(--fm)" }}>Waiting for agents…</div>
@@ -907,6 +881,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         {/* detail */}
         <div data-tour="session-detail" className="detail">
           <div className="dtabs">
+            <div className={`dtab${st.tab === "team" ? " on" : ""}`}
+              onClick={() => { S.current.selDept = null; S.current.selArt = null; S.current.tab = "team"; setTeamTab(true); force(); }}>
+              ◎ Team
+            </div>
             {st.selArt
               ? <div className={`dtab${st.tab === "read" ? " on" : ""}`} onClick={() => { st.tab = "read"; force(); }}>Read it</div>
               : st.selDept ? <>
@@ -916,9 +894,22 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                   <div className={`dtab${st.tab === "tech" ? " on" : ""}`} onClick={() => { st.tab = "tech"; force(); }}>Technical logs</div>
                   <div className={`dtab${st.tab === "sources" ? " on" : ""}`} onClick={() => { st.tab = "sources"; force(); }}>Sources</div>
                 </>
-              : <div className="dtab on">Updates</div>}
+              : null}
           </div>
           <div className="dscroll">
+            {/* team constellation — default view */}
+            {st.tab === "team" && swarmAgents.length > 0 && (
+              <div style={{ display: "flex", justifyContent: "center", padding: "8px 0 4px" }}>
+                <div style={{ width: "100%", maxWidth: 480 }}>
+                  <AgentSwarm
+                    agents={swarmAgents}
+                    coreLabel={displayName || "Astra"}
+                    coreSub={st.status === "done" ? "operating" : st.approvals.length ? "awaiting you" : run > 0 ? "building" : "planning"}
+                    containerRef={swarmContainerRef}
+                  />
+                </div>
+              </div>
+            )}
             {/* approval cards always first */}
             {st.approvals.map((ap) => ap.is_phase_gate ? (
               /* ── Phase checkpoint card ── */
