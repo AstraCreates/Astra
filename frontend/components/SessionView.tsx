@@ -636,6 +636,87 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const ready = st.artifacts.filter((a) => a.status === "ready");
   const live = st.artifacts.filter((a) => a.status !== "ready");
 
+  // ── Company Portrait ─────────────────────────────────────────────────────
+  const portrait = (() => {
+    const results = Object.values(st.agents)
+      .filter(a => a.result && typeof a.result === "object")
+      .map(a => ({ key: a.key, r: a.result as Record<string, unknown> }));
+
+    const str = (v: unknown): string => {
+      if (!v) return "";
+      if (typeof v === "string") return v.trim();
+      if (Array.isArray(v)) return (v as unknown[]).map(x => typeof x === "string" ? x : String(x)).filter(Boolean).join(", ");
+      return "";
+    };
+    const find = (...keys: string[]): string => {
+      for (const { r } of results) for (const k of keys) { const v = str(r[k]); if (v.length > 3) return v.slice(0, 260); }
+      return "";
+    };
+    const findArr = (...keys: string[]): string[] => {
+      for (const { r } of results) for (const k of keys) {
+        const v = r[k];
+        if (Array.isArray(v) && v.length > 0) {
+          return (v as unknown[]).map(x => {
+            if (typeof x === "string") return x;
+            if (x && typeof x === "object") { const o = x as Record<string, unknown>; return str(o.name || o.title || o.company || o.competitor || Object.values(o)[0]); }
+            return String(x);
+          }).filter(Boolean).slice(0, 8);
+        }
+        const sv = str(v);
+        if (sv.includes(",")) return sv.split(",").map(s => s.trim()).filter(s => s.length > 1).slice(0, 8);
+        if (sv.length > 3) return [sv];
+      }
+      return [];
+    };
+    const agRunning = (...keys: string[]) => keys.some(k => st.agents[k]?.status === "running");
+
+    const palette: string[] = [];
+    const dRes = st.agents["design"]?.result;
+    if (dRes && typeof dRes === "object") {
+      const blob = JSON.stringify(dRes);
+      const hexes = blob.match(/#[0-9a-fA-F]{6}\b/g) || [];
+      const seen = new Set<string>();
+      for (const h of hexes) { const u = h.toUpperCase(); if (!seen.has(u)) { seen.add(u); palette.push(u); } }
+    }
+
+    const name        = st.projectName || st.company;
+    const tagline     = find("tagline", "headline", "value_proposition", "one_liner", "pitch", "positioning_statement", "slogan");
+    const mission     = find("mission", "mission_statement", "north_star", "vision", "company_mission");
+    const problem     = find("problem", "pain_point", "problem_statement", "customer_pain", "core_problem");
+    const solution    = find("solution", "solution_description", "product_description", "how_it_works", "offering");
+    const icp         = find("icp", "ideal_customer_profile", "target_market", "customer_profile", "target_segment", "primary_customer");
+    const persona     = find("customer_persona", "buyer_persona", "user_persona", "persona", "target_persona", "ideal_buyer");
+    const differentiator = find("differentiator", "unique_value", "competitive_advantage", "what_makes_us_different", "usp", "unique_selling_point");
+    const moat        = find("moat", "defensibility", "competitive_moat", "barriers_to_entry", "unique_advantage");
+    const revenue     = find("revenue_model", "business_model", "monetization", "revenue_strategy");
+    const pricing     = find("pricing", "pricing_model", "price_points", "pricing_tiers", "pricing_strategy");
+    const salesMotion = find("sales_motion", "sales_strategy", "sales_approach", "selling_motion", "sales_model");
+    const gtm         = find("go_to_market", "gtm", "distribution_strategy", "marketing_strategy", "acquisition_strategy");
+    const channels    = find("channels", "acquisition_channels", "marketing_channels", "distribution_channels", "growth_channels");
+    const keyMetrics  = find("key_metrics", "metrics", "kpis", "success_metrics", "north_star_metric", "target_mrr");
+    const team        = find("team", "founders", "founding_team", "team_description", "leadership_team");
+    const keyHires    = find("key_hires", "hiring_plan", "open_roles", "key_roles", "hires_needed");
+    const legalEntity = find("legal_entity", "entity_type", "legal_structure", "incorporation", "company_type");
+    const competitors = findArr("competitors", "competition", "competitive_landscape", "main_competitors", "key_competitors", "top_competitors");
+    const techStack   = findArr("tech_stack", "stack", "technologies", "tech_choices", "technology_stack");
+
+    const allFields = [name, tagline, problem, solution, icp, persona, differentiator, moat, revenue, pricing, salesMotion, gtm, channels, keyMetrics, team, legalEntity];
+    const filled = allFields.filter(Boolean).length + (palette.length > 0 ? 1 : 0) + (competitors.length > 0 ? 1 : 0);
+
+    return {
+      name, tagline, mission, problem, solution, icp, persona, differentiator, moat,
+      revenue, pricing, salesMotion, gtm, channels, keyMetrics, team, keyHires, legalEntity,
+      competitors, techStack, palette,
+      pct: Math.round((filled / 18) * 100),
+      researchRunning:  agRunning("research", "research_market", "research_competitors", "research_financial"),
+      designRunning:    agRunning("design"),
+      salesRunning:     agRunning("sales", "sales_pipeline", "ops"),
+      marketingRunning: agRunning("marketing", "marketing_outreach"),
+      techRunning:      agRunning("technical", "technical_scaffold"),
+      legalRunning:     agRunning("legal", "legal_docs", "legal_entity"),
+    };
+  })();
+
   const displayName = st.projectName || st.company || "";
   const shortGoal = st.goal ? st.goal.slice(0, 70) + (st.goal.length > 70 ? "…" : "") : `Session ${sessionId.slice(0, 8)}`;
   const ICONS: Record<string, string> = { think: "◈", tool: "◎", result: "→", done: "✓", error: "✗", start: "↳" };
@@ -1242,28 +1323,192 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               </div>;
             })()}
 
-            {/* default view — no dept/art selected, no approvals */}
-            {!st.selDept && !st.selArt && st.approvals.length === 0 && (
-              Object.keys(st.agents).length === 0
-                ? <div className="empty"><div style={{ fontSize: 34, opacity: .12 }}>◈</div><div className="empty-title">Waiting for agents…</div></div>
-                : <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 4 }}>
-                    {Object.values(st.agents).map(a => {
-                      const label = (AGENT_LABELS as Record<string, string>)[a.key] ?? a.key.replace(/_/g, " ");
-                      const dot = a.status === "running" ? "var(--blue)" : a.status === "done" ? "var(--green)" : "var(--fm)";
-                      return (
-                        <div key={a.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "1px solid var(--bd)", borderRadius: 7, background: "var(--surface)", cursor: "pointer" }}
-                          onClick={() => sel(a.key in (DEPTS as Record<string, unknown>) ? a.key : "__other", null)}>
-                          <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
-                          <span style={{ fontSize: 12, color: "var(--fg)", fontWeight: 500, flex: 1 }}>{label}</span>
-                          {a.status === "running" && a.currentTool && (
-                            <span style={{ fontSize: 9, color: "var(--blue)", fontFamily: "var(--font-code)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>{a.currentTool}</span>
-                          )}
-                          <span style={{ fontSize: 9, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".05em", fontFamily: "var(--font-code)" }}>{a.status}</span>
-                        </div>
-                      );
-                    })}
+            {/* company portrait — default state */}
+            {!st.selDept && !st.selArt && st.approvals.length === 0 && (() => {
+              if (Object.keys(st.agents).length === 0) return <div className="empty"><div style={{ fontSize: 34, opacity: .12 }}>◈</div><div className="empty-title">Waiting for agents…</div></div>;
+              const p = portrait;
+
+              // helpers
+              const ease = "var(--ease-out-expo, cubic-bezier(0.16,1,0.3,1))";
+              const S = ({ w = "100%", i = 0 }: { w?: string; i?: number }) => (
+                <div style={{ width: w, height: 8, borderRadius: 2, background: "rgba(240,238,255,0.06)", animation: `portraitShimmer 1.9s ease-in-out ${i * 200}ms infinite` }} />
+              );
+              const Sdead = ({ w = "100%" }: { w?: string }) => (
+                <div style={{ width: w, height: 8, borderRadius: 2, background: "rgba(240,238,255,0.04)" }} />
+              );
+              const Dot = ({ on, done }: { on: boolean; done: boolean }) => done
+                ? <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--green)", display: "inline-block", flexShrink: 0 }} />
+                : on
+                  ? <span style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--blue)", display: "inline-block", flexShrink: 0, animation: "blink 1.3s ease-in-out infinite" }} />
+                  : null;
+              const Lbl = ({ label, running, val }: { label: string; running: boolean; val: string | string[] }) => {
+                const hasVal = Array.isArray(val) ? val.length > 0 : val.length > 0;
+                return (
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 7 }}>
+                    <Dot on={running && !hasVal} done={hasVal} />
+                    <span style={{ fontSize: 7, fontFamily: "var(--font-code)", fontWeight: 600, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--fm)" }}>{label}</span>
                   </div>
-            )}
+                );
+              };
+              const TextField = ({ label, val, running }: { label: string; val: string; running: boolean }) => (
+                <div style={{ padding: "10px 14px", borderBottom: "1px solid var(--bd)", borderRight: "1px solid var(--bd)" }}>
+                  <Lbl label={label} running={running} val={val} />
+                  {val
+                    ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{val}</div>
+                    : running
+                      ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="95%" /><S w="72%" i={1} /><S w="82%" i={2} /></div>
+                      : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="85%" /><Sdead w="60%" /></div>
+                  }
+                </div>
+              );
+
+              const cellBorder: React.CSSProperties = { borderBottom: "1px solid var(--bd)", borderRight: "1px solid var(--bd)" };
+              const noBorderR: React.CSSProperties = { borderRight: "none" };
+
+              return (
+                <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+
+                  {/* ── Header ── */}
+                  <div style={{ padding: "15px 18px 13px", borderBottom: "1px solid var(--bd)", display: "grid", gridTemplateColumns: "auto 1fr auto", gap: "0 24px", alignItems: "start" }}>
+                    <div>
+                      <div style={{ fontSize: 7, fontFamily: "var(--font-code)", fontWeight: 600, letterSpacing: ".18em", textTransform: "uppercase", color: "var(--fm)", marginBottom: 6 }}>Company Dossier</div>
+                      {p.name
+                        ? <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-.025em", lineHeight: 1.05, color: "var(--fg)", animation: `portraitFadeIn .35s ${ease} both` }}>{p.name}</div>
+                        : <div style={{ fontSize: 18, color: "rgba(240,238,255,0.13)", fontStyle: "italic" }}>Company forming…</div>
+                      }
+                      {p.tagline
+                        ? <div style={{ fontSize: 11.5, color: "var(--fd)", fontStyle: "italic", marginTop: 3, animation: `portraitFadeIn .35s ${ease} both` }}>{p.tagline}</div>
+                        : <div style={{ fontSize: 10.5, color: "rgba(240,238,255,0.1)", fontStyle: "italic", marginTop: 3 }}>Tagline forming…</div>
+                      }
+                    </div>
+                    <div style={{ paddingTop: 20, fontSize: 10.5, color: "var(--fm)", lineHeight: 1.7, maxWidth: 360 }}>
+                      {p.mission || st.goal?.slice(0, 160) || ""}
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, paddingTop: 20 }}>
+                      <div style={{ fontFamily: "var(--font-code)", fontSize: 20, fontWeight: 600, color: "var(--blue)", lineHeight: 1 }}>{p.pct}%</div>
+                      <div style={{ fontSize: 7, fontFamily: "var(--font-code)", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fm)" }}>Profile complete</div>
+                      <div style={{ width: 110, height: 2, background: "var(--bd)", marginTop: 4, overflow: "hidden" }}>
+                        <div style={{ width: `${p.pct}%`, height: "100%", background: "var(--blue)", transition: `width .7s ${ease}` }} />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Identity row: 4-col ── */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", borderBottom: "1px solid var(--bd)" }}>
+                    {/* Colors */}
+                    <div style={{ ...cellBorder, padding: "10px 14px" }}>
+                      <Lbl label="Colors" running={p.designRunning} val={p.palette} />
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {p.palette.length > 0
+                          ? p.palette.slice(0, 6).map((hex, i) => <div key={hex} title={hex} style={{ width: 18, height: 18, borderRadius: "50%", background: hex, border: "1px solid rgba(255,255,255,0.1)", flexShrink: 0, animation: `portraitFadeIn .3s ${ease} ${i * 50}ms both` }} />)
+                          : [1,2,3,4,5].map(i => <div key={i} style={{ width: 18, height: 18, borderRadius: "50%", background: "rgba(240,238,255,0.06)", border: "1px solid rgba(240,238,255,0.07)", animation: `portraitShimmer 1.9s ease-in-out ${i * 170}ms infinite` }} />)
+                        }
+                      </div>
+                    </div>
+                    {/* Fonts */}
+                    <div style={{ ...cellBorder, padding: "10px 14px" }}>
+                      <Lbl label="Fonts" running={p.designRunning} val={[]} />
+                      {p.designRunning && p.palette.length === 0
+                        ? <div style={{ display: "flex", flexDirection: "column", gap: 5 }}><S w="70%" /><S w="55%" i={1} /></div>
+                        : <div style={{ display: "flex", flexDirection: "column", gap: 5 }}><Sdead w="70%" /><Sdead w="55%" /></div>
+                      }
+                    </div>
+                    {/* Stage */}
+                    <div style={{ ...cellBorder, padding: "10px 14px" }}>
+                      <Lbl label="Stage" running={p.researchRunning} val={[]} />
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}><Sdead w="60%" /><Sdead w="80%" /></div>
+                    </div>
+                    {/* Geography */}
+                    <div style={{ ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
+                      <Lbl label="Geography" running={p.researchRunning} val={[]} />
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="80%" /><Sdead w="65%" /></div>
+                    </div>
+                  </div>
+
+                  {/* ── 3-col grid ── */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)" }}>
+
+                    {/* Row 1: Problem · Solution · Differentiator */}
+                    <TextField label="Problem"       val={p.problem}       running={p.researchRunning} />
+                    <TextField label="Solution"      val={p.solution}      running={p.researchRunning} />
+                    <div style={{ ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
+                      <Lbl label="Differentiator" running={p.researchRunning} val={p.differentiator} />
+                      {p.differentiator
+                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.differentiator}</div>
+                        : p.researchRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="95%" /><S w="72%" i={1} /><S w="82%" i={2} /></div>
+                        : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="85%" /><Sdead w="60%" /></div>}
+                    </div>
+
+                    {/* Row 2: Target Market · Customer Persona · Moat */}
+                    <TextField label="Target market"    val={p.icp}     running={p.researchRunning} />
+                    <TextField label="Customer persona" val={p.persona} running={p.researchRunning} />
+                    <div style={{ ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
+                      <Lbl label="Moat" running={p.researchRunning} val={p.moat} />
+                      {p.moat
+                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.moat}</div>
+                        : p.researchRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="88%" /><S w="65%" i={1} /></div>
+                        : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="75%" /><Sdead w="50%" /></div>}
+                    </div>
+
+                    {/* Row 3: Revenue · Pricing · Sales Motion */}
+                    <TextField label="Revenue model" val={p.revenue}    running={p.salesRunning} />
+                    <TextField label="Pricing"        val={p.pricing}    running={p.salesRunning} />
+                    <div style={{ ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
+                      <Lbl label="Sales motion" running={p.salesRunning} val={p.salesMotion} />
+                      {p.salesMotion
+                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.salesMotion}</div>
+                        : p.salesRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="80%" /><S w="58%" i={1} /></div>
+                        : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="72%" /><Sdead w="50%" /></div>}
+                    </div>
+
+                    {/* Row 4: GTM · Channels · Key Metrics */}
+                    <TextField label="Go-to-market" val={p.gtm}        running={p.marketingRunning} />
+                    <TextField label="Channels"      val={p.channels}   running={p.marketingRunning} />
+                    <div style={{ ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
+                      <Lbl label="Key metrics" running={p.researchRunning} val={p.keyMetrics} />
+                      {p.keyMetrics
+                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.keyMetrics}</div>
+                        : p.researchRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="85%" /><S w="62%" i={1} /></div>
+                        : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="78%" /><Sdead w="55%" /></div>}
+                    </div>
+
+                    {/* Row 5: Team · Key Hires · Legal Entity */}
+                    <TextField label="Team"            val={p.team}       running={p.researchRunning} />
+                    <TextField label="Key hires needed" val={p.keyHires}  running={p.researchRunning} />
+                    <div style={{ ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
+                      <Lbl label="Legal entity" running={p.legalRunning} val={p.legalEntity} />
+                      {p.legalEntity
+                        ? <div style={{ fontSize: 10.5, color: "var(--fd)", lineHeight: 1.6, animation: `portraitFadeIn .35s ${ease} both` }}>{p.legalEntity}</div>
+                        : p.legalRunning ? <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><S w="65%" /><S w="45%" i={1} /></div>
+                        : <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><Sdead w="60%" /><Sdead w="40%" /></div>}
+                    </div>
+
+                    {/* Competitors — full width */}
+                    <div style={{ gridColumn: "1/-1", ...cellBorder, ...noBorderR, padding: "10px 14px" }}>
+                      <Lbl label="Competitors" running={p.researchRunning} val={p.competitors} />
+                      {p.competitors.length > 0
+                        ? <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {p.competitors.map((c, i) => <span key={i} style={{ fontSize: 9.5, padding: "2px 8px", border: "1px solid var(--bd2)", color: "var(--fd)", animation: `portraitFadeIn .3s ${ease} ${i * 50}ms both` }}>{c}</span>)}
+                          </div>
+                        : <div style={{ display: "flex", gap: 4 }}>{[62,48,74,54,68,50].map((w,i) => <div key={i} style={{ width: w, height: 22, background: "rgba(240,238,255,0.04)", border: "1px solid rgba(240,238,255,0.05)" }} />)}</div>
+                      }
+                    </div>
+
+                    {/* Tech Stack — full width, last */}
+                    <div style={{ gridColumn: "1/-1", padding: "10px 14px" }}>
+                      <Lbl label="Tech stack" running={p.techRunning} val={p.techStack} />
+                      {p.techStack.length > 0
+                        ? <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {p.techStack.map((t, i) => <span key={i} style={{ fontSize: 9.5, padding: "2px 8px", border: "1px solid var(--bd2)", color: "var(--fd)", background: "rgba(240,238,255,0.03)", animation: `portraitFadeIn .3s ${ease} ${i * 50}ms both` }}>{t}</span>)}
+                          </div>
+                        : <div style={{ display: "flex", gap: 4 }}>{[54,76,60,70,52].map((w,i) => <div key={i} style={{ width: w, height: 22, background: p.techRunning ? "rgba(240,238,255,0.06)" : "rgba(240,238,255,0.03)", border: "1px solid rgba(240,238,255,0.05)", animation: p.techRunning ? `portraitShimmer 1.9s ease-in-out ${i * 180}ms infinite` : undefined }} />)}</div>
+                      }
+                    </div>
+
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
