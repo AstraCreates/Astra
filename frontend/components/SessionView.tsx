@@ -583,7 +583,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       case "agent_question":
         st.agentQuestion = { request_id: String(ev.request_id || ""), question: String(ev.question || ""), options: Array.isArray(ev.options) ? ev.options : [], hint: String(ev.hint || "") };
         break;
-      case "agent_question_answered":
+      case "agent_input_received":
         st.agentQuestion = null; break;
       default: return; // ignore pings/unknown without re-render
     }

@@ -4799,7 +4799,7 @@ export function GoalWorkspace({
         setAgentQuestion({ request_id: event.request_id, question: event.question, options: event.options ?? [], hint: event.hint ?? "" });
         return;
       }
-      if (event.type === "agent_question_answered") {
+      if (event.type === "agent_input_received") {
         setAgentQuestion(null);
         return;
       }
