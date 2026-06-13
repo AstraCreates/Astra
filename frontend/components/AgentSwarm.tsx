@@ -135,7 +135,7 @@ export default function AgentSwarm({ agents, coreLabel, coreSub }: Props) {
   return (
     <div style={{
       position: "relative", width: "100%",
-      paddingBottom: `${(VBH / VBW) * 100}%`,
+      height: "min(58vw, 300px)",
       background: "var(--s2, #f8f9fa)", borderRadius: 12,
       border: "1px solid var(--bd)", overflow: "hidden",
     }}>

@@ -1058,6 +1058,14 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               </>;
             })()}
 
+            {/* back to Team button — shown whenever a dept is drilled into */}
+            {st.selDept && !st.selArt && (
+              <button onClick={() => { S.current.selDept = null; S.current.selArt = null; S.current.tab = "team"; force(); }}
+                style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", padding: "0 0 10px", color: "var(--fm)", fontSize: 10.5, fontFamily: "var(--font-geist-sans), system-ui, sans-serif" }}>
+                ← Team
+              </button>
+            )}
+
             {/* selected dept — updates / tech logs / sources */}
             {st.selDept && !st.selArt && (() => {
               const d = st.selDept === "__other" ? { ags: otherAgs } : DEPTS[st.selDept] || { ags: [] };
