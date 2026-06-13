@@ -135,8 +135,8 @@ export default function AgentSwarm({ agents, coreLabel, coreSub }: Props) {
 
   return (
     <div style={{
-      position: "relative", width: "100%",
-      height: "min(55vw, 340px)",
+      position: "relative", width: "100%", maxWidth: 440,
+      aspectRatio: "1 / 1",
       background: "var(--s2, #f8f9fa)", borderRadius: 12,
       border: "1px solid var(--bd)", overflow: "hidden",
     }}>
