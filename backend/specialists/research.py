@@ -70,6 +70,57 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
     return wrapper
 
 
+_DONE_INSTRUCTIONS = (
+    "\n\nDONE OUTPUT — plain text values only, no markdown stars, no bullet symbols, no emojis.\n"
+    "After obsidian_log, call done with this exact JSON structure (fill every field from research + injected company context):\n"
+    '{"action":"done","output":{'
+    '"summary":"one paragraph synthesis of all findings",'
+    '"market_size":"TAM/SAM/SOM with concrete numbers e.g. $12B TAM growing 18% CAGR",'
+    '"icp":"who the ideal customer is, 1-2 sentences",'
+    '"problem":"core pain point the company solves, 1-2 sentences",'
+    '"solution":"what the product does, 1-2 sentences",'
+    '"differentiator":"key competitive advantage over alternatives, 1 sentence",'
+    '"moat":"defensibility or barriers to entry, 1 sentence",'
+    '"revenue_model":"how the company makes money, 1 sentence",'
+    '"go_to_market":"primary acquisition strategy and key channels, 1-2 sentences",'
+    '"risks":"top 2-3 risks in 1-2 sentences",'
+    '"tagline":"one-line value proposition",'
+    '"mission":"company mission statement",'
+    '"competitors":["CompanyA","CompanyB","CompanyC"],'
+    '"sources":["url1","url2"]}}\n'
+    "For identity fields (problem, solution, tagline, mission, revenue_model, differentiator, moat, icp): "
+    "use injected company brain context as the source of truth, supplement with research.\n"
+    "For market/competitor fields: use your research findings."
+)
+
+_DONE_COMPETITORS = (
+    "\n\nDONE OUTPUT — plain text, no markdown.\n"
+    '{"action":"done","output":{'
+    '"competitors":["Company A","Company B","Company C","Company D","Company E","Company F","Company G","Company H"],'
+    '"differentiator":"how this company differentiates from the listed competitors, 1 sentence",'
+    '"summary":"competitive landscape synthesis",'
+    '"sources":["url1","url2"]}}\n'
+    "List at least 6 real named competitor companies."
+)
+
+_DONE_CUSTOMERS = (
+    "\n\nDONE OUTPUT — plain text, no markdown.\n"
+    '{"action":"done","output":{'
+    '"icp":"ideal customer profile with demographics, job title, company size",'
+    '"problem":"core pain point the customer experiences, 1-2 sentences",'
+    '"summary":"customer intelligence synthesis",'
+    '"sources":["url1","url2"]}}\n'
+)
+
+_DONE_GTM = (
+    "\n\nDONE OUTPUT — plain text, no markdown.\n"
+    '{"action":"done","output":{'
+    '"go_to_market":"primary GTM strategy and key acquisition channels, 1-2 sentences",'
+    '"revenue_model":"pricing model and monetization approach, 1 sentence",'
+    '"summary":"GTM intelligence synthesis",'
+    '"sources":["url1","url2"]}}\n'
+)
+
 _FOCUS_ROLES = {
     "research": (
         "COMPREHENSIVE RESEARCH — cover all 4 areas in sequence:\n\n"
@@ -79,6 +130,7 @@ _FOCUS_ROLES = {
         "4. GTM (acquisition channels, CAC benchmarks, launch tactics): build_research_queries(focus='gtm') + 1-2 batch_search rounds + news_search.\n\n"
         "Do NOT revisit URLs already fetched. Move through all 4 areas before logging.\n\n"
         "obsidian_log with ALL sections: MARKET SIZE, COMPETITOR TABLE, ICP PROFILE, PAIN POINTS, GTM CHANNELS, SOURCES."
+        + _DONE_INSTRUCTIONS
     ),
     "research_competitors": (
         "COMPETITOR INTELLIGENCE (named companies, pricing, features, weaknesses):\n"
@@ -88,6 +140,7 @@ _FOCUS_ROLES = {
         "2. Extract at least 8 named competitors. Fetch homepage/pricing for each — only NEW URLs not already read.\n"
         "3. patent_search and youtube_research when product demos/reviews matter.\n\n"
         "obsidian_log with: COMPETITOR TABLE (name, URL, pricing, funding, strengths, weaknesses), WHITESPACE OPPORTUNITIES, SOURCES."
+        + _DONE_COMPETITORS
     ),
     "research_customers": (
         "CUSTOMER & ICP INTELLIGENCE (who buys, why, how, pain severity):\n"
@@ -99,6 +152,7 @@ _FOCUS_ROLES = {
         "3. fetch_and_read 6-10 highest-signal community/review pages — only NEW URLs not already read.\n\n"
         "obsidian_log with: ICP PROFILE (demographics, job title, company size), TOP PAIN POINTS (quoted), "
         "BUYING TRIGGERS, WILLINGNESS TO PAY, CHURN REASONS, SOURCES."
+        + _DONE_CUSTOMERS
     ),
     "research_gtm": (
         "GO-TO-MARKET & DISTRIBUTION INTELLIGENCE (channels, growth tactics, pricing models):\n"
@@ -110,6 +164,7 @@ _FOCUS_ROLES = {
         "3. fetch_and_read 6-8 competitor growth/marketing pages — only NEW URLs not already read.\n\n"
         "obsidian_log with: CHANNEL MAP (channel, fit, cost, speed), PRICING MODEL PATTERNS, "
         "LAUNCH PLAYBOOK (what worked for others), CAC BENCHMARKS, SOURCES."
+        + _DONE_GTM
     ),
 }
 

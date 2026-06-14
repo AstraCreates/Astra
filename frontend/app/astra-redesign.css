@@ -107,6 +107,21 @@ body {
   color: var(--fg);
 }
 
+@keyframes portraitShimmer {
+  0%, 100% { opacity: 0.35; }
+  50%       { opacity: 0.75; }
+}
+
+@keyframes portraitFadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes portraitShimmer { 0%, 100% { opacity: 0.5; } }
+  @keyframes portraitFadeIn  { from { opacity: 0; } to { opacity: 1; } }
+}
+
 /* Quiet, flat surfaces — kill the grid-line / radial-gradient backdrop. */
 body,
 [data-theme="light"] body,

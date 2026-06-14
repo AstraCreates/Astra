@@ -1,0 +1,107 @@
+"""Launch a custom agent as an orchestrated run.
+
+Shared by the run-now API endpoint and the recurring scheduler. Uses the NORMAL
+orchestrator path (not bypass_planner) so stack approval gates still apply — a
+custom agent with send/post tools must not auto-fire irreversible actions.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+
+def _default_goal(spec: dict[str, Any]) -> str:
+    """A goal string for runs where the founder didn't supply one. The agent's
+    role prompt carries the real instructions; this just frames the run."""
+    return (
+        f"Execute your defined task as the \"{spec.get('name', 'custom')}\" agent. "
+        "Follow your role instructions exactly and produce your expected output."
+    )
+
+
+async def launch_custom_agent_run(
+    *,
+    founder_id: str,
+    spec: dict[str, Any],
+    goal: str | None = None,
+    company_id: str | None = None,
+) -> str:
+    """Start a background orchestrator run scoped to a single custom agent.
+
+    Returns the new session_id immediately; the run continues in the background.
+    """
+    from backend.core.factory import get_orchestrator
+    from backend.core.session_ids import new_session_id
+    from backend.core.events import _get_queue
+    from backend.core import cancellation
+
+    agent_id = spec["id"]
+    resolved_company = company_id or spec.get("company_id") or founder_id
+    run_goal = (goal or "").strip() or _default_goal(spec)
+    session_id = new_session_id()
+    orch = get_orchestrator()
+
+    # Unlimited credits for scale/beta plans, mirroring submit_goal.
+    unlimited = False
+    try:
+        from backend.accounts import get_or_create_org
+        plan = (get_or_create_org(founder_id) or {}).get("plan", "starter")
+        unlimited = plan in ("scale", "beta")
+    except Exception:
+        pass
+
+    constraints: dict[str, Any] = {
+        "agents": [agent_id],
+        "stack_id": "custom",
+        "company_id": resolved_company,
+        "unlimited_credits": unlimited,
+        "custom_agent_id": agent_id,
+    }
+
+    # Register session in the durable store before launching (best-effort).
+    try:
+        from backend.core.session_store import register_session
+        register_session(
+            session_id=session_id,
+            founder_id=founder_id,
+            goal=run_goal,
+            stack_id="custom",
+            company_name=str(spec.get("name", "")),
+            agents=[agent_id],
+            workspace_id=resolved_company,
+            company_id=resolved_company,
+            chapter_id="",
+        )
+    except Exception as exc:
+        logger.warning("custom_agent run: register_session failed: %s", exc)
+
+    # Pre-create the SSE queue so the frontend can attach before the first event.
+    _get_queue(session_id)
+
+    async def _run() -> None:
+        try:
+            await orch.run(
+                goal=run_goal,
+                founder_id=founder_id,
+                constraints=constraints,
+                session_id=session_id,
+            )
+        except asyncio.CancelledError:
+            logger.info("custom_agent run killed session=%s", session_id)
+        except Exception as exc:
+            logger.error("custom_agent run error session=%s: %s", session_id, exc, exc_info=True)
+            try:
+                from backend.core.events import publish
+                await publish(session_id, {"type": "goal_error", "error": str(exc)})
+            except Exception:
+                pass
+        finally:
+            cancellation.clear(session_id)
+
+    task = asyncio.create_task(_run())
+    cancellation.register_task(session_id, task)
+    logger.info("custom_agent run launched: agent=%s session=%s", agent_id, session_id)
+    return session_id

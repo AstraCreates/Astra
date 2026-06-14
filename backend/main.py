@@ -22,6 +22,7 @@ from backend.api.connectors_routes import router as connectors_router
 from backend.api.notification_routes import router as notification_router
 from backend.api.dashboard_routes import router as dashboard_router
 from backend.api.preview_proxy import router as preview_proxy_router
+from backend.api.custom_agents_routes import custom_agents_router
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,7 @@ app.include_router(team_map_router, prefix="/api")
 app.include_router(connectors_router, prefix="/api")
 app.include_router(notification_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")
+app.include_router(custom_agents_router, prefix="/api")
 app.include_router(preview_proxy_router)
 
 
@@ -80,6 +82,9 @@ async def startup_background_jobs():
     # Goal loop is event-driven (agent_done → tasks; complete goal → auto-chain).
     # This scheduler is only a 30-min safety net to recover stalled goals.
     start_missions_scheduler(interval_seconds=1800)
+    from backend.custom_agents.scheduler import start_custom_agents_scheduler
+    # Recurring custom agents — checks for due agents every 15 min.
+    start_custom_agents_scheduler(interval_seconds=900)
     asyncio.create_task(_resume_interrupted_sessions())
     asyncio.create_task(_platform_alert_loop())
     asyncio.create_task(_pii_purge_loop())
