@@ -2582,6 +2582,114 @@ export async function rerunAgent(
   return res.json();
 }
 
+// ---------------------------------------------------------------------------
+// Custom agents — founder-defined specialists
+// ---------------------------------------------------------------------------
+
+export interface CustomAgentToolSpec {
+  key: string;
+  label: string;
+  description: string;
+  category: string;
+  connector: string | null;
+}
+
+export interface CustomAgentSchedule {
+  every_days: number;
+  enabled: boolean;
+  last_run_at?: string | null;
+  next_run_at?: string | null;
+}
+
+export interface ConnectorStatus {
+  required: string[];
+  missing: string[];
+  ready: boolean;
+}
+
+export interface CustomAgent {
+  id: string;
+  founder_id: string;
+  company_id?: string;
+  name: string;
+  slug: string;
+  role: string;
+  tool_keys: string[];
+  model: string;
+  use_computer: boolean;
+  schedule: CustomAgentSchedule | null;
+  created_at: string;
+  updated_at: string;
+  connector_status?: ConnectorStatus;
+}
+
+export interface CustomAgentInput {
+  name: string;
+  role: string;
+  tool_keys: string[];
+  model?: string;
+  use_computer?: boolean;
+  schedule?: { every_days: number; enabled: boolean } | null;
+  company_id?: string;
+}
+
+export async function getCustomAgentToolCatalog(): Promise<CustomAgentToolSpec[]> {
+  const res = await apiFetch(`${BASE}/api/custom-agents/tool-catalog`);
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()).tools;
+}
+
+export async function listCustomAgents(founderId: string): Promise<CustomAgent[]> {
+  const res = await apiFetch(`${BASE}/api/custom-agents/${encodeURIComponent(founderId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return (await res.json()).agents;
+}
+
+export async function createCustomAgent(founderId: string, input: CustomAgentInput): Promise<CustomAgent> {
+  const res = await apiFetch(`${BASE}/api/custom-agents/${encodeURIComponent(founderId)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function updateCustomAgent(
+  founderId: string,
+  agentId: string,
+  input: Partial<CustomAgentInput> & { clear_schedule?: boolean },
+): Promise<CustomAgent> {
+  const res = await apiFetch(`${BASE}/api/custom-agents/${encodeURIComponent(founderId)}/${encodeURIComponent(agentId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function deleteCustomAgent(founderId: string, agentId: string): Promise<void> {
+  const res = await apiFetch(`${BASE}/api/custom-agents/${encodeURIComponent(founderId)}/${encodeURIComponent(agentId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(await res.text());
+}
+
+export async function runCustomAgent(
+  founderId: string,
+  agentId: string,
+  opts: { goal?: string; companyId?: string } = {},
+): Promise<{ session_id: string; status: string; agent_id: string }> {
+  const res = await apiFetch(`${BASE}/api/custom-agents/${encodeURIComponent(founderId)}/${encodeURIComponent(agentId)}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ goal: opts.goal, company_id: opts.companyId }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
   github_create_repo: "Creating GitHub repository",
   supabase_create_project: "Provisioning Supabase database",

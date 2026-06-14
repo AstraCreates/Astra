@@ -14,6 +14,7 @@ const LINKS: { href: string; ic: string; label: string; match: (p: string) => bo
   { href: "/goals", ic: "◎", label: "Checklist", match: (p) => p.startsWith("/goals") },
   { href: "/outreach", ic: "✦", label: "Outreach", match: (p) => p.startsWith("/outreach") },
   { href: "/brain", ic: "◈", label: "Company Brain", match: (p) => p.startsWith("/brain") },
+  { href: "/agents", ic: "✺", label: "Custom Agents", match: (p) => p.startsWith("/agents") },
   { href: "/integrations", ic: "⌘", label: "Integrations", match: (p) => p.startsWith("/integrations") },
   { href: "/payments", ic: "$", label: "Payments", match: (p) => p.startsWith("/payments") },
 ];
