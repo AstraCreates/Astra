@@ -157,7 +157,7 @@ export default function BusinessQuizModal({ onComplete, onSkip }: Props) {
                   onClick={() => setBizType(t.id)}
                   style={{
                     display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
-                    background: bizType === t.id ? "var(--blue-subtle, rgba(59,130,246,0.1))" : "var(--surface2, #1a1a1a)",
+                    background: bizType === t.id ? "var(--blue-subtle, rgba(59,130,246,0.1))" : "var(--s2)",
                     border: `1px solid ${bizType === t.id ? "var(--blue, #3b82f6)" : "var(--bd, #2a2a2a)"}`,
                     borderRadius: 8, cursor: "pointer", textAlign: "left", width: "100%",
                   }}
@@ -188,7 +188,7 @@ export default function BusinessQuizModal({ onComplete, onSkip }: Props) {
                   onClick={() => setCustomer(c.id)}
                   style={{
                     display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
-                    background: customer === c.id ? "var(--blue-subtle, rgba(59,130,246,0.1))" : "var(--surface2, #1a1a1a)",
+                    background: customer === c.id ? "var(--blue-subtle, rgba(59,130,246,0.1))" : "var(--s2)",
                     border: `1px solid ${customer === c.id ? "var(--blue, #3b82f6)" : "var(--bd, #2a2a2a)"}`,
                     borderRadius: 8, cursor: "pointer", textAlign: "left", width: "100%",
                   }}
@@ -218,7 +218,7 @@ export default function BusinessQuizModal({ onComplete, onSkip }: Props) {
                   onClick={() => setStage(s.id)}
                   style={{
                     display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
-                    background: stage === s.id ? "var(--blue-subtle, rgba(59,130,246,0.1))" : "var(--surface2, #1a1a1a)",
+                    background: stage === s.id ? "var(--blue-subtle, rgba(59,130,246,0.1))" : "var(--s2)",
                     border: `1px solid ${stage === s.id ? "var(--blue, #3b82f6)" : "var(--bd, #2a2a2a)"}`,
                     borderRadius: 8, cursor: "pointer", textAlign: "left", width: "100%",
                   }}
@@ -248,7 +248,7 @@ export default function BusinessQuizModal({ onComplete, onSkip }: Props) {
                   onClick={() => setSub(c.id)}
                   style={{
                     display: "flex", flexDirection: "column", gap: 4, padding: "12px 14px",
-                    background: sub === c.id ? "var(--blue-subtle, rgba(59,130,246,0.1))" : "var(--surface2, #1a1a1a)",
+                    background: sub === c.id ? "var(--blue-subtle, rgba(59,130,246,0.1))" : "var(--s2)",
                     border: `1px solid ${sub === c.id ? "var(--blue, #3b82f6)" : "var(--bd, #2a2a2a)"}`,
                     borderRadius: 8, cursor: "pointer", textAlign: "left",
                   }}

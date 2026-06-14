@@ -160,15 +160,16 @@ def get_orchestrator() -> Orchestrator:
             dashboard_get,
         )
         from backend.tools.ask_user_tool import ask_user
-        _research_agent_names = {n for n in specialists if n.startswith("research")}
+        # Only agents that legitimately need founder clarification before acting get ask_user.
+        # Specialist agents (design, marketing, legal, sales, finance, research*) work from
+        # their brief — injecting ask_user causes 300s blocks when nobody is watching.
+        _ask_user_agents = {"ops", "technical", "technical_scaffold", "technical_infra", "technical_data", "web"}
         for name, agent in specialists.items():
             agent.tools.setdefault("dashboard_add_element", dashboard_add_element)
             agent.tools.setdefault("dashboard_remove_element", dashboard_remove_element)
             agent.tools.setdefault("dashboard_clear", dashboard_clear)
             agent.tools.setdefault("dashboard_get", dashboard_get)
-            # Research agents must not block on ask_user — they run autonomously and
-            # a 300s timeout per agent would stall the entire research phase.
-            if name not in _research_agent_names:
+            if name in _ask_user_agents:
                 agent.tools.setdefault("ask_user", ask_user)
 
         # Integration tools — ops, marketing, and content agents for ecomm/local_service stacks
