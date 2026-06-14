@@ -5,6 +5,7 @@ Specialists run in dependency order; results flow back into shared context.
 import asyncio
 import json
 import logging
+import os
 from typing import Any
 
 from backend.core.agent import Agent, AgentContext
@@ -252,6 +253,10 @@ class Orchestrator:
             messages.append({"role": "user", "content": "Invalid format. Output ONLY valid JSON with a tasks array."})
             logger.warning("Planner attempt %d unparseable", attempt + 1)
         return []
+
+    async def _verify_llm_call(self, messages: list[dict]) -> str:
+        """LLM handle for the semantic verification judge (L3). Runs on the planner model."""
+        return await asyncio.to_thread(self.planner._call_llm, messages)
 
     async def _initial_plan(self, goal: str, stack_template=None) -> list[dict]:
         """Phase 1: decide which agents to use based on stack + goal. research always first."""
@@ -1118,6 +1123,49 @@ class Orchestrator:
 
             dep_results = {dep: completed.get(dep, {}) for dep in task.get("depends_on", [])}
 
+            # Handoff contract: an agent must not build on a blocked upstream artifact.
+            # If a dependency it consumes failed verification (status == blocked), refuse
+            # to run on hallucinated/missing input and surface it to the founder instead
+            # of producing plausible-looking work on a broken foundation. ASTRA_STRICT_HANDOFF=0
+            # disables this (downstream runs anyway).
+            if os.getenv("ASTRA_STRICT_HANDOFF", "1") != "0":
+                blocked_deps = [
+                    dep for dep in task.get("depends_on", [])
+                    if (task_verifications.get(dep) or {}).get("status") == "blocked"
+                ]
+                if blocked_deps:
+                    reason = (
+                        f"upstream dependency {', '.join(blocked_deps)} failed verification; "
+                        f"{agent_name} cannot build on broken input"
+                    )
+                    logger.warning("Handoff BLOCKED for %s — %s", agent_name, reason)
+                    result = {"agent": agent_name, "error": reason, "handoff_blocked": True}
+                    completed[tid] = result
+                    blocked_verdict = {
+                        "task_id": tid,
+                        "lane_id": lane_id,
+                        "agent": agent_name,
+                        "status": "blocked",
+                        "summary": reason,
+                        "failed_checks": [reason],
+                        "required_missing": list(blocked_deps),
+                        "artifacts": [],
+                    }
+                    task_verifications[tid] = blocked_verdict
+                    await publish(session_id, {
+                        "type": "stack_lane_status",
+                        "lane_id": lane_id,
+                        "agent": agent_name,
+                        "task_id": tid,
+                        "status": "blocked",
+                        "phase": stack_lane.get("phase"),
+                        "title": stack_lane.get("title") or task.get("stack_task_title") or agent_name,
+                        "blockers": [reason],
+                        "next_actor": "founder",
+                        "artifact_verification": blocked_verdict,
+                    })
+                    return
+
             # Load agent's prior Obsidian context as readable markdown (not raw JSON)
             vault_context_text = ""
             try:
@@ -1167,43 +1215,63 @@ class Orchestrator:
             })
             result = await agent.run(ctx)
 
-            # Web quality gate: retry with stricter instructions when fallback template is detected.
-            if agent_name == "web":
-                retry_count = 0
-                while retry_count < 2:
-                    html_result = result.get("html") if isinstance(result, dict) else None
-                    used_fallback = isinstance(html_result, str) and self._is_web_fallback_html(html_result)
-                    if not used_fallback:
-                        break
-                    retry_count += 1
-                    await publish(session_id, {
-                        "type": "agent_action_result",
-                        "agent": agent_name,
-                        "tool": "generate_landing_page_html",
-                        "result": {"error": f"fallback template detected (attempt {retry_count}); rerunning with stricter instruction"},
-                    })
-                    retry_ctx = AgentContext(
-                        goal=(
-                            task["instruction"]
-                            + "\n\nSTRICT QUALITY RETRY: The previous HTML used fallback template output. "
-                              "You MUST regenerate custom HTML with explicit brand colors/fonts and concrete product copy. "
-                              "Use semantic sections and realistic metrics. Do not return fallback/template output."
-                        ),
-                        founder_id=founder_id,
-                        session_id=session_id,
-                        shared={**ctx.shared, "web_quality_retry": True, "web_quality_retry_count": retry_count},
-                    )
-                    await publish(session_id, {
-                        "type": "agent_start",
-                        "agent": agent_name,
-                        "task_id": f"{tid}_retry_{retry_count}",
-                        "instruction": f"Quality retry {retry_count} after fallback detection",
-                    })
-                    retry_result = await agent.run(retry_ctx)
-                    if isinstance(retry_result, dict):
-                        result = retry_result
-                html_result = result.get("html") if isinstance(result, dict) else None
-                if isinstance(html_result, str) and self._is_web_fallback_html(html_result):
+            # Deep verification + self-correction loop (ALL agents).
+            # Run the artifact through the verification ladder (shape → executable →
+            # semantic). If it fails, feed the concrete problems back to the agent and
+            # let it regenerate, bounded by ASTRA_VERIFY_RETRIES (default 2). This is
+            # what turns "produced something" into "produced something that passes."
+            from backend.stacks import verify_task_artifacts as _verify_base, run_deep_verification
+            _max_retries = int(os.getenv("ASTRA_VERIFY_RETRIES", "2"))
+            deep_verdict: dict = {}
+            _attempt = 0
+            while True:
+                _base = _verify_base(task, result, shared.get("stack_execution_blueprint"))
+                deep_verdict = await run_deep_verification(
+                    agent_name=agent_name,
+                    task=task,
+                    result=result,
+                    base_verdict=_base,
+                    llm_call=self._verify_llm_call,
+                )
+                if deep_verdict.get("status") == "passed" or _attempt >= _max_retries:
+                    break
+                _attempt += 1
+                _correction = deep_verdict.get("correction_prompt") or (
+                    "Output failed verification. Fix the issues and regenerate the full deliverable."
+                )
+                await publish(session_id, {
+                    "type": "agent_action_result",
+                    "agent": agent_name,
+                    "tool": "verification_gate",
+                    "result": {
+                        "status": deep_verdict.get("status"),
+                        "attempt": _attempt,
+                        "failed_checks": (deep_verdict.get("failed_checks") or [])[:6],
+                    },
+                })
+                retry_ctx = AgentContext(
+                    goal=task["instruction"]
+                    + f"\n\nSELF-CORRECTION (attempt {_attempt} of {_max_retries}):\n"
+                    + _correction,
+                    founder_id=founder_id,
+                    session_id=session_id,
+                    unlimited_credits=bool((constraints or {}).get("unlimited_credits", False)),
+                    shared={**ctx.shared, "verification_retry": True, "verification_retry_count": _attempt},
+                )
+                await publish(session_id, {
+                    "type": "agent_start",
+                    "agent": agent_name,
+                    "task_id": f"{tid}_retry_{_attempt}",
+                    "instruction": f"Self-correction attempt {_attempt} after verification failure",
+                })
+                _retry_result = await agent.run(retry_ctx)
+                if isinstance(_retry_result, dict):
+                    result = _retry_result
+
+            # Preserve legacy web fallback flag so existing UI/blocking keeps working.
+            if agent_name == "web" and deep_verdict.get("status") == "blocked":
+                _html = result.get("html") if isinstance(result, dict) else None
+                if isinstance(_html, str) and self._is_web_fallback_html(_html):
                     if isinstance(result, dict):
                         result["web_quality_error"] = "fallback_template_persisted_after_retries"
                     await publish(session_id, {
@@ -1248,23 +1316,29 @@ class Orchestrator:
             _safe = _shared_safe(agent_name, result)
             shared[f"result_{tid}"] = _safe
             shared[f"result_{agent_name}"] = _safe  # also keyed by agent name for downstream context
-            try:
-                from backend.stacks import verify_task_artifacts
-                artifact_verification = verify_task_artifacts(
-                    task,
-                    result,
-                    shared.get("stack_execution_blueprint"),
-                )
-            except Exception as _verify_exc:
-                logger.warning("Artifact verification failed for %s: %s", agent_name, _verify_exc)
-                artifact_verification = {
-                    "task_id": tid,
-                    "lane_id": lane_id,
-                    "agent": agent_name,
-                    "status": "needs_review",
-                    "summary": f"Artifact verification failed: {_verify_exc}",
-                    "artifacts": [],
-                }
+            # Reuse the verdict from the verification+retry loop above (it already ran
+            # the full ladder against the final, post-correction result).
+            if deep_verdict:
+                artifact_verification = deep_verdict
+                artifact_verification.setdefault("lane_id", lane_id)
+            else:
+                try:
+                    from backend.stacks import verify_task_artifacts
+                    artifact_verification = verify_task_artifacts(
+                        task,
+                        result,
+                        shared.get("stack_execution_blueprint"),
+                    )
+                except Exception as _verify_exc:
+                    logger.warning("Artifact verification failed for %s: %s", agent_name, _verify_exc)
+                    artifact_verification = {
+                        "task_id": tid,
+                        "lane_id": lane_id,
+                        "agent": agent_name,
+                        "status": "needs_review",
+                        "summary": f"Artifact verification failed: {_verify_exc}",
+                        "artifacts": [],
+                    }
             task_verifications[tid] = artifact_verification
             context_policy.persist_agent_result(
                 agent_name=agent_name,

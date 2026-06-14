@@ -11,6 +11,7 @@ from backend.stacks.templates import (
 from backend.stacks.compiler import StackRecommendation, recommend_stack
 from backend.stacks.approvals import build_approval_queue
 from backend.stacks.artifact_verification import verify_task_artifacts
+from backend.stacks.verification_gates import run_deep_verification
 from backend.stacks.execution_contracts import build_stack_execution_contract, task_execution_guidance
 from backend.stacks.execution_blueprint import build_stack_execution_blueprint
 from backend.stacks.manifest import build_stack_manifest
@@ -40,4 +41,5 @@ __all__ = [
     "stack_readiness",
     "task_execution_guidance",
     "verify_task_artifacts",
+    "run_deep_verification",
 ]
