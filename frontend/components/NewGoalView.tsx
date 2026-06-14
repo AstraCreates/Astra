@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getStacks, submitGoal, ingestAttachment, type AgentStackTemplate } from "@/lib/api";
 import { useDevUser } from "@/lib/use-dev-user";
-import BusinessQuizModal, { type QuizResult, STACK_MAP } from "@/components/BusinessQuizModal";
+import BusinessQuizModal, { type QuizResult, STACK_MAP, BIZ_TYPES } from "@/components/BusinessQuizModal";
 
 export default function NewGoalView() {
   const router = useRouter();
@@ -63,7 +63,7 @@ export default function NewGoalView() {
     setBusy(true);
     try {
       let instruction = displayCompany ? `Company/project name: ${displayCompany}\n\n${goal}` : goal;
-      if (quiz) instruction = `${quiz.contextBlock}\n\n---\n${instruction}`;
+      if (quiz) instruction = `${instruction}\n\n---\n${quiz.contextBlock}`;
       if (attachments.length) {
         instruction += "\n\nAttached context:\n" + attachments.map((a) => `--- ${a.name} ---\n${a.content.slice(0, 8000)}`).join("\n\n");
       }
@@ -99,7 +99,7 @@ export default function NewGoalView() {
         )}
         {quizResult && (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--blue, #3b82f6)", background: "rgba(59,130,246,0.08)", fontSize: 10.5, marginBottom: 16, marginLeft: displayCompany ? 8 : 0 }}>
-            <span style={{ fontWeight: 600, color: "var(--fg)" }}>{quizResult.businessType}</span>
+            <span style={{ fontWeight: 600, color: "var(--fg)" }}>{BIZ_TYPES.find(t => t.id === quizResult.businessType)?.label ?? quizResult.businessType}</span>
             {quizResult.subCategory && <span style={{ color: "var(--fm)" }}>· {quizResult.subCategory}</span>}
             <span style={{ color: "var(--fm)" }}>· {quizResult.stage}</span>
             <button onClick={() => setQuizResult(null)} style={{ fontSize: 10, color: "var(--fm)", background: "none", border: "none", cursor: "pointer", padding: 0, marginLeft: 2 }}>✕</button>

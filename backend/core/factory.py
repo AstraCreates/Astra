@@ -163,6 +163,8 @@ def get_orchestrator() -> Orchestrator:
         # Only agents that legitimately need founder clarification before acting get ask_user.
         # Specialist agents (design, marketing, legal, sales, finance, research*) work from
         # their brief — injecting ask_user causes 300s blocks when nobody is watching.
+        # web_navigator excluded: it drives the browser autonomously; asking questions mid-crawl
+        # would stall the session just like research agents did.
         _ask_user_agents = {"ops", "technical", "technical_scaffold", "technical_infra", "technical_data", "web"}
         for name, agent in specialists.items():
             agent.tools.setdefault("dashboard_add_element", dashboard_add_element)

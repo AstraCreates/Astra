@@ -229,6 +229,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [accessDenied, setAccessDenied] = useState(false);
   const [agentQuestion, setAgentQuestion] = useState<{ request_id: string; question: string; options: string[]; hint: string } | null>(null);
   const [agentAnswer, setAgentAnswer] = useState("");
+  const agentAnswerInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (agentQuestion && agentQuestion.options.length === 0) { setTimeout(() => agentAnswerInputRef.current?.focus(), 0); } }, [agentQuestion]);
   const [toastErr, setToastErr] = useState("");
   const [restartConfirm, setRestartConfirm] = useState(false);
   const [takeover, setTakeover] = useState(false);
@@ -533,9 +535,9 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data: { answer } }),
       });
-    } catch {}
-    setAgentQuestion(null);
-    setAgentAnswer("");
+      setAgentQuestion(null);
+      setAgentAnswer("");
+    } catch { setToastErr("Failed to send answer — try again."); }
   };
   // No window.confirm — mobile in-app webviews suppress it (returns false), which
   // made Stop/Restart silently no-op. Optimistic UI + fire the request.
@@ -784,17 +786,17 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)", marginBottom: 18, lineHeight: 1.4 }}>{agentQuestion.question}</div>
             {agentQuestion.options.length > 0 ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {agentQuestion.options.map((opt) => (
-                  <button key={opt} className="btn" onClick={() => answerAgentQuestion(opt)}
+                {agentQuestion.options.map((opt, i) => (
+                  <button key={i} className="btn" onClick={() => answerAgentQuestion(opt)}
                     style={{ textAlign: "left", padding: "10px 14px" }}>{opt}</button>
                 ))}
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <input className="f-input" placeholder={agentQuestion.hint || "Your answer…"}
+                <input ref={agentAnswerInputRef} className="f-input" placeholder={agentQuestion.hint || "Your answer…"}
                   value={agentAnswer} onChange={(e) => setAgentAnswer(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && agentAnswer.trim() && answerAgentQuestion(agentAnswer.trim())}
-                  style={{ width: "100%", boxSizing: "border-box" }} autoFocus />
+                  style={{ width: "100%", boxSizing: "border-box" }} />
                 <div style={{ display: "flex", gap: 8 }}>
                   <button className="btn pri" disabled={!agentAnswer.trim()} onClick={() => answerAgentQuestion(agentAnswer.trim())} style={{ flex: 1 }}>Send →</button>
                   <button className="btn" onClick={() => { setAgentQuestion(null); setAgentAnswer(""); }}>Skip</button>
