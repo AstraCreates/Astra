@@ -50,7 +50,45 @@ _FILLER = (
     "insert ", "your company", "example.com", "[company]", "{{", "xxx",
 )
 
-# Per-agent shape contract. Each agent must satisfy:
+# --- Data-driven artifact-kind inference -------------------------------------
+# There is no fixed roster of agents or stacks: founders define their own agents
+# and stacks, each with arbitrary artifact keys (github_repo, privacy_policy_pdf,
+# er_diagram, ...). So the PRIMARY shape check is derived from the deliverable key
+# itself, not the agent name. The per-agent table below is an optional refinement
+# for the built-in specialists.
+_URL_KIND_HINTS = (
+    "url", "link", "site", "website", "deploy", "repo", "github", "domain",
+    "landing_page", "live", "preview", "hosted", "endpoint",
+)
+_DOC_KIND_HINTS = (
+    "pdf", "policy", "agreement", "memo", "report", "deck", "doc", "brief",
+    "plan", "guide", "checklist", "playbook", "model", "outline", "strategy",
+    "schema", "diagram", "roadmap", "sheet", "table", "calendar", "spec",
+    "sequence", "playbook", "analysis", "comps", "benchmark",
+)
+
+
+def _infer_kind(key: str, title: str = "") -> str:
+    """Classify a deliverable from its key/title: 'url' (must be a working link),
+    'doc' (substantial document), or 'text' (substantial prose)."""
+    # Tokenize so substrings don't false-match (e.g. "repo" inside "compliance_report").
+    tokens = set(re.split(r"[^a-z0-9]+", f"{key} {title}".lower()))
+    if tokens & set(_URL_KIND_HINTS):
+        return "url"
+    if tokens & set(_DOC_KIND_HINTS):
+        return "doc"
+    return "text"
+
+
+# Generic rubric applied to ANY agent (built-in or founder-defined) that has no
+# specialized rubric. Keeps the semantic judge active for every agent and stack.
+_DEFAULT_RUBRIC = (
+    "Output must be REAL, specific, usable work that fully completes the task: concrete "
+    "details, real names/numbers where relevant, and no placeholders, no generic filler, "
+    "and no fabricated or unsupported claims. Reject anything that only looks plausible."
+)
+
+# Per-agent shape contract (refinement for built-in specialists). Each agent may satisfy:
 #   url_fields      — at least one must hold a real http(s) URL (when listed)
 #   text_fields     — at least one must hold substantial concrete prose
 #   min_text_chars  — threshold for "substantial"
@@ -112,10 +150,49 @@ def _is_web_fallback(html: str) -> bool:
     return any(m in h for m in _WEB_FALLBACK_MARKERS)
 
 
+def _check_deliverable_shape(deliverables: list[dict], result: Any) -> list[str]:
+    """L1 generic — derive checks from each declared deliverable's key/title. Works
+    for ANY agent or stack (built-in or founder-defined). Empty == pass."""
+    fails: list[str] = []
+    body = _full_text(result)
+    has_url = bool(_URL_RE.search(body))
+    for d in deliverables:
+        if not d.get("required", True):
+            continue
+        key = str(d.get("artifact_key") or d.get("key") or "")
+        title = str(d.get("title") or "")
+        if not key:
+            continue
+        kind = _infer_kind(key, title)
+        if kind == "url":
+            # The deliverable promises a working link somewhere in the result.
+            if not has_url:
+                fails.append(
+                    f"Deliverable '{key}' must include a real working URL/link, but none "
+                    "was found in the output. Produce the actual hosted/deployed link."
+                )
+        else:  # doc / text
+            ev = _evidence(result, [key]) or ""
+            # Fall back to whole-body length when the artifact isn't its own field.
+            length = len(ev.strip()) or len(body.strip())
+            need = 600 if kind == "doc" else 200
+            if length < need:
+                fails.append(
+                    f"Deliverable '{key}' is too thin ({length} chars; need ~{need}+). "
+                    "Provide substantial, concrete content."
+                )
+    return fails
+
+
 def _check_shape(agent_name: str, result: Any) -> list[str]:
-    """L1 — deterministic. Returns a list of failure messages (empty == pass)."""
+    """L1 — per-agent refinement for built-in specialists. Empty == pass."""
     spec = _AGENT_SHAPE.get(agent_name)
     if not spec:
+        # No built-in spec: still run the universal filler guard.
+        low = _full_text(result).lower()
+        hit = [f for f in _FILLER if f in low]
+        if hit:
+            return [f"Contains placeholder/filler text ({', '.join(hit[:3])}). Replace with real content."]
         return []
     fails: list[str] = []
 
@@ -166,19 +243,28 @@ def _check_shape(agent_name: str, result: Any) -> list[str]:
 
 
 async def _check_executable(agent_name: str, result: Any) -> list[str]:
-    """L2 — for web/technical, actually fetch the deploy URL and confirm it loads."""
-    if agent_name not in ("web", "technical"):
-        return []
+    """L2 — for ANY agent that produced a deploy/live URL, actually fetch it and
+    confirm it loads. Agent-agnostic: a custom agent that ships a site is checked
+    the same as the built-in web agent."""
     if not isinstance(result, dict):
         return []
     url = ""
-    for f in ("deploy_url", "live_url", "preview_url", "url"):
+    # Prefer explicit deploy-ish fields; otherwise probe any URL-named field.
+    preferred = ("deploy_url", "live_url", "preview_url", "url", "hosted_url", "site_url")
+    for f in preferred:
         v = result.get(f)
         if isinstance(v, str) and _URL_RE.search(v):
             url = _URL_RE.search(v).group(0)
             break
     if not url:
-        return []  # missing-URL already caught by L1 shape
+        for k, v in result.items():
+            if any(h in str(k).lower() for h in ("url", "site", "deploy", "live", "hosted")) and isinstance(v, str):
+                m = _URL_RE.search(v)
+                if m:
+                    url = m.group(0)
+                    break
+    if not url:
+        return []  # no live artifact promised; nothing to execute
     try:
         import httpx
         async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
@@ -199,9 +285,8 @@ async def _check_semantic(agent_name: str, task: dict, result: Any, llm_call: Op
     """L3 — LLM judge against an agent-specific rubric. Best-effort; never raises."""
     if llm_call is None:
         return []
-    rubric = _AGENT_RUBRIC.get(agent_name)
-    if not rubric:
-        return []
+    # Every agent gets judged: specialized rubric if known, generic rubric otherwise.
+    rubric = _AGENT_RUBRIC.get(agent_name) or _DEFAULT_RUBRIC
     body = _full_text(result)[:8000]
     if not body.strip():
         return ["Result is empty — nothing to evaluate."]
@@ -276,7 +361,22 @@ async def run_deep_verification(
     verdict = dict(base_verdict or {})
     verdict.setdefault("status", "passed")
 
-    shape_fails = _check_shape(agent_name, result)
+    # Deliverables drive the generic, stack-agnostic shape check. Prefer the rich
+    # artifact list the base verdict already built (has titles); fall back to the
+    # task's expected_artifacts keys.
+    deliverables = [
+        {"artifact_key": a.get("artifact_key"), "title": a.get("title"), "required": a.get("required", True)}
+        for a in (verdict.get("artifacts") or [])
+        if a.get("artifact_key")
+    ]
+    if not deliverables:
+        deliverables = [{"artifact_key": k, "title": "", "required": True}
+                        for k in (task.get("expected_artifacts") or [])]
+
+    shape_fails = _check_deliverable_shape(deliverables, result) + _check_shape(agent_name, result)
+    # De-dupe while preserving order (built-in + generic checks can overlap).
+    seen: set[str] = set()
+    shape_fails = [f for f in shape_fails if not (f in seen or seen.add(f))]
     exec_fails = await _check_executable(agent_name, result)
     semantic_fails = await _check_semantic(agent_name, task, result, llm_call)
 
