@@ -88,7 +88,7 @@ def _extract_business_type(text: str) -> str:
             return "ecomm"
         if any(w in raw for w in ("local", "salon", "gym", "restaurant", "cleaning", "tutoring", "fitness", "beauty", "food")):
             return "local"
-        if any(w in raw for w in ("agency", "consult", "freelan")):
+        if any(w in raw for w in ("agency", "consult", "freelance")):
             return "agency"
         if any(w in raw for w in ("content", "creator", "newsletter", "media", "community")):
             return "content"
@@ -485,15 +485,14 @@ def tick_from_agent(session_id: str, agent: str, output: Any = None) -> None:
         agent_tasks = [t for t in cg.get("tasks") or [] if agent in (t.get("owner_agents") or [])]
         if not agent_tasks:
             return
-        # Pass the task so _agent_delivered can enforce evidence requirements for
-        # milestone tasks — e.g. "get first users" can't be self-reported.
-        owning_task = agent_tasks[0]
-        if not _agent_delivered(output, owning_task):
-            logger.info(
-                "goal_engine: %s emitted agent_done without real delivery for task '%s' — NOT completing",
-                agent, owning_task.get("title", ""),
-            )
-            return
+        # All owned milestone tasks must have evidence — check each one.
+        for owning_task in agent_tasks:
+            if not _agent_delivered(output, owning_task):
+                logger.info(
+                    "goal_engine: %s emitted agent_done without real delivery for task '%s' — NOT completing",
+                    agent, owning_task.get("title", ""),
+                )
+                return
         complete_agent_workstream(
             founder_id,
             agent,

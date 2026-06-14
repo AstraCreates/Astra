@@ -209,9 +209,9 @@ export default function NewGoalView() {
                           setExRefs(next);
                         }}
                       />
-                      {exRefs.length > 1 && (
+                      {(exRefs.length > 1 || ref.trim() === "") && (
                         <button className="btn sm" type="button"
-                          onClick={() => setExRefs(exRefs.filter((_, j) => j !== i))}>✕</button>
+                          onClick={() => exRefs.length > 1 ? setExRefs(exRefs.filter((_, j) => j !== i)) : setExRefs([""])}>✕</button>
                       )}
                     </div>
                   ))}
