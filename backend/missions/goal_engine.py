@@ -102,7 +102,16 @@ def _company_for_session(session_id: str, founder_id: str = "") -> str:
     try:
         from backend.core.session_store import get_session_meta
         meta = get_session_meta(session_id) or {}
-        return str(meta.get("company_id") or founder_id or meta.get("founder_id") or "")
+        cid = str(meta.get("company_id") or founder_id or meta.get("founder_id") or "")
+        # If the session's company_id is a workspace ID (ws_*) but no goal exists
+        # under it, fall back to the founder-level goal file (company_id == founder_id).
+        # This happens when child sessions inherit a workspace company_id but the
+        # goal was created at the founder level.
+        if cid and cid != founder_id and founder_id:
+            from backend.missions.company_goal import get_company_goal
+            if not get_company_goal(founder_id, cid):
+                return founder_id
+        return cid
     except Exception:
         return founder_id
 
