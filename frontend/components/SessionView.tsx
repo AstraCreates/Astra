@@ -13,6 +13,7 @@ import { signIn } from "next-auth/react";
 import dynamic from "next/dynamic";
 import SessionTour from "@/components/SessionTour";
 import AgentSwarm, { type SwarmAgent } from "@/components/AgentSwarm";
+import { ReceiptTrail, type ArtifactReceipt } from "@/components/PhaseWorkboard";
 
 // xterm touches `window`; load the takeover terminal client-only.
 const TerminalPane = dynamic(() => import("@/components/TerminalPane"), { ssr: false });
@@ -24,7 +25,7 @@ type LogEntry = { ts: number; type: string; text: string };
 // kind: command | output | error | file | log | plan | tool | phase | deploy
 type TermEntry = { ts: number; kind: string; text: string; agent: string };
 type Agent = { key: string; status: string; log: LogEntry[]; term: TermEntry[]; visitedUrls: string[]; currentTool: string | null; result: unknown; instruction: string };
-type Artifact = { key?: string; title?: string; status?: string; preview?: string; content?: string; description?: string; owner_agent?: string };
+type Artifact = { key?: string; title?: string; status?: string; preview?: string; content?: string; description?: string; owner_agent?: string; verification?: ArtifactReceipt };
 type Approval = { gate_key: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string; preview?: string }[] };
 
 type SState = {
@@ -1145,6 +1146,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               return <>
                 <div style={{ fontFamily: "var(--font-chakra)", fontSize: 13, fontWeight: 700, color: "var(--fg)" }}>{art.title || art.key}</div>
                 <div style={{ fontSize: 9, color: art.status === "ready" ? "var(--green)" : "var(--amber)", marginBottom: 10 }}>{art.status === "ready" ? "✓ ready" : "⋯ being written"}</div>
+                {art.verification?.checks?.length ? <div style={{ marginBottom: 12 }}><ReceiptTrail receipt={art.verification} /></div> : null}
                 {fileList.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 }}>
                     {fileList.map(([name, url]) => (

@@ -24,6 +24,19 @@ export interface AgentStateSlice {
   adImages?: Array<{ url?: string; base64?: string; prompt?: string }>;
 }
 
+export interface VerificationCheck {
+  level: string;
+  passed: boolean | null;
+  detail: string;
+}
+export interface ArtifactReceipt {
+  status?: string;
+  attempts?: number;
+  checked_at?: string;
+  checks?: VerificationCheck[];
+  evidence?: Record<string, unknown>;
+  failed_checks?: string[];
+}
 export interface RunArtifactSlice {
   key: string;
   title: string;
@@ -32,6 +45,7 @@ export interface RunArtifactSlice {
   required: boolean;
   status: "pending" | "ready";
   preview?: string;
+  verification?: ArtifactReceipt;
 }
 
 export interface ApprovalSlice {
@@ -511,6 +525,34 @@ function AgentPreview({ agentName, state }: { agentName: string; state: AgentSta
   );
 }
 
+export function ReceiptTrail({ receipt }: { receipt: ArtifactReceipt }) {
+  const status = receipt.status ?? "passed";
+  const tone = status === "passed"
+    ? { c: "#3D9E5F", bg: "rgba(61,158,95,0.08)", b: "rgba(61,158,95,0.28)", label: "✓ Verified" }
+    : status === "blocked"
+      ? { c: "#C0392B", bg: "rgba(192,57,43,0.08)", b: "rgba(192,57,43,0.30)", label: "✕ Blocked" }
+      : { c: "#D89614", bg: "rgba(216,150,20,0.08)", b: "rgba(216,150,20,0.30)", label: "⚠ Needs review" };
+  const icon = (p: boolean | null) => (p === true ? "✓" : p === false ? "✕" : "–");
+  const iconColor = (p: boolean | null) => (p === true ? "#3D9E5F" : p === false ? "#C0392B" : "rgba(176,180,186,0.4)");
+  return (
+    <div style={{ borderRadius: 10, background: tone.bg, border: `1px solid ${tone.b}`, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 7 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: tone.c, letterSpacing: "0.02em" }}>{tone.label}</span>
+        <span style={{ fontSize: 9.5, color: "rgba(176,180,186,0.45)" }}>
+          {receipt.attempts && receipt.attempts > 1 ? `self-corrected ${receipt.attempts - 1}× · ` : ""}verification receipt
+        </span>
+      </div>
+      {(receipt.checks ?? []).map((c) => (
+        <div key={c.level} style={{ display: "flex", gap: 7, alignItems: "flex-start", fontSize: 11 }}>
+          <span style={{ color: iconColor(c.passed), fontWeight: 700, flexShrink: 0, width: 12 }}>{icon(c.passed)}</span>
+          <span style={{ color: "rgba(176,180,186,0.45)", textTransform: "capitalize", flexShrink: 0, width: 70 }}>{c.level}</span>
+          <span style={{ color: "rgba(176,180,186,0.7)", lineHeight: 1.45 }}>{c.detail}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ArtifactDetail({ artifact, onCopy, onDownload }: {
   artifact: RunArtifactSlice;
   onCopy: () => void;
@@ -536,6 +578,7 @@ function ArtifactDetail({ artifact, onCopy, onDownload }: {
       {artifact.description && (
         <div style={{ fontSize: 12, color: "rgba(176,180,186,0.55)", lineHeight: 1.5 }}>{artifact.description}</div>
       )}
+      {artifact.verification?.checks?.length ? <ReceiptTrail receipt={artifact.verification} /> : null}
       {artifact.preview ? (
         <div style={{ padding: "12px 14px", borderRadius: 10, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(176,180,186,0.08)", fontSize: 12, color: "rgba(176,180,186,0.75)", lineHeight: 1.65, whiteSpace: "pre-wrap", overflowY: "auto", maxHeight: 400 }}>
           {artifact.preview}
