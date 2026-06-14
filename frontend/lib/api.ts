@@ -2633,10 +2633,31 @@ export interface CustomAgentInput {
   company_id?: string;
 }
 
-export async function getCustomAgentToolCatalog(): Promise<CustomAgentToolSpec[]> {
+export interface CustomAgentConnectorMeta {
+  key: string;
+  label: string;
+  kind: "composio" | "key";
+  composio_slug: string;
+}
+
+export async function getCustomAgentToolCatalog(): Promise<{
+  tools: CustomAgentToolSpec[];
+  connectors: CustomAgentConnectorMeta[];
+}> {
   const res = await apiFetch(`${BASE}/api/custom-agents/tool-catalog`);
   if (!res.ok) throw new Error(await res.text());
-  return (await res.json()).tools;
+  return res.json();
+}
+
+export async function startConnectorConnect(
+  founderId: string,
+  connectorKey: string,
+): Promise<{ kind: "composio" | "key"; connector: string; label: string; oauth_url?: string; field?: string }> {
+  const res = await apiFetch(
+    `${BASE}/api/custom-agents/${encodeURIComponent(founderId)}/connect/${encodeURIComponent(connectorKey)}`,
+  );
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
 }
 
 export async function listCustomAgents(founderId: string): Promise<CustomAgent[]> {

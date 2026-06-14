@@ -14,6 +14,7 @@ from typing import Any
 from backend.config import settings
 from backend.core.agent import Agent
 from backend.custom_agents.tool_catalog import (
+    CONNECTOR_BY_KEY,
     connectors_for_tool_keys,
     resolve_tools,
 )
@@ -116,12 +117,26 @@ def connector_readiness(founder_id: str, tool_keys: list[str], company_id: str |
     if not required:
         return {"required": [], "missing": [], "ready": True}
 
-    # A connector counts as ready if its credentials are present + shape-valid
-    # (validated by the provider, or at least locally valid). Anything else
-    # (missing creds / provider error) is surfaced so the UI can ask for it.
+    # Composio app connection status (one lookup, reused for every composio connector).
+    composio_status: dict[str, bool] = {}
+    if any(CONNECTOR_BY_KEY.get(k) and CONNECTOR_BY_KEY[k].kind == "composio" for k in required):
+        try:
+            from backend.tools.integration_connect import get_composio_app_status
+            composio_status = get_composio_app_status(founder_id) or {}
+        except Exception as exc:
+            logger.warning("composio app status lookup failed: %s", exc)
+
+    # A key connector is ready when its credentials are present + shape-valid.
     _READY = {"validated", "locally_valid"}
     missing: list[str] = []
     for key in required:
+        meta = CONNECTOR_BY_KEY.get(key)
+        if meta and meta.kind == "composio":
+            slug = meta.composio_slug or key
+            if not composio_status.get(slug):
+                missing.append(key)
+            continue
+        # key-based connector
         try:
             from backend.connector_validation import validate_connector
             result = validate_connector(founder_id, key)

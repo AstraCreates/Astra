@@ -9,8 +9,11 @@ import {
   getCustomAgentToolCatalog,
   listCustomAgents,
   runCustomAgent,
+  saveServiceCredential,
+  startConnectorConnect,
   updateCustomAgent,
   type CustomAgent,
+  type CustomAgentConnectorMeta,
   type CustomAgentInput,
   type CustomAgentToolSpec,
 } from "@/lib/api";
@@ -31,20 +34,62 @@ const CATEGORY_LABELS: Record<string, string> = {
   memory: "Memory & knowledge",
   dashboard: "Dashboard",
   leads: "Leads",
-  outreach: "Outreach / send",
+  email: "Email / send",
+  social: "Social posting",
+  messaging: "Chat & messaging",
   ops: "Project & ops",
+  crm: "CRM & marketing",
+  data: "Data & files",
+  advanced: "Power user",
 };
 
 const CONNECTOR_LABELS: Record<string, string> = {
   gmail: "Gmail",
+  outlook: "Outlook",
   sendgrid: "SendGrid",
   resend: "Resend",
   linkedin: "LinkedIn",
+  twitter: "X / Twitter",
+  reddit: "Reddit",
+  slack: "Slack",
+  discord: "Discord",
+  telegram: "Telegram",
   notion: "Notion",
   linear: "Linear",
+  jira: "Jira",
+  trello: "Trello",
+  asana: "Asana",
+  clickup: "ClickUp",
+  hubspot: "HubSpot",
+  mailchimp: "Mailchimp",
+  airtable: "Airtable",
+  googlesheets: "Google Sheets",
+  googledocs: "Google Docs",
+  googledrive: "Google Drive",
   google_calendar: "Google Calendar",
+  calendly: "Calendly",
+  zoom: "Zoom",
+  dropbox: "Dropbox",
+  youtube: "YouTube",
+  github: "GitHub",
   hunter: "Hunter.io",
 };
+
+const CATEGORY_ORDER = [
+  "research",
+  "content",
+  "design",
+  "memory",
+  "dashboard",
+  "leads",
+  "email",
+  "social",
+  "messaging",
+  "ops",
+  "crm",
+  "data",
+  "advanced",
+];
 
 function connectorLabel(key: string): string {
   return CONNECTOR_LABELS[key] ?? key;
@@ -82,7 +127,10 @@ function AgentModal({
   const grouped = useMemo(() => {
     const out: Record<string, CustomAgentToolSpec[]> = {};
     for (const t of catalog) (out[t.category] ??= []).push(t);
-    return out;
+    const ordered: [string, CustomAgentToolSpec[]][] = [];
+    for (const cat of CATEGORY_ORDER) if (out[cat]) ordered.push([cat, out[cat]]);
+    for (const cat of Object.keys(out)) if (!CATEGORY_ORDER.includes(cat)) ordered.push([cat, out[cat]]);
+    return ordered;
   }, [catalog]);
 
   // Connectors the current tool selection will require.
@@ -162,7 +210,7 @@ function AgentModal({
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-2">Tools it can use</label>
             <div className="space-y-3 max-h-64 overflow-y-auto border border-gray-100 rounded-lg p-3">
-              {Object.entries(grouped).map(([cat, tools]) => (
+              {grouped.map(([cat, tools]) => (
                 <div key={cat}>
                   <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
                     {CATEGORY_LABELS[cat] ?? cat}
@@ -268,10 +316,12 @@ export default function CustomAgentsPanel() {
   const router = useRouter();
   const [agents, setAgents] = useState<CustomAgent[]>([]);
   const [catalog, setCatalog] = useState<CustomAgentToolSpec[]>([]);
+  const [connectorsMeta, setConnectorsMeta] = useState<CustomAgentConnectorMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [modal, setModal] = useState<ModalState>({ open: false, agent: null });
   const [runningId, setRunningId] = useState("");
+  const [connecting, setConnecting] = useState("");
 
   const load = useCallback(async () => {
     if (!founderId) return;
@@ -280,13 +330,37 @@ export default function CustomAgentsPanel() {
     try {
       const [a, c] = await Promise.all([listCustomAgents(founderId), getCustomAgentToolCatalog()]);
       setAgents(a);
-      setCatalog(c);
+      setCatalog(c.tools);
+      setConnectorsMeta(c.connectors);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
       setLoading(false);
     }
   }, [founderId]);
+
+  async function handleConnect(connectorKey: string) {
+    setConnecting(connectorKey);
+    setError("");
+    try {
+      const res = await startConnectorConnect(founderId, connectorKey);
+      if (res.kind === "composio" && res.oauth_url) {
+        window.open(res.oauth_url, "_blank", "noopener");
+        // Give the founder time to authorize, then refresh status.
+        setTimeout(load, 4000);
+      } else if (res.kind === "key") {
+        const token = prompt(`Paste your ${res.label} API key / token:`);
+        if (token && token.trim()) {
+          await saveServiceCredential(founderId, res.connector, { token: token.trim() });
+          await load();
+        }
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to start connect");
+    } finally {
+      setConnecting("");
+    }
+  }
 
   useEffect(() => {
     load();
@@ -384,8 +458,21 @@ export default function CustomAgentsPanel() {
                         )}
                       </div>
                       {missing.length > 0 && (
-                        <div className="text-[11px] text-amber-700 mt-2">
-                          ⚠ Needs connected: {missing.map(connectorLabel).join(", ")}
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                          <span className="text-[11px] text-amber-700">⚠ Needs:</span>
+                          {missing.map((m) => {
+                            const meta = connectorsMeta.find((c) => c.key === m);
+                            return (
+                              <button
+                                key={m}
+                                onClick={() => handleConnect(m)}
+                                disabled={connecting === m}
+                                className="text-[11px] px-2 py-0.5 border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-full disabled:opacity-50"
+                              >
+                                {connecting === m ? "Connecting…" : `Connect ${meta?.label ?? connectorLabel(m)}`}
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

@@ -13,8 +13,10 @@ from pydantic import BaseModel
 from backend.tenant_auth import require_founder_access
 from backend.custom_agents import store
 from backend.custom_agents.tool_catalog import (
+    CONNECTOR_BY_KEY,
     filter_valid_tool_keys,
     public_catalog,
+    public_connectors,
 )
 from backend.custom_agents.builder import connector_readiness
 
@@ -59,8 +61,36 @@ class RunAgentRequest(BaseModel):
 
 @custom_agents_router.get("/custom-agents/tool-catalog")
 async def get_tool_catalog():
-    """Public list of tools a founder can attach to a custom agent."""
-    return {"tools": public_catalog()}
+    """Public list of tools a founder can attach to a custom agent + connector meta."""
+    return {"tools": public_catalog(), "connectors": public_connectors()}
+
+
+# ── On-demand connect (custom-agent only; NOT the Integrations page) ───────────
+
+@custom_agents_router.get("/custom-agents/{founder_id}/connect/{connector_key}")
+async def connect_agent_connector(founder_id: str, connector_key: str, request: Request):
+    """Start connecting a connector a custom agent needs.
+
+    For Composio connectors: returns an OAuth URL the founder opens to authorize.
+    For key connectors: returns the field the founder must save a credential for.
+    These connectors are deliberately absent from the Integrations page.
+    """
+    require_founder_access(request, founder_id, min_role="operator")
+    meta = CONNECTOR_BY_KEY.get(connector_key)
+    if meta is None:
+        raise HTTPException(status_code=404, detail=f"Unknown connector: {connector_key}")
+
+    if meta.kind == "composio":
+        from backend.tools.composio_tools import connect_founder_tools
+        slug = meta.composio_slug or connector_key
+        result = await asyncio.to_thread(connect_founder_tools, founder_id, [slug])
+        url = result.get(slug, "")
+        if not url or str(url).startswith("error"):
+            raise HTTPException(status_code=502, detail=f"Could not start {meta.label} connect: {url or 'no url'}")
+        return {"kind": "composio", "connector": connector_key, "label": meta.label, "oauth_url": url}
+
+    # key-based connector — the founder saves a credential (token) for this service
+    return {"kind": "key", "connector": connector_key, "label": meta.label, "field": "token"}
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
