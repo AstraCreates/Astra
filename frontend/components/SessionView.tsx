@@ -227,6 +227,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [showSessionTour, setShowSessionTour] = useState(false);
   const [designImages, setDesignImages] = useState<SessionImages>({ logos: {}, brand_images: [] });
   const [accessDenied, setAccessDenied] = useState(false);
+  const [agentQuestion, setAgentQuestion] = useState<{ request_id: string; question: string; options: string[]; hint: string } | null>(null);
+  const [agentAnswer, setAgentAnswer] = useState("");
   const [toastErr, setToastErr] = useState("");
   const [restartConfirm, setRestartConfirm] = useState(false);
   const [takeover, setTakeover] = useState(false);
@@ -378,6 +380,9 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         st.status = "done"; sseRef.current?.close(); break;
       case "goal_error":
         st.status = "error"; sseRef.current?.close(); break;
+      case "agent_question":
+        setAgentQuestion({ request_id: ev.request_id, question: ev.question, options: ev.options ?? [], hint: ev.hint ?? "" });
+        return;
       default: return; // ignore pings/unknown without re-render
     }
     force();
@@ -520,6 +525,17 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     const msg = steerRef.current?.value.trim(); if (!msg) return;
     if (steerRef.current) steerRef.current.value = "";
     try { await apiFetch(`${API}/steer/${sessionId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg }) }); } catch {}
+  };
+  const answerAgentQuestion = async (answer: string) => {
+    if (!agentQuestion) return;
+    try {
+      await apiFetch(`${API}/input/${sessionId}/${agentQuestion.request_id}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: { answer } }),
+      });
+    } catch {}
+    setAgentQuestion(null);
+    setAgentAnswer("");
   };
   // No window.confirm — mobile in-app webviews suppress it (returns false), which
   // made Stop/Restart silently no-op. Optimistic UI + fire the request.
@@ -761,6 +777,33 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg)" }}>
+      {agentQuestion && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--bd)", borderRadius: 12, padding: "28px 24px", width: "100%", maxWidth: 460, boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}>
+            <div style={{ fontSize: 11, color: "var(--blue)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>Agent question</div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)", marginBottom: 18, lineHeight: 1.4 }}>{agentQuestion.question}</div>
+            {agentQuestion.options.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {agentQuestion.options.map((opt) => (
+                  <button key={opt} className="btn" onClick={() => answerAgentQuestion(opt)}
+                    style={{ textAlign: "left", padding: "10px 14px" }}>{opt}</button>
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <input className="f-input" placeholder={agentQuestion.hint || "Your answer…"}
+                  value={agentAnswer} onChange={(e) => setAgentAnswer(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && agentAnswer.trim() && answerAgentQuestion(agentAnswer.trim())}
+                  style={{ width: "100%", boxSizing: "border-box" }} autoFocus />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn pri" disabled={!agentAnswer.trim()} onClick={() => answerAgentQuestion(agentAnswer.trim())} style={{ flex: 1 }}>Send →</button>
+                  <button className="btn" onClick={() => { setAgentQuestion(null); setAgentAnswer(""); }}>Skip</button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {/* topbar */}
       <div style={{ height: 44, display: "flex", alignItems: "center", gap: 7, padding: "0 14px 0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
         <div className="topbar-title" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{displayName || shortGoal}</div>
