@@ -85,6 +85,9 @@ async def startup_background_jobs():
     from backend.custom_agents.scheduler import start_custom_agents_scheduler
     # Recurring custom agents — checks for due agents every 15 min.
     start_custom_agents_scheduler(interval_seconds=900)
+    from backend.monitoring.scheduler import start_monitoring_scheduler
+    # Live company: re-verify shipped artifacts hourly (content weekly) + auto-heal.
+    start_monitoring_scheduler(interval_seconds=3600)
     asyncio.create_task(_resume_interrupted_sessions())
     asyncio.create_task(_platform_alert_loop())
     asyncio.create_task(_pii_purge_loop())

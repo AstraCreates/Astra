@@ -16,6 +16,7 @@ from backend.workboard import build_session_workboard
 from backend.verification.receipt_store import list_receipts
 from backend.verification.share_store import create_share, resolve_share
 from backend.stacks import probe_live_url
+from backend.monitoring.store import latest_status, uptime_percent, list_monitoring_checks
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -179,6 +180,43 @@ async def company_share_route(company_id: str, request: Request = None) -> dict[
     require_company_access(request, founder_id, resolved, min_role="admin")
     token = create_share(founder_id, resolved)
     return {"ok": True, "share_token": token, "path": f"/proof/{token}"}
+
+
+@router.get("/company/{company_id}/monitoring")
+async def company_monitoring_route(company_id: str, request: Request = None) -> dict[str, Any]:
+    """Live status: latest health per artifact, uptime, and recent auto-heals."""
+    try:
+        founder_id = request_user_id(request)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not founder_id:
+        raise HTTPException(status_code=400, detail="founder_id required")
+    resolved = company_id or founder_id
+    require_company_access(request, founder_id, resolved, min_role="viewer")
+
+    latest = latest_status(founder_id, resolved)
+    artifacts = []
+    for key, rec in latest.items():
+        artifacts.append({
+            "artifact_key": key,
+            "status": rec.get("status"),
+            "checked_at": rec.get("checked_at"),
+            "metadata": rec.get("metadata", {}),
+            "uptime_7d": uptime_percent(founder_id, resolved, key, days=7),
+        })
+    heals = [
+        {"artifact_key": r.get("artifact_key"), "at": r.get("checked_at"),
+         "agent": (r.get("metadata") or {}).get("agent"), "reason": (r.get("metadata") or {}).get("reason")}
+        for r in list_monitoring_checks(founder_id, resolved, check_type="auto_heal")
+    ][-20:]
+    return {"ok": True, "artifacts": artifacts, "recent_heals": heals}
+
+
+@router.get("/monitoring/scheduler/status")
+async def monitoring_scheduler_status_route() -> dict[str, Any]:
+    """Singleton monitoring scheduler health."""
+    from backend.monitoring.scheduler import get_monitoring_scheduler_status
+    return get_monitoring_scheduler_status()
 
 
 @router.get("/share/{token}")

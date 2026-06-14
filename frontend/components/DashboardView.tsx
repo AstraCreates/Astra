@@ -7,6 +7,7 @@ import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import AstraGradient from "./AstraGradient";
 import GoalPanel from "./GoalPanel";
+import LiveStatusPanel from "./LiveStatusPanel";
 
 const GREETINGS = [
   "Welcome back",
@@ -219,6 +220,7 @@ export default function DashboardView() {
 
           {/* ── Right: Sessions ── */}
           <div style={{ flex: 1, minWidth: 0 }}>
+          <LiveStatusPanel />
           {/* Attention banner */}
           {stalled > 0 && (
             <div style={{
