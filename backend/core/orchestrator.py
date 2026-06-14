@@ -687,6 +687,16 @@ class Orchestrator:
             from backend.core.session_ids import new_session_id
             session_id = new_session_id()
         company_id = str((constraints or {}).get("company_id") or founder_id)
+        # Inject any founder-defined custom agents into the specialist pool so tasks
+        # referencing them (via constraints.agents) resolve. Namespaced ids make this
+        # safe to leave registered across runs/founders.
+        try:
+            from backend.custom_agents.builder import register_custom_agents
+            _requested = (constraints or {}).get("agents") or []
+            _custom_ids = [a for a in _requested if isinstance(a, str) and a.startswith("custom_")]
+            register_custom_agents(founder_id, agent_ids=_custom_ids or None)
+        except Exception as _cae:
+            logger.warning("custom agent registration skipped: %s", _cae)
         from backend.core.creative import build_creative_brief
         creative_brief = (constraints or {}).get("creative_brief") or build_creative_brief(session_id, goal)
         shared: dict[str, Any] = {
