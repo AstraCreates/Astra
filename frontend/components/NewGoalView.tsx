@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getStacks, submitGoal, ingestAttachment, type AgentStackTemplate } from "@/lib/api";
 import { useDevUser } from "@/lib/use-dev-user";
+import BusinessQuizModal, { type QuizResult, STACK_MAP } from "@/components/BusinessQuizModal";
 
 export default function NewGoalView() {
   const router = useRouter();
@@ -17,6 +18,8 @@ export default function NewGoalView() {
   const [attachments, setAttachments] = useState<{ name: string; content: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [company, setCompany] = useState("");
+  const [showQuiz, setShowQuiz] = useState(false);
+  const [quizResult, setQuizResult] = useState<QuizResult | null>(null);
   const displayCompany = company;
   const goalRef = useRef<HTMLTextAreaElement>(null);
 
@@ -53,25 +56,19 @@ export default function NewGoalView() {
     setUploading(false);
   };
 
-  const submit = async () => {
+  const doLaunch = async (quiz: QuizResult | null) => {
     const goal = goalRef.current?.value.trim() || "";
     setErr("");
     if (goal.length < 10) { setErr("⚠ Please describe your goal in more detail (min 10 chars)."); return; }
     setBusy(true);
     try {
-      // Prepend the founder's chosen company name so the backend uses it (NOT a
-      // generated one). Must be "Company/project name:" — the prefix the name
-      // extractor recognizes (plain "Company:" was ignored → random names).
       let instruction = displayCompany ? `Company/project name: ${displayCompany}\n\n${goal}` : goal;
+      if (quiz) instruction = `${quiz.contextBlock}\n\n---\n${instruction}`;
       if (attachments.length) {
         instruction += "\n\nAttached context:\n" + attachments.map((a) => `--- ${a.name} ---\n${a.content.slice(0, 8000)}`).join("\n\n");
       }
-      const data = await submitGoal(
-        userId,
-        instruction,
-        {},
-        selStack || "idea_to_revenue",
-      );
+      const stackId = (quiz?.businessType ? STACK_MAP[quiz.businessType] : "") || selStack || "idea_to_revenue";
+      const data = await submitGoal(userId, instruction, {}, stackId);
       if (!data.session_id) throw new Error("No session_id returned");
       window.location.assign(`/s/${data.session_id}`);
     } catch (e) {
@@ -80,13 +77,32 @@ export default function NewGoalView() {
     }
   };
 
+  const submit = () => {
+    const goal = goalRef.current?.value.trim() || "";
+    if (goal.length < 10) { setErr("⚠ Please describe your goal in more detail (min 10 chars)."); return; }
+    if (!quizResult && !selStack) { setShowQuiz(true); return; }
+    doLaunch(quizResult);
+  };
+
+  const onQuizComplete = (result: QuizResult) => { setQuizResult(result); setShowQuiz(false); doLaunch(result); };
+  const onQuizSkip = () => { setShowQuiz(false); doLaunch(null); };
+
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
+      {showQuiz && <BusinessQuizModal onComplete={onQuizComplete} onSkip={onQuizSkip} />}
       <div className="new-wrap">
         {displayCompany && (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--bd)", background: "var(--surface)", fontSize: 10.5, color: "var(--fd)", marginBottom: 16 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)" }} />
             <span style={{ fontWeight: 600, color: "var(--fg)" }}>{displayCompany}</span>
+          </div>
+        )}
+        {quizResult && (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--blue, #3b82f6)", background: "rgba(59,130,246,0.08)", fontSize: 10.5, marginBottom: 16, marginLeft: displayCompany ? 8 : 0 }}>
+            <span style={{ fontWeight: 600, color: "var(--fg)" }}>{quizResult.businessType}</span>
+            {quizResult.subCategory && <span style={{ color: "var(--fm)" }}>· {quizResult.subCategory}</span>}
+            <span style={{ color: "var(--fm)" }}>· {quizResult.stage}</span>
+            <button onClick={() => setQuizResult(null)} style={{ fontSize: 10, color: "var(--fm)", background: "none", border: "none", cursor: "pointer", padding: 0, marginLeft: 2 }}>✕</button>
           </div>
         )}
 
