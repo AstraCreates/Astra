@@ -81,7 +81,7 @@ function SecLabel({ children }: { children: React.ReactNode }) {
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-export default function GoalPanel() {
+export default function GoalPanel({ defaultShowDone = false }: { defaultShowDone?: boolean }) {
   const { founderId, companyId, activeCompany, loading: companiesLoading } = useCompany();
   const { isSignedIn } = useDevUser();
 
@@ -89,7 +89,7 @@ export default function GoalPanel() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [showDoneGoals, setShowDoneGoals] = useState(false);
+  const [showDoneGoals, setShowDoneGoals] = useState(defaultShowDone);
   const loadRequest = useRef(0);
 
   const loadGoal = useCallback(async () => {

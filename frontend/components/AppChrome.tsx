@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { signIn } from "next-auth/react";
+import { signIn, signOut } from "next-auth/react";
 import RedesignSidebar from "@/components/RedesignSidebar";
 import WorkspaceTour from "@/components/WorkspaceTour";
 import { useIsMobile } from "@/lib/use-is-mobile";
@@ -18,6 +18,17 @@ const PUBLIC_PREFIXES = [...BARE_PREFIXES, "/s/"];
 
 
 function SignInScreen() {
+  const [rememberMe, setRememberMe] = useState(true);
+
+  const handleSignIn = () => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("astra_remember_me", rememberMe ? "1" : "0");
+      // survives the OAuth redirect so we know we came from a fresh sign-in
+      sessionStorage.setItem("astra_session_active", "1");
+    }
+    signIn("google", { callbackUrl: "/" });
+  };
+
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 9999,
@@ -55,7 +66,7 @@ function SignInScreen() {
 
         {/* White Google button */}
         <button
-          onClick={() => signIn("google", { callbackUrl: "/" })}
+          onClick={handleSignIn}
           style={{
             display: "flex", alignItems: "center", gap: 10, width: "100%",
             justifyContent: "center",
@@ -80,7 +91,18 @@ function SignInScreen() {
           Continue with Google
         </button>
 
-        <p style={{ fontSize: 11, color: "#9CA3AF", margin: "20px 0 0", lineHeight: 1.5 }}>
+        {/* Stay signed in */}
+        <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 16, cursor: "pointer", userSelect: "none" }}>
+          <input
+            type="checkbox"
+            checked={rememberMe}
+            onChange={e => setRememberMe(e.target.checked)}
+            style={{ width: 15, height: 15, cursor: "pointer", accentColor: "#002EFF" }}
+          />
+          <span style={{ fontSize: 13, color: "#4B5563", fontFamily: "var(--font-instrument), sans-serif" }}>Stay signed in</span>
+        </label>
+
+        <p style={{ fontSize: 11, color: "#9CA3AF", margin: "12px 0 0", lineHeight: 1.5 }}>
           By continuing, you agree to our terms and privacy policy.
         </p>
       </div>
@@ -93,7 +115,23 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showTour, setShowTour] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const { isSignedIn, isLoading } = useDevUser();
+
+  // "Stay signed in" enforcement: if user opted out, sign them out on fresh browser open.
+  // sessionStorage survives in-tab redirects (including OAuth) but clears on browser close.
+  useEffect(() => {
+    if (isLoading) return;
+    if (!isSignedIn) { setSessionChecked(true); return; }
+    const rememberMe = localStorage.getItem("astra_remember_me");
+    const sessionActive = sessionStorage.getItem("astra_session_active");
+    if (rememberMe === "0" && !sessionActive) {
+      signOut({ callbackUrl: "/" });
+      return;
+    }
+    sessionStorage.setItem("astra_session_active", "1");
+    setSessionChecked(true);
+  }, [isLoading, isSignedIn]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -125,7 +163,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
 
   // Auth gate — protect all non-public routes
   if (!PUBLIC_PREFIXES.some((b) => pathname.startsWith(b))) {
-    if (isLoading) {
+    if (isLoading || (isSignedIn && !sessionChecked)) {
       return <div style={{ position: "fixed", inset: 0, background: "var(--bg, #F3F4F7)" }} />;
     }
     if (!isSignedIn) {

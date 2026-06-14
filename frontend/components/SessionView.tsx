@@ -6,12 +6,13 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, type SessionImages } from "@/lib/api";
+import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, AGENT_LABELS, type SessionImages } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import { signIn } from "next-auth/react";
 import dynamic from "next/dynamic";
 import SessionTour from "@/components/SessionTour";
+import AgentSwarm, { type SwarmAgent } from "@/components/AgentSwarm";
 
 // xterm touches `window`; load the takeover terminal client-only.
 const TerminalPane = dynamic(() => import("@/components/TerminalPane"), { ssr: false });
@@ -113,10 +114,6 @@ const DEPTS: Record<string, { n: string; ic: string; ags: string[] }> = {
 // moment the run starts — showing it as an approval card means "approve nothing".
 const PENDING = new Set(["pending", "triggered", "waiting_approval"]);
 
-function agToDept(k: string): string | null {
-  for (const [dk, d] of Object.entries(DEPTS)) if (d.ags.includes(k)) return dk;
-  return null;
-}
 function ago(ts: number | string | undefined): string {
   if (!ts) return "";
   const diff = Date.now() - (typeof ts === "number" ? ts : new Date(ts).getTime());
@@ -233,6 +230,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [toastErr, setToastErr] = useState("");
   const [restartConfirm, setRestartConfirm] = useState(false);
   const [takeover, setTakeover] = useState(false);
+  const [teamTab, setTeamTab] = useState(false);
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
   const imgsFetched = useRef(false);
 
@@ -554,7 +552,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       S.current.paused = next; force();
     } catch {}
   };
-  const sel = (dept: string | null, art: string | null) => { S.current.selDept = dept; S.current.selArt = art; S.current.tab = art ? "read" : (dept === "technical" ? "terminal" : "updates"); force(); };
+  const sel = (dept: string | null, art: string | null) => { S.current.selDept = dept; S.current.selArt = art; S.current.tab = art ? "read" : (dept === "technical" ? "terminal" : "updates"); if (dept || art) setTeamTab(false); force(); };
 
   // ── Derived render data ──
   const st = S.current;
@@ -604,6 +602,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   }
 
   // active depts
+  const agToDept = (k: string) => Object.keys(DEPTS).find(dk => DEPTS[dk].ags.includes(k));
   const activeDepts: [string, { n: string; ic: string; ags: string[]; inS: string[] }][] = [];
   for (const [dk, d] of Object.entries(DEPTS)) {
     const inS = d.ags.filter((a) => st.agents[a]);
@@ -636,6 +635,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
   const ready = st.artifacts.filter((a) => a.status === "ready");
   const live = st.artifacts.filter((a) => a.status !== "ready");
+
   const displayName = st.projectName || st.company || "";
   const shortGoal = st.goal ? st.goal.slice(0, 70) + (st.goal.length > 70 ? "…" : "") : `Session ${sessionId.slice(0, 8)}`;
   const ICONS: Record<string, string> = { think: "◈", tool: "◎", result: "→", done: "✓", error: "✗", start: "↳" };
@@ -808,7 +808,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           const bc = s === "done" ? "var(--green)" : s === "run" ? "var(--blue)" : s === "err" ? "var(--red)" : "var(--fm)";
           const badge = s === "run" ? "Working" : s === "done" ? "Done" : s === "err" ? "Error" : "Queued";
           return (
-            <div key={dk} className={`dc ${s}${st.selDept === dk ? " sel" : ""}`} title={d.n} aria-label={`${d.n} department — ${badge}`} onClick={() => sel(dk, null)}>
+            <div key={dk}
+              className={`dc ${s}${st.selDept === dk ? " sel" : ""}`} title={d.n} aria-label={`${d.n} department — ${badge}`} onClick={() => sel(dk, null)}>
               <div className="dc-top"><div className="dc-ico">{d.ic}</div><div className="dc-name">{d.n}</div><div className={`dc-badge ${s}`}>{badge}</div></div>
               <div className="dc-what">{deptWhat(d.inS)}</div>
               <div className="dc-prog"><div className="dc-bar" style={{ transform: `scaleX(${prog / 100})`, background: bc }} /></div>
@@ -843,7 +844,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                   <div className={`dtab${st.tab === "tech" ? " on" : ""}`} onClick={() => { st.tab = "tech"; force(); }}>Technical logs</div>
                   <div className={`dtab${st.tab === "sources" ? " on" : ""}`} onClick={() => { st.tab = "sources"; force(); }}>Sources</div>
                 </>
-              : <div className="dtab on">Updates</div>}
+              : null}
           </div>
           <div className="dscroll">
             {/* approval cards always first */}
@@ -1053,6 +1054,14 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               </>;
             })()}
 
+            {/* back button — clear dept selection */}
+            {st.selDept && !st.selArt && (
+              <button onClick={() => { S.current.selDept = null; S.current.selArt = null; S.current.tab = "updates"; force(); }}
+                style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", padding: "0 0 10px", color: "var(--fm)", fontSize: 10.5, fontFamily: "var(--font-geist-sans), system-ui, sans-serif" }}>
+                ← Back
+              </button>
+            )}
+
             {/* selected dept — updates / tech logs / sources */}
             {st.selDept && !st.selArt && (() => {
               const d = st.selDept === "__other" ? { ags: otherAgs } : DEPTS[st.selDept] || { ags: [] };
@@ -1233,9 +1242,27 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               </div>;
             })()}
 
-            {/* empty */}
+            {/* default view — no dept/art selected, no approvals */}
             {!st.selDept && !st.selArt && st.approvals.length === 0 && (
-              <div className="empty"><div style={{ fontSize: 34, opacity: .12 }}>◈</div><div className="empty-title">Select a department</div><div className="empty-sub" style={{ fontSize: 10.5, maxWidth: 260, lineHeight: 1.6 }}>Click a card above to see what that team is working on.</div></div>
+              Object.keys(st.agents).length === 0
+                ? <div className="empty"><div style={{ fontSize: 34, opacity: .12 }}>◈</div><div className="empty-title">Waiting for agents…</div></div>
+                : <div style={{ display: "flex", flexDirection: "column", gap: 6, paddingTop: 4 }}>
+                    {Object.values(st.agents).map(a => {
+                      const label = (AGENT_LABELS as Record<string, string>)[a.key] ?? a.key.replace(/_/g, " ");
+                      const dot = a.status === "running" ? "var(--blue)" : a.status === "done" ? "var(--green)" : "var(--fm)";
+                      return (
+                        <div key={a.key} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", border: "1px solid var(--bd)", borderRadius: 7, background: "var(--surface)", cursor: "pointer" }}
+                          onClick={() => sel(a.key in (DEPTS as Record<string, unknown>) ? a.key : "__other", null)}>
+                          <span style={{ width: 7, height: 7, borderRadius: "50%", background: dot, flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, color: "var(--fg)", fontWeight: 500, flex: 1 }}>{label}</span>
+                          {a.status === "running" && a.currentTool && (
+                            <span style={{ fontSize: 9, color: "var(--blue)", fontFamily: "var(--font-code)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>{a.currentTool}</span>
+                          )}
+                          <span style={{ fontSize: 9, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".05em", fontFamily: "var(--font-code)" }}>{a.status}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
             )}
           </div>
         </div>
@@ -1282,6 +1309,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       {showSessionTour && (
         <SessionTour onDone={() => { localStorage.setItem("astra_session_tour_done", "1"); setShowSessionTour(false); }} />
       )}
+
     </div>
   );
 }

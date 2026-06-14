@@ -1597,7 +1597,9 @@ def run_mvp_loop(
         if not deploy_url:
             try:
                 from backend.tools.local_preview import start_local_preview
-                url = start_local_preview(local, session_id)
+                # Key preview by root session so child builds replace the same slot
+                root_sid = _root_session_id(session_id)
+                url = start_local_preview(local, root_sid, company_name=Path(local).name)
                 if url:
                     deploy_url = url
                     local_preview = True

@@ -743,6 +743,16 @@ class Agent:
         if self._skills:
             skills_section = "\n---\n".join(self._skills) + "\n---\n"
 
+        # ask_user guidance — injected only when the tool is available
+        ask_user_section = ""
+        if "ask_user" in self.tools:
+            ask_user_section = (
+                "\nASK FOUNDER (optional): If you genuinely need input from the founder to proceed "
+                "— a preference, a decision, a missing credential — call "
+                "ask_user(session_id=<SESSION from context>, question=\"...\", options=[\"opt1\",\"opt2\"] or [], hint=\"...\"). "
+                "It blocks until they respond. Use sparingly; don't ask for things you can infer or decide yourself.\n"
+            )
+
         # Dashboard guidance injected only when the agent has the tool
         dashboard_section = ""
         if "dashboard_add_element" in self.tools:
@@ -751,8 +761,8 @@ class Agent:
                 "— a key metric, competitor table, status check, action list — you may call "
                 "dashboard_add_element(founder_id=<FOUNDER_ID from context>, ...) before done. "
                 "Don't tile routine steps or intermediate progress. "
-                f"Types: metric, chart, table, status_board, progress, list, markdown, button. "
-                f"Use section= to group. Pass agent='{self.name}'.\n"
+                "Types: metric, chart, table, status_board, progress, list, markdown, button. "
+                f"Use section= to group. Pass agent={self.name!r}.\n"
             )
 
         return (
@@ -760,8 +770,9 @@ class Agent:
             f"You are {self.name}, {self.role}.\n\n"
             f"TOOLS:\n{tool_list or '  (none)'}\n\n"
             f"SUB-AGENTS YOU CAN DELEGATE TO:\n{sub_list or '  (none)'}\n\n"
-            + dashboard_section +
-            "RESPONSE FORMAT — YOU MUST RESPOND WITH A SINGLE JSON OBJECT ONLY. NO PROSE. NO MARKDOWN. NO EXPLANATION.\n\n"
+            + ask_user_section
+            + dashboard_section
+            + "RESPONSE FORMAT — YOU MUST RESPOND WITH A SINGLE JSON OBJECT ONLY. NO PROSE. NO MARKDOWN. NO EXPLANATION.\n\n"
             "Call a tool:\n"
             '{"action": "tool", "tool": "<name>", "args": {<kwargs>}, "reasoning": "<one line>"}\n\n'
             "Delegate to sub-agent:\n"

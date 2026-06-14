@@ -1343,6 +1343,16 @@ export async function getSessionState(sessionId: string): Promise<SessionStateSn
   return res.json();
 }
 
+export async function respondWebTask(taskId: string, fields: Record<string, string>): Promise<{ ok: boolean }> {
+  const res = await apiFetch(`${BASE}/web-navigator/respond/${encodeURIComponent(taskId)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fields }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function askSession(sessionId: string, question: string, founderId?: string): Promise<SessionAnswer> {
   const res = await apiFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/ask`, {
     method: "POST",

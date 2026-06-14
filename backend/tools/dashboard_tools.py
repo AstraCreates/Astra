@@ -130,6 +130,7 @@ def dashboard_add_element(
         "size": s,
         "config": config or {},
         "section": section or "",
+        "order": order,
         "refresh_interval": max(0, int(refresh_interval)),
         "agent": agent or "",
         "session_id": session_id or "",

@@ -3,8 +3,10 @@ from backend.core.agent import Agent
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
 from backend.tools.github_scaffold import github_create_repo
 from backend.tools.git_tools import run_mvp_loop, write_files_to_repo, run_claude_in_repo
+from backend.tools.examples_library import search_examples, list_example_categories
 from backend.tools.parallel_build import spawn_parallel_coders
 from backend.tools.web_navigator_tools import vision_browse
+from backend.tools.web_tasks import run_web_task
 from backend.tools.vercel_deploy import vercel_deploy_from_github
 from backend.tools.supabase_tools import supabase_generate_schema, supabase_create_project
 from backend.tools.posthog_tools import posthog_generate_integration
@@ -30,6 +32,12 @@ def build_technical_agent(**kwargs) -> Agent:
             "The WEB agent already created a Next.js repo and built the marketing landing page. "
             "You build the PRODUCT (sign-up/auth, dashboard, core features) ON TOP of that SAME repo — "
             "do not start over and do not create a second repo.\n\n"
+            "EXAMPLES LIBRARY (use before writing code): Call search_examples(query, agent_role='technical') "
+            "to retrieve battle-tested scaffolds for auth, payments, database schemas, deployment configs, "
+            "and component patterns. Always search before rolling your own implementation. Examples: "
+            "search_examples('nextauth google oauth') → working NextAuth v5 scaffold; "
+            "search_examples('stripe checkout webhook') → Stripe session + webhook pattern; "
+            "search_examples('supabase rls schema') → Supabase schema with row-level security.\n\n"
             "AUTH RULES (non-negotiable):\n"
             "- Auth must WORK. Default to email+password (or magic-link) via Supabase Auth (@supabase/ssr) "
             "or NextAuth Credentials — both function with just the Supabase anon key / a NEXTAUTH_SECRET, no "
@@ -57,14 +65,18 @@ def build_technical_agent(**kwargs) -> Agent:
             "'frontend/app/(auth)', 'frontend/app/dashboard', 'frontend/lib/billing'). The tool merges the modules, "
             "runs one consolidated build-fix, and deploys. Use this to build faster when areas are independent. "
             "Same design-preservation + auth rules apply to every module.\n"
-            "4. PROVISION REAL INFRA when the product needs it (real auth/db/hosting, not just placeholders). Use "
-            "vision_browse(url, goal, credentials) — a real browser agent that signs up for services and grabs "
-            "API keys. Examples: vision_browse('https://vercel.com/signup', 'sign up and get a deploy token'), "
-            "vision_browse('https://supabase.com/dashboard', 'create a project and copy the URL + anon/service keys'). "
-            "Only pass credentials the founder provided; if a step needs human action (phone/CAPTCHA/2FA), report "
-            "exactly what's needed. Wire any keys you obtain into the app (env vars) and log them with obsidian_log.\n"
-            "5. QA THE LIVE PRODUCT (once, if you have a deploy_url): vision_browse(deploy_url, 'sign up with a "
-            "test email and confirm you reach the dashboard') to verify the core flow actually works. If it's "
+            "4. PROVISION REAL INFRA when the product needs it (real auth/db/hosting, not just placeholders). Prefer "
+            "run_web_task(task_type, service, goal, success_criteria, credentials) for provisioning, signups, "
+            "token retrieval, and dashboard checks. Use the composite SaaS preset with "
+            "run_web_task('provision_saas_build_stack', 'saas_build_stack', ...) when the build needs the full "
+            "GitHub -> Vercel -> Supabase path. Use vision_browse only for unsupported sites or ad hoc manual "
+            "fallback. Only pass credentials the founder provided; if a step needs human action "
+            "(phone/CAPTCHA/2FA), report exactly what's needed. Wire any keys you obtain into the app (env vars) "
+            "and log them with obsidian_log.\n"
+            "5. QA THE LIVE PRODUCT (once, if you have a deploy_url): run_web_task('qa_flow', 'generic', "
+            "'sign up with a test email and confirm you reach the dashboard', success_criteria=['dashboard'], "
+            "start_url=<deploy_url>) to verify the core flow actually works. Use vision_browse only if the generic "
+            "operator cannot finish the QA flow. If it's "
             "broken (dead button, 404, crash), fix it with run_claude_in_repo and redeploy. Skip if no deploy_url.\n"
             "6. obsidian_log — log the final repo_url, deploy_url, and any provisioned keys.\n"
             "7. done — return {repo_url, deploy_url, files_in_repo}.\n\n"
@@ -72,9 +84,12 @@ def build_technical_agent(**kwargs) -> Agent:
             "if one already exists."
         ),
         tools={
+            "search_examples": search_examples,
+            "list_example_categories": list_example_categories,
             "github_create_repo": github_create_repo,
             "run_mvp_loop": run_mvp_loop,
             "spawn_parallel_coders": spawn_parallel_coders,
+            "run_web_task": run_web_task,
             "vision_browse": vision_browse,
             "run_claude_in_repo": run_claude_in_repo,
             "write_files_to_repo": write_files_to_repo,

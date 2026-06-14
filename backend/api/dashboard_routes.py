@@ -145,13 +145,17 @@ async def refresh_element(founder_id: str, element_id: str, request: Request) ->
     try:
         tool_result = tool_fn(**params)
     except Exception as exc:
-        return {"ok": False, "error": str(exc), "config": element.get("config", {})}
+        raise HTTPException(status_code=502, detail=f"Tool '{tool_name}' failed: {exc}")
 
-    # Apply field_map: remap tool result keys → config keys
-    updated_config = dict(element.get("config") or {})
+    # Apply field_map: start from base config, overlay only the mapped keys
+    # (don't inherit stale keys from prior refreshes)
+    base_config = dict(element.get("config") or {})
     if isinstance(tool_result, dict) and field_map:
+        updated_config = {k: v for k, v in base_config.items() if k not in field_map.values()}
         for src_key, dst_key in field_map.items():
             if src_key in tool_result:
                 updated_config[dst_key] = tool_result[src_key]
+    else:
+        updated_config = base_config
 
     return {"ok": True, "config": updated_config, "refreshed": True}

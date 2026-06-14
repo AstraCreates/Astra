@@ -133,11 +133,12 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     auto_tiktok = _make_auto_logging_tool(tiktok_research, "tiktok_research", ctx_holder, log_name)
 
 
-    from backend.config import settings
+    from backend.config import research_default_is_local, settings
     from backend.core.key_rotator import get_openrouter_key
     focus_searches = _FOCUS_ROLES.get(agent_name, _FOCUS_ROLES["research"])
-    # Use local self-hosted model if configured, fall back to OpenRouter
-    _use_local = bool(settings.local_research_base_url and settings.local_research_model)
+    # Default research routing stays on OpenRouter unless local is explicitly
+    # selected as the default provider.
+    _use_local = research_default_is_local()
     model = kwargs.pop("model", settings.local_research_model if _use_local else settings.or_light_model)
     model_base_url = kwargs.pop("model_base_url", settings.local_research_base_url if _use_local else settings.openrouter_base_url)
     model_api_key = kwargs.pop("model_api_key", settings.local_research_api_key if _use_local else (get_openrouter_key() or settings.agent_model_api_key))

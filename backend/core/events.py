@@ -32,6 +32,8 @@ _RUNTIME_EVENT_TYPES = {
     "context_compression_failed", "subagent_spawned", "subagent_started",
     "subagent_progress", "subagent_action_requested", "subagent_completed",
     "subagent_failed", "subagent_interrupted",
+    "web_task_started", "web_task_state", "web_task_needs_user",
+    "web_task_resumed", "web_task_completed", "web_task_failed",
 }
 _SECRET_KEYS = ("token", "secret", "password", "api_key", "authorization")
 
@@ -172,6 +174,7 @@ _KEY_EVENT_TYPES = {
     "agent_unknown_action",
     "plan_done", "company_name", "goal_expanded",
     "stack_selected",
+    "web_task_started", "web_task_completed", "web_task_failed",
 }
 
 

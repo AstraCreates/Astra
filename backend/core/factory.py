@@ -159,11 +159,17 @@ def get_orchestrator() -> Orchestrator:
             dashboard_clear,
             dashboard_get,
         )
-        for agent in specialists.values():
+        from backend.tools.ask_user_tool import ask_user
+        _research_agent_names = {n for n in specialists if n.startswith("research")}
+        for name, agent in specialists.items():
             agent.tools.setdefault("dashboard_add_element", dashboard_add_element)
             agent.tools.setdefault("dashboard_remove_element", dashboard_remove_element)
             agent.tools.setdefault("dashboard_clear", dashboard_clear)
             agent.tools.setdefault("dashboard_get", dashboard_get)
+            # Research agents must not block on ask_user — they run autonomously and
+            # a 300s timeout per agent would stall the entire research phase.
+            if name not in _research_agent_names:
+                agent.tools.setdefault("ask_user", ask_user)
 
         # Integration tools — ops, marketing, and content agents for ecomm/local_service stacks
         from backend.tools.klaviyo_tools import (
@@ -229,6 +235,12 @@ def get_orchestrator() -> Orchestrator:
             agent.tools.setdefault("yelp_get_reviews", yelp_get_reviews)
             agent.tools.setdefault("yelp_search_categories", yelp_search_categories)
 
+        # Examples library — inject into every agent so all specialists can search patterns
+        from backend.tools.examples_library import search_examples, list_example_categories
+        for agent in specialists.values():
+            agent.tools.setdefault("search_examples", search_examples)
+            agent.tools.setdefault("list_example_categories", list_example_categories)
+
         from backend.runtime.catalog import migrate_agent, validate_catalog
         for agent in specialists.values():
             migrate_agent(agent)
@@ -241,6 +253,7 @@ def get_orchestrator() -> Orchestrator:
                 "dashboard_remove_element": dashboard_remove_element,
                 "dashboard_clear": dashboard_clear,
                 "dashboard_get": dashboard_get,
+                "ask_user": ask_user,
             },
             sub_agents=list(specialists.values()),
             model=settings.or_planner_model,

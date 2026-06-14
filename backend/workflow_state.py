@@ -67,6 +67,7 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
     lane_status: dict[str, dict[str, Any]] = {}
     outcomes: list[dict[str, Any]] = []
     saferun: dict[str, dict[str, Any]] = {}
+    web_tasks: dict[str, dict[str, Any]] = {}
     final_status = "running"
     agent_status: dict[str, str] = {}
     agents: dict[str, dict[str, Any]] = {}
@@ -108,6 +109,93 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
         elif event_type == "saferun_result":
             action_id = event.get("action_id", "")
             saferun[action_id] = {**saferun.get(action_id, {"id": action_id}), **event}
+        elif event_type == "web_task_started":
+            task_id = str(event.get("task_id") or "")
+            if task_id:
+                web_tasks[task_id] = {
+                    **web_tasks.get(task_id, {"task_id": task_id}),
+                    "task_id": task_id,
+                    "service": str(event.get("service") or ""),
+                    "task_type": str(event.get("task_type") or ""),
+                    "agent": str(event.get("agent") or ""),
+                    "goal": str(event.get("goal") or ""),
+                    "status": "running",
+                }
+        elif event_type == "web_task_state":
+            task_id = str(event.get("task_id") or "")
+            if task_id:
+                web_tasks[task_id] = {
+                    **web_tasks.get(task_id, {"task_id": task_id}),
+                    "task_id": task_id,
+                    "service": str(event.get("service") or web_tasks.get(task_id, {}).get("service") or ""),
+                    "task_type": str(event.get("task_type") or web_tasks.get(task_id, {}).get("task_type") or ""),
+                    "agent": str(event.get("agent") or web_tasks.get(task_id, {}).get("agent") or ""),
+                    "status": web_tasks.get(task_id, {}).get("status") or "running",
+                    "state": str(event.get("state") or ""),
+                    "note": str(event.get("note") or ""),
+                    "url": str(event.get("url") or ""),
+                }
+        elif event_type == "web_task_needs_user":
+            task_id = str(event.get("task_id") or "")
+            result = event.get("result") or {}
+            blocker = event.get("blocker") or result.get("blocker") or {}
+            if task_id:
+                web_tasks[task_id] = {
+                    **web_tasks.get(task_id, {"task_id": task_id}),
+                    "task_id": task_id,
+                    "service": str(event.get("service") or web_tasks.get(task_id, {}).get("service") or ""),
+                    "task_type": str(event.get("task_type") or web_tasks.get(task_id, {}).get("task_type") or ""),
+                    "agent": str(event.get("agent") or web_tasks.get(task_id, {}).get("agent") or ""),
+                    "status": "needs_user",
+                    "state": "needs_user",
+                    "resume_token": str(result.get("resume_token") or task_id),
+                    "blocker": blocker,
+                    "evidence": result.get("evidence") or {},
+                    "artifacts": result.get("artifacts") or {},
+                }
+        elif event_type == "web_task_resumed":
+            task_id = str(event.get("task_id") or "")
+            if task_id:
+                web_tasks[task_id] = {
+                    **web_tasks.get(task_id, {"task_id": task_id}),
+                    "task_id": task_id,
+                    "service": str(event.get("service") or web_tasks.get(task_id, {}).get("service") or ""),
+                    "task_type": str(event.get("task_type") or web_tasks.get(task_id, {}).get("task_type") or ""),
+                    "agent": str(event.get("agent") or web_tasks.get(task_id, {}).get("agent") or ""),
+                    "status": "running",
+                }
+        elif event_type == "web_task_completed":
+            task_id = str(event.get("task_id") or "")
+            result = event.get("result") or {}
+            if task_id:
+                web_tasks[task_id] = {
+                    **web_tasks.get(task_id, {"task_id": task_id}),
+                    "task_id": task_id,
+                    "service": str(event.get("service") or web_tasks.get(task_id, {}).get("service") or ""),
+                    "task_type": str(event.get("task_type") or web_tasks.get(task_id, {}).get("task_type") or ""),
+                    "agent": str(event.get("agent") or web_tasks.get(task_id, {}).get("agent") or ""),
+                    "status": "completed",
+                    "resume_token": str(result.get("resume_token") or task_id),
+                    "evidence": result.get("evidence") or {},
+                    "artifacts": result.get("artifacts") or {},
+                }
+        elif event_type == "web_task_failed":
+            task_id = str(event.get("task_id") or "")
+            result = event.get("result") or {}
+            blocker = result.get("blocker") or {}
+            if task_id:
+                web_tasks[task_id] = {
+                    **web_tasks.get(task_id, {"task_id": task_id}),
+                    "task_id": task_id,
+                    "service": str(event.get("service") or web_tasks.get(task_id, {}).get("service") or ""),
+                    "task_type": str(event.get("task_type") or web_tasks.get(task_id, {}).get("task_type") or ""),
+                    "agent": str(event.get("agent") or web_tasks.get(task_id, {}).get("agent") or ""),
+                    "status": str(result.get("status") or "failed"),
+                    "resume_token": str(result.get("resume_token") or task_id),
+                    "blocker": blocker,
+                    "evidence": result.get("evidence") or {},
+                    "artifacts": result.get("artifacts") or {},
+                }
         elif event_type == "agent_start" and event.get("agent"):
             agent_status[str(event.get("agent"))] = "running"
         elif event_type == "agent_done" and event.get("agent"):
@@ -160,6 +248,7 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
         "workboard": build_session_workboard(session_id, events) if events else None,
         "approval_workflow": approval_workflow,
         "approvals": list(approvals.values()),
+        "web_tasks": list(web_tasks.values()),
         "artifacts": list(artifacts.values()),
         "artifact_verifications": list(artifact_verifications.values()),
         "outcomes": outcomes[-50:],
