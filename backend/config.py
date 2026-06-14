@@ -167,7 +167,7 @@ class Settings(BaseSettings):
     browser_proxy_username: str = ""
     browser_proxy_password: str = ""
     # Vision model used by browser-use's screenshot→LLM loop
-    browser_use_model: str = "google/gemini-2.5-flash"
+    browser_use_model: str = "google/gemini-2.5-pro"
     # Base dir for per-founder persistent browser sessions
     browser_sessions_dir: str = ""
 

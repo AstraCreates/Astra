@@ -236,8 +236,9 @@ def _vision_next_action(
     )
 
     try:
+        from backend.config import settings
         resp = client.chat.completions.create(
-            model="google/gemini-2.5-flash",
+            model=settings.browser_use_model or "google/gemini-2.5-pro",
             messages=[{
                 "role": "user",
                 "content": [
@@ -245,7 +246,7 @@ def _vision_next_action(
                     {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"}},
                 ],
             }],
-            max_tokens=512,
+            max_tokens=2048,
             extra_body={"provider": {"allow_fallbacks": True}},
         )
         raw = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""

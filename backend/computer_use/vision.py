@@ -12,7 +12,9 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-_VISION_MODEL = "google/gemini-2.5-flash"  # multimodal via OpenRouter
+def _vision_model() -> str:
+    from backend.config import settings
+    return settings.browser_use_model or "google/gemini-2.5-pro"
 
 
 def get_vision_client() -> openai.OpenAI:
@@ -28,7 +30,7 @@ def describe_screenshot(screenshot_b64: str, context: str = "") -> str:
     """Send screenshot to vision model, get plain-text description."""
     client = get_vision_client()
     resp = client.chat.completions.create(
-        model=_VISION_MODEL,
+        model=_vision_model(),
         messages=[
             {
                 "role": "user",
@@ -44,7 +46,7 @@ def describe_screenshot(screenshot_b64: str, context: str = "") -> str:
                 ],
             }
         ],
-        max_tokens=512,
+        max_tokens=2048,
         extra_body={"provider": {"allow_fallbacks": True}},
     )
     return (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""
@@ -54,7 +56,7 @@ def screenshot_to_action(screenshot_b64: str, goal: str, history: list[dict]) ->
     """Vision model decides next browser action given current screenshot + goal."""
     client = get_vision_client()
     resp = client.chat.completions.create(
-        model=_VISION_MODEL,
+        model=_vision_model(),
         messages=[
             {
                 "role": "user",
@@ -63,10 +65,18 @@ def screenshot_to_action(screenshot_b64: str, goal: str, history: list[dict]) ->
                         "type": "text",
                         "text": (
                             f"GOAL: {goal}\n"
-                            f"HISTORY (last 3): {history[-3:]}\n\n"
-                            "Look at the screenshot. Respond with JSON only:\n"
-                            '{"action": "navigate|click|type|scroll|key|done", '
-                            '"reasoning": "...", ...action params...}'
+                            f"HISTORY (last 6): {history[-6:]}\n\n"
+                            "Look at the screenshot. Decide the single best next action.\n"
+                            "Respond with JSON only — no markdown, no explanation:\n"
+                            '{"action": "navigate|click|type|scroll|key|screenshot|done", '
+                            '"reasoning": "one sentence", ...action params...}\n\n'
+                            "navigate: {url}\n"
+                            "click: {selector} or {x, y}\n"
+                            "type: {selector, text}\n"
+                            "scroll: {delta_x, delta_y}\n"
+                            "key: {key} (e.g. Enter, Tab, Escape)\n"
+                            "screenshot: {} — capture current state\n"
+                            "done: {result: {success, message, extracted}}"
                         ),
                     },
                     {
@@ -76,7 +86,7 @@ def screenshot_to_action(screenshot_b64: str, goal: str, history: list[dict]) ->
                 ],
             }
         ],
-        max_tokens=512,
+        max_tokens=2048,
         extra_body={"provider": {"allow_fallbacks": True}},
     )
     import json, re

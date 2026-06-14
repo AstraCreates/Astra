@@ -95,10 +95,15 @@ class BrowserSession:
         self._started = False
 
     async def page_state(self) -> dict:
-        """Clean summary of current page — URL, title, main content text (5000 chars, noise removed)."""
+        """Clean summary of current page — URL, title, text, forms, and interactive elements."""
         p = self._page
         if p is None:
             return {}
+        title = ""
+        body = ""
+        links: list = []
+        forms: list = []
+        elements: list = []
         try:
             title = await p.title()
             html = await p.content()
@@ -109,13 +114,40 @@ class BrowserSession:
                 body = await p.inner_text("body")
             except Exception:
                 body = ""
-            title = ""
-            links = []
+        try:
+            forms = await p.evaluate("""() => {
+                return Array.from(document.querySelectorAll('input,textarea,select')).slice(0,20).map(el => ({
+                    tag: el.tagName.toLowerCase(),
+                    type: el.type || '',
+                    name: el.name || '',
+                    id: el.id || '',
+                    placeholder: el.placeholder || '',
+                    label: el.getAttribute('aria-label') || el.getAttribute('autocomplete') || '',
+                }));
+            }""")
+        except Exception:
+            forms = []
+        try:
+            elements = await p.evaluate("""() => {
+                const els = Array.from(document.querySelectorAll(
+                    'a,button,[role="button"],input[type="submit"],input[type="button"]'
+                )).slice(0,30);
+                return els.map(el => ({
+                    tag: el.tagName.toLowerCase(),
+                    text: (el.innerText||el.value||el.getAttribute('aria-label')||'').trim().slice(0,80),
+                    id: el.id||'',
+                    href: el.href||'',
+                })).filter(el => el.text||el.id||el.href);
+            }""")
+        except Exception:
+            elements = []
         return {
             "url": p.url,
             "title": title,
-            "body_text": body[:5000],
+            "body_text": body[:8000],
             "links_on_page": links[:10],
+            "form_fields": forms,
+            "interactive_elements": elements[:20],
         }
 
     async def execute_action(self, action: dict) -> dict:

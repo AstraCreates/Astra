@@ -1143,12 +1143,26 @@ class Agent:
                 result = await browser.execute_action(detail)
                 state = await browser.page_state()
                 await self._emit(ctx, "agent_action_result", action="computer_use", url=state.get("url"), title=state.get("title"))
-                messages.append({"role": "user", "content": (
+                screenshot_b64 = result.get("screenshot_b64") or (
+                    # Auto-capture screenshot after navigate/click so agent sees result
+                    (await browser.execute_action({"action": "screenshot"})).get("screenshot_b64")
+                    if detail.get("action") in ("navigate", "click") else None
+                )
+                text_part = (
                     f"Browser result: {json.dumps({k: v for k, v in result.items() if k != 'screenshot_b64'})}\n"
                     f"URL: {state.get('url', 'unknown')}\n"
                     f"Title: {state.get('title', '')}\n"
+                    f"Form fields: {json.dumps(state.get('form_fields', []))}\n"
+                    f"Interactive elements: {json.dumps(state.get('interactive_elements', []))}\n"
                     f"Page text: {state.get('body_text', '')}"
-                )})
+                )
+                if screenshot_b64:
+                    messages.append({"role": "user", "content": [
+                        {"type": "text", "text": text_part},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"}},
+                    ]})
+                else:
+                    messages.append({"role": "user", "content": text_part})
 
             elif action == "computer_use" and browser is None:
                 messages.append({"role": "user", "content": "computer_use not available. Use tool or delegate."})
