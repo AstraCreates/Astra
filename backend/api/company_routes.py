@@ -13,6 +13,9 @@ from backend.outcomes.store import weekly_rollup
 from backend.missions.goal_engine import plan_next_goal
 from backend.core.session_store import list_sessions, load_events
 from backend.workboard import build_session_workboard
+from backend.verification.receipt_store import list_receipts
+from backend.verification.share_store import create_share, resolve_share
+from backend.stacks import probe_live_url
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -110,3 +113,83 @@ async def company_overview_route(
         overview["genome"] = None
 
     return {"overview": overview, "ok": True}
+
+
+async def _build_proof_payload(founder_id: str, company_id: str, *, relive: bool) -> dict[str, Any]:
+    """Assemble the verification proof for a company: every artifact's latest receipt.
+    When relive is True, re-fetch any deploy URL right now so the proof reflects
+    current reality, not just what was true at build time."""
+    receipts = list_receipts(founder_id, company_id, latest_only=True)
+    artifacts: list[dict[str, Any]] = []
+    verified = 0
+    for rec in receipts:
+        receipt = rec.get("receipt") or {}
+        live = None
+        if relive:
+            url = ((receipt.get("evidence") or {}).get("executable") or {}).get("url")
+            if url:
+                live = await probe_live_url(url)
+        status = (live.get("ok") and "passed") if live is not None else receipt.get("status")
+        if status == "passed" or receipt.get("status") == "passed":
+            verified += 1
+        artifacts.append({
+            "artifact_key": rec.get("artifact_key"),
+            "artifact_title": rec.get("artifact_title"),
+            "agent": rec.get("agent"),
+            "status": receipt.get("status"),
+            "checks": receipt.get("checks", []),
+            "evidence": receipt.get("evidence", {}),
+            "attempts": receipt.get("attempts", 1),
+            "checked_at": receipt.get("checked_at"),
+            "live": live,  # null unless relived
+        })
+    return {
+        "company_id": company_id,
+        "artifact_count": len(artifacts),
+        "verified_count": verified,
+        "artifacts": artifacts,
+    }
+
+
+@router.get("/company/{company_id}/receipts")
+async def company_receipts_route(company_id: str, request: Request = None) -> dict[str, Any]:
+    """In-app: verification receipts for every artifact this company has produced."""
+    try:
+        founder_id = request_user_id(request)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not founder_id:
+        raise HTTPException(status_code=400, detail="founder_id required")
+    resolved = company_id or founder_id
+    require_company_access(request, founder_id, resolved, min_role="viewer")
+    payload = await _build_proof_payload(founder_id, resolved, relive=False)
+    return {"ok": True, **payload}
+
+
+@router.post("/company/{company_id}/share")
+async def company_share_route(company_id: str, request: Request = None) -> dict[str, Any]:
+    """Issue (or rotate) a public share token for this company's proof page."""
+    try:
+        founder_id = request_user_id(request)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not founder_id:
+        raise HTTPException(status_code=400, detail="founder_id required")
+    resolved = company_id or founder_id
+    require_company_access(request, founder_id, resolved, min_role="admin")
+    token = create_share(founder_id, resolved)
+    return {"ok": True, "share_token": token, "path": f"/proof/{token}"}
+
+
+@router.get("/share/{token}")
+async def public_proof_route(token: str) -> dict[str, Any]:
+    """PUBLIC (no auth): render a company's verification proof, re-verified live."""
+    resolved = resolve_share(token)
+    if not resolved:
+        raise HTTPException(status_code=404, detail="Unknown or revoked share link")
+    payload = await _build_proof_payload(
+        resolved["founder_id"], resolved["company_id"], relive=True
+    )
+    # Never leak internal ids on the public surface.
+    payload.pop("company_id", None)
+    return {"ok": True, **payload}

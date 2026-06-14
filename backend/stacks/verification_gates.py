@@ -242,43 +242,67 @@ def _check_shape(agent_name: str, result: Any) -> list[str]:
     return fails
 
 
-async def _check_executable(agent_name: str, result: Any) -> list[str]:
-    """L2 — for ANY agent that produced a deploy/live URL, actually fetch it and
-    confirm it loads. Agent-agnostic: a custom agent that ships a site is checked
-    the same as the built-in web agent."""
+def extract_live_url(result: Any) -> str:
+    """Pull a deploy/live URL out of a result dict, or '' if none. Public so the
+    monitoring layer and the shareable proof page can reuse the same extraction."""
     if not isinstance(result, dict):
-        return []
-    url = ""
-    # Prefer explicit deploy-ish fields; otherwise probe any URL-named field.
+        return ""
     preferred = ("deploy_url", "live_url", "preview_url", "url", "hosted_url", "site_url")
     for f in preferred:
         v = result.get(f)
         if isinstance(v, str) and _URL_RE.search(v):
-            url = _URL_RE.search(v).group(0)
-            break
-    if not url:
-        for k, v in result.items():
-            if any(h in str(k).lower() for h in ("url", "site", "deploy", "live", "hosted")) and isinstance(v, str):
-                m = _URL_RE.search(v)
-                if m:
-                    url = m.group(0)
-                    break
-    if not url:
-        return []  # no live artifact promised; nothing to execute
+            return _URL_RE.search(v).group(0)
+    for k, v in result.items():
+        if any(h in str(k).lower() for h in ("url", "site", "deploy", "live", "hosted")) and isinstance(v, str):
+            m = _URL_RE.search(v)
+            if m:
+                return m.group(0)
+    return ""
+
+
+async def probe_live_url(url: str) -> dict:
+    """Fetch a URL and report whether it is genuinely live. Returns evidence:
+    {url, ok, status, bytes, fallback, error}. Never raises. Reused by L2, the
+    monitoring scheduler, and the live proof page."""
+    ev = {"url": url, "ok": False, "status": None, "bytes": 0, "fallback": False, "error": ""}
     try:
         import httpx
         async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
             resp = await client.get(url)
-        if resp.status_code >= 400:
-            return [f"Deployed site {url} returned HTTP {resp.status_code} — the deploy is broken. Fix and redeploy."]
         body = resp.text or ""
-        if len(body) < 500:
-            return [f"Deployed site {url} loaded but is nearly empty ({len(body)} bytes). It is not a real page."]
-        if _is_web_fallback(body):
-            return [f"Deployed site {url} is still the fallback template. Deploy the real product page."]
-        return []
+        ev["status"] = resp.status_code
+        ev["bytes"] = len(body)
+        ev["fallback"] = _is_web_fallback(body)
+        ev["ok"] = resp.status_code < 400 and len(body) >= 500 and not ev["fallback"]
     except Exception as exc:  # network/DNS/timeout == not actually live
-        return [f"Could not reach deployed site {url}: {exc}. The deploy is not live."]
+        ev["error"] = str(exc)
+    return ev
+
+
+def _count_sources(result: Any) -> int:
+    """Count citation-like signals (links + 'Source:'/'[n]' markers) for receipts."""
+    body = _full_text(result)
+    urls = len(set(_URL_RE.findall(body)))
+    markers = len(re.findall(r"(?i)\bsource[s]?\s*[:\-]|\[\d+\]|\bcitation", body))
+    return urls + markers
+
+
+async def _check_executable(agent_name: str, result: Any) -> tuple[list[str], dict]:
+    """L2 — for ANY agent that produced a deploy/live URL, actually fetch it and
+    confirm it loads. Returns (failures, evidence). Agent-agnostic."""
+    url = extract_live_url(result)
+    if not url:
+        return [], {}  # no live artifact promised; nothing to execute
+    ev = await probe_live_url(url)
+    if ev["ok"]:
+        return [], ev
+    if ev["error"]:
+        return [f"Could not reach deployed site {url}: {ev['error']}. The deploy is not live."], ev
+    if ev["status"] is not None and ev["status"] >= 400:
+        return [f"Deployed site {url} returned HTTP {ev['status']} — the deploy is broken. Fix and redeploy."], ev
+    if ev["fallback"]:
+        return [f"Deployed site {url} is still the fallback template. Deploy the real product page."], ev
+    return [f"Deployed site {url} loaded but is nearly empty ({ev['bytes']} bytes). It is not a real page."], ev
 
 
 async def _check_semantic(agent_name: str, task: dict, result: Any, llm_call: Optional[LLMCall]) -> list[str]:
@@ -377,7 +401,7 @@ async def run_deep_verification(
     # De-dupe while preserving order (built-in + generic checks can overlap).
     seen: set[str] = set()
     shape_fails = [f for f in shape_fails if not (f in seen or seen.add(f))]
-    exec_fails = await _check_executable(agent_name, result)
+    exec_fails, exec_evidence = await _check_executable(agent_name, result)
     semantic_fails = await _check_semantic(agent_name, task, result, llm_call)
 
     hard_fails = shape_fails + exec_fails  # must-fix
@@ -402,6 +426,13 @@ async def run_deep_verification(
         "shape": shape_fails,
         "executable": exec_fails,
         "semantic": semantic_fails,
+    }
+    # Structured evidence powers the Receipts UI ("fetched 200, cites 14 sources").
+    verdict["evidence"] = {
+        "shape": {"passed": not shape_fails, "issues": shape_fails},
+        "executable": exec_evidence,  # {url,ok,status,bytes,fallback,error} or {}
+        "semantic": {"passed": not semantic_fails, "issues": semantic_fails,
+                     "sources_count": _count_sources(result)},
     }
     if all_failed and not verdict.get("summary", "").strip():
         verdict["summary"] = "; ".join(all_failed[:3])

@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from typing import Any
 
 from backend.core.agent import Agent, AgentContext
@@ -563,14 +564,52 @@ class Orchestrator:
         pruned = {k: v for k, v in result.items() if k not in ("artifacts_produced", "status")}
         return Orchestrator._readable(pruned or result, 600)
 
+    @staticmethod
+    def _artifact_receipt(artifact_key: str, verdict: dict | None) -> dict:
+        """Build the per-artifact verification receipt (Receipts feature): a compact,
+        human-readable trail of what was checked, results, and evidence."""
+        if not verdict:
+            return {}
+        levels = verdict.get("levels") or {}
+        evidence = verdict.get("evidence") or {}
+        # Per-deliverable status from the base verdict's artifacts list, when present.
+        per = next(
+            (a for a in (verdict.get("artifacts") or []) if a.get("artifact_key") == artifact_key),
+            None,
+        )
+        checks = [
+            {"level": "shape", "passed": not levels.get("shape"),
+             "detail": "; ".join(levels.get("shape") or []) or "Required fields present and substantial."},
+            {"level": "executable", "passed": bool((evidence.get("executable") or {}).get("ok"))
+                if evidence.get("executable") else None,
+             "detail": (
+                 f"Fetched {evidence['executable'].get('url')} -> HTTP {evidence['executable'].get('status')} "
+                 f"({evidence['executable'].get('bytes')} bytes)"
+                 if evidence.get("executable") else "No live URL to fetch."
+             )},
+            {"level": "semantic", "passed": not levels.get("semantic"),
+             "detail": "; ".join(levels.get("semantic") or [])
+                 or f"Passed semantic review; cites {(evidence.get('semantic') or {}).get('sources_count', 0)} sources."},
+        ]
+        return {
+            "status": (per or {}).get("status") or verdict.get("status", "passed"),
+            "checks": checks,
+            "evidence": evidence,
+            "failed_checks": verdict.get("failed_checks", []),
+            "attempts": verdict.get("attempts", 1),
+            "checked_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+
     async def _publish_stack_artifacts(
         self,
         session_id: str,
         task: dict,
         result: Any,
         stack_template: Any,
+        verdict: dict | None = None,
     ) -> None:
-        """Emit typed artifact events for artifacts owned by the completed task."""
+        """Emit typed artifact events for artifacts owned by the completed task. When a
+        verification verdict is supplied, attach + persist a per-artifact Receipt."""
         from backend.core.events import publish
 
         agent_name = task.get("agent", "")
@@ -596,11 +635,23 @@ class Orchestrator:
         except Exception:
             pass
 
+        # Founder/company context for durable receipt persistence (non-fatal).
+        _founder_id = ""
+        _company_id = ""
+        try:
+            from backend.core.session_store import get_session_meta as _gsm2
+            _sm2 = _gsm2(session_id) or {}
+            _founder_id = _sm2.get("founder_id", "")
+            _company_id = _sm2.get("company_id", "") or _founder_id
+        except Exception:
+            pass
+
         for artifact_key in expected_keys:
             artifact = artifact_by_key.get(artifact_key)
             if not artifact:
                 continue
             _preview = self._artifact_preview(result, artifact.key)
+            _receipt = self._artifact_receipt(artifact.key, verdict)
             await publish(session_id, {
                 "type": "stack_artifact",
                 "artifact": {
@@ -612,8 +663,25 @@ class Orchestrator:
                     "status": "ready",
                     "task_id": task.get("id", ""),
                     "preview": _preview,
+                    "verification": _receipt,
                 },
             })
+            # Durable, shareable receipt (Receipts feature).
+            if _receipt and _founder_id:
+                try:
+                    from backend.verification.receipt_store import add_receipt
+                    await asyncio.to_thread(
+                        add_receipt,
+                        _founder_id,
+                        _company_id,
+                        session_id=session_id,
+                        artifact_key=artifact.key,
+                        artifact_title=artifact.title,
+                        agent=artifact.owner_agent,
+                        receipt=_receipt,
+                    )
+                except Exception as _rex:
+                    logger.warning("receipt persist failed for %s: %s", artifact_key, _rex)
             # Persist to workspace vault with full content
             if _ws_id and _ch_id:
                 try:
@@ -1268,6 +1336,9 @@ class Orchestrator:
                 if isinstance(_retry_result, dict):
                     result = _retry_result
 
+            if deep_verdict:
+                deep_verdict["attempts"] = _attempt + 1  # initial run + corrections
+
             # Preserve legacy web fallback flag so existing UI/blocking keeps working.
             if agent_name == "web" and deep_verdict.get("status") == "blocked":
                 _html = result.get("html") if isinstance(result, dict) else None
@@ -1346,7 +1417,7 @@ class Orchestrator:
                 result=result,
                 artifact_verification=artifact_verification,
             )
-            await self._publish_stack_artifacts(session_id, task, result, stack_template)
+            await self._publish_stack_artifacts(session_id, task, result, stack_template, artifact_verification)
             await publish(session_id, {
                 "type": "stack_artifact_verification",
                 "verification": artifact_verification,
