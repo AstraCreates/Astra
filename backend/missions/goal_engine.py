@@ -29,6 +29,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # Workstream key → (task title, default specialist agents to dispatch for it).
+# Default (SaaS/idea-to-revenue).
 WORKSTREAMS: dict[str, dict[str, Any]] = {
     "research":  {"title": "Validate market & ICP", "dispatch": ["research"]},
     "product":   {"title": "Build product & landing", "dispatch": ["web", "technical"]},
@@ -37,6 +38,70 @@ WORKSTREAMS: dict[str, dict[str, Any]] = {
     "legal":     {"title": "Legal foundation", "dispatch": ["legal"]},
     "ops":       {"title": "Operating plan", "dispatch": ["ops"]},
 }
+
+# Business-type-specific workstream titles — same keys, different names/dispatch per model.
+WORKSTREAMS_BY_TYPE: dict[str, dict[str, dict[str, Any]]] = {
+    "ecomm": {
+        "research":  {"title": "Market & competitor research (ecomm)", "dispatch": ["research"]},
+        "product":   {"title": "Build ecomm store (Medusa.js)", "dispatch": ["web", "technical"]},
+        "marketing": {"title": "Email flows & paid acquisition (Klaviyo)", "dispatch": ["marketing"]},
+        "sales":     {"title": "Product catalog & pricing strategy", "dispatch": ["sales"]},
+        "legal":     {"title": "Store legal docs (returns, privacy, ToS)", "dispatch": ["legal"]},
+        "ops":       {"title": "Fulfillment & ops setup (Printful/Square)", "dispatch": ["ops"]},
+    },
+    "local": {
+        "research":  {"title": "Local market & competitor analysis", "dispatch": ["research"]},
+        "product":   {"title": "Build booking site (Cal.com embed)", "dispatch": ["web"]},
+        "marketing": {"title": "Google Business, social & local ads", "dispatch": ["marketing"]},
+        "sales":     {"title": "Service menu, memberships & retention", "dispatch": ["sales"]},
+        "legal":     {"title": "Service agreements, waivers & compliance", "dispatch": ["legal"]},
+        "ops":       {"title": "Booking & payments (Square/Cal.com)", "dispatch": ["ops"]},
+    },
+    "agency": {
+        "research":  {"title": "Niche, ICP & competitor research", "dispatch": ["research"]},
+        "product":   {"title": "Service packages, case study page & proposal templates", "dispatch": ["web"]},
+        "marketing": {"title": "Outbound campaigns & case study content", "dispatch": ["marketing"]},
+        "sales":     {"title": "Proposal pipeline, pricing & close playbook", "dispatch": ["sales"]},
+        "legal":     {"title": "Client agreements, SOW & NDA templates", "dispatch": ["legal"]},
+        "ops":       {"title": "Client onboarding, delivery & retainer ops", "dispatch": ["ops"]},
+    },
+    "content": {
+        "research":  {"title": "Audience, topic & monetization research", "dispatch": ["research"]},
+        "product":   {"title": "Newsletter / content platform setup", "dispatch": ["web"]},
+        "marketing": {"title": "Content calendar, SEO & distribution", "dispatch": ["marketing"]},
+        "sales":     {"title": "Sponsorship, affiliate & paid tiers strategy", "dispatch": ["sales"]},
+        "legal":     {"title": "Content IP, creator agreements & DMCA", "dispatch": ["legal"]},
+        "ops":       {"title": "Digital product setup & payments (Lemon Squeezy)", "dispatch": ["ops"]},
+    },
+}
+
+
+def _extract_business_type(text: str) -> str:
+    """Extract business type slug from quiz context block or instruction text.
+    Returns: 'ecomm' | 'local' | 'agency' | 'content' | 'saas'"""
+    t = (text or "").lower()
+    # Quiz contextBlock always starts "Business type: <label>"
+    m = re.search(r"business type:\s*([^\n—–]+)", t)
+    if m:
+        raw = m.group(1).strip()
+        if any(w in raw for w in ("ecomm", "store", "shop", "print-on-demand", "digital product", "subscription box")):
+            return "ecomm"
+        if any(w in raw for w in ("local", "salon", "gym", "restaurant", "cleaning", "tutoring", "fitness", "beauty", "food")):
+            return "local"
+        if any(w in raw for w in ("agency", "consult", "freelan")):
+            return "agency"
+        if any(w in raw for w in ("content", "creator", "newsletter", "media", "community")):
+            return "content"
+    # Fallback: scan the whole instruction for strong signals
+    if "medusa" in t or "printful" in t or "shopify" in t or "ecommerce" in t or "online store" in t:
+        return "ecomm"
+    if "booking site" in t or "cal.com" in t or "square appointments" in t or "local service" in t:
+        return "local"
+    if "agency" in t or "consulting" in t or "client work" in t or "freelance" in t:
+        return "agency"
+    if "newsletter" in t or "substack" in t or "content creator" in t:
+        return "content"
+    return "saas"
 
 
 def _workstream(agent: str) -> str | None:
@@ -133,6 +198,9 @@ def ensure_launch_goal(founder_id: str, session_id: str, agents: list[str], goal
         # (avoids reseeding on replans within the same launch run).
         if goal and goal.get("root_session_id") == session_id and current_goal(founder_id, company_id):
             return
+        # Determine business type from quiz context block in goal_text.
+        biz_type = _extract_business_type(goal_text or "")
+        ws_map = WORKSTREAMS_BY_TYPE.get(biz_type, WORKSTREAMS)
         # Group the planned agents by workstream, preserving exact agent names so
         # task-done detection matches the agent_done events exactly.
         by_ws: dict[str, list[str]] = {}
@@ -143,9 +211,9 @@ def ensure_launch_goal(founder_id: str, session_id: str, agents: list[str], goal
                 if a not in by_ws[ws]:
                     by_ws[ws].append(a)
         tasks: list[dict[str, Any]] = []
-        for key in WORKSTREAMS:
+        for key in ws_map:
             if key in by_ws:
-                tasks.append({"title": WORKSTREAMS[key]["title"], "owner_agents": by_ws[key]})
+                tasks.append({"title": ws_map[key]["title"], "owner_agents": by_ws[key]})
         if not tasks:
             tasks = [{"title": "Launch the company", "owner_agents": list(agents or [])}]
 
@@ -174,15 +242,48 @@ def ensure_launch_goal(founder_id: str, session_id: str, agents: list[str], goal
                             founder_id, existing or "?", new_name or "?")
         except Exception as e:
             logger.warning("goal_engine: brain reset on launch failed for %s: %s", founder_id, e)
+        # Detect whether this is a continuation of an existing business (has GitHub/live URL).
+        existing_context = bool(
+            re.search(r"existing business context:", goal_text or "", re.IGNORECASE)
+            or re.search(r"github repo:\s*https?://", goal_text or "", re.IGNORECASE)
+        )
+        launch_title = (
+            "Continue growing the business" if existing_context
+            else "Launch the company"
+        )
         reset_for_new_launch(
             founder_id, session_id,
             north_star=(goal_text or "Get the company on its feet")[:400],
-            company_goal="Get the company launched and operating — all departments working together.",
+            company_goal=(
+                "Extend the existing business — pick up from current state and drive growth."
+                if existing_context
+                else "Get the company launched and operating — all departments working together."
+            ),
             company_id=company_id,
         )
+        # Persist business type so planner can use it for all future goals.
+        try:
+            from backend.missions.company_goal import get_company_goal, _lock, _read, _save
+            with _lock:
+                g = _read(founder_id, company_id)
+                if g is not None:
+                    g["business_type"] = biz_type
+                    g["is_existing_business"] = existing_context
+                    _save(g)
+        except Exception:
+            pass
+        # Pre-pin GitHub repo from existing business context so technical/web agents
+        # build on top of it rather than creating a new repo from scratch.
+        try:
+            m_repo = re.search(r"github repo:\s*(https?://\S+)", goal_text or "", re.IGNORECASE)
+            if m_repo:
+                from backend.missions.company_goal import set_company_repo
+                set_company_repo(founder_id, company_id, repo_url=m_repo.group(1).strip())
+        except Exception:
+            pass
         start_goal(
             founder_id,
-            title="Launch the company",
+            title=launch_title,
             tasks=tasks,
             kind="launch",
             company_id=company_id,
@@ -422,7 +523,12 @@ def plan_next_goal(founder_id: str, company_id: str | None = None) -> dict[str, 
     done_goals = [g.get("title") for g in (goal.get("goals") or []) if g.get("status") == "done"][-6:]
     stage = _infer_stage(goal)
     stage_ctx = _STAGE_CONTEXT.get(stage, _STAGE_CONTEXT["pre_launch"])
-    ws_keys = ", ".join(WORKSTREAMS.keys())
+    biz_type = str(goal.get("business_type") or "saas")
+    ws_map = WORKSTREAMS_BY_TYPE.get(biz_type, WORKSTREAMS)
+    ws_keys = ", ".join(ws_map.keys())
+    biz_label = {"ecomm": "Ecommerce", "local": "Local service", "agency": "Agency/consulting",
+                 "content": "Content/creator", "saas": "SaaS/app"}.get(biz_type, "SaaS/app")
+    is_existing = bool(goal.get("is_existing_business"))
 
     # Build a summary of VERIFIED accomplishments (tasks marked done with notes/evidence)
     proven: list[str] = []
@@ -433,21 +539,30 @@ def plan_next_goal(founder_id: str, company_id: str | None = None) -> dict[str, 
                 proven.append(f"- {t.get('title', '')}" + (f": {notes[:180]}" if notes else " (completed)"))
     proven_text = "\n".join(proven[:10]) or "Nothing verified yet."
 
+    existing_note = (
+        "This is a CONTINUATION of an existing business (not a fresh start). "
+        "The company already has some infrastructure (code, site, customers). "
+        "Focus on building on what exists, not rebuilding from scratch.\n"
+        if is_existing else ""
+    )
     prompt = (
         "You are the operating planner for an early-stage startup. "
-        "Write the company's NEXT concrete goal based on its current stage.\n\n"
+        "Write the company's NEXT concrete goal based on its current stage and business model.\n\n"
         f"North star: {north_star}\n"
+        f"Business type: {biz_label}\n"
         f"Current stage: {stage}\n"
-        f"Stage guidance: {stage_ctx}\n\n"
-        f"Verified accomplishments:\n{proven_text}\n\n"
+        f"Stage guidance: {stage_ctx}\n"
+        f"{existing_note}"
+        f"\nVerified accomplishments:\n{proven_text}\n\n"
         f"Already-completed goals (do NOT repeat): {json.dumps(done_goals)}\n\n"
         "RULES — follow exactly:\n"
         "1. Goals must be achievable by the specialist agents.\n"
-        "2. Goals or tasks claiming users/customers/revenue MUST specify HOW the agent "
-        "will provide evidence (e.g. 'deploy signup page and return live URL', "
-        "'close 3 Stripe subscriptions and return payment IDs').\n"
-        "3. Tasks must be concrete and verifiable — not vague ('run 10 outreach calls and log replies' "
-        "not 'improve outreach').\n"
+        "2. Goals claiming users/orders/bookings/revenue MUST specify HOW the agent provides evidence "
+        "(e.g. 'return live store URL', 'return Stripe/Square payment ID', 'return signup count').\n"
+        "3. Tasks must be concrete and verifiable for THIS business type — "
+        f"for {biz_label}: focus on what matters (e.g. for ecomm: store, SKUs, email flows; "
+        "for local: bookings, reviews, local SEO; for agency: proposals, retainers; "
+        "for content: subscriber count, monetization).\n"
         "4. Each task has ONE workstream owner.\n"
         f"5. Propose 2-5 tasks. Workstreams: {ws_keys}\n\n"
         'Respond with ONLY valid JSON (no markdown, no explanation):\n'
@@ -469,41 +584,136 @@ def plan_next_goal(founder_id: str, company_id: str | None = None) -> dict[str, 
             if not isinstance(t, dict) or not t.get("title"):
                 continue
             ws = str(t.get("workstream") or "").lower().strip()
-            owners = WORKSTREAMS.get(ws, {}).get("dispatch") or ["ops"]
+            owners = ws_map.get(ws, WORKSTREAMS.get(ws, {})).get("dispatch") or ["ops"]
             tasks.append({"title": str(t["title"])[:200], "owner_agents": list(owners)})
         if title and tasks:
             break
 
-    # Stage-appropriate deterministic fallback — never leave the company goal-less.
+    # Stage + biz-type-appropriate deterministic fallback — never leave the company goal-less.
     if not title or not tasks:
-        logger.warning("plan_next_goal: planner produced nothing for %s (stage=%s) — using stage fallback", founder_id, stage)
-        if stage == "pre_launch":
+        logger.warning("plan_next_goal: planner produced nothing for %s (stage=%s biz=%s) — using fallback", founder_id, stage, biz_type)
+        _prod = list(ws_map.get("product", WORKSTREAMS["product"])["dispatch"])
+        _mkt  = list(ws_map.get("marketing", WORKSTREAMS["marketing"])["dispatch"])
+        _sales = list(ws_map.get("sales", WORKSTREAMS["sales"])["dispatch"])
+        _ops  = list(ws_map.get("ops", WORKSTREAMS["ops"])["dispatch"])
+        _res  = list(ws_map.get("research", WORKSTREAMS["research"])["dispatch"])
+
+        if biz_type == "ecomm":
+            if stage in ("pre_launch", "launched"):
+                title = "Set up ecomm store and get first 5 orders"
+                tasks = [
+                    {"title": "Build and deploy Medusa.js store with product catalog — return live store URL", "owner_agents": _prod},
+                    {"title": "Set up Klaviyo welcome flow and abandoned-cart email — return flow URL", "owner_agents": _mkt},
+                    {"title": "Run 30 DM outreach on Instagram/TikTok, drive 5 first orders — return order IDs", "owner_agents": _sales},
+                ]
+            elif stage == "first_traction":
+                title = "Drive first 50 orders and set up repeat-purchase flows"
+                tasks = [
+                    {"title": "Launch paid Meta/TikTok ad campaign for best-selling product — return ad URL + spend", "owner_agents": _mkt},
+                    {"title": "Set up post-purchase email flow (review ask + cross-sell) — return flow URL", "owner_agents": _ops},
+                    {"title": "Add 10 new SKUs based on top-selling category research", "owner_agents": _res},
+                ]
+            else:
+                title = "Scale ecomm: double best-performing channel and hit $10k MRR"
+                tasks = [
+                    {"title": "Scale winning ad creative: increase budget on top ad — return ROAS improvement", "owner_agents": _mkt},
+                    {"title": "Set up subscription / bundle upsell flow — return AOV before/after", "owner_agents": _ops},
+                    {"title": "Negotiate better fulfillment terms with Printful — return cost reduction", "owner_agents": _res},
+                ]
+        elif biz_type == "local":
+            if stage in ("pre_launch", "launched"):
+                title = "Launch booking site and get first 10 appointments booked"
+                tasks = [
+                    {"title": "Build and deploy Cal.com booking site — return live booking URL", "owner_agents": _prod},
+                    {"title": "Optimise Google Business Profile and request 10 reviews from past clients — return GBP URL", "owner_agents": _mkt},
+                    {"title": "Run local Instagram promotion and DM 50 local accounts — return booking count", "owner_agents": _sales},
+                ]
+            elif stage == "first_traction":
+                title = "Grow to 40 monthly bookings and launch membership tier"
+                tasks = [
+                    {"title": "Launch monthly membership package via Square — return subscription activation link", "owner_agents": _ops},
+                    {"title": "Set up SMS reminder + review-ask flow via Twilio — return flow and first send proof", "owner_agents": _mkt},
+                    {"title": "Run Google Local Services Ad campaign — return ad URL and click data", "owner_agents": _sales},
+                ]
+            else:
+                title = "Scale bookings and launch referral program"
+                tasks = [
+                    {"title": "Build refer-a-friend program (gift card reward) — return program URL", "owner_agents": _ops},
+                    {"title": "Increase paid local ad budget on best-performing campaign — return revenue uplift", "owner_agents": _mkt},
+                    {"title": "Add new service tier / premium package — return updated pricing page URL", "owner_agents": _sales},
+                ]
+        elif biz_type == "agency":
+            if stage in ("pre_launch", "launched"):
+                title = "Land first 3 paying clients"
+                tasks = [
+                    {"title": "Create service packages page and proposal template — return live URL", "owner_agents": _prod},
+                    {"title": "Run 50-prospect LinkedIn outreach campaign, book 5 discovery calls — log reply rate and call links", "owner_agents": _sales},
+                    {"title": "Publish 2 case studies / before-after pieces — return published URLs", "owner_agents": _mkt},
+                ]
+            elif stage == "first_traction":
+                title = "Convert project clients to monthly retainers — hit $5k MRR"
+                tasks = [
+                    {"title": "Build retainer proposal and present to top 3 active clients — return signed doc", "owner_agents": _sales},
+                    {"title": "Set up monthly reporting template and client dashboard — return Notion/doc URL", "owner_agents": _ops},
+                    {"title": "Launch referral program for existing clients — return program doc", "owner_agents": _mkt},
+                ]
+            else:
+                title = "Scale agency: systematise delivery and hire first subcontractor"
+                tasks = [
+                    {"title": "Build delivery SOPs for top 2 service lines — return doc URLs", "owner_agents": _ops},
+                    {"title": "Create subcontractor onboarding guide and rate card — return doc", "owner_agents": _res},
+                    {"title": "Run targeted LinkedIn + content campaign to fill next 3 slots — log leads", "owner_agents": _mkt},
+                ]
+        elif biz_type == "content":
+            if stage in ("pre_launch", "launched"):
+                title = "Launch newsletter and hit 500 subscribers"
+                tasks = [
+                    {"title": "Set up newsletter platform (Beehiiv/Ghost) and landing page — return subscribe URL", "owner_agents": _prod},
+                    {"title": "Publish 4 cornerstone pieces and promote to target audience — return URLs + subscriber count", "owner_agents": _mkt},
+                    {"title": "Set up digital product storefront (Lemon Squeezy) — return store URL", "owner_agents": _ops},
+                ]
+            elif stage == "first_traction":
+                title = "Monetise audience: first paid product or sponsorship deal"
+                tasks = [
+                    {"title": "Launch first paid digital product (template, course, or guide) — return Lemon Squeezy product URL", "owner_agents": _ops},
+                    {"title": "Outreach to 10 potential sponsors in the niche — log reply rate and first deal terms", "owner_agents": _sales},
+                    {"title": "Publish 6 SEO-targeted pieces to grow organic subscribers — return published URLs", "owner_agents": _mkt},
+                ]
+            else:
+                title = "Scale revenue: grow paid tiers and increase sponsorship rates"
+                tasks = [
+                    {"title": "Launch premium subscriber tier with exclusive content — return tier URL + conversion rate", "owner_agents": _ops},
+                    {"title": "Increase sponsorship rates based on audience growth — return new rate card and 2 signed deals", "owner_agents": _sales},
+                    {"title": "Build SEO content cluster around top-traffic topic — return traffic growth data", "owner_agents": _mkt},
+                ]
+        # SaaS default
+        elif stage == "pre_launch":
             title = "Validate and build: deploy the MVP and collect first real feedback"
             tasks = [
-                {"title": "Interview 5 target customers and document key pain points with quotes", "owner_agents": list(WORKSTREAMS["research"]["dispatch"])},
-                {"title": "Build and deploy the MVP — return live URL as evidence", "owner_agents": list(WORKSTREAMS["product"]["dispatch"])},
-                {"title": "Set up waitlist landing page with email capture — return URL", "owner_agents": list(WORKSTREAMS["marketing"]["dispatch"])},
+                {"title": "Interview 5 target customers and document key pain points with quotes", "owner_agents": _res},
+                {"title": "Build and deploy the MVP — return live URL as evidence", "owner_agents": _prod},
+                {"title": "Set up waitlist landing page with email capture — return URL", "owner_agents": _mkt},
             ]
         elif stage == "launched":
             title = "Get first 10 real users: direct outreach, onboarding, and feedback"
             tasks = [
-                {"title": "Run direct outreach to 50 ICP prospects, book 5 onboarding calls — log reply count and call URLs", "owner_agents": list(WORKSTREAMS["sales"]["dispatch"])},
-                {"title": "Fix top onboarding friction so 10 users complete the core action — return session recordings or feedback doc URL", "owner_agents": list(WORKSTREAMS["product"]["dispatch"])},
-                {"title": "Publish 3 pieces of content targeting ICP search intent — return published URLs", "owner_agents": list(WORKSTREAMS["marketing"]["dispatch"])},
+                {"title": "Run direct outreach to 50 ICP prospects, book 5 onboarding calls — log reply count", "owner_agents": _sales},
+                {"title": "Fix top onboarding friction so 10 users complete core action — return feedback doc URL", "owner_agents": _prod},
+                {"title": "Publish 3 pieces of content targeting ICP search intent — return published URLs", "owner_agents": _mkt},
             ]
         elif stage == "first_traction":
             title = "Convert active users to paying customers — first revenue milestone"
             tasks = [
-                {"title": "Launch paid plan via Stripe, convert 3 active users — return Stripe payment IDs as evidence", "owner_agents": list(WORKSTREAMS["ops"]["dispatch"])},
-                {"title": "Run 10 sales calls with engaged users, document willingness-to-pay and objections", "owner_agents": list(WORKSTREAMS["sales"]["dispatch"])},
-                {"title": "Ship the #1 feature blocking paid conversion based on user feedback — return deploy URL", "owner_agents": list(WORKSTREAMS["product"]["dispatch"])},
+                {"title": "Launch paid plan via Stripe, convert 3 active users — return Stripe payment IDs", "owner_agents": _ops},
+                {"title": "Run 10 sales calls with engaged users, document willingness-to-pay and objections", "owner_agents": _sales},
+                {"title": "Ship the #1 feature blocking paid conversion — return deploy URL", "owner_agents": _prod},
             ]
         else:
             title = "Scale the acquisition channel that is working — grow MRR"
             tasks = [
-                {"title": "Identify top-converting channel from data and double effort there — return channel metrics", "owner_agents": list(WORKSTREAMS["marketing"]["dispatch"])},
-                {"title": "Build and work pipeline from inbound interest — log qualified leads and close rate", "owner_agents": list(WORKSTREAMS["sales"]["dispatch"])},
-                {"title": "Ship retention improvement: reduce churn by addressing top exit reason — return before/after data", "owner_agents": list(WORKSTREAMS["product"]["dispatch"])},
+                {"title": "Identify top-converting channel and double effort there — return channel metrics", "owner_agents": _mkt},
+                {"title": "Build and work pipeline from inbound interest — log qualified leads and close rate", "owner_agents": _sales},
+                {"title": "Ship retention improvement: reduce churn by addressing top exit reason — return before/after data", "owner_agents": _prod},
             ]
 
     # Planner goals are PROPOSED — founder must approve before agents work them.
