@@ -71,11 +71,20 @@ _DOC_KIND_HINTS = (
 def _infer_kind(key: str, title: str = "") -> str:
     """Classify a deliverable from its key/title: 'url' (must be a working link),
     'doc' (substantial document), or 'text' (substantial prose)."""
-    # Tokenize so substrings don't false-match (e.g. "repo" inside "compliance_report").
-    tokens = set(re.split(r"[^a-z0-9]+", f"{key} {title}".lower()))
-    if tokens & set(_URL_KIND_HINTS):
+    # Tokenize so substrings don't false-match (e.g. "repo" inside "compliance_report"),
+    # but match multi-word hints (e.g. "landing_page") by token subset.
+    tokens = set(re.split(r"[^a-z0-9]+", f"{key} {title}".lower())) - {""}
+
+    def hit(hints) -> bool:
+        for h in hints:
+            ht = set(re.split(r"[^a-z0-9]+", h)) - {""}
+            if ht and ht <= tokens:
+                return True
+        return False
+
+    if hit(_URL_KIND_HINTS):
         return "url"
-    if tokens & set(_DOC_KIND_HINTS):
+    if hit(_DOC_KIND_HINTS):
         return "doc"
     return "text"
 
