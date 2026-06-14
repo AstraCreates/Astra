@@ -212,6 +212,80 @@ def mark_running(session_id: str, agent: str) -> None:
         logger.debug("goal_engine.mark_running skipped: %s", e)
 
 
+# ── Business stage progression ───────────────────────────────────────────────────
+# Stages gate what the planner proposes next. Advancement requires verified evidence,
+# not self-reported claims.
+BUSINESS_STAGES = ["pre_launch", "launched", "first_traction", "early_revenue", "growth"]
+
+_STAGE_CONTEXT: dict[str, str] = {
+    "pre_launch": (
+        "Pre-launch: product not yet deployed. Focus: validate the idea with 5-10 real "
+        "customer interviews, build and ship the MVP, set up legal/payments."
+    ),
+    "launched": (
+        "Launched but no verified users yet. Focus: acquire the FIRST 10 real users "
+        "(evidence: signup URL + count, onboarding call notes), collect qualitative "
+        "feedback, fix the top 3 onboarding friction points."
+    ),
+    "first_traction": (
+        "Has real users. Focus: convert the most engaged users to paying customers "
+        "(evidence: Stripe payment, subscription ID), understand WHY they pay, "
+        "reduce churn, grow to 25 paying customers."
+    ),
+    "early_revenue": (
+        "Has paying customers. Focus: scale the acquisition channel that's working "
+        "(evidence: CAC, conversion rate by channel), improve retention "
+        "(evidence: cohort data), reach $1k MRR."
+    ),
+    "growth": (
+        "Working revenue engine. Focus: double down on the highest-ROI channel, "
+        "build team/systems to scale, hit the next revenue milestone."
+    ),
+}
+
+# Tasks/outputs that claim real-world outcomes must carry verifiable evidence.
+# Self-reported milestone completions are the primary hallucination vector.
+_MILESTONE_PHRASES = frozenset((
+    "first user", "first customer", "first sale", "first revenue",
+    "first paying", "first sign", "100 users", "1000 users",
+    "100 customer", "users signed", "paying customer", "monthly revenue",
+    "mrr", "arr", "first dollar", "acquisition channel", "conversion rate",
+    "go live", "launched the", "deployed to", "live on", "published to",
+    "shipped to production", "on app store", "submitted to", "verified user",
+    "active user", "returning user", "email list", "subscriber", "waitlist",
+    "beta user", "get users", "acquire users", "onboard users", "sign up",
+    "get signups", "get customers", "get paying",
+))
+
+
+def _task_requires_evidence(task_title: str) -> bool:
+    """Tasks claiming real-world outcomes can't be self-reported — need URL/screenshot/payment."""
+    t = (task_title or "").lower()
+    return any(phrase in t for phrase in _MILESTONE_PHRASES)
+
+
+def _infer_stage(goal: dict) -> str:
+    """Infer current business stage from verified (evidence-backed) task notes."""
+    notes_blob = " ".join(
+        t.get("notes", "")
+        for g in (goal.get("goals") or [])
+        for t in (g.get("tasks") or [])
+        if t.get("status") == "done"
+    ).lower()
+    completed_titles = " ".join(
+        (g.get("title") or "").lower()
+        for g in (goal.get("goals") or [])
+        if g.get("status") == "done"
+    )
+    if any(w in notes_blob for w in ("revenue", "paying", "sale", "mrr", "first dollar", "stripe", "subscription")):
+        return "early_revenue"
+    if any(w in notes_blob for w in ("user", "signup", "subscriber", "waitlist", "beta", "onboard")):
+        return "first_traction"
+    if any(w in completed_titles for w in ("launch", "build", "deploy", "ship", "product")):
+        return "launched"
+    return "pre_launch"
+
+
 # An agent_done event does NOT prove the agent delivered. The forced-synthesis
 # path (MAX_ITERATIONS) emits status="partial", and a hollow/empty output means
 # the agent ran but produced nothing real. Refuse to check off a task in those
@@ -220,24 +294,68 @@ _NON_DELIVERY_STATUSES = {"partial", "error", "failed", "blocked", "incomplete",
 _HOLLOW_PHRASES = (
     "placeholder", "lorem ipsum", "coming soon", "to be determined",
     "not provided", "unable to", "could not", "no output", "tbd",
+    "i was unable", "i could not", "no evidence", "could not verify",
+    "hypothetical", "simulated", "as if", "pretend", "imagined",
 )
 
 
-def _agent_delivered(output: Any) -> bool:
-    """Best-effort check that an agent_done payload represents real delivered work."""
+def _agent_delivered(output: Any, task: dict | None = None) -> bool:
+    """Best-effort check that an agent_done payload represents real delivered work.
+
+    For tasks that claim real-world outcomes (users, revenue, deployments), the agent
+    MUST include an evidence field (url, deploy_url, proof, etc.) — otherwise the task
+    stays open. This is the primary guard against milestone hallucination.
+    """
+    task_title = str((task or {}).get("title", ""))
+    requires_evidence = _task_requires_evidence(task_title)
+
     if output is None:
-        # No payload at all (older callers / unknown path) — preserve prior
-        # behavior and assume delivery rather than stalling the goal.
+        if requires_evidence:
+            logger.info(
+                "goal_engine: task '%s' requires evidence but output is None — NOT completing task",
+                task_title,
+            )
+            return False
+        # Non-milestone tasks: no payload = older caller path, preserve prior behavior.
         return True
+
     if isinstance(output, str):
         text = output.strip()
         if len(text) < 12:
             return False
+        if requires_evidence:
+            # Plain string output cannot carry structured evidence — reject.
+            logger.info(
+                "goal_engine: task '%s' requires evidence but output is plain text — NOT completing",
+                task_title,
+            )
+            return False
         return not any(p in text.lower() for p in _HOLLOW_PHRASES)
+
     if isinstance(output, dict):
         status = str(output.get("status") or "").lower().strip()
         if status in _NON_DELIVERY_STATUSES:
             return False
+        if requires_evidence:
+            evidence = (
+                output.get("evidence")
+                or output.get("proof")
+                or output.get("url")
+                or output.get("deploy_url")
+                or output.get("live_url")
+                or output.get("repo_url")
+                or output.get("source")
+                or output.get("signup_url")
+                or output.get("payment_id")
+                or output.get("stripe_id")
+            )
+            if not evidence:
+                logger.info(
+                    "goal_engine: task '%s' requires evidence — agent must include "
+                    "url/deploy_url/evidence/proof in done output. NOT completing task.",
+                    task_title,
+                )
+                return False
         # An output with literally no content fields is not a delivery.
         meaningful = {k: v for k, v in output.items() if k != "status" and v}
         if not meaningful:
@@ -263,13 +381,17 @@ def tick_from_agent(session_id: str, agent: str, output: Any = None) -> None:
         if not cg:
             return
         # Only touch the store if this agent actually owns an open task.
-        owns = any(agent in (t.get("owner_agents") or []) for t in cg.get("tasks") or [])
-        if not owns:
+        agent_tasks = [t for t in cg.get("tasks") or [] if agent in (t.get("owner_agents") or [])]
+        if not agent_tasks:
             return
-        if not _agent_delivered(output):
-            # Agent ran but didn't deliver — leave the task open (it stays
-            # in_progress via mark_running) instead of falsely checking it off.
-            logger.info("goal_engine: %s emitted agent_done without real delivery — NOT completing task", agent)
+        # Pass the task so _agent_delivered can enforce evidence requirements for
+        # milestone tasks — e.g. "get first users" can't be self-reported.
+        owning_task = agent_tasks[0]
+        if not _agent_delivered(output, owning_task):
+            logger.info(
+                "goal_engine: %s emitted agent_done without real delivery for task '%s' — NOT completing",
+                agent, owning_task.get("title", ""),
+            )
             return
         complete_agent_workstream(
             founder_id,
@@ -289,33 +411,54 @@ def _parse_obj(raw: str) -> dict[str, Any]:
 
 
 def plan_next_goal(founder_id: str, company_id: str | None = None) -> dict[str, Any] | None:
-    """Ask the planner LLM for the next company goal (objective + per-workstream
-    tasks) and make it the new current goal. Returns the created goal or None."""
+    """Ask the planner LLM for the next company goal. Stage-aware: proposes goals
+    appropriate to where the company actually is, with verifiable success criteria."""
     from backend.missions.company_goal import get_company_goal, start_goal
 
     goal = get_company_goal(founder_id, company_id)
     if goal is None:
         return None
     north_star = goal.get("north_star") or goal.get("company_goal") or ""
-    done_goals = [g.get("title") for g in (goal.get("goals") or []) if g.get("status") == "done"][-8:]
+    done_goals = [g.get("title") for g in (goal.get("goals") or []) if g.get("status") == "done"][-6:]
+    stage = _infer_stage(goal)
+    stage_ctx = _STAGE_CONTEXT.get(stage, _STAGE_CONTEXT["pre_launch"])
     ws_keys = ", ".join(WORKSTREAMS.keys())
+
+    # Build a summary of VERIFIED accomplishments (tasks marked done with notes/evidence)
+    proven: list[str] = []
+    for g in (goal.get("goals") or []):
+        for t in (g.get("tasks") or []):
+            if t.get("status") == "done":
+                notes = (t.get("notes") or "").strip()
+                proven.append(f"- {t.get('title', '')}" + (f": {notes[:180]}" if notes else " (completed)"))
+    proven_text = "\n".join(proven[:10]) or "Nothing verified yet."
+
     prompt = (
-        "You are the operating planner for a startup that already launched. Decide the "
-        "company's NEXT goal toward the north star — there is no 'finished'.\n\n"
+        "You are the operating planner for an early-stage startup. "
+        "Write the company's NEXT concrete goal based on its current stage.\n\n"
         f"North star: {north_star}\n"
+        f"Current stage: {stage}\n"
+        f"Stage guidance: {stage_ctx}\n\n"
+        f"Verified accomplishments:\n{proven_text}\n\n"
         f"Already-completed goals (do NOT repeat): {json.dumps(done_goals)}\n\n"
-        "Write the next goal as a short objective plus 2-5 concrete major tasks, each "
-        f"assigned to ONE workstream from: [{ws_keys}].\n"
-        'Respond with ONLY JSON: {"title": "the goal", "tasks": [{"title": "task", '
-        '"workstream": "<one of the workstreams>"}]}'
+        "RULES — follow exactly:\n"
+        "1. Goals must be achievable by the specialist agents.\n"
+        "2. Goals or tasks claiming users/customers/revenue MUST specify HOW the agent "
+        "will provide evidence (e.g. 'deploy signup page and return live URL', "
+        "'close 3 Stripe subscriptions and return payment IDs').\n"
+        "3. Tasks must be concrete and verifiable — not vague ('run 10 outreach calls and log replies' "
+        "not 'improve outreach').\n"
+        "4. Each task has ONE workstream owner.\n"
+        f"5. Propose 2-5 tasks. Workstreams: {ws_keys}\n\n"
+        'Respond with ONLY valid JSON (no markdown, no explanation):\n'
+        '{"title": "specific goal", "tasks": ['
+        '{"title": "concrete verifiable task", "workstream": "<workstream>"}]}'
     )
-    # Retry the planner once — a transient empty/garbled body shouldn't leave the
-    # company permanently goal-less.
     title, tasks = "", []
     for _attempt in range(2):
         try:
             from backend.tools._llm import generate
-            data = _parse_obj(generate(prompt, max_tokens=900, model="large"))
+            data = _parse_obj(generate(prompt, max_tokens=1200, model="large"))
         except Exception as e:
             logger.warning("plan_next_goal LLM failed for %s (attempt %d): %s", founder_id, _attempt + 1, e)
             data = {}
@@ -331,25 +474,41 @@ def plan_next_goal(founder_id: str, company_id: str | None = None) -> dict[str, 
         if title and tasks:
             break
 
-    # Deterministic fallback — if the planner keeps failing, the company must STILL get
-    # a next goal (never silently stuck with no goal). A generic growth objective routed
-    # across the core workstreams; the founder reviews/edits it like any proposal.
+    # Stage-appropriate deterministic fallback — never leave the company goal-less.
     if not title or not tasks:
-        logger.warning("plan_next_goal: planner produced nothing for %s — using fallback goal", founder_id)
-        title = "Grow traction: sharpen the product and reach more of the target customer"
-        tasks = [
-            {"title": "Talk to users and ship the highest-impact product improvements", "owner_agents": list(WORKSTREAMS["product"]["dispatch"])},
-            {"title": "Run go-to-market experiments to grow qualified demand", "owner_agents": list(WORKSTREAMS["marketing"]["dispatch"])},
-            {"title": "Build and work the sales pipeline from inbound interest", "owner_agents": list(WORKSTREAMS["sales"]["dispatch"])},
-        ]
-    # Planner goals are PROPOSED, not active — the founder must approve before the
-    # team works them. (The launch goal is the only auto-active one.)
+        logger.warning("plan_next_goal: planner produced nothing for %s (stage=%s) — using stage fallback", founder_id, stage)
+        if stage == "pre_launch":
+            title = "Validate and build: deploy the MVP and collect first real feedback"
+            tasks = [
+                {"title": "Interview 5 target customers and document key pain points with quotes", "owner_agents": list(WORKSTREAMS["research"]["dispatch"])},
+                {"title": "Build and deploy the MVP — return live URL as evidence", "owner_agents": list(WORKSTREAMS["product"]["dispatch"])},
+                {"title": "Set up waitlist landing page with email capture — return URL", "owner_agents": list(WORKSTREAMS["marketing"]["dispatch"])},
+            ]
+        elif stage == "launched":
+            title = "Get first 10 real users: direct outreach, onboarding, and feedback"
+            tasks = [
+                {"title": "Run direct outreach to 50 ICP prospects, book 5 onboarding calls — log reply count and call URLs", "owner_agents": list(WORKSTREAMS["sales"]["dispatch"])},
+                {"title": "Fix top onboarding friction so 10 users complete the core action — return session recordings or feedback doc URL", "owner_agents": list(WORKSTREAMS["product"]["dispatch"])},
+                {"title": "Publish 3 pieces of content targeting ICP search intent — return published URLs", "owner_agents": list(WORKSTREAMS["marketing"]["dispatch"])},
+            ]
+        elif stage == "first_traction":
+            title = "Convert active users to paying customers — first revenue milestone"
+            tasks = [
+                {"title": "Launch paid plan via Stripe, convert 3 active users — return Stripe payment IDs as evidence", "owner_agents": list(WORKSTREAMS["ops"]["dispatch"])},
+                {"title": "Run 10 sales calls with engaged users, document willingness-to-pay and objections", "owner_agents": list(WORKSTREAMS["sales"]["dispatch"])},
+                {"title": "Ship the #1 feature blocking paid conversion based on user feedback — return deploy URL", "owner_agents": list(WORKSTREAMS["product"]["dispatch"])},
+            ]
+        else:
+            title = "Scale the acquisition channel that is working — grow MRR"
+            tasks = [
+                {"title": "Identify top-converting channel from data and double effort there — return channel metrics", "owner_agents": list(WORKSTREAMS["marketing"]["dispatch"])},
+                {"title": "Build and work pipeline from inbound interest — log qualified leads and close rate", "owner_agents": list(WORKSTREAMS["sales"]["dispatch"])},
+                {"title": "Ship retention improvement: reduce churn by addressing top exit reason — return before/after data", "owner_agents": list(WORKSTREAMS["product"]["dispatch"])},
+            ]
+
+    # Planner goals are PROPOSED — founder must approve before agents work them.
     return start_goal(
-        founder_id,
-        title=title,
-        tasks=tasks,
-        kind="planner",
-        status="proposed",
+        founder_id, title=title, tasks=tasks, kind="planner", status="proposed",
         company_id=company_id,
     )
 
@@ -399,9 +558,22 @@ async def dispatch_current_goal(
         )
     else:
         header = f"GOAL: {title}\n\nWork together to complete these major tasks:\n"
+
+    # Tasks requiring external evidence get an explicit callout — agents must include
+    # url/deploy_url/evidence/proof in their done output or the task won't be marked done.
+    evidence_tasks = [t for t in open_tasks if _task_requires_evidence(t.get("title", ""))]
+    evidence_note = ""
+    if evidence_tasks:
+        evidence_note = (
+            "\n\nEVIDENCE REQUIRED for the following tasks — include url/deploy_url/"
+            "evidence/proof/payment_id in your done output. Do NOT claim completion "
+            "without real verifiable proof; if blocked, state exactly what stops you:\n"
+            + "\n".join(f"  * {t.get('title')}" for t in evidence_tasks)
+        )
     instruction = (
         header
         + "\n".join(f"- {t.get('title')}" for t in open_tasks)
+        + evidence_note
         + "\n\nEach agent: deliver real outputs for the task(s) you own; end with a clear summary."
     )
     # Summary that distinguishes runs in the sub-run list: task count + follow-up marker.
