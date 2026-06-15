@@ -130,9 +130,9 @@ def _seed_company_identity(founder_id: str, goal_text: str, company_id: str | No
     try:
         text = goal_text.strip()
         name = ""
-        m = re.search(r"[Cc]ompany(?:[ /](?:project|product))?\s+name[:\s]+\"?([A-Za-z][A-Za-z0-9 ]{1,40})", text)
+        m = re.search(r"[Cc]ompany(?:[ /](?:project|product))?\s+name\s*:\s*\"?([^\n\"]{1,80})", text)
         if m:
-            name = m.group(1).strip()
+            name = m.group(1).strip().rstrip('"').strip()
         # Description = everything after the name line (the founder's own pitch).
         desc = re.sub(r"^[^\n]*[Cc]ompany(?:[ /](?:project|product))?\s+name[:\s][^\n]*\n+", "", text).strip() or text
         title = f"Company identity: {name}" if name else "Company identity"

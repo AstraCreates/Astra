@@ -391,18 +391,19 @@ class Orchestrator:
         """Extract or invent a company/product name from the goal."""
         import re
         # Explicit name the founder chose — ALWAYS use it, never invent over it. The
-        # frontend sends "Company/project name: X" (note the /project), so the pattern
-        # must allow the optional /project|/product or the founder's name was ignored
-        # and a random one generated instead (the "Goon → VelaBeam" bug).
+        # frontend sends "Company/project name: X\n\n<goal>" so the first pattern must
+        # capture everything up to the newline (multi-word names like "My Company" were
+        # silently truncated to "My" by the old [A-Za-z0-9]{1,40} pattern, causing the
+        # AI fallback to generate a random name — the "Goon → VelaBeam" class of bug).
         for pattern in [
-            r'[Cc]ompany(?:[ /](?:project|product))?\s+name[:\s]+"?([A-Za-z][A-Za-z0-9]{1,40})',
-            r'^[Cc]ompany\s*:\s*"?([A-Za-z][A-Za-z0-9]{1,40})',
-            r'(?:called|named|building)\s+"?([A-Z][a-zA-Z0-9]{2,})"?',
+            r'[Cc]ompany(?:[ /](?:project|product))?\s+name\s*:\s*"?([^\n"]{1,80})',
+            r'^[Cc]ompany\s*:\s*"?([^\n"]{1,80})',
+            r'(?:called|named|building)\s+"([^"]{2,60})"',
             r'"([A-Z][a-zA-Z0-9]{2,20})"',
         ]:
             m = re.search(pattern, goal)
             if m:
-                return m.group(1).strip()
+                return m.group(1).strip().rstrip('"').strip()
         # Generate one
         try:
             from openai import OpenAI
@@ -891,11 +892,23 @@ class Orchestrator:
             await publish(session_id, {"type": "company_name", "name": company_name})
             logger.info("bypass_planner=True — skipping company_name LLM, genome, goal_expand")
         else:
-            # Run company name generation and goal expansion in parallel
-            company_name, goal = await asyncio.gather(
-                self._generate_company_name(goal, creative_brief),
-                self._expand_goal(goal, session_id),
-            )
+            # Prefer: caller-supplied name → pinned name on company record → extract/generate.
+            # This ensures onboarding data is never overwritten by an AI-generated name.
+            _pinned_name = (constraints or {}).get("company_name", "").strip()
+            if not _pinned_name:
+                try:
+                    from backend.missions.company_goal import get_company_name as _gcn_pre
+                    _pinned_name = _gcn_pre(founder_id, company_id) or ""
+                except Exception:
+                    pass
+            if _pinned_name:
+                company_name, goal = _pinned_name, await self._expand_goal(goal, session_id)
+            else:
+                # Run company name generation and goal expansion in parallel
+                company_name, goal = await asyncio.gather(
+                    self._generate_company_name(goal, creative_brief),
+                    self._expand_goal(goal, session_id),
+                )
             shared["company_name"] = company_name
             operating_plan = build_stack_operating_plan(stack_template, goal, company_name)
             stack_manifest = build_stack_manifest(stack_template, goal, company_name)

@@ -53,10 +53,19 @@ async def launch_custom_agent_run(
     except Exception:
         pass
 
+    # Pull the pinned company name so the orchestrator never invents one.
+    _company_name = ""
+    try:
+        from backend.missions.company_goal import get_company_name as _gcn
+        _company_name = _gcn(founder_id, resolved_company) or ""
+    except Exception:
+        pass
+
     constraints: dict[str, Any] = {
         "agents": [agent_id],
         "stack_id": "custom",
         "company_id": resolved_company,
+        "company_name": _company_name,
         "unlimited_credits": unlimited,
         "custom_agent_id": agent_id,
     }
