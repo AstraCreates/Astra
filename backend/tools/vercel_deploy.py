@@ -23,9 +23,14 @@ def _resolve_vercel_token(founder_id: str = "") -> str:
             creds = load_credentials(founder_id, "vercel")
             if creds and creds.get("token"):
                 return creds["token"]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("vercel token lookup from credentials store failed for %s: %s", founder_id, e)
     return ""
+
+
+def _founder_has_vercel(founder_id: str = "") -> bool:
+    """Return True if a Vercel token is available (global env or per-founder store)."""
+    return bool(_resolve_vercel_token(founder_id))
 
 
 def _vercel_cli_deploy(local_path: str, project_name: str = "", token: str = "", founder_id: str = "") -> dict:
