@@ -4,6 +4,7 @@ from backend.core.agent import Agent
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
 from backend.tools.github_scaffold import github_create_repo
 from backend.tools.git_tools import run_mvp_loop
+from backend.tools.examples_library import search_examples, list_example_categories
 
 
 def build_web_agent(**kwargs) -> Agent:
@@ -51,6 +52,10 @@ def build_web_agent(**kwargs) -> Agent:
             "   ) — builds the Next.js landing, deploys it, and returns repo_url + deploy_url.\n"
             "4. obsidian_log — log the repo_url AND deploy_url clearly (the technical agent extends THIS repo).\n"
             "5. done — return {repo_url, deploy_url}.\n\n"
+            "EXAMPLES LIBRARY (call before writing code): search_examples('nextjs tailwind landing') → "
+            "working component patterns; search_examples('nextauth google oauth') → auth scaffold; "
+            "search_examples('deployment vercel next') → deployment config. "
+            "Call search_examples() with a specific query first, use what it returns, then build.\n\n"
             "Build a REAL Next.js app (NOT plain HTML). The technical agent adds auth, dashboard, and product "
             "features on top of this same repo, so keep the structure clean and standard."
         ),
@@ -60,6 +65,8 @@ def build_web_agent(**kwargs) -> Agent:
             "obsidian_log": obsidian_log,
             "obsidian_read": _obsidian_read_once,
             "obsidian_append": obsidian_append,
+            "search_examples": search_examples,
+            "list_example_categories": list_example_categories,
         },
         **kwargs,
     )
