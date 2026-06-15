@@ -387,7 +387,7 @@ export default function CustomAgentsPanel() {
     setRunningId(agent.id);
     try {
       const { session_id } = await runCustomAgent(founderId, agent.id, { companyId });
-      router.push(`/?session=${session_id}`);
+      router.push(`/s/${session_id}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to run");
     } finally {
@@ -420,7 +420,7 @@ export default function CustomAgentsPanel() {
             {agents.map((agent) => {
               const missing = agent.connector_status?.missing ?? [];
               return (
-                <div key={agent.id} className="border border-gray-150 rounded-xl p-4 hover:border-gray-300 transition-colors">
+                <div key={agent.id} className="border border-gray-200 rounded-xl p-4 hover:border-gray-300 transition-colors">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">

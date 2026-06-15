@@ -27,6 +27,7 @@ Thread-safe via a single process-level Lock.
 """
 from __future__ import annotations
 
+import calendar
 import json
 import logging
 import os
@@ -146,8 +147,15 @@ def create_agent(
     }
     with _lock:
         index = _load_index(founder_id)
-        # On name collision, keep the same id (overwrite/update semantics).
-        spec["created_at"] = index.get(agent_id, {}).get("created_at", spec["created_at"])
+        existing = index.get(agent_id)
+        if existing and existing.get("name") != name:
+            # ID collision with a differently-named (renamed) agent — use a unique suffix
+            # to avoid silently destroying the renamed agent's data.
+            agent_id = f"{agent_id}_{uuid.uuid4().hex[:6]}"
+            spec["id"] = agent_id
+        elif existing:
+            # True same-name re-creation: preserve the original created_at.
+            spec["created_at"] = existing.get("created_at", spec["created_at"])
         index[agent_id] = spec
         _save_index(founder_id, index)
     logger.info("custom_agent created: %s (founder=%s)", agent_id, founder_id)
@@ -262,7 +270,7 @@ def is_due(spec: dict[str, Any], now_epoch: float | None = None) -> bool:
     if not next_run:
         return True
     try:
-        nxt = time.mktime(time.strptime(next_run, "%Y-%m-%dT%H:%M:%SZ"))
+        nxt = calendar.timegm(time.strptime(next_run, "%Y-%m-%dT%H:%M:%SZ"))
     except Exception:
         return True
     return (now_epoch or time.time()) >= nxt
