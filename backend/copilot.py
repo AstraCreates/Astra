@@ -296,12 +296,10 @@ async def _tool_list_agents(founder_id: str, session_id: str, args: dict) -> Any
 async def _tool_dispatch_agents(founder_id: str, session_id: str, args: dict) -> Any:
     """Run specific agents on a directive NOW (works even from an idle chat).
 
-    args: {agents: [..]|str, instruction: str}. Spawns a child run linked to this
-    company's root session, like the goal engine does."""
+    args: {agents: [..]|str, instruction: str}. Runs agents in the current session
+    (no child spawned) using the company's root session for workspace context."""
     import asyncio
     from backend.core.factory import get_orchestrator
-    from backend.core.session_ids import new_session_id
-    from backend.core.session_store import register_session, get_session_meta
 
     instruction = str(args.get("instruction") or "").strip()
     raw_agents = args.get("agents") or []
@@ -315,33 +313,23 @@ async def _tool_dispatch_agents(founder_id: str, session_id: str, args: dict) ->
         return {"ok": False, "error": f"no valid agents in {raw_agents}; use list_agents"}
 
     company_id = _company_for_session(session_id, founder_id)
-    # Root the child run at the company's launch session so it builds in the SAME
-    # workspace/repo (no new company), mirroring dispatch_current_goal.
+    # Point agents at the company's root workspace/repo without creating a new session.
     try:
         from backend.missions.company_goal import get_company_goal
         g = get_company_goal(founder_id, company_id) or {}
         root = g.get("root_session_id") or g.get("source_session_id") or session_id
     except Exception:
         root = session_id
-    child = new_session_id()
-    try:
-        root_meta = get_session_meta(root) or {}
-        register_session(session_id=child, founder_id=founder_id, goal=instruction,
-                         workspace_id=str(root_meta.get("workspace_id") or ""),
-                         company_id=str(root_meta.get("company_id") or company_id),
-                         parent_session_id=root, kind="operating")
-    except Exception:
-        pass
 
     async def _go():
         try:
             await orch.continue_run(instruction=instruction, founder_id=founder_id,
-                                    prior_session_id=root or child, agents=valid, session_id=child)
+                                    prior_session_id=root, agents=valid, session_id=session_id)
         except Exception as e:
             logger.error("copilot dispatch_agents run failed: %s", e)
 
     asyncio.create_task(_go())
-    return {"ok": True, "dispatched": valid, "session_id": child, "instruction": instruction[:120]}
+    return {"ok": True, "dispatched": valid, "session_id": session_id, "instruction": instruction[:120]}
 
 
 async def _tool_set_goal(founder_id: str, session_id: str, args: dict) -> Any:
