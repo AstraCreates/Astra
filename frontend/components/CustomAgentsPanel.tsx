@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCompany } from "@/lib/company-context";
+import PageHeader, { HeaderPrimaryBtn } from "@/components/PageHeader";
 import {
   createCustomAgent,
   deleteCustomAgent,
@@ -396,24 +397,11 @@ export default function CustomAgentsPanel() {
 
   return (
     <div className="h-full flex flex-col bg-white">
-      {/* Header */}
-      <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Custom Agents</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Build your own agents from a prompt. Pick their tools. Run them on demand or on a schedule.
-          </p>
-        </div>
-        <button
-          onClick={() => setModal({ open: true, agent: null })}
-          className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors shrink-0"
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M7 1v12M1 7h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-          New agent
-        </button>
-      </div>
+      <PageHeader
+        title="Custom Agents"
+        subtitle="Build your own agents from a prompt. Pick their tools. Run them on demand or on a schedule."
+        actions={<HeaderPrimaryBtn label="+ New Agent" onClick={() => setModal({ open: true, agent: null })} />}
+      />
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-6 py-4">

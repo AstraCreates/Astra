@@ -1235,8 +1235,8 @@ export default function OnboardingWizard() {
       submitGoal(founderId, instruction, constraints, stack).catch(() => {});
     }
 
-    // Navigate to dashboard with welcome flag — PostOnboardingScreen runs there
-    // so the pull-up reveals the real dashboard (not this wizard page).
+    // Set localStorage flag so PostOnboardingScreen fires reliably on next render.
+    lsSet("astra_show_welcome", "1");
     router.replace(`/?welcome=1&name=${encodeURIComponent(name.trim())}`);
   }
 

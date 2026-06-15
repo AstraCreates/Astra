@@ -11,6 +11,7 @@ import {
   deleteLibraryFile,
   getExamplesLibrary,
 } from "@/lib/api";
+import PageHeader, { HeaderPrimaryBtn } from "@/components/PageHeader";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -471,7 +472,12 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
   const showTemplateViewer = mode === "templates" && selectedExample;
 
   return (
-    <div className={`flex flex-col h-full bg-white border border-[#E5E7EB] rounded-xl overflow-hidden ${className}`}>
+    <div className={`flex flex-col h-full bg-white overflow-hidden ${className}`}>
+      <PageHeader
+        title="Library"
+        subtitle="Files and templates injected into agent context during runs."
+        actions={mode === "files" ? <HeaderPrimaryBtn label="+ New File" onClick={() => { setShowNewForm(true); setSelectedFile(null); }} /> : undefined}
+      />
       {/* Top mode switcher */}
       <div className="flex items-center gap-0 border-b border-[#E5E7EB] px-5 pt-1 shrink-0">
         {(["files", "templates"] as const).map((m) => (
@@ -502,14 +508,8 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
             {/* Left sidebar */}
             <div className="w-80 flex flex-col border-r border-[#E5E7EB] shrink-0">
               {/* Header */}
-              <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#E5E7EB]">
+              <div className="flex items-center px-5 py-3.5 border-b border-[#E5E7EB]">
                 <h2 className="text-sm font-semibold text-[#111827]">Files</h2>
-                <button
-                  onClick={() => { setShowNewForm(true); setSelectedFile(null); }}
-                  className="flex items-center gap-1 text-xs bg-[#002EFF] hover:bg-[#0024CC] text-white px-3 py-1.5 rounded-lg transition-colors font-medium"
-                >
-                  <span className="text-sm leading-none">+</span> New File
-                </button>
               </div>
 
               {/* Dept filter */}

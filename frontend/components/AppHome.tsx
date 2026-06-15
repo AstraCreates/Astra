@@ -12,10 +12,11 @@ export default function AppHome() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
+  const [showWelcomeLS, setShowWelcomeLS] = useState(false);
 
   const sessionId = searchParams.get("session") ?? "";
   const forceNew = searchParams.get("new") === "1";
-  const showWelcome = searchParams.get("welcome") === "1";
+  const showWelcome = searchParams.get("welcome") === "1" || showWelcomeLS;
   const welcomeName = searchParams.get("name") ?? "";
 
   // Back-compat: old links used /?session=<id>(&founder=…). Redirect to the clean
@@ -27,6 +28,10 @@ export default function AppHome() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       setOnboarded(!!localStorage.getItem("astra_onboarding_done"));
+      if (localStorage.getItem("astra_show_welcome") === "1") {
+        localStorage.removeItem("astra_show_welcome");
+        setShowWelcomeLS(true);
+      }
     }
   }, []);
 
