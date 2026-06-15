@@ -884,6 +884,10 @@ class Orchestrator:
         from backend.core.events import publish
 
         _bypass_planner = bool((constraints or {}).get("bypass_planner"))
+        logger.warning("DBG run: session=%s bypass=%s agents=%s specialists_keys=%s",
+                       session_id, _bypass_planner,
+                       (constraints or {}).get("agents"),
+                       list(self.specialists.keys())[:10])
 
         if _bypass_planner:
             # Fast path for testing — skip all LLM pre-run calls, go straight to agent dispatch
@@ -996,6 +1000,7 @@ class Orchestrator:
                 filtered = [agent for agent in filtered if agent != "technical_scaffold"]
             _agent_filter = filtered
         _is_custom = bool(_agent_filter)
+        logger.warning("DBG run: _agent_filter=%s _is_custom=%s _bypass_planner=%s", _agent_filter, _is_custom, _bypass_planner)
 
         initial_tasks = [
             task for task in stack_template.build_tasks(goal)
