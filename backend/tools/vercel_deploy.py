@@ -12,9 +12,25 @@ logger = logging.getLogger(__name__)
 _VERCEL_API = "https://api.vercel.com"
 
 
-def _vercel_cli_deploy(local_path: str, project_name: str = "", token: str = "") -> dict:
+def _resolve_vercel_token(founder_id: str = "") -> str:
+    """Return Vercel token: global settings first, then per-founder credentials store."""
+    token = getattr(settings, "vercel_token", "") or ""
+    if token:
+        return token
+    if founder_id:
+        try:
+            from backend.provisioning.credentials_store import load_credentials
+            creds = load_credentials(founder_id, "vercel")
+            if creds and creds.get("token"):
+                return creds["token"]
+        except Exception:
+            pass
+    return ""
+
+
+def _vercel_cli_deploy(local_path: str, project_name: str = "", token: str = "", founder_id: str = "") -> dict:
     """Deploy from local directory using Vercel CLI. No GitHub connection needed."""
-    token = token or getattr(settings, "vercel_token", "")
+    token = token or _resolve_vercel_token(founder_id)
     if not token:
         return {"deployed": False, "error": "VERCEL_TOKEN not set"}
 
@@ -329,7 +345,7 @@ def vercel_deploy_from_github(
         except Exception:
             pass
 
-    token = getattr(settings, "vercel_token", None)
+    token = _resolve_vercel_token(founder_id)
     if not token:
         return {
             "deployed": False,
@@ -507,7 +523,7 @@ def vercel_deploy_from_github(
 def vercel_deploy(project_slug: str, html: str, css: str = "", js: str = "", session_id: str = "", founder_id: str = "") -> dict:
     """Deploy HTML to Vercel via CLI. Returns: {deployed, url} or {deployed: false, local_path}."""
     import tempfile, os as _os
-    token = getattr(settings, "vercel_token", None)
+    token = _resolve_vercel_token(founder_id)
     if not token:
         return _local_fallback(project_slug, html, css, js)
 

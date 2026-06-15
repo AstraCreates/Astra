@@ -1567,7 +1567,15 @@ def run_mvp_loop(
         # Auto-deploy to Vercel so there's a live preview URL (uses placeholder env
         # vars so it builds without real keys). Only when pushed to GitHub.
         deploy_url = None
-        if is_github and repo_url and getattr(settings, "vercel_token", ""):
+        _has_vercel_token = bool(getattr(settings, "vercel_token", ""))
+        if not _has_vercel_token and founder_id:
+            try:
+                from backend.provisioning.credentials_store import load_credentials as _lc
+                _vc = _lc(founder_id, "vercel")
+                _has_vercel_token = bool(_vc and _vc.get("token"))
+            except Exception:
+                pass
+        if is_github and repo_url and _has_vercel_token:
             try:
                 from backend.core.events import publish_sync
                 publish_sync(session_id, {"type": "agent_build", "agent": agent, "kind": "deploy_start"})
@@ -1580,6 +1588,7 @@ def run_mvp_loop(
                     project_name=Path(local).name[:60],
                     env_vars=_placeholder_env(local),
                     root_directory=_vercel_root_dir(local),
+                    founder_id=founder_id,
                 )
                 deploy_url = dep.get("deploy_url") or dep.get("url") or dep.get("deployment_url")
                 if deploy_url:
