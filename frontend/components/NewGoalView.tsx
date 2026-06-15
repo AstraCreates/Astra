@@ -113,7 +113,17 @@ export default function NewGoalView() {
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       {showQuiz && <BusinessQuizModal onComplete={onQuizComplete} onSkip={onQuizSkip} />}
-      <div className="new-wrap">
+      <div className="new-wrap new-orbit-stage">
+        <div className="new-orbit-layer" aria-hidden="true">
+          <span className="new-orbit-ring new-orbit-ring-a" />
+          <span className="new-orbit-ring new-orbit-ring-b" />
+          <span className="new-orbit-ring new-orbit-ring-c" />
+          <span className="new-orbit-beam new-orbit-beam-a" />
+          <span className="new-orbit-beam new-orbit-beam-b" />
+          <span className="new-orbit-star new-orbit-star-a" />
+          <span className="new-orbit-star new-orbit-star-b" />
+          <span className="new-orbit-star new-orbit-star-c" />
+        </div>
         {displayCompany && (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--bd)", background: "var(--surface)", fontSize: 10.5, color: "var(--fd)", marginBottom: 16 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)" }} />
