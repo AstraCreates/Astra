@@ -64,6 +64,7 @@ async def launch_custom_agent_run(
     constraints: dict[str, Any] = {
         "agents": [agent_id],
         "stack_id": "custom",
+        "bypass_planner": True,
         "company_id": resolved_company,
         "company_name": _company_name,
         "unlimited_credits": unlimited,
