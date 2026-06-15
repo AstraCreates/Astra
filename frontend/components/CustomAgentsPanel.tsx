@@ -177,7 +177,7 @@ function AgentModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-6 py-5 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">{agent ? "Edit agent" : "New custom agent"}</h2>
+          <div className="text-lg font-semibold text-gray-900">{agent ? "Edit agent" : "New custom agent"}</div>
           <p className="text-xs text-gray-500 mt-0.5">
             Describe the job in plain language. Pick the tools it can use. Optionally run it on a schedule.
           </p>
@@ -424,7 +424,7 @@ export default function CustomAgentsPanel() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-gray-900 truncate">{agent.name}</h3>
+                        <div className="text-sm font-semibold text-gray-900 truncate">{agent.name}</div>
                         {agent.schedule?.enabled && (
                           <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded-full">
                             every {agent.schedule.every_days}d

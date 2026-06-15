@@ -509,7 +509,7 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
             <div className="w-80 flex flex-col border-r border-[#E5E7EB] shrink-0">
               {/* Header */}
               <div className="flex items-center px-5 py-3.5 border-b border-[#E5E7EB]">
-                <h2 className="text-sm font-semibold text-[#111827]">Files</h2>
+                <div className="text-sm font-semibold text-[#111827]">Files</div>
               </div>
 
               {/* Dept filter */}
