@@ -157,6 +157,109 @@ def gmail_send_direct(founder_id: str, to: str, subject: str, body: str) -> dict
     return {"error": "Gmail send failed after token refresh"}
 
 
+def _gmail_api_get(founder_id: str, path: str, params: dict | None = None) -> tuple[int, dict]:
+    """Authenticated GET to Gmail REST API. Returns (status_code, json_body). Auto-refreshes on 401."""
+    import requests as _req
+    from backend.provisioning.credentials_store import load_credentials, store_credentials
+    creds = load_credentials(founder_id, "gmail")
+    if not creds or creds.get("connected_via") != "google_oauth":
+        return 403, {"error": "Gmail not connected — connect via Integrations page"}
+    access_token = creds.get("access_token")
+    for attempt in range(2):
+        r = _req.get(
+            f"https://gmail.googleapis.com/gmail/v1/{path}",
+            headers={"Authorization": f"Bearer {access_token}"},
+            params=params or {},
+            timeout=15,
+        )
+        if r.status_code == 401 and attempt == 0:
+            new_token = _gmail_refresh_token(creds)
+            if not new_token:
+                return 401, {"error": "Gmail token expired and refresh failed"}
+            access_token = new_token
+            creds["access_token"] = new_token
+            store_credentials(founder_id, "gmail", creds)
+            continue
+        try:
+            return r.status_code, r.json()
+        except Exception:
+            return r.status_code, {"error": r.text[:300]}
+    return 500, {"error": "Gmail API request failed"}
+
+
+def gmail_list_messages(founder_id: str, query: str = "", max_results: int = 20) -> dict:
+    """List Gmail messages for the founder. Args: founder_id, query (Gmail search syntax e.g. 'in:inbox is:unread', 'subject:outreach'), max_results (default 20, max 50).
+
+    Returns list of messages with id, snippet, subject, from, date."""
+    import base64 as _b64
+    max_results = min(max_results, 50)
+    status, data = _gmail_api_get(founder_id, "users/me/messages", {"q": query, "maxResults": max_results})
+    if status != 200:
+        return data
+    messages = data.get("messages") or []
+    if not messages:
+        return {"messages": [], "count": 0}
+
+    results = []
+    for m in messages[:max_results]:
+        msg_status, msg = _gmail_api_get(founder_id, f"users/me/messages/{m['id']}", {"format": "metadata", "metadataHeaders": ["Subject", "From", "To", "Date"]})
+        if msg_status != 200:
+            continue
+        headers = {h["name"]: h["value"] for h in (msg.get("payload") or {}).get("headers", [])}
+        results.append({
+            "id": m["id"],
+            "thread_id": msg.get("threadId"),
+            "snippet": msg.get("snippet", "")[:200],
+            "subject": headers.get("Subject", ""),
+            "from": headers.get("From", ""),
+            "to": headers.get("To", ""),
+            "date": headers.get("Date", ""),
+            "label_ids": msg.get("labelIds", []),
+        })
+    return {"messages": results, "count": len(results)}
+
+
+def gmail_get_message(founder_id: str, message_id: str) -> dict:
+    """Get full content of a Gmail message. Args: founder_id, message_id (from gmail_list_messages).
+
+    Returns subject, from, to, date, body (plain text)."""
+    import base64 as _b64
+    status, msg = _gmail_api_get(founder_id, f"users/me/messages/{message_id}", {"format": "full"})
+    if status != 200:
+        return msg
+    headers = {h["name"]: h["value"] for h in (msg.get("payload") or {}).get("headers", [])}
+
+    def _extract_body(payload: dict) -> str:
+        if not payload:
+            return ""
+        body_data = (payload.get("body") or {}).get("data", "")
+        if body_data:
+            try:
+                return _b64.urlsafe_b64decode(body_data + "==").decode("utf-8", errors="replace")
+            except Exception:
+                pass
+        for part in payload.get("parts") or []:
+            if part.get("mimeType") == "text/plain":
+                data = (part.get("body") or {}).get("data", "")
+                if data:
+                    try:
+                        return _b64.urlsafe_b64decode(data + "==").decode("utf-8", errors="replace")
+                    except Exception:
+                        pass
+        return ""
+
+    return {
+        "id": message_id,
+        "thread_id": msg.get("threadId"),
+        "subject": headers.get("Subject", ""),
+        "from": headers.get("From", ""),
+        "to": headers.get("To", ""),
+        "date": headers.get("Date", ""),
+        "body": _extract_body(msg.get("payload") or {}),
+        "label_ids": msg.get("labelIds", []),
+    }
+
+
 def composio_gmail_send(founder_id: str, to: str, subject: str, body: str) -> dict:
     """Send email via founder's Gmail. Tries Composio SDK → direct Gmail API → Resend."""
     result = _run("GMAIL_SEND_EMAIL", {"recipient_email": to, "subject": subject, "body": body}, founder_id)

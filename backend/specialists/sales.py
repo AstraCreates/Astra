@@ -15,6 +15,12 @@ from backend.tools.hunter_tools import (
     hunter_search_by_domains,
     hunter_store_contacts,
 )
+from backend.tools.composio_tools import (
+    composio_gmail_send,
+    gmail_send_direct,
+    gmail_list_messages,
+    gmail_get_message,
+)
 
 
 def build_sales_agent(**kwargs) -> Agent:
@@ -81,6 +87,17 @@ def build_sales_agent(**kwargs) -> Agent:
             "- contacts_found (number of leads discovered)\n"
             "- domains_searched (list of domains or company names researched)\n\n"
 
+            "═══ GMAIL — Send & read emails (if Gmail is connected) ═══\n"
+            "You have direct Gmail access via the founder's connected account:\n"
+            "  gmail_send_direct(founder_id=<FOUNDER_ID>, to=<email>, subject=<subject>, body=<body>)\n"
+            "    → sends an email from the founder's Gmail\n"
+            "  gmail_list_messages(founder_id=<FOUNDER_ID>, query='in:inbox is:unread', max_results=20)\n"
+            "    → lists emails matching a Gmail search query (returns subject, from, snippet, date)\n"
+            "  gmail_get_message(founder_id=<FOUNDER_ID>, message_id=<id>)\n"
+            "    → gets the full body of a specific email\n"
+            "Use these to: send outreach emails directly, check for replies, read responses from prospects.\n"
+            "If gmail_send_direct returns an error about 'not connected', skip sending — the sequences are still valuable.\n\n"
+
             "RULES:\n"
             "- Always complete all 5 steps before finishing.\n"
             "- find_leads() uses web search — it always works without any API key.\n"
@@ -107,6 +124,10 @@ def build_sales_agent(**kwargs) -> Agent:
             "hunter_store_contacts": hunter_store_contacts,
             "build_outreach_sequence": build_outreach_sequence,
             "build_crm_contact": build_crm_contact,
+            "composio_gmail_send": composio_gmail_send,
+            "gmail_send_direct": gmail_send_direct,
+            "gmail_list_messages": gmail_list_messages,
+            "gmail_get_message": gmail_get_message,
             "obsidian_log": obsidian_log,
             "obsidian_read": obsidian_read,
             "obsidian_append": obsidian_append,
