@@ -98,20 +98,83 @@ def _run(action_name: str, params: dict, founder_id: str) -> dict:
 # Gmail
 # ---------------------------------------------------------------------------
 
+def _gmail_refresh_token(creds: dict) -> str | None:
+    """Exchange refresh_token for a fresh access_token. Returns new token or None."""
+    import requests as _req
+    refresh_token = creds.get("refresh_token")
+    client_id = creds.get("client_id")
+    client_secret = creds.get("client_secret")
+    if not (refresh_token and client_id and client_secret):
+        return None
+    try:
+        r = _req.post(
+            "https://oauth2.googleapis.com/token",
+            data={"grant_type": "refresh_token", "refresh_token": refresh_token,
+                  "client_id": client_id, "client_secret": client_secret},
+            timeout=10,
+        )
+        r.raise_for_status()
+        return r.json().get("access_token")
+    except Exception as e:
+        logger.warning("Gmail token refresh failed: %s", e)
+        return None
+
+
+def gmail_send_direct(founder_id: str, to: str, subject: str, body: str) -> dict:
+    """Send via Gmail API using locally-stored Google OAuth tokens (no Composio)."""
+    import base64
+    import email as _email_lib
+    import requests as _req
+    from backend.provisioning.credentials_store import load_credentials, store_credentials
+    creds = load_credentials(founder_id, "gmail")
+    if not creds or creds.get("connected_via") != "google_oauth":
+        return {"error": "Gmail not connected via Google OAuth — go to Integrations and connect Gmail directly"}
+    access_token = creds.get("access_token")
+    # Try token; refresh if it fails
+    for attempt in range(2):
+        msg = _email_lib.message.EmailMessage()
+        msg["To"] = to
+        msg["Subject"] = subject
+        msg.set_content(body)
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+        r = _req.post(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+            headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"},
+            json={"raw": raw},
+            timeout=15,
+        )
+        if r.status_code == 401 and attempt == 0:
+            new_token = _gmail_refresh_token(creds)
+            if not new_token:
+                return {"error": "Gmail token expired and refresh failed — reconnect Gmail on the Integrations page"}
+            access_token = new_token
+            creds["access_token"] = new_token
+            store_credentials(founder_id, "gmail", creds)
+            continue
+        if r.status_code not in (200, 201):
+            return {"error": f"Gmail API error {r.status_code}: {r.text[:200]}"}
+        return {"ok": True, "message_id": r.json().get("id"), "to": to, "subject": subject}
+    return {"error": "Gmail send failed after token refresh"}
+
+
 def composio_gmail_send(founder_id: str, to: str, subject: str, body: str) -> dict:
-    """Send email via founder's Gmail OAuth. Falls back to resend if Composio unavailable."""
+    """Send email via founder's Gmail. Tries Composio SDK → direct Gmail API → Resend."""
     result = _run("GMAIL_SEND_EMAIL", {"recipient_email": to, "subject": subject, "body": body}, founder_id)
-    if result.get("error") and "410" in str(result.get("error", "")):
-        # Composio Gmail deprecated — try resend fallback
-        try:
-            from backend.tools.resend_tools import resend_send_email
-            from backend.config import settings
-            if settings.resend_api_key:
-                return resend_send_email(to=to, subject=subject, html=f"<pre>{body}</pre>", from_email="astra@astra.ai")
-        except Exception:
-            pass
-        return {"ok": True, "note": "Gmail (Composio 410) and Resend unavailable — email queued locally", "to": to, "subject": subject}
-    return result
+    if not result.get("error"):
+        return result
+    # Composio SDK broken (410) or not configured — try direct Gmail API
+    direct = gmail_send_direct(founder_id, to, subject, body)
+    if not direct.get("error"):
+        return direct
+    # Fall back to Resend if key is set
+    try:
+        from backend.tools.resend_tools import resend_send_email
+        from backend.config import settings
+        if settings.resend_api_key:
+            return resend_send_email(to=to, subject=subject, html=f"<pre>{body}</pre>", from_email="astra@astra.ai")
+    except Exception:
+        pass
+    return {"error": f"All Gmail paths failed. Composio: {result.get('error')}. Direct: {direct.get('error')}"}
 
 
 # ---------------------------------------------------------------------------

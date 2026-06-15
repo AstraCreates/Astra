@@ -28,6 +28,7 @@ from backend.tools.pdf_generator import generate_pdf
 from backend.tools.doc_generator import format_legal_document
 from backend.tools.composio_tools import (
     composio_gmail_send,
+    gmail_send_direct,
     composio_linkedin_post,
     composio_github_create_pr,
     composio_github_create_issue,
@@ -122,6 +123,7 @@ TOOL_REGISTRY: dict[str, callable] = {
 
     # Composio — OAuth-backed (Gmail, LinkedIn, GitHub PR, Linear, Calendar, Notion)
     "composio_gmail_send": composio_gmail_send,
+    "gmail_send_direct": gmail_send_direct,
     "composio_linkedin_post": composio_linkedin_post,
     "composio_github_create_pr": composio_github_create_pr,
     "composio_github_create_issue": composio_github_create_issue,

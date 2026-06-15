@@ -650,6 +650,71 @@ function ServiceCard({
   );
 }
 
+// ── GmailDirectCard ────────────────────────────────────────────────────────
+
+function GmailDirectCard({ founderId, onSaved, gmailConnected }: { founderId: string; onSaved: () => void; gmailConnected: boolean }) {
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [justConnected, setJustConnected] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("gmail_connected") === "1") {
+      window.history.replaceState({}, "", window.location.pathname);
+      setJustConnected(true);
+      onSaved();
+    }
+    if (params.get("gmail_error")) {
+      window.history.replaceState({}, "", window.location.pathname);
+      setError(`Gmail connection failed: ${params.get("gmail_error")}`);
+    }
+  }, [onSaved]);
+
+  const connect = async () => {
+    setConnecting(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`${BASE}/gmail/oauth-url/${founderId}`);
+      const data = await res.json();
+      if (!res.ok) { setError(data.detail ?? `Error ${res.status}`); setConnecting(false); return; }
+      if (data.url) window.location.href = data.url;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to reach server");
+      setConnecting(false);
+    }
+  };
+
+  const isConnected = gmailConnected || justConnected;
+
+  return (
+    <div style={cardStyle(isConnected, false)}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: isConnected ? c.greenTint : c.bg }}>
+        <ServiceLogo serviceKey="gmail" label="Gmail" size={26} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: c.text }}>Gmail (direct send)</span>
+            <StatusDot connected={isConnected} />
+            {isConnected && <span style={{ fontSize: 11, color: c.green, fontWeight: 500 }}>Connected</span>}
+          </div>
+          <span style={{ fontSize: 12, color: c.grey }}>Required for agents to actually send emails from your inbox</span>
+        </div>
+        <button onClick={connect} disabled={connecting} className="m-tap" style={{
+          padding: "6px 14px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
+          background: isConnected ? c.greenTint : c.bg,
+          border: `1px solid ${isConnected ? c.greenBorder : c.border}`,
+          color: isConnected ? c.green : c.textSecondary,
+          cursor: connecting ? "wait" : "pointer",
+        }}>
+          {connecting ? "Redirecting…" : isConnected ? "Reconnect ↗" : "Connect ↗"}
+        </button>
+      </div>
+      {error && <div style={{ borderTop: `1px solid ${c.redBorder}`, padding: "10px 18px", background: c.redTint }}>
+        <p style={{ margin: 0, fontSize: 12, color: c.red }}>{error}</p>
+      </div>}
+    </div>
+  );
+}
+
 // ── StripeCard ─────────────────────────────────────────────────────────────
 
 function StripeCard({ founderId, email }: { founderId: string; email: string }) {
@@ -1204,6 +1269,9 @@ export default function SetupPage() {
               Load OAuth links →
             </button>
           )}
+
+          {/* Direct Gmail OAuth — needed for actual sending since Composio action execution is deprecated */}
+          <GmailDirectCard founderId={founderId} onSaved={loadStatus} gmailConnected={!!status?.apps?.["gmail_direct"]} />
         </div>
       </div>
 

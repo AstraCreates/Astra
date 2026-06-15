@@ -351,6 +351,9 @@ async def get_founder_setup_status(founder_id: str) -> dict:
 
     if live_apps.get("gmail"):
         apps["gmail"] = True
+    gmail_creds = creds.get("gmail") or {}
+    if gmail_creds.get("connected_via") == "google_oauth" and gmail_creds.get("access_token"):
+        apps["gmail_direct"] = True
     if live_apps.get("linkedin"):
         apps["linkedin"] = True
     if live_apps.get("notion"):

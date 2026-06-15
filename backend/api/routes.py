@@ -2083,7 +2083,7 @@ async def gmail_oauth_url(founder_id: str, request: Request):
         "response_type": "code",
         "access_type": "offline",
         "prompt": "consent",
-        "scope": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email",
+        "scope": "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email",
         "state": _oauth_state_create(founder_id),
         "include_granted_scopes": "true",
     })
