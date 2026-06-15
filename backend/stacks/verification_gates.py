@@ -24,10 +24,13 @@ consumers (`_completion_failures`, stack_lane_status events) keep working. It ad
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import re
+import socket
 from typing import Any, Awaitable, Callable, Optional
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -269,20 +272,60 @@ def extract_live_url(result: Any) -> str:
     return ""
 
 
+def _assert_safe_url(url: str) -> None:
+    """Raise ValueError if url resolves to a private/loopback/link-local address.
+    Guards against SSRF via agent-supplied deploy URLs pointing at internal services."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"Disallowed scheme: {parsed.scheme!r}")
+    host = parsed.hostname
+    if not host:
+        raise ValueError("URL has no hostname")
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror as e:
+        raise ValueError(f"DNS resolution failed: {e}") from e
+    for _family, _type, _proto, _canon, sockaddr in infos:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_unspecified:
+            raise ValueError(f"Resolved to non-routable address: {ip}")
+
+
 async def probe_live_url(url: str) -> dict:
     """Fetch a URL and report whether it is genuinely live. Returns evidence:
     {url, ok, status, bytes, fallback, error}. Never raises. Reused by L2, the
     monitoring scheduler, and the live proof page."""
     ev = {"url": url, "ok": False, "status": None, "bytes": 0, "fallback": False, "error": ""}
     try:
+        _assert_safe_url(url)
         import httpx
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
-            resp = await client.get(url)
-        body = resp.text or ""
-        ev["status"] = resp.status_code
-        ev["bytes"] = len(body)
-        ev["fallback"] = _is_web_fallback(body)
-        ev["ok"] = resp.status_code < 400 and len(body) >= 500 and not ev["fallback"]
+
+        # follow_redirects=False so we re-validate each hop's Location host.
+        async with httpx.AsyncClient(follow_redirects=False, timeout=15.0) as client:
+            hops = 0
+            current = url
+            while hops < 5:
+                resp = await client.get(current)
+                if resp.is_redirect:
+                    location = resp.headers.get("location", "")
+                    if not location:
+                        break
+                    if not location.startswith("http"):
+                        # relative redirect — resolve against current
+                        base = urlparse(current)
+                        location = f"{base.scheme}://{base.netloc}{location}"
+                    _assert_safe_url(location)
+                    current = location
+                    hops += 1
+                    continue
+                body = resp.text or ""
+                ev["status"] = resp.status_code
+                ev["bytes"] = len(body)
+                ev["fallback"] = _is_web_fallback(body)
+                ev["ok"] = resp.status_code < 400 and len(body) >= 500 and not ev["fallback"]
+                break
+    except ValueError as exc:  # SSRF guard rejection
+        ev["error"] = f"URL blocked: {exc}"
     except Exception as exc:  # network/DNS/timeout == not actually live
         ev["error"] = str(exc)
     return ev
