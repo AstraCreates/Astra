@@ -371,10 +371,11 @@ def list_stripe_products(access_token: str) -> dict:
 
 
 def create_product_with_payment_link(
-    access_token: str,
     name: str,
     description: str,
     amount: int,
+    founder_id: str = "",
+    access_token: str = "",
     currency: str = "usd",
     interval: str = "",
 ) -> dict:
@@ -383,6 +384,15 @@ def create_product_with_payment_link(
     Used by agents to set up pricing from research findings.
     Returns {product_id, price_id, payment_link_url, name, amount, currency, interval}.
     """
+    # Load per-founder Stripe token from credentials store if access_token not provided
+    if not access_token and founder_id:
+        try:
+            from backend.provisioning.credentials_store import load_credentials
+            creds = load_credentials(founder_id, "stripe")
+            if creds:
+                access_token = creds.get("access_token") or creds.get("secret_key") or ""
+        except Exception:
+            pass
     # No real Stripe key connected (common in dev) — return a clean skip instead of
     # letting the agent hammer the API with guessed keys and emit repeated errors.
     tok = str(access_token or "")

@@ -90,7 +90,7 @@ def build_crm_contact(
     name: str,
     email: str,
     company: str,
-    title: str,
+    title: str = "",
     source: str = "lead_finder",
     notes: str = "",
     tags: list = None,

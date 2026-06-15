@@ -919,7 +919,7 @@ class Agent:
                     continue
 
             action = parsed.get("action")
-            if action is None and parsed.get("tool") == "done":
+            if parsed.get("tool") == "done" and action in (None, "tool"):
                 args = parsed.get("args") or {}
                 parsed = {
                     "action": "done",
