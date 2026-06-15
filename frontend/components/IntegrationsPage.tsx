@@ -792,54 +792,14 @@ function StripeCard({ founderId, email }: { founderId: string; email: string }) 
 
 // ── ComposioKeyCard ────────────────────────────────────────────────────────
 
-function ComposioKeyCard({ connected, saving, error, onSave }: {
+function ComposioKeyCard({ connected }: {
   connected: boolean;
-  saving: boolean;
-  error: string | null;
-  onSave: (key: string) => Promise<void>;
+  saving?: boolean;
+  error?: string | null;
+  onSave?: (key: string) => Promise<void>;
 }) {
-  const [popupOpen, setPopupOpen] = useState(false);
-  const [value, setValue] = useState("");
-  const [localError, setLocalError] = useState<string | null>(null);
-  const popupRef = useRef<Window | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const openPopup = () => {
-    const popup = window.open(
-      "https://app.composio.dev/settings",
-      "connect_composio",
-      "width=1060,height=720,scrollbars=yes,resizable=yes",
-    );
-    popupRef.current = popup;
-    setPopupOpen(true);
-    setValue("");
-    setLocalError(null);
-    setTimeout(() => inputRef.current?.focus(), 300);
-  };
-
-  useEffect(() => {
-    if (!popupOpen) return;
-    const interval = setInterval(() => {
-      if (popupRef.current?.closed) { clearInterval(interval); setPopupOpen(false); }
-    }, 600);
-    return () => clearInterval(interval);
-  }, [popupOpen]);
-
-  const save = async () => {
-    if (!value.trim()) return;
-    setLocalError(null);
-    try {
-      await onSave(value.trim());
-      setPopupOpen(false);
-      popupRef.current?.close();
-      setValue("");
-    } catch (e) {
-      setLocalError(e instanceof Error ? e.message : "Save failed");
-    }
-  };
-
   return (
-    <div style={cardStyle(connected, popupOpen && !connected)}>
+    <div style={cardStyle(connected, false)}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: connected ? c.greenTint : c.bg }}>
         <ServiceLogo serviceKey="composio" label="Composio" size={26} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -847,66 +807,10 @@ function ComposioKeyCard({ connected, saving, error, onSave }: {
             <span style={{ fontSize: 14, fontWeight: 600, color: c.text }}>Composio</span>
             <StatusDot connected={connected} />
             {connected && <span style={{ fontSize: 11, color: c.green, fontWeight: 500 }}>Connected</span>}
-            {popupOpen && !connected && <span style={{ fontSize: 11, color: c.blue, fontWeight: 500 }}>Popup open</span>}
           </div>
           <span style={{ fontSize: 12, color: c.grey }}>Enables Gmail, LinkedIn, Notion, Linear, Calendar</span>
         </div>
-        <button
-          onClick={openPopup}
-          className="m-tap"
-          style={{
-            padding: "6px 14px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
-            background: connected ? c.greenTint : c.bg,
-            border: `1px solid ${connected ? c.greenBorder : c.border}`,
-            color: connected ? c.green : c.textSecondary,
-            cursor: "pointer",
-          }}
-        >
-          {connected ? "Update key ↗" : "Connect ↗"}
-        </button>
       </div>
-
-      {popupOpen && (
-        <div style={{
-          borderTop: `1px solid ${c.blueBorder}`,
-          padding: "14px 18px", background: c.blueTint,
-          display: "flex", flexDirection: "column", gap: 10,
-        }}>
-          <p style={{ margin: 0, fontSize: 13, color: c.textSecondary, lineHeight: 1.6 }}>
-            Copy your API key from the popup (Settings → API Keys), then paste it here.{" "}
-            <span style={{ color: c.blue, fontWeight: 500 }}>Popup is open ↗</span>
-          </p>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              ref={inputRef}
-              value={value}
-              onChange={e => setValue(e.target.value)}
-              placeholder="api_key_..."
-              onKeyDown={e => e.key === "Enter" && save()}
-              style={{
-                flex: 1, padding: "8px 12px", fontSize: 13, borderRadius: 8,
-                border: `1px solid ${c.border}`, background: c.bg, color: c.text, outline: "none",
-                fontFamily: "var(--font-geist-mono, monospace)",
-              }}
-              onFocus={e => (e.target.style.borderColor = c.blue)}
-              onBlur={e => (e.target.style.borderColor = c.border)}
-            />
-            <button
-              onClick={save}
-              disabled={saving || !value.trim()}
-              style={{
-                padding: "0 16px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
-                background: c.blue, color: "#FFFFFF", border: "none",
-                cursor: saving || !value.trim() ? "not-allowed" : "pointer",
-                opacity: saving || !value.trim() ? 0.6 : 1,
-              }}
-            >
-              {saving ? "…" : "Save"}
-            </button>
-          </div>
-          {(localError || error) && <p style={{ fontSize: 12, color: c.red, margin: 0 }}>{localError || error}</p>}
-        </div>
-      )}
     </div>
   );
 }

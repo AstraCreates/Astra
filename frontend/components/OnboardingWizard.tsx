@@ -677,37 +677,6 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
           </button>
         )}
       </div>
-      {expandedKey === "__composio__" && !composioConnected && (
-        <div style={{
-          borderTop: `1px solid ${T.border}`,
-          padding: "12px 16px",
-          background: T.blueTint,
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-        }}>
-          <p style={{ margin: 0, fontSize: 11, color: T.textSecondary, lineHeight: 1.5 }}>
-            In the popup go to <strong>Settings → API Keys</strong>, copy your key, paste here.
-          </p>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              value={tokenValues["__composio__"] ?? ""}
-              onChange={e => setTokenValues(v => ({ ...v, "__composio__": e.target.value }))}
-              placeholder="api_key_..."
-              onKeyDown={e => e.key === "Enter" && saveComposio()}
-              style={{ flex: 1, padding: "8px 12px", borderRadius: 10, fontSize: 12, fontFamily: "var(--font-mono, monospace)", border: `1px solid ${T.border}`, background: T.white, color: T.textPrimary, outline: "none" }}
-            />
-            <button
-              onClick={saveComposio}
-              disabled={saving === "__composio__" || !tokenValues["__composio__"]?.trim()}
-              style={{ ...cardBtnStyle, padding: "0 16px", opacity: (!tokenValues["__composio__"]?.trim() || saving === "__composio__") ? 0.5 : 1 }}
-            >
-              {saving === "__composio__" ? "…" : "Save"}
-            </button>
-          </div>
-          {errors["__composio__"] && <p style={{ margin: 0, fontSize: 11, color: T.red }}>{errors["__composio__"]}</p>}
-        </div>
-      )}
     </div>
   );
 
