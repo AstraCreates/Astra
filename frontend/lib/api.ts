@@ -2062,6 +2062,21 @@ export async function deleteLibraryFile(
   if (!res.ok) throw new Error(await res.text());
 }
 
+export interface ExampleFile {
+  path: string;
+  category: string;
+  title: string;
+  tags: string[];
+  content: string;
+}
+
+export async function getExamplesLibrary(): Promise<ExampleFile[]> {
+  const res = await apiFetch(`${BASE}/api/library/examples`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.examples ?? [];
+}
+
 // ── Staged deployments ─────────────────────────────────────────────────────────
 
 export interface DeploymentRecord {

@@ -75,6 +75,15 @@ async def api_list_files(
     return {"ok": True, "files": files, "count": len(files)}
 
 
+@library_router.get("/library/examples")
+async def api_list_examples():
+    """Return all entries from the backend examples library (agent code patterns)."""
+    import asyncio
+    from backend.tools.examples_library import _load_examples
+    examples = await asyncio.to_thread(_load_examples)
+    return {"ok": True, "examples": examples}
+
+
 @library_router.get("/library/{file_id}")
 async def api_get_file(
     file_id: str,
