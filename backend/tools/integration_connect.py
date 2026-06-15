@@ -571,11 +571,18 @@ def get_composio_app_status(founder_id: str) -> dict[str, bool]:
             timeout=10,
         )
         r.raise_for_status()
-        return {
-            (acc.get("toolkit") or {}).get("slug", ""): acc.get("status") == "ACTIVE"
-            for acc in r.json().get("items", [])
-            if (acc.get("toolkit") or {}).get("slug")
-        }
+        # Multiple records per slug exist (old EXPIRED + new ACTIVE).
+        # Any ACTIVE record means the app is connected — don't let a later EXPIRED entry clobber it.
+        active: set[str] = set()
+        seen: set[str] = set()
+        for acc in r.json().get("items", []):
+            slug = (acc.get("toolkit") or {}).get("slug", "")
+            if not slug:
+                continue
+            seen.add(slug)
+            if acc.get("status") == "ACTIVE":
+                active.add(slug)
+        return {slug: slug in active for slug in seen}
     except Exception as e:
         logger.warning("Composio status check failed: %s", e)
         return {}

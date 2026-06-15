@@ -486,6 +486,7 @@ function ServiceCard({
   onSaved: () => void;
 }) {
   const [popupOpen, setPopupOpen] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -531,6 +532,7 @@ function ServiceCard({
     const popup = window.open(svc.createUrl, `connect_${svc.key}`, "width=1060,height=720,scrollbars=yes,resizable=yes");
     popupRef.current = popup;
     setPopupOpen(true);
+    setShowForm(true);
     setValue("");
     setError(null);
     setTimeout(() => inputRef.current?.focus(), 300);
@@ -552,6 +554,7 @@ function ServiceCard({
       await saveServiceCredential(founderId, svc.key, { [svc.credKey]: value.trim() });
       setJustConnected(true);
       setPopupOpen(false);
+      setShowForm(false);
       popupRef.current?.close();
       setValue("");
       onSaved();
@@ -566,7 +569,7 @@ function ServiceCard({
   const isGitHub = svc.key === "github";
 
   return (
-    <div style={cardStyle(isConnected, popupOpen && !isConnected)}>
+    <div style={cardStyle(isConnected, showForm && !isConnected)}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: isConnected ? c.greenTint : c.bg }}>
         <ServiceLogo serviceKey={svc.key} label={svc.label} size={26} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -600,16 +603,18 @@ function ServiceCard({
         </div>
       )}
 
-      {!isGitHub && popupOpen && (
+      {!isGitHub && showForm && (
         <div style={{
           borderTop: `1px solid ${c.blueBorder}`,
           padding: "14px 18px", background: c.blueTint,
           display: "flex", flexDirection: "column", gap: 10,
         }}>
-          <p style={{ margin: 0, fontSize: 13, color: c.textSecondary, lineHeight: 1.6 }}>
-            Create a token in the popup, then paste it here.{" "}
-            <span style={{ color: c.blue, fontWeight: 500 }}>The popup is open ↗</span>
-          </p>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <p style={{ margin: 0, fontSize: 13, color: c.textSecondary, lineHeight: 1.6 }}>
+              {popupOpen ? <>Create a token in the popup, then paste it here.{" "}<span style={{ color: c.blue, fontWeight: 500 }}>The popup is open ↗</span></> : "Paste your token below."}
+            </p>
+            <button onClick={() => setShowForm(false)} style={{ fontSize: 12, color: c.grey, background: "none", border: "none", cursor: "pointer", padding: "0 4px" }}>✕</button>
+          </div>
           <div style={{ display: "flex", gap: 8 }}>
             <input
               ref={inputRef}
