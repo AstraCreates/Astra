@@ -33,9 +33,13 @@ def _get_toolset():
         try:
             from composio import ComposioToolSet
             import composio.client.utils as _cu
-            # composio-core 0.7.21 bug: check_cache_refresh crashes on TriggerModel
-            # validation mismatch. Disable trigger caching — not needed for our use case.
-            _cu.check_cache_refresh = lambda *a, **kw: None
+            import composio.tools.toolset as _ts
+            # composio-core 0.7.21: check_cache_refresh hits deprecated API endpoints
+            # (HTTP 410). Patch both the module attr AND the already-imported binding
+            # in toolset.py — patching only _cu misses the direct import in toolset.py.
+            _noop = lambda *a, **kw: None
+            _cu.check_cache_refresh = _noop
+            _ts.check_cache_refresh = _noop
             _toolset = ComposioToolSet(api_key=api_key)
         except ImportError:
             logger.warning("composio-core not installed — composio tools disabled")
