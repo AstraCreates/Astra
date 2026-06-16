@@ -55,18 +55,19 @@ def collect_result_attachment_paths(result: dict[str, Any]) -> list[Path]:
     return resolved
 
 
-def _flatten_result(result: dict[str, Any]) -> dict[str, Any]:
-    """Agents often wrap their output under a single key, e.g.
-    {"competitor_report": {"summary": ..., "pdf_path": ...}} — pull the
-    inner fields up a level so each renders as its own row instead of one
-    unreadable joined blob."""
-    flat: dict[str, Any] = {}
-    for k, v in (result or {}).items():
+def _find_summary(result: dict[str, Any]) -> str:
+    """Find the first usable summary string, checking the top-level result
+    then each nested dict in turn — without merging sections together, since
+    that silently drops same-named fields from whichever section loses."""
+    for k in _SUMMARY_KEYS:
+        if result.get(k):
+            return str(result[k])
+    for v in result.values():
         if isinstance(v, dict):
-            flat.update(v)
-        else:
-            flat[k] = v
-    return flat
+            for k in _SUMMARY_KEYS:
+                if v.get(k):
+                    return str(v[k])
+    return ""
 
 
 def get_founder_notify_email(founder_id: str) -> str:
@@ -119,7 +120,11 @@ def _humanize_value(value: Any) -> str:
         shown = ", ".join(_humanize_list_item(v) for v in value[:12])
         return shown + ("…" if len(value) > 12 else "")
     if isinstance(value, dict):
-        return ", ".join(f"{_humanize_key(k)}: {_humanize_list_item(v) if isinstance(v, dict) else v}" for k, v in list(value.items())[:6]) or "—"
+        parts = []
+        for k, v in list(value.items())[:6]:
+            v_str = _humanize_value(v) if isinstance(v, (list, tuple, dict)) else str(v)
+            parts.append(f"{_humanize_key(k)}: {v_str}")
+        return ", ".join(parts) or "—"
     text = str(value).strip()
     return (text[:800] + "…") if len(text) > 800 else (text or "—")
 
@@ -200,8 +205,10 @@ def build_run_email_html(
     # Render the top-level dict as the lead section (no heading), then every
     # nested dict value as its own clearly labeled section underneath — each
     # section keeps its own fields, so nothing from one section overwrites
-    # another's same-named field.
-    result_table = _render_section("", result, heading=False)
+    # another's same-named field. Dict-valued keys are excluded from the lead
+    # section since they get their own heading section below.
+    top_level = {k: v for k, v in result.items() if not isinstance(v, dict)}
+    result_table = _render_section("", top_level, heading=False)
     for k, v in result.items():
         if k in _SKIP_RESULT_KEYS or not isinstance(v, dict):
             continue
@@ -282,8 +289,7 @@ def build_run_email_html(
 def _build_subject(agent_label: str, status: str, result: dict[str, Any]) -> str:
     if status != "done":
         return f"⚠ {agent_label} needs attention"
-    flat = _flatten_result(result or {})
-    summary = str(next((flat.get(k) for k in _SUMMARY_KEYS if flat.get(k)), "")).strip()
+    summary = _find_summary(result or {}).strip()
     if not summary:
         return f"✓ {agent_label} — new results ready"
     snippet = summary.split("\n")[0].split(". ")[0].rstrip(".")
