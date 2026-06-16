@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, "..", "..");
+const desktopDir = path.resolve(__dirname, "..");
 const srcTauriDir = path.resolve(__dirname, "..", "src-tauri");
 const frontendDir = path.join(repoRoot, "frontend");
 
@@ -61,8 +62,8 @@ const tauriConfig = {
   identifier: "com.astracreates.desktop",
   build: {
     beforeDevCommand: {
-      cwd: frontendDir,
-      script: "npm run dev",
+      cwd: desktopDir,
+      script: "node ./scripts/run-frontend-dev.mjs",
       wait: false,
     },
     devUrl: "http://localhost:3000",

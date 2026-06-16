@@ -24,9 +24,10 @@ npm run dev
 `npm run dev` will:
 
 1. Read `FRONTEND_URL` from the environment or the repo `.env` files
-2. Regenerate `src-tauri/tauri.conf.json`
-3. Start the Next.js dev server from `../frontend`
-4. Launch the Tauri desktop shell against `http://localhost:3000`
+2. Inject the repo-level env values into the frontend dev process so shared auth and backend settings work in desktop mode
+3. Regenerate `src-tauri/tauri.conf.json`
+4. Start the Next.js dev server from `../frontend`
+5. Launch the Tauri desktop shell against `http://localhost:3000`
 
 For production packaging:
 

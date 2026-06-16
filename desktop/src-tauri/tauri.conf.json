@@ -5,8 +5,8 @@
   "identifier": "com.astracreates.desktop",
   "build": {
     "beforeDevCommand": {
-      "cwd": "/Users/ishaangubbala/Documents/Astra/frontend",
-      "script": "npm run dev",
+      "cwd": "/Users/ishaangubbala/Documents/Astra/desktop",
+      "script": "node ./scripts/run-frontend-dev.mjs",
       "wait": false
     },
     "devUrl": "http://localhost:3000",
