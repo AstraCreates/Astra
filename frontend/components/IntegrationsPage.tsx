@@ -128,7 +128,6 @@ const ECOMM_SERVICES = [
 ] as const;
 
 const COMPOSIO_APPS = [
-  { key: "gmail", label: "Gmail", icon: "◻", desc: "Send from your inbox" },
   { key: "linkedin", label: "LinkedIn", icon: "▪", desc: "Post announcements" },
   { key: "googlecalendar", label: "Calendar", icon: "▣", desc: "Schedule meetings" },
   { key: "notion", label: "Notion", icon: "▷", desc: "Update wiki" },
