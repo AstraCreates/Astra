@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCompany } from "@/lib/company-context";
 import PageHeader, { HeaderPrimaryBtn } from "@/components/PageHeader";
@@ -122,8 +122,28 @@ function AgentModal({
   const [model, setModel] = useState(agent?.model ?? "highoutput");
   const [scheduleOn, setScheduleOn] = useState(Boolean(agent?.schedule?.enabled));
   const [everyDays, setEveryDays] = useState(agent?.schedule?.every_days ?? 7);
+  const [runAtTime, setRunAtTime] = useState(() => {
+    const h = agent?.schedule?.run_at_hour;
+    const m = agent?.schedule?.run_at_minute;
+    return h != null && m != null ? `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}` : "";
+  });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const roleRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-grow the prompt textarea to fit its content (capped) instead of
+  // staying a fixed height and relying on the manual drag-resize handle,
+  // which was easy to mistake for "the box doesn't expand."
+  const growRole = useCallback(() => {
+    const el = roleRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 110), 360)}px`;
+  }, []);
+
+  useEffect(() => {
+    growRole();
+  }, [growRole, agent]);
 
   const grouped = useMemo(() => {
     const out: Record<string, CustomAgentToolSpec[]> = {};
@@ -154,12 +174,22 @@ function AgentModal({
     if (!role.trim()) return setErr("Describe what the agent should do (its prompt).");
     setSaving(true);
     try {
+      const [runAtHour, runAtMinute] = runAtTime
+        ? runAtTime.split(":").map((n) => parseInt(n, 10))
+        : [null, null];
       await onSave({
         name: name.trim(),
         role: role.trim(),
         tool_keys: toolKeys,
         model,
-        schedule: scheduleOn ? { every_days: Math.max(1, everyDays), enabled: true } : null,
+        schedule: scheduleOn
+          ? {
+              every_days: Math.max(1, everyDays),
+              enabled: true,
+              run_at_hour: runAtHour,
+              run_at_minute: runAtMinute,
+            }
+          : null,
         clear_schedule: !scheduleOn,
       });
       onClose();
@@ -199,11 +229,16 @@ function AgentModal({
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1.5">What should it do?</label>
             <textarea
+              ref={roleRef}
               value={role}
-              onChange={(e) => setRole(e.target.value)}
+              onChange={(e) => {
+                setRole(e.target.value);
+                growRole();
+              }}
               rows={5}
               placeholder="e.g. Every run, search the web for what our top 3 competitors shipped recently, summarize changes, and save a short report. Flag anything that affects our positioning."
               className="f-ta"
+              style={{ resize: "none", overflowY: "auto" }}
             />
           </div>
 
@@ -274,7 +309,7 @@ function AgentModal({
               Run automatically on a schedule
             </label>
             {scheduleOn && (
-              <div className="flex items-center gap-2 mt-2 text-sm text-gray-700">
+              <div className="flex items-center gap-2 mt-2 text-sm text-gray-700 flex-wrap">
                 Every
                 <input
                   type="number"
@@ -283,7 +318,14 @@ function AgentModal({
                   onChange={(e) => setEveryDays(parseInt(e.target.value || "1", 10))}
                   className="w-16 px-2 py-1 border border-gray-200 rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                day(s)
+                day(s) at
+                <input
+                  type="time"
+                  value={runAtTime}
+                  onChange={(e) => setRunAtTime(e.target.value)}
+                  className="px-2 py-1 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-[11px] text-gray-400">UTC{runAtTime ? "" : " · optional, defaults to whenever it ticks"}</span>
               </div>
             )}
           </div>
@@ -422,6 +464,9 @@ export default function CustomAgentsPanel() {
                         {agent.schedule?.enabled && (
                           <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded-full">
                             every {agent.schedule.every_days}d
+                            {agent.schedule.run_at_hour != null && agent.schedule.run_at_minute != null
+                              ? ` at ${String(agent.schedule.run_at_hour).padStart(2, "0")}:${String(agent.schedule.run_at_minute).padStart(2, "0")} UTC`
+                              : ""}
                           </span>
                         )}
                       </div>

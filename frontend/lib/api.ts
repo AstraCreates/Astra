@@ -2631,6 +2631,8 @@ export interface CustomAgentToolSpec {
 export interface CustomAgentSchedule {
   every_days: number;
   enabled: boolean;
+  run_at_hour?: number | null;
+  run_at_minute?: number | null;
   last_run_at?: string | null;
   next_run_at?: string | null;
 }
@@ -2663,7 +2665,7 @@ export interface CustomAgentInput {
   tool_keys: string[];
   model?: string;
   use_computer?: boolean;
-  schedule?: { every_days: number; enabled: boolean } | null;
+  schedule?: { every_days: number; enabled: boolean; run_at_hour?: number | null; run_at_minute?: number | null } | null;
   company_id?: string;
 }
 

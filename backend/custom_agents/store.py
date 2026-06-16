@@ -102,18 +102,59 @@ def _normalize_schedule(schedule: dict[str, Any] | None) -> dict[str, Any] | Non
         return None
     enabled = bool(schedule.get("enabled", True))
     last_run_at = schedule.get("last_run_at")
-    # next_run: now + interval if never run, else last + interval.
-    next_run_at = schedule.get("next_run_at") or _now_plus_days(every_days)
+    run_at_hour, run_at_minute = _parse_run_at(schedule)
+    # next_run: now + interval if never run, else last + interval. If a
+    # time-of-day was given, the next run lands on that clock time (UTC)
+    # rather than "whenever the scheduler happens to tick."
+    next_run_at = schedule.get("next_run_at") or _next_run_at(
+        time.time(), 0 if run_at_hour is not None else every_days, run_at_hour, run_at_minute
+    )
     return {
         "every_days": every_days,
         "enabled": enabled,
+        "run_at_hour": run_at_hour,
+        "run_at_minute": run_at_minute,
         "last_run_at": last_run_at,
         "next_run_at": next_run_at,
     }
 
 
+def _parse_run_at(schedule: dict[str, Any]) -> tuple[int | None, int | None]:
+    """Pull out an optional UTC time-of-day (hour, minute) the schedule should fire at."""
+    hour = schedule.get("run_at_hour")
+    minute = schedule.get("run_at_minute")
+    if hour is None or minute is None:
+        return None, None
+    try:
+        hour = int(hour)
+        minute = int(minute)
+    except (TypeError, ValueError):
+        return None, None
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None, None
+    return hour, minute
+
+
 def _now_plus_days(days: int) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + days * 86400))
+
+
+def _next_run_at(base_epoch: float, days_offset: int, hour: int | None, minute: int | None) -> str:
+    """Next run timestamp, `days_offset` days from `base_epoch`'s date.
+
+    With no hour/minute pinned, this is just base + days_offset (old
+    behavior). With a pinned time-of-day, the result lands on that clock
+    time (UTC); if that would be in the past relative to base_epoch (only
+    possible when days_offset==0), it rolls forward one day.
+    """
+    if hour is None or minute is None:
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(base_epoch + days_offset * 86400))
+    base = time.gmtime(base_epoch)
+    target = calendar.timegm((base.tm_year, base.tm_mon, base.tm_mday, hour, minute, 0, 0, 0, 0))
+    target += days_offset * 86400
+    if target <= base_epoch:
+        target += 86400
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(target))
 
 
 # ── Public CRUD ───────────────────────────────────────────────────────────────
@@ -233,7 +274,12 @@ def mark_ran(founder_id: str, agent_id: str) -> dict[str, Any] | None:
         sched = spec.get("schedule")
         if sched:
             sched["last_run_at"] = _now()
-            sched["next_run_at"] = _now_plus_days(int(sched.get("every_days") or 1))
+            sched["next_run_at"] = _next_run_at(
+                time.time(),
+                int(sched.get("every_days") or 1),
+                sched.get("run_at_hour"),
+                sched.get("run_at_minute"),
+            )
             spec["schedule"] = sched
             spec["updated_at"] = _now()
             index[agent_id] = spec

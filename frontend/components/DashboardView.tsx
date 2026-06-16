@@ -339,7 +339,7 @@ export default function DashboardView() {
                         }}
                       >{deleting.has(s.session_id) ? "…" : pendingDel.has(s.session_id) ? "DELETE?" : "✕"}</button>
 
-                      <div style={{ flex: 1, paddingRight: 36 }}>
+                      <div style={{ flex: 1, paddingRight: 70 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
                           {child && (
                             <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--blue)", fontFamily: "var(--font-code)" }}>↳ sub-run</span>
@@ -463,7 +463,7 @@ export default function DashboardView() {
                 </button>
               </div>
             ) : (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {customSessions.slice(0, 20).map((s) => {
                   const title = s.company_name || extractGoalTitle(s.goal || "Custom agent run");
                   return (
@@ -471,7 +471,7 @@ export default function DashboardView() {
                       key={s.session_id}
                       onClick={() => router.push(`/s/${s.session_id}`)}
                       className={`sc-row${s.status === "stalled" ? " stalled" : s.status === "running" ? " running" : ""}`}
-                      style={{ flex: "1 1 220px", minHeight: 100 }}
+                      style={{ width: "100%" }}
                     >
                       <button
                         title={pendingDel.has(s.session_id) ? "Click again to confirm delete" : "Delete run"}
@@ -489,18 +489,21 @@ export default function DashboardView() {
                           color: pendingDel.has(s.session_id) ? "var(--red)" : "var(--fd)",
                           cursor: "pointer", fontSize: pendingDel.has(s.session_id) ? 8 : 11, borderRadius: 6,
                           opacity: deleting.has(s.session_id) ? 0.4 : 1, zIndex: 3, fontWeight: 700,
+                          whiteSpace: "nowrap",
                         }}
                       >{deleting.has(s.session_id) ? "…" : pendingDel.has(s.session_id) ? "DELETE?" : "✕"}</button>
 
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, paddingRight: 22 }}>
-                        <StatusPill status={s.status} />
-                        <span style={{ fontSize: 10, color: "var(--fm)", marginLeft: "auto" }}>{ago(s.created_at)}</span>
-                      </div>
-                      <div style={{
-                        fontSize: 12, fontWeight: 600, color: "var(--fg)", lineHeight: 1.4,
-                        display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-                      }}>
-                        {title}
+                      <div style={{ flex: 1, paddingRight: 70 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                          <StatusPill status={s.status} />
+                          <span style={{ fontSize: 10, color: "var(--fm)", marginLeft: "auto" }}>{ago(s.created_at)}</span>
+                        </div>
+                        <div style={{
+                          fontSize: 12, fontWeight: 600, color: "var(--fg)", lineHeight: 1.4,
+                          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                        }}>
+                          {title}
+                        </div>
                       </div>
                     </div>
                   );

@@ -183,16 +183,6 @@ export default function GoalPanel({ defaultShowDone = false }: { defaultShowDone
               ? `${activeCompany?.name || "This company"} has no goals yet. Start a run to kick things off.`
               : "No active goal yet. Start a run to kick things off."}
         </div>
-        {!loading && !err && !currentEntry && (
-          <button onClick={runNow} disabled={!!busy} style={{
-            padding: "9px 18px", fontSize: 12, fontWeight: 600,
-            color: "#002EFF", background: "#fff",
-            border: "1px solid #001AFF", borderRadius: 8, cursor: "pointer",
-            fontFamily: "var(--font-instrument), sans-serif",
-          }}>
-            {busy === "run" ? "Starting…" : "+ Start first run"}
-          </button>
-        )}
       </div>
     );
   }

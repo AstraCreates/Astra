@@ -30,6 +30,8 @@ custom_agents_router = APIRouter()
 class ScheduleSpec(BaseModel):
     every_days: int
     enabled: bool = True
+    run_at_hour: int | None = None
+    run_at_minute: int | None = None
 
 
 class CreateAgentRequest(BaseModel):
