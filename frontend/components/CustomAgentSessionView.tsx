@@ -81,7 +81,12 @@ export default function CustomAgentSessionView({ sessionId, agentName, goal, ini
     // Don't open SSE for sessions that already finished before this mount.
     if (initialStatus !== "running") return;
 
-    const es = new EventSource(`${API}/stream/${sessionId}`);
+    // lastEventId=0 forces the backend's "replay everything since this id"
+    // branch instead of its sparse "fresh connect" state-only replay (which
+    // assumes a localStorage log cache this view doesn't have) — without it,
+    // reloading mid-run wipes the visible log back to "waiting," looking like
+    // the run restarted even though it never did.
+    const es = new EventSource(`${API}/stream/${sessionId}?lastEventId=0`);
 
     es.onmessage = (e) => {
       let ev: Record<string, unknown>;

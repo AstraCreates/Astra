@@ -1253,7 +1253,7 @@ class Agent:
                 output["status"] = "partial"
                 # Enrich with tool results before emitting (same as normal done path)
                 output = self._normalize_done_output(output, _tool_results)
-                await self._emit(ctx, "agent_done", output=output)
+                await self._emit(ctx, "agent_done", result=output)
                 # Auto-write to obsidian so downstream agents can read it
                 if "obsidian_log" in self.tools and ctx.founder_id and ctx.session_id:
                     try:
