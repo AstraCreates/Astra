@@ -33,7 +33,7 @@ async def _email_run_result(
     try:
         from backend.core.session_store import load_events
         from backend.workflow_state import build_session_state
-        from backend.deliverables import resolve_deliverable_path, send_run_result_email
+        from backend.deliverables import collect_result_attachment_paths, send_run_result_email
 
         events = load_events(session_id) or []
         state = build_session_state(session_id, events)
@@ -43,11 +43,7 @@ async def _email_run_result(
         if error and "error" not in result:
             result["error"] = error
 
-        raw_paths = list(result.get("pdfs") or [])
-        direct = result.get("pdf_path") or result.get("path") or result.get("file_path")
-        if direct and direct not in raw_paths:
-            raw_paths.append(direct)
-        resolved_paths = [p for p in (resolve_deliverable_path(str(rp)) for rp in raw_paths) if p is not None]
+        resolved_paths = collect_result_attachment_paths(result)
 
         sent = await asyncio.to_thread(
             send_run_result_email,

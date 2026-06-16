@@ -13,7 +13,10 @@ from backend.tools.resend_tools import resend_send_email, send_deliverable_email
 def resolve_deliverable_path(filename: str) -> Path | None:
     """Safely resolve a deliverable filename to an on-disk path, basename-only
     to prevent path traversal, searched across the known output directories."""
-    safe_name = Path(filename).name
+    literal = Path(filename)
+    if literal.is_absolute() and literal.exists() and literal.is_file():
+        return literal
+    safe_name = literal.name
     vault = os.environ.get("OBSIDIAN_VAULT", "/tmp/astra_docs")
     search_dirs = [Path(vault) / "files", Path(vault), Path("/tmp/astra_docs")]
     for d in search_dirs:
@@ -21,6 +24,52 @@ def resolve_deliverable_path(filename: str) -> Path | None:
         if candidate.exists() and candidate.is_file():
             return candidate
     return None
+
+
+# Keys that hold a generated-file path, wherever they appear in the (possibly
+# nested) result dict — agents often wrap their output under one key, e.g.
+# {"competitor_report": {"summary": ..., "pdf_path": ...}}.
+_PATH_KEYS = {"pdfs", "pdf_path", "path", "file_path", "output_path"}
+
+
+def collect_result_attachment_paths(result: dict[str, Any]) -> list[Path]:
+    """Recursively find every generated-file path in a run's result dict
+    (regardless of nesting depth) and resolve each to an on-disk Path."""
+    found: list[str] = []
+
+    def _walk(d: dict[str, Any]) -> None:
+        for k, v in d.items():
+            if k in _PATH_KEYS:
+                if isinstance(v, list):
+                    found.extend(str(x) for x in v)
+                elif v:
+                    found.append(str(v))
+            elif isinstance(v, dict):
+                _walk(v)
+
+    _walk(result or {})
+    resolved: list[Path] = []
+    seen: set[str] = set()
+    for raw in found:
+        path = resolve_deliverable_path(raw)
+        if path is not None and str(path) not in seen:
+            seen.add(str(path))
+            resolved.append(path)
+    return resolved
+
+
+def _flatten_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Agents often wrap their output under a single key, e.g.
+    {"competitor_report": {"summary": ..., "pdf_path": ...}} — pull the
+    inner fields up a level so each renders as its own row instead of one
+    unreadable joined blob."""
+    flat: dict[str, Any] = {}
+    for k, v in (result or {}).items():
+        if isinstance(v, dict):
+            flat.update(v)
+        else:
+            flat[k] = v
+    return flat
 
 
 def get_founder_notify_email(founder_id: str) -> str:
@@ -45,6 +94,7 @@ _SKIP_RESULT_KEYS = {
     "pdfs", "path", "filename", "pdf_path", "file_path", "output_path",
     "documents", "generated", "error", "ok", "files_preview", "files_in_repo",
 }
+_SUMMARY_KEYS = ("summary", "description", "overview")
 
 
 def _humanize_key(key: str) -> str:
@@ -77,18 +127,28 @@ def build_run_email_html(
     badge_bg = "rgba(61,158,95,0.10)" if is_done else "rgba(192,57,43,0.10)"
     status_label = "Completed" if is_done else "Needs attention"
 
+    flat = _flatten_result(result or {})
+
     error_block = ""
-    if not is_done and (result or {}).get("error"):
+    if not is_done and flat.get("error"):
         error_block = (
             "<div style='margin-top:14px;padding:12px 14px;border-radius:10px;"
             "background:rgba(192,57,43,0.06);border:1px solid rgba(192,57,43,0.18);"
             "color:#A93226;font-size:13px;line-height:1.6'>"
-            f"{_humanize_value(result.get('error'))}</div>"
+            f"{_humanize_value(flat.get('error'))}</div>"
+        )
+
+    summary_text = next((flat.get(k) for k in _SUMMARY_KEYS if flat.get(k)), "")
+    summary_block = ""
+    if summary_text:
+        summary_block = (
+            "<p style='margin:14px 0 0;color:#374151;font-size:14px;line-height:1.7'>"
+            f"{_humanize_value(summary_text)}</p>"
         )
 
     rows = ""
-    for k, v in (result or {}).items():
-        if k in _SKIP_RESULT_KEYS or v in (None, "", [], {}):
+    for k, v in flat.items():
+        if k in _SKIP_RESULT_KEYS or k in _SUMMARY_KEYS or v in (None, "", [], {}):
             continue
         rows += (
             f"<tr>"
@@ -102,9 +162,10 @@ def build_run_email_html(
     result_table = (
         f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0' "
         f"style='margin-top:8px'>{rows}</table>"
-        if rows else
-        "<p style='color:#8A93A6;font-size:13px;margin:8px 0 0'>No structured output was returned.</p>"
+        if rows else ""
     )
+    if not summary_block and not result_table:
+        result_table = "<p style='color:#8A93A6;font-size:13px;margin:8px 0 0'>No structured output was returned.</p>"
 
     attachments_block = ""
     if attachment_names:
@@ -150,6 +211,7 @@ def build_run_email_html(
           <tr>
             <td style="padding:8px 32px 0;">
               {error_block}
+              {summary_block}
               {result_table}
               {attachments_block}
             </td>
@@ -176,6 +238,19 @@ def build_run_email_html(
 </html>"""
 
 
+def _build_subject(agent_label: str, status: str, result: dict[str, Any]) -> str:
+    if status != "done":
+        return f"⚠ {agent_label} needs attention"
+    flat = _flatten_result(result or {})
+    summary = str(next((flat.get(k) for k in _SUMMARY_KEYS if flat.get(k)), "")).strip()
+    if not summary:
+        return f"✓ {agent_label} — new results ready"
+    snippet = summary.split("\n")[0]
+    cutoff = snippet[:120].rfind(".")
+    snippet = snippet[: cutoff + 1] if cutoff > 20 else (snippet[:90].rsplit(" ", 1)[0] + "…" if len(snippet) > 90 else snippet)
+    return f"✓ {agent_label}: {snippet}"
+
+
 def send_run_result_email(
     *,
     founder_id: str,
@@ -200,8 +275,7 @@ def send_run_result_email(
         attachment_names=[p.name for p in attachment_paths],
         session_url=f"https://astracreates.com/s/{session_id}",
     )
-    is_done = status == "done"
-    subject = f"{'✓' if is_done else '⚠'} {agent_label} {'finished' if is_done else 'needs attention'}"
+    subject = _build_subject(agent_label, status, result)
     return resend_send_email(
         to=to_email,
         from_email="noreply@astracreates.com",
