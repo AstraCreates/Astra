@@ -33,7 +33,11 @@ async def _email_run_result(
     try:
         from backend.core.session_store import load_events
         from backend.workflow_state import build_session_state
-        from backend.deliverables import collect_result_attachment_paths, send_run_result_email
+        from backend.deliverables import (
+            collect_result_attachment_paths,
+            send_run_result_email,
+            sync_deliverables_to_library,
+        )
 
         events = load_events(session_id) or []
         state = build_session_state(session_id, events)
@@ -54,6 +58,10 @@ async def _email_run_result(
             result=result,
             attachment_paths=resolved_paths,
             session_id=session_id,
+        )
+
+        await asyncio.to_thread(
+            sync_deliverables_to_library, founder_id, session_id, agent_label, result
         )
         if not sent.get("sent") and not sent.get("skipped"):
             logger.warning("run-result email failed session=%s: %s", session_id, sent)

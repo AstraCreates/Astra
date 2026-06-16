@@ -12,6 +12,7 @@ import {
   getExamplesLibrary,
 } from "@/lib/api";
 import PageHeader, { HeaderPrimaryBtn } from "@/components/PageHeader";
+import { PdfEmbed } from "@/components/GoalWorkspace";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -99,7 +100,10 @@ function FileRow({
         </div>
         <div className="flex items-center gap-2 flex-wrap mb-1.5">
           <DeptBadge department={file.department} />
-          {file.is_canonical && (
+          {file.source_tag && (
+            <span className="text-xs text-blue-600 font-medium">⚡ {file.source_tag}</span>
+          )}
+          {file.is_canonical && !file.source_tag && (
             <span className="text-xs text-amber-600 font-medium">Auto-injected</span>
           )}
         </div>
@@ -323,7 +327,9 @@ function FileEditor({ file, founderId, onUpdated, onClose }: {
         <div className="mx-6 mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
       )}
       <div className="flex-1 p-5 overflow-hidden">
-        {loadingContent ? (
+        {file.source_path && file.source_path.toLowerCase().endsWith(".pdf") ? (
+          <PdfEmbed path={file.source_path} height={520} />
+        ) : loadingContent ? (
           <div className="text-sm text-gray-400 text-center pt-12">Loading content...</div>
         ) : (
           <textarea

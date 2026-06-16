@@ -90,6 +90,11 @@ async def set_fact_route(
         confidence=body.confidence,
         company_id=resolved_company_id,
     )
+    try:
+        from backend.funding.kit import mark_stale
+        mark_stale(founder_id)
+    except Exception:
+        pass
     return {"genome": updated_genome, "ok": True}
 
 

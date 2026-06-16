@@ -2023,6 +2023,8 @@ export interface LibraryFile {
   created_at: string;
   updated_at: string;
   size_bytes: number;
+  source_path?: string;
+  source_tag?: string;
 }
 
 export async function getLibraryFiles(
@@ -2793,3 +2795,36 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   generate_wireframe: "Generating wireframe",
   generate_color_palette: "Generating color palette",
 };
+
+// ── Funding Kit ──────────────────────────────────────────────────────────────
+
+export interface FundingDocument {
+  type: string;
+  label: string;
+  file_id: string;
+  filename: string;
+  source_path: string;
+}
+
+export interface FundingKitStatus {
+  generated_at: string | null;
+  genome_hash: string;
+  needs_refresh: boolean;
+  generating: boolean;
+  documents: FundingDocument[];
+  error?: string;
+}
+
+export async function getFundingStatus(founderId: string, companyId?: string): Promise<FundingKitStatus> {
+  const params = companyId ? `?company_id=${encodeURIComponent(companyId)}` : "";
+  const res = await apiFetch(`${BASE}/funding/status/${encodeURIComponent(founderId)}${params}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function triggerFundingGenerate(founderId: string, companyId?: string): Promise<{ started: boolean }> {
+  const params = companyId ? `?company_id=${encodeURIComponent(companyId)}` : "";
+  const res = await apiFetch(`${BASE}/funding/generate/${encodeURIComponent(founderId)}${params}`, { method: "POST" });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}

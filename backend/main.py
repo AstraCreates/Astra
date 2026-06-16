@@ -24,6 +24,7 @@ from backend.api.dashboard_routes import router as dashboard_router
 from backend.api.preview_proxy import router as preview_proxy_router
 from backend.api.custom_agents_routes import custom_agents_router
 from backend.api.insights_routes import router as insights_router
+from backend.api.funding_routes import router as funding_router
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,7 @@ app.include_router(notification_router)
 app.include_router(dashboard_router)
 app.include_router(custom_agents_router)
 app.include_router(insights_router)
+app.include_router(funding_router)
 app.include_router(preview_proxy_router)
 
 
