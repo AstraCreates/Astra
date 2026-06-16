@@ -63,14 +63,12 @@ export default function FundingKitPage() {
       <PageHeader
         title="Funding Kit"
         subtitle="AI-generated pitch materials, always in sync with your company genome"
-      >
-        <HeaderPrimaryBtn
-          onClick={handleGenerate}
-          disabled={generating}
-        >
-          {generating ? "Generating…" : hasDocuments ? "Regenerate" : "Generate Kit"}
-        </HeaderPrimaryBtn>
-      </PageHeader>
+        actions={
+          <HeaderPrimaryBtn onClick={handleGenerate} disabled={generating}>
+            {generating ? "Generating…" : hasDocuments ? "Regenerate" : "Generate Kit"}
+          </HeaderPrimaryBtn>
+        }
+      />
 
       <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
         {loading && <p className="text-sm text-gray-400">Loading…</p>}
