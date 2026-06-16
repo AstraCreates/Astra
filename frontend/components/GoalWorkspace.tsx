@@ -5072,7 +5072,7 @@ export function GoalWorkspace({
             status: hasOutput ? "done" : "error",
             currentAction: null,
             currentTool: null,
-            result: hasOutput ? result : { error: "Agent finished without emitting a structured output." },
+            result: hasOutput ? { ...(cur.result ?? {}), ...result } : { error: "Agent finished without emitting a structured output." },
             previewUrl,
             adImages: mergedAdImages,
             webQualityError: (result.web_quality_error as string | undefined) ?? cur.webQualityError,
