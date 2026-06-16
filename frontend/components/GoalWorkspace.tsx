@@ -4255,10 +4255,6 @@ function WorkspaceSidebar({
           <span aria-hidden="true">◈</span>
           Brain
         </Link>
-        <Link href="/dataroom" style={navItemStyle}>
-          <span aria-hidden="true">▦</span>
-          Data Room
-        </Link>
         <Link data-tour="nav-integrations" href="/integrations" style={navItemStyle}>
           <span aria-hidden="true">⌘</span>
           Integrations
