@@ -481,7 +481,7 @@ def _brain_graph(args: dict) -> dict:
 def _company_goal(args: dict) -> dict:
     founder_id = args.get("founder_id") or _founder_id()
     try:
-        return {"ok": True, **_get("/api/missions/company-goal", {"founder_id": founder_id})}
+        return {"ok": True, **_get("/missions/company-goal", {"founder_id": founder_id})}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -490,21 +490,21 @@ def _approve_next_goal(args: dict) -> dict:
     approved = args.get("approved")
     approved = True if approved is None else bool(approved)
     try:
-        return {"ok": True, **_post("/api/missions/company-goal/approve-next", {"founder_id": founder_id, "approved": approved})}
+        return {"ok": True, **_post("/missions/company-goal/approve-next", {"founder_id": founder_id, "approved": approved})}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 def _run_cycle(args: dict) -> dict:
     founder_id = args.get("founder_id") or _founder_id()
     try:
-        return {"ok": True, **_post(f"/api/missions/company-goal/run?founder_id={urllib.parse.quote(founder_id)}", {})}
+        return {"ok": True, **_post(f"/missions/company-goal/run?founder_id={urllib.parse.quote(founder_id)}", {})}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 def _credits(args: dict) -> dict:
     founder_id = args.get("founder_id") or _founder_id()
     try:
-        return {"ok": True, **_get("/api/credits", {"founder_id": founder_id})}
+        return {"ok": True, **_get("/credits", {"founder_id": founder_id})}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
