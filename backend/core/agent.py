@@ -1668,6 +1668,17 @@ class Agent:
     ) -> dict[str, Any]:
         """Enrich agent done payload with stable preview-friendly fields."""
         out = dict(output)
+        # Universal fallback: the role-specific branches below only cover the
+        # built-in stack agent names. Custom agents run under self.name ==
+        # their custom_agent_id, which never matches any of them, so a real
+        # generate_pdf call would otherwise vanish — surface it here first.
+        if not out.get("pdf_path"):
+            for tool_name, result in tool_results:
+                if tool_name == "generate_pdf":
+                    path = result.get("path") or result.get("filename")
+                    if path:
+                        out["pdf_path"] = path
+                        break
         if self.name == "marketing":
             images = []
             for tool_name, result in tool_results:
