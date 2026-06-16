@@ -485,14 +485,15 @@ def tick_from_agent(session_id: str, agent: str, output: Any = None) -> None:
         agent_tasks = [t for t in cg.get("tasks") or [] if agent in (t.get("owner_agents") or [])]
         if not agent_tasks:
             return
-        # All owned milestone tasks must have evidence — check each one.
-        for owning_task in agent_tasks:
-            if not _agent_delivered(output, owning_task):
-                logger.info(
-                    "goal_engine: %s emitted agent_done without real delivery for task '%s' — NOT completing",
-                    agent, owning_task.get("title", ""),
-                )
-                return
+        # All owned milestone tasks must have evidence — collect all failures then gate.
+        failed = [t for t in agent_tasks if not _agent_delivered(output, t)]
+        for t in failed:
+            logger.info(
+                "goal_engine: %s emitted agent_done without real delivery for task '%s' — NOT completing",
+                agent, t.get("title", ""),
+            )
+        if failed:
+            return
         complete_agent_workstream(
             founder_id,
             agent,

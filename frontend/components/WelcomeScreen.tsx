@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import AstraGradient from "./AstraGradient";
+import { desktopDownloadHref } from "@/lib/desktop-download";
 
 const PHRASES = [
   "Welcome to Astra!",
@@ -53,6 +54,29 @@ export default function WelcomeScreen() {
           font-family: var(--font-geist-sans), "Geist", sans-serif;
         }
         .ws-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+        .ws-btn-secondary {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 11px 22px;
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: #111827;
+          background: rgba(255,255,255,0.58);
+          border: 1px solid rgba(17,24,39,0.12);
+          border-radius: 999px;
+          text-decoration: none;
+          backdrop-filter: blur(10px);
+          transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+          font-family: var(--font-geist-sans), "Geist", sans-serif;
+        }
+        .ws-btn-secondary:hover {
+          transform: translateY(-1px);
+          background: rgba(255,255,255,0.8);
+          border-color: rgba(17,24,39,0.2);
+        }
       `}</style>
 
       {/* Renders on document.body via portal — root stacking context, above everything */}
@@ -118,9 +142,22 @@ export default function WelcomeScreen() {
             </AnimatePresence>
           </div>
 
-          <button className="ws-btn" onClick={() => router.push("/onboarding")}>
-            Get Started
-          </button>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 12,
+            }}
+          >
+            <button className="ws-btn" onClick={() => router.push("/onboarding")}>
+              Get Started
+            </button>
+            <a className="ws-btn-secondary" href={desktopDownloadHref}>
+              Download for macOS
+            </a>
+          </div>
         </div>
 
         {/* White cover fades out to reveal preloaded gradient */}
