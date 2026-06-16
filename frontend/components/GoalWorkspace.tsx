@@ -9,10 +9,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useDevUser } from "@/lib/use-dev-user";
 import ServiceLogo from "@/components/ServiceLogo";
-import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, getCompanyGoal, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote, killSession, ingestAttachment, emailDeliverable } from "@/lib/api";
+import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, getCompanyGoal, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote, killSession, ingestAttachment, emailDeliverable, getSessionBenchmark } from "@/lib/api";
 import type { DeploymentRecord } from "@/lib/api";
 import type { AgentCatalogEntry } from "@/lib/api";
-import type { AgentDepartmentManifest, AgentStackTemplate, CompanyGoal, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
+import type { AgentDepartmentManifest, AgentStackTemplate, CompanyGoal, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionBenchmark, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
 import { saveSession, updateSession, getSessionSnapshot, subscribeSessions, deleteSession, clearAllSessions, setServerSessions, removeServerSession } from "@/lib/history";
 import { CHECKLIST_CATEGORIES } from "@/lib/checklist-data";
 import type { CLItem, CLCategory } from "@/lib/checklist-data";
@@ -4255,6 +4255,10 @@ function WorkspaceSidebar({
           <span aria-hidden="true">◈</span>
           Brain
         </Link>
+        <Link href="/dataroom" style={navItemStyle}>
+          <span aria-hidden="true">▦</span>
+          Data Room
+        </Link>
         <Link data-tour="nav-integrations" href="/integrations" style={navItemStyle}>
           <span aria-hidden="true">⌘</span>
           Integrations
@@ -4642,6 +4646,7 @@ export function GoalWorkspace({
   const [runArtifacts, setRunArtifacts] = useState<RunArtifactState[]>([]);
   const [safeRunActions, setSafeRunActions] = useState<SafeRunActionState[]>([]);
   const [outcomes, setOutcomes] = useState<OutcomeLedgerEvent[]>([]);
+  const [benchmark, setBenchmark] = useState<SessionBenchmark | null>(null);
   const [companyGenome, setCompanyGenome] = useState<CompanyGenomeState | null>(null);
   const [approvalQueue, setApprovalQueue] = useState<ApprovalQueueItemState[]>([]);
   const [stackOperatingPlan, setStackOperatingPlan] = useState<StackOperatingPlan | null>(null);
@@ -4736,6 +4741,13 @@ export function GoalWorkspace({
 
   // Persist to localStorage whenever state changes
   useEffect(() => { saveCache(agents, planTasks, done, autoCompanyName, selectedStack, runArtifacts, safeRunActions, outcomes, companyGenome, approvalQueue, stackOperatingPlan, stackManifest, companyGoal); }, [agents, planTasks, done, autoCompanyName, selectedStack, runArtifacts, safeRunActions, outcomes, companyGenome, approvalQueue, stackOperatingPlan, stackManifest, companyGoal, saveCache]);
+
+  // Once the run finishes, see how its outcome count stacks up against every
+  // other company that ran the same stack template.
+  useEffect(() => {
+    if (!done || !sessionId || !founderId) return;
+    getSessionBenchmark(sessionId, founderId).then(setBenchmark).catch(() => {});
+  }, [done, sessionId, founderId]);
 
   useEffect(() => {
     if (!selectedStack?.stack_id || !founderId) return;
@@ -5566,6 +5578,12 @@ export function GoalWorkspace({
                   <span className="site-label">Outcome ledger</span>
                   <span style={{ fontSize: 11, color: "var(--fg-mute)", fontFamily: "var(--font-jetbrains-mono)" }}>{outcomeValue} units</span>
                 </div>
+                {benchmark?.available && typeof benchmark.percentile === "number" && (
+                  <div style={{ fontSize: 11, color: "var(--fg-mute)", lineHeight: 1.45 }}>
+                    Outperformed {benchmark.percentile}% of {benchmark.sample_size} companies that ran this stack
+                    {typeof benchmark.avg_outcome_count === "number" ? ` (avg ${benchmark.avg_outcome_count} outcomes/run)` : ""}.
+                  </div>
+                )}
                 {outcomes.length ? outcomes.slice(-4).reverse().map(outcome => (
                   <button
                     key={outcome.id}

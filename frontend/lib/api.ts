@@ -1362,6 +1362,51 @@ export async function getSessionState(sessionId: string): Promise<SessionStateSn
   return res.json();
 }
 
+export interface SessionBenchmark {
+  available: boolean;
+  sample_size: number;
+  avg_outcome_count?: number;
+  avg_artifact_count?: number;
+  your_outcome_count?: number;
+  percentile?: number;
+}
+
+export async function getSessionBenchmark(sessionId: string, founderId: string): Promise<SessionBenchmark> {
+  const res = await apiFetch(`${BASE}/insights/benchmark/${encodeURIComponent(sessionId)}?founder_id=${encodeURIComponent(founderId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export interface DataRoomDeliverable {
+  path: string;
+  name: string;
+  agent: string;
+  session_id: string;
+}
+
+export interface DataRoomMetrics {
+  connected: boolean;
+  mrr?: number;
+  total_revenue?: number;
+  currency?: string;
+  error?: string;
+}
+
+export interface DataRoom {
+  founder_id: string;
+  company_id: string;
+  genome: Record<string, unknown> | null;
+  metrics: DataRoomMetrics;
+  deliverables: DataRoomDeliverable[];
+  session_count: number;
+}
+
+export async function getDataRoom(founderId: string, companyId: string): Promise<DataRoom> {
+  const res = await apiFetch(`${BASE}/dataroom/${encodeURIComponent(founderId)}/${encodeURIComponent(companyId)}`);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function respondWebTask(taskId: string, fields: Record<string, string>): Promise<{ ok: boolean }> {
   const res = await apiFetch(`${BASE}/web-navigator/respond/${encodeURIComponent(taskId)}`, {
     method: "POST",
