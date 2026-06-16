@@ -22,6 +22,33 @@ def _default_goal(spec: dict[str, Any]) -> str:
     )
 
 
+async def _email_deliverables(founder_id: str, session_id: str, agent_id: str) -> None:
+    """Best-effort: auto-email any generated deliverables once a custom agent
+    run finishes. Custom agents are often unattended (scheduled at an interval),
+    so there's no UI for a founder to click "email me a copy" — send it for them."""
+    try:
+        from backend.core.session_store import load_events
+        from backend.workflow_state import build_session_state
+        from backend.deliverables import resolve_deliverable_path, send_deliverable
+
+        events = load_events(session_id) or []
+        state = build_session_state(session_id, events)
+        result = (state.get("agents") or {}).get(agent_id, {}).get("result") or {}
+        paths = list(result.get("pdfs") or [])
+        direct = result.get("pdf_path") or result.get("path") or result.get("file_path")
+        if direct and direct not in paths:
+            paths.append(direct)
+        for raw_path in paths:
+            resolved = resolve_deliverable_path(str(raw_path))
+            if resolved is None:
+                continue
+            sent = await asyncio.to_thread(send_deliverable, founder_id, resolved)
+            if not sent.get("sent") and not sent.get("skipped"):
+                logger.warning("deliverable email failed session=%s file=%s: %s", session_id, resolved, sent)
+    except Exception as exc:
+        logger.warning("auto-email deliverables failed session=%s: %s", session_id, exc)
+
+
 async def launch_custom_agent_run(
     *,
     founder_id: str,
@@ -99,6 +126,7 @@ async def launch_custom_agent_run(
                 constraints=constraints,
                 session_id=session_id,
             )
+            await _email_deliverables(founder_id, session_id, agent_id)
         except asyncio.CancelledError:
             logger.info("custom_agent run killed session=%s", session_id)
         except Exception as exc:
