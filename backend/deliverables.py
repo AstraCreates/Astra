@@ -245,10 +245,12 @@ def _build_subject(agent_label: str, status: str, result: dict[str, Any]) -> str
     summary = str(next((flat.get(k) for k in _SUMMARY_KEYS if flat.get(k)), "")).strip()
     if not summary:
         return f"✓ {agent_label} — new results ready"
-    snippet = summary.split("\n")[0]
-    cutoff = snippet[:120].rfind(".")
-    snippet = snippet[: cutoff + 1] if cutoff > 20 else (snippet[:90].rsplit(" ", 1)[0] + "…" if len(snippet) > 90 else snippet)
-    return f"✓ {agent_label}: {snippet}"
+    snippet = summary.split("\n")[0].split(". ")[0].rstrip(".")
+    if snippet.lower().startswith(agent_label.lower()):
+        snippet = snippet[len(agent_label):].lstrip(" :-—")
+    if len(snippet) > 70:
+        snippet = snippet[:70].rsplit(" ", 1)[0] + "…"
+    return f"✓ {agent_label}: {snippet}" if snippet else f"✓ {agent_label} — new results ready"
 
 
 def send_run_result_email(
