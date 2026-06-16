@@ -119,12 +119,56 @@ def _humanize_value(value: Any) -> str:
     if isinstance(value, (list, tuple)):
         if not value:
             return "—"
-        shown = ", ".join(_humanize_list_item(v) for v in value[:8])
-        return shown + ("…" if len(value) > 8 else "")
+        shown = ", ".join(_humanize_list_item(v) for v in value[:12])
+        return shown + ("…" if len(value) > 12 else "")
     if isinstance(value, dict):
         return ", ".join(f"{_humanize_key(k)}: {_humanize_list_item(v) if isinstance(v, dict) else v}" for k, v in list(value.items())[:6]) or "—"
     text = str(value).strip()
-    return (text[:500] + "…") if len(text) > 500 else (text or "—")
+    return (text[:800] + "…") if len(text) > 800 else (text or "—")
+
+
+def _result_rows_html(d: dict[str, Any]) -> str:
+    rows = ""
+    for k, v in d.items():
+        if k in _SKIP_RESULT_KEYS or k in _SUMMARY_KEYS or v in (None, "", [], {}):
+            continue
+        rows += (
+            f"<tr>"
+            f"<td style='padding:10px 0;border-top:1px solid #EEF1F6;color:#6B7280;"
+            f"font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;"
+            f"vertical-align:top;width:140px'>{_humanize_key(k)}</td>"
+            f"<td style='padding:10px 0;border-top:1px solid #EEF1F6;color:#1A1F2B;"
+            f"font-size:14px;line-height:1.6'>{_humanize_value(v)}</td>"
+            f"</tr>"
+        )
+    return (
+        f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0' style='margin-top:8px'>{rows}</table>"
+        if rows else ""
+    )
+
+
+def _render_section(label: str, d: dict[str, Any], *, heading: bool) -> str:
+    """Render one dict (top-level result, or a nested wrapper like
+    "competitor_report") as its own block: a featured summary paragraph
+    followed by a key/value table — never merged with any sibling dict, so
+    fields with the same name in two different sections don't clobber each other."""
+    summary_text = next((d.get(k) for k in _SUMMARY_KEYS if d.get(k)), "")
+    summary_html = (
+        f"<p style='margin:{'8px' if heading else '14px'} 0 0;color:#374151;font-size:14px;line-height:1.7'>"
+        f"{_humanize_value(summary_text)}</p>"
+        if summary_text else ""
+    )
+    rows_html = _result_rows_html(d)
+    body = summary_html + rows_html
+    if not body:
+        return ""
+    if not heading:
+        return body
+    return (
+        "<div style='margin-top:22px;padding-top:16px;border-top:1px solid #EEF1F6'>"
+        f"<div style='font-size:13px;font-weight:700;color:#1A1F2B;margin-bottom:2px'>{label}</div>"
+        f"{body}</div>"
+    )
 
 
 def build_run_email_html(
@@ -142,44 +186,30 @@ def build_run_email_html(
     badge_bg = "rgba(61,158,95,0.10)" if is_done else "rgba(192,57,43,0.10)"
     status_label = "Completed" if is_done else "Needs attention"
 
-    flat = _flatten_result(result or {})
+    result = result or {}
 
+    error_text = result.get("error") or next(
+        (v.get("error") for v in result.values() if isinstance(v, dict) and v.get("error")), None
+    )
     error_block = ""
-    if not is_done and flat.get("error"):
+    if not is_done and error_text:
         error_block = (
             "<div style='margin-top:14px;padding:12px 14px;border-radius:10px;"
             "background:rgba(192,57,43,0.06);border:1px solid rgba(192,57,43,0.18);"
             "color:#A93226;font-size:13px;line-height:1.6'>"
-            f"{_humanize_value(flat.get('error'))}</div>"
+            f"{_humanize_value(error_text)}</div>"
         )
 
-    summary_text = next((flat.get(k) for k in _SUMMARY_KEYS if flat.get(k)), "")
-    summary_block = ""
-    if summary_text:
-        summary_block = (
-            "<p style='margin:14px 0 0;color:#374151;font-size:14px;line-height:1.7'>"
-            f"{_humanize_value(summary_text)}</p>"
-        )
-
-    rows = ""
-    for k, v in flat.items():
-        if k in _SKIP_RESULT_KEYS or k in _SUMMARY_KEYS or v in (None, "", [], {}):
+    # Render the top-level dict as the lead section (no heading), then every
+    # nested dict value as its own clearly labeled section underneath — each
+    # section keeps its own fields, so nothing from one section overwrites
+    # another's same-named field.
+    result_table = _render_section("", result, heading=False)
+    for k, v in result.items():
+        if k in _SKIP_RESULT_KEYS or not isinstance(v, dict):
             continue
-        rows += (
-            f"<tr>"
-            f"<td style='padding:10px 0;border-top:1px solid #EEF1F6;color:#6B7280;"
-            f"font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;"
-            f"vertical-align:top;width:140px'>{_humanize_key(k)}</td>"
-            f"<td style='padding:10px 0;border-top:1px solid #EEF1F6;color:#1A1F2B;"
-            f"font-size:14px;line-height:1.6'>{_humanize_value(v)}</td>"
-            f"</tr>"
-        )
-    result_table = (
-        f"<table role='presentation' width='100%' cellpadding='0' cellspacing='0' "
-        f"style='margin-top:8px'>{rows}</table>"
-        if rows else ""
-    )
-    if not summary_block and not result_table:
+        result_table += _render_section(_humanize_key(k), v, heading=True)
+    if not result_table:
         result_table = "<p style='color:#8A93A6;font-size:13px;margin:8px 0 0'>No structured output was returned.</p>"
 
     attachments_block = ""
@@ -226,7 +256,6 @@ def build_run_email_html(
           <tr>
             <td style="padding:8px 32px 0;">
               {error_block}
-              {summary_block}
               {result_table}
               {attachments_block}
             </td>
