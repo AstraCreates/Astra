@@ -64,9 +64,11 @@ export default function FundingKitPage() {
         title="Funding Kit"
         subtitle="AI-generated pitch materials, always in sync with your company genome"
         actions={
-          <HeaderPrimaryBtn onClick={handleGenerate} disabled={generating}>
-            {generating ? "Generating…" : hasDocuments ? "Regenerate" : "Generate Kit"}
-          </HeaderPrimaryBtn>
+          <HeaderPrimaryBtn
+            label={generating ? "Generating…" : hasDocuments ? "Regenerate" : "Generate Kit"}
+            onClick={() => { handleGenerate(); }}
+            disabled={generating}
+          />
         }
       />
 
