@@ -7,6 +7,7 @@ import { signIn, signOut } from "next-auth/react";
 import { useDevUser } from "@/lib/use-dev-user";
 import CreditsDisplay from "@/components/CreditsDisplay";
 import NotificationBell from "@/components/NotificationBell";
+import { desktopDownloadHref } from "@/lib/desktop-download";
 import { useEffect, useState } from "react";
 
 const LINKS: { href: string; ic: string; label: string; match: (p: string) => boolean }[] = [
@@ -80,6 +81,36 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
       </div>
 
       <div style={{ height: 1, background: "var(--bd)", margin: "6px 8px" }} />
+      <div style={{ padding: "6px 8px 8px" }}>
+        <a href={desktopDownloadHref} target="_blank" rel="noopener noreferrer" style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+          padding: "8px 12px",
+          fontSize: 11,
+          fontWeight: 600,
+          color: "#111827",
+          background: "rgba(255,255,255,0.58)",
+          border: "1px solid rgba(17,24,39,0.12)",
+          borderRadius: 6,
+          textDecoration: "none",
+          backdropFilter: "blur(10px)",
+          transition: "transform 0.18s ease, background 0.18s ease, border-color 0.18s ease",
+          cursor: "pointer",
+          fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
+        }} onMouseEnter={(e) => {
+          (e.target as HTMLElement).style.transform = "translateY(-1px)";
+          (e.target as HTMLElement).style.background = "rgba(255,255,255,0.8)";
+          (e.target as HTMLElement).style.borderColor = "rgba(17,24,39,0.2)";
+        }} onMouseLeave={(e) => {
+          (e.target as HTMLElement).style.transform = "translateY(0)";
+          (e.target as HTMLElement).style.background = "rgba(255,255,255,0.58)";
+          (e.target as HTMLElement).style.borderColor = "rgba(17,24,39,0.12)";
+        }}>
+          🍎 Download macOS
+        </a>
+      </div>
       <div style={{ padding: "6px 12px 10px", display: "flex", justifyContent: "center" }}><CreditsDisplay /></div>
       <div style={{ padding: "0 8px 14px", display: "flex", flexDirection: "column", gap: 1 }}>
         <Link href="/settings" className={`nl${pathname.startsWith("/settings") ? " on" : ""}`} style={{ textDecoration: "none" }}><span style={{ width: 18, textAlign: "center" }}>⚙</span>Settings</Link>
