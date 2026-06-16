@@ -1002,7 +1002,7 @@ function MarketingPreview({ state }: { state: AgentState }) {
 }
 
 /** Extracts all PDF/TXT file paths from any result object (any depth, any key name). */
-function extractFilePaths(obj: unknown, seen = new Set<string>()): string[] {
+export function extractFilePaths(obj: unknown, seen = new Set<string>()): string[] {
   if (!obj || typeof obj !== "object") return [];
   const paths: string[] = [];
   for (const v of Object.values(obj as Record<string, unknown>)) {
@@ -1015,12 +1015,12 @@ function extractFilePaths(obj: unknown, seen = new Set<string>()): string[] {
   return paths;
 }
 
-function fileUrl(pathOrFilename: string): string {
+export function fileUrl(pathOrFilename: string): string {
   const name = pathOrFilename.split("/").pop() ?? pathOrFilename;
   return `${BASE}/files/${encodeURIComponent(name)}`;
 }
 
-function PdfEmbed({ path, label, height = 340 }: { path: string; label?: string; height?: number }) {
+export function PdfEmbed({ path, label, height = 340 }: { path: string; label?: string; height?: number }) {
   const url = fileUrl(path);
   const filename = path.split("/").pop() ?? path;
   const isPdf = filename.toLowerCase().endsWith(".pdf");
@@ -1040,7 +1040,7 @@ function PdfEmbed({ path, label, height = 340 }: { path: string; label?: string;
   );
 }
 
-function EmailDeliverableButton({ founderId, path }: { founderId: string; path: string }) {
+export function EmailDeliverableButton({ founderId, path }: { founderId: string; path: string }) {
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [error, setError] = useState("");
   const filename = path.split("/").pop() ?? path;

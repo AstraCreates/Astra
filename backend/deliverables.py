@@ -101,13 +101,28 @@ def _humanize_key(key: str) -> str:
     return key.replace("_", " ").strip().capitalize()
 
 
+def _humanize_list_item(item: Any) -> str:
+    """A list entry that's itself a dict (e.g. a competitor record) shouldn't
+    render as a raw Python repr — pick its most identifying fields instead."""
+    if not isinstance(item, dict):
+        return str(item)
+    name = item.get("name") or item.get("title") or item.get("label")
+    tag = item.get("threat_level") or item.get("tier") or item.get("price")
+    if name:
+        return f"{name} ({tag})" if tag else str(name)
+    return ", ".join(f"{k}: {v}" for k, v in list(item.items())[:3])
+
+
 def _humanize_value(value: Any) -> str:
     if isinstance(value, bool):
         return "Yes" if value else "No"
     if isinstance(value, (list, tuple)):
-        return ", ".join(str(v) for v in value[:8]) or "—"
+        if not value:
+            return "—"
+        shown = ", ".join(_humanize_list_item(v) for v in value[:8])
+        return shown + ("…" if len(value) > 8 else "")
     if isinstance(value, dict):
-        return ", ".join(f"{k}: {v}" for k, v in list(value.items())[:6]) or "—"
+        return ", ".join(f"{_humanize_key(k)}: {_humanize_list_item(v) if isinstance(v, dict) else v}" for k, v in list(value.items())[:6]) or "—"
     text = str(value).strip()
     return (text[:500] + "…") if len(text) > 500 else (text or "—")
 

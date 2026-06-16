@@ -42,6 +42,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
           agentName={meta.company_name ?? ""}
           goal={meta.goal ?? ""}
           initialStatus={initialStatus}
+          founderId={meta.founder_id ?? ""}
         />
       </Suspense>
     );

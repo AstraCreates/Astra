@@ -6,10 +6,11 @@
  * Much simpler than the full company SessionView.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, killSession } from "@/lib/api";
+import { killSession, getSessionState } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
+import { extractFilePaths, PdfEmbed, EmailDeliverableButton } from "@/components/GoalWorkspace";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -26,6 +27,7 @@ interface Props {
   agentName: string;
   goal: string;
   initialStatus: Status;
+  founderId?: string;
 }
 
 let _idSeq = 0;
@@ -37,12 +39,29 @@ function safeStr(v: unknown, limit = 400): string {
   try { return JSON.stringify(v).slice(0, limit); } catch { return ""; }
 }
 
-export default function CustomAgentSessionView({ sessionId, agentName, goal, initialStatus }: Props) {
+export default function CustomAgentSessionView({ sessionId, agentName, goal, initialStatus, founderId }: Props) {
   const router = useRouter();
   const [status, setStatus] = useState<Status>(initialStatus);
   const [log, setLog] = useState<LogLine[]>([]);
   const [killing, setKilling] = useState(false);
+  const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
+
+  // Once the run finishes (on mount if already done, or live when it ends),
+  // pull the agent's structured result so any generated PDFs can be shown.
+  useEffect(() => {
+    if (status === "running") return;
+    let cancelled = false;
+    getSessionState(sessionId).then(state => {
+      if (cancelled) return;
+      const agents = state.agents ?? {};
+      const agentState = Object.values(agents)[0] as Record<string, unknown> | undefined;
+      setResult((agentState?.result as Record<string, unknown>) ?? null);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [sessionId, status]);
+
+  const deliverablePaths = useMemo(() => extractFilePaths(result ?? {}), [result]);
 
   // Auto-scroll as log grows
   useEffect(() => {
@@ -185,6 +204,21 @@ export default function CustomAgentSessionView({ sessionId, agentName, goal, ini
         <span className="mx-2 text-gray-300">·</span>
         <span className="font-mono text-[10px] text-gray-400 truncate">{sessionId}</span>
       </div>
+
+      {/* Deliverables */}
+      {deliverablePaths.length > 0 && (
+        <div className="px-6 py-4 border-b border-gray-100 space-y-3 shrink-0">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            Deliverables ({deliverablePaths.length})
+          </div>
+          {deliverablePaths.map(p => (
+            <div key={p} className="space-y-2">
+              <PdfEmbed path={p} height={300} />
+              {founderId && <EmailDeliverableButton founderId={founderId} path={p} />}
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Log feed */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-1.5 font-mono text-[12px]">
