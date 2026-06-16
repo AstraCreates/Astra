@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useState, useRef, useSyncExternalStore, Component } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef, useSyncExternalStore, Component } from "react";
 import type { ReactNode } from "react";
 import { signIn, signOut } from "next-auth/react";
 import { Attachment, readAttachment, buildAttachmentBlock } from "@/lib/attachments";
@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useDevUser } from "@/lib/use-dev-user";
 import ServiceLogo from "@/components/ServiceLogo";
-import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, getCompanyGoal, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote, killSession, ingestAttachment } from "@/lib/api";
+import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, getCompanyGoal, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote, killSession, ingestAttachment, emailDeliverable } from "@/lib/api";
 import type { DeploymentRecord } from "@/lib/api";
 import type { AgentCatalogEntry } from "@/lib/api";
 import type { AgentDepartmentManifest, AgentStackTemplate, CompanyGoal, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
@@ -1040,6 +1040,53 @@ function PdfEmbed({ path, label, height = 340 }: { path: string; label?: string;
   );
 }
 
+function EmailDeliverableButton({ founderId, path }: { founderId: string; path: string }) {
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [error, setError] = useState("");
+  const filename = path.split("/").pop() ?? path;
+
+  async function send() {
+    setStatus("sending");
+    setError("");
+    const res = await emailDeliverable(founderId, filename, filename);
+    if (res.ok) setStatus("sent");
+    else { setStatus("error"); setError(res.error ?? "Failed to send"); }
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <button
+        onClick={send}
+        disabled={status === "sending" || status === "sent"}
+        style={{
+          fontSize: 10.5, fontWeight: 600, padding: "4px 10px", borderRadius: 6,
+          border: "1px solid rgba(0,46,255,0.25)",
+          background: status === "sent" ? "rgba(74,222,128,0.10)" : "rgba(0,46,255,0.06)",
+          color: status === "sent" ? "#3D9E5F" : "#002EFF",
+          cursor: status === "sending" || status === "sent" ? "default" : "pointer",
+        }}
+      >
+        {status === "sending" ? "Sending…" : status === "sent" ? "✓ Sent" : "Email me a copy"}
+      </button>
+      {status === "error" && <span style={{ fontSize: 10.5, color: "#C0392B" }}>{error}</span>}
+    </div>
+  );
+}
+
+/** Collects any .pdf/.txt deliverable paths from an agent's result or its tool log. */
+function collectDeliverables(state: AgentState): string[] {
+  const r = state.result ?? {};
+  const filePaths: string[] = [];
+  const directPath = (r?.path ?? r?.filename ?? r?.pdf_path ?? r?.file_path ?? r?.output_path) as string | undefined;
+  if (directPath) filePaths.push(directPath);
+  for (const p of extractFilePaths(r)) if (!filePaths.includes(p)) filePaths.push(p);
+  for (const entry of state.log) {
+    const m = entry.text.match(/\/[^\s"'\\]+\.(pdf|txt)/i);
+    if (m && !filePaths.includes(m[0])) filePaths.push(m[0]);
+  }
+  return filePaths;
+}
+
 function LegalPreview({ state, founderId, company }: { state: AgentState; founderId?: string; company?: string }) {
   const r = state.result ?? {};
   const [legalTab, setLegalTab] = useState(0);
@@ -1724,17 +1771,7 @@ function GenericAgentPreview({ state }: { state: AgentState }) {
     ? Math.round((state.log[state.log.length - 1].ts - state.log[0].ts) / 1000)
     : null;
 
-  // Deliverables: collect any .pdf/.txt paths from the result or the tool log
-  // (custom agents put their actual output here, not in state.result).
-  const r = state.result ?? {};
-  const filePaths: string[] = [];
-  const directPath = (r?.path ?? r?.filename ?? r?.pdf_path ?? r?.file_path ?? r?.output_path) as string | undefined;
-  if (directPath) filePaths.push(directPath);
-  for (const p of extractFilePaths(r)) if (!filePaths.includes(p)) filePaths.push(p);
-  for (const entry of state.log) {
-    const m = entry.text.match(/\/[^\s"'\\]+\.(pdf|txt)/i);
-    if (m && !filePaths.includes(m[0])) filePaths.push(m[0]);
-  }
+  const filePaths = collectDeliverables(state);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1968,7 +2005,7 @@ function AgentChat({ agentKey, founderId, sessionId, company, goal }: { agentKey
 
 // ── Agent detail panel ──────────────────────────────────────────────────────
 
-type DetailTab = "preview" | "plan" | "log" | "obsidian";
+type DetailTab = "preview" | "plan" | "log" | "obsidian" | "deliverables";
 
 function AgentDetail({
   state,
@@ -2049,6 +2086,7 @@ function AgentDetail({
   const p = pct(state);
   const isRunning = state.status === "running";
   const isDone = state.status === "done";
+  const deliverablePaths = useMemo(() => collectDeliverables(state), [state]);
 
   const TAB_STYLE = (active: boolean): React.CSSProperties => ({
     fontSize: 11, fontWeight: 500, letterSpacing: "0.04em", padding: "5px 14px", borderRadius: 6,
@@ -2122,9 +2160,10 @@ function AgentDetail({
 
       {/* Sub-tabs */}
       <div style={{ display: "flex", gap: 4, borderBottom: "1px solid rgba(0,0,0,0.08)", paddingBottom: 8, flexShrink: 0 }}>
-        {(["preview", "plan", "log", "obsidian"] as DetailTab[]).map(t => (
+        {(["preview", "plan", "log", "obsidian", "deliverables"] as DetailTab[]).map(t => (
           <button key={t} onClick={() => setTab(t)} style={TAB_STYLE(tab === t)}>
             {t === "obsidian" ? "Obsidian" : t.charAt(0).toUpperCase() + t.slice(1)}
+            {t === "deliverables" && deliverablePaths.length > 0 ? ` (${deliverablePaths.length})` : ""}
           </button>
         ))}
       </div>
@@ -2195,6 +2234,23 @@ function AgentDetail({
               }}>
                 {obsidianNote || "This note is empty."}
               </pre>
+            )}
+          </div>
+        )}
+
+        {tab === "deliverables" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {deliverablePaths.length === 0 ? (
+              <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>
+                {isDone ? "No deliverables found for this agent." : "No deliverables yet — check back once this agent finishes."}
+              </span>
+            ) : (
+              deliverablePaths.map(p => (
+                <div key={p} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <PdfEmbed path={p} height={340} />
+                  <EmailDeliverableButton founderId={founderId} path={p} />
+                </div>
+              ))
             )}
           </div>
         )}

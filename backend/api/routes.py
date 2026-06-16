@@ -2483,6 +2483,51 @@ async def serve_file(filename: str):
     return FileResponse(path, media_type=media_type or "application/octet-stream", filename=safe_name)
 
 
+@router.post("/founders/{founder_id}/deliverables/email")
+async def email_deliverable(founder_id: str, request: Request):
+    """Email a generated deliverable (PDF/TXT) to the founder's own connected Gmail address."""
+    require_founder_access(request, founder_id, min_role="operator")
+    from pathlib import Path
+    import os as _os
+    from backend.provisioning.credentials_store import load_credentials
+    from backend.tools.gmail_api import gmail_send_email
+
+    body = await request.json()
+    filename = str(body.get("filename") or "")
+    label = str(body.get("label") or "") or filename
+    if not filename:
+        raise HTTPException(status_code=400, detail="filename required")
+    safe_name = Path(filename).name
+    vault = _os.environ.get("OBSIDIAN_VAULT", "/tmp/astra_docs")
+    search_dirs = [Path(vault) / "files", Path(vault), Path("/tmp/astra_docs")]
+    path = None
+    for d in search_dirs:
+        candidate = d / safe_name
+        if candidate.exists() and candidate.is_file():
+            path = candidate
+            break
+    if path is None:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    gmail_creds = load_credentials(founder_id, "gmail") or {}
+    to_email = str(gmail_creds.get("email") or "")
+    if not to_email:
+        raise HTTPException(status_code=400, detail="Connect Gmail in Integrations to email yourself deliverables.")
+
+    label = body.label or safe_name
+    result = await asyncio.to_thread(
+        gmail_send_email,
+        founder_id,
+        to_email,
+        f"Your deliverable: {label}",
+        f"Attached is the deliverable \"{label}\" your agent generated.",
+        str(path),
+    )
+    if result.get("error"):
+        raise HTTPException(status_code=502, detail=result["error"])
+    return {"sent": True, "to": to_email}
+
+
 @router.get("/status/{goal_id}")
 async def get_status(goal_id: str):
     db = get_supabase()

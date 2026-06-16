@@ -91,19 +91,34 @@ def get_gmail_api_credentials(founder_id: str = "", inline_credentials: dict[str
     return {}
 
 
-def gmail_send_email(founder_id: str, to: str, subject: str, body: str) -> dict[str, Any]:
-    """Send an email via the founder's connected Gmail account."""
+def gmail_send_email(founder_id: str, to: str, subject: str, body: str, attachment_path: str = "") -> dict[str, Any]:
+    """Send an email via the founder's connected Gmail account, optionally with a
+    file attached (e.g. a generated PDF deliverable)."""
     creds = get_gmail_api_credentials(founder_id)
     access_token = str(creds.get("access_token") or "")
     if not access_token:
         return {"error": "Gmail not connected — go to /integrations and connect Gmail"}
 
+    import mimetypes
+    import os
     import email.mime.text
     import email.mime.multipart
+    import email.mime.base
+    import email.encoders
     msg = email.mime.multipart.MIMEMultipart()
     msg["to"] = to
     msg["subject"] = subject
     msg.attach(email.mime.text.MIMEText(body, "plain"))
+    if attachment_path:
+        if not os.path.isfile(attachment_path):
+            return {"error": f"Attachment not found: {attachment_path}"}
+        ctype, _ = mimetypes.guess_type(attachment_path)
+        part = email.mime.base.MIMEBase(*(ctype.split("/", 1) if ctype else ("application", "octet-stream")))
+        with open(attachment_path, "rb") as f:
+            part.set_payload(f.read())
+        email.encoders.encode_base64(part)
+        part.add_header("Content-Disposition", "attachment", filename=os.path.basename(attachment_path))
+        msg.attach(part)
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
 
     def _send(token: str) -> requests.Response:

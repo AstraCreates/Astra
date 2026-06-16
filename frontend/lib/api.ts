@@ -1309,6 +1309,24 @@ export async function deleteSessionRemote(sessionId: string): Promise<boolean> {
   }
 }
 
+/** Emails a generated deliverable (PDF/TXT) to the founder's own connected Gmail address. */
+export async function emailDeliverable(founderId: string, filename: string, label = ""): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const res = await apiFetch(`${BASE}/founders/${encodeURIComponent(founderId)}/deliverables/email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename, label }),
+    });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}));
+      return { ok: false, error: detail.detail || `Failed (${res.status})` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 export type SessionImages = { logos: Record<string, string>; brand_images: { base64: string; prompt?: string }[] };
 export async function getSessionImages(sessionId: string): Promise<SessionImages> {
   try {
