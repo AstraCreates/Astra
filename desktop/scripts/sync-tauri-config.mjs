@@ -53,7 +53,8 @@ function getFrontendUrl() {
 }
 
 const frontendUrl = getFrontendUrl();
-const frontendOriginPattern = `${new URL(frontendUrl).origin}/*`;
+const frontendUrlObject = new URL(frontendUrl);
+const frontendOriginPattern = `${frontendUrlObject.origin}/*`;
 
 const tauriConfig = {
   $schema: "https://schema.tauri.app/config/2",
@@ -88,11 +89,15 @@ const tauriConfig = {
   },
   bundle: {
     active: true,
+    icon: ["icons/icon.icns", "icons/icon.png"],
     targets: "all",
     shortDescription: "Desktop shell for the Astra web app",
     longDescription:
       "Astra Desktop wraps the shared Astra frontend in a native Tauri shell while continuing to use the hosted Astra backend and deployed frontend.",
     createUpdaterArtifacts: false,
+    macOS: {
+      exceptionDomain: frontendUrlObject.protocol === "http:" ? frontendUrlObject.hostname : null,
+    },
   },
 };
 
