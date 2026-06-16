@@ -1230,6 +1230,7 @@ export interface SessionIndexEntry {
   completed_at: string | null;
   parent_session_id?: string;
   kind?: string;
+  company_name?: string;
 }
 
 export interface SessionMeta {
