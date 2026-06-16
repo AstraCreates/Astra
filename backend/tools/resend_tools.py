@@ -8,7 +8,8 @@ _API = "https://api.resend.com"
 
 
 def resend_send_email(
-    to: str, from_email: str, subject: str, html: str, text: str = "", attachment_path: str = "",
+    to: str, from_email: str, subject: str, html: str, text: str = "",
+    attachment_path: str = "", attachment_paths: list[str] | None = None,
 ) -> dict:
     """Send transactional email via Resend. Requires RESEND_API_KEY in founder's env."""
     api_key = getattr(settings, "resend_api_key", "")
@@ -20,14 +21,20 @@ def resend_send_email(
             "preview": {"to": to, "subject": subject, "body": html[:300]},
         }
     payload: dict = {"from": from_email, "to": [to], "subject": subject, "html": html, "text": text or subject}
+    paths = list(attachment_paths or [])
     if attachment_path:
+        paths.append(attachment_path)
+    if paths:
         import base64
         import os
-        if not os.path.isfile(attachment_path):
-            return {"error": f"Attachment not found: {attachment_path}", "sent": False}
-        with open(attachment_path, "rb") as f:
-            content = base64.b64encode(f.read()).decode()
-        payload["attachments"] = [{"filename": os.path.basename(attachment_path), "content": content}]
+        attachments = []
+        for p in paths:
+            if not os.path.isfile(p):
+                return {"error": f"Attachment not found: {p}", "sent": False}
+            with open(p, "rb") as f:
+                content = base64.b64encode(f.read()).decode()
+            attachments.append({"filename": os.path.basename(p), "content": content})
+        payload["attachments"] = attachments
     try:
         resp = requests.post(
             f"{_API}/emails",

@@ -22,31 +22,47 @@ def _default_goal(spec: dict[str, Any]) -> str:
     )
 
 
-async def _email_deliverables(founder_id: str, session_id: str, agent_id: str) -> None:
-    """Best-effort: auto-email any generated deliverables once a custom agent
-    run finishes. Custom agents are often unattended (scheduled at an interval),
-    so there's no UI for a founder to click "email me a copy" — send it for them."""
+async def _email_run_result(
+    founder_id: str, session_id: str, agent_id: str, agent_label: str, company_name: str,
+    error: str = "",
+) -> None:
+    """Best-effort: auto-email a formatted summary of every custom agent run —
+    not just when there's a file deliverable. Custom agents are often unattended
+    (scheduled at an interval), so there's no UI for a founder to click
+    "email me a copy" — send the result to them automatically instead."""
     try:
         from backend.core.session_store import load_events
         from backend.workflow_state import build_session_state
-        from backend.deliverables import resolve_deliverable_path, send_deliverable
+        from backend.deliverables import resolve_deliverable_path, send_run_result_email
 
         events = load_events(session_id) or []
         state = build_session_state(session_id, events)
-        result = (state.get("agents") or {}).get(agent_id, {}).get("result") or {}
-        paths = list(result.get("pdfs") or [])
+        agent_state = (state.get("agents") or {}).get(agent_id) or {}
+        status = agent_state.get("status") or ("error" if error else "done")
+        result = dict(agent_state.get("result") or {})
+        if error and "error" not in result:
+            result["error"] = error
+
+        raw_paths = list(result.get("pdfs") or [])
         direct = result.get("pdf_path") or result.get("path") or result.get("file_path")
-        if direct and direct not in paths:
-            paths.append(direct)
-        for raw_path in paths:
-            resolved = resolve_deliverable_path(str(raw_path))
-            if resolved is None:
-                continue
-            sent = await asyncio.to_thread(send_deliverable, founder_id, resolved)
-            if not sent.get("sent") and not sent.get("skipped"):
-                logger.warning("deliverable email failed session=%s file=%s: %s", session_id, resolved, sent)
+        if direct and direct not in raw_paths:
+            raw_paths.append(direct)
+        resolved_paths = [p for p in (resolve_deliverable_path(str(rp)) for rp in raw_paths) if p is not None]
+
+        sent = await asyncio.to_thread(
+            send_run_result_email,
+            founder_id=founder_id,
+            agent_label=agent_label,
+            company_name=company_name,
+            status=status,
+            result=result,
+            attachment_paths=resolved_paths,
+            session_id=session_id,
+        )
+        if not sent.get("sent") and not sent.get("skipped"):
+            logger.warning("run-result email failed session=%s: %s", session_id, sent)
     except Exception as exc:
-        logger.warning("auto-email deliverables failed session=%s: %s", session_id, exc)
+        logger.warning("auto-email run result failed session=%s: %s", session_id, exc)
 
 
 async def launch_custom_agent_run(
@@ -118,6 +134,8 @@ async def launch_custom_agent_run(
     # Pre-create the SSE queue so the frontend can attach before the first event.
     _get_queue(session_id)
 
+    agent_label = str(spec.get("name") or agent_id)
+
     async def _run() -> None:
         try:
             await orch.run(
@@ -126,7 +144,7 @@ async def launch_custom_agent_run(
                 constraints=constraints,
                 session_id=session_id,
             )
-            await _email_deliverables(founder_id, session_id, agent_id)
+            await _email_run_result(founder_id, session_id, agent_id, agent_label, _company_name)
         except asyncio.CancelledError:
             logger.info("custom_agent run killed session=%s", session_id)
         except Exception as exc:
@@ -136,6 +154,7 @@ async def launch_custom_agent_run(
                 await publish(session_id, {"type": "goal_error", "error": str(exc)})
             except Exception:
                 pass
+            await _email_run_result(founder_id, session_id, agent_id, agent_label, _company_name, error=str(exc))
         finally:
             cancellation.clear(session_id)
 
