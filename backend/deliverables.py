@@ -71,10 +71,31 @@ def _find_summary(result: dict[str, Any]) -> str:
 
 
 def get_founder_notify_email(founder_id: str) -> str:
-    """The only reliable real email address on file for a founder: their
-    connected Gmail account (from the Integrations OAuth flow)."""
+    """The email to notify a founder at. Prefers their connected Gmail
+    account (Integrations OAuth flow); falls back to the real address they
+    signed up with (synced into Supabase's `users` table by the Clerk
+    user.created webhook) so founders who never connect Gmail still get
+    deliverable emails instead of being silently skipped."""
     creds = load_credentials(founder_id, "gmail") or {}
-    return str(creds.get("email") or "")
+    email = str(creds.get("email") or "")
+    if email:
+        return email
+    try:
+        from backend.db.client import get_supabase
+        rows = (
+            get_supabase()
+            .table("users")
+            .select("email")
+            .eq("id", founder_id)
+            .limit(1)
+            .execute()
+            .data
+        )
+        if rows:
+            return str(rows[0].get("email") or "")
+    except Exception:
+        pass
+    return ""
 
 
 def send_deliverable(founder_id: str, path: Path, label: str = "") -> dict[str, Any]:
