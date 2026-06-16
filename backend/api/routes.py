@@ -3214,6 +3214,10 @@ async def composio_connected(founder_id: str, request: Request):
         app = str(saved.get("composio_app") or "").strip()
         if app and not status.get(app):
             status[app] = True
+    # Direct Gmail OAuth (independent of Composio)
+    gmail_creds = creds.get("gmail") or {}
+    if isinstance(gmail_creds, dict) and gmail_creds.get("connected_via") == "google_oauth":
+        status["gmail_direct"] = True
     return {"founder_id": founder_id, "apps": status}
 
 

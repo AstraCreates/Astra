@@ -128,7 +128,8 @@ CATALOG: list[ToolSpec] = [
     ToolSpec("build_crm_contact", "CRM contact record", "Build a CRM-ready contact record.", "leads"),
 
     # ── Email / send ─────────────────────────────────────────────────────────
-    ToolSpec("composio_gmail_send", "Send email (Gmail)", "Send an email via the founder's Gmail.", "email", connector="gmail"),
+    ToolSpec("gmail_send_email", "Send email (Gmail)", "Send an email via the founder's connected Gmail account.", "email", connector="gmail"),
+    ToolSpec("composio_gmail_send", "Send email (Gmail via Composio)", "Send an email via the founder's Gmail (Composio).", "email", connector="gmail"),
     ToolSpec("composio_gmail_fetch", "Read inbox (Gmail)", "Read recent emails from Gmail.", "email", connector="gmail"),
     ToolSpec("composio_outlook_send_email", "Send email (Outlook)", "Send an email via Outlook / Microsoft 365.", "email", connector="outlook"),
     ToolSpec("send_email_campaign", "Email campaign (SendGrid)", "Send an email campaign via SendGrid.", "email", connector="sendgrid"),
@@ -230,6 +231,13 @@ def resolve_tools(tool_keys: list[str]) -> tuple[dict[str, Callable], list[str]]
         for name in dir(_ct):
             if name.startswith("composio_"):
                 union.setdefault(name, getattr(_ct, name))
+    except Exception:
+        pass
+
+    # Direct Gmail API (no Composio dependency)
+    try:
+        from backend.tools.gmail_api import gmail_send_email
+        union.setdefault("gmail_send_email", gmail_send_email)
     except Exception:
         pass
 

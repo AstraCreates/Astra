@@ -91,6 +91,42 @@ def get_gmail_api_credentials(founder_id: str = "", inline_credentials: dict[str
     return {}
 
 
+def gmail_send_email(founder_id: str, to: str, subject: str, body: str) -> dict[str, Any]:
+    """Send an email via the founder's connected Gmail account."""
+    creds = get_gmail_api_credentials(founder_id)
+    access_token = str(creds.get("access_token") or "")
+    if not access_token:
+        return {"error": "Gmail not connected — go to /integrations and connect Gmail"}
+
+    import email.mime.text
+    import email.mime.multipart
+    msg = email.mime.multipart.MIMEMultipart()
+    msg["to"] = to
+    msg["subject"] = subject
+    msg.attach(email.mime.text.MIMEText(body, "plain"))
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+
+    def _send(token: str) -> requests.Response:
+        return requests.post(
+            f"{_MESSAGES_URL}/send",
+            headers={**_gmail_headers(token), "Content-Type": "application/json"},
+            json={"raw": raw},
+            timeout=15,
+        )
+
+    resp = _send(access_token)
+    if resp.status_code == 401 and creds.get("refresh_token"):
+        creds = refresh_gmail_access_token(creds)
+        access_token = str(creds.get("access_token") or "")
+        if access_token:
+            store_credentials(founder_id, "gmail", creds)
+            resp = _send(access_token)
+    if not resp.ok:
+        return {"error": f"Gmail send failed: {resp.status_code} {resp.text[:200]}"}
+    msg_id = resp.json().get("id", "")
+    return {"ok": True, "message_id": msg_id, "to": to, "subject": subject}
+
+
 def fetch_gmail_verification(founder_id: str, service_name: str, inline_credentials: dict[str, Any] | None = None) -> dict[str, str]:
     creds = get_gmail_api_credentials(founder_id, inline_credentials)
     access_token = str(creds.get("access_token") or "")
