@@ -202,6 +202,7 @@ def build_run_email_html(
     result: dict[str, Any],
     attachment_names: list[str],
     session_url: str,
+    run_time_label: str = "",
 ) -> str:
     """A clean, branded HTML email summarizing a finished custom agent run."""
     is_done = status == "done"
@@ -268,7 +269,7 @@ def build_run_email_html(
               <div style="color:#FFFFFF;font-size:13px;font-weight:700;letter-spacing:.08em;
                           text-transform:uppercase;opacity:.85">Astra</div>
               <div style="color:#FFFFFF;font-size:20px;font-weight:700;margin-top:6px">{agent_label}</div>
-              {f"<div style='color:rgba(255,255,255,0.75);font-size:13px;margin-top:2px'>{company_name}</div>" if company_name else ""}
+              {f"<div style='color:rgba(255,255,255,0.75);font-size:13px;margin-top:2px'>{company_name}{' · ' + run_time_label if run_time_label else ''}</div>" if (company_name or run_time_label) else ""}
             </td>
           </tr>
           <tr>
@@ -312,13 +313,13 @@ def _build_subject(agent_label: str, status: str, result: dict[str, Any]) -> str
         return f"⚠ {agent_label} needs attention"
     summary = _find_summary(result or {}).strip()
     if not summary:
-        return f"✓ {agent_label} — new results ready"
+        return f"{agent_label} — new results ready"
     snippet = summary.split("\n")[0].split(". ")[0].rstrip(".")
     if snippet.lower().startswith(agent_label.lower()):
         snippet = snippet[len(agent_label):].lstrip(" :-—")
     if len(snippet) > 70:
         snippet = snippet[:70].rsplit(" ", 1)[0] + "…"
-    return f"✓ {agent_label}: {snippet}" if snippet else f"✓ {agent_label} — new results ready"
+    return f"{agent_label}: {snippet}" if snippet else f"{agent_label} — new results ready"
 
 
 def send_run_result_email(
@@ -337,6 +338,9 @@ def send_run_result_email(
     if not to_email:
         return {"sent": False, "skipped": "no_email_on_file"}
 
+    import time
+    run_time_label = time.strftime("%-I:%M %p UTC", time.gmtime())
+
     html = build_run_email_html(
         agent_label=agent_label,
         company_name=company_name,
@@ -344,6 +348,7 @@ def send_run_result_email(
         result=result,
         attachment_names=[p.name for p in attachment_paths],
         session_url=f"https://astracreates.com/s/{session_id}",
+        run_time_label=run_time_label,
     )
     subject = _build_subject(agent_label, status, result)
     return resend_send_email(
