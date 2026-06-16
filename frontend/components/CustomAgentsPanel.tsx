@@ -191,7 +191,8 @@ function AgentModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Competitor Watcher"
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="site-input"
+              style={{ padding: "8px 12px", fontSize: 13 }}
             />
           </div>
 
@@ -203,7 +204,8 @@ function AgentModal({
               onChange={(e) => setRole(e.target.value)}
               rows={5}
               placeholder="e.g. Every run, search the web for what our top 3 competitors shipped recently, summarize changes, and save a short report. Flag anything that affects our positioning."
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+              className="site-textarea"
+              style={{ padding: "8px 12px", fontSize: 13, resize: "vertical" }}
             />
           </div>
 
@@ -257,7 +259,8 @@ function AgentModal({
             <select
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="site-input"
+              style={{ padding: "8px 12px", fontSize: 13 }}
             >
               {MODELS.map((m) => (
                 <option key={m.value} value={m.value}>
@@ -292,13 +295,14 @@ function AgentModal({
         </div>
 
         <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg">
+          <button onClick={onClose} className="site-btn site-btn-ghost" style={{ fontSize: 13 }}>
             Cancel
           </button>
           <button
             onClick={handleSubmit}
             disabled={saving}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50"
+            className="site-btn site-btn-primary"
+            style={{ fontSize: 13 }}
           >
             {saving ? "Saving…" : agent ? "Save changes" : "Create agent"}
           </button>
@@ -468,19 +472,22 @@ export default function CustomAgentsPanel() {
                       <button
                         onClick={() => handleRun(agent)}
                         disabled={runningId === agent.id}
-                        className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50"
+                        className="site-btn site-btn-primary"
+                        style={{ fontSize: 12, padding: "0 12px", minHeight: 30 }}
                       >
                         {runningId === agent.id ? "Starting…" : "Run now"}
                       </button>
                       <button
                         onClick={() => setModal({ open: true, agent })}
-                        className="px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 rounded-lg"
+                        className="site-btn site-btn-ghost"
+                        style={{ fontSize: 12, padding: "0 12px", minHeight: 30 }}
                       >
                         Edit
                       </button>
                       <button
                         onClick={() => handleDelete(agent)}
-                        className="px-2.5 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 rounded-lg"
+                        className="site-btn"
+                        style={{ fontSize: 12, padding: "0 12px", minHeight: 30, color: "#f87171", background: "rgba(248,113,113,0.08)", borderColor: "rgba(248,113,113,0.2)" }}
                       >
                         Delete
                       </button>
