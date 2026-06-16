@@ -114,7 +114,7 @@ export default function NewGoalView() {
   return (
     <div style={{ flex: 1, overflowY: "auto" }}>
       {showQuiz && <BusinessQuizModal onComplete={onQuizComplete} onSkip={onQuizSkip} />}
-      <div className="new-wrap new-orbit-stage">
+      <div className="new-wrap new-wrap-wide new-orbit-stage">
         <OrbitLayer />
         {displayCompany && (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--bd)", background: "var(--surface)", fontSize: 10.5, color: "var(--fd)", marginBottom: 16 }}>
