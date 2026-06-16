@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Allows the Astra frontend to access the default Tauri API surface from trusted Astra origins.",
+  "windows": [
+    "main"
+  ],
+  "remote": {
+    "urls": [
+      "http://178.105.231.73.nip.io/*",
+      "http://localhost:3000/*"
+    ]
+  },
+  "permissions": [
+    "core:default"
+  ]
+}

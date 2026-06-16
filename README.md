@@ -219,6 +219,35 @@ GITHUB_TOKEN=
 VERCEL_TOKEN=
 COMPOSIO_API_KEY=
 
+---
+
+## Desktop Shell
+
+The repo now supports a thin Tauri desktop shell in [`desktop/`](/Users/ishaangubbala/Documents/Astra/desktop).
+
+- `frontend/` remains the shared UI codebase.
+- The hosted backend remains unchanged.
+- In development, Tauri loads the local Next.js dev server for hot reload.
+- In production, Tauri loads `FRONTEND_URL`, so an installed desktop app can follow normal server-side frontend deploys without rebundling for routine UI changes.
+
+Desktop commands:
+
+```bash
+cd desktop
+npm install
+npm run dev
+```
+
+Packaging:
+
+```bash
+cd desktop
+npm install
+npm run build
+```
+
+Note: Tauri requires Rust and Cargo locally for `dev` and `build`.
+
 STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 
