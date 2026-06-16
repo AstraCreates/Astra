@@ -191,8 +191,7 @@ function AgentModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Competitor Watcher"
-              className="site-input"
-              style={{ padding: "8px 12px", fontSize: 13 }}
+              className="f-input"
             />
           </div>
 
@@ -204,8 +203,7 @@ function AgentModal({
               onChange={(e) => setRole(e.target.value)}
               rows={5}
               placeholder="e.g. Every run, search the web for what our top 3 competitors shipped recently, summarize changes, and save a short report. Flag anything that affects our positioning."
-              className="site-textarea"
-              style={{ padding: "8px 12px", fontSize: 13, resize: "vertical" }}
+              className="f-ta"
             />
           </div>
 
@@ -259,8 +257,7 @@ function AgentModal({
             <select
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              className="site-input"
-              style={{ padding: "8px 12px", fontSize: 13 }}
+              className="f-input"
             >
               {MODELS.map((m) => (
                 <option key={m.value} value={m.value}>
@@ -295,15 +292,8 @@ function AgentModal({
         </div>
 
         <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
-          <button onClick={onClose} className="site-btn site-btn-ghost" style={{ fontSize: 13 }}>
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={saving}
-            className="site-btn site-btn-primary"
-            style={{ fontSize: 13 }}
-          >
+          <button onClick={onClose} className="btn">Cancel</button>
+          <button onClick={handleSubmit} disabled={saving} className="btn pri">
             {saving ? "Saving…" : agent ? "Save changes" : "Create agent"}
           </button>
         </div>
@@ -472,22 +462,19 @@ export default function CustomAgentsPanel() {
                       <button
                         onClick={() => handleRun(agent)}
                         disabled={runningId === agent.id}
-                        className="site-btn site-btn-primary"
-                        style={{ fontSize: 12, padding: "0 12px", minHeight: 30 }}
+                        className="btn pri sm"
                       >
                         {runningId === agent.id ? "Starting…" : "Run now"}
                       </button>
                       <button
                         onClick={() => setModal({ open: true, agent })}
-                        className="site-btn site-btn-ghost"
-                        style={{ fontSize: 12, padding: "0 12px", minHeight: 30 }}
+                        className="btn sm"
                       >
                         Edit
                       </button>
                       <button
                         onClick={() => handleDelete(agent)}
-                        className="site-btn"
-                        style={{ fontSize: 12, padding: "0 12px", minHeight: 30, color: "#f87171", background: "rgba(248,113,113,0.08)", borderColor: "rgba(248,113,113,0.2)" }}
+                        className="btn danger sm"
                       >
                         Delete
                       </button>

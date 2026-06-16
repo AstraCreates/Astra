@@ -131,6 +131,17 @@ def connector_readiness(founder_id: str, tool_keys: list[str], company_id: str |
     missing: list[str] = []
     for key in required:
         meta = CONNECTOR_BY_KEY.get(key)
+        # Gmail: check direct OAuth credentials first (bypasses broken Composio)
+        if key == "gmail":
+            try:
+                from backend.provisioning.credentials_store import load_credentials
+                gmail_creds = load_credentials(founder_id, "gmail") or {}
+                if gmail_creds.get("access_token") or gmail_creds.get("refresh_token"):
+                    continue  # connected via direct OAuth
+            except Exception:
+                pass
+            missing.append(key)
+            continue
         if meta and meta.kind == "composio":
             slug = meta.composio_slug or key
             if not composio_status.get(slug):

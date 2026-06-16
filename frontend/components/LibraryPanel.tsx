@@ -189,7 +189,7 @@ function NewFileForm({ founderId, onCreated, onCancel }: {
             value={filename}
             onChange={(e) => setFilename(e.target.value)}
             placeholder="e.g. business_context.md"
-            className="w-full text-sm border border-[#E5E7EB] rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#002EFF] focus:border-transparent"
+            className="f-input"
           />
         </div>
         <div>
@@ -197,7 +197,7 @@ function NewFileForm({ founderId, onCreated, onCancel }: {
           <select
             value={department}
             onChange={(e) => setDepartment(e.target.value)}
-            className="w-full text-sm border border-[#E5E7EB] rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#002EFF] bg-white"
+            className="f-input"
           >
             {DEPARTMENTS.filter((d) => d !== "All").map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
@@ -222,24 +222,16 @@ function NewFileForm({ founderId, onCreated, onCancel }: {
             onChange={(e) => setContent(e.target.value)}
             placeholder="Paste or type file content..."
             rows={14}
-            className="w-full text-sm font-mono border border-[#E5E7EB] rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#002EFF] focus:border-transparent resize-none"
+            className="f-ta"
+            style={{ fontFamily: "var(--font-code), monospace", fontSize: 12 }}
           />
         </div>
       </div>
       <div className="flex items-center gap-3 px-6 py-4 border-t border-[#E5E7EB]">
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="flex-1 bg-[#002EFF] hover:bg-[#0024CC] disabled:opacity-50 text-white text-sm font-medium rounded-lg px-4 py-2.5 transition-colors"
-        >
+        <button onClick={handleSave} disabled={saving} className="btn pri" style={{ flex: 1 }}>
           {saving ? "Saving..." : "Create File"}
         </button>
-        <button
-          onClick={onCancel}
-          className="px-4 py-2.5 text-sm text-gray-600 hover:text-gray-800 border border-[#E5E7EB] rounded-lg transition-colors"
-        >
-          Cancel
-        </button>
+        <button onClick={onCancel} className="btn">Cancel</button>
       </div>
     </div>
   );
@@ -299,7 +291,7 @@ function FileEditor({ file, founderId, onUpdated, onClose }: {
           <button
             onClick={handleSave}
             disabled={saving || !dirty}
-            className="bg-[#002EFF] hover:bg-[#0024CC] disabled:opacity-40 text-white text-xs font-medium rounded-lg px-3 py-1.5 transition-colors"
+            className="btn pri sm"
           >
             {saving ? "Saving..." : "Save"}
           </button>
@@ -310,7 +302,8 @@ function FileEditor({ file, founderId, onUpdated, onClose }: {
         <select
           value={department}
           onChange={(e) => { setDepartment(e.target.value); setDirty(true); }}
-          className="text-xs border border-[#E5E7EB] rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-[#002EFF]"
+          className="f-input"
+          style={{ fontSize: 11, padding: "4px 8px" }}
         >
           {DEPARTMENTS.filter((d) => d !== "All").map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
@@ -336,7 +329,8 @@ function FileEditor({ file, founderId, onUpdated, onClose }: {
           <textarea
             value={content}
             onChange={(e) => { setContent(e.target.value); setDirty(true); }}
-            className="w-full h-full text-sm font-mono border border-[#E5E7EB] rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#002EFF] focus:border-transparent resize-none"
+            className="f-ta"
+            style={{ height: "100%", fontFamily: "var(--font-code), monospace", fontSize: 12, resize: "none" }}
             placeholder="File content..."
             spellCheck={false}
           />
