@@ -36,7 +36,7 @@ export async function getDashboardElements(
   founderId: string
 ): Promise<DashboardElement[]> {
   const res = await apiFetch(
-    `${BASE}/api/dashboard/${encodeURIComponent(founderId)}`
+    `${BASE}/dashboard/${encodeURIComponent(founderId)}`
   );
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -48,7 +48,7 @@ export async function removeDashboardElement(
   elementId: string
 ): Promise<void> {
   const res = await apiFetch(
-    `${BASE}/api/dashboard/${encodeURIComponent(founderId)}/elements/${encodeURIComponent(elementId)}`,
+    `${BASE}/dashboard/${encodeURIComponent(founderId)}/elements/${encodeURIComponent(elementId)}`,
     { method: "DELETE" }
   );
   if (!res.ok) throw new Error(await res.text());
@@ -59,7 +59,7 @@ export async function clearDashboard(
   section?: string
 ): Promise<void> {
   const url = new URL(
-    `${BASE}/api/dashboard/${encodeURIComponent(founderId)}/elements`
+    `${BASE}/dashboard/${encodeURIComponent(founderId)}/elements`
   );
   if (section) url.searchParams.set("section", section);
   const res = await apiFetch(url.toString(), { method: "DELETE" });
@@ -71,7 +71,7 @@ export async function refreshElement(
   elementId: string
 ): Promise<Record<string, unknown>> {
   const res = await apiFetch(
-    `${BASE}/api/dashboard/${encodeURIComponent(founderId)}/elements/${encodeURIComponent(elementId)}/refresh`
+    `${BASE}/dashboard/${encodeURIComponent(founderId)}/elements/${encodeURIComponent(elementId)}/refresh`
   );
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();

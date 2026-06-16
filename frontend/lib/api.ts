@@ -1980,7 +1980,7 @@ export interface ModelSettingsResponse {
 }
 
 export async function getModelSettings(founderId: string): Promise<ModelSettingsResponse> {
-  const res = await apiFetch(`${BASE}/api/model-settings?founder_id=${encodeURIComponent(founderId)}`);
+  const res = await apiFetch(`${BASE}/model-settings?founder_id=${encodeURIComponent(founderId)}`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -1990,7 +1990,7 @@ export async function setModelOverride(
   agentKey: string,
   model: string
 ): Promise<{ ok: boolean; founder_id: string; agent_key: string; model: string }> {
-  const res = await apiFetch(`${BASE}/api/model-settings`, {
+  const res = await apiFetch(`${BASE}/model-settings`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, agent_key: agentKey, model }),
@@ -2004,7 +2004,7 @@ export async function clearModelOverride(
   agentKey: string
 ): Promise<{ ok: boolean; founder_id: string; agent_key: string; was_set: boolean }> {
   const res = await apiFetch(
-    `${BASE}/api/model-settings/${encodeURIComponent(agentKey)}?founder_id=${encodeURIComponent(founderId)}`,
+    `${BASE}/model-settings/${encodeURIComponent(agentKey)}?founder_id=${encodeURIComponent(founderId)}`,
     { method: "DELETE" }
   );
   if (!res.ok) throw new Error(await res.text());
@@ -2031,7 +2031,7 @@ export async function getLibraryFiles(
 ): Promise<LibraryFile[]> {
   const params = new URLSearchParams({ founder_id: founderId });
   if (department) params.set("department", department);
-  const res = await apiFetch(`${BASE}/api/library?${params}`);
+  const res = await apiFetch(`${BASE}/library?${params}`);
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   return data.files ?? [];
@@ -2042,7 +2042,7 @@ export async function getLibraryFile(
   fileId: string
 ): Promise<LibraryFile> {
   const res = await apiFetch(
-    `${BASE}/api/library/${encodeURIComponent(fileId)}?founder_id=${encodeURIComponent(founderId)}`
+    `${BASE}/library/${encodeURIComponent(fileId)}?founder_id=${encodeURIComponent(founderId)}`
   );
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -2056,7 +2056,7 @@ export async function createLibraryFile(body: {
   content: string;
   is_canonical?: boolean;
 }): Promise<LibraryFile> {
-  const res = await apiFetch(`${BASE}/api/library`, {
+  const res = await apiFetch(`${BASE}/library`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -2076,7 +2076,7 @@ export async function updateLibraryFile(
     is_canonical?: boolean;
   }
 ): Promise<LibraryFile> {
-  const res = await apiFetch(`${BASE}/api/library/${encodeURIComponent(fileId)}`, {
+  const res = await apiFetch(`${BASE}/library/${encodeURIComponent(fileId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -2091,7 +2091,7 @@ export async function deleteLibraryFile(
   fileId: string
 ): Promise<void> {
   const res = await apiFetch(
-    `${BASE}/api/library/${encodeURIComponent(fileId)}?founder_id=${encodeURIComponent(founderId)}`,
+    `${BASE}/library/${encodeURIComponent(fileId)}?founder_id=${encodeURIComponent(founderId)}`,
     { method: "DELETE" }
   );
   if (!res.ok) throw new Error(await res.text());
@@ -2106,7 +2106,7 @@ export interface ExampleFile {
 }
 
 export async function getExamplesLibrary(): Promise<ExampleFile[]> {
-  const res = await apiFetch(`${BASE}/api/library/examples`);
+  const res = await apiFetch(`${BASE}/library/examples`);
   if (!res.ok) return [];
   const data = await res.json();
   return data.examples ?? [];
@@ -2125,14 +2125,14 @@ export interface DeploymentRecord {
 }
 
 export async function getDeployment(sessionId: string): Promise<DeploymentRecord | null> {
-  const res = await apiFetch(`${BASE}/api/deployments/${encodeURIComponent(sessionId)}`);
+  const res = await apiFetch(`${BASE}/deployments/${encodeURIComponent(sessionId)}`);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function listDeployments(founderId: string): Promise<DeploymentRecord[]> {
-  const res = await apiFetch(`${BASE}/api/deployments?founder_id=${encodeURIComponent(founderId)}`);
+  const res = await apiFetch(`${BASE}/deployments?founder_id=${encodeURIComponent(founderId)}`);
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   return data.deployments ?? [];
@@ -2143,7 +2143,7 @@ export async function publishDeployment(
   vercelToken: string,
   domain?: string
 ): Promise<{ ok: boolean; prod_url: string | null; error?: string }> {
-  const res = await apiFetch(`${BASE}/api/deployments/${encodeURIComponent(sessionId)}/publish`, {
+  const res = await apiFetch(`${BASE}/deployments/${encodeURIComponent(sessionId)}/publish`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ vercel_token: vercelToken, domain: domain ?? null }),
@@ -2293,7 +2293,7 @@ export interface CompanyGoal {
 export async function postponeCompanyTask(
   founderId: string, taskId: string, postponed = true, companyId = ""
 ): Promise<{ ok: boolean; task: CompanyTask }> {
-  const res = await apiFetch(`${BASE}/api/missions/company-goal/tasks/${encodeURIComponent(taskId)}/postpone`, {
+  const res = await apiFetch(`${BASE}/missions/company-goal/tasks/${encodeURIComponent(taskId)}/postpone`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, company_id: companyId, postponed }),
   });
@@ -2302,7 +2302,7 @@ export async function postponeCompanyTask(
 }
 
 export async function markCompanyTaskDone(founderId: string, taskId: string, companyId = ""): Promise<CompanyTask> {
-  const res = await apiFetch(`${BASE}/api/missions/company-goal/tasks/${encodeURIComponent(taskId)}`, {
+  const res = await apiFetch(`${BASE}/missions/company-goal/tasks/${encodeURIComponent(taskId)}`, {
     method: "PATCH", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, company_id: companyId, status: "done" }),
   });
@@ -2313,7 +2313,7 @@ export async function markCompanyTaskDone(founderId: string, taskId: string, com
 export async function runCompanyCycle(founderId: string, companyId = ""): Promise<{ ok: boolean; parent_session_id: string }> {
   const params = new URLSearchParams({ founder_id: founderId });
   if (companyId) params.set("company_id", companyId);
-  const res = await apiFetch(`${BASE}/api/missions/company-goal/run?${params}`, { method: "POST" });
+  const res = await apiFetch(`${BASE}/missions/company-goal/run?${params}`, { method: "POST" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -2321,7 +2321,7 @@ export async function runCompanyCycle(founderId: string, companyId = ""): Promis
 export async function approveNextGoal(
   founderId: string, approved = true, companyId = ""
 ): Promise<{ ok: boolean; goal?: CompanyGoalEntry; rejected?: boolean }> {
-  const res = await apiFetch(`${BASE}/api/missions/company-goal/approve-next`, {
+  const res = await apiFetch(`${BASE}/missions/company-goal/approve-next`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, company_id: companyId, approved }),
   });
@@ -2332,7 +2332,7 @@ export async function approveNextGoal(
 export async function setCompanyGoalStatus(founderId: string, status: "operating" | "paused" | "completed", companyId = ""): Promise<{ ok: boolean; status: string }> {
   const params = new URLSearchParams({ founder_id: founderId, status });
   if (companyId) params.set("company_id", companyId);
-  const res = await apiFetch(`${BASE}/api/missions/company-goal/status?${params}`, { method: "PATCH" });
+  const res = await apiFetch(`${BASE}/missions/company-goal/status?${params}`, { method: "PATCH" });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -2363,7 +2363,7 @@ export interface Mission {
 export async function getMissions(founderId: string, companyId = ""): Promise<Mission[]> {
   const params = new URLSearchParams({ founder_id: founderId });
   if (companyId) params.set("company_id", companyId);
-  const res = await apiFetch(`${BASE}/api/missions?${params}`);
+  const res = await apiFetch(`${BASE}/missions?${params}`);
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   return data.missions ?? [];
@@ -2372,7 +2372,7 @@ export async function getMissions(founderId: string, companyId = ""): Promise<Mi
 export async function createMission(
   data: Omit<Mission, "id" | "created_at" | "last_run_at" | "run_count" | "total_cost_usd" | "progress_notes" | "tasks" | "company_goal_id" | "notion_page_id" | "notion_page_url">
 ): Promise<Mission> {
-  const res = await apiFetch(`${BASE}/api/missions`, {
+  const res = await apiFetch(`${BASE}/missions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -2383,7 +2383,7 @@ export async function createMission(
 }
 
 export async function updateMission(id: string, data: Partial<Mission>): Promise<Mission> {
-  const res = await apiFetch(`${BASE}/api/missions/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`${BASE}/missions/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -2394,14 +2394,14 @@ export async function updateMission(id: string, data: Partial<Mission>): Promise
 }
 
 export async function deleteMission(id: string): Promise<void> {
-  const res = await apiFetch(`${BASE}/api/missions/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`${BASE}/missions/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
   if (!res.ok) throw new Error(await res.text());
 }
 
 export async function runMission(id: string): Promise<{ ok: boolean; session_id: string }> {
-  const res = await apiFetch(`${BASE}/api/missions/${encodeURIComponent(id)}/run`, {
+  const res = await apiFetch(`${BASE}/missions/${encodeURIComponent(id)}/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
@@ -2412,7 +2412,7 @@ export async function runMission(id: string): Promise<{ ok: boolean; session_id:
 export async function getCompanyGoal(founderId: string, companyId = ""): Promise<CompanyGoal | null> {
   const params = new URLSearchParams({ founder_id: founderId });
   if (companyId) params.set("company_id", companyId);
-  const res = await apiFetch(`${BASE}/api/missions/company-goal?${params}`);
+  const res = await apiFetch(`${BASE}/missions/company-goal?${params}`);
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   const goal = data.company_goal ?? null;
@@ -2429,7 +2429,7 @@ export async function getCompanyGoal(founderId: string, companyId = ""): Promise
 export async function approveMissionTask(
   missionId: string, taskId: string, founderId: string, approved: boolean, note = "", companyId = ""
 ): Promise<{ ok: boolean; next_milestones_scheduled: boolean }> {
-  const res = await apiFetch(`${BASE}/api/missions/${encodeURIComponent(missionId)}/tasks/${encodeURIComponent(taskId)}/approve`, {
+  const res = await apiFetch(`${BASE}/missions/${encodeURIComponent(missionId)}/tasks/${encodeURIComponent(taskId)}/approve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, company_id: companyId, approved, note }),
@@ -2441,7 +2441,7 @@ export async function approveMissionTask(
 export async function getPendingApprovals(founderId: string, companyId = ""): Promise<{ mission_id: string; mission_name: string; department: string; task: MissionTask }[]> {
   const params = new URLSearchParams({ founder_id: founderId });
   if (companyId) params.set("company_id", companyId);
-  const res = await apiFetch(`${BASE}/api/missions/pending-approvals?${params}`);
+  const res = await apiFetch(`${BASE}/missions/pending-approvals?${params}`);
   if (!res.ok) return [];
   const data = await res.json();
   return data.pending ?? [];
@@ -2452,7 +2452,7 @@ export async function updateMissionTask(
   taskId: string,
   data: Partial<Pick<MissionTask, "title" | "status" | "notes">>
 ): Promise<MissionTask> {
-  const res = await apiFetch(`${BASE}/api/missions/${encodeURIComponent(missionId)}/tasks/${encodeURIComponent(taskId)}`, {
+  const res = await apiFetch(`${BASE}/missions/${encodeURIComponent(missionId)}/tasks/${encodeURIComponent(taskId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
@@ -2463,7 +2463,7 @@ export async function updateMissionTask(
 }
 
 export async function syncMissionNotion(founderId: string, companyId = ""): Promise<Record<string, unknown>> {
-  const res = await apiFetch(`${BASE}/api/missions/sync-notion`, {
+  const res = await apiFetch(`${BASE}/missions/sync-notion`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, company_id: companyId }),
@@ -2488,7 +2488,7 @@ export interface Skill {
 }
 
 export async function listSkills(founderId: string): Promise<Skill[]> {
-  const res = await apiFetch(`${BASE}/api/skills?founder_id=${encodeURIComponent(founderId)}`);
+  const res = await apiFetch(`${BASE}/skills?founder_id=${encodeURIComponent(founderId)}`);
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
   return data.skills ?? [];
@@ -2496,7 +2496,7 @@ export async function listSkills(founderId: string): Promise<Skill[]> {
 
 export async function getSkill(founderId: string, skillId: string): Promise<Skill> {
   const res = await apiFetch(
-    `${BASE}/api/skills/${encodeURIComponent(skillId)}?founder_id=${encodeURIComponent(founderId)}`
+    `${BASE}/skills/${encodeURIComponent(skillId)}?founder_id=${encodeURIComponent(founderId)}`
   );
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -2507,7 +2507,7 @@ export async function createSkill(
   founderId: string,
   body: { name: string; description?: string; content?: string; agent_keys?: string[]; is_builtin?: boolean }
 ): Promise<Skill> {
-  const res = await apiFetch(`${BASE}/api/skills`, {
+  const res = await apiFetch(`${BASE}/skills`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, ...body }),
@@ -2522,7 +2522,7 @@ export async function updateSkill(
   skillId: string,
   body: { name?: string; description?: string; content?: string; agent_keys?: string[] }
 ): Promise<Skill> {
-  const res = await apiFetch(`${BASE}/api/skills/${encodeURIComponent(skillId)}`, {
+  const res = await apiFetch(`${BASE}/skills/${encodeURIComponent(skillId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, ...body }),
@@ -2534,7 +2534,7 @@ export async function updateSkill(
 
 export async function deleteSkill(founderId: string, skillId: string): Promise<void> {
   const res = await apiFetch(
-    `${BASE}/api/skills/${encodeURIComponent(skillId)}?founder_id=${encodeURIComponent(founderId)}`,
+    `${BASE}/skills/${encodeURIComponent(skillId)}?founder_id=${encodeURIComponent(founderId)}`,
     { method: "DELETE" }
   );
   if (!res.ok) throw new Error(await res.text());
@@ -2546,7 +2546,7 @@ export async function attachSkill(
   agentKey: string
 ): Promise<Skill> {
   const res = await apiFetch(
-    `${BASE}/api/skills/${encodeURIComponent(skillId)}/attach?founder_id=${encodeURIComponent(founderId)}&agent_key=${encodeURIComponent(agentKey)}`,
+    `${BASE}/skills/${encodeURIComponent(skillId)}/attach?founder_id=${encodeURIComponent(founderId)}&agent_key=${encodeURIComponent(agentKey)}`,
     { method: "POST" }
   );
   if (!res.ok) throw new Error(await res.text());
@@ -2560,7 +2560,7 @@ export async function detachSkill(
   agentKey: string
 ): Promise<Skill> {
   const res = await apiFetch(
-    `${BASE}/api/skills/${encodeURIComponent(skillId)}/attach?founder_id=${encodeURIComponent(founderId)}&agent_key=${encodeURIComponent(agentKey)}`,
+    `${BASE}/skills/${encodeURIComponent(skillId)}/attach?founder_id=${encodeURIComponent(founderId)}&agent_key=${encodeURIComponent(agentKey)}`,
     { method: "DELETE" }
   );
   if (!res.ok) throw new Error(await res.text());
@@ -2573,7 +2573,7 @@ export async function getSkillsForAgent(
   agentKey: string
 ): Promise<Skill[]> {
   const res = await apiFetch(
-    `${BASE}/api/skills/for-agent?founder_id=${encodeURIComponent(founderId)}&agent_key=${encodeURIComponent(agentKey)}`
+    `${BASE}/skills/for-agent?founder_id=${encodeURIComponent(founderId)}&agent_key=${encodeURIComponent(agentKey)}`
   );
   if (!res.ok) throw new Error(await res.text());
   const data = await res.json();
@@ -2598,7 +2598,7 @@ export interface CreditBalance {
 
 export async function getCredits(founderId: string): Promise<CreditBalance> {
   const res = await apiFetch(
-    `${BASE}/api/credits?founder_id=${encodeURIComponent(founderId)}`
+    `${BASE}/credits?founder_id=${encodeURIComponent(founderId)}`
   );
   if (!res.ok) throw new Error(await res.text());
   return res.json();
@@ -2608,7 +2608,7 @@ export async function purchaseCredits(
   founderId: string,
   pack: "starter" | "pro" | "scale"
 ): Promise<{ checkout_url: string }> {
-  const res = await apiFetch(`${BASE}/api/credits/purchase`, {
+  const res = await apiFetch(`${BASE}/credits/purchase`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, pack }),
@@ -2623,7 +2623,7 @@ export async function rerunAgent(
   founderId: string,
   instruction?: string,
 ): Promise<{ ok: boolean; session_id: string; agent: string }> {
-  const res = await apiFetch(`${BASE}/api/sessions/${encodeURIComponent(sessionId)}/rerun/${encodeURIComponent(agentName)}`, {
+  const res = await apiFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/rerun/${encodeURIComponent(agentName)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, instruction: instruction ?? "" }),
@@ -2696,7 +2696,7 @@ export async function getCustomAgentToolCatalog(): Promise<{
   tools: CustomAgentToolSpec[];
   connectors: CustomAgentConnectorMeta[];
 }> {
-  const res = await apiFetch(`${BASE}/api/custom-agents/tool-catalog`);
+  const res = await apiFetch(`${BASE}/custom-agents/tool-catalog`);
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -2706,20 +2706,20 @@ export async function startConnectorConnect(
   connectorKey: string,
 ): Promise<{ kind: "composio" | "key"; connector: string; label: string; oauth_url?: string; field?: string }> {
   const res = await apiFetch(
-    `${BASE}/api/custom-agents/${encodeURIComponent(founderId)}/connect/${encodeURIComponent(connectorKey)}`,
+    `${BASE}/custom-agents/${encodeURIComponent(founderId)}/connect/${encodeURIComponent(connectorKey)}`,
   );
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
 
 export async function listCustomAgents(founderId: string): Promise<CustomAgent[]> {
-  const res = await apiFetch(`${BASE}/api/custom-agents/${encodeURIComponent(founderId)}`);
+  const res = await apiFetch(`${BASE}/custom-agents/${encodeURIComponent(founderId)}`);
   if (!res.ok) throw new Error(await res.text());
   return (await res.json()).agents;
 }
 
 export async function createCustomAgent(founderId: string, input: CustomAgentInput): Promise<CustomAgent> {
-  const res = await apiFetch(`${BASE}/api/custom-agents/${encodeURIComponent(founderId)}`, {
+  const res = await apiFetch(`${BASE}/custom-agents/${encodeURIComponent(founderId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -2733,7 +2733,7 @@ export async function updateCustomAgent(
   agentId: string,
   input: Partial<CustomAgentInput> & { clear_schedule?: boolean },
 ): Promise<CustomAgent> {
-  const res = await apiFetch(`${BASE}/api/custom-agents/${encodeURIComponent(founderId)}/${encodeURIComponent(agentId)}`, {
+  const res = await apiFetch(`${BASE}/custom-agents/${encodeURIComponent(founderId)}/${encodeURIComponent(agentId)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -2743,7 +2743,7 @@ export async function updateCustomAgent(
 }
 
 export async function deleteCustomAgent(founderId: string, agentId: string): Promise<void> {
-  const res = await apiFetch(`${BASE}/api/custom-agents/${encodeURIComponent(founderId)}/${encodeURIComponent(agentId)}`, {
+  const res = await apiFetch(`${BASE}/custom-agents/${encodeURIComponent(founderId)}/${encodeURIComponent(agentId)}`, {
     method: "DELETE",
   });
   if (!res.ok) throw new Error(await res.text());
@@ -2754,7 +2754,7 @@ export async function runCustomAgent(
   agentId: string,
   opts: { goal?: string; companyId?: string } = {},
 ): Promise<{ session_id: string; status: string; agent_id: string }> {
-  const res = await apiFetch(`${BASE}/api/custom-agents/${encodeURIComponent(founderId)}/${encodeURIComponent(agentId)}/run`, {
+  const res = await apiFetch(`${BASE}/custom-agents/${encodeURIComponent(founderId)}/${encodeURIComponent(agentId)}/run`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ goal: opts.goal, company_id: opts.companyId }),

@@ -175,7 +175,7 @@ function TeamSection({ founderId, org }: { founderId: string; org: OrganizationA
   useEffect(() => {
     if (!founderId) return;
     setLoading(true);
-    fetch(`${BASE}/api/teams/me?founder_id=${encodeURIComponent(founderId)}`)
+    fetch(`${BASE}/teams/me?founder_id=${encodeURIComponent(founderId)}`)
       .then((res) => res.ok ? res.json() : null)
       .then((data) => setTeam(data ?? null))
       .catch(() => setTeam(null))
@@ -187,7 +187,7 @@ function TeamSection({ founderId, org }: { founderId: string; org: OrganizationA
     setCreating(true);
     setCreateError("");
     try {
-      const res = await fetch(`${BASE}/api/teams`, {
+      const res = await fetch(`${BASE}/teams`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: createName.trim(), founder_id: founderId }),
@@ -229,7 +229,7 @@ function TeamSection({ founderId, org }: { founderId: string; org: OrganizationA
     if (!team) return;
     setRemovingUid(uid);
     try {
-      await fetch(`${BASE}/api/teams/${team.id}/members/${uid}?founder_id=${encodeURIComponent(founderId)}`, {
+      await fetch(`${BASE}/teams/${team.id}/members/${uid}?founder_id=${encodeURIComponent(founderId)}`, {
         method: "DELETE",
       });
       setTeam((prev) => prev ? { ...prev, members: prev.members.filter((m) => m.uid !== uid) } : prev);
