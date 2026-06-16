@@ -13,3 +13,5 @@ pi-mlx-server
 .vercel
 .astra/
 deploy/certs/
+desktop/node_modules/
+desktop/src-tauri/target/

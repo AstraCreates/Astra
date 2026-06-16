@@ -1,0 +1,15 @@
+{
+  "name": "astra-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync:config": "node ./scripts/sync-tauri-config.mjs",
+    "dev": "npm run sync:config && tauri dev",
+    "build": "npm run sync:config && tauri build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.2"
+  }
+}
