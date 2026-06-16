@@ -121,19 +121,17 @@ CATALOG: list[ToolSpec] = [
 
     # ── Leads ────────────────────────────────────────────────────────────────
     ToolSpec("find_leads", "Find leads", "Discover prospects matching an ICP.", "leads", connector="hunter"),
-    ToolSpec("hunter_find_email", "Find email (Hunter)", "Find a person's email via Hunter.io.", "leads", connector="hunter"),
-    ToolSpec("hunter_domain_search", "Domain search (Hunter)", "Find emails at a domain via Hunter.io.", "leads", connector="hunter"),
+    ToolSpec("hunter_find_email", "Find email", "Find a person's professional email address.", "leads", connector="hunter"),
+    ToolSpec("hunter_domain_search", "Domain email search", "Find emails at a company domain.", "leads", connector="hunter"),
     ToolSpec("enrich_lead", "Enrich lead", "Enrich a lead record with more data.", "leads", connector="hunter"),
     ToolSpec("build_outreach_sequence", "Outreach sequence", "Draft a multi-touch outreach sequence.", "leads"),
     ToolSpec("build_crm_contact", "CRM contact record", "Build a CRM-ready contact record.", "leads"),
 
     # ── Email / send ─────────────────────────────────────────────────────────
     ToolSpec("gmail_send_email", "Send email (Gmail)", "Send an email via the founder's connected Gmail account.", "email", connector="gmail"),
-    ToolSpec("composio_gmail_send", "Send email (Gmail via Composio)", "Send an email via the founder's Gmail (Composio).", "email", connector="gmail"),
-    ToolSpec("composio_gmail_fetch", "Read inbox (Gmail)", "Read recent emails from Gmail.", "email", connector="gmail"),
     ToolSpec("composio_outlook_send_email", "Send email (Outlook)", "Send an email via Outlook / Microsoft 365.", "email", connector="outlook"),
-    ToolSpec("send_email_campaign", "Email campaign (SendGrid)", "Send an email campaign via SendGrid.", "email", connector="sendgrid"),
-    ToolSpec("resend_send_email", "Send email (Resend)", "Send an email via Resend.", "email", connector="resend"),
+    ToolSpec("send_email_campaign", "Email campaign", "Send an email campaign.", "email", connector="sendgrid"),
+    ToolSpec("resend_send_email", "Transactional email", "Send a transactional email.", "email", connector="resend"),
 
     # ── Social posting ───────────────────────────────────────────────────────
     ToolSpec("composio_linkedin_post", "Post to LinkedIn", "Publish a post to LinkedIn.", "social", connector="linkedin"),
@@ -168,8 +166,6 @@ CATALOG: list[ToolSpec] = [
     ToolSpec("composio_drive_upload", "Upload to Google Drive", "Create a text file in Google Drive.", "data", connector="googledrive"),
     ToolSpec("composio_dropbox_upload", "Upload to Dropbox", "Upload a text file to Dropbox.", "data", connector="dropbox"),
 
-    # ── Power user ───────────────────────────────────────────────────────────
-    ToolSpec("composio_run_action", "Run any Composio action", "Advanced: run any Composio action by name (300+ apps).", "advanced"),
 ]
 
 CATALOG_BY_KEY: dict[str, ToolSpec] = {t.key: t for t in CATALOG}

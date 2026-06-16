@@ -47,8 +47,8 @@ const CATEGORY_LABELS: Record<string, string> = {
 const CONNECTOR_LABELS: Record<string, string> = {
   gmail: "Gmail",
   outlook: "Outlook",
-  sendgrid: "SendGrid",
-  resend: "Resend",
+  sendgrid: "email service",
+  resend: "email service",
   linkedin: "LinkedIn",
   twitter: "X / Twitter",
   reddit: "Reddit",
@@ -73,7 +73,7 @@ const CONNECTOR_LABELS: Record<string, string> = {
   dropbox: "Dropbox",
   youtube: "YouTube",
   github: "GitHub",
-  hunter: "Hunter.io",
+  hunter: "email finder",
 };
 
 const CATEGORY_ORDER = [
