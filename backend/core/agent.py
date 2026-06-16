@@ -971,6 +971,13 @@ class Agent:
                     "ops": {"generate_pdf", "create_product_with_payment_link", "composio_linear_create_issue", "composio_notion_create_page", "obsidian_log"},
                 }
                 missing = sorted(required_by_agent.get(self.name, set()) - _called_tools)
+                # Custom agents never match the built-in names above, so they get no
+                # required-tool enforcement at all — a founder who explicitly picked
+                # generate_pdf when building the agent expects a file every run, but
+                # the model is free to skip it (e.g. write a summary into obsidian_log
+                # instead) unless something forces the call.
+                if self.name not in required_by_agent and "generate_pdf" in self.tools and "generate_pdf" not in _called_tools:
+                    missing = sorted(set(missing) | {"generate_pdf"})
                 if missing:
                     messages.append({"role": "user", "content": (
                         f"You cannot call done yet. Missing required tool calls: {', '.join(missing)}. "
