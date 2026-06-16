@@ -1723,6 +1723,19 @@ function GenericAgentPreview({ state }: { state: AgentState }) {
   const elapsed = state.log.length > 1
     ? Math.round((state.log[state.log.length - 1].ts - state.log[0].ts) / 1000)
     : null;
+
+  // Deliverables: collect any .pdf/.txt paths from the result or the tool log
+  // (custom agents put their actual output here, not in state.result).
+  const r = state.result ?? {};
+  const filePaths: string[] = [];
+  const directPath = (r?.path ?? r?.filename ?? r?.pdf_path ?? r?.file_path ?? r?.output_path) as string | undefined;
+  if (directPath) filePaths.push(directPath);
+  for (const p of extractFilePaths(r)) if (!filePaths.includes(p)) filePaths.push(p);
+  for (const entry of state.log) {
+    const m = entry.text.match(/\/[^\s"'\\]+\.(pdf|txt)/i);
+    if (m && !filePaths.includes(m[0])) filePaths.push(m[0]);
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {state.status !== "done" && state.status !== "waiting" && (
@@ -1742,6 +1755,15 @@ function GenericAgentPreview({ state }: { state: AgentState }) {
               </div>
             </div>
           </div>
+          {filePaths.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ ...PREVIEW_CARD, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 10px" }}>
+                <span style={PREVIEW_HEADER}>Deliverables</span>
+                <span style={{ fontSize: 11, color: "var(--fg-dim)" }}>{filePaths.length} file(s)</span>
+              </div>
+              {filePaths.map(p => <PdfEmbed key={p} path={p} height={300} />)}
+            </div>
+          )}
           <GenericResultOutput result={state.result} />
         </>
       )}
