@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Allows the Astra frontend to access the default Tauri API surface from trusted Astra origins.","remote":{"urls":["http://178.105.231.73.nip.io/*","http://localhost:3000/*"]},"local":true,"windows":["main"],"permissions":["core:default"]}}
