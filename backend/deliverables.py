@@ -13,12 +13,9 @@ from backend.tools.resend_tools import resend_send_email, send_deliverable_email
 def resolve_deliverable_path(filename: str) -> Path | None:
     """Safely resolve a deliverable filename to an on-disk path, basename-only
     to prevent path traversal, searched across the known output directories."""
-    literal = Path(filename)
-    if literal.is_absolute() and literal.exists() and literal.is_file():
-        return literal
-    safe_name = literal.name
+    safe_name = Path(filename).name
     vault = os.environ.get("OBSIDIAN_VAULT", "/tmp/astra_docs")
-    search_dirs = [Path(vault) / "files", Path(vault), Path("/tmp/astra_docs")]
+    search_dirs = [Path(vault) / "files", Path(vault)]
     for d in search_dirs:
         candidate = d / safe_name
         if candidate.exists() and candidate.is_file():
