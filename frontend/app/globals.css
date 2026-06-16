@@ -197,6 +197,10 @@ body::after {
   animation: orbitDrift 34s ease-in-out infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  body::before, body::after { animation: none !important; }
+}
+
 a { color: inherit; text-decoration: none; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
@@ -204,11 +208,11 @@ button { cursor: pointer; }
 a { transition: color .15s, background .15s, border-color .15s, opacity .15s, box-shadow .2s; }
 
 /* Shared orbital treatment across the app shell and core surfaces. */
-.sc, .dept-card, .dc, .sk, .copilot-dock, .astra-chat, .err-banner, .done-bar, .art-pre, .f-input, .f-ta, .btn, .phasebar, .sbar, .steer-wrap, .nav-menu, .nav-panel {
+.sc, .dept-card, .dc, .sk, .copilot-dock, .astra-chat, .err-banner, .done-bar, .art-pre, .phasebar, .sbar, .steer-wrap, .nav-menu, .nav-panel {
   position: relative;
   overflow: clip;
 }
-.sc::after, .dept-card::after, .dc::after, .sk::after, .copilot-dock::after, .astra-chat::after, .err-banner::after, .done-bar::after, .art-pre::after, .f-input::after, .f-ta::after, .btn::after, .phasebar::after, .sbar::after, .steer-wrap::after, .nav-menu::after, .nav-panel::after {
+.sc::after, .dept-card::after, .dc::after, .sk::after, .copilot-dock::after, .astra-chat::after, .err-banner::after, .done-bar::after, .art-pre::after, .phasebar::after, .sbar::after, .steer-wrap::after, .nav-menu::after, .nav-panel::after {
   content: "";
   position: absolute;
   inset: -1px;
@@ -219,7 +223,7 @@ a { transition: color .15s, background .15s, border-color .15s, opacity .15s, bo
     radial-gradient(circle at 66% 82%, rgba(11,49,255,0.06), transparent 28%);
   opacity: 0.22;
 }
-.sc:hover, .dept-card:hover, .dc:hover, .sk:hover, .btn:hover {
+.sc:hover, .dept-card:hover, .dc:hover, .sk:hover {
   box-shadow: 0 10px 30px rgba(11,49,255,0.08);
 }
 
