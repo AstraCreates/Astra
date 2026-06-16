@@ -96,7 +96,7 @@ export default function NewRunView({ workspaceId }: { workspaceId: string }) {
       {showQuiz && (
         <BusinessQuizModal onComplete={onQuizComplete} onSkip={onQuizSkip} />
       )}
-      <div className="new-wrap new-orbit-stage" style={{ maxWidth: 580 }}>
+      <div className="new-wrap new-wrap-wide new-orbit-stage">
         <OrbitLayer />
         {/* Company context chip */}
         {workspace && (

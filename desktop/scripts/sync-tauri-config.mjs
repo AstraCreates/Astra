@@ -55,6 +55,10 @@ function getFrontendUrl() {
 const frontendUrl = getFrontendUrl();
 const frontendUrlObject = new URL(frontendUrl);
 const frontendOriginPattern = `${frontendUrlObject.origin}/*`;
+const frontendOrigin = frontendUrlObject.origin;
+const generatedConfigRs = `pub const FRONTEND_ORIGIN: &str = ${JSON.stringify(frontendOrigin)};
+pub const DEV_FRONTEND_ORIGIN: &str = "http://localhost:3000";
+`;
 
 const tauriConfig = {
   $schema: "https://schema.tauri.app/config/2",
@@ -122,6 +126,12 @@ writeFileSync(
 writeFileSync(
   path.join(srcTauriDir, "capabilities", "default.json"),
   `${JSON.stringify(capability, null, 2)}\n`,
+  "utf8"
+);
+
+writeFileSync(
+  path.join(srcTauriDir, "src", "generated_config.rs"),
+  generatedConfigRs,
   "utf8"
 );
 
