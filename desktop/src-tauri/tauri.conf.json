@@ -31,9 +31,16 @@
   },
   "bundle": {
     "active": true,
+    "icon": [
+      "icons/icon.icns",
+      "icons/icon.png"
+    ],
     "targets": "all",
     "shortDescription": "Desktop shell for the Astra web app",
     "longDescription": "Astra Desktop wraps the shared Astra frontend in a native Tauri shell while continuing to use the hosted Astra backend and deployed frontend.",
-    "createUpdaterArtifacts": false
+    "createUpdaterArtifacts": false,
+    "macOS": {
+      "exceptionDomain": "178.105.231.73.nip.io"
+    }
   }
 }
