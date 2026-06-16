@@ -463,7 +463,7 @@ export default function DashboardView() {
                 </button>
               </div>
             ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                 {customSessions.slice(0, 20).map((s) => {
                   const title = s.company_name || extractGoalTitle(s.goal || "Custom agent run");
                   return (
@@ -471,7 +471,7 @@ export default function DashboardView() {
                       key={s.session_id}
                       onClick={() => router.push(`/s/${s.session_id}`)}
                       className={`sc-row${s.status === "stalled" ? " stalled" : s.status === "running" ? " running" : ""}`}
-                      style={{ minHeight: 100 }}
+                      style={{ flex: "1 1 220px", minHeight: 100 }}
                     >
                       <button
                         title={pendingDel.has(s.session_id) ? "Click again to confirm delete" : "Delete run"}
