@@ -443,72 +443,72 @@ export default function DashboardView() {
               })()}
             </div>
           )}
-          </div>{/* end sessions col */}
-        </div>
 
-        {/* ── Custom agent runs — separate from regular goal sessions, below full-stack runs ── */}
-        <div style={{ padding: "0 24px 40px" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fd)", fontFamily: "var(--font-code)" }}>
-              Custom agent runs{customSessions.length > 0 ? ` · ${customSessions.length}` : ""}
-            </div>
-            <button onClick={() => router.push("/agents")} style={{ fontSize: 11, color: "var(--blue)", background: "none", border: "none", cursor: "pointer", fontWeight: 600, fontFamily: "var(--font-instrument), sans-serif" }}>
-              Manage agents →
-            </button>
-          </div>
-
-          {customSessions.length === 0 ? (
-            <div style={{ fontSize: 11, color: "var(--fm)", padding: "2px 0 0" }}>
-              No custom agent runs yet.{" "}
-              <button onClick={() => router.push("/agents")} style={{ background: "none", border: "none", color: "var(--blue)", cursor: "pointer", padding: 0, fontWeight: 600, fontSize: 11 }}>
-                Create one →
+          {/* ── Custom agent runs — to the right of Goals, under the stack runs ── */}
+          <div style={{ marginTop: 28 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fd)", fontFamily: "var(--font-code)" }}>
+                Custom agent runs{customSessions.length > 0 ? ` · ${customSessions.length}` : ""}
+              </div>
+              <button onClick={() => router.push("/agents")} style={{ fontSize: 11, color: "var(--blue)", background: "none", border: "none", cursor: "pointer", fontWeight: 600, fontFamily: "var(--font-instrument), sans-serif" }}>
+                Manage agents →
               </button>
             </div>
-          ) : (
-            <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
-              {customSessions.slice(0, 20).map((s) => {
-                const title = s.company_name || extractGoalTitle(s.goal || "Custom agent run");
-                return (
-                  <div
-                    key={s.session_id}
-                    onClick={() => router.push(`/s/${s.session_id}`)}
-                    className={`sc-row${s.status === "stalled" ? " stalled" : s.status === "running" ? " running" : ""}`}
-                    style={{ flex: "0 0 220px" }}
-                  >
-                    <button
-                      title={pendingDel.has(s.session_id) ? "Click again to confirm delete" : "Delete run"}
-                      aria-label={pendingDel.has(s.session_id) ? "Confirm delete" : "Delete run"}
-                      disabled={deleting.has(s.session_id)}
-                      onClick={(e) => del(e, s)}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      style={{
-                        position: "absolute", top: 8, right: 8,
-                        width: pendingDel.has(s.session_id) ? "auto" : 22, height: 22,
-                        padding: pendingDel.has(s.session_id) ? "0 6px" : 0,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        background: pendingDel.has(s.session_id) ? "var(--rdim)" : "transparent",
-                        border: pendingDel.has(s.session_id) ? "1px solid var(--rb)" : "1px solid transparent",
-                        color: pendingDel.has(s.session_id) ? "var(--red)" : "var(--fd)",
-                        cursor: "pointer", fontSize: pendingDel.has(s.session_id) ? 8 : 11, borderRadius: 6,
-                        opacity: deleting.has(s.session_id) ? 0.4 : 1, zIndex: 3, fontWeight: 700,
-                      }}
-                    >{deleting.has(s.session_id) ? "…" : pendingDel.has(s.session_id) ? "DELETE?" : "✕"}</button>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, paddingRight: 22 }}>
-                      <StatusPill status={s.status} />
-                      <span style={{ fontSize: 10, color: "var(--fm)", marginLeft: "auto" }}>{ago(s.created_at)}</span>
+            {customSessions.length === 0 ? (
+              <div style={{ fontSize: 11, color: "var(--fm)", padding: "2px 0 0" }}>
+                No custom agent runs yet.{" "}
+                <button onClick={() => router.push("/agents")} style={{ background: "none", border: "none", color: "var(--blue)", cursor: "pointer", padding: 0, fontWeight: 600, fontSize: 11 }}>
+                  Create one →
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+                {customSessions.slice(0, 20).map((s) => {
+                  const title = s.company_name || extractGoalTitle(s.goal || "Custom agent run");
+                  return (
+                    <div
+                      key={s.session_id}
+                      onClick={() => router.push(`/s/${s.session_id}`)}
+                      className={`sc-row${s.status === "stalled" ? " stalled" : s.status === "running" ? " running" : ""}`}
+                      style={{ minHeight: 100 }}
+                    >
+                      <button
+                        title={pendingDel.has(s.session_id) ? "Click again to confirm delete" : "Delete run"}
+                        aria-label={pendingDel.has(s.session_id) ? "Confirm delete" : "Delete run"}
+                        disabled={deleting.has(s.session_id)}
+                        onClick={(e) => del(e, s)}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        style={{
+                          position: "absolute", top: 8, right: 8,
+                          width: pendingDel.has(s.session_id) ? "auto" : 22, height: 22,
+                          padding: pendingDel.has(s.session_id) ? "0 6px" : 0,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          background: pendingDel.has(s.session_id) ? "var(--rdim)" : "transparent",
+                          border: pendingDel.has(s.session_id) ? "1px solid var(--rb)" : "1px solid transparent",
+                          color: pendingDel.has(s.session_id) ? "var(--red)" : "var(--fd)",
+                          cursor: "pointer", fontSize: pendingDel.has(s.session_id) ? 8 : 11, borderRadius: 6,
+                          opacity: deleting.has(s.session_id) ? 0.4 : 1, zIndex: 3, fontWeight: 700,
+                        }}
+                      >{deleting.has(s.session_id) ? "…" : pendingDel.has(s.session_id) ? "DELETE?" : "✕"}</button>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, paddingRight: 22 }}>
+                        <StatusPill status={s.status} />
+                        <span style={{ fontSize: 10, color: "var(--fm)", marginLeft: "auto" }}>{ago(s.created_at)}</span>
+                      </div>
+                      <div style={{
+                        fontSize: 12, fontWeight: 600, color: "var(--fg)", lineHeight: 1.4,
+                        display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
+                      }}>
+                        {title}
+                      </div>
                     </div>
-                    <div style={{
-                      fontSize: 12, fontWeight: 600, color: "var(--fg)", lineHeight: 1.4,
-                      display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden",
-                    }}>
-                      {title}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          </div>{/* end sessions col */}
         </div>
 
       </div>
