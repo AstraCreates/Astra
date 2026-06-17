@@ -1028,12 +1028,12 @@ export function PdfEmbed({ path, label, height = 340 }: { path: string; label?: 
     <div style={{ borderRadius: 16, overflow: "hidden", border: "1px solid rgba(0,0,0,0.10)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 14px", background: "rgba(180,205,228,0.10)", borderBottom: "1px solid rgba(0,0,0,0.07)" }}>
         <span style={{ fontSize: 11, fontFamily: "var(--font-jetbrains-mono)", color: "var(--fg-mute)", flex: 1 }}>📄 {label ?? filename}</span>
-        <a href={url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#002EFF", textDecoration: "none", flexShrink: 0 }}>Download ↗</a>
+        <a href={`${url}?download=1`} download={filename} style={{ fontSize: 10, color: "#002EFF", textDecoration: "none", flexShrink: 0 }}>Download ↓</a>
       </div>
       {isPdf
         ? <iframe src={url} style={{ width: "100%", height, border: "none", display: "block" }} title={label ?? filename} />
         : <div style={{ fontSize: 11, color: "var(--fg-dim)", padding: "10px 14px" }}>
-            <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: "#002EFF" }}>{filename} ↗</a>
+            <a href={`${url}?download=1`} download={filename} style={{ color: "#002EFF" }}>{filename} ↓</a>
           </div>
       }
     </div>

@@ -763,12 +763,11 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
                     <div className="flex items-center gap-3 px-5 py-2.5 border-b border-[#E5E7EB] bg-gray-50 shrink-0">
                       <span className="text-xs font-medium text-gray-600 flex-1 truncate">{activeDoc.label}</span>
                       <a
-                        href={`/api/files/${encodeURIComponent(activeDoc.filename)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                        href={`/api/files/${encodeURIComponent(activeDoc.filename)}?download=1`}
+                        download={activeDoc.filename}
                         className="text-xs text-[#002EFF] font-medium shrink-0"
                       >
-                        Download ↗
+                        Download ↓
                       </a>
                     </div>
                     <div className="flex-1 min-h-0">

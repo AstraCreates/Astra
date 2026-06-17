@@ -2437,8 +2437,9 @@ async def platform_stripe_webhook(request: Request):
 
 
 @router.get("/files/{filename}")
-async def serve_file(filename: str):
-    """Serve generated files (PDFs, TXTs) from /tmp/astra_docs."""
+async def serve_file(filename: str, download: bool = False):
+    """Serve generated files (PDFs, TXTs) from /tmp/astra_docs.
+    Pass ?download=1 to force attachment download; default is inline (for iframe embeds)."""
     import mimetypes
     from pathlib import Path
     from fastapi.responses import FileResponse
@@ -2480,7 +2481,12 @@ async def serve_file(filename: str):
         raise HTTPException(status_code=404, detail="File not found")
     safe_name = path.name
     media_type, _ = mimetypes.guess_type(safe_name)
-    return FileResponse(path, media_type=media_type or "application/octet-stream", filename=safe_name)
+    if not media_type and safe_name.lower().endswith(".pdf"):
+        media_type = "application/pdf"
+    if download:
+        return FileResponse(path, media_type=media_type or "application/octet-stream", filename=safe_name)
+    return FileResponse(path, media_type=media_type or "application/octet-stream",
+                        headers={"Content-Disposition": f"inline; filename=\"{safe_name}\""})
 
 
 @router.post("/founders/{founder_id}/deliverables/email")
