@@ -1267,6 +1267,19 @@ def run_mvp_loop(
     """
     if required_files is None:
         required_files = MVP_REQUIRED
+    elif isinstance(required_files, str):
+        # LLM sometimes passes the list serialized as a JSON/Python string — parse it.
+        try:
+            import ast as _ast
+            parsed = _ast.literal_eval(required_files)
+            required_files = list(parsed) if isinstance(parsed, (list, tuple)) else MVP_REQUIRED
+        except Exception:
+            try:
+                import json as _json
+                parsed = _json.loads(required_files)
+                required_files = list(parsed) if isinstance(parsed, list) else MVP_REQUIRED
+            except Exception:
+                required_files = MVP_REQUIRED
 
     if not goal:
         return {"error": "goal is required — describe what to build, e.g. \"Next.js SaaS app with auth and dashboard\""}
