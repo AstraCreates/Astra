@@ -414,6 +414,7 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
   const [fundingLoading, setFundingLoading] = useState(false);
   const [fundingTriggering, setFundingTriggering] = useState(false);
   const [fundingError, setFundingError] = useState("");
+  const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
 
   const refreshFunding = useCallback(async () => {
     if (!founderId) return;
@@ -689,60 +690,103 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
           const generating = fundingStatus?.generating || fundingTriggering;
           const needsRefresh = fundingStatus?.needs_refresh && !generating;
           const hasDocs = (fundingStatus?.documents?.length ?? 0) > 0;
+          const activeDoc = fundingStatus?.documents?.find((d) => d.source_path === selectedDoc)
+            ?? fundingStatus?.documents?.[0] ?? null;
+
+          // Auto-select first doc when documents arrive
+          if (hasDocs && !selectedDoc && fundingStatus?.documents?.[0]?.source_path) {
+            setSelectedDoc(fundingStatus.documents[0].source_path);
+          }
+
           return (
-            <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-              {fundingLoading && <p className="text-sm text-gray-400">Loading…</p>}
-              {fundingError && (
-                <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">{fundingError}</div>
-              )}
-              {needsRefresh && (
-                <div className="flex items-center gap-3 text-sm bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-                  <span className="text-amber-600 font-semibold">⚠ Outdated</span>
-                  <span className="text-amber-700">Company genome changed since last generation.</span>
-                  <button onClick={() => { handleFundingGenerate(); }} disabled={generating} className="ml-auto text-amber-700 font-semibold underline underline-offset-2 text-xs">
-                    Regenerate now
-                  </button>
-                </div>
-              )}
-              {generating && (
-                <div className="flex items-center gap-3 text-sm text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-                  <span className="animate-spin inline-block">⟳</span>
-                  Generating funding documents — this takes about 30–60 seconds…
-                </div>
-              )}
-              {!fundingLoading && !hasDocs && !generating && (
-                <div className="flex flex-col items-center justify-center text-center py-16 px-6">
-                  <div style={{ fontSize: 32, marginBottom: 10, color: "#9CA3AF" }}>◈</div>
-                  <p className="text-sm font-medium text-gray-500 mb-2">No documents yet</p>
-                  <p className="text-xs text-gray-400 mb-5 max-w-xs leading-relaxed">
-                    Fill in your Company Brain, then generate your kit — Astra builds a pitch deck
-                    and executive summary tailored to your company.
-                  </p>
-                  <button onClick={() => { handleFundingGenerate(); }} disabled={generating} className="btn pri">
-                    Generate Funding Kit
-                  </button>
-                </div>
-              )}
-              {hasDocs && fundingStatus && (
-                <div className="space-y-8">
-                  {fundingStatus.generated_at && (
-                    <p className="text-xs text-gray-400">
-                      Last generated {new Date(fundingStatus.generated_at).toLocaleString()}
-                      {fundingStatus.needs_refresh ? " · outdated" : " · up to date"}
-                    </p>
-                  )}
-                  {fundingStatus.documents.map((doc) => (
-                    <div key={doc.type} className="space-y-2">
-                      <div className="text-xs font-bold uppercase tracking-wide text-gray-500">{doc.label}</div>
-                      {doc.source_path ? (
-                        <PdfEmbed path={doc.source_path} height={520} />
-                      ) : (
-                        <p className="text-sm text-gray-400">Document not available.</p>
-                      )}
+            <div className="flex flex-1 min-h-0">
+              {/* Left sidebar */}
+              <div className="w-64 flex flex-col border-r border-[#E5E7EB] shrink-0">
+                <div className="px-4 py-3 border-b border-[#E5E7EB]">
+                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Documents</div>
+                  {fundingStatus?.generated_at && (
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      {new Date(fundingStatus.generated_at).toLocaleDateString()}
+                      {needsRefresh ? " · outdated" : ""}
                     </div>
+                  )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto py-2">
+                  {fundingLoading && <div className="text-xs text-gray-400 text-center py-8">Loading…</div>}
+                  {fundingError && <div className="text-xs text-red-500 px-4 py-3">{fundingError}</div>}
+                  {needsRefresh && (
+                    <div className="mx-3 mb-2 text-xs bg-amber-50 border border-amber-200 rounded px-3 py-2 text-amber-700">
+                      Genome changed.{" "}
+                      <button onClick={() => { handleFundingGenerate(); }} className="underline font-semibold">Regenerate</button>
+                    </div>
+                  )}
+                  {generating && (
+                    <div className="mx-3 mb-2 text-xs bg-blue-50 border border-blue-200 rounded px-3 py-2 text-blue-600 flex items-center gap-1.5">
+                      <span className="animate-spin">⟳</span> Generating…
+                    </div>
+                  )}
+                  {!fundingLoading && !hasDocs && !generating && (
+                    <div className="flex flex-col items-center text-center px-4 py-10">
+                      <div style={{ fontSize: 28, color: "#9CA3AF", marginBottom: 8 }}>◈</div>
+                      <p className="text-xs font-medium text-gray-500 mb-1">No documents yet</p>
+                      <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+                        Fill in Company Brain, then generate your kit.
+                      </p>
+                      <button onClick={() => { handleFundingGenerate(); }} disabled={generating} className="btn pri" style={{ fontSize: 11 }}>
+                        Generate Kit
+                      </button>
+                    </div>
+                  )}
+                  {hasDocs && fundingStatus?.documents.map((doc) => (
+                    <button
+                      key={doc.type}
+                      onClick={() => setSelectedDoc(doc.source_path)}
+                      className={`w-full text-left flex items-center gap-3 px-4 py-3.5 border-b border-[#E5E7EB] transition-colors ${
+                        selectedDoc === doc.source_path ? "bg-blue-50" : "hover:bg-gray-50"
+                      }`}
+                    >
+                      <span style={{ fontSize: 18, color: "#6B7280" }}>📄</span>
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-gray-800 truncate">{doc.label}</div>
+                        <div className="text-xs text-gray-400 truncate">{doc.filename}</div>
+                      </div>
+                    </button>
                   ))}
                 </div>
-              )}
+              </div>
+
+              {/* Right: full-height PDF viewer */}
+              <div className="flex-1 flex flex-col min-w-0 min-h-0">
+                {activeDoc?.source_path ? (
+                  <>
+                    <div className="flex items-center gap-3 px-5 py-2.5 border-b border-[#E5E7EB] bg-gray-50 shrink-0">
+                      <span className="text-xs font-medium text-gray-600 flex-1 truncate">{activeDoc.label}</span>
+                      <a
+                        href={`/api/files/${encodeURIComponent(activeDoc.filename)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-[#002EFF] font-medium shrink-0"
+                      >
+                        Download ↗
+                      </a>
+                    </div>
+                    <div className="flex-1 min-h-0">
+                      <iframe
+                        src={`/api/files/${encodeURIComponent(activeDoc.filename)}`}
+                        style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+                        title={activeDoc.label}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  !hasDocs ? null : (
+                    <div className="flex items-center justify-center h-full text-sm text-gray-400">
+                      Select a document to preview
+                    </div>
+                  )
+                )}
+              </div>
             </div>
           );
         })()}
