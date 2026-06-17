@@ -387,14 +387,18 @@ def composio_linear_create_issue(
 # ---------------------------------------------------------------------------
 
 def composio_calendar_create_event(
-    founder_id: str,
-    summary: str,
-    start_time: str,
-    end_time: str,
-    attendees: list,
+    founder_id: str = "",
+    summary: str = "",
+    start_time: str = "",
+    end_time: str = "",
+    attendees: list | None = None,
     description: str = "",
 ) -> dict:
     """Create a Google Calendar event. start/end_time in ISO 8601."""
+    from backend.tools._arg_utils import parse_list_arg
+    if not founder_id or not summary or not start_time or not end_time:
+        return {"error": "founder_id, summary, start_time, and end_time are required"}
+    attendees = parse_list_arg(attendees, "attendees") or []
     result = _run(
         "GOOGLECALENDAR_CREATE_EVENT",
         {

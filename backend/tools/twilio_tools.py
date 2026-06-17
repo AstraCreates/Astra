@@ -69,10 +69,12 @@ def twilio_send_sms(to: str, body: str, from_number: str = "") -> dict:
     return {"ok": True, "sid": data.get("sid"), "status": data.get("status"), "to": to}
 
 
-def twilio_send_bulk_sms(to_list: list[str], body: str, from_number: str = "") -> dict:
+def twilio_send_bulk_sms(to_list: list[str] | None = None, body: str = "", from_number: str = "") -> dict:
     """Send the same SMS to multiple recipients. Returns per-recipient status."""
+    from backend.tools._arg_utils import parse_list_arg
+    to_list = parse_list_arg(to_list, "to_list")
     if not to_list or not body:
-        return {"error": "to_list and body required"}
+        return {"error": "to_list (list of phone numbers) and body (message text) required"}
     sender = from_number or _get_default_number()
     if not sender:
         return {"error": "No from_number provided and no Twilio phone numbers found"}

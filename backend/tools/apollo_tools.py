@@ -630,12 +630,16 @@ def apollo_enrich_person(
     return _normalize_enriched_person(person)
 
 
-def apollo_enrich_batch(contacts: list[dict]) -> list[dict]:
+def apollo_enrich_batch(contacts: list[dict] | None = None) -> list[dict]:
     """
     Reveal emails for up to MAX_ENRICH_BATCH contacts (1 credit each).
     Each contact needs `apollo_id` (or first_name + company_name).
     Org-type contacts (is_org=True) are passed through without enrichment.
     """
+    from backend.tools._arg_utils import parse_list_arg
+    contacts = parse_list_arg(contacts, "contacts")
+    if not contacts:
+        return [{"error": "contacts is required — pass a list of contact dicts with apollo_id or first_name+company_name"}]
     batch = contacts[:MAX_ENRICH_BATCH]
     results = []
     for contact in batch:

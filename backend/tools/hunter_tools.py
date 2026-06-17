@@ -254,8 +254,8 @@ def hunter_enrich_combined(email: str) -> dict:
 # ── Composite: search domains + store contacts ────────────────────────────────
 
 def hunter_search_by_domains(
-    founder_id: str,
-    domains: list[str],
+    founder_id: str = "",
+    domains: list[str] | None = None,
     seniority: str = "",
     department: str = "",
     limit_per_domain: int = 10,
@@ -277,6 +277,12 @@ def hunter_search_by_domains(
 
     Returns summary of contacts found and stored.
     """
+    from backend.tools._arg_utils import parse_list_arg
+    domains = parse_list_arg(domains, "domains")
+    if not domains:
+        return {"error": "domains is required — pass a list of company domains, e.g. [\"acme.com\", \"example.com\"]"}
+    if not founder_id:
+        return {"error": "founder_id is required"}
     import time
     from datetime import datetime, timedelta, timezone
     all_contacts: list[dict] = []
@@ -369,7 +375,7 @@ def hunter_search_by_domains(
     }
 
 
-def hunter_store_contacts(founder_id: str, contacts: list[dict]) -> dict:
+def hunter_store_contacts(founder_id: str = "", contacts: list[dict] | None = None) -> dict:
     """
     Store a list of contacts (from any Hunter call) into the Supabase
     outreach_contacts table. Deduplicates by (founder_id, email).
@@ -380,11 +386,13 @@ def hunter_store_contacts(founder_id: str, contacts: list[dict]) -> dict:
 
     Returns: { "stored": N }
     """
+    from backend.tools._arg_utils import parse_list_arg
+    contacts = parse_list_arg(contacts, "contacts") or []
     if not contacts:
         return {"stored": 0}
 
     # Filter to only contacts with a valid email
-    valid = [c for c in contacts if c.get("email") and "@" in c["email"]]
+    valid = [c for c in contacts if isinstance(c, dict) and c.get("email") and "@" in c["email"]]
     if not valid:
         return {"stored": 0}
 

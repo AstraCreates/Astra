@@ -55,10 +55,12 @@ def klaviyo_create_list(name: str) -> dict:
     return {"list_id": item.get("id"), "name": (item.get("attributes") or {}).get("name")}
 
 
-def klaviyo_add_to_list(list_id: str, emails: list[str]) -> dict:
+def klaviyo_add_to_list(list_id: str = "", emails: list[str] | None = None) -> dict:
     """Add contacts to a list by email address."""
+    from backend.tools._arg_utils import parse_list_arg
+    emails = parse_list_arg(emails, "emails")
     if not list_id or not emails:
-        return {"error": "list_id and emails required"}
+        return {"error": "list_id and emails required — emails must be a list of email strings"}
     members = [{"type": "profile", "attributes": {"email": e}} for e in emails]
     data = _post(f"/lists/{list_id}/relationships/profiles/", {"data": members})
     if "error" in data:

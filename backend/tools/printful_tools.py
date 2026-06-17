@@ -61,20 +61,24 @@ def printful_get_products(category_id: int = 0) -> dict:
     return {"products": products, "count": len(products)}
 
 
-def printful_create_store_product(product_id: int, name: str, variants: list[dict]) -> dict:
+def printful_create_store_product(product_id: int = 0, name: str = "", variants: list[dict] | None = None) -> dict:
     """Add a product to the Printful store with sync variants.
 
     variants: [{size, color, retail_price, sku}]
     """
+    from backend.tools._arg_utils import parse_list_arg
+    variants = parse_list_arg(variants, "variants")
+    if not product_id or not name:
+        return {"error": "product_id and name are required"}
     if not variants:
-        return {"error": "at least one variant required"}
+        return {"error": "variants is required — pass a list like [{\"retail_price\": \"25.00\", \"variant_id\": 123}]"}
     sync_variants = [
         {
             "retail_price": str(v.get("retail_price", "25.00")),
             "variant_id": v.get("variant_id", product_id),
             "files": v.get("files", []),
         }
-        for v in variants
+        for v in variants if isinstance(v, dict)
     ]
     body = {
         "sync_product": {"name": name, "thumbnail": ""},
@@ -110,17 +114,20 @@ def printful_get_orders() -> dict:
     return {"orders": orders, "count": len(orders)}
 
 
-def printful_create_order(items: list[dict], recipient: dict) -> dict:
+def printful_create_order(items: list[dict] | None = None, recipient: dict | None = None) -> dict:
     """Place a fulfillment order.
 
     items: [{sync_variant_id, quantity}]
     recipient: {name, address1, city, state_code, country_code, zip}
     """
+    from backend.tools._arg_utils import parse_list_arg, parse_dict_arg
+    items = parse_list_arg(items, "items")
+    recipient = parse_dict_arg(recipient)
     if not items or not recipient:
-        return {"error": "items and recipient required"}
+        return {"error": "items (list) and recipient (dict with name/address1/city/state_code/country_code/zip) required"}
     body = {
         "recipient": recipient,
-        "items": [{"sync_variant_id": i["sync_variant_id"], "quantity": i.get("quantity", 1)} for i in items],
+        "items": [{"sync_variant_id": i["sync_variant_id"], "quantity": i.get("quantity", 1)} for i in items if isinstance(i, dict)],
     }
     data = _post("/orders", body)
     if "error" in data:

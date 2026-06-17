@@ -146,11 +146,17 @@ def supabase_create_storage_bucket(project_ref: str, bucket_name: str, public: b
         return {"error": str(e)}
 
 
-def supabase_generate_schema(app_name: str, entities: list[str]) -> dict:
+def supabase_generate_schema(app_name: str = "", entities: list[str] | None = None) -> dict:
     """
     Generate a complete Supabase schema (SQL + RLS) for an app's entities.
     entities: ['users', 'posts', 'comments']
     """
+    from backend.tools._arg_utils import parse_list_arg
+    if not app_name:
+        return {"error": "app_name is required"}
+    entities = parse_list_arg(entities, "entities")
+    if not entities:
+        return {"error": "entities is required — pass a list of table names, e.g. [\"users\", \"posts\", \"comments\"]"}
     tables = []
     for entity in entities:
         if isinstance(entity, dict):

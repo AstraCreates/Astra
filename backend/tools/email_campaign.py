@@ -60,13 +60,17 @@ def send_email_campaign(
 
 
 def build_email_html(
-    subject: str,
-    body_paragraphs: list[str],
+    subject: str = "",
+    body_paragraphs: list[str] | None = None,
     cta_text: str = "",
     cta_url: str = "",
     brand_color: str = "#000000",
     sender_name: str = "",
 ) -> str:
+    from backend.tools._arg_utils import parse_list_arg
+    if not subject:
+        return "<p>Error: subject is required for build_email_html</p>"
+    body_paragraphs = parse_list_arg(body_paragraphs, "body_paragraphs") or []
     paras = "".join(f"<p style='margin:0 0 16px'>{p}</p>" for p in body_paragraphs)
     cta_block = ""
     if cta_text and cta_url:
