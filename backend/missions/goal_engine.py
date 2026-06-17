@@ -751,6 +751,24 @@ async def dispatch_current_goal(
     if not open_tasks:
         return {"ok": True, "skipped": "no open tasks"}
 
+    # Guard against duplicate dispatch: if a session for this goal is already running,
+    # don't create a second identical child session.
+    current_goal_id = cg.get("id", "")
+    try:
+        from backend.core.session_store import get_session_meta
+        for rec in (goal.get("operating_sessions") or []):
+            if rec.get("goal_id") != current_goal_id:
+                continue
+            if rec.get("status") != "running":
+                continue
+            existing_sid = rec.get("session_id", "")
+            existing_meta = get_session_meta(existing_sid) or {}
+            if existing_meta.get("status") == "running":
+                logger.info("dispatch_current_goal: session %s already running for goal %s — skipping duplicate", existing_sid, current_goal_id)
+                return {"ok": True, "skipped": "already_running", "session_id": existing_sid}
+    except Exception as exc:
+        logger.warning("dispatch_current_goal duplicate-check failed: %s", exc)
+
     # A follow-up run = some of this goal's tasks are already done, so this dispatch is
     # finishing only the LEFTOVERS an earlier run didn't complete (e.g. an agent that
     # didn't deliver). Label it so the sub-run isn't mistaken for a duplicate of the goal.

@@ -116,21 +116,31 @@ async def _load_live_context(session_id: str, founder_id: str) -> dict[str, Any]
             "text": _clip(event.get("summary") or event.get("message") or event.get("error") or event.get("instruction")),
         })
 
-    # Scan child sessions — agents dispatched by goal_engine run in children, not the
-    # parent. Without this the copilot sees an empty running_agents list even when
-    # web/technical are actively building.
+    # Scan ALL recent sessions — gives copilot visibility into every run, deploy URLs,
+    # child sessions, and sibling work so it can answer any question without extra tool calls.
     child_running: list[dict] = []
+    all_recent_sessions: list[dict] = []
     try:
         from backend.core.session_store import list_sessions
         company_id_for_scan = meta.get("company_id") or founder_id
-        all_sessions = list_sessions(founder_id, limit=30, company_id=company_id_for_scan)
+        all_sessions = list_sessions(founder_id, limit=50, company_id=company_id_for_scan)
         for s in all_sessions:
-            if s.get("status") != "running":
-                continue
             sid = s.get("session_id") or ""
             if sid == session_id:
                 continue
             parent = s.get("parent_session_id") or ""
+            deploy = s.get("deploy_url") or s.get("preview_url") or ""
+            all_recent_sessions.append({
+                "session_id": sid,
+                "status": s.get("status"),
+                "goal": _clip(s.get("goal"), 120),
+                "kind": s.get("kind"),
+                "parent_session_id": parent,
+                "deploy_url": deploy,
+                "created_at": s.get("created_at", "")[:16],
+            })
+            if s.get("status") != "running":
+                continue
             # Include direct children AND sibling sessions rooted at the same parent.
             if parent == session_id or (parent and parent == (meta.get("parent_session_id") or "")):
                 child_running.append({
@@ -141,6 +151,25 @@ async def _load_live_context(session_id: str, founder_id: str) -> dict[str, Any]
                 })
     except Exception as exc:
         logger.warning("copilot child session scan failed: %s", exc)
+
+    # Load all company goals so copilot knows every goal's status + tasks.
+    all_goals: list[dict] = []
+    try:
+        from backend.missions.company_goal import get_company_goal
+        cid = meta.get("company_id") or founder_id
+        gdata = get_company_goal(founder_id, cid) or {}
+        for g in (gdata.get("goals") or []):
+            tasks = g.get("tasks") or []
+            open_count = sum(1 for t in tasks if t.get("status") != "done" and not t.get("postponed"))
+            all_goals.append({
+                "id": g.get("id"),
+                "title": g.get("title"),
+                "status": g.get("status"),
+                "open_tasks": open_count,
+                "total_tasks": len(tasks),
+            })
+    except Exception as exc:
+        logger.warning("copilot goals load failed: %s", exc)
 
     # Merge child-session agent names into running_agents so the prompt reflects reality.
     child_agents_running: list[str] = []
@@ -201,6 +230,8 @@ async def _load_live_context(session_id: str, founder_id: str) -> dict[str, Any]
         "recent_approvals": recent_approvals,
         "recent_events": latest_events,
         "child_sessions_running": child_running,
+        "all_goals": all_goals,
+        "all_recent_sessions": all_recent_sessions[:30],
     }
 
 
@@ -402,9 +433,48 @@ def _make_mcp_tool(mcp_name: str):
     return _fn
 
 
+async def _tool_list_goals(founder_id: str, session_id: str, args: dict) -> Any:
+    """Return all company goals with their status and open task counts."""
+    from backend.missions.company_goal import get_company_goal
+    company_id = _company_for_session(session_id, founder_id)
+    gdata = get_company_goal(founder_id, company_id) or {}
+    goals = []
+    for g in (gdata.get("goals") or []):
+        tasks = g.get("tasks") or []
+        open_count = sum(1 for t in tasks if t.get("status") != "done" and not t.get("postponed"))
+        goals.append({
+            "id": g.get("id"),
+            "title": g.get("title"),
+            "status": g.get("status"),
+            "open_tasks": open_count,
+            "total_tasks": len(tasks),
+        })
+    return {"goals": goals, "north_star": gdata.get("north_star"), "current_goal_id": gdata.get("current_goal_id")}
+
+
+async def _tool_list_sessions(founder_id: str, session_id: str, args: dict) -> Any:
+    """Return recent sessions with status, goal summary, and deploy URL."""
+    from backend.core.session_store import list_sessions
+    company_id = _company_for_session(session_id, founder_id)
+    sessions = list_sessions(founder_id, limit=30, company_id=company_id)
+    return {"sessions": [
+        {
+            "session_id": s.get("session_id"),
+            "status": s.get("status"),
+            "goal": _clip(s.get("goal"), 120),
+            "kind": s.get("kind"),
+            "deploy_url": s.get("deploy_url") or s.get("preview_url") or "",
+            "created_at": s.get("created_at", "")[:16],
+        }
+        for s in sessions
+    ]}
+
+
 _TOOLS = {
     "ask_brain": ("ask the company brain a question (returns a cited answer). args: {question}", _tool_ask_brain),
     "company_goal": ("get the company north star, current goal + status, and goal list. args: {}", _tool_company_goal),
+    "list_goals": ("list ALL company goals with status and open task counts. args: {}", _tool_list_goals),
+    "list_sessions": ("list recent runs with status, goal, and deploy URL. args: {}", _tool_list_sessions),
     "list_agents": ("list every dispatchable agent + its capability. args: {}", _tool_list_agents),
     "dispatch_agents": ("RUN specific agents on a directive now (works even when idle). args: {agents:[..], instruction}. e.g. build the app -> {agents:['web','technical'], instruction:'build the full product app: auth+dashboard+core features on the existing repo, demo-accessible preview'}", _tool_dispatch_agents),
     "set_goal": ("create + activate a company goal with per-workstream tasks, and dispatch it. args: {title, tasks:[{title, workstream}], dispatch?}. workstreams: research, product, marketing, sales, legal, ops", _tool_set_goal),
@@ -456,6 +526,12 @@ async def run_copilot(founder_id: str, session_id: str, message: str) -> dict[st
         "for imperatives.\n"
         "NEVER dispatch_agents if running_agents or child_sessions_running already covers the task. "
         "NEVER answer an imperative by restating the goal and listing options — take the action.\n\n"
+        "DEPLOY/404 ERRORS: If the founder reports a 404, DEPLOYMENT_NOT_FOUND, or broken URL from an "
+        "agent-built site, immediately dispatch_agents with web+technical agents instructed to rebuild and "
+        "redeploy the specific site. Use the deploy_url from all_recent_sessions to identify which project "
+        "the founder means. Never ask for clarification on deploy errors — just fix them.\n\n"
+        "GOAL QUESTIONS: all_goals and all_recent_sessions in the snapshot give you full visibility. "
+        "Use list_goals or list_sessions tools only when you need fresher data than the snapshot.\n\n"
         "LIVE SESSION SNAPSHOT (ground truth, refreshes every turn):\n"
         f"{json.dumps(live, indent=2, sort_keys=True)[:9000]}\n\n"
         'Respond with ONE JSON object per step:\n'
@@ -471,7 +547,7 @@ async def run_copilot(founder_id: str, session_id: str, message: str) -> dict[st
     actions: list[dict[str, Any]] = []
     reply = ""
 
-    for _step in range(5):
+    for _step in range(8):
         prompt = system + "\n\nCONVERSATION:\n" + "\n".join(convo) + "\n\nYour next JSON step:"
         try:
             raw = generate(prompt, max_tokens=900, model="large")
@@ -496,7 +572,15 @@ async def run_copilot(founder_id: str, session_id: str, message: str) -> dict[st
         break
 
     if not reply:
-        reply = "Done." if actions else "I'm not sure how to help with that yet."
+        if actions:
+            # Tools ran but model never emitted a reply — generate a brief confirmation.
+            last_result = actions[-1].get("result") or {}
+            dispatched = last_result.get("dispatched") or last_result.get("session_id")
+            reply = f"Done — ran {', '.join(a['tool'] for a in actions)}." + (f" Session: {dispatched}" if dispatched else "")
+        else:
+            # Model couldn't produce any action — this usually means the request was
+            # unclear or the model got stuck. Give a generic but honest response.
+            reply = "I didn't catch that clearly. Try rephrasing, or tell me which agents to dispatch and what to do."
 
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     history.append({"role": "founder", "content": message, "at": now})
