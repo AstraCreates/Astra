@@ -1686,8 +1686,8 @@ def run_claude_in_repo(
 
 
 def write_files_to_repo(
-    repo_url: str,
-    files: dict,
+    repo_url: str = "",
+    files: dict | None = None,
     commit_message: str = "feat: add files",
     session_id: str = "default",
 ) -> dict:
@@ -1695,10 +1695,12 @@ def write_files_to_repo(
     Write specific files directly to a GitHub repo and push.
     files: {"relative/path.ext": "file content string"}
     """
+    if not repo_url:
+        return {"error": "repo_url is required — pass the GitHub repo URL, e.g. https://github.com/org/repo"}
+    if not files:
+        return {"error": "files is required — pass a dict of {\"path\": \"content\"} to write"}
     if not settings.github_token:
         return {"error": "GITHUB_TOKEN not set"}
-    if not files:
-        return {"error": "No files provided"}
     try:
         local = _ensure_clone(repo_url, session_id)
         _pull(local)
