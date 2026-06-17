@@ -102,6 +102,23 @@ export default function DashboardView() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
+    if (!userId) return;
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "visible") {
+        void load();
+      }
+    };
+    const interval = window.setInterval(refreshIfVisible, 15000);
+    window.addEventListener("focus", refreshIfVisible);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshIfVisible);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
+  }, [userId, load]);
+
+  useEffect(() => {
     if (!sessions) return;
     const running = sessions.filter(s => s.status === "running");
     if (!running.length) return;

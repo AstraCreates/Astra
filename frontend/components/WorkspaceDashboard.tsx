@@ -160,6 +160,31 @@ export default function WorkspaceDashboard() {
     return () => { cancelled = true; };
   }, [userId]);
 
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    const refresh = () => {
+      if (cancelled || document.visibilityState !== "visible") return;
+      listWorkspaces(userId)
+        .then((ws) => {
+          if (!cancelled) {
+            setWorkspaces(ws);
+            setErr("");
+          }
+        })
+        .catch(() => {});
+    };
+    const interval = window.setInterval(refresh, 15000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [userId]);
+
   const openWorkspace = (ws: Workspace) => {
     const latestChapter = ws.chapters?.[ws.chapters.length - 1];
     const chapterParam = latestChapter ? `&chapter=${latestChapter.chapter_id}` : "";
