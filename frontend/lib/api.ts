@@ -16,7 +16,7 @@ async function authHeaders(): Promise<Record<string, string>> {
     }
     // Fallback: read directly from localStorage
     if (typeof window !== "undefined") {
-      const userId = localStorage.getItem("astra_dev_user_id");
+      const userId = localStorage.getItem("astra_auth_user_id") || localStorage.getItem("astra_dev_user_id");
       if (userId) return { "x-astra-user-id": userId };
     }
   } catch {

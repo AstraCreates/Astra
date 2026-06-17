@@ -14,12 +14,21 @@ fn is_internal_url(url: &str) -> bool {
         || url.starts_with("about:blank")
 }
 
+fn should_keep_in_webview(url: &str) -> bool {
+    // Google sign-in must complete inside the desktop webview so the auth
+    // session cookie is written to the same cookie jar the app uses. If this
+    // hop is pushed into the system browser, the web app and desktop shell can
+    // behave like different accounts.
+    url.starts_with("https://accounts.google.com/")
+}
+
 fn should_open_externally(url: &str) -> bool {
     (url.starts_with("http://")
         || url.starts_with("https://")
         || url.starts_with("mailto:")
         || url.starts_with("tel:"))
         && !is_internal_url(url)
+        && !should_keep_in_webview(url)
 }
 
 #[tauri::command]
@@ -69,7 +78,8 @@ fn external_link_plugin<R: Runtime>() -> TauriPlugin<R> {
                   return nativeOpen(url, target, features);
                 }
 
-                if (__astraIsDownload(resolved) || !__astraIsInternal(resolved) || resolved.protocol === "mailto:" || resolved.protocol === "tel:") {
+                const keepInApp = resolved.origin === "https://accounts.google.com";
+                if (__astraIsDownload(resolved) || (!__astraIsInternal(resolved) && !keepInApp) || resolved.protocol === "mailto:" || resolved.protocol === "tel:") {
                   void __astraOpenExternal(resolved);
                   return window;
                 }
@@ -92,9 +102,10 @@ fn external_link_plugin<R: Runtime>() -> TauriPlugin<R> {
                 const resolved = __astraResolveUrl(href);
                 if (!resolved) return;
 
+                const keepInApp = resolved.origin === "https://accounts.google.com";
                 const wantsExternal =
                   __astraIsDownload(resolved) ||
-                  !__astraIsInternal(resolved) ||
+                  (!__astraIsInternal(resolved) && !keepInApp) ||
                   resolved.protocol === "mailto:" ||
                   resolved.protocol === "tel:";
 

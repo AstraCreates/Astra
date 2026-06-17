@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 import { useSession } from "next-auth/react";
 
+const DEV_USER_ID_KEY = "astra_dev_user_id";
+const AUTH_USER_ID_KEY = "astra_auth_user_id";
+
 function generateId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return "user_" + crypto.randomUUID().replace(/-/g, "").slice(0, 20);
@@ -8,12 +11,21 @@ function generateId(): string {
   return "user_" + Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12);
 }
 
+function normalizeSignedInUserId(email: string): string {
+  return "google_" + email.toLowerCase().replace(/[^a-z0-9]/g, "_");
+}
+
+function getPersistedUserId(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(AUTH_USER_ID_KEY) || localStorage.getItem(DEV_USER_ID_KEY);
+}
+
 export function getOrCreateUserId(): string {
   if (typeof window === "undefined") return "anon";
-  let id = localStorage.getItem("astra_dev_user_id");
+  let id = getPersistedUserId();
   if (!id) {
     id = generateId();
-    localStorage.setItem("astra_dev_user_id", id);
+    localStorage.setItem(DEV_USER_ID_KEY, id);
   }
   return id;
 }
@@ -25,20 +37,20 @@ export function useDevUser() {
   const isSignedIn = status === "authenticated" && !!session?.user?.email;
 
   const googleEmail = session?.user?.email ?? null;
-  // Identity MUST stay stable across the auth-loading flicker. Returning a
-  // transient "anon" while `status === "loading"` made the app fetch a
-  // different founder's workspace (and 4403'd the terminal takeover) until
-  // auth resolved. getOrCreateUserId() returns the persisted id — which the
-  // effect below keeps set to google_<email> for returning signed-in users —
-  // so a brief loading state no longer swaps the founder out from under us.
-  const userId = isSignedIn && googleEmail
-    ? "google_" + googleEmail.replace(/[^a-z0-9]/g, "_")
-    : getOrCreateUserId();
+  // Keep identity stable across auth transitions and across surfaces.
+  // A signed-in user should keep the same founder ID in web and desktop, and
+  // a brief auth-loading phase should not mint a fresh per-device local ID.
+  const signedInUserId = isSignedIn && googleEmail
+    ? normalizeSignedInUserId(googleEmail)
+    : null;
+  const userId = signedInUserId || getOrCreateUserId();
 
   // Keep localStorage in sync so ApiAuthBridge always sends the right founder ID.
   useEffect(() => {
     if (isSignedIn && googleEmail) {
-      localStorage.setItem("astra_dev_user_id", "google_" + googleEmail.replace(/[^a-z0-9]/g, "_"));
+      const stableId = normalizeSignedInUserId(googleEmail);
+      localStorage.setItem(AUTH_USER_ID_KEY, stableId);
+      localStorage.setItem(DEV_USER_ID_KEY, stableId);
     }
   }, [isSignedIn, googleEmail]);
 
