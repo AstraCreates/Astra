@@ -27,6 +27,7 @@ type TermEntry = { ts: number; kind: string; text: string; agent: string };
 type Agent = { key: string; status: string; log: LogEntry[]; term: TermEntry[]; visitedUrls: string[]; currentTool: string | null; result: unknown; instruction: string };
 type Artifact = { key?: string; title?: string; status?: string; preview?: string; content?: string; description?: string; owner_agent?: string; verification?: ArtifactReceipt };
 type Approval = { gate_key: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string; preview?: string }[] };
+type CopilotAction = { tool: string; label: string; detail?: string; tone?: "info" | "success" | "warn" };
 
 type SState = {
   status: string; goal: string; company: string; projectName: string; stackId: string;
@@ -54,6 +55,33 @@ function safeText(v: unknown): string {
   if (v == null) return "";
   if (typeof v === "object") { try { return JSON.stringify(v); } catch {} }
   return String(v);
+}
+
+function titleCaseTool(raw: string): string {
+  return raw
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function normalizeCopilotActions(actions: any): CopilotAction[] {
+  if (!Array.isArray(actions)) return [];
+  return actions
+    .map((action: any) => {
+      if (typeof action === "string") {
+        return { tool: action, label: titleCaseTool(action), tone: "info" as const };
+      }
+      const tool = String(action?.tool || action?.name || "").trim();
+      if (!tool) return null;
+      return {
+        tool,
+        label: String(action?.label || titleCaseTool(tool)),
+        detail: typeof action?.detail === "string" ? action.detail : undefined,
+        tone: action?.tone === "success" || action?.tone === "warn" ? action.tone : "info",
+      };
+    })
+    .filter(Boolean) as CopilotAction[];
 }
 
 function extractProjectName(goal: string): { projectName: string; cleanGoal: string } {
@@ -210,7 +238,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [, force] = useReducer((x: number) => x + 1, 0);
   const sseRef = useRef<EventSource | null>(null);
   const steerRef = useRef<HTMLInputElement>(null);
-  const [copilot, setCopilot] = useState<{ role: string; content: string; actions?: string[] }[]>([]);
+  const [copilot, setCopilot] = useState<{ role: string; content: string; actions?: CopilotAction[] }[]>([]);
   const [copilotBusy, setCopilotBusy] = useState(false);
   const [copilotOpen, setCopilotOpen] = useState(false);
   const copilotLoaded = useRef(false);
@@ -221,7 +249,13 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       try {
         const r = await apiFetch(`${API}/copilot/${sessionId}`);
         const d = await r.json();
-        if (Array.isArray(d.history)) setCopilot(d.history.map((h: any) => ({ role: h.role, content: h.content, actions: h.actions })));
+        if (Array.isArray(d.history)) {
+          setCopilot(d.history.map((h: any) => ({
+            role: h.role,
+            content: h.content,
+            actions: normalizeCopilotActions(h.actions),
+          })));
+        }
       } catch {}
     })();
   }, [copilotOpen, sessionId]);
@@ -519,7 +553,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     try {
       const r = await apiFetch(`${API}/copilot/${sessionId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg }) });
       const d = await r.json();
-      setCopilot((c) => [...c, { role: "copilot", content: d.reply || "(no reply)", actions: (d.actions || []).map((a: any) => a.tool) }]);
+      setCopilot((c) => [...c, { role: "copilot", content: d.reply || "(no reply)", actions: normalizeCopilotActions(d.actions) }]);
     } catch (e) {
       setCopilot((c) => [...c, { role: "copilot", content: "Copilot error — try again." }]);
     } finally { setCopilotBusy(false); }
@@ -1539,7 +1573,14 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 <div className="copilot-bubble">
                   {m.content}
                   {m.actions && m.actions.length > 0 && (
-                    <div className="copilot-actions">⚙ {m.actions.join(" · ")}</div>
+                    <div className="copilot-actions" aria-label="Copilot actions">
+                      {m.actions.map((action, actionIndex) => (
+                        <div key={`${action.tool}-${actionIndex}`} className={`copilot-action-card is-${action.tone || "info"}`}>
+                          <div className="copilot-action-label">{action.label}</div>
+                          {action.detail && <div className="copilot-action-detail">{action.detail}</div>}
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>

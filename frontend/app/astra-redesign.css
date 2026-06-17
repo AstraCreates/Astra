@@ -570,10 +570,39 @@ a { transition: color .15s, background .15s, border-color .15s, opacity .15s, bo
   box-shadow: 0 8px 22px rgba(0, 46, 255, 0.20);
 }
 .copilot-actions {
-  margin-top: 7px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.copilot-action-card {
+  min-width: 142px;
+  padding: 9px 11px;
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(0, 46, 255, 0.05), rgba(0, 46, 255, 0.015));
+}
+.copilot-action-card.is-success {
+  border-color: var(--gb);
+  background: linear-gradient(180deg, var(--gdim), rgba(22, 163, 74, 0.02));
+}
+.copilot-action-card.is-warn {
+  border-color: var(--ab);
+  background: linear-gradient(180deg, var(--adim), rgba(217, 119, 6, 0.02));
+}
+.copilot-action-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg);
+}
+.copilot-action-detail {
+  margin-top: 4px;
   font-family: var(--font-code);
-  font-size: 9px;
-  opacity: 0.65;
+  font-size: 10px;
+  color: var(--fm);
+  line-height: 1.45;
 }
 .copilot-thinking {
   display: flex;
