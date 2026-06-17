@@ -796,13 +796,21 @@ export default function OutreachPage() {
 
       {/* ── New campaign modal ──────────────────────────────────────────────── */}
       {showNewCampaign && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, overflowY: "auto" }}>
-          <div style={{ ...card({ padding: "28px 24px", width: "100%", maxWidth: 560 }), maxHeight: "90vh", overflowY: "auto", boxShadow: "0 24px 60px rgba(0,0,0,.14)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
-              <h2 style={{ fontSize: 17, margin: 0, color: "var(--fg)" }}>New Campaign</h2>
-              <button onClick={() => { setShowNewCampaign(false); setAudienceMode("simple"); setAudiencePrompt(""); setParsingAudience(false); }} style={{ background: "none", border: "none", color: "var(--fm)", cursor: "pointer", fontSize: 18, lineHeight: 1 }}>✕</button>
+        <div className="astra-modal-backdrop">
+          <div className="astra-modal-shell" style={{ maxWidth: 620 }}>
+            <div className="astra-modal-panel">
+            <div className="astra-modal-header">
+              <div className="astra-modal-header-row">
+                <div>
+                  <div className="astra-modal-eyebrow">outreach</div>
+                  <h2 className="astra-modal-title" style={{ fontSize: 24 }}>New campaign</h2>
+                  <p className="astra-modal-sub">Set the basics, define who you want to reach, and let Astra spin up the first audience-building pass.</p>
+                </div>
+                <button onClick={() => { setShowNewCampaign(false); setAudienceMode("simple"); setAudiencePrompt(""); setParsingAudience(false); }} className="astra-modal-close" aria-label="Close new campaign modal">×</button>
+              </div>
             </div>
-
+            <div className="astra-modal-body">
+            <div className="astra-modal-card" style={{ padding: "22px 20px", maxHeight: "70vh", overflowY: "auto" }}>
             <div className="sec-label" style={{ marginBottom: 10 }}>Campaign basics</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
               {[
@@ -877,6 +885,9 @@ export default function OutreachPage() {
               </button>
             </div>
           </div>
+        </div>
+        </div>
+        </div>
         </div>
       )}
       </div>

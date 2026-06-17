@@ -115,30 +115,40 @@ export default function BusinessQuizModal({ onComplete, onSkip }: Props) {
   const progress = ((stepIdx + 1) / STEPS.length) * 100;
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999,
-      display: "flex", alignItems: "center", justifyContent: "center",
-    }}>
-      <div style={{
-        background: "var(--surface, #111)", border: "1px solid var(--bd, #2a2a2a)",
-        borderRadius: 12, padding: "32px 28px", width: "100%", maxWidth: 480,
-        boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
-      }}>
-        {/* Progress bar */}
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+    <div className="astra-modal-backdrop">
+      <div className="astra-modal-shell" style={{ maxWidth: 540 }}>
+        <div className="astra-modal-panel">
+        <div className="astra-modal-header">
+          <div className="astra-modal-header-row">
+            <div>
+              <div className="astra-modal-eyebrow">guided launch</div>
+              <h2 className="astra-modal-title">Let&apos;s tailor this run</h2>
+              <p className="astra-modal-sub">A few quick answers help Astra choose better agent prompts, stacks, and integrations for this business.</p>
+            </div>
+            <button
+              onClick={onSkip}
+              className="astra-modal-close"
+              aria-label="Skip quiz"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        <div className="astra-modal-body">
+        <div style={{ marginBottom: 2 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
             <span style={{ fontSize: 11, color: "var(--fm, #666)", fontFamily: "var(--font-ibm-mono)" }}>
               Step {stepIdx + 1} of {STEPS.length}
             </span>
             <button
               onClick={onSkip}
-              style={{ fontSize: 11, color: "var(--fm, #666)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              style={{ fontSize: 11, color: "var(--blue)", background: "none", border: "none", cursor: "pointer", padding: 0, fontWeight: 600 }}
             >
               Skip →
             </button>
           </div>
-          <div style={{ height: 2, background: "var(--bd, #2a2a2a)", borderRadius: 2 }}>
-            <div style={{ height: "100%", width: `${progress}%`, background: "var(--blue, #3b82f6)", borderRadius: 2, transition: "width 0.25s ease" }} />
+          <div className="astra-modal-progress">
+            <div style={{ width: `${progress}%`, transition: "width 0.25s ease" }} />
           </div>
         </div>
 
@@ -150,17 +160,13 @@ export default function BusinessQuizModal({ onComplete, onSkip }: Props) {
             <div style={{ fontSize: 12, color: "var(--fm)", marginBottom: 20 }}>
               Helps Astra tailor agent prompts and suggested integrations.
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="astra-choice-grid">
               {BIZ_TYPES.map(t => (
                 <button
                   key={t.id}
                   onClick={() => setBizType(t.id)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
-                    background: bizType === t.id ? "var(--blue-subtle, rgba(59,130,246,0.1))" : "var(--s2)",
-                    border: `1px solid ${bizType === t.id ? "var(--blue, #3b82f6)" : "var(--bd, #2a2a2a)"}`,
-                    borderRadius: 8, cursor: "pointer", textAlign: "left", width: "100%",
-                  }}
+                  className={`astra-choice-card${bizType === t.id ? " is-selected" : ""}`}
+                  style={{ display: "flex", alignItems: "center", gap: 12 }}
                 >
                   <span style={{ fontSize: 18, lineHeight: 1, color: "var(--fm)" }}>{t.icon}</span>
                   <div>
@@ -181,17 +187,13 @@ export default function BusinessQuizModal({ onComplete, onSkip }: Props) {
             <div style={{ fontSize: 12, color: "var(--fm)", marginBottom: 20 }}>
               Shapes sales motion, channels, and pricing model.
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="astra-choice-grid">
               {CUSTOMER_TYPES.map(c => (
                 <button
                   key={c.id}
                   onClick={() => setCustomer(c.id)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
-                    background: customer === c.id ? "var(--blue-subtle, rgba(59,130,246,0.1))" : "var(--s2)",
-                    border: `1px solid ${customer === c.id ? "var(--blue, #3b82f6)" : "var(--bd, #2a2a2a)"}`,
-                    borderRadius: 8, cursor: "pointer", textAlign: "left", width: "100%",
-                  }}
+                  className={`astra-choice-card${customer === c.id ? " is-selected" : ""}`}
+                  style={{ display: "flex", alignItems: "center", gap: 12 }}
                 >
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>{c.label}</div>
@@ -211,17 +213,13 @@ export default function BusinessQuizModal({ onComplete, onSkip }: Props) {
             <div style={{ fontSize: 12, color: "var(--fm)", marginBottom: 20 }}>
               Agents adjust their output to your starting point.
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="astra-choice-grid">
               {STAGES.map(s => (
                 <button
                   key={s.id}
                   onClick={() => setStage(s.id)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
-                    background: stage === s.id ? "var(--blue-subtle, rgba(59,130,246,0.1))" : "var(--s2)",
-                    border: `1px solid ${stage === s.id ? "var(--blue, #3b82f6)" : "var(--bd, #2a2a2a)"}`,
-                    borderRadius: 8, cursor: "pointer", textAlign: "left", width: "100%",
-                  }}
+                  className={`astra-choice-card${stage === s.id ? " is-selected" : ""}`}
+                  style={{ display: "flex", alignItems: "center", gap: 12 }}
                 >
                   <div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>{s.label}</div>
@@ -241,17 +239,13 @@ export default function BusinessQuizModal({ onComplete, onSkip }: Props) {
             <div style={{ fontSize: 12, color: "var(--fm)", marginBottom: 20 }}>
               Narrows agent instructions to your specific category.
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               {subOptions.map(c => (
                 <button
                   key={c.id}
                   onClick={() => setSub(c.id)}
-                  style={{
-                    display: "flex", flexDirection: "column", gap: 4, padding: "12px 14px",
-                    background: sub === c.id ? "var(--blue-subtle, rgba(59,130,246,0.1))" : "var(--s2)",
-                    border: `1px solid ${sub === c.id ? "var(--blue, #3b82f6)" : "var(--bd, #2a2a2a)"}`,
-                    borderRadius: 8, cursor: "pointer", textAlign: "left",
-                  }}
+                  className={`astra-choice-card${sub === c.id ? " is-selected" : ""}`}
+                  style={{ display: "flex", flexDirection: "column", gap: 4 }}
                 >
                   <div style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)" }}>{c.label}</div>
                   <div style={{ fontSize: 10, color: "var(--fm)" }}>{c.desc}</div>
@@ -262,7 +256,7 @@ export default function BusinessQuizModal({ onComplete, onSkip }: Props) {
         )}
 
         {/* Nav */}
-        <div style={{ display: "flex", gap: 8, marginTop: 24 }}>
+        <div className="astra-modal-actions" style={{ marginTop: 8 }}>
           {stepIdx > 0 && (
             <button
               className="btn"
@@ -284,7 +278,8 @@ export default function BusinessQuizModal({ onComplete, onSkip }: Props) {
             {step === "sub" || (!needsSub && step === "stage") ? "Launch →" : "Next →"}
           </button>
         </div>
-
+        </div>
+        </div>
       </div>
     </div>
   );

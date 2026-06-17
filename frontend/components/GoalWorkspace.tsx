@@ -2370,7 +2370,17 @@ interface InputRequest {
 
 function AgentQuestionCard({ sessionId, question, onDone }: {
   sessionId: string;
-  question: { request_id: string; question: string; options: string[]; hint: string };
+  question: {
+    request_id: string;
+    title?: string;
+    question: string;
+    options: string[];
+    hint: string;
+    context?: string;
+    recommendation?: string;
+    severity?: "info" | "warning" | "critical";
+    option_details?: Record<string, string>;
+  };
   onDone: () => void;
 }) {
   const [answer, setAnswer] = useState("");
@@ -2396,71 +2406,94 @@ function AgentQuestionCard({ sessionId, question, onDone }: {
     }
   };
 
+  const tone = question.severity === "critical"
+    ? { badgeBg: "rgba(220,38,38,0.12)", badgeBorder: "rgba(220,38,38,0.24)", badgeColor: "#dc2626" }
+    : question.severity === "warning"
+      ? { badgeBg: "rgba(217,119,6,0.12)", badgeBorder: "rgba(217,119,6,0.22)", badgeColor: "#d97706" }
+      : { badgeBg: "rgba(0,46,255,0.08)", badgeBorder: "rgba(0,46,255,0.16)", badgeColor: "var(--blue)" };
+
   return (
-    <div style={{
-      position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
-      zIndex: 9000, width: "100%", maxWidth: 520, padding: "0 16px",
-    }}>
-      <div style={{
-        background: "var(--surface)", border: "1px solid var(--bd)",
-        borderRadius: 14, boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
-        overflow: "hidden",
-      }}>
-        <div style={{ padding: "14px 18px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-            <span style={{ fontSize: 15, marginTop: 1 }}>💬</span>
-            <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--fg)", lineHeight: 1.4 }}>
-              {question.question}
-            </p>
+    <div className="astra-modal-backdrop" style={{ zIndex: 9000 }}>
+      <div className="astra-modal-shell" style={{ maxWidth: 640 }}>
+        <div className="astra-modal-panel">
+          <div className="astra-modal-header">
+            <div className="astra-modal-header-row">
+              <div>
+                <div className="astra-modal-eyebrow" style={{ background: tone.badgeBg, borderColor: tone.badgeBorder, color: tone.badgeColor }}>
+                  founder decision
+                </div>
+                <h2 className="astra-modal-title" style={{ fontSize: 24 }}>{question.title || "Astra needs your input"}</h2>
+                <p className="astra-modal-sub" style={{ maxWidth: 520 }}>{question.question}</p>
+              </div>
+              <button onClick={onDone} className="astra-modal-close" aria-label="Dismiss question">×</button>
+            </div>
           </div>
-          <button onClick={onDone} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: "var(--fm)", padding: 0, lineHeight: 1, flexShrink: 0, marginTop: 1 }}>✕</button>
-        </div>
-        <div style={{ padding: "12px 18px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="astra-modal-body">
+          {question.context && (
+            <div className="astra-modal-card" style={{ padding: 16 }}>
+              <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fm)", marginBottom: 8, fontWeight: 700 }}>
+                Why This Matters
+              </div>
+              <div style={{ fontSize: 13, lineHeight: 1.65, color: "var(--fd)" }}>{question.context}</div>
+            </div>
+          )}
+          {question.recommendation && (
+            <div style={{
+              padding: "12px 14px",
+              borderRadius: 16,
+              border: `1px solid ${tone.badgeBorder}`,
+              background: tone.badgeBg,
+              color: "var(--fg)",
+            }}>
+              <div style={{ fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 700, color: tone.badgeColor, marginBottom: 6 }}>
+                Recommended
+              </div>
+              <div style={{ fontSize: 13, lineHeight: 1.6 }}>{question.recommendation}</div>
+            </div>
+          )}
           {question.options.length > 0 ? (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <div className="astra-choice-grid">
               {question.options.map((opt) => (
                 <button
                   key={opt}
                   onClick={() => submit(opt)}
                   disabled={submitting}
-                  style={{
-                    padding: "7px 14px", borderRadius: 8, fontSize: 13, fontWeight: 500,
-                    border: "1px solid var(--bd2)", background: "var(--bg)", color: "var(--fg)",
-                    cursor: "pointer", fontFamily: "inherit", transition: "background 0.12s",
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = "var(--s2)"; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = "var(--bg)"; }}
+                  className="astra-choice-card"
+                  style={{ display: "flex", flexDirection: "column", gap: 6 }}
                 >
-                  {opt}
+                  <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--fg)" }}>{opt}</span>
+                  {question.option_details?.[opt] && (
+                    <span style={{ fontSize: 11.5, color: "var(--fd)", lineHeight: 1.5 }}>{question.option_details[opt]}</span>
+                  )}
                 </button>
               ))}
             </div>
           ) : (
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <textarea
                 autoFocus
-                type="text"
                 value={answer}
                 onChange={e => setAnswer(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && submit()}
+                rows={4}
                 placeholder={question.hint || "Type your answer…"}
-                className="site-input"
-                style={{ flex: 1, padding: "8px 12px", fontSize: 13 }}
+                className="f-ta"
+                style={{ minHeight: 120, fontSize: 13 }}
               />
-              <button
-                onClick={() => submit()}
-                disabled={submitting || !answer.trim()}
-                style={{
-                  padding: "8px 16px", borderRadius: 8, fontSize: 13, fontWeight: 600,
-                  background: "var(--blue)", color: "#fff", border: "none", cursor: "pointer",
-                  opacity: !answer.trim() ? 0.5 : 1, fontFamily: "inherit",
-                }}
-              >
-                {submitting ? "…" : "Send"}
-              </button>
+              <div className="astra-modal-actions">
+                <button onClick={onDone} className="btn">Later</button>
+                <button
+                  onClick={() => submit()}
+                  disabled={submitting || !answer.trim()}
+                  className="btn pri"
+                  style={{ minWidth: 120, opacity: !answer.trim() ? 0.5 : 1 }}
+                >
+                  {submitting ? "Sending…" : "Send guidance"}
+                </button>
+              </div>
             </div>
           )}
           {error && <p style={{ margin: 0, fontSize: 12, color: "var(--red)" }}>{error}</p>}
+          </div>
         </div>
       </div>
     </div>
@@ -4637,7 +4670,17 @@ export function GoalWorkspace({
   const [killing, setKilling] = useState(false);
   const [sessionCost, setSessionCost] = useState<{total_tokens: number; total_cost_usd: number; cached_tokens: number; total_credits_used?: number} | null>(null);
   const [inputRequest, setInputRequest] = useState<InputRequest | null>(null);
-  const [agentQuestion, setAgentQuestion] = useState<{ request_id: string; question: string; options: string[]; hint: string } | null>(null);
+  const [agentQuestion, setAgentQuestion] = useState<{
+    request_id: string;
+    title?: string;
+    question: string;
+    options: string[];
+    hint: string;
+    context?: string;
+    recommendation?: string;
+    severity?: "info" | "warning" | "critical";
+    option_details?: Record<string, string>;
+  } | null>(null);
   const [selectedStack, setSelectedStack] = useState<AgentStackTemplate | null>(null);
   const [runArtifacts, setRunArtifacts] = useState<RunArtifactState[]>([]);
   const [safeRunActions, setSafeRunActions] = useState<SafeRunActionState[]>([]);
@@ -4879,14 +4922,21 @@ export function GoalWorkspace({
       }
       if (event.type === "agent_input_received") {
         setInputRequest(null);
+        setAgentQuestion(null);
         return;
       }
       if (event.type === "agent_question") {
-        setAgentQuestion({ request_id: event.request_id, question: event.question, options: event.options ?? [], hint: event.hint ?? "" });
-        return;
-      }
-      if (event.type === "agent_input_received") {
-        setAgentQuestion(null);
+        setAgentQuestion({
+          request_id: event.request_id,
+          title: event.title ?? "",
+          question: event.question,
+          options: event.options ?? [],
+          hint: event.hint ?? "",
+          context: event.context ?? "",
+          recommendation: event.recommendation ?? "",
+          severity: event.severity ?? "info",
+          option_details: event.option_details ?? {},
+        });
         return;
       }
       if (event.type === "detailed_plan") {

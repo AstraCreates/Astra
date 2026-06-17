@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from typing import Any
 
 from backend.core.agent import Agent, AgentContext
@@ -258,6 +259,98 @@ class Orchestrator:
     async def _verify_llm_call(self, messages: list[dict]) -> str:
         """LLM handle for the semantic verification judge (L3). Runs on the planner model."""
         return await asyncio.to_thread(self.planner._call_llm, messages)
+
+    @staticmethod
+    def _parse_json_object(raw: str) -> dict[str, Any]:
+        import re
+
+        if not isinstance(raw, str):
+            return {}
+        candidates = [raw]
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            candidates.append(raw[start:end + 1])
+        for candidate in candidates:
+            try:
+                parsed = json.loads(candidate)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                pass
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if match:
+            try:
+                parsed = json.loads(match.group(0))
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                pass
+        return {}
+
+    async def _critical_research_review(self, goal: str, research_result: dict, research_notes: list[str]) -> dict[str, Any]:
+        """Force a strategy-council style critique across the research lanes.
+
+        Returns a dict with a founder-facing recommendation and, when warranted,
+        a structured question that can gate the next phase.
+        """
+        merged_notes = "\n\n---\n\n".join(research_notes or [])
+        if not merged_notes:
+            try:
+                merged_notes = json.dumps(research_result, default=str)[:12000]
+            except Exception:
+                merged_notes = str(research_result)[:12000]
+        else:
+            merged_notes = merged_notes[:14000]
+
+        system = (
+            "You are Astra's research council. Multiple research lanes have finished work on a startup idea. "
+            "Your job is to synthesize, debate, critique, and pressure-test the product direction before execution continues.\n\n"
+            "Be skeptical. Do not cheerlead. Surface the strongest bull case, strongest bear case, the weakest assumption, "
+            "and the best alternative wedge or pivot if one exists.\n\n"
+            "Output ONLY valid JSON with this exact shape:\n"
+            "{"
+            "\"summary\":\"short synthesis\","
+            "\"verdict\":\"continue|continue_but_narrow|pivot|validate_first\","
+            "\"confidence\":0.0,"
+            "\"bull_case\":[\"...\"],"
+            "\"bear_case\":[\"...\"],"
+            "\"critical_risks\":[\"...\"],"
+            "\"debate\":[{\"speaker\":\"market|competitors|customers|gtm\",\"stance\":\"for|against|mixed\",\"point\":\"...\"}],"
+            "\"recommended_path\":\"...\","
+            "\"founder_prompt_needed\":true,"
+            "\"founder_prompt\":{"
+            "\"title\":\"...\","
+            "\"question\":\"...\","
+            "\"context\":\"...\","
+            "\"recommendation\":\"...\","
+            "\"severity\":\"info|warning|critical\","
+            "\"options\":[\"...\"],"
+            "\"option_details\":{\"Option\":\"meaning of that option\"}"
+            "}"
+            "}\n"
+            "Set founder_prompt_needed=true only when the research changes the direction, target user, wedge, or confidence enough that the founder should explicitly choose."
+        )
+        user = (
+            f"Goal:\n{goal}\n\n"
+            f"Research council materials:\n{merged_notes}\n\n"
+            "Debate the idea using the evidence above. If the current plan should continue unchanged, say so clearly. "
+            "If the better move is to narrow, pivot, or validate a critical assumption before continuing, produce a decision-grade founder prompt."
+        )
+        raw = await self._verify_llm_call([
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ])
+        parsed = self._parse_json_object(raw)
+        if not parsed:
+            return {}
+        prompt = parsed.get("founder_prompt")
+        if isinstance(prompt, dict):
+            prompt.setdefault("title", "Research found a strategic decision")
+            prompt.setdefault("severity", "warning")
+            prompt.setdefault("options", ["Continue as planned", "Narrow the idea", "Pivot direction", "Need more validation"])
+            prompt.setdefault("option_details", {})
+        return parsed
 
     async def _initial_plan(self, goal: str, stack_template=None) -> list[dict]:
         """Phase 1: decide which agents to use based on stack + goal. research always first."""
@@ -1592,12 +1685,68 @@ class Orchestrator:
             await asyncio.gather(*research_bg_tasks)
         logger.info("Research done. completed keys: %s", list(completed.keys()))
 
+        research_result, merged_notes = _collect_research()
+        if merged_notes:
+            research_result["obsidian_content"] = "\n\n---\n\n".join(merged_notes)
+        research_review = await self._critical_research_review(goal, research_result, merged_notes)
+        if research_review:
+            shared["research_review"] = research_review
+            await publish(session_id, {"type": "research_review", "review": research_review})
+            founder_prompt = research_review.get("founder_prompt") if isinstance(research_review.get("founder_prompt"), dict) else {}
+            if research_review.get("founder_prompt_needed") and founder_prompt:
+                from backend.core.events import input_response_wait
+
+                request_id = str(uuid.uuid4())
+                await publish(session_id, {
+                    "type": "agent_question",
+                    "request_id": request_id,
+                    "title": founder_prompt.get("title") or "Research found a strategic decision",
+                    "question": founder_prompt.get("question") or "The research surfaced a major strategic tradeoff. Which direction should Astra follow?",
+                    "context": founder_prompt.get("context") or research_review.get("summary") or "",
+                    "recommendation": founder_prompt.get("recommendation") or research_review.get("recommended_path") or "",
+                    "severity": founder_prompt.get("severity") or "warning",
+                    "options": founder_prompt.get("options") or [],
+                    "option_details": founder_prompt.get("option_details") or {},
+                    "hint": "Add nuance if you want the team to adapt the direction.",
+                })
+                founder_response = await input_response_wait(request_id, timeout=1800.0)
+                if founder_response:
+                    decision = str(founder_response.get("answer") or "").strip()
+                    shared["research_direction_decision"] = decision
+                    shared["research_direction_decision_note"] = founder_response
+                    await publish(session_id, {
+                        "type": "research_direction_decision",
+                        "decision": decision,
+                        "review": research_review,
+                    })
+                else:
+                    shared["research_direction_decision"] = "Continue as planned"
+                    await publish(session_id, {
+                        "type": "research_direction_decision",
+                        "decision": "Continue as planned",
+                        "review": research_review,
+                        "timed_out": True,
+                    })
+
         # Now apply enriched instructions from background replan (if ready) before launching other agents
         for t in remaining:
             enriched = shared.get(f"enriched_instruction_{t['agent']}")
             if enriched:
                 t["instruction"] = enriched
                 logger.info("Applied enriched instruction to %s", t["agent"])
+            review = shared.get("research_review") or {}
+            decision = shared.get("research_direction_decision")
+            if review or decision:
+                critique_summary = ""
+                if isinstance(review, dict):
+                    critique_summary = str(review.get("summary") or review.get("recommended_path") or "")[:700]
+                appendix_parts = []
+                if critique_summary:
+                    appendix_parts.append(f"Research council critique:\n{critique_summary}")
+                if decision:
+                    appendix_parts.append(f"Founder direction after critique:\n{decision}")
+                if appendix_parts:
+                    t["instruction"] = f"{t['instruction']}\n\n" + "\n\n".join(appendix_parts)
 
         # ── Phase gate infrastructure ─────────────────────────────────────────────
         # After every phase completes, the founder must review deliverables and approve

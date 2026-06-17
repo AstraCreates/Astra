@@ -10,6 +10,11 @@ async def ask_user(
     question: str,
     options: Optional[list] = None,
     hint: str = "",
+    title: str = "",
+    context: str = "",
+    recommendation: str = "",
+    severity: str = "info",
+    option_details: Optional[dict] = None,
     timeout: int = 300,
 ) -> dict:
     """Ask the founder a question and wait for their response (blocks until answered or timeout).
@@ -28,9 +33,14 @@ async def ask_user(
     await publish(session_id, {
         "type": "agent_question",
         "request_id": request_id,
+        "title": title or "Astra needs your decision",
         "question": question,
         "options": options or [],
         "hint": hint,
+        "context": context,
+        "recommendation": recommendation,
+        "severity": severity,
+        "option_details": option_details or {},
     })
 
     response = await input_response_wait(request_id, timeout=float(timeout))

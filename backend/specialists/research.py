@@ -90,7 +90,10 @@ _DONE_INSTRUCTIONS = (
     '"sources":["url1","url2"]}}\n'
     "For identity fields (problem, solution, tagline, mission, revenue_model, differentiator, moat, icp): "
     "use injected company brain context as the source of truth, supplement with research.\n"
-    "For market/competitor fields: use your research findings."
+    "For market/competitor fields: use your research findings.\n"
+    "Before done, pressure-test the idea hard: what is weak, crowded, unconvincing, or likely to fail? "
+    "If the evidence points to a materially better wedge, ICP, pricing model, or product direction, call ask_user "
+    "with a decision-grade question before done."
 )
 
 _DONE_COMPETITORS = (
@@ -228,6 +231,9 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
             "- Prefer primary sources, analyst reports, competitor pages, government/public datasets, and reputable review sites.\n"
             "- Check run_research_pipeline.coverage. If coverage.ready is false, fill gaps with one targeted batch_search or clearly mark uncertainty.\n"
             "- Always name concrete companies, numbers, dates, and URLs. If evidence is weak, say so.\n"
+            "- Be critical, not promotional. Try to DISPROVE the current idea, wedge, pricing, and ICP before you endorse them.\n"
+            "- Surface the strongest bear case, the most fragile assumption, and the most promising pivot or narrowing option.\n"
+            "- If research reveals a serious viability risk or a better direction, ask the founder for a decision using ask_user before finishing.\n"
             "- Search broadly: run run_research_pipeline, THEN 2-4 additional batch_search rounds to fill gaps and "
             "go deeper on specifics. fetch_and_read 8-15 of the best URLs. Aim for 15+ distinct sources before you finish.\n\n"
             "YOUR SEARCH PLAN (replace {topic} with the actual subject):\n\n"

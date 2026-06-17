@@ -369,75 +369,88 @@ function TeamSection({ founderId, org }: { founderId: string; org: OrganizationA
       {/* Invite modal */}
       {showInviteModal && (
         <div
-          style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.4)" }}
+          className="astra-modal-backdrop"
           onClick={(e) => { if (e.target === e.currentTarget) setShowInviteModal(false); }}
         >
-          <div style={{
-            width: "100%", maxWidth: 440, borderRadius: 16,
-            border: `1px solid ${c.border}`, background: c.bg,
-            boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
-            padding: 28, display: "grid", gap: 18,
-          }}>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 17, color: c.text, fontWeight: 600, letterSpacing: "-0.01em" }}>Invite to {org?.name || team?.name || "Company"}</h2>
-              <p style={{ margin: "5px 0 0", fontSize: 13, color: c.grey }}>Invite someone into the company workspace. Copy the link or send it to an email address.</p>
-            </div>
-            <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.textMuted, fontWeight: 500 }}>Email (optional)</span>
-              <input
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                placeholder="teammate@example.com"
-                type="email"
-                style={inputStyle()}
-                onFocus={e => (e.target.style.borderColor = c.blue)}
-                onBlur={e => (e.target.style.borderColor = c.border)}
-                onKeyDown={(e) => e.key === "Enter" && handleInvite()}
-              />
-            </label>
-            <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.textMuted, fontWeight: 500 }}>Role</span>
-              <select
-                value={inviteRole}
-                onChange={(e) => setInviteRole(e.target.value as typeof inviteRole)}
-                style={inputStyle()}
-              >
-                <option value="viewer">Viewer</option>
-                <option value="operator">Operator</option>
-                <option value="admin">Admin</option>
-              </select>
-            </label>
-            {inviteUrl && (
-              <MiniCard>
-                <div style={{ fontSize: 11, color: c.grey, marginBottom: 4 }}>Copied invite link</div>
-                <div style={{ fontSize: 12, color: c.textSecondary, wordBreak: "break-all" }}>{inviteUrl}</div>
-              </MiniCard>
-            )}
-            {inviteError && (
-              <span style={{ fontSize: 12, color: c.red }}>{inviteError}</span>
-            )}
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button
-                onClick={() => { setShowInviteModal(false); setInviteEmail(""); setInviteError(""); }}
-                style={{
-                  fontSize: 13, padding: "0 16px", minHeight: 38, borderRadius: 8,
-                  background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleInvite}
-                disabled={inviteBusy}
-                style={{
-                  fontSize: 13, padding: "0 18px", minHeight: 38, borderRadius: 8,
-                  background: c.blue, color: "#FFFFFF", border: "none",
-                  cursor: inviteBusy ? "not-allowed" : "pointer", fontWeight: 500,
-                  opacity: inviteBusy ? 0.6 : 1,
-                }}
-              >
-                {inviteBusy ? "Generating…" : "Copy invite link"}
-              </button>
+          <div className="astra-modal-shell" style={{ maxWidth: 500 }} onClick={(e) => e.stopPropagation()}>
+            <div className="astra-modal-panel">
+              <div className="astra-modal-header">
+                <div className="astra-modal-header-row">
+                  <div>
+                    <div className="astra-modal-eyebrow">team access</div>
+                    <h2 className="astra-modal-title" style={{ fontSize: 24 }}>Invite to {org?.name || team?.name || "Company"}</h2>
+                    <p className="astra-modal-sub">Bring someone into the workspace with the right role. Generate a shareable invite link or send it to a teammate.</p>
+                  </div>
+                  <button
+                    onClick={() => { setShowInviteModal(false); setInviteEmail(""); setInviteError(""); }}
+                    className="astra-modal-close"
+                    aria-label="Close invite modal"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+              <div className="astra-modal-body">
+                <div className="astra-modal-card" style={{ padding: 16, display: "grid", gap: 18 }}>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.textMuted, fontWeight: 500 }}>Email (optional)</span>
+                    <input
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder="teammate@example.com"
+                      type="email"
+                      style={inputStyle()}
+                      onFocus={e => (e.target.style.borderColor = c.blue)}
+                      onBlur={e => (e.target.style.borderColor = c.border)}
+                      onKeyDown={(e) => e.key === "Enter" && handleInvite()}
+                    />
+                  </label>
+                  <label style={{ display: "grid", gap: 6 }}>
+                    <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: c.textMuted, fontWeight: 500 }}>Role</span>
+                    <select
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value as typeof inviteRole)}
+                      style={inputStyle()}
+                    >
+                      <option value="viewer">Viewer</option>
+                      <option value="operator">Operator</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </label>
+                </div>
+                {inviteUrl && (
+                  <MiniCard>
+                    <div style={{ fontSize: 11, color: c.grey, marginBottom: 4 }}>Copied invite link</div>
+                    <div style={{ fontSize: 12, color: c.textSecondary, wordBreak: "break-all" }}>{inviteUrl}</div>
+                  </MiniCard>
+                )}
+                {inviteError && (
+                  <span style={{ fontSize: 12, color: c.red }}>{inviteError}</span>
+                )}
+                <div className="astra-modal-actions">
+                  <button
+                    onClick={() => { setShowInviteModal(false); setInviteEmail(""); setInviteError(""); }}
+                    style={{
+                      fontSize: 13, padding: "0 16px", minHeight: 38, borderRadius: 8,
+                      background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleInvite}
+                    disabled={inviteBusy}
+                    style={{
+                      fontSize: 13, padding: "0 18px", minHeight: 38, borderRadius: 8,
+                      background: c.blue, color: "#FFFFFF", border: "none",
+                      cursor: inviteBusy ? "not-allowed" : "pointer", fontWeight: 500,
+                      opacity: inviteBusy ? 0.6 : 1,
+                    }}
+                  >
+                    {inviteBusy ? "Generating…" : "Copy invite link"}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -135,60 +135,69 @@ function ConnectModal({
   const fields = source.credential_fields ?? [];
   const canSave = fields.length > 0 && fields.every(f => values[f]?.trim());
   return (
-    <div onClick={onClose} style={{
-      position: "fixed", inset: 0, zIndex: 200, background: "rgba(17,16,24,0.40)",
-      display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width: "100%", maxWidth: 460, background: "var(--surface)",
-        border: "1px solid var(--bd2)", borderRadius: 16, overflow: "hidden",
-        boxShadow: "0 24px 60px rgba(17,16,24,0.18)",
-      }}>
-        <div style={{ padding: "18px 22px 14px", borderBottom: "1px solid var(--bd)", display: "flex", alignItems: "center", gap: 10 }}>
-          <ServiceLogo serviceKey={source.key} label={source.label} size={24} fallback={SOURCE_ICONS[source.key] ?? "◇"} />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)" }}>{source.label}</div>
-            <div style={{ fontSize: 11, color: isConnected(source) ? "#16a34a" : "var(--fm)", marginTop: 1 }}>
-              {isConnected(source) ? "✓ Connected" : source.status === "planned" ? "Coming soon" : "Not connected"}
+    <div onClick={onClose} className="astra-modal-backdrop" style={{ zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} className="astra-modal-shell" style={{ maxWidth: 500 }}>
+        <div className="astra-modal-panel">
+          <div className="astra-modal-header">
+            <div className="astra-modal-header-row">
+              <div>
+                <div className="astra-modal-eyebrow">knowledge source</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <ServiceLogo serviceKey={source.key} label={source.label} size={26} fallback={SOURCE_ICONS[source.key] ?? "◇"} />
+                  <div>
+                    <h2 className="astra-modal-title" style={{ fontSize: 24 }}>{source.label}</h2>
+                    <div style={{ fontSize: 11, color: isConnected(source) ? "#16a34a" : "var(--fm)", marginTop: 4 }}>
+                      {isConnected(source) ? "✓ Connected" : source.status === "planned" ? "Coming soon" : "Not connected"}
+                    </div>
+                  </div>
+                </div>
+                <p className="astra-modal-sub">{source.notes || source.setup_hint || "Add your credentials to start syncing."}</p>
+              </div>
+              <button onClick={onClose} className="astra-modal-close" aria-label="Close source modal">×</button>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 18, color: "var(--fm)", cursor: "pointer", padding: 4 }}>✕</button>
-        </div>
 
-        <div style={{ padding: "16px 22px 20px", display: "grid", gap: 12 }}>
-          <p style={{ color: "var(--fd)", fontSize: 12.5, lineHeight: 1.6, margin: 0 }}>
-            {source.notes || source.setup_hint || "Add your credentials to start syncing."}
-          </p>
-          {source.setup_hint && source.notes !== source.setup_hint && (
-            <p style={{ color: "var(--fm)", fontSize: 11.5, lineHeight: 1.5, margin: 0 }}>{source.setup_hint}</p>
-          )}
-          {source.setup_url && (
-            <a href={source.setup_url} target="_blank" rel="noopener noreferrer"
-              style={{ color: "var(--blue)", fontSize: 12, width: "fit-content", fontWeight: 500 }}>
-              Where do I find this? →
-            </a>
-          )}
-          {fields.length > 0 ? (
-            <div style={{ display: "grid", gap: 9 }}>
-              {fields.map(field => (
-                <input
-                  key={field}
-                  className="f-input"
-                  value={values[field] ?? ""}
-                  onChange={e => onChange(field, e.target.value)}
-                  placeholder={field.replace(/_/g, " ")}
-                  type={field.includes("token") || field.includes("key") || field.includes("secret") ? "password" : "text"}
-                />
-              ))}
-              <button type="button" onClick={onSave} disabled={saving || !canSave} className="btn pri" style={{ minHeight: 38, fontSize: 13 }}>
-                {saving ? "Connecting…" : "Connect"}
-              </button>
-            </div>
-          ) : source.importer === false ? (
-            <div style={{ color: "var(--fm)", fontSize: 12, padding: "10px 14px", background: "var(--s2)", border: "1px solid var(--bd)", borderRadius: 9 }}>
-              This source isn&apos;t available yet — but you can still reference it in manual notes.
-            </div>
-          ) : null}
+          <div className="astra-modal-body">
+            {source.setup_hint && source.notes !== source.setup_hint && (
+              <p style={{ color: "var(--fm)", fontSize: 11.5, lineHeight: 1.5, margin: 0 }}>{source.setup_hint}</p>
+            )}
+            {source.setup_url && (
+              <a
+                href={source.setup_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "var(--blue)", fontSize: 12, width: "fit-content", fontWeight: 500 }}
+              >
+                Where do I find this? →
+              </a>
+            )}
+            {fields.length > 0 ? (
+              <div className="astra-modal-card" style={{ padding: 18, display: "grid", gap: 10 }}>
+                {fields.map(field => (
+                  <input
+                    key={field}
+                    className="f-input"
+                    value={values[field] ?? ""}
+                    onChange={e => onChange(field, e.target.value)}
+                    placeholder={field.replace(/_/g, " ")}
+                    type={field.includes("token") || field.includes("key") || field.includes("secret") ? "password" : "text"}
+                  />
+                ))}
+                <div className="astra-modal-actions" style={{ paddingTop: 12 }}>
+                  <button type="button" onClick={onClose} className="btn" style={{ minHeight: 38, fontSize: 13 }}>
+                    Cancel
+                  </button>
+                  <button type="button" onClick={onSave} disabled={saving || !canSave} className="btn pri" style={{ minHeight: 38, fontSize: 13 }}>
+                    {saving ? "Connecting…" : "Connect"}
+                  </button>
+                </div>
+              </div>
+            ) : source.importer === false ? (
+              <div className="astra-modal-card" style={{ color: "var(--fm)", fontSize: 12, padding: "14px 16px" }}>
+                This source isn&apos;t available yet — but you can still reference it in manual notes.
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

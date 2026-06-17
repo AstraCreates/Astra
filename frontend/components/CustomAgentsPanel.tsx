@@ -201,19 +201,27 @@ function AgentModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <div className="astra-modal-backdrop" style={{ zIndex: 50 }} onClick={onClose}>
       <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[88vh] overflow-y-auto"
+        className="astra-modal-shell"
+        style={{ maxWidth: 820 }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="px-6 py-5 border-b border-gray-100">
-          <div className="text-lg font-semibold text-gray-900">{agent ? "Edit agent" : "New custom agent"}</div>
-          <p className="text-xs text-gray-500 mt-0.5">
+        <div className="astra-modal-panel">
+        <div className="astra-modal-header">
+          <div className="astra-modal-header-row">
+            <div>
+              <div className="astra-modal-eyebrow">custom agents</div>
+              <div className="astra-modal-title" style={{ fontSize: 24 }}>{agent ? "Edit agent" : "New custom agent"}</div>
+              <p className="astra-modal-sub">
             Describe the job in plain language. Pick the tools it can use. Optionally run it on a schedule.
           </p>
+            </div>
+            <button onClick={onClose} className="astra-modal-close" aria-label="Close custom agent modal">×</button>
+          </div>
         </div>
 
-        <div className="px-6 py-5 space-y-5">
+        <div className="astra-modal-body">
           {/* Name */}
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1.5">Name</label>
@@ -333,12 +341,13 @@ function AgentModal({
           {err && <div className="text-xs text-red-600">{err}</div>}
         </div>
 
-        <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-2">
+        <div className="astra-modal-actions">
           <button onClick={onClose} className="btn">Cancel</button>
           <button onClick={handleSubmit} disabled={saving} className="btn pri">
             {saving ? "Saving…" : agent ? "Save changes" : "Create agent"}
           </button>
         </div>
+      </div>
       </div>
     </div>
   );

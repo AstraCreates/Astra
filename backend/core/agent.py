@@ -748,9 +748,12 @@ class Agent:
         if "ask_user" in self.tools:
             ask_user_section = (
                 "\nASK FOUNDER (optional): If you genuinely need input from the founder to proceed "
-                "— a preference, a decision, a missing credential — call "
-                "ask_user(session_id=<SESSION from context>, question=\"...\", options=[\"opt1\",\"opt2\"] or [], hint=\"...\"). "
-                "It blocks until they respond. Use sparingly; don't ask for things you can infer or decide yourself.\n"
+                "— a preference, a decision, a missing credential, or the evidence suggests a materially different direction — call "
+                "ask_user(session_id=<SESSION from context>, question=\"...\", options=[\"opt1\",\"opt2\"] or [], hint=\"...\", "
+                "title=\"...\", context=\"why this matters\", recommendation=\"your recommended path\", severity=\"info|warning|critical\", option_details={\"Option\":\"what it means\"}). "
+                "Use this for decision-grade questions: pivots, ICP changes, pricing changes, scope cuts, and other forks with real tradeoffs. "
+                "Do NOT ask vague or generic questions like 'what do you want to do?'. Offer 2-4 crisp options and explain the consequence of each when possible. "
+                "It blocks until they respond, so use it when the choice is consequential, not for trivia you can infer yourself.\n"
             )
 
         # Dashboard guidance injected only when the agent has the tool
