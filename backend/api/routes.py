@@ -2483,7 +2483,10 @@ async def serve_file(filename: str, download: bool = False):
     media_type, _ = mimetypes.guess_type(safe_name)
     if not media_type and safe_name.lower().endswith(".pdf"):
         media_type = "application/pdf"
-    if download:
+    if not media_type and safe_name.lower().endswith(".pptx"):
+        media_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    # PPTX always forces download (browsers can't preview it)
+    if download or safe_name.lower().endswith(".pptx"):
         return FileResponse(path, media_type=media_type or "application/octet-stream", filename=safe_name)
     return FileResponse(path, media_type=media_type or "application/octet-stream",
                         headers={"Content-Disposition": f"inline; filename=\"{safe_name}\""})

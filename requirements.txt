@@ -26,4 +26,5 @@ playwright>=1.45.0
 pypdf==4.3.1
 
 fpdf2>=2.7.0
+python-pptx>=0.6.21
 pywebpush>=1.14,<2

@@ -80,6 +80,7 @@ def _empty_genome(founder_id: str, company_id: str | None = None) -> dict[str, A
             "pricing": {},
             "competitors": {},
             "brand_voice": {},
+            "branding": {},
             "objections": {},
             "metrics": {},
             "risks": {},

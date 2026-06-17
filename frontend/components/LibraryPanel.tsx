@@ -758,27 +758,49 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
 
               {/* Right: full-height PDF viewer */}
               <div className="flex-1 flex flex-col min-w-0 min-h-0">
-                {activeDoc?.source_path ? (
-                  <>
-                    <div className="flex items-center gap-3 px-5 py-2.5 border-b border-[#E5E7EB] bg-gray-50 shrink-0">
-                      <span className="text-xs font-medium text-gray-600 flex-1 truncate">{activeDoc.label}</span>
-                      <a
-                        href={`/api/files/${encodeURIComponent(activeDoc.filename)}?download=1`}
-                        download={activeDoc.filename}
-                        className="text-xs text-[#002EFF] font-medium shrink-0"
-                      >
-                        Download ↓
-                      </a>
-                    </div>
-                    <div className="flex-1 min-h-0">
-                      <iframe
-                        src={`/api/files/${encodeURIComponent(activeDoc.filename)}`}
-                        style={{ width: "100%", height: "100%", border: "none", display: "block" }}
-                        title={activeDoc.label}
-                      />
-                    </div>
-                  </>
-                ) : (
+                {activeDoc?.source_path ? (() => {
+                  const isPptx = activeDoc.filename.toLowerCase().endsWith(".pptx");
+                  return (
+                    <>
+                      <div className="flex items-center gap-3 px-5 py-2.5 border-b border-[#E5E7EB] bg-gray-50 shrink-0">
+                        <span className="text-xs font-medium text-gray-600 flex-1 truncate">{activeDoc.label}</span>
+                        {isPptx && <span className="text-xs bg-green-50 text-green-700 border border-green-200 rounded px-2 py-0.5 font-medium shrink-0">PowerPoint</span>}
+                        <a
+                          href={`/api/files/${encodeURIComponent(activeDoc.filename)}?download=1`}
+                          download={activeDoc.filename}
+                          className="text-xs text-[#002EFF] font-medium shrink-0"
+                        >
+                          Download ↓
+                        </a>
+                      </div>
+                      <div className="flex-1 min-h-0">
+                        {isPptx ? (
+                          <div className="flex flex-col items-center justify-center h-full text-center px-8 gap-4">
+                            <div style={{ fontSize: 48 }}>📊</div>
+                            <div>
+                              <p className="text-sm font-semibold text-gray-700 mb-1">{activeDoc.label}</p>
+                              <p className="text-xs text-gray-400 mb-5">PowerPoint files can&apos;t be previewed in the browser — download to open in PowerPoint or Google Slides.</p>
+                              <a
+                                href={`/api/files/${encodeURIComponent(activeDoc.filename)}?download=1`}
+                                download={activeDoc.filename}
+                                className="btn pri"
+                                style={{ textDecoration: "none", display: "inline-block" }}
+                              >
+                                Download .pptx ↓
+                              </a>
+                            </div>
+                          </div>
+                        ) : (
+                          <iframe
+                            src={`/api/files/${encodeURIComponent(activeDoc.filename)}`}
+                            style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+                            title={activeDoc.label}
+                          />
+                        )}
+                      </div>
+                    </>
+                  );
+                })() : (
                   !hasDocs ? null : (
                     <div className="flex items-center justify-center h-full text-sm text-gray-400">
                       Select a document to preview

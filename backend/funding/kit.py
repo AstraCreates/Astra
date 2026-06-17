@@ -17,6 +17,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+
+
 logger = logging.getLogger(__name__)
 
 _FUNDING_DEPT = "Finance"
@@ -149,12 +151,48 @@ def _parse_sections(raw: str) -> list[dict]:
         return [{"heading": "Content", "body": raw}]
 
 
+def _get_branding(genome: dict, founder_id: str) -> dict:
+    """Extract branding (name, colors, logo) from genome."""
+    from backend.tools.pptx_generator import _extract_branding
+    branding = _extract_branding(genome)
+    # Also scan vault for a logo file if genome has no logo
+    if not branding.get("logo_url") and not branding.get("logo_path"):
+        vault = os.environ.get("OBSIDIAN_VAULT", "/tmp/astra_docs")
+        for ext in ("png", "jpg", "jpeg"):
+            candidate = Path(vault) / f"logo.{ext}"
+            if candidate.exists():
+                branding["logo_path"] = str(candidate)
+                break
+    return branding
+
+
+def _save_to_library(
+    founder_id: str, file_result: dict, label: str, company_name: str, content_desc: str,
+) -> dict:
+    from backend.library.store import create_file, list_files
+    file_path = file_result.get("path", "")
+    if not file_path:
+        return {}
+    existing = {f.get("source_path") for f in list_files(founder_id)}
+    if file_path not in existing:
+        return create_file(
+            founder_id=founder_id,
+            department=_FUNDING_DEPT,
+            filename=file_result.get("filename", label),
+            content=f"{content_desc} Auto-generated from company genome.",
+            is_canonical=True,
+            source_path=file_path,
+            source_tag="Funding Kit",
+        )
+    return next((f for f in list_files(founder_id) if f.get("source_path") == file_path), {})
+
+
 def generate_funding_kit(founder_id: str, company_id: str | None = None) -> dict[str, Any]:
-    """Generate pitch deck + executive summary, save to library. Blocking — run in a thread."""
+    """Generate pitch deck (PPTX) + executive summary (PDF), save to library. Blocking — run in thread."""
     import time
     from backend.genome.store import get_genome
+    from backend.tools.pptx_generator import generate_pptx
     from backend.tools.pdf_generator import generate_pdf
-    from backend.library.store import create_file, list_files
 
     status = _load_status(founder_id)
     status["generating"] = True
@@ -163,79 +201,65 @@ def generate_funding_kit(founder_id: str, company_id: str | None = None) -> dict
 
     try:
         genome = get_genome(founder_id, company_id) or {}
+        branding = _get_branding(genome, founder_id)
         company_name = (
-            (genome.get("profile") or {}).get("name")
-            or (genome.get("company") or {}).get("name")
+            branding.get("company_name")
+            or (genome.get("sections", {}).get("profile", {}) or {}).get("name", {})
             or "Company"
         )
+        if isinstance(company_name, dict):
+            company_name = company_name.get("value") or "Company"
+        company_name = str(company_name).strip() or "Company"
+
         genome_json = json.dumps(genome, indent=2, default=str)[:8000]
-
         documents = []
+        safe_name = company_name.lower().replace(" ", "_").encode("ascii", "ignore").decode()
 
-        # ── Pitch Deck ────────────────────────────────────────────────────────
+        # ── Pitch Deck (PowerPoint) ───────────────────────────────────────────
         raw_deck = _call_llm(_PITCH_DECK_PROMPT.format(genome_json=genome_json))
         deck_sections = _parse_sections(raw_deck)
-        deck_result = generate_pdf(
+        deck_result = generate_pptx(
             title=f"{company_name} — Investor Pitch Deck",
-            sections=deck_sections,
-            filename=f"{company_name.lower().replace(' ', '_')}_pitch_deck.pdf",
+            slides=deck_sections,
+            company_name=company_name,
+            primary_color=branding.get("primary_color", ""),
+            accent_color=branding.get("accent_color", ""),
+            logo_url=branding.get("logo_url", ""),
+            logo_path=branding.get("logo_path", ""),
+            filename=f"{safe_name}_pitch_deck.pptx",
         )
-        deck_path = deck_result.get("path", "")
-        if deck_path:
-            existing = {f.get("source_path") for f in list_files(founder_id)}
-            if deck_path not in existing:
-                rec = create_file(
-                    founder_id=founder_id,
-                    department=_FUNDING_DEPT,
-                    filename=deck_result.get("filename", "pitch_deck.pdf"),
-                    content=f"Pitch deck for {company_name}. Auto-generated from company genome.",
-                    is_canonical=True,
-                    source_path=deck_path,
-                    source_tag="Funding Kit",
-                )
-            else:
-                rec = next(
-                    (f for f in list_files(founder_id) if f.get("source_path") == deck_path), {}
-                )
+        rec = _save_to_library(founder_id, deck_result, "pitch_deck.pptx", company_name,
+                               f"Investor pitch deck for {company_name}.")
+        if deck_result.get("path"):
             documents.append({
                 "type": "pitch_deck",
                 "label": "Investor Pitch Deck",
                 "file_id": rec.get("id", ""),
-                "filename": deck_result.get("filename", "pitch_deck.pdf"),
-                "source_path": deck_path,
+                "filename": deck_result.get("filename", "pitch_deck.pptx"),
+                "source_path": deck_result.get("path", ""),
             })
 
-        # ── Executive Summary ─────────────────────────────────────────────────
+        # ── Executive Summary (PDF) ───────────────────────────────────────────
         raw_exec = _call_llm(_EXEC_SUMMARY_PROMPT.format(genome_json=genome_json))
         exec_sections = _parse_sections(raw_exec)
         exec_result = generate_pdf(
             title=f"{company_name} — Executive Summary",
             sections=exec_sections,
-            filename=f"{company_name.lower().replace(' ', '_')}_exec_summary.pdf",
+            filename=f"{safe_name}_exec_summary.pdf",
+            company_name=company_name,
+            primary_color=branding.get("primary_color", ""),
+            logo_url=branding.get("logo_url", ""),
+            logo_path=branding.get("logo_path", ""),
         )
-        exec_path = exec_result.get("path", "")
-        if exec_path:
-            existing = {f.get("source_path") for f in list_files(founder_id)}
-            if exec_path not in existing:
-                rec2 = create_file(
-                    founder_id=founder_id,
-                    department=_FUNDING_DEPT,
-                    filename=exec_result.get("filename", "exec_summary.pdf"),
-                    content=f"Executive summary for {company_name}. Auto-generated from company genome.",
-                    is_canonical=True,
-                    source_path=exec_path,
-                    source_tag="Funding Kit",
-                )
-            else:
-                rec2 = next(
-                    (f for f in list_files(founder_id) if f.get("source_path") == exec_path), {}
-                )
+        rec2 = _save_to_library(founder_id, exec_result, "exec_summary.pdf", company_name,
+                                f"Executive summary for {company_name}.")
+        if exec_result.get("path"):
             documents.append({
                 "type": "exec_summary",
                 "label": "Executive Summary",
                 "file_id": rec2.get("id", ""),
                 "filename": exec_result.get("filename", "exec_summary.pdf"),
-                "source_path": exec_path,
+                "source_path": exec_result.get("path", ""),
             })
 
         genome_hash = _genome_hash(genome)
