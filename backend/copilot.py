@@ -398,8 +398,12 @@ async def _tool_set_goal(founder_id: str, session_id: str, args: dict) -> Any:
 
 
 async def _tool_session_status(founder_id: str, session_id: str, args: dict) -> Any:
+    target = str(args.get("session_id") or session_id)
+    err = _assert_session_owner(target, founder_id)
+    if err:
+        return {"ok": False, "error": err}
     from backend.core.session_store import get_session_meta
-    meta = get_session_meta(args.get("session_id") or session_id) or {}
+    meta = get_session_meta(target) or {}
     return {"status": meta.get("status"), "goal": (meta.get("goal") or "")[:200],
             "credits_used": meta.get("credits_used", 0), "kind": meta.get("kind")}
 
@@ -471,14 +475,20 @@ async def _tool_list_sessions(founder_id: str, session_id: str, args: dict) -> A
 
 
 def _assert_session_owner(target_sid: str, founder_id: str) -> str | None:
-    """Return error string if target session doesn't belong to founder_id, else None."""
+    """Return error string if target session doesn't belong to founder_id, else None.
+    Fails closed: any error (missing session, import failure) returns 'forbidden'."""
+    if not founder_id:
+        return "forbidden"
     try:
         from backend.core.session_store import get_session_meta
-        meta = get_session_meta(target_sid) or {}
-        if str(meta.get("founder_id") or "") != str(founder_id):
-            return "forbidden"
-    except Exception:
-        pass
+        meta = get_session_meta(target_sid)
+    except Exception as exc:
+        logger.warning("owner check failed for %s: %s", target_sid, exc)
+        return "forbidden"
+    if not meta:
+        return "forbidden"
+    if str(meta.get("founder_id") or "") != str(founder_id):
+        return "forbidden"
     return None
 
 
@@ -727,7 +737,7 @@ async def _tool_read_vault(founder_id: str, session_id: str, args: dict) -> Any:
         vault = os.environ.get("OBSIDIAN_VAULT", "/data/astra_docs")
         base = Path(vault) / founder_id
         if not base.exists():
-            base = Path(vault)
+            return {"notes": [], "vault_root": str(base)}
         path_arg = str(args.get("path") or "").strip()
         if path_arg and (".." in path_arg or path_arg.startswith("/")):
             return {"ok": False, "error": "invalid path"}
@@ -738,7 +748,7 @@ async def _tool_read_vault(founder_id: str, session_id: str, args: dict) -> Any:
             return {"ok": False, "error": "invalid path"}
         notes = []
         for p in sorted(target_real.rglob("*.md"))[:limit]:
-            notes.append({"path": str(p.relative_to(base)), "content": _clip(p.read_text(), 500)})
+            notes.append({"path": str(p.relative_to(base_real)), "content": _clip(p.read_text(), 500)})
         return {"notes": notes, "vault_root": str(base)}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -789,6 +799,101 @@ def _parse_action(raw: str) -> dict:
     from backend.core.json_extract import extract_json
     v = extract_json(raw, prefer_keys=("action",))
     return v if v else {"action": "reply", "text": (raw or "").strip()}
+
+
+def _summarize_copilot_action(tool: str, result: Any) -> dict[str, str]:
+    tone = "success"
+    label = tool.replace("_", " ").strip().title() or "Action"
+    detail = ""
+    payload = result if isinstance(result, dict) else {}
+
+    if tool == "get_dashboard":
+        count = int(payload.get("count") or len(payload.get("elements") or []))
+        label = "Reviewed dashboard"
+        detail = f"{count} tile{'s' if count != 1 else ''} found"
+        tone = "info"
+    elif tool == "add_dashboard_tile":
+        label = "Added dashboard tile"
+        detail = str(payload.get("id") or "New tile created")
+    elif tool == "dispatch_agents":
+        dispatched = payload.get("dispatched") or []
+        label = "Dispatched agents"
+        if isinstance(dispatched, list) and dispatched:
+            detail = ", ".join(str(item) for item in dispatched[:4])
+        else:
+            detail = str(payload.get("session_id") or "Work started")
+    elif tool == "steer_agents":
+        label = "Steered live agents"
+        detail = str(payload.get("message") or "New direction sent")
+    elif tool == "set_goal":
+        label = "Updated company goal"
+        detail = str(payload.get("goal_title") or payload.get("title") or "Goal saved")
+    elif tool == "approve_next_goal":
+        label = "Resolved next goal"
+        detail = "Approved and started" if payload.get("approved") else "Rejected"
+    elif tool == "run_cycle":
+        label = "Ran another cycle"
+        detail = str(payload.get("session_id") or payload.get("message") or "Execution resumed")
+    elif tool == "session_status":
+        label = "Checked session status"
+        detail = str(payload.get("status") or "Status refreshed")
+        tone = "info"
+    elif tool == "get_session_digest":
+        label = "Reviewed session outputs"
+        detail = str(payload.get("goal") or payload.get("session_id") or "Latest artifacts loaded")
+        tone = "info"
+    elif tool in {"ask_brain", "read_brain", "read_vault", "get_library", "read_library_item", "get_outreach", "get_integrations", "company_goal", "list_goals", "list_sessions", "list_agents", "get_cost"}:
+        label = tool.replace("_", " ").strip().title() or "Checked context"
+        detail = "Context refreshed"
+        tone = "info"
+
+    if payload.get("ok") is False:
+        tone = "warn"
+        detail = str(payload.get("error") or detail or "Tool unavailable")
+
+    return {"tool": tool, "label": label, "detail": detail, "tone": tone}
+
+
+def _fallback_copilot_reply(actions: list[dict[str, Any]]) -> str:
+    if not actions:
+        return "I didn't catch that clearly. Try rephrasing, or tell me which agents to dispatch and what to do."
+
+    last = actions[-1]
+    tool = str(last.get("tool") or "")
+    result = last.get("result") if isinstance(last.get("result"), dict) else {}
+
+    if tool == "get_dashboard":
+        elements = result.get("elements") or []
+        count = int(result.get("count") or len(elements))
+        if count == 0:
+            return "Your dashboard is basically empty right now. I can replace it with useful company health, blockers, decisions, and next-step tiles."
+        titles = [str(item.get("title") or "").strip() for item in elements if isinstance(item, dict)]
+        titles = [title for title in titles if title][:4]
+        named = ", ".join(titles)
+        suffix = f" Right now it has {named}." if named else ""
+        return f"I checked the dashboard and found {count} tile{'s' if count != 1 else ''}.{suffix}"
+
+    if tool == "add_dashboard_tile":
+        return "I added the dashboard tile."
+
+    if tool == "dispatch_agents":
+        dispatched = result.get("dispatched") or []
+        if isinstance(dispatched, list) and dispatched:
+            return f"I started work with {', '.join(str(item) for item in dispatched[:4])}."
+        return "I started the work."
+
+    if tool == "steer_agents":
+        return "I sent that direction to the agents already working on it."
+
+    if tool == "session_status":
+        status = result.get("status")
+        return f"I checked the session status: {status}." if status else "I checked the session status."
+
+    summary = _summarize_copilot_action(tool, result).get("label")
+    if summary:
+        return f"I completed: {summary}."
+
+    return "I completed the requested action."
 
 
 async def run_copilot(founder_id: str, session_id: str, message: str) -> dict[str, Any]:
@@ -867,18 +972,16 @@ async def run_copilot(founder_id: str, session_id: str, message: str) -> dict[st
         break
 
     if not reply:
-        if actions:
-            # Tools ran but model never emitted a reply — generate a brief confirmation.
-            last_result = actions[-1].get("result") or {}
-            dispatched = last_result.get("dispatched") or last_result.get("session_id")
-            reply = f"Done — ran {', '.join(a['tool'] for a in actions)}." + (f" Session: {dispatched}" if dispatched else "")
-        else:
-            # Model couldn't produce any action — this usually means the request was
-            # unclear or the model got stuck. Give a generic but honest response.
-            reply = "I didn't catch that clearly. Try rephrasing, or tell me which agents to dispatch and what to do."
+        reply = _fallback_copilot_reply(actions)
+
+    action_summaries = [
+        _summarize_copilot_action(str(action.get("tool") or ""), action.get("result"))
+        for action in actions
+        if action.get("tool")
+    ]
 
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     history.append({"role": "founder", "content": message, "at": now})
-    history.append({"role": "copilot", "content": reply, "at": now, "actions": [a["tool"] for a in actions]})
+    history.append({"role": "copilot", "content": reply, "at": now, "actions": action_summaries})
     _save_history(session_id, history)
-    return {"ok": True, "reply": reply, "actions": actions, "history": history}
+    return {"ok": True, "reply": reply, "actions": action_summaries, "history": history}
