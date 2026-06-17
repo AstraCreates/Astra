@@ -1441,11 +1441,6 @@ def run_mvp_loop(
                + ("" if incremental else (" from plan" if build_plan else "")))
         _run_claude(local, build_prompt, session_id=build_sid, timeout=1800,
                     founder_id=founder_id, app_session_id=session_id, agent=agent)
-        # Mark this agent's product as built so future goals run incrementally.
-        try:
-            built_marker.write_text(build_sid)
-        except Exception:
-            pass
 
         # Completion loop: keep going until required files exist. Default is one
         # follow-up; extra rounds are configurable because each round is an
@@ -1564,6 +1559,13 @@ def run_mvp_loop(
         all_files = _list_built_files(local)
         _build_status = "passed" if build_ok else ("failed" if _expects_node else "skipped")
         _phase(f"Build {_build_status} — {len(all_files)} files written", files_total=len(all_files))
+        # Write the incremental marker only on a real success — prevents future goals
+        # from running in incremental mode on a never-built (empty) repo.
+        if build_ok and not incremental:
+            try:
+                built_marker.write_text(build_sid)
+            except Exception:
+                pass
 
         # Auto-deploy to Vercel so there's a live preview URL (uses placeholder env
         # vars so it builds without real keys). Only when pushed to GitHub.
