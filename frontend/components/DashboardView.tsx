@@ -8,6 +8,7 @@ import { useDevUser } from "@/lib/use-dev-user";
 import AstraGradient from "./AstraGradient";
 import GoalPanel from "./GoalPanel";
 import LiveStatusPanel from "./LiveStatusPanel";
+import DashboardCanvas from "./DashboardCanvas";
 
 const GREETINGS = [
   "Welcome back",
@@ -512,6 +513,10 @@ export default function DashboardView() {
             )}
           </div>
           </div>{/* end sessions col */}
+        </div>
+
+        <div style={{ padding: "0 24px 40px" }}>
+          <DashboardCanvas founderId={userId} />
         </div>
 
       </div>
