@@ -711,10 +711,10 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
                 </div>
               )}
               {!fundingLoading && !hasDocs && !generating && (
-                <div className="text-center py-16 text-gray-400">
-                  <div style={{ fontSize: 36, marginBottom: 12 }}>◈</div>
-                  <p className="text-sm font-medium text-gray-500 mb-1">No documents yet</p>
-                  <p className="text-xs text-gray-400 mb-4">
+                <div className="flex flex-col items-center justify-center text-center py-16 px-6">
+                  <div style={{ fontSize: 32, marginBottom: 10, color: "#9CA3AF" }}>◈</div>
+                  <p className="text-sm font-medium text-gray-500 mb-2">No documents yet</p>
+                  <p className="text-xs text-gray-400 mb-5 max-w-xs leading-relaxed">
                     Fill in your Company Brain, then generate your kit — Astra builds a pitch deck
                     and executive summary tailored to your company.
                   </p>
