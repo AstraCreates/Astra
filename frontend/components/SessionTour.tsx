@@ -33,7 +33,7 @@ const STEPS: TourStep[] = [
     icon: "⬡",
     description: "Each card is a department of AI agents — Research, Design, Marketing, Legal, Finance, and more. They work in parallel, not in sequence.",
     hint: "Click any card to see exactly what that team is building.",
-    position: "top",
+    position: "bottom",
   },
   {
     target: "session-vault",
@@ -63,7 +63,7 @@ const STEPS: TourStep[] = [
 
 const PAD = 10;
 const TW = 340;
-const TH = 240;
+const TH = 320;
 
 interface Rect { top: number; left: number; width: number; height: number }
 
