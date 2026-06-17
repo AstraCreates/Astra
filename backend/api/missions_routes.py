@@ -317,8 +317,28 @@ async def run_company_cycle(
     reconcile_operating_sessions(founder_id, resolved_company_id)
     if has_active_run(founder_id, company_id=resolved_company_id):
         raise HTTPException(status_code=409, detail="A run is already in progress — wait for it to finish")
-    background_tasks.add_task(dispatch_current_goal, founder_id, resolved_company_id)
-    return {"ok": True, "parent_session_id": goal.get("root_session_id", "")}
+    # Pre-register the operating session so we can return its ID immediately.
+    # The orchestrator is then kicked off as an asyncio task (non-blocking).
+    from backend.core.session_ids import new_session_id
+    from backend.core.session_store import register_session, get_session_meta
+    import asyncio as _asyncio
+    root = goal.get("root_session_id") or goal.get("source_session_id") or ""
+    root_meta = get_session_meta(root) if root else {}
+    pre_sid = new_session_id()
+    try:
+        register_session(
+            session_id=pre_sid,
+            founder_id=founder_id,
+            goal=f"GOAL: {cg.get('title', 'Goal run')}",
+            workspace_id=str((root_meta or {}).get("workspace_id") or ""),
+            company_id=str((root_meta or {}).get("company_id") or resolved_company_id),
+            parent_session_id=root,
+            kind="operating",
+        )
+    except Exception:
+        pass
+    _asyncio.create_task(dispatch_current_goal(founder_id, resolved_company_id, _pre_session_id=pre_sid))
+    return {"ok": True, "session_id": pre_sid, "parent_session_id": goal.get("root_session_id", "")}
 
 
 class ApproveNextGoalBody(BaseModel):
@@ -360,9 +380,30 @@ async def approve_next_goal(
     if goal is None:
         raise HTTPException(status_code=404, detail="No proposed goal awaiting approval")
     reconcile_operating_sessions(body.founder_id, company_id)
+    pre_sid = ""
     if not has_active_run(body.founder_id, company_id=company_id):
-        background_tasks.add_task(dispatch_current_goal, body.founder_id, company_id)
-    return {"ok": True, "goal": goal}
+        from backend.core.session_ids import new_session_id
+        from backend.core.session_store import register_session, get_session_meta
+        from backend.missions.company_goal import current_goal as _cg
+        import asyncio as _asyncio
+        _cg_entry = _cg(body.founder_id, company_id) or {}
+        root = goal.get("root_session_id") or goal.get("source_session_id") or ""
+        root_meta = get_session_meta(root) if root else {}
+        pre_sid = new_session_id()
+        try:
+            register_session(
+                session_id=pre_sid,
+                founder_id=body.founder_id,
+                goal=f"GOAL: {_cg_entry.get('title', 'Goal run')}",
+                workspace_id=str((root_meta or {}).get("workspace_id") or ""),
+                company_id=str((root_meta or {}).get("company_id") or company_id),
+                parent_session_id=root,
+                kind="operating",
+            )
+        except Exception:
+            pass
+        _asyncio.create_task(dispatch_current_goal(body.founder_id, company_id, _pre_session_id=pre_sid))
+    return {"ok": True, "goal": goal, "session_id": pre_sid}
 
 
 @router.patch("/missions/company-goal/status")

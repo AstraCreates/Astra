@@ -343,7 +343,8 @@ export default function MissionsPanel() {
     setBusy("run"); setActionErr(null);
     try {
       const r = await runCompanyCycle(founderId, companyId);
-      if (r.parent_session_id) window.location.assign(`/s/${r.parent_session_id}`);
+      const dest = r.session_id || r.parent_session_id;
+      if (dest) window.location.assign(`/s/${dest}`);
       else await loadGoal();
     } catch (e) { setActionErr(e instanceof Error ? e.message : String(e)); setTimeout(() => setActionErr(null), 8000); }
     finally { setBusy(null); }

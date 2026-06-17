@@ -2312,7 +2312,7 @@ export async function markCompanyTaskDone(founderId: string, taskId: string, com
   return (await res.json()).task;
 }
 
-export async function runCompanyCycle(founderId: string, companyId = ""): Promise<{ ok: boolean; parent_session_id: string }> {
+export async function runCompanyCycle(founderId: string, companyId = ""): Promise<{ ok: boolean; session_id?: string; parent_session_id: string }> {
   const params = new URLSearchParams({ founder_id: founderId });
   if (companyId) params.set("company_id", companyId);
   const res = await apiFetch(`${BASE}/missions/company-goal/run?${params}`, { method: "POST" });
@@ -2322,7 +2322,7 @@ export async function runCompanyCycle(founderId: string, companyId = ""): Promis
 
 export async function approveNextGoal(
   founderId: string, approved = true, companyId = ""
-): Promise<{ ok: boolean; goal?: CompanyGoalEntry; rejected?: boolean }> {
+): Promise<{ ok: boolean; goal?: CompanyGoalEntry; rejected?: boolean; session_id?: string }> {
   const res = await apiFetch(`${BASE}/missions/company-goal/approve-next`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, company_id: companyId, approved }),

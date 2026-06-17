@@ -136,7 +136,8 @@ export default function GoalPanel({ defaultShowDone = false }: { defaultShowDone
     setBusy("run"); setErr(null);
     try {
       const r = await runCompanyCycle(founderId, companyId);
-      if (r.parent_session_id) window.location.assign(`/s/${r.parent_session_id}`);
+      const dest = r.session_id || r.parent_session_id;
+      if (dest) window.location.assign(`/s/${dest}`);
       else await loadGoal();
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); setTimeout(() => setErr(null), 8000); }
     finally { setBusy(null); }
@@ -151,8 +152,9 @@ export default function GoalPanel({ defaultShowDone = false }: { defaultShowDone
   const decideGoal = async (approved: boolean) => {
     setBusy(approved ? "approve" : "reject"); setErr(null);
     try {
-      await approveNextGoal(founderId, approved, companyId);
-      if (approved && goal?.root_session_id) window.location.assign(`/s/${goal.root_session_id}`);
+      const r = await approveNextGoal(founderId, approved, companyId);
+      const dest = approved && (r?.session_id || goal?.root_session_id);
+      if (dest) window.location.assign(`/s/${dest}`);
       else await loadGoal();
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); setTimeout(() => setErr(null), 8000); }
     finally { setBusy(null); }

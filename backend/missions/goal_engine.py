@@ -728,6 +728,7 @@ def plan_next_goal(founder_id: str, company_id: str | None = None) -> dict[str, 
 async def dispatch_current_goal(
     founder_id: str,
     company_id: str | None = None,
+    _pre_session_id: str = "",
 ) -> dict[str, Any]:
     """Run the whole company on the current goal: continue_run with exactly the agents
     that own its open tasks, in a child session linked to the launch session."""
@@ -777,7 +778,7 @@ async def dispatch_current_goal(
     title = cg.get("title", "")
     owners = sorted({a for t in open_tasks for a in (t.get("owner_agents") or [])})
     root = goal.get("root_session_id") or goal.get("source_session_id") or ""
-    session_id = new_session_id()
+    session_id = _pre_session_id or new_session_id()
     if is_followup:
         header = (
             f"FOLLOW-UP RUN for GOAL: {title}\n\n"
@@ -810,13 +811,13 @@ async def dispatch_current_goal(
         else f"{len(open_tasks)} task(s): {title}"
     )
     try:
-        from backend.core.session_store import register_session
-        from backend.core.session_store import get_session_meta
+        from backend.core.session_store import register_session, get_session_meta
         root_meta = get_session_meta(root) or {}
-        register_session(session_id=session_id, founder_id=founder_id, goal=instruction,
-                         workspace_id=str(root_meta.get("workspace_id") or ""),
-                         company_id=str(root_meta.get("company_id") or company_id),
-                         parent_session_id=root, kind="operating")
+        if not _pre_session_id:
+            register_session(session_id=session_id, founder_id=founder_id, goal=instruction,
+                             workspace_id=str(root_meta.get("workspace_id") or ""),
+                             company_id=str(root_meta.get("company_id") or company_id),
+                             parent_session_id=root, kind="operating")
     except Exception:
         pass
     add_operating_session(
