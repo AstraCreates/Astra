@@ -470,7 +470,252 @@ async def _tool_list_sessions(founder_id: str, session_id: str, args: dict) -> A
     ]}
 
 
+async def _tool_kill_session(founder_id: str, session_id: str, args: dict) -> Any:
+    """Kill/stop a running or hung session. args: {session_id?}"""
+    from backend.core.cancellation import request_kill
+    target = str(args.get("session_id") or session_id)
+    try:
+        request_kill(target)
+        return {"ok": True, "killed": target}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def _tool_rerun_agent(founder_id: str, session_id: str, args: dict) -> Any:
+    """Re-run a single agent that failed or needs to redo its work. args: {agent_name, session_id?}"""
+    import asyncio
+    from backend.core.factory import get_orchestrator
+    from backend.core.session_ids import new_session_id
+    from backend.core.session_store import register_session, get_session_meta
+    agent_name = str(args.get("agent_name") or args.get("agent") or "").strip()
+    target_sid = str(args.get("session_id") or session_id)
+    if not agent_name:
+        return {"ok": False, "error": "agent_name required"}
+    try:
+        src_meta = get_session_meta(target_sid) or {}
+        instruction = src_meta.get("goal") or f"Complete your assigned work for: {agent_name}"
+        child = new_session_id()
+        company_id = src_meta.get("company_id") or founder_id
+        register_session(session_id=child, founder_id=founder_id, goal=instruction,
+                         company_id=company_id, parent_session_id=target_sid, kind="operating")
+        orch = get_orchestrator()
+        async def _go():
+            await orch.continue_run(instruction=instruction, founder_id=founder_id,
+                                    prior_session_id=target_sid, agents=[agent_name], session_id=child)
+        asyncio.create_task(_go())
+        return {"ok": True, "agent": agent_name, "session_id": child}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def _tool_get_session_digest(founder_id: str, session_id: str, args: dict) -> Any:
+    """Full digest of a session — what each agent produced, key outputs. args: {session_id?}"""
+    import asyncio
+    target = str(args.get("session_id") or session_id)
+    try:
+        from backend.api.routes import _load_session_events
+        from backend.workflow_state import build_session_state
+        events = await _load_session_events(target)
+        state = await asyncio.to_thread(build_session_state, target, events or [])
+        digest = state.get("digest") or {}
+        agents = state.get("agents") or {}
+        return {
+            "goal": _clip((digest.get("goal") or ""), 400),
+            "summary": _clip((digest.get("summary") or ""), 600),
+            "agents": {
+                name: {
+                    "status": (ag or {}).get("status"),
+                    "summary": _clip((ag or {}).get("summary") or (ag or {}).get("result") or "", 400),
+                    "deploy_url": (ag or {}).get("deploy_url") or "",
+                }
+                for name, ag in agents.items()
+            },
+            "artifacts": [
+                {"key": a.get("key"), "title": a.get("title"), "agent": a.get("agent")}
+                for a in (state.get("artifacts") or [])[-20:]
+            ],
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def _tool_read_brain(founder_id: str, session_id: str, args: dict) -> Any:
+    """Read the company brain — identity records, canonical facts. args: {limit?}"""
+    import asyncio
+    limit = int(args.get("limit") or 30)
+    try:
+        from backend.tools.company_brain import get_company_brain
+        raw = await asyncio.to_thread(get_company_brain, founder_id)
+        records = (raw or {}).get("records") or []
+        return {
+            "identity": (raw or {}).get("identity") or {},
+            "records": [
+                {"id": r.get("id"), "type": r.get("type"), "title": r.get("title"),
+                 "content": _clip(r.get("content") or "", 300)}
+                for r in records[:limit]
+            ],
+            "total": len(records),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def _tool_write_brain(founder_id: str, session_id: str, args: dict) -> Any:
+    """Add or update a company brain record. args: {title, content, type?}
+    type: insight|decision|fact|milestone|risk|persona|competitor|asset"""
+    import asyncio
+    title = str(args.get("title") or "").strip()
+    content = str(args.get("content") or "").strip()
+    rec_type = str(args.get("type") or "insight").strip()
+    if not title or not content:
+        return {"ok": False, "error": "title and content required"}
+    try:
+        from backend.tools.company_brain import add_company_brain_record
+        result = await asyncio.to_thread(add_company_brain_record, founder_id, "copilot", title, content, rec_type)
+        return {"ok": True, "record": result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def _tool_get_library(founder_id: str, session_id: str, args: dict) -> Any:
+    """List all library/artifact files for this founder. args: {limit?}"""
+    import asyncio
+    from backend.library.store import list_files
+    try:
+        files = await asyncio.to_thread(list_files, founder_id)
+        return {"files": [
+            {"id": f.get("id"), "title": f.get("title") or f.get("filename") or f.get("name"),
+             "type": f.get("type"), "department": f.get("department"),
+             "created_at": str(f.get("created_at") or "")[:16]}
+            for f in (files or [])
+        ]}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def _tool_read_library_item(founder_id: str, session_id: str, args: dict) -> Any:
+    """Read the content of a specific library/artifact file. args: {file_id}"""
+    import asyncio
+    file_id = str(args.get("file_id") or args.get("id") or "").strip()
+    if not file_id:
+        return {"ok": False, "error": "file_id required — use get_library to list files"}
+    try:
+        from backend.library.store import get_file
+        f = await asyncio.to_thread(get_file, founder_id, file_id)
+        return f or {"ok": False, "error": "not found"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def _tool_get_dashboard(founder_id: str, session_id: str, args: dict) -> Any:
+    """Read all dashboard tiles. args: {}"""
+    from backend.tools.dashboard_tools import dashboard_get
+    return dashboard_get(founder_id)
+
+
+async def _tool_add_dashboard_tile(founder_id: str, session_id: str, args: dict) -> Any:
+    """Add a tile to the founder dashboard. args: {title, type, size, config}
+    type: metric|chart|table|button|progress|markdown|list|status_board
+    size: small|medium|big|xl"""
+    from backend.tools.dashboard_tools import dashboard_add_element
+    title = str(args.get("title") or "").strip()
+    tile_type = str(args.get("type") or "markdown")
+    size = str(args.get("size") or "medium")
+    config = args.get("config") or {"content": str(args.get("content") or title)}
+    if not title:
+        return {"ok": False, "error": "title required"}
+    return dashboard_add_element(founder_id=founder_id, title=title, type=tile_type,
+                                  size=size, config=config, agent="copilot")
+
+
+async def _tool_get_integrations(founder_id: str, session_id: str, args: dict) -> Any:
+    """List all connected integrations and their status. args: {}"""
+    import asyncio
+    try:
+        from backend.connector_coverage import build_connector_coverage
+        cov = await asyncio.to_thread(build_connector_coverage, founder_id)
+        return {"integrations": cov}
+    except Exception:
+        pass
+    try:
+        from backend.config import settings
+        connected = {}
+        for k in ("stripe_secret_key", "gmail_client_id", "github_token",
+                  "composio_api_key", "klaviyo_api_key", "twilio_account_sid",
+                  "square_access_token", "printful_api_key", "yelp_api_key"):
+            val = getattr(settings, k, None) or ""
+            connected[k.replace("_secret_key","").replace("_api_key","").replace("_account_sid","").replace("_access_token","").replace("_client_id","").replace("_token","")] = bool(val)
+        return {"integrations": connected}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def _tool_get_outreach(founder_id: str, session_id: str, args: dict) -> Any:
+    """Get outreach contacts and campaigns summary. args: {limit?}"""
+    import asyncio
+    limit = int(args.get("limit") or 20)
+    result: dict[str, Any] = {}
+    try:
+        from backend.outreach.store import list_contacts
+        contacts = await asyncio.to_thread(list_contacts, founder_id, limit=limit)
+        result["contacts"] = [
+            {"name": c.get("name"), "email": c.get("email"), "company": c.get("company"),
+             "status": c.get("status")}
+            for c in (contacts or [])
+        ]
+        result["contact_count"] = len(result["contacts"])
+    except Exception:
+        result["contacts"] = []
+    try:
+        from backend.outreach.campaigns import list_campaigns
+        campaigns = await asyncio.to_thread(list_campaigns, founder_id)
+        result["campaigns"] = [
+            {"id": c.get("id"), "name": c.get("name"), "status": c.get("status"),
+             "sent": c.get("sent_count", 0)}
+            for c in (campaigns or [])
+        ]
+    except Exception:
+        result["campaigns"] = []
+    return result
+
+
+async def _tool_get_cost(founder_id: str, session_id: str, args: dict) -> Any:
+    """Get credit usage and cost for a session or overall. args: {session_id?}"""
+    try:
+        from backend.core.session_store import get_session_meta
+        target = str(args.get("session_id") or session_id)
+        meta = get_session_meta(target) or {}
+        return {
+            "session_id": target,
+            "credits_used": meta.get("credits_used", 0),
+            "cost_usd": meta.get("cost_usd"),
+            "model": meta.get("model"),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def _tool_read_vault(founder_id: str, session_id: str, args: dict) -> Any:
+    """Read raw vault/obsidian notes for this founder. args: {path?, limit?}"""
+    import os
+    limit = int(args.get("limit") or 10)
+    try:
+        vault = os.environ.get("OBSIDIAN_VAULT", "/data/astra_docs")
+        base = Path(vault) / founder_id
+        if not base.exists():
+            base = Path(vault)
+        path_arg = str(args.get("path") or "").strip()
+        target_dir = (base / path_arg) if path_arg else base
+        notes = []
+        for p in sorted(target_dir.rglob("*.md"))[:limit]:
+            notes.append({"path": str(p.relative_to(base)), "content": _clip(p.read_text(), 500)})
+        return {"notes": notes, "vault_root": str(base)}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 _TOOLS = {
+    # ── Core session/run control ───────────────────────────────────────────────
     "ask_brain": ("ask the company brain a question (returns a cited answer). args: {question}", _tool_ask_brain),
     "company_goal": ("get the company north star, current goal + status, and goal list. args: {}", _tool_company_goal),
     "list_goals": ("list ALL company goals with status and open task counts. args: {}", _tool_list_goals),
@@ -482,6 +727,26 @@ _TOOLS = {
     "steer_agents": ("inject a directive into THIS session's already-running agents. args: {message}", _tool_steer_agents),
     "run_cycle": ("dispatch the team on the current approved goal now. args: {}", _tool_run_cycle),
     "session_status": ("status of a session (defaults to the current one). args: {session_id?}", _tool_session_status),
+    "kill_session": ("stop/kill a running or hung session. args: {session_id?}", _tool_kill_session),
+    "rerun_agent": ("re-run a single agent that failed or needs to redo its work. args: {agent_name, session_id?}", _tool_rerun_agent),
+    # ── Read session outputs ───────────────────────────────────────────────────
+    "get_session_digest": ("full digest of a session — what each agent produced, key outputs, deploy URLs. args: {session_id?}", _tool_get_session_digest),
+    # ── Brain read/write ───────────────────────────────────────────────────────
+    "read_brain": ("read company brain identity records and canonical facts. args: {limit?}", _tool_read_brain),
+    "write_brain": ("add or update a company brain record. args: {title, content, type?}. type: insight|decision|fact|milestone|risk|persona|competitor|asset", _tool_write_brain),
+    # ── Library / artifacts ────────────────────────────────────────────────────
+    "get_library": ("list all library/artifact files produced by agents. args: {limit?}", _tool_get_library),
+    "read_library_item": ("read content of a specific library file. args: {file_id}", _tool_read_library_item),
+    # ── Dashboard ─────────────────────────────────────────────────────────────
+    "get_dashboard": ("read all current dashboard tiles. args: {}", _tool_get_dashboard),
+    "add_dashboard_tile": ("add a tile to the founder dashboard. args: {title, type, size, config}. type: metric|chart|table|markdown|list|progress|status_board", _tool_add_dashboard_tile),
+    # ── Integrations ──────────────────────────────────────────────────────────
+    "get_integrations": ("list connected integrations and their on/off status. args: {}", _tool_get_integrations),
+    # ── Outreach / CRM ────────────────────────────────────────────────────────
+    "get_outreach": ("get outreach contacts and campaigns summary. args: {limit?}", _tool_get_outreach),
+    # ── Cost / vault ──────────────────────────────────────────────────────────
+    "get_cost": ("get credit usage and cost for a session. args: {session_id?}", _tool_get_cost),
+    "read_vault": ("read raw obsidian/vault notes. args: {path?, limit?}", _tool_read_vault),
 }
 
 # Fold in the MCP parity tools (in-process proxies).
