@@ -470,10 +470,25 @@ async def _tool_list_sessions(founder_id: str, session_id: str, args: dict) -> A
     ]}
 
 
+def _assert_session_owner(target_sid: str, founder_id: str) -> str | None:
+    """Return error string if target session doesn't belong to founder_id, else None."""
+    try:
+        from backend.core.session_store import get_session_meta
+        meta = get_session_meta(target_sid) or {}
+        if str(meta.get("founder_id") or "") != str(founder_id):
+            return "forbidden"
+    except Exception:
+        pass
+    return None
+
+
 async def _tool_kill_session(founder_id: str, session_id: str, args: dict) -> Any:
     """Kill/stop a running or hung session. args: {session_id?}"""
     from backend.core.cancellation import request_kill
     target = str(args.get("session_id") or session_id)
+    err = _assert_session_owner(target, founder_id)
+    if err:
+        return {"ok": False, "error": err}
     try:
         request_kill(target)
         return {"ok": True, "killed": target}
@@ -491,6 +506,9 @@ async def _tool_rerun_agent(founder_id: str, session_id: str, args: dict) -> Any
     target_sid = str(args.get("session_id") or session_id)
     if not agent_name:
         return {"ok": False, "error": "agent_name required"}
+    err = _assert_session_owner(target_sid, founder_id)
+    if err:
+        return {"ok": False, "error": err}
     try:
         src_meta = get_session_meta(target_sid) or {}
         instruction = src_meta.get("goal") or f"Complete your assigned work for: {agent_name}"
@@ -512,6 +530,9 @@ async def _tool_get_session_digest(founder_id: str, session_id: str, args: dict)
     """Full digest of a session — what each agent produced, key outputs. args: {session_id?}"""
     import asyncio
     target = str(args.get("session_id") or session_id)
+    err = _assert_session_owner(target, founder_id)
+    if err:
+        return {"ok": False, "error": err}
     try:
         from backend.api.routes import _load_session_events
         from backend.workflow_state import build_session_state
@@ -684,6 +705,9 @@ async def _tool_get_cost(founder_id: str, session_id: str, args: dict) -> Any:
     try:
         from backend.core.session_store import get_session_meta
         target = str(args.get("session_id") or session_id)
+        err = _assert_session_owner(target, founder_id)
+        if err:
+            return {"ok": False, "error": err}
         meta = get_session_meta(target) or {}
         return {
             "session_id": target,
@@ -705,9 +729,15 @@ async def _tool_read_vault(founder_id: str, session_id: str, args: dict) -> Any:
         if not base.exists():
             base = Path(vault)
         path_arg = str(args.get("path") or "").strip()
+        if path_arg and (".." in path_arg or path_arg.startswith("/")):
+            return {"ok": False, "error": "invalid path"}
         target_dir = (base / path_arg) if path_arg else base
+        base_real = base.resolve()
+        target_real = target_dir.resolve()
+        if not (target_real == base_real or str(target_real).startswith(str(base_real) + os.sep)):
+            return {"ok": False, "error": "invalid path"}
         notes = []
-        for p in sorted(target_dir.rglob("*.md"))[:limit]:
+        for p in sorted(target_real.rglob("*.md"))[:limit]:
             notes.append({"path": str(p.relative_to(base)), "content": _clip(p.read_text(), 500)})
         return {"notes": notes, "vault_root": str(base)}
     except Exception as e:
