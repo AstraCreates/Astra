@@ -600,8 +600,10 @@ class Agent:
         tc = _re.search(r'<tool_call>\s*(.*?)\s*</tool_call>', raw, _re.DOTALL)
         if tc:
             raw = tc.group(1)
-        # Strip ```json ... ``` fences (models often wrap the final object + prose)
-        fence = _re.search(r'```(?:json)?\s*(.*?)```', raw, _re.DOTALL)
+        # Strip ```json ... ``` fences only when the entire response IS a fence-wrapped
+        # block. A global search destroys JSON whose string values contain code blocks
+        # (e.g. run_mvp_loop goal args with embedded package.json examples).
+        fence = _re.search(r'^\s*```(?:json)?\s*(.*?)```\s*$', raw, _re.DOTALL)
         if fence:
             raw = fence.group(1)
 

@@ -1562,7 +1562,8 @@ def run_mvp_loop(
         _ensure_tailwind_setup(local)
         _stage_all(local)
         all_files = _list_built_files(local)
-        _phase(f"Build complete — {len(all_files)} files written", files_total=len(all_files))
+        _build_status = "passed" if build_ok else ("failed" if _expects_node else "skipped")
+        _phase(f"Build {_build_status} — {len(all_files)} files written", files_total=len(all_files))
 
         # Auto-deploy to Vercel so there's a live preview URL (uses placeholder env
         # vars so it builds without real keys). Only when pushed to GitHub.

@@ -360,16 +360,32 @@ def generate_logo(
 
 
 def composite_logo_on_image(
-    background_base64: str,
-    logo_base64: str,
+    background_base64: str = "",
+    logo_base64: str = "",
     position: str = "bottom-right",
     scale: float = 0.15,
+    # Common model alias names for the two required args
+    image_base64: str = "",
+    image: str = "",
+    ad_image: str = "",
+    background: str = "",
+    logo: str = "",
+    logo_wordmark: str = "",
+    logo_image: str = "",
 ) -> dict:
     """Composite a logo onto an ad image using PIL.
+    background_base64: base64 of the ad/background image (also accepted as image_base64, ad_image, image, background)
+    logo_base64: base64 of the logo (also accepted as logo, logo_wordmark, logo_image)
     position: 'bottom-right', 'bottom-left', 'top-right', 'top-left', 'bottom-center'
     scale: logo size as fraction of image width (0.10-0.25 recommended)
     Returns {base64} of the composited image.
     """
+    background_base64 = background_base64 or image_base64 or ad_image or image or background
+    logo_base64 = logo_base64 or logo or logo_wordmark or logo_image
+    if not background_base64:
+        return {"error": "composite_logo_on_image requires background_base64 (the ad image). Pass the base64 from generate_ad_image output."}
+    if not logo_base64:
+        return {"error": "composite_logo_on_image requires logo_base64 (the logo). Read it from obsidian_read(agent='design') output field logo_wordmark."}
     try:
         import base64 as _b64
         from PIL import Image
