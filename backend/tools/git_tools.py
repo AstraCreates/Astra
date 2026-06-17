@@ -1252,8 +1252,8 @@ def _generate_build_plan(goal: str, context: str = "", kind: str = "app", founde
 
 
 def run_mvp_loop(
-    repo_url: str,
-    goal: str,
+    repo_url: str = "",
+    goal: str = "",
     session_id: str = "default",
     context: str = "",
     required_files: list[str] = None,
@@ -1267,6 +1267,9 @@ def run_mvp_loop(
     """
     if required_files is None:
         required_files = MVP_REQUIRED
+
+    if not goal:
+        return {"error": "goal is required — describe what to build, e.g. \"Next.js SaaS app with auth and dashboard\""}
 
     try:
         # Pin the company's product repo: reuse the SAME repo across every run so
@@ -1639,8 +1642,8 @@ def run_mvp_loop(
 
 
 def run_claude_in_repo(
-    repo_url: str,
-    task: str,
+    repo_url: str = "",
+    task: str = "",
     session_id: str = "default",
     context: str = "",
     founder_id: str = "",

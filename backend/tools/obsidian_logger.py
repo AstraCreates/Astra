@@ -201,13 +201,17 @@ def obsidian_log(
 
 
 def obsidian_append(
-    agent: str,
-    session_id: str,
-    heading: str,
-    content: str,
+    agent: str = "",
+    session_id: str = "",
+    heading: str = "",
+    content: str = "",
     founder_id: str | None = None,
 ) -> dict:
     """Append a new section to an existing session note mid-run."""
+    if not agent or not session_id:
+        return {"error": "agent and session_id are required for obsidian_append"}
+    if not heading or not content:
+        return {"error": "heading and content are required for obsidian_append"}
     folder = _session_dir(session_id, founder_id)
     folder.mkdir(parents=True, exist_ok=True)
     filename = _note_path(agent, session_id, founder_id)

@@ -274,12 +274,14 @@ def _extract_links(html: str, base_domain: str = "") -> list[str]:
     return urls
 
 
-def fetch_and_read(url: str) -> dict:
+def fetch_and_read(url: str = "") -> dict:
     """
     Fetch any URL and return clean extracted text content.
     Works on websites, research papers (arXiv, PubMed, SSRN), news articles, etc.
     Paywalled/bot-blocking domains (ResearchGate, Wiley, Springer, etc.) are skipped automatically.
     """
+    if not url:
+        return {"error": "url is required — pass the full URL to fetch, e.g. https://example.com"}
     if _is_blocked(url):
         return {"url": url, "skipped": "blocked domain", "content": ""}
     # Serve a cached result (success or prior failure) so dead/looping URLs that
@@ -330,12 +332,14 @@ def fetch_and_read(url: str) -> dict:
         return _remember({"url": url, "skipped": str(e)[:80], "content": ""})
 
 
-def search_and_fetch(query: str, max_results: int = 16) -> dict:
+def search_and_fetch(query: str = "", max_results: int = 16) -> dict:
     """
     Search DuckDuckGo for the query, then fetch and read the actual content
     of each result page. Returns rich page content, not just snippets.
     Use for: websites, news, blogs, company pages, research papers, anything.
     """
+    if not query:
+        return {"error": "query is required — pass a search string, e.g. \"competitor pricing SaaS\""}
     raw = _robust_search(query, max_results=max_results * 2)
     if not raw:
         return {"query": query, "results": [], "error": "Search returned no results"}
@@ -424,14 +428,16 @@ def research_papers(query: str, max_results: int = 5) -> dict:
     return search_and_fetch(paper_query, max_results=max_results)
 
 
-def batch_search(queries: list, max_results_each: int = 8) -> dict:
+def batch_search(queries: list | None = None, max_results_each: int = 8) -> dict:
     """
     Run multiple search queries IN PARALLEL and return all results combined.
     Use this to run 3-8 searches simultaneously instead of one at a time.
     queries: list of search query strings (max 8 for speed).
     Returns: {results_by_query: {query: {results, formatted}}, combined_formatted: str}
     """
-    queries = queries[:12]  # cap to prevent abuse
+    if not queries:
+        return {"error": "queries is required — pass a list of search strings, e.g. [\"competitor A pricing\", \"competitor B features\"]"}
+    queries = list(queries)[:12]  # cap to prevent abuse
     results_by_query: dict = {}
 
     with ThreadPoolExecutor(max_workers=min(len(queries), 8)) as ex:
