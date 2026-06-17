@@ -10,9 +10,13 @@ import {
   updateLibraryFile,
   deleteLibraryFile,
   getExamplesLibrary,
+  getFundingStatus,
+  triggerFundingGenerate,
+  type FundingKitStatus,
 } from "@/lib/api";
 import PageHeader, { HeaderPrimaryBtn } from "@/components/PageHeader";
 import { PdfEmbed } from "@/components/GoalWorkspace";
+import { useCompany } from "@/lib/company-context";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -385,7 +389,8 @@ interface LibraryPanelProps {
 }
 
 export default function LibraryPanel({ founderId, className = "" }: LibraryPanelProps) {
-  const [mode, setMode] = useState<"files" | "templates">("files");
+  const { companyId } = useCompany();
+  const [mode, setMode] = useState<"files" | "templates" | "funding">("files");
 
   // Files state
   const [files, setFiles] = useState<LibraryFile[]>([]);
@@ -403,6 +408,52 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
   const [selectedExample, setSelectedExample] = useState<ExampleFile | null>(null);
   const [activeCat, setActiveCat] = useState("all");
   const [templateSearch, setTemplateSearch] = useState("");
+
+  // Funding Kit state
+  const [fundingStatus, setFundingStatus] = useState<FundingKitStatus | null>(null);
+  const [fundingLoading, setFundingLoading] = useState(false);
+  const [fundingTriggering, setFundingTriggering] = useState(false);
+  const [fundingError, setFundingError] = useState("");
+
+  const refreshFunding = useCallback(async () => {
+    if (!founderId) return;
+    try {
+      const s = await getFundingStatus(founderId, companyId || founderId);
+      setFundingStatus(s);
+    } catch {
+      setFundingError("Couldn't load funding kit status.");
+    } finally {
+      setFundingLoading(false);
+    }
+  }, [founderId, companyId]);
+
+  // Load funding status when tab activated
+  useEffect(() => {
+    if (mode !== "funding" || fundingStatus !== null) return;
+    setFundingLoading(true);
+    refreshFunding();
+  }, [mode, fundingStatus, refreshFunding]);
+
+  // Poll while generating
+  useEffect(() => {
+    if (!fundingStatus?.generating) return;
+    const t = setInterval(refreshFunding, 4000);
+    return () => clearInterval(t);
+  }, [fundingStatus?.generating, refreshFunding]);
+
+  async function handleFundingGenerate() {
+    if (!founderId) return;
+    setFundingTriggering(true);
+    setFundingError("");
+    try {
+      await triggerFundingGenerate(founderId, companyId || founderId);
+      await refreshFunding();
+    } catch (e: unknown) {
+      setFundingError(e instanceof Error ? e.message : "Failed to start generation.");
+    } finally {
+      setFundingTriggering(false);
+    }
+  }
 
   const loadFiles = useCallback(async () => {
     setLoadingFiles(true);
@@ -431,7 +482,7 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
     }
   }
 
-  function handleModeSwitch(m: "files" | "templates") {
+  function handleModeSwitch(m: "files" | "templates" | "funding") {
     setMode(m);
     if (m === "templates") loadExamples();
   }
@@ -473,29 +524,48 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
 
   return (
     <div className={`flex flex-col h-full bg-white overflow-hidden ${className}`}>
-      <PageHeader
-        title="Library"
-        subtitle="Files and templates injected into agent context during runs."
-        actions={mode === "files" ? <HeaderPrimaryBtn label="+ New File" onClick={() => { setShowNewForm(true); setSelectedFile(null); }} /> : undefined}
-      />
+      {(() => {
+        const fundingGenerating = fundingStatus?.generating || fundingTriggering;
+        const fundingHasDocs = (fundingStatus?.documents?.length ?? 0) > 0;
+        return (
+          <PageHeader
+            title="Library"
+            subtitle="Files and templates injected into agent context during runs."
+            actions={
+              mode === "files" ? (
+                <HeaderPrimaryBtn label="+ New File" onClick={() => { setShowNewForm(true); setSelectedFile(null); }} />
+              ) : mode === "funding" ? (
+                <HeaderPrimaryBtn
+                  label={fundingGenerating ? "Generating…" : fundingHasDocs ? "Regenerate" : "Generate Kit"}
+                  onClick={() => { handleFundingGenerate(); }}
+                  disabled={fundingGenerating}
+                />
+              ) : undefined
+            }
+          />
+        );
+      })()}
       {/* Top mode switcher */}
       <div className="flex items-center gap-0 border-b border-[#E5E7EB] px-5 pt-1 shrink-0">
-        {(["files", "templates"] as const).map((m) => (
+        {(["files", "templates", "funding"] as const).map((m) => (
           <button
             key={m}
             onClick={() => handleModeSwitch(m)}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors capitalize -mb-px ${
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
               mode === m
                 ? "border-[#002EFF] text-[#002EFF]"
                 : "border-transparent text-gray-500 hover:text-gray-800"
             }`}
           >
-            {m === "files" ? "My Files" : "Templates"}
+            {m === "files" ? "My Files" : m === "templates" ? "Templates" : "Funding Kit"}
             {m === "files" && files.length > 0 && (
               <span className={`ml-1.5 text-xs ${mode === m ? "text-blue-400" : "text-gray-400"}`}>{files.length}</span>
             )}
             {m === "templates" && examplesLoaded && examples.length > 0 && (
               <span className={`ml-1.5 text-xs ${mode === m ? "text-blue-400" : "text-gray-400"}`}>{examples.length}</span>
+            )}
+            {m === "funding" && fundingStatus?.needs_refresh && !fundingStatus?.generating && (
+              <span className="ml-1.5 text-xs text-amber-500">●</span>
             )}
           </button>
         ))}
@@ -613,6 +683,69 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
             </div>
           </>
         )}
+
+        {/* ── FUNDING KIT MODE ── */}
+        {mode === "funding" && (() => {
+          const generating = fundingStatus?.generating || fundingTriggering;
+          const needsRefresh = fundingStatus?.needs_refresh && !generating;
+          const hasDocs = (fundingStatus?.documents?.length ?? 0) > 0;
+          return (
+            <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+              {fundingLoading && <p className="text-sm text-gray-400">Loading…</p>}
+              {fundingError && (
+                <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">{fundingError}</div>
+              )}
+              {needsRefresh && (
+                <div className="flex items-center gap-3 text-sm bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
+                  <span className="text-amber-600 font-semibold">⚠ Outdated</span>
+                  <span className="text-amber-700">Company genome changed since last generation.</span>
+                  <button onClick={() => { handleFundingGenerate(); }} disabled={generating} className="ml-auto text-amber-700 font-semibold underline underline-offset-2 text-xs">
+                    Regenerate now
+                  </button>
+                </div>
+              )}
+              {generating && (
+                <div className="flex items-center gap-3 text-sm text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+                  <span className="animate-spin inline-block">⟳</span>
+                  Generating funding documents — this takes about 30–60 seconds…
+                </div>
+              )}
+              {!fundingLoading && !hasDocs && !generating && (
+                <div className="text-center py-16 text-gray-400">
+                  <div style={{ fontSize: 36, marginBottom: 12 }}>◈</div>
+                  <p className="text-sm font-medium text-gray-500 mb-1">No documents yet</p>
+                  <p className="text-xs text-gray-400 mb-4">
+                    Fill in your Company Brain, then generate your kit — Astra builds a pitch deck
+                    and executive summary tailored to your company.
+                  </p>
+                  <button onClick={() => { handleFundingGenerate(); }} disabled={generating} className="btn pri">
+                    Generate Funding Kit
+                  </button>
+                </div>
+              )}
+              {hasDocs && fundingStatus && (
+                <div className="space-y-8">
+                  {fundingStatus.generated_at && (
+                    <p className="text-xs text-gray-400">
+                      Last generated {new Date(fundingStatus.generated_at).toLocaleString()}
+                      {fundingStatus.needs_refresh ? " · outdated" : " · up to date"}
+                    </p>
+                  )}
+                  {fundingStatus.documents.map((doc) => (
+                    <div key={doc.type} className="space-y-2">
+                      <div className="text-xs font-bold uppercase tracking-wide text-gray-500">{doc.label}</div>
+                      {doc.source_path ? (
+                        <PdfEmbed path={doc.source_path} height={520} />
+                      ) : (
+                        <p className="text-sm text-gray-400">Document not available.</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ── TEMPLATES MODE ── */}
         {mode === "templates" && (

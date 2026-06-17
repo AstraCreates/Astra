@@ -1,5 +1,5 @@
-import FundingKitPage from "@/components/FundingKitPage";
+import { redirect } from "next/navigation";
 
-export default function Page() {
-  return <FundingKitPage />;
+export default function FundingPage() {
+  redirect("/library");
 }
