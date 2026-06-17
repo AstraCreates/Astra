@@ -413,7 +413,14 @@ def _update_agent_snapshot(agents: dict[str, dict[str, Any]], event: dict[str, A
         state["status"] = "done"
         state["currentAction"] = None
         state["currentTool"] = None
-        state["result"] = result if isinstance(result, dict) else {"output": result}
+        # Merge accumulated tool results (pdfs, research_summary, etc.) into the
+        # final agent_done result so they aren't lost. agent_done values take precedence.
+        accumulated = state.get("result") if isinstance(state.get("result"), dict) else {}
+        final_result = result if isinstance(result, dict) else {"output": result}
+        for k, v in accumulated.items():
+            if k not in final_result or not final_result[k]:
+                final_result[k] = v
+        state["result"] = final_result
         if isinstance(state["result"], dict):
             preview_url = (
                 state["result"].get("deploy_url")
