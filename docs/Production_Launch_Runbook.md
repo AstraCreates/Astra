@@ -1,5 +1,7 @@
 # Astra Production Launch Runbook
 
+For the broader security and compliance remediation program that must sit behind any production-readiness or enterprise-security claim, see [Security Alignment Roadmap](/Users/ishaangubbala/Documents/Astra/docs/Security_Alignment_Roadmap.md).
+
 This is the operator path for proving Astra is ready to run as an Agent Stack Platform in production.
 
 ## 1. Configure Production Requirements

@@ -334,6 +334,11 @@ Notable surfaces:
 
 Startup jobs also handle interrupted-session recovery, platform alert checks, 30-day PII purge, company-brain scheduling, and mission scheduling.
 
+Key docs:
+
+- [Production Launch Runbook](/Users/ishaangubbala/Documents/Astra/docs/Production_Launch_Runbook.md)
+- [Security Alignment Roadmap](/Users/ishaangubbala/Documents/Astra/docs/Security_Alignment_Roadmap.md)
+
 ---
 
 ## Design Principles
