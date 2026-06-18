@@ -691,15 +691,15 @@ async def restart_preview_route(session_id: str, request: Request):
     from backend.core.session_store import get_session_meta
     meta = get_session_meta(session_id) or {}
     owner = str(meta.get("founder_id") or "")
-    if owner:
-        require_founder_access(request, owner, min_role="viewer")
+    if not owner:
+        raise HTTPException(status_code=404, detail="session not found")
+    require_founder_access(request, owner, min_role="viewer")
     try:
         from backend.tools.git_tools import _root_session_id, WORKSPACE_ROOT as _WORKSPACE_ROOT
         from backend.tools.local_preview import start_local_preview
         import pathlib
         root_sid = _root_session_id(session_id)
         ws_root = pathlib.Path(_WORKSPACE_ROOT)
-        # Find workspace: any subdir whose name matches a prefix of root_sid
         workspace = None
         for candidate in ws_root.glob(f"{root_sid}"):
             workspace = candidate
@@ -711,14 +711,6 @@ async def restart_preview_route(session_id: str, request: Request):
                     if oc and root_sid.startswith(oc[:8]):
                         workspace = candidate
                         break
-        # Fallback: pick the most recently modified subdir containing package.json
-        if workspace is None:
-            candidates = sorted(
-                [p for p in ws_root.iterdir() if (p / "package.json").exists()],
-                key=lambda p: p.stat().st_mtime, reverse=True
-            )
-            if candidates:
-                workspace = candidates[0]
         if workspace is None:
             return {"ok": False, "error": "workspace not found for this session"}
         # Find the most recently modified subdir inside the session workspace
