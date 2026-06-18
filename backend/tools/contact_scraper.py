@@ -525,8 +525,7 @@ def search_local_contacts(
     Searches both the founder's own contacts AND the shared __global__ pool
     (populated once by the Hunter seeder, shared across all founders).
     """
-    from backend.tools.contact_seeder import GLOBAL_FOUNDER_ID
-    founder_ids = list({founder_id, GLOBAL_FOUNDER_ID})
+    founder_ids = list({founder_id, "__global__"})
 
     try:
         from backend.db.client import get_outreach_db

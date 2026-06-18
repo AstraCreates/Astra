@@ -3351,23 +3351,7 @@ async def outreach_search_people(
             limit=per_page,
         )
         if local["contacts"]:
-            from backend.tools.contact_seeder import is_seeding
-            return {**local, "source": "local_db", "seeding": is_seeding(founder_id)}
-
-    # Kick off the global Hunter seed if pool is empty
-    from backend.tools.contact_seeder import seed_contact_database, is_seeding, GLOBAL_FOUNDER_ID
-    if not is_seeding(founder_id):
-        try:
-            db = get_outreach_db()
-            global_count = db.table("outreach_contacts").select("id", count="exact").eq(
-                "founder_id", GLOBAL_FOUNDER_ID
-            ).limit(1).execute()
-            if (global_count.count or 0) == 0:
-                import threading
-                threading.Thread(target=seed_contact_database, daemon=True).start()
-                logger.info("[outreach] Auto-seeding global Hunter contact pool from search")
-        except Exception:
-            pass
+            return {**local, "source": "local_db", "seeding": False}
 
     # 2. Try Apollo
     try:
@@ -3395,11 +3379,7 @@ async def outreach_search_people(
     except Exception as e:
         logger.warning("Apollo search failed, falling back to scraper: %s", e)
 
-    # 3. If seeding is running, return empty + seeding flag so UI shows spinner
-    if is_seeding(founder_id):
-        return {"contacts": [], "total": 0, "page": page, "source": "seeding", "seeding": True}
-
-    # 4. Web scraping fallback (quick single-query scrape)
+    # 3. Web scraping fallback (quick single-query scrape)
     from backend.tools.contact_scraper import discover_via_web_search
     scraped = await asyncio.to_thread(
         discover_via_web_search,
@@ -3893,30 +3873,11 @@ async def get_outreach_contacts(
 
     contacts = result.data or []
 
-    # Auto-seed the global Hunter pool on first ever use (runs once, shared by all founders)
-    if not contacts and page == 1 and not status:
-        from backend.tools.contact_seeder import seed_contact_database, is_seeding, GLOBAL_FOUNDER_ID
-        if not is_seeding(founder_id):
-            # Check if __global__ pool exists
-            try:
-                global_count = db.table("outreach_contacts").select("id", count="exact").eq(
-                    "founder_id", GLOBAL_FOUNDER_ID
-                ).limit(1).execute()
-                pool_empty = (global_count.count or 0) == 0
-            except Exception:
-                pool_empty = True
-
-            if pool_empty:
-                import threading
-                threading.Thread(target=seed_contact_database, daemon=True).start()
-                logger.info("[outreach] Auto-seeding global Hunter contact pool")
-
-    from backend.tools.contact_seeder import is_seeding
     return {
         "contacts": contacts,
         "page": page,
         "founder_id": founder_id,
-        "seeding": is_seeding(founder_id),
+        "seeding": False,
     }
 
 
@@ -3927,10 +3888,9 @@ async def semantic_search_contacts(founder_id: str, request: Request, q: str = "
     require_founder_access(request, founder_id, min_role="viewer")
     if not q.strip():
         return {"contacts": [], "query": q}
-    from backend.tools.contact_seeder import GLOBAL_FOUNDER_ID
     db = get_outreach_db()
     rows = db.table("outreach_contacts").select("*").in_(
-        "founder_id", list({founder_id, GLOBAL_FOUNDER_ID})
+        "founder_id", list({founder_id, "__global__"})
     ).execute().data or []
     from backend.outreach.semantic_search import rank_contacts
     ranked = rank_contacts(q, rows, limit=limit)

@@ -29,13 +29,6 @@ def get_supabase() -> Client:
 
 
 def get_outreach_db():
-    """Storage backend for the outreach subsystem.
-
-    Uses Supabase when configured, otherwise a free file-backed store so the
-    Outreach tab works with no paid services. Both expose the same query API.
-    """
-    if settings.outreach_use_supabase and settings.supabase_url and settings.supabase_key:
-        return get_supabase()
     from backend.outreach.local_store import get_local_store
     return get_local_store()
 

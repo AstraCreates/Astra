@@ -1513,7 +1513,6 @@ def run_mvp_loop(
         _phase("Build check: passed" if build_ok else "Build check: failed — starting recovery",
                build_output=(build_output or "")[-1200:])
 
-        deep_heal = bool(getattr(settings, "mvp_deep_heal_on_success", False))
         max_rounds = max(1, int(getattr(settings, "mvp_max_build_rounds", 3) or 3))
 
         # Compiler-as-critic recovery loop: feed the REAL `npm run build` errors to
@@ -1550,24 +1549,6 @@ def run_mvp_loop(
                     commits.append(sha_r)
             else:
                 _stage_all(local)
-
-        # Optional quality polish via the planner-critic — only when the build is green
-        # and deep healing is on (don't burn rounds on a passing build by default).
-        if build_ok and deep_heal:
-            _phase("Planner review — quality polish")
-            review = _planner_review(local, goal, _staged_files(local))
-            if not review["pass"] and review["fix_instructions"]:
-                _run_claude(local, review["fix_instructions"], session_id=None, timeout=600,
-                            founder_id=founder_id, app_session_id=session_id, agent=agent)
-                _sanitize_package_json(local); _ensure_tailwind_setup(local); _build_doctor(local)
-                _res, _ = _npm_build_passes(local)  # don't let polish break the build
-                build_ok = (not _expects_node) if _res is None else bool(_res)
-                if is_github:
-                    sha3 = _commit_and_push(local, f"polish: {goal[:50]}")
-                    if sha3:
-                        commits.append(sha3)
-                else:
-                    _stage_all(local)
 
         # Final guard — re-assert the Tailwind toolchain in case a later pass touched it.
         _ensure_tailwind_setup(local)

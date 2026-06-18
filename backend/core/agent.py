@@ -907,10 +907,6 @@ class Agent:
                 await self._emit(ctx, "agent_budget_update", budget=ctx.budget.snapshot().__dict__)
             raw = await asyncio.to_thread(self._invoke_llm, messages, ctx)
             parsed = self._parse_json(raw)
-            if settings.astra_shadow_runtime and parsed:
-                from backend.runtime.shadow import compare_action
-                compare_action(parsed)
-
             if not parsed:
                 # Handle plain-text "done" from models that don't follow JSON format
                 raw_stripped = raw.strip().lower().strip('"\'')

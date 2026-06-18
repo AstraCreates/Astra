@@ -4,9 +4,6 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_key: str = ""
-    # When false, the outreach subsystem uses the free file-backed store instead
-    # of Supabase. Set OUTREACH_USE_SUPABASE=true only with a reachable project.
-    outreach_use_supabase: bool = False
     # Model that drives openclaude for technical-agent MVP builds. Must be a
     # strong agentic/tool-use model (DeepSeek-V4-Flash chats instead of building).
     mvp_build_model: str = "xiaomi/mimo-v2.5-pro"
@@ -23,9 +20,6 @@ class Settings(BaseSettings):
     # Web agent wrapper model (drives its tool calls: repo create, run_mvp_loop).
     # Dedicated so it isn't pinned by the env-overridden or_planner_model (hy3).
     web_agent_model: str = "xiaomi/mimo-v2.5-pro"
-    # Expensive LLM recovery passes are useful for broken builds, but should not
-    # run after deterministic checks already pass.
-    mvp_deep_heal_on_success: bool = False
     mvp_max_completion_rounds: int = 1
     # Compiler-as-critic recovery: re-run `npm run build`, feed real errors to the
     # coder, re-verify — up to this many rounds before giving up.
@@ -115,17 +109,7 @@ class Settings(BaseSettings):
     astra_alert_min_severity: str = "warning"
     astra_runtime_guardrails: bool = True
     astra_tool_registry_v2: bool = False
-    astra_specialist_manifests: bool = False
-    astra_native_tool_calls: bool = False
-    astra_context_compression_v2: bool = False
-    astra_delegation_v2: bool = False
-    astra_skill_review: bool = False
-    astra_native_tool_calls_rollout_percent: int = 100
-    astra_context_compression_v2_rollout_percent: int = 100
-    astra_delegation_v2_rollout_percent: int = 100
-    astra_skill_review_rollout_percent: int = 100
     astra_fallback_model: str = "xiaomi/mimo-v2.5"
-    astra_shadow_runtime: bool = False
 
     # Stripe Standard Connect
     stripe_secret_key: str = ""
