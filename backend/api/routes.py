@@ -684,6 +684,56 @@ async def resume_session_route(session_id: str, request: Request):
     return {"ok": True, "paused": False}
 
 
+@router.post("/sessions/{session_id}/restart-preview")
+async def restart_preview_route(session_id: str, request: Request):
+    """Restart the local preview server for this session's workspace.
+    Safe to call when the preview shows 'starting up' after a backend restart."""
+    from backend.core.session_store import get_session_meta
+    meta = get_session_meta(session_id) or {}
+    owner = str(meta.get("founder_id") or "")
+    if owner:
+        require_founder_access(request, owner, min_role="viewer")
+    try:
+        from backend.tools.git_tools import _root_session_id, WORKSPACE_ROOT as _WORKSPACE_ROOT
+        from backend.tools.local_preview import start_local_preview
+        import pathlib
+        root_sid = _root_session_id(session_id)
+        ws_root = pathlib.Path(_WORKSPACE_ROOT)
+        # Find workspace: any subdir whose name matches a prefix of root_sid
+        workspace = None
+        for candidate in ws_root.glob(f"{root_sid}"):
+            workspace = candidate
+            break
+        if workspace is None:
+            for candidate in ws_root.glob(f"*"):
+                if (candidate / ".oc_session_id").exists():
+                    oc = (candidate / ".oc_session_id").read_text().strip()
+                    if oc and root_sid.startswith(oc[:8]):
+                        workspace = candidate
+                        break
+        # Fallback: pick the most recently modified subdir containing package.json
+        if workspace is None:
+            candidates = sorted(
+                [p for p in ws_root.iterdir() if (p / "package.json").exists()],
+                key=lambda p: p.stat().st_mtime, reverse=True
+            )
+            if candidates:
+                workspace = candidates[0]
+        if workspace is None:
+            return {"ok": False, "error": "workspace not found for this session"}
+        # Find the most recently modified subdir inside the session workspace
+        inner = workspace
+        subdirs = sorted([p for p in workspace.iterdir() if p.is_dir() and (p / "package.json").exists()],
+                         key=lambda p: p.stat().st_mtime, reverse=True)
+        if subdirs:
+            inner = subdirs[0]
+        company_name = meta.get("company") or meta.get("project_name") or ""
+        url = await asyncio.to_thread(start_local_preview, str(inner), root_sid, company_name)
+        return {"ok": True, "preview_url": url}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 @router.get("/sessions/{session_id}/images")
 async def session_images(session_id: str, request: Request):
     """Return design images (logos, brand board) with full base64 from the durable

@@ -269,6 +269,17 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [toastErr, setToastErr] = useState("");
   const [restartConfirm, setRestartConfirm] = useState(false);
   const [takeover, setTakeover] = useState(false);
+  const [previewRestarting, setPreviewRestarting] = useState(false);
+  const isLocalPreview = (url: string) => url.includes("nip.io") || url.includes("localhost:");
+  const restartPreview = async () => {
+    setPreviewRestarting(true);
+    try {
+      const r = await apiFetch(`${API}/sessions/${sessionId}/restart-preview`, { method: "POST" });
+      const d = await r.json();
+      if (d.ok && d.preview_url) S.current.liveUrl = d.preview_url;
+    } catch {}
+    setPreviewRestarting(false);
+  };
   const [teamTab, setTeamTab] = useState(false);
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
   const imgsFetched = useRef(false);
@@ -856,6 +867,14 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
              style={{ flexShrink: 0, textDecoration: "none", background: "var(--green)", border: "1px solid var(--green)", color: "#fff", display: "inline-flex", alignItems: "center", gap: 4 }}>
             ↗ Live
           </a>
+        )}
+        {st.liveUrl && isLocalPreview(st.liveUrl) && (
+          <button className="btn sm" title="Restart preview server (use if site shows 'starting up')"
+            style={{ flexShrink: 0 }}
+            disabled={previewRestarting}
+            onClick={restartPreview}>
+            {previewRestarting ? "↻ Restarting…" : "↻ Restart preview"}
+          </button>
         )}
         <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
           {st.credits > 0 && (
