@@ -88,6 +88,9 @@ const tauriConfig = {
         minHeight: 760,
         resizable: true,
         maximized: false,
+        // Google blocks OAuth in embedded WebViews by detecting the WKWebView
+        // user-agent. Override to a standard Chrome UA so sign-in completes.
+        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
       },
     ],
   },
