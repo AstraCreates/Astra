@@ -7,8 +7,8 @@ import { signIn, signOut } from "next-auth/react";
 import { useDevUser } from "@/lib/use-dev-user";
 import CreditsDisplay from "@/components/CreditsDisplay";
 import NotificationBell from "@/components/NotificationBell";
+import ThemeToggle from "@/components/ThemeToggle";
 import { desktopDownloadHref } from "@/lib/desktop-download";
-import { useEffect, useState } from "react";
 
 const LINKS: { href: string; ic: string; label: string; match: (p: string) => boolean }[] = [
   { href: "/", ic: "⬡", label: "Dashboard", match: (p) => p === "/" },
@@ -26,16 +26,15 @@ function initials(id: string) { return (id || "?").replace(/^(user_|google_)/, "
 export default function RedesignSidebar({ mobile = false, open = false, onClose }: { mobile?: boolean; open?: boolean; onClose?: () => void } = {}) {
   const pathname = usePathname() || "/";
   const { userId, isSignedIn, user } = useDevUser();
-  const [companyName, setCompanyName] = useState("");
-  useEffect(() => {
-    setCompanyName(localStorage.getItem("astra_onboarding_company") || "");
-  }, []);
+  const companyName = typeof window !== "undefined"
+    ? localStorage.getItem("astra_onboarding_company") || ""
+    : "";
 
   // On mobile the sidebar is an off-canvas drawer (fixed, slides in over content);
   // on desktop it's the usual sticky in-flow column.
   const navStyle: React.CSSProperties = mobile
-    ? { width: 240, maxWidth: "82vw", display: "flex", flexDirection: "column", background: "var(--surface)", borderRight: "1px solid var(--bd)", height: "100dvh", boxShadow: "2px 0 24px rgba(0,0,0,.18)", position: "fixed", top: 0, left: 0, zIndex: 60, transform: open ? "translateX(0)" : "translateX(-104%)", transition: "transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)" }
-    : { width: 210, flexShrink: 0, display: "flex", flexDirection: "column", background: "var(--surface)", borderRight: "1px solid var(--bd)", height: "100vh", boxShadow: "2px 0 12px rgba(0,0,0,.04)", position: "sticky", top: 0 };
+    ? { width: 248, maxWidth: "82vw", display: "flex", flexDirection: "column", background: "var(--surface)", borderRight: "1px solid var(--bd)", height: "100dvh", boxShadow: "var(--shell-shadow)", backdropFilter: "var(--glass-blur)", position: "fixed", top: 0, left: 0, zIndex: 60, transform: open ? "translateX(0)" : "translateX(-104%)", transition: "transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)" }
+    : { width: 218, flexShrink: 0, display: "flex", flexDirection: "column", background: "var(--surface)", borderRight: "1px solid var(--bd)", height: "100vh", boxShadow: "var(--shell-shadow)", backdropFilter: "var(--glass-blur)", position: "sticky", top: 0 };
 
   // Close the drawer after any in-drawer navigation on mobile.
   const closeOnNav = mobile ? onClose : undefined;
@@ -51,7 +50,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
           </div>
         </Link>
         {companyName && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", marginBottom: 8, background: "var(--s2)", border: "1px solid var(--bd)", borderRadius: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 10px", marginBottom: 10, background: "linear-gradient(135deg, var(--s2), transparent)", border: "1px solid var(--bd)", borderRadius: 10, backdropFilter: "var(--glass-blur)" }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", flexShrink: 0 }} />
             <span style={{ fontSize: 10.5, fontWeight: 600, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{companyName}</span>
           </div>
@@ -87,30 +86,32 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
           alignItems: "center",
           justifyContent: "center",
           gap: 6,
-          padding: "8px 12px",
+          padding: "9px 12px",
           fontSize: 11,
           fontWeight: 600,
-          color: "#111827",
-          background: "rgba(255,255,255,0.58)",
-          border: "1px solid rgba(17,24,39,0.12)",
-          borderRadius: 6,
+          color: "var(--fg)",
+          background: "linear-gradient(135deg, var(--surface), var(--s2))",
+          border: "1px solid var(--bd2)",
+          borderRadius: 10,
           textDecoration: "none",
-          backdropFilter: "blur(10px)",
-          transition: "transform 0.18s ease, background 0.18s ease, border-color 0.18s ease",
+          backdropFilter: "var(--glass-blur)",
+          boxShadow: "var(--card-shadow)",
+          transition: "transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease",
           cursor: "pointer",
           fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
         }} onMouseEnter={(e) => {
-          (e.target as HTMLElement).style.transform = "translateY(-1px)";
-          (e.target as HTMLElement).style.background = "rgba(255,255,255,0.8)";
-          (e.target as HTMLElement).style.borderColor = "rgba(17,24,39,0.2)";
+          (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
+          (e.currentTarget as HTMLElement).style.borderColor = "var(--bb)";
+          (e.currentTarget as HTMLElement).style.boxShadow = "var(--card-shadow-hover)";
         }} onMouseLeave={(e) => {
-          (e.target as HTMLElement).style.transform = "translateY(0)";
-          (e.target as HTMLElement).style.background = "rgba(255,255,255,0.58)";
-          (e.target as HTMLElement).style.borderColor = "rgba(17,24,39,0.12)";
+          (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
+          (e.currentTarget as HTMLElement).style.borderColor = "var(--bd2)";
+          (e.currentTarget as HTMLElement).style.boxShadow = "var(--card-shadow)";
         }}>
           🍎 Download macOS
         </a>
       </div>
+      <div style={{ padding: "6px 12px 4px", display: "flex", justifyContent: "center" }}><ThemeToggle /></div>
       <div style={{ padding: "6px 12px 10px", display: "flex", justifyContent: "center" }}><CreditsDisplay /></div>
       <div style={{ padding: "0 8px 14px", display: "flex", flexDirection: "column", gap: 1 }}>
         <Link href="/settings" className={`nl${pathname.startsWith("/settings") ? " on" : ""}`} style={{ textDecoration: "none" }}><span style={{ width: 18, textAlign: "center" }}>⚙</span>Settings</Link>

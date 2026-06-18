@@ -7,11 +7,6 @@ type Theme = "dark" | "light";
 const THEME_KEY = "astra-theme";
 const THEME_EVENT = "astra:theme-change";
 
-function getSystemTheme(): Theme {
-  if (typeof window === "undefined") return "dark";
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
 function getThemeSnapshot(): Theme {
   if (typeof window === "undefined") return "light";
   const stored = localStorage.getItem(THEME_KEY);
@@ -38,6 +33,7 @@ function setTheme(theme: Theme): void {
 export default function ThemeToggle() {
   const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, () => "dark");
   const dark = theme === "dark";
+  const nextLabel = dark ? "Light mode" : "Dark mode";
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -49,26 +45,61 @@ export default function ThemeToggle() {
       aria-label={dark ? "Switch to light mode" : "Switch to dark mode"}
       title={dark ? "Light mode" : "Dark mode"}
       style={{
-        background: "var(--bg-surface)",
-        border: "1px solid var(--line)",
+        background: "linear-gradient(135deg, var(--surface), var(--s2))",
+        border: "1px solid var(--bd2)",
         cursor: "pointer",
         display: "inline-flex",
         alignItems: "center",
         gap: 8,
-        height: 34,
-        padding: "0 12px",
+        justifyContent: "space-between",
+        minWidth: 126,
+        height: 38,
+        padding: "0 8px 0 12px",
         borderRadius: 999,
         flexShrink: 0,
-        color: "var(--text-2)",
+        color: "var(--fd)",
         fontSize: 12,
         lineHeight: 1,
-        transition: "color 0.15s, background 0.15s, border-color 0.15s, transform 0.15s",
+        backdropFilter: "var(--glass-blur)",
+        boxShadow: "var(--card-shadow)",
+        transition: "color 0.15s, background 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s",
       }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--bg-sunken)"; (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "var(--bg-surface)"; (e.currentTarget as HTMLElement).style.color = "var(--text-2)"; }}
+      onMouseEnter={e => {
+        (e.currentTarget as HTMLElement).style.borderColor = "var(--bb)";
+        (e.currentTarget as HTMLElement).style.color = "var(--fg)";
+        (e.currentTarget as HTMLElement).style.boxShadow = "var(--card-shadow-hover)";
+        (e.currentTarget as HTMLElement).style.transform = "translateY(-1px)";
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLElement).style.borderColor = "var(--bd2)";
+        (e.currentTarget as HTMLElement).style.color = "var(--fd)";
+        (e.currentTarget as HTMLElement).style.boxShadow = "var(--card-shadow)";
+        (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
+      }}
     >
-      <span aria-hidden="true" style={{ fontSize: 13 }}>{dark ? "☾" : "☼"}</span>
-      <span>{dark ? "Dark" : "Light"}</span>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+        <span aria-hidden="true" style={{ fontSize: 13 }}>{dark ? "☾" : "☼"}</span>
+        <span>{dark ? "Dark" : "Light"}</span>
+      </span>
+      <span
+        aria-hidden="true"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minWidth: 26,
+          height: 26,
+          borderRadius: 999,
+          background: "var(--blue)",
+          color: "#fff",
+          fontSize: 10,
+          fontWeight: 700,
+          letterSpacing: ".04em",
+          boxShadow: "0 8px 18px rgba(0,46,255,0.22)",
+        }}
+      >
+        {nextLabel.slice(0, 1)}
+      </span>
     </button>
   );
 }

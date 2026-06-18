@@ -17,12 +17,12 @@ html.antialiased {
 :root,
 [data-theme="light"] {
   /* Cool neutral application surfaces. Paper stays a brand swatch, not a wall color. */
-  --bg:           #F3F4F7;
+  --bg:           #EEF1F7;
   --bg-surface:   #FFFFFF;
-  --bg-sunken:    #EAECEF;
-  --surface:      #FFFFFF;
-  --s2:           #F7F8FA;
-  --s3:           #EAEAEA;
+  --bg-sunken:    #E5E9F2;
+  --surface:      rgba(255, 255, 255, 0.82);
+  --s2:           rgba(255, 255, 255, 0.62);
+  --s3:           #E9EDF6;
 
   --fg:           #111018;
   --fd:           #3A3A3A;
@@ -50,8 +50,12 @@ html.antialiased {
   --amber:#d97706; --adim:rgba(217,119,6,.08); --ab:rgba(217,119,6,.25);
   --red:#dc2626;   --rdim:rgba(220,38,38,.07); --rb:rgba(220,38,38,.25);
 
-  --bd:  rgba(0, 0, 0, 0.08);
-  --bd2: rgba(0, 0, 0, 0.13);
+  --bd:  rgba(16, 24, 40, 0.09);
+  --bd2: rgba(16, 24, 40, 0.16);
+  --shell-shadow: 0 16px 40px rgba(22, 34, 64, 0.08);
+  --card-shadow: 0 12px 28px rgba(22, 34, 64, 0.07);
+  --card-shadow-hover: 0 18px 34px rgba(0, 46, 255, 0.12);
+  --glass-blur: blur(18px);
 
   --radius: 10px; --radius-sm: 7px; --radius-lg: 16px;
 
@@ -71,23 +75,23 @@ html.antialiased {
 }
 
 [data-theme="dark"] {
-  --bg:        #111018;
-  --bg-surface:#17151F;
-  --bg-sunken: #0E0C15;
-  --surface:   #17151F;
-  --s2:        #1C1A26;
-  --s3:        #221F2E;
-  --fg:        #F0EEFF;
-  --fd:        #B8B0D8;
-  --fm:        #857fa0; /* raised from #6B6485 — passes WCAG AA 4.5:1 on #111018 */
-  --bd:        rgba(240, 238, 255, 0.08);
-  --bd2:       rgba(240, 238, 255, 0.13);
-  --accent:    #3D5FFF;
-  --accent-hover: #6080FF;
-  --blue:      #3D5FFF;
-  --bdim:      rgba(61, 95, 255, 0.12);
-  --bb:        rgba(61, 95, 255, 0.35);
-  --bglow:     rgba(61, 95, 255, 0.22);
+  --bg:        #0B1020;
+  --bg-surface:#111728;
+  --bg-sunken: #090D18;
+  --surface:   rgba(17, 23, 40, 0.82);
+  --s2:        rgba(22, 29, 48, 0.82);
+  --s3:        #1A2138;
+  --fg:        #F4F7FF;
+  --fd:        #C4CEE7;
+  --fm:        #8C97B3;
+  --bd:        rgba(195, 210, 244, 0.10);
+  --bd2:       rgba(226, 234, 255, 0.17);
+  --accent:    #5A7BFF;
+  --accent-hover: #7E9AFF;
+  --blue:      #5A7BFF;
+  --bdim:      rgba(90, 123, 255, 0.14);
+  --bb:        rgba(90, 123, 255, 0.38);
+  --bglow:     rgba(90, 123, 255, 0.30);
   --mint:      #7CFFC6;
   --mint-dim:  rgba(124, 255, 198, 0.10);
   --mint-border: rgba(124, 255, 198, 0.28);
@@ -99,6 +103,10 @@ html.antialiased {
   --green: #22c55e; --gdim: rgba(34,197,94,.09);  --gb: rgba(34,197,94,.28);
   --amber: #f59e0b; --adim: rgba(245,158,11,.09); --ab: rgba(245,158,11,.28);
   --red:   #ef4444; --rdim: rgba(239,68,68,.09);  --rb: rgba(239,68,68,.28);
+  --shell-shadow: 0 18px 50px rgba(0, 0, 0, 0.34);
+  --card-shadow: 0 14px 30px rgba(0, 0, 0, 0.24);
+  --card-shadow-hover: 0 22px 42px rgba(3, 8, 24, 0.42);
+  --glass-blur: blur(20px);
 }
 
 body {
@@ -126,7 +134,20 @@ body {
 body,
 [data-theme="light"] body,
 [data-theme="dark"] body {
-  background-image: none;
+  background-image:
+    radial-gradient(circle at 12% 12%, rgba(90, 123, 255, 0.10), transparent 0 24%),
+    radial-gradient(circle at 82% 10%, rgba(255, 255, 255, 0.52), transparent 0 18%),
+    radial-gradient(circle at 78% 84%, rgba(124, 255, 198, 0.08), transparent 0 24%),
+    linear-gradient(135deg, rgba(255,255,255,0.08), transparent 38%);
+  background-attachment: fixed;
+}
+
+[data-theme="dark"] body {
+  background-image:
+    radial-gradient(circle at 14% 14%, rgba(90, 123, 255, 0.26), transparent 0 24%),
+    radial-gradient(circle at 84% 12%, rgba(124, 255, 198, 0.08), transparent 0 18%),
+    radial-gradient(circle at 78% 84%, rgba(90, 123, 255, 0.14), transparent 0 22%),
+    linear-gradient(180deg, rgba(255,255,255,0.03), transparent 32%);
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -157,11 +178,12 @@ h1, h2, h3, h4, h5, h6 {
 .btn { font-family: var(--font-display); font-size: 11px; font-weight: 600;
   letter-spacing: .02em; padding: 7px 14px; cursor: pointer; border-radius: 8px;
   border: 1px solid var(--bd2); background: var(--surface); color: var(--fd);
+  backdrop-filter: var(--glass-blur);
   transition: color .15s var(--ease-out-quint), background .15s var(--ease-out-quint),
     border-color .15s var(--ease-out-quint), box-shadow .2s var(--ease-out-quint),
     transform .15s var(--ease-out-quint); }
 .btn:hover { color: var(--fg); border-color: var(--bd2); transform: translateY(-1px);
-  box-shadow: 0 3px 10px rgba(17,16,24,0.07); }
+  box-shadow: var(--card-shadow); }
 .btn:active { transform: translateY(0) scale(0.97); box-shadow: none; }
 .btn.pri, .btn.primary { background: var(--blue); color: #fff; border-color: var(--blue);
   box-shadow: 0 1px 2px rgba(0,46,255,0.25); }
@@ -189,8 +211,8 @@ button:not(:disabled):active { transform: scale(0.97); }
 /* Session card (dashboard grid) */
 .sc { background: var(--surface); border: 1px solid var(--bd); border-radius: 12px; padding: 16px; cursor: pointer;
   transition: border-color .16s, box-shadow .22s var(--ease-out-quint), transform .22s var(--ease-out-quint);
-  position: relative; overflow: hidden; }
-.sc:hover { border-color: var(--bb); box-shadow: 0 8px 24px rgba(0,46,255,.09); transform: translateY(-2px); }
+  position: relative; overflow: hidden; backdrop-filter: var(--glass-blur); box-shadow: var(--card-shadow); }
+.sc:hover { border-color: var(--bb); box-shadow: var(--card-shadow-hover); transform: translateY(-2px); }
 .sc::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--bd2); }
 .sc.running::before { background: linear-gradient(90deg, var(--blue), var(--mint)); }
 .sc.done::before { background: var(--green); }
@@ -198,6 +220,10 @@ button:not(:disabled):active { transform: scale(0.97); }
 
 /* Department card (session view) */
 .dept-card { background: var(--surface); border: 1px solid var(--bd); border-radius: 12px; padding: 14px; }
+.dept-card, .dc, .copilot-dock, .art-pre, .phasebar, .sbar, .steer-wrap, .nav-menu, .nav-panel {
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--card-shadow);
+}
 .dept-card.running { border-color: var(--bb); box-shadow: 0 0 0 1px var(--bb) inset; }
 .dept-card.done { border-color: var(--gb); }
 

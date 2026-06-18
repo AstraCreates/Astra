@@ -32,16 +32,17 @@ function SignInScreen() {
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 9999,
-      background: "#F3F4F7",
-      backgroundImage: "radial-gradient(ellipse 70% 45% at 50% 0%, rgba(0,46,255,0.07) 0%, transparent 70%)",
+      background: "var(--bg)",
+      backgroundImage: "radial-gradient(circle at 18% 14%, rgba(0,46,255,0.14), transparent 0 22%), radial-gradient(circle at 82% 16%, rgba(124,255,198,0.12), transparent 0 18%), linear-gradient(180deg, rgba(255,255,255,0.06), transparent 32%)",
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
       fontFamily: "var(--font-instrument), 'Instrument Sans', sans-serif",
     }}>
       <div style={{
-        background: "#fff",
-        border: "1px solid rgba(0,0,0,0.08)",
-        borderRadius: 20,
-        boxShadow: "0 4px 40px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04)",
+        background: "linear-gradient(180deg, var(--surface), var(--s2))",
+        border: "1px solid var(--bd2)",
+        borderRadius: 24,
+        boxShadow: "var(--shell-shadow)",
+        backdropFilter: "var(--glass-blur)",
         padding: "40px 40px 32px",
         maxWidth: 400, width: "calc(100% - 48px)",
         display: "flex", flexDirection: "column", alignItems: "center",
@@ -50,17 +51,17 @@ function SignInScreen() {
         {/* Logo + wordmark */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
           <div style={{
-            width: 30, height: 30, background: "#111018", flexShrink: 0,
+            width: 30, height: 30, background: "var(--fg)", flexShrink: 0,
             WebkitMask: "url('/logo.png') center/contain no-repeat",
             mask: "url('/logo.png') center/contain no-repeat",
           }} />
-          <span style={{ fontSize: 20, fontWeight: 700, color: "#111018", letterSpacing: "-0.02em" }}>Astra</span>
+          <span style={{ fontSize: 20, fontWeight: 700, color: "var(--fg)", letterSpacing: "-0.02em" }}>Astra</span>
         </div>
 
-        <h1 style={{ fontSize: 26, fontWeight: 700, margin: "0 0 10px", color: "#111018", letterSpacing: "-0.02em", lineHeight: 1.2 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 700, margin: "0 0 10px", color: "var(--fg)", letterSpacing: "-0.02em", lineHeight: 1.2 }}>
           Your AI founding team
         </h1>
-        <p style={{ fontSize: 13.5, color: "#737373", margin: "0 0 28px", lineHeight: 1.65, maxWidth: 290 }}>
+        <p style={{ fontSize: 13.5, color: "var(--fm)", margin: "0 0 28px", lineHeight: 1.65, maxWidth: 290 }}>
           A team of specialized agents working in parallel — research, strategy, engineering, and marketing.
         </p>
 
@@ -71,16 +72,17 @@ function SignInScreen() {
             display: "flex", alignItems: "center", gap: 10, width: "100%",
             justifyContent: "center",
             padding: "12px 24px", borderRadius: 10,
-            background: "#fff", color: "#111018",
-            border: "1px solid rgba(0,0,0,0.16)",
+            background: "rgba(255,255,255,0.82)", color: "var(--fg)",
+            border: "1px solid var(--bd2)",
             fontSize: 14, fontWeight: 600, cursor: "pointer",
             letterSpacing: "0.01em",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+            boxShadow: "var(--card-shadow)",
+            backdropFilter: "var(--glass-blur)",
             fontFamily: "var(--font-instrument), 'Instrument Sans', sans-serif",
             transition: "box-shadow 0.18s, border-color 0.18s",
           }}
-          onMouseEnter={e => { e.currentTarget.style.boxShadow = "0 2px 10px rgba(0,0,0,0.1)"; e.currentTarget.style.borderColor = "rgba(0,0,0,0.26)"; }}
-          onMouseLeave={e => { e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.06)"; e.currentTarget.style.borderColor = "rgba(0,0,0,0.16)"; }}
+          onMouseEnter={e => { e.currentTarget.style.boxShadow = "var(--card-shadow-hover)"; e.currentTarget.style.borderColor = "var(--bb)"; }}
+          onMouseLeave={e => { e.currentTarget.style.boxShadow = "var(--card-shadow)"; e.currentTarget.style.borderColor = "var(--bd2)"; }}
         >
           <svg width="18" height="18" viewBox="0 0 48 48" style={{ flexShrink: 0 }}>
             <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.5 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.9z"/>
@@ -99,10 +101,10 @@ function SignInScreen() {
             onChange={e => setRememberMe(e.target.checked)}
             style={{ width: 15, height: 15, cursor: "pointer", accentColor: "#002EFF" }}
           />
-          <span style={{ fontSize: 13, color: "#4B5563", fontFamily: "var(--font-instrument), sans-serif" }}>Stay signed in</span>
+          <span style={{ fontSize: 13, color: "var(--fd)", fontFamily: "var(--font-instrument), sans-serif" }}>Stay signed in</span>
         </label>
 
-        <p style={{ fontSize: 11, color: "#9CA3AF", margin: "12px 0 0", lineHeight: 1.5 }}>
+        <p style={{ fontSize: 11, color: "var(--fm)", margin: "12px 0 0", lineHeight: 1.5 }}>
           By continuing, you agree to our terms and privacy policy.
         </p>
       </div>
