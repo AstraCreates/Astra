@@ -98,12 +98,14 @@ fn external_link_plugin<R: Runtime>() -> TauriPlugin<R> {
               } catch(e) {}
             }
 
-            const __ASTRA_GOOGLE_ORIGINS__ = [
-              "https://accounts.google.com",
-              "https://accounts.youtube.com",
-              "https://oauth2.googleapis.com",
-              "https://www.google.com",
-              "https://signin.google.com",
+            // Exact hostname allowlist — never match on url.href prefix which would
+            // allow https://accounts.google.com.evil.com/ to bypass the check.
+            const __ASTRA_GOOGLE_HOSTS__ = [
+              "accounts.google.com",
+              "accounts.youtube.com",
+              "oauth2.googleapis.com",
+              "www.google.com",
+              "signin.google.com",
             ];
             const __ASTRA_INTERNAL_ORIGINS__ = [window.location.origin, "http://localhost:3000"];
             const __ASTRA_DOWNLOAD_PREFIX__ = "/api/downloads/";
@@ -116,7 +118,9 @@ fn external_link_plugin<R: Runtime>() -> TauriPlugin<R> {
               }
             };
             const __astraIsInternal = (url) => __ASTRA_INTERNAL_ORIGINS__.includes(url.origin);
-            const __astraIsGoogle = (url) => __ASTRA_GOOGLE_ORIGINS__.some(o => url.href.startsWith(o));
+            const __astraIsGoogle = (url) =>
+              url.protocol === "https:" &&
+              __ASTRA_GOOGLE_HOSTS__.includes(url.hostname.toLowerCase().replace(/\.$/, ""));
             const __astraIsDownload = (url) => __astraIsInternal(url) && url.pathname.startsWith(__ASTRA_DOWNLOAD_PREFIX__);
             const __astraOpenExternal = (url) => {
               if (window.__TAURI_INTERNALS__?.invoke) {
