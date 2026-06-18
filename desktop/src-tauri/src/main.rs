@@ -15,11 +15,13 @@ fn is_internal_url(url: &str) -> bool {
 }
 
 fn should_keep_in_webview(url: &str) -> bool {
-    // Google sign-in must complete inside the desktop webview so the auth
-    // session cookie is written to the same cookie jar the app uses. If this
-    // hop is pushed into the system browser, the web app and desktop shell can
-    // behave like different accounts.
+    // All Google OAuth / account-management domains must stay in the WebView
+    // so the auth session cookie lands in the same jar the app uses.
     url.starts_with("https://accounts.google.com/")
+        || url.starts_with("https://accounts.youtube.com/")
+        || url.starts_with("https://oauth2.googleapis.com/")
+        || url.starts_with("https://www.google.com/accounts/")
+        || url.starts_with("https://signin.google.com/")
 }
 
 fn should_open_externally(url: &str) -> bool {
@@ -49,6 +51,60 @@ fn external_link_plugin<R: Runtime>() -> TauriPlugin<R> {
         })
         .js_init_script(
             r#"
+            // Inject Chrome APIs that Google OAuth checks for. WKWebView doesn't
+            // expose window.chrome or navigator.userAgentData, which causes Google
+            // to show "This browser may not be secure". Faking them bypasses the check.
+            if (!window.chrome) {
+              try {
+                Object.defineProperty(window, 'chrome', {
+                  value: {
+                    runtime: { id: undefined },
+                    loadTimes: function() { return {}; },
+                    csi: function() { return {}; },
+                    app: { isInstalled: false },
+                  },
+                  configurable: true,
+                  writable: true,
+                });
+              } catch(e) {}
+            }
+            if (!navigator.userAgentData) {
+              try {
+                Object.defineProperty(navigator, 'userAgentData', {
+                  value: {
+                    brands: [
+                      { brand: 'Chromium', version: '125' },
+                      { brand: 'Google Chrome', version: '125' },
+                      { brand: 'Not-A.Brand', version: '99' },
+                    ],
+                    mobile: false,
+                    platform: 'macOS',
+                    getHighEntropyValues: function(hints) {
+                      return Promise.resolve({
+                        architecture: 'arm',
+                        bitness: '64',
+                        brands: this.brands,
+                        fullVersionList: this.brands,
+                        mobile: false,
+                        model: '',
+                        platform: 'macOS',
+                        platformVersion: '14.0.0',
+                        uaFullVersion: '125.0.0.0',
+                      });
+                    },
+                  },
+                  configurable: true,
+                });
+              } catch(e) {}
+            }
+
+            const __ASTRA_GOOGLE_ORIGINS__ = [
+              "https://accounts.google.com",
+              "https://accounts.youtube.com",
+              "https://oauth2.googleapis.com",
+              "https://www.google.com",
+              "https://signin.google.com",
+            ];
             const __ASTRA_INTERNAL_ORIGINS__ = [window.location.origin, "http://localhost:3000"];
             const __ASTRA_DOWNLOAD_PREFIX__ = "/api/downloads/";
             const __astraResolveUrl = (value) => {
@@ -60,6 +116,7 @@ fn external_link_plugin<R: Runtime>() -> TauriPlugin<R> {
               }
             };
             const __astraIsInternal = (url) => __ASTRA_INTERNAL_ORIGINS__.includes(url.origin);
+            const __astraIsGoogle = (url) => __ASTRA_GOOGLE_ORIGINS__.some(o => url.href.startsWith(o));
             const __astraIsDownload = (url) => __astraIsInternal(url) && url.pathname.startsWith(__ASTRA_DOWNLOAD_PREFIX__);
             const __astraOpenExternal = (url) => {
               if (window.__TAURI_INTERNALS__?.invoke) {
@@ -78,7 +135,7 @@ fn external_link_plugin<R: Runtime>() -> TauriPlugin<R> {
                   return nativeOpen(url, target, features);
                 }
 
-                const keepInApp = resolved.origin === "https://accounts.google.com";
+                const keepInApp = __astraIsGoogle(resolved);
                 if (__astraIsDownload(resolved) || (!__astraIsInternal(resolved) && !keepInApp) || resolved.protocol === "mailto:" || resolved.protocol === "tel:") {
                   void __astraOpenExternal(resolved);
                   return window;
@@ -102,7 +159,7 @@ fn external_link_plugin<R: Runtime>() -> TauriPlugin<R> {
                 const resolved = __astraResolveUrl(href);
                 if (!resolved) return;
 
-                const keepInApp = resolved.origin === "https://accounts.google.com";
+                const keepInApp = __astraIsGoogle(resolved);
                 const wantsExternal =
                   __astraIsDownload(resolved) ||
                   (!__astraIsInternal(resolved) && !keepInApp) ||
