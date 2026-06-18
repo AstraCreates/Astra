@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -795,10 +796,60 @@ for _cp_name, (_mcp_name, _doc) in _MCP_TOOLS.items():
         _TOOLS[_cp_name] = (_doc, _make_mcp_tool(_mcp_name))
 
 
+_ACTION_LINE_RE = re.compile(r"\{[\s\S]*?\}", re.DOTALL)
+_ACTION_NAME_RE = re.compile(r'"action"\s*:\s*"(?P<action>[^"]+)"')
+_TOOL_NAME_RE = re.compile(r'"tool"\s*:\s*"(?P<tool>[^"]+)"')
+_ARGS_RE = re.compile(r'"args"\s*:\s*(\{[\s\S]*\})', re.DOTALL)
+
+
+def _extract_leading_reply(raw: str) -> str:
+    if not raw:
+        return ""
+    head = raw.split("{", 1)[0].strip()
+    if head.startswith("```"):
+        return ""
+    return head
+
+
 def _parse_action(raw: str) -> dict:
     from backend.core.json_extract import extract_json
     v = extract_json(raw, prefer_keys=("action",))
-    return v if v else {"action": "reply", "text": (raw or "").strip()}
+    if isinstance(v, dict) and v.get("action"):
+        return v
+
+    text = (raw or "").strip()
+    if not text:
+        return {"action": "reply", "text": ""}
+
+    # Recover from common LLM formatting drift:
+    # 1. a natural-language preface followed by a JSON tool object
+    # 2. malformed tool JSON that still clearly names action/tool/args
+    action_match = _ACTION_NAME_RE.search(text)
+    tool_matches = list(_TOOL_NAME_RE.finditer(text))
+    tool_match = tool_matches[-1] if tool_matches else None
+    if action_match and tool_match:
+        parsed: dict[str, Any] = {
+            "action": action_match.group("action").strip(),
+            "tool": tool_match.group("tool").strip(),
+        }
+        args_match = _ARGS_RE.search(text)
+        if args_match:
+            parsed["args"] = extract_json(args_match.group(1)) or {}
+        else:
+            parsed["args"] = {}
+        preface = _extract_leading_reply(text)
+        if preface:
+            parsed["preface"] = preface
+        return parsed
+
+    # If multiple JSON-ish blobs were emitted, prefer the first one that looks
+    # like an action object even when the full response is not parseable.
+    for match in _ACTION_LINE_RE.finditer(text):
+        candidate = extract_json(match.group(0), prefer_keys=("action",))
+        if isinstance(candidate, dict) and candidate.get("action"):
+            return candidate
+
+    return {"action": "reply", "text": text}
 
 
 def _summarize_copilot_action(tool: str, result: Any) -> dict[str, str]:
@@ -957,6 +1008,7 @@ async def run_copilot(founder_id: str, session_id: str, message: str) -> dict[st
         act = _parse_action(raw)
         if act.get("action") == "tool" and act.get("tool") in _TOOLS:
             name = act["tool"]
+            preface = str(act.get("preface") or "").strip()
             try:
                 result = await _TOOLS[name][1](founder_id, session_id, act.get("args") or {})
             except Exception as exc:
@@ -967,6 +1019,8 @@ async def run_copilot(founder_id: str, session_id: str, message: str) -> dict[st
                 convo.append(f"tool[{name}] -> {{\"ok\": false, \"note\": \"tool unavailable, answer from live context\"}}")
             else:
                 convo.append(f"tool[{name}] -> {json.dumps(result)[:1200]}")
+            if preface:
+                convo.append(f"assistant_note: {preface}")
             continue
         reply = str(act.get("text") or raw).strip()
         break
