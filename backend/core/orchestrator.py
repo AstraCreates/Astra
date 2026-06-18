@@ -352,6 +352,109 @@ class Orchestrator:
             prompt.setdefault("option_details", {})
         return parsed
 
+    async def _research_agent_discussion(
+        self,
+        goal: str,
+        notes_by_lane: dict[str, str],
+        session_id: str,
+        publish_fn: Any,
+    ) -> list[dict]:
+        """Two-round agent-to-agent critique: each lane critiques the others, then responds.
+
+        Produces real per-agent turns (not a single simulated debate) that get folded into
+        the final synthesis and emitted as research_discussion_turn events.
+        """
+        lanes = [(name, text) for name, text in notes_by_lane.items() if text.strip()]
+        if len(lanes) < 2:
+            return []
+
+        _ROLE_LABELS: dict[str, str] = {
+            "r_market": "Market Analyst",
+            "r_competitors": "Competitive Intelligence",
+            "r_customers": "Customer Research",
+            "r_gtm": "Go-to-Market Strategist",
+            "research": "Research Lead",
+        }
+
+        all_summaries = "\n\n---\n\n".join(
+            f"### {_ROLE_LABELS.get(name, name.upper())} FINDINGS\n\n{text[:3000]}"
+            for name, text in lanes
+        )
+
+        discussion_turns: list[dict] = []
+        round_1_outputs: dict[str, str] = {}
+
+        # Round 1: each agent identifies the strongest gap or blind spot across all lanes
+        for agent_name, _lane_text in lanes:
+            role_label = _ROLE_LABELS.get(agent_name, agent_name)
+            try:
+                raw = await self._verify_llm_call([
+                    {"role": "system", "content": (
+                        f"You are the {role_label} on Astra's research council. "
+                        "Read ALL lane findings and identify ONE sharp critique, gap, or blind spot "
+                        "that the other researchers missed or underweighted. "
+                        "Be specific and evidence-based. 2-4 sentences. No fluff, no praise."
+                    )},
+                    {"role": "user", "content": (
+                        f"Goal: {goal}\n\n"
+                        f"All research council findings:\n{all_summaries}\n\n"
+                        "What critical point did the team miss or underweight? Be direct."
+                    )},
+                ])
+                critique = raw.strip()
+                round_1_outputs[agent_name] = critique
+                turn: dict[str, Any] = {"speaker": agent_name, "role": role_label, "round": 1, "content": critique}
+                discussion_turns.append(turn)
+                await publish_fn(session_id, {
+                    "type": "research_discussion_turn",
+                    "speaker": agent_name,
+                    "role": role_label,
+                    "round": 1,
+                    "content": critique,
+                })
+            except Exception as _de:
+                logger.warning("research_discussion R1 %s: %s", agent_name, _de)
+
+        if not round_1_outputs:
+            return discussion_turns
+
+        critiques_block = "\n\n".join(
+            f"**{_ROLE_LABELS.get(n, n)}:** {t}"
+            for n, t in round_1_outputs.items()
+        )
+
+        # Round 2: each agent responds — defend, concede, or redirect
+        for agent_name, _lane_text in lanes:
+            role_label = _ROLE_LABELS.get(agent_name, agent_name)
+            try:
+                raw = await self._verify_llm_call([
+                    {"role": "system", "content": (
+                        f"You are the {role_label}. Your research council colleagues just critiqued each other's work. "
+                        "Respond to the critique most relevant to your lane: defend your finding with evidence, "
+                        "concede the point and update your recommendation, or redirect to what matters most. "
+                        "2-3 sentences. Direct."
+                    )},
+                    {"role": "user", "content": (
+                        f"Goal: {goal}\n\n"
+                        f"Council critiques:\n{critiques_block}\n\n"
+                        "Your response:"
+                    )},
+                ])
+                response = raw.strip()
+                turn = {"speaker": agent_name, "role": role_label, "round": 2, "content": response}
+                discussion_turns.append(turn)
+                await publish_fn(session_id, {
+                    "type": "research_discussion_turn",
+                    "speaker": agent_name,
+                    "role": role_label,
+                    "round": 2,
+                    "content": response,
+                })
+            except Exception as _de:
+                logger.warning("research_discussion R2 %s: %s", agent_name, _de)
+
+        return discussion_turns
+
     async def _initial_plan(self, goal: str, stack_template=None) -> list[dict]:
         """Phase 1: decide which agents to use based on stack + goal. research always first."""
         stack_roster = ""
@@ -1688,6 +1791,43 @@ class Orchestrator:
         research_result, merged_notes = _collect_research()
         if merged_notes:
             research_result["obsidian_content"] = "\n\n---\n\n".join(merged_notes)
+
+        # Build per-lane text dict for the agent discussion
+        import re as _re3
+        _notes_by_lane: dict[str, str] = {}
+        for _rt in parallel_research_tasks:
+            _base_name = _re3.sub(r"_\d+$", "", _rt["agent"])
+            _lane_text = ""
+            for _mn in merged_notes:
+                if _mn.startswith(f"## {_base_name.upper()}"):
+                    _lane_text = _mn
+                    break
+            if not _lane_text:
+                _lane_text = json.dumps(completed.get(_rt["id"], {}), default=str)[:4000]
+            if _lane_text:
+                _notes_by_lane[_rt["agent"]] = _lane_text
+
+        # Run real agent-to-agent discussion before final synthesis
+        if len(_notes_by_lane) >= 2:
+            await publish(session_id, {
+                "type": "research_discussion_start",
+                "agents": list(_notes_by_lane.keys()),
+            })
+            _discussion_turns = await self._research_agent_discussion(
+                goal, _notes_by_lane, session_id, publish
+            )
+            if _discussion_turns:
+                shared["research_discussion"] = _discussion_turns
+                await publish(session_id, {
+                    "type": "research_discussion_complete",
+                    "turns": _discussion_turns,
+                })
+                discussion_text = "## AGENT DISCUSSION\n\n" + "\n\n".join(
+                    f"**Round {t['round']} — {t['role']}:** {t['content']}"
+                    for t in _discussion_turns
+                )
+                merged_notes.append(discussion_text)
+
         research_review = await self._critical_research_review(goal, research_result, merged_notes)
         if research_review:
             shared["research_review"] = research_review
