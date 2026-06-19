@@ -788,7 +788,8 @@ class Agent:
             "RULES:\n"
             "- Output ONLY the JSON object. Nothing before it, nothing after it.\n"
             "- Never invent tool results. Only report what tools actually returned.\n"
-            "- If a tool fails, put the error in output and call done.\n"
+            "- If a tool fails, try an alternative approach or search query — do NOT call done on the first failure.\n"
+            "- Do NOT call done until you have gathered substantial real data and executed required tools.\n"
             "- Use exact arg names from tool descriptions.\n"
             "- Treat injected run_context_pack/current_company_goal/company_brain_context as source-of-truth context. "
             "Call Company Brain tools only when that injected context is insufficient for the current task."
@@ -1018,6 +1019,17 @@ class Agent:
                             "You cannot call done yet. Output is missing required fields: "
                             f"{', '.join(missing_output)}. "
                             "Call the necessary tools, then call done with a complete output payload."
+                        )})
+                        continue
+                    # Reject placeholder/filler outputs
+                    _FILLER = ("lorem ipsum", "placeholder", "coming soon", "tbd", "to be determined",
+                               "insert ", "your company", "example.com", "[company]", "{{", "xxx")
+                    _summary_text = str(output.get("summary", "")).lower()
+                    _filler_hits = [f for f in _FILLER if f in _summary_text]
+                    if _filler_hits and len(_called_tools - {"obsidian_log"}) < 3:
+                        messages.append({"role": "user", "content": (
+                            f"Your output contains placeholder text ({_filler_hits[0]!r}) and no real research was done. "
+                            "Search the web, gather actual data, then provide a real summary."
                         )})
                         continue
                 await self._emit(ctx, "agent_done", result=output)
