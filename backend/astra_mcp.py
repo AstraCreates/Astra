@@ -467,7 +467,7 @@ def _ask_brain(args: dict) -> dict:
 def _search_brain(args: dict) -> dict:
     founder_id = args.get("founder_id") or _founder_id()
     try:
-        return {"ok": True, **_get(f"/brain/{founder_id}/search", {"query": args["query"], "limit": int(args.get("limit") or 8)})}
+        return {"ok": True, **_get(f"/brain/{founder_id}/search", {"q": args["query"], "limit": int(args.get("limit") or 8)})}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

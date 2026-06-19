@@ -2277,12 +2277,33 @@ class Orchestrator:
         )
         await publish(session_id, {"type": "creative_brief", "creative_brief": creative_brief})
 
+        # Walk parent chain to find root (launch) session goal — agents must know the
+        # original mission or each child session drifts a bit further from it.
+        _prior_goal = prior_meta.get("goal", "")
+        _root_goal = _prior_goal
+        try:
+            _walk_sid = prior_meta.get("parent_session_id", "")
+            _walked = 0
+            while _walk_sid and _walked < 6:
+                from backend.core.session_store import get_session_meta as _gsm2
+                _walk_meta = _gsm2(_walk_sid) or {}
+                if _walk_meta.get("goal"):
+                    _root_goal = _walk_meta["goal"]
+                _walk_sid = _walk_meta.get("parent_session_id", "")
+                _walked += 1
+        except Exception:
+            pass
+
         # Load all prior vault notes for this founder to give full company context
         shared: dict[str, Any] = {
             "prior_session_id": prior_session_id,
             "creative_brief": creative_brief,
             "company_id": company_id,
         }
+        if _root_goal:
+            shared["root_session_goal"] = _root_goal
+        if _prior_goal and _prior_goal != _root_goal:
+            shared["parent_session_goal"] = _prior_goal
         # Propagate the SAME company name the launch run chose, so operating-run agents
         # don't invent a new one (the "Goon → TrueNorth / amay / WellSync" drift).
         # Resolve: PINNED name on the company record → brain identity record → prior
@@ -2395,8 +2416,18 @@ class Orchestrator:
                 completed[tid] = {"error": f"unknown agent {agent_name}"}
                 return
             vault_ctx = await asyncio.to_thread(format_vault_context, agent_name, 5, founder_id)
+            # Pin the original mission at the top of every agent's goal so context
+            # can't be diluted across child sessions. If agents see only their
+            # sub-task they drift; anchoring to root_goal keeps them on path.
+            _task_instruction = task["instruction"]
+            _root = shared.get("root_session_goal") or shared.get("parent_session_goal")
+            if _root and _root.strip() and _root.strip() not in _task_instruction:
+                _task_instruction = (
+                    f"ORIGINAL COMPANY GOAL: {_root.strip()}\n\n"
+                    f"YOUR TASK: {_task_instruction}"
+                )
             ctx = AgentContext(
-                goal=task["instruction"],
+                goal=_task_instruction,
                 founder_id=founder_id,
                 session_id=session_id,
                 shared={
