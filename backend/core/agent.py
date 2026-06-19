@@ -1451,6 +1451,10 @@ class Agent:
                 missing.append("repo_url")
             if not (output.get("deploy_url") or output.get("url")):
                 missing.append("deploy_url")
+            if output.get("success") is not True:
+                missing.append("success=True")
+            if output.get("build_passes") is not True:
+                missing.append("build_passes=True")
             return missing
         if self.name == "technical":
             missing: list[str] = []
@@ -1458,6 +1462,10 @@ class Agent:
                 missing.append("repo_url")
             if not (output.get("deploy_url") or output.get("url")):
                 missing.append("deploy_url")
+            if output.get("success") is not True:
+                missing.append("success=True")
+            if output.get("build_passes") is not True:
+                missing.append("build_passes=True")
             if not isinstance(output.get("files_in_repo"), int):
                 missing.append("files_in_repo")
             return missing
@@ -1901,6 +1909,8 @@ class Agent:
                     out.setdefault("deploy_url", result.get("deploy_url"))
                     out.setdefault("url", result.get("deploy_url"))
                     out.setdefault("files_in_repo", result.get("files_in_repo"))
+                    out.setdefault("success", result.get("success"))
+                    out.setdefault("build_passes", result.get("build_passes"))
                     if result.get("files_preview"):
                         out.setdefault("files_preview", result.get("files_preview"))
         elif self.name == "technical_infra":

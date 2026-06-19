@@ -76,13 +76,42 @@ def test_web_normalizes_repo_and_deploy_from_tool_results():
         ("run_mvp_loop", {
             "repo_url": "https://github.com/acme/site",
             "deploy_url": "https://acme.vercel.app",
+            "success": True,
+            "build_passes": True,
             "files_in_repo": 18,
             "files_preview": ["app/page.tsx"],
         }),
     ])
     assert normalized["repo_url"] == "https://github.com/acme/site"
     assert normalized["deploy_url"] == "https://acme.vercel.app"
+    assert normalized["success"] is True
+    assert normalized["build_passes"] is True
     assert normalized["files_in_repo"] == 18
+
+
+def test_web_requires_successful_mvp_build_output():
+    agent = Agent(name="web", role="w", tools={})
+    missing = agent._missing_required_output({
+        "repo_url": "https://github.com/acme/site",
+        "deploy_url": "https://acme.vercel.app",
+        "success": False,
+        "build_passes": False,
+    })
+    assert "success=True" in missing
+    assert "build_passes=True" in missing
+
+
+def test_technical_requires_successful_mvp_build_output():
+    agent = Agent(name="technical", role="t", tools={})
+    missing = agent._missing_required_output({
+        "repo_url": "https://github.com/acme/app",
+        "deploy_url": "https://acme.vercel.app",
+        "files_in_repo": 3,
+        "success": False,
+        "build_passes": False,
+    })
+    assert "success=True" in missing
+    assert "build_passes=True" in missing
 
 
 def test_ops_normalizes_action_outputs():

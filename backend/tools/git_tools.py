@@ -162,11 +162,11 @@ def _sh(cmd: list, cwd: str = None, timeout: int = 60) -> str:
     return r.stdout.strip()
 
 
-def _workspace_dir(session_id: str, repo_url: str) -> Path:
-    """Deterministic persistent workspace path for a session + repo."""
+def _workspace_dir(workspace_key: str, repo_url: str) -> Path:
+    """Deterministic persistent workspace path for a workspace scope + repo."""
     repo_name = re.sub(r"[^a-zA-Z0-9._-]+", "-", repo_url.rstrip("/").split("/")[-1])[:80] or "repo"
-    safe_session = re.sub(r"[^a-zA-Z0-9._-]+", "-", session_id)[:80] or "session"
-    return (WORKSPACE_ROOT / safe_session / repo_name).resolve()
+    safe_scope = re.sub(r"[^a-zA-Z0-9._-]+", "-", workspace_key)[:120] or "workspace"
+    return (WORKSPACE_ROOT / safe_scope / repo_name).resolve()
 
 
 def _ensure_within_workspace_root(path: Path) -> Path:
@@ -202,13 +202,14 @@ def remove_workspace(session_id: str) -> bool:
     return not target.exists()
 
 
-def _ensure_clone(repo_url: str, session_id: str = "default") -> str:
+def _ensure_clone(repo_url: str, session_id: str = "default", workspace_key: str | None = None) -> str:
     """Clone repo into persistent workspace, return local path."""
     import time
-    key = f"{session_id}:{repo_url}"
+    scope = workspace_key or session_id
+    key = f"{scope}:{repo_url}"
     if key in _clones and os.path.isdir(_clones[key]):
         return _clones[key]
-    workspace = _ensure_within_workspace_root(_workspace_dir(session_id, repo_url))
+    workspace = _ensure_within_workspace_root(_workspace_dir(scope, repo_url))
     workspace.parent.mkdir(parents=True, exist_ok=True)
     if workspace.exists():
         # Already cloned in a prior run — just pull
@@ -257,15 +258,28 @@ def _root_session_id(session_id: str) -> str:
         return session_id
 
 
-def _get_workspace(repo_url: str, session_id: str) -> tuple[str, bool]:
+def _company_workspace_key(founder_id: str, company_id: str | None = None) -> str:
+    resolved_company = company_id or founder_id or "company"
+    return f"company-{resolved_company}"
+
+
+def _get_workspace(
+    repo_url: str,
+    session_id: str,
+    founder_id: str = "",
+    company_id: str = "",
+) -> tuple[str, bool]:
     """Return (local_path, is_github). Clones from GitHub when a repo + token are
     available, otherwise builds in a fresh local git workspace so MVPs can be
     built and previewed with NO GitHub required. Continuation runs reuse the launch
     session's workspace (resolved via the parent chain)."""
     session_id = _root_session_id(session_id)
+    workspace_key = session_id
+    if repo_url and founder_id and company_id:
+        workspace_key = _company_workspace_key(founder_id, company_id)
     if repo_url and settings.github_token:
         try:
-            return _ensure_clone(repo_url, session_id), True
+            return _ensure_clone(repo_url, session_id, workspace_key=workspace_key), True
         except Exception as e:
             # Repo creation blocked/failed → don't let the build die; build locally.
             logger.warning("clone failed (%s) — building in a local workspace instead", str(e)[:160])
@@ -482,7 +496,7 @@ def _make_env() -> dict:
     env = os.environ.copy()
     env["OPENAI_BASE_URL"] = getattr(settings, "openrouter_base_url", "") or "https://openrouter.ai/api/v1"
     env["OPENAI_API_KEY"] = or_key
-    env["OPENAI_MODEL"] = getattr(settings, "mvp_build_model", "") or "tencent/hy3-preview"
+    env["OPENAI_MODEL"] = getattr(settings, "mvp_build_model", "") or "xiaomi/mimo-v2.5-pro"
     # Persistent, shared npm cache so `npm install` (run by every build pass and every
     # session) pulls packages from local disk instead of re-downloading — the biggest
     # chunk of build time. prefer-offline = use the cache whenever possible.
@@ -529,7 +543,7 @@ def _record_build_usage(result_obj: dict, founder_id: str = "", session_id: str 
         from backend.credits.store import deduct_credits
         # Builds bill at a higher markup: BASE (10×) × mvp_credit_multiplier.
         mult = float(getattr(settings, "mvp_credit_multiplier", 3.0) or 3.0)
-        build_model = getattr(settings, "mvp_build_model", "") or "tencent/hy3-preview"
+        build_model = getattr(settings, "mvp_build_model", "") or "xiaomi/mimo-v2.5-pro"
         markup = BASE_MARKUP * mult
         credits = cost_to_credits(build_model, inp, out, cache_read, markup=markup)
         deduct_credits(
@@ -555,6 +569,7 @@ def _stream_build_events(cmd: list, cwd: str, timeout: int, env: dict,
     tool_names: dict[str, str] = {}   # tool_use_id -> tool name (to label results)
     tool_targets: dict[str, str] = {}  # tool_use_id -> short target (cmd/path)
     result_obj = None
+    stderr_lines: list[str] = []
 
     def pub(ev: dict) -> None:
         try:
@@ -582,6 +597,20 @@ def _stream_build_events(cmd: list, cwd: str, timeout: int, env: dict,
         watchdog = _th.Timer(timeout, proc.kill)
         watchdog.daemon = True
         watchdog.start()
+        def _pump_stderr() -> None:
+            try:
+                assert proc.stderr is not None
+                for raw in proc.stderr:
+                    line = raw.strip()
+                    if not line:
+                        continue
+                    stderr_lines.append(line)
+                    pub({"kind": "error", "text": line[-2000:]})
+            except Exception:
+                pass
+
+        stderr_thread = _th.Thread(target=_pump_stderr, daemon=True)
+        stderr_thread.start()
         try:
             for line in proc.stdout:
                 line = line.strip()
@@ -660,13 +689,18 @@ def _stream_build_events(cmd: list, cwd: str, timeout: int, env: dict,
                 proc.wait(timeout=10)
             except Exception:
                 proc.kill()
+            stderr_thread.join(timeout=1)
 
     if isinstance(result_obj, dict):
         _record_build_usage(result_obj, founder_id, oc_session_id)
-        pub({"kind": "done", "files": list(files.keys())})
+        pub({"kind": "done", "files": list(files.keys()), "exit_code": proc.returncode or 0})
         return (result_obj.get("result") or "").strip()
-    pub({"kind": "done", "files": list(files.keys())})
-    return ""
+    stderr_text = "\n".join(stderr_lines).strip()
+    if stderr_text:
+        pub({"kind": "error", "text": stderr_text[-2000:]})
+    pub({"kind": "done", "files": list(files.keys()), "exit_code": proc.returncode or 0,
+         "error": stderr_text[-2000:] if stderr_text else ""})
+    return stderr_text
 
 
 def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 480, model: str = None,
@@ -679,7 +713,7 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
         raise RuntimeError(f"openclaude not found at {OPENCLAUDE_BIN}")
 
     env = _make_env()
-    model = model or env.get("OPENAI_MODEL", "tencent/hy3-preview")
+    model = model or env.get("OPENAI_MODEL", "xiaomi/mimo-v2.5-pro")
     # Build args list (excluding cwd — handled by shell cd).
     # --output-format json gives a clean, parseable result object (and reliably
     # runs the agentic tool loop). Keep the prompt as the LAST arg with no
@@ -777,7 +811,7 @@ def _pm_respond(agent_output: str, goal: str, context: str, missing: list[str]) 
     base_url = env.get("OPENAI_BASE_URL", settings.openrouter_base_url)
     # These review calls run against the DeepInfra endpoint, so use a model valid
     # there (planner_model_name may be an OpenRouter-only slug -> 404).
-    model = getattr(settings, "mvp_build_model", "") or "tencent/hy3-preview"
+    model = getattr(settings, "mvp_build_model", "") or "xiaomi/mimo-v2.5-pro"
 
     client = openai.OpenAI(base_url=base_url, api_key=api_key)
     missing_str = ", ".join(missing) if missing else "none — MVP may be complete"
@@ -830,7 +864,7 @@ def _planner_review(local: str, goal: str, files: list[str]) -> dict:
     client = openai.OpenAI(base_url=env["OPENAI_BASE_URL"], api_key=env["OPENAI_API_KEY"])
     # These review calls run against the DeepInfra endpoint, so use a model valid
     # there (planner_model_name may be an OpenRouter-only slug -> 404).
-    model = getattr(settings, "mvp_build_model", "") or "tencent/hy3-preview"
+    model = getattr(settings, "mvp_build_model", "") or "xiaomi/mimo-v2.5-pro"
 
     # Sample key files — read enough that truncation false-positives don't trigger
     samples = []
@@ -1309,7 +1343,7 @@ def run_mvp_loop(
 
         # GitHub-optional: clone if a repo+token exist, else build in a local
         # workspace and stream files to the preview (no GitHub required).
-        local, is_github = _get_workspace(repo_url, session_id)
+        local, is_github = _get_workspace(repo_url, session_id, founder_id=founder_id, company_id=_company_id)
 
         # First build that produced a real GitHub repo → pin it for all future runs.
         if founder_id and _company_id and is_github and repo_url:
