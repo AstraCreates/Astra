@@ -91,7 +91,17 @@ Stack inference: `_analyze_goal()` in `routes.py` calls LLM (DeepSeek fast, JSON
 
 **Deploy workflow**:
 ```bash
-# Backend Python change (live-mounted):
+# One command — auto-detects what changed and does the right thing:
+deploy
+# Pulls origin/main, then:
+#   Dockerfile.backend or requirements changed → rebuild + restart backend
+#   frontend/ or Dockerfile.frontend changed   → rebuild + restart frontend
+#   anything else                              → hot restart backend (2s, no rebuild)
+```
+
+Manual overrides (run from `/opt/astra/repo`):
+```bash
+# Backend Python change only:
 docker compose restart backend
 
 # Frontend change:
