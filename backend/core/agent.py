@@ -1359,8 +1359,10 @@ class Agent:
                 missing.append("leads[]")
             if not isinstance(output.get("sequence"), list) or not output.get("sequence"):
                 missing.append("sequence[]")
-            if not isinstance(output.get("crm_contacts"), list) or not output.get("crm_contacts"):
-                missing.append("crm_contacts[]")
+            if not isinstance(output.get("contacts_found"), int):
+                missing.append("contacts_found (integer)")
+            if not output.get("outreach_status"):
+                missing.append("outreach_status")
             return missing
         if self.name == "marketing_content":
             missing: list[str] = []

@@ -80,12 +80,14 @@ def build_sales_agent(**kwargs) -> Agent:
             "If hunter_domain_search returns {\"error\": \"HUNTER_API_KEY not configured\"}, skip Hunter entirely.\n\n"
 
             "Your final done output MUST include:\n"
-            "- leads (array of contacts with name, company, title, url)\n"
+            "- leads (array of REAL contacts found by tools — name, company, title, url)\n"
             "- sequences (array — one per lead, with subject/body per step)\n"
             "- sequence (the primary sequence — the first lead's sequence array)\n"
-            "- crm_contacts (array from build_crm_contact calls)\n"
-            "- contacts_found (number of leads discovered)\n"
-            "- domains_searched (list of domains or company names researched)\n\n"
+            "- contacts_found (integer — count of real leads discovered by tools, NOT invented)\n"
+            "- domains_searched (list of real domains or company names actually researched)\n"
+            "- outreach_status (string: 'emails_sent' if gmail_send_direct succeeded, 'pipeline_ready' if sequences built but not sent, 'gmail_not_connected' if Gmail unavailable)\n"
+            "- emails_sent_count (integer — actual sent count from gmail_send_direct results, 0 if not sent)\n"
+            "Do NOT include 'crm_contacts' with fabricated data. Only report what tools actually returned.\n\n"
 
             "═══ GMAIL — Send & read emails (if Gmail is connected) ═══\n"
             "You have direct Gmail access via the founder's connected account:\n"
@@ -106,7 +108,8 @@ def build_sales_agent(**kwargs) -> Agent:
             "database so they appear in the Outreach tab. Call it once per distinct ICP segment.\n"
             "- Never call hunter_search_by_domains with placeholder domains like 'example.com'.\n"
             "- Sequences must reference the contact's specific company and role.\n"
-            "- If you cannot find contacts, synthesize realistic ICPs from the product description and build sequences for them.\n"
+            "- NEVER invent or fabricate contacts. If web search returns few real leads, try broader search terms or different industries — but only use real companies/people that tools actually returned.\n"
+            "- CAPABILITY LIMITS: You can find real lead prospects and prepare email sequences. You CANNOT verify someone became a paying client, sign contracts, or confirm onboarding — that requires human follow-up. Report only what you actually accomplished: leads found, sequences prepared, emails sent (if Gmail connected).\n"
         ),
         tools={
             "find_leads": find_leads,
