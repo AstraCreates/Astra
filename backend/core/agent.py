@@ -860,6 +860,42 @@ class Agent:
         _tool_results: list[tuple[str, dict[str, Any]]] = []
         _consecutive_unknown = 0  # consecutive "unknown action" responses
 
+        # Quality gates: required tools + minimum call counts per agent role
+        _required_by_agent: dict[str, set[str]] = {
+            "research":          {"web_search"},
+            "r_market":          {"web_search"},
+            "r_competitors":     {"web_search"},
+            "r_customers":       {"web_search"},
+            "r_gtm":             {"web_search"},
+            "legal":             {"format_legal_document", "generate_pdf"},
+            "legal_docs":        {"format_legal_document", "generate_pdf"},
+            "legal_ip":          {"format_legal_document", "generate_pdf", "patent_search"},
+            "legal_entity":      {"file_llc_live", "format_legal_document", "generate_pdf", "obsidian_log"},
+            "sales":             {"find_leads", "bulk_discover_and_store", "build_outreach_sequence", "build_crm_contact"},
+            "sales_pipeline":    {"web_search", "generate_pdf", "obsidian_log"},
+            "design":            {"generate_design_spec", "generate_wireframe", "generate_logo", "generate_brand_board"},
+            "sales_enablement":  {"generate_pdf", "obsidian_log"},
+            "marketing_content": {"generate_reel_package", "generate_tiktok_package", "generate_meta_ad", "generate_pdf", "obsidian_log"},
+            "marketing_outreach":{"search_and_fetch", "build_outreach_sequence", "obsidian_log"},
+            "marketing_seo":     {"web_search", "generate_pdf", "obsidian_log"},
+            "marketing_paid":    {"web_search", "search_and_fetch", "generate_meta_ad", "generate_pdf", "obsidian_log"},
+            "web":               {"github_create_repo", "run_mvp_loop", "obsidian_log"},
+            "technical":         {"run_mvp_loop", "obsidian_log"},
+            "technical_infra":   {"web_search", "generate_pdf", "obsidian_log"},
+            "technical_data":    {"generate_pdf", "obsidian_log"},
+            "finance_model":     {"generate_pdf", "obsidian_log"},
+            "finance_fundraise": {"search_and_fetch", "format_legal_document", "generate_pdf", "obsidian_log"},
+            "ops":               {"generate_pdf", "obsidian_log"},
+        }
+        _min_calls_by_agent: dict[str, int] = {
+            "research": 3, "r_market": 3, "r_competitors": 3,
+            "r_customers": 3, "r_gtm": 3,
+            "sales": 3, "marketing_outreach": 3,
+            "legal": 2, "legal_docs": 2, "legal_ip": 2, "legal_entity": 2,
+            "design": 3, "marketing_content": 3,
+            "finance_fundraise": 2,
+        }
+
         while i < MAX_ITERATIONS:
             if ctx.budget and not ctx.budget.consume_iteration():
                 snapshot = ctx.budget.snapshot()
@@ -950,34 +986,22 @@ class Agent:
                 _consecutive_unknown = 0
 
             if action == "done":
-                required_by_agent = {
-                    "legal": {"format_legal_document", "generate_pdf"},
-                    "legal_docs": {"format_legal_document", "generate_pdf"},
-                    "legal_ip": {"format_legal_document", "generate_pdf", "patent_search"},
-                    "legal_entity": {"file_llc_live", "format_legal_document", "generate_pdf", "obsidian_log"},
-                    "sales": {"find_leads", "bulk_discover_and_store", "build_outreach_sequence", "build_crm_contact"},
-                    "sales_pipeline": {"web_search", "generate_pdf", "obsidian_log"},
-                    "design": {"generate_design_spec", "generate_wireframe", "generate_logo", "generate_brand_board"},
-                    "sales_enablement": {"generate_pdf", "obsidian_log"},
-                    "marketing_content": {"generate_reel_package", "generate_tiktok_package", "generate_meta_ad", "generate_pdf", "obsidian_log"},
-                    "marketing_outreach": {"search_and_fetch", "build_outreach_sequence", "obsidian_log"},
-                    "marketing_seo": {"web_search", "generate_pdf", "obsidian_log"},
-                    "marketing_paid": {"web_search", "search_and_fetch", "generate_meta_ad", "generate_pdf", "obsidian_log"},
-                    "web": {"github_create_repo", "run_mvp_loop", "obsidian_log"},
-                    "technical": {"run_mvp_loop", "obsidian_log"},
-                    "technical_infra": {"web_search", "generate_pdf", "obsidian_log"},
-                    "technical_data": {"generate_pdf", "obsidian_log"},
-                    "finance_model": {"generate_pdf", "obsidian_log"},
-                    "finance_fundraise": {"search_and_fetch", "format_legal_document", "generate_pdf", "obsidian_log"},
-                    "ops": {"generate_pdf", "create_product_with_payment_link", "composio_linear_create_issue", "composio_notion_create_page", "obsidian_log"},
-                }
-                missing = sorted(required_by_agent.get(self.name, set()) - _called_tools)
+                min_calls_needed = _min_calls_by_agent.get(self.name, 1)
+                actual_calls = len(_called_tools - {"obsidian_log"})
+                if actual_calls < min_calls_needed:
+                    messages.append({"role": "user", "content": (
+                        f"You cannot call done yet. You have only made {actual_calls} distinct tool "
+                        f"call(s) but this task requires at least {min_calls_needed}. "
+                        "You have NOT done enough real work. Keep researching / executing."
+                    )})
+                    continue
+                missing = sorted(_required_by_agent.get(self.name, set()) - _called_tools)
                 # Custom agents never match the built-in names above, so they get no
                 # required-tool enforcement at all — a founder who explicitly picked
                 # generate_pdf when building the agent expects a file every run, but
                 # the model is free to skip it (e.g. write a summary into obsidian_log
                 # instead) unless something forces the call.
-                if self.name not in required_by_agent and "generate_pdf" in self.tools and "generate_pdf" not in _called_tools:
+                if self.name not in _required_by_agent and "generate_pdf" in self.tools and "generate_pdf" not in _called_tools:
                     missing = sorted(set(missing) | {"generate_pdf"})
                 if missing:
                     messages.append({"role": "user", "content": (
@@ -1258,9 +1282,24 @@ class Agent:
             parsed = self._parse_json(raw)
             if parsed and parsed.get("action") == "done":
                 output = parsed.get("output", {})
-                output["status"] = "partial"
-                # Enrich with tool results before emitting (same as normal done path)
                 output = self._normalize_done_output(output, _tool_results)
+                # Apply same quality checks as normal done path — can't re-prompt, just flag
+                _synth_missing_tools = sorted(_required_by_agent.get(self.name, set()) - _called_tools)
+                _synth_missing_output = self._missing_required_output(output, _attempted_tools) if isinstance(output, dict) else []
+                _synth_min = _min_calls_by_agent.get(self.name, 1)
+                _synth_actual = len(_called_tools - {"obsidian_log"})
+                if _synth_missing_tools or _synth_missing_output or _synth_actual < _synth_min:
+                    output["status"] = "suspect"
+                    output["quality_flags"] = {
+                        "missing_tools": _synth_missing_tools,
+                        "missing_output": _synth_missing_output,
+                        "tool_calls_made": _synth_actual,
+                        "tool_calls_required": _synth_min,
+                    }
+                    logger.warning("[%s] force synthesis suspect — missing_tools=%s missing_output=%s calls=%d/%d",
+                                   self.name, _synth_missing_tools, _synth_missing_output, _synth_actual, _synth_min)
+                else:
+                    output["status"] = "partial"
                 await self._emit(ctx, "agent_done", result=output)
                 # Auto-write to obsidian so downstream agents can read it
                 if "obsidian_log" in self.tools and ctx.founder_id and ctx.session_id:
