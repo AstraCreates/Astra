@@ -26,8 +26,45 @@ from backend.runtime.tool_registry import schema_from_callable
 from backend.runtime.model_catalog import capabilities_for
 from backend.runtime.rollout import enabled as runtime_feature_enabled
 from backend.runtime.metrics import increment as runtime_metric
+from backend.stacks.verification_gates import _FILLER as _OUTPUT_FILLER
 
 logger = logging.getLogger(__name__)
+
+# Quality gates — module-level so they're never re-allocated per run
+_REQUIRED_BY_AGENT: dict[str, set[str]] = {
+    "research":          {"web_search"},
+    "r_market":          {"web_search"},
+    "r_competitors":     {"web_search"},
+    "r_customers":       {"web_search"},
+    "r_gtm":             {"web_search"},
+    "legal":             {"format_legal_document", "generate_pdf"},
+    "legal_docs":        {"format_legal_document", "generate_pdf"},
+    "legal_ip":          {"format_legal_document", "generate_pdf", "patent_search"},
+    "legal_entity":      {"file_llc_live", "format_legal_document", "generate_pdf", "obsidian_log"},
+    "sales":             {"find_leads", "bulk_discover_and_store", "build_outreach_sequence", "build_crm_contact"},
+    "sales_pipeline":    {"web_search", "generate_pdf", "obsidian_log"},
+    "design":            {"generate_design_spec", "generate_wireframe", "generate_logo", "generate_brand_board"},
+    "sales_enablement":  {"generate_pdf", "obsidian_log"},
+    "marketing_content": {"generate_reel_package", "generate_tiktok_package", "generate_meta_ad", "generate_pdf", "obsidian_log"},
+    "marketing_outreach":{"search_and_fetch", "build_outreach_sequence", "obsidian_log"},
+    "marketing_seo":     {"web_search", "generate_pdf", "obsidian_log"},
+    "marketing_paid":    {"web_search", "search_and_fetch", "generate_meta_ad", "generate_pdf", "obsidian_log"},
+    "web":               {"github_create_repo", "run_mvp_loop", "obsidian_log"},
+    "technical":         {"run_mvp_loop", "obsidian_log"},
+    "technical_infra":   {"web_search", "generate_pdf", "obsidian_log"},
+    "technical_data":    {"generate_pdf", "obsidian_log"},
+    "finance_model":     {"generate_pdf", "obsidian_log"},
+    "finance_fundraise": {"search_and_fetch", "format_legal_document", "generate_pdf", "obsidian_log"},
+    "ops":               {"generate_pdf", "obsidian_log"},
+}
+_MIN_CALLS_BY_AGENT: dict[str, int] = {
+    "research": 3, "r_market": 3, "r_competitors": 3,
+    "r_customers": 3, "r_gtm": 3,
+    "sales": 3, "marketing_outreach": 3,
+    "legal": 2, "legal_docs": 2, "legal_ip": 2, "legal_entity": 2,
+    "design": 3, "marketing_content": 3,
+    "finance_fundraise": 2,
+}
 
 
 # Hard cap on any single tool result appended to an agent's conversation. Even
@@ -861,42 +898,6 @@ class Agent:
         _tool_results: list[tuple[str, dict[str, Any]]] = []
         _consecutive_unknown = 0  # consecutive "unknown action" responses
 
-        # Quality gates: required tools + minimum call counts per agent role
-        _required_by_agent: dict[str, set[str]] = {
-            "research":          {"web_search"},
-            "r_market":          {"web_search"},
-            "r_competitors":     {"web_search"},
-            "r_customers":       {"web_search"},
-            "r_gtm":             {"web_search"},
-            "legal":             {"format_legal_document", "generate_pdf"},
-            "legal_docs":        {"format_legal_document", "generate_pdf"},
-            "legal_ip":          {"format_legal_document", "generate_pdf", "patent_search"},
-            "legal_entity":      {"file_llc_live", "format_legal_document", "generate_pdf", "obsidian_log"},
-            "sales":             {"find_leads", "bulk_discover_and_store", "build_outreach_sequence", "build_crm_contact"},
-            "sales_pipeline":    {"web_search", "generate_pdf", "obsidian_log"},
-            "design":            {"generate_design_spec", "generate_wireframe", "generate_logo", "generate_brand_board"},
-            "sales_enablement":  {"generate_pdf", "obsidian_log"},
-            "marketing_content": {"generate_reel_package", "generate_tiktok_package", "generate_meta_ad", "generate_pdf", "obsidian_log"},
-            "marketing_outreach":{"search_and_fetch", "build_outreach_sequence", "obsidian_log"},
-            "marketing_seo":     {"web_search", "generate_pdf", "obsidian_log"},
-            "marketing_paid":    {"web_search", "search_and_fetch", "generate_meta_ad", "generate_pdf", "obsidian_log"},
-            "web":               {"github_create_repo", "run_mvp_loop", "obsidian_log"},
-            "technical":         {"run_mvp_loop", "obsidian_log"},
-            "technical_infra":   {"web_search", "generate_pdf", "obsidian_log"},
-            "technical_data":    {"generate_pdf", "obsidian_log"},
-            "finance_model":     {"generate_pdf", "obsidian_log"},
-            "finance_fundraise": {"search_and_fetch", "format_legal_document", "generate_pdf", "obsidian_log"},
-            "ops":               {"generate_pdf", "obsidian_log"},
-        }
-        _min_calls_by_agent: dict[str, int] = {
-            "research": 3, "r_market": 3, "r_competitors": 3,
-            "r_customers": 3, "r_gtm": 3,
-            "sales": 3, "marketing_outreach": 3,
-            "legal": 2, "legal_docs": 2, "legal_ip": 2, "legal_entity": 2,
-            "design": 3, "marketing_content": 3,
-            "finance_fundraise": 2,
-        }
-
         while i < MAX_ITERATIONS:
             if ctx.budget and not ctx.budget.consume_iteration():
                 snapshot = ctx.budget.snapshot()
@@ -987,7 +988,7 @@ class Agent:
                 _consecutive_unknown = 0
 
             if action == "done":
-                min_calls_needed = _min_calls_by_agent.get(self.name, 1)
+                min_calls_needed = _MIN_CALLS_BY_AGENT.get(self.name, 1)
                 actual_calls = len(_called_tools - {"obsidian_log"})
                 if actual_calls < min_calls_needed:
                     messages.append({"role": "user", "content": (
@@ -996,13 +997,13 @@ class Agent:
                         "You have NOT done enough real work. Keep researching / executing."
                     )})
                     continue
-                missing = sorted(_required_by_agent.get(self.name, set()) - _called_tools)
+                missing = sorted(_REQUIRED_BY_AGENT.get(self.name, set()) - _called_tools)
                 # Custom agents never match the built-in names above, so they get no
                 # required-tool enforcement at all — a founder who explicitly picked
                 # generate_pdf when building the agent expects a file every run, but
                 # the model is free to skip it (e.g. write a summary into obsidian_log
                 # instead) unless something forces the call.
-                if self.name not in _required_by_agent and "generate_pdf" in self.tools and "generate_pdf" not in _called_tools:
+                if self.name not in _REQUIRED_BY_AGENT and "generate_pdf" in self.tools and "generate_pdf" not in _called_tools:
                     missing = sorted(set(missing) | {"generate_pdf"})
                 if missing:
                     messages.append({"role": "user", "content": (
@@ -1021,12 +1022,10 @@ class Agent:
                             "Call the necessary tools, then call done with a complete output payload."
                         )})
                         continue
-                    # Reject placeholder/filler outputs
-                    _FILLER = ("lorem ipsum", "placeholder", "coming soon", "tbd", "to be determined",
-                               "insert ", "your company", "example.com", "[company]", "{{", "xxx")
-                    _summary_text = str(output.get("summary", "")).lower()
-                    _filler_hits = [f for f in _FILLER if f in _summary_text]
-                    if _filler_hits and len(_called_tools - {"obsidian_log"}) < 3:
+                    # Reject placeholder/filler outputs — scan full output, not just summary
+                    _output_text = json.dumps(output, default=str).lower()
+                    _filler_hits = [f for f in _OUTPUT_FILLER if f in _output_text]
+                    if _filler_hits and actual_calls < min_calls_needed:
                         messages.append({"role": "user", "content": (
                             f"Your output contains placeholder text ({_filler_hits[0]!r}) and no real research was done. "
                             "Search the web, gather actual data, then provide a real summary."
@@ -1295,23 +1294,24 @@ class Agent:
             if parsed and parsed.get("action") == "done":
                 output = parsed.get("output", {})
                 output = self._normalize_done_output(output, _tool_results)
-                # Apply same quality checks as normal done path — can't re-prompt, just flag
-                _synth_missing_tools = sorted(_required_by_agent.get(self.name, set()) - _called_tools)
-                _synth_missing_output = self._missing_required_output(output, _attempted_tools) if isinstance(output, dict) else []
-                _synth_min = _min_calls_by_agent.get(self.name, 1)
-                _synth_actual = len(_called_tools - {"obsidian_log"})
-                if _synth_missing_tools or _synth_missing_output or _synth_actual < _synth_min:
-                    output["status"] = "suspect"
-                    output["quality_flags"] = {
-                        "missing_tools": _synth_missing_tools,
-                        "missing_output": _synth_missing_output,
-                        "tool_calls_made": _synth_actual,
-                        "tool_calls_required": _synth_min,
-                    }
-                    logger.warning("[%s] force synthesis suspect — missing_tools=%s missing_output=%s calls=%d/%d",
-                                   self.name, _synth_missing_tools, _synth_missing_output, _synth_actual, _synth_min)
-                else:
-                    output["status"] = "partial"
+                if isinstance(output, dict):
+                    # Apply same quality checks as normal done path — can't re-prompt, just flag
+                    _synth_missing_tools = sorted(_REQUIRED_BY_AGENT.get(self.name, set()) - _called_tools)
+                    _synth_missing_output = self._missing_required_output(output, _attempted_tools)
+                    _synth_min = _MIN_CALLS_BY_AGENT.get(self.name, 1)
+                    _synth_actual = len(_called_tools - {"obsidian_log"})
+                    if _synth_missing_tools or _synth_missing_output or _synth_actual < _synth_min:
+                        output["status"] = "suspect"
+                        output["quality_flags"] = {
+                            "missing_tools": _synth_missing_tools,
+                            "missing_output": _synth_missing_output,
+                            "tool_calls_made": _synth_actual,
+                            "tool_calls_required": _synth_min,
+                        }
+                        logger.warning("[%s] force synthesis suspect — missing_tools=%s missing_output=%s calls=%d/%d",
+                                       self.name, _synth_missing_tools, _synth_missing_output, _synth_actual, _synth_min)
+                    else:
+                        output["status"] = "partial"
                 await self._emit(ctx, "agent_done", result=output)
                 # Auto-write to obsidian so downstream agents can read it
                 if "obsidian_log" in self.tools and ctx.founder_id and ctx.session_id:
