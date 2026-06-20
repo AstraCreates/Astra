@@ -968,7 +968,9 @@ class Orchestrator:
         except Exception as _cae:
             logger.warning("custom agent registration skipped: %s", _cae)
         from backend.core.creative import build_creative_brief
+        from backend.core.session_store import save_creative_brief as _save_cb
         creative_brief = (constraints or {}).get("creative_brief") or build_creative_brief(session_id, goal)
+        _save_cb(session_id, creative_brief)
         shared: dict[str, Any] = {
             "constraints": constraints or {},
             "creative_brief": creative_brief,
@@ -2263,7 +2265,19 @@ class Orchestrator:
         from backend.core.events import publish
         from backend.tools.obsidian_logger import format_vault_context, _note_path
         from backend.core.creative import build_creative_brief
-        creative_brief = build_creative_brief(session_id, instruction)
+        from backend.core.session_store import save_creative_brief as _save_cb2, get_session_meta as _gsm
+        # Inherit creative brief from parent chain so brand stays consistent across runs
+        _inherited_cb = prior_meta.get("creative_brief")
+        if not _inherited_cb:
+            _walk_sid = prior_meta.get("parent_session_id", "")
+            _walked = 0
+            while not _inherited_cb and _walk_sid and _walked < 6:
+                _wm = _gsm(_walk_sid) or {}
+                _inherited_cb = _wm.get("creative_brief")
+                _walk_sid = _wm.get("parent_session_id", "")
+                _walked += 1
+        creative_brief = _inherited_cb or build_creative_brief(session_id, instruction)
+        _save_cb2(session_id, creative_brief)
 
         await publish(
             session_id,

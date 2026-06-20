@@ -222,6 +222,19 @@ def _notify_run_done(session_id: str, success: bool) -> None:
         logger.debug("_notify_run_done failed: %s", exc)
 
 
+def save_creative_brief(session_id: str, brief: dict) -> None:
+    if not brief:
+        return
+    try:
+        with _session_lock(session_id):
+            p = meta_path(session_id)
+            meta = json.loads(p.read_text()) if p.exists() else {"session_id": session_id}
+            meta["creative_brief"] = brief
+            p.write_text(json.dumps(meta, indent=2))
+    except Exception as exc:
+        logger.debug("save_creative_brief failed for %s: %s", session_id, exc)
+
+
 def add_session_credits(session_id: str, credits: int) -> None:
     """Accumulate credits spent by this session (durable, in meta.json). Lets the UI
     show per-session — and, summed by goal, per-goal — credit spend."""
