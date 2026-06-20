@@ -751,7 +751,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       return "";
     };
     const find = (...keys: string[]): string => {
-      for (const { r } of results) for (const k of keys) { const v = str(r[k]); if (v.length > 3) return v.slice(0, 260); }
+      for (const { r } of results) for (const k of keys) { const v = str(r[k]); if (v.length > 3) return v.slice(0, 500); }
       return "";
     };
     const findArr = (...keys: string[]): string[] => {
