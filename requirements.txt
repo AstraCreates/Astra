@@ -28,4 +28,3 @@ pypdf==4.3.1
 fpdf2>=2.7.0
 python-pptx>=0.6.21
 pywebpush>=1.14,<2
-headroom-ai>=0.26.0
