@@ -535,6 +535,28 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     return () => { alive = false; sseRef.current?.close(); sseRef.current = null; };
   }, [sessionId, founderId, handleEvent, isSignedIn]);
 
+  // Poll session meta every 30s to pick up live credits + headroom savings.
+  useEffect(() => {
+    if (!sessionId) return;
+    const id = setInterval(async () => {
+      if (S.current.status !== "running") return;
+      try {
+        const m = await getSessionMeta(sessionId);
+        if (!m) return;
+        const credits = Number(m.credits_used || 0);
+        const saved = Number(m.headroom_tokens_saved || 0);
+        const before = Number(m.headroom_tokens_before || 0);
+        if (credits !== S.current.credits || saved !== S.current.headroomSaved) {
+          S.current.credits = credits;
+          S.current.headroomSaved = saved;
+          S.current.headroomBefore = before;
+          force();
+        }
+      } catch {}
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [sessionId]);
+
   // Run timer — tick every second while running so the elapsed clock counts up.
   useEffect(() => {
     const id = setInterval(() => {
