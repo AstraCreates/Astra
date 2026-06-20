@@ -40,6 +40,8 @@ type SState = {
   parentId: string;
   startedAt: number;
   credits: number;
+  headroomSaved: number;
+  headroomBefore: number;
 };
 
 function fmtElapsed(ms: number): string {
@@ -233,7 +235,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const S = useRef<SState>({
     status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
     decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false,
-    revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0,
+    revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0, headroomSaved: 0, headroomBefore: 0,
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
   const sseRef = useRef<EventSource | null>(null);
@@ -447,7 +449,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     if (cached) {
       S.current = cached;
     } else {
-      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0 };
+      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0, headroomSaved: 0, headroomBefore: 0 };
       cacheSession(sessionId, S.current);
     }
     force();
@@ -473,6 +475,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         S.current.status = meta.status || "running";
         S.current.company = meta.company_name || "";
         S.current.credits = Number(meta.credits_used || 0);
+        S.current.headroomSaved = Number(meta.headroom_tokens_saved || 0);
+        S.current.headroomBefore = Number(meta.headroom_tokens_before || 0);
         S.current.stackId = meta.stack_id || "";
         S.current.parentId = meta.parent_session_id || "";
         if (meta.created_at) { const t = Date.parse(meta.created_at); if (!Number.isNaN(t)) S.current.startedAt = t; }
@@ -877,6 +881,14 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           </button>
         )}
         <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+          {st.headroomSaved > 0 && (
+            <span
+              title={`Headroom compressed ${st.headroomBefore > 0 ? Math.round(st.headroomSaved / st.headroomBefore * 100) : 0}% of tokens — ${st.headroomSaved.toLocaleString()} tokens saved`}
+              style={{ fontFamily: "var(--font-code)", fontSize: 10, color: "var(--green)", fontVariantNumeric: "tabular-nums" }}
+            >
+              ↓{st.headroomBefore > 0 ? Math.round(st.headroomSaved / st.headroomBefore * 100) : 0}% {st.headroomSaved.toLocaleString()}tk
+            </span>
+          )}
           {st.credits > 0 && (
             <span title="Credits used by this session" style={{ fontFamily: "var(--font-code)", fontSize: 10, color: "var(--fm)", fontVariantNumeric: "tabular-nums" }}>
               ◈ {st.credits.toLocaleString()}

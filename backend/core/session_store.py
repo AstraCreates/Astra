@@ -237,6 +237,20 @@ def add_session_credits(session_id: str, credits: int) -> None:
         logger.debug("add_session_credits failed for %s: %s", session_id, exc)
 
 
+def add_headroom_savings(session_id: str, tokens_saved: int, tokens_before: int) -> None:
+    if not session_id or not tokens_saved:
+        return
+    try:
+        with _session_lock(session_id):
+            p = meta_path(session_id)
+            meta = json.loads(p.read_text()) if p.exists() else {"session_id": session_id}
+            meta["headroom_tokens_saved"] = meta.get("headroom_tokens_saved", 0) + tokens_saved
+            meta["headroom_tokens_before"] = meta.get("headroom_tokens_before", 0) + tokens_before
+            p.write_text(json.dumps(meta, indent=2))
+    except Exception as exc:
+        logger.debug("add_headroom_savings failed for %s: %s", session_id, exc)
+
+
 def get_session_credits(session_id: str) -> int:
     meta = get_session_meta(session_id) or {}
     try:

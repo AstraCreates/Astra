@@ -891,6 +891,8 @@ async def session_meta_public(session_id: str, request: Request):
         "parent_session_id": meta.get("parent_session_id", ""),
         "kind": meta.get("kind", ""),
         "credits_used": int(meta.get("credits_used", 0)),
+        "headroom_tokens_saved": int(meta.get("headroom_tokens_saved", 0)),
+        "headroom_tokens_before": int(meta.get("headroom_tokens_before", 0)),
     }
 
 

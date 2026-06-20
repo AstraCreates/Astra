@@ -438,6 +438,9 @@ class Agent:
             if _hr.tokens_saved and _hr.tokens_saved > 0:
                 logger.debug("%s headroom: saved %d tokens (%.0f%%)", self.name,
                              _hr.tokens_saved, (_hr.compression_ratio or 0) * 100)
+                if ctx and ctx.session_id:
+                    from backend.core.session_store import add_headroom_savings
+                    add_headroom_savings(ctx.session_id, _hr.tokens_saved, _hr.tokens_before)
             messages = _hr.messages
         except Exception as _hr_err:
             logger.debug("%s headroom compress skipped: %s", self.name, _hr_err)
