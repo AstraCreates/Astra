@@ -346,42 +346,71 @@ _STAGE_CONTEXT: dict[str, str] = {
 
 # Tasks/outputs that claim real-world outcomes must carry verifiable evidence.
 # Self-reported milestone completions are the primary hallucination vector.
-_MILESTONE_PHRASES = frozenset((
+# Use word stems/prefixes so variants like "signups", "signed up", "users" all match.
+_MILESTONE_STEMS = (
     "first user", "first customer", "first sale", "first revenue",
-    "first paying", "first sign", "100 users", "1000 users",
+    "first paying", "first sign", "100 user", "1000 user",
     "100 customer", "users signed", "paying customer", "monthly revenue",
     "mrr", "arr", "first dollar", "acquisition channel", "conversion rate",
     "go live", "launched the", "deployed to", "live on", "published to",
     "shipped to production", "on app store", "submitted to", "verified user",
-    "active user", "returning user", "email list", "subscriber", "waitlist",
-    "beta user", "get users", "acquire users", "onboard users", "sign up",
-    "get signups", "get customers", "get paying",
-))
+    "active user", "returning user", "email list", "subscrib", "waitlist",
+    "beta user", "get user", "acquire user", "onboard user", "sign up",
+    "signup", "signups", "signed up", "new signup", "real user",
+    "get signup", "get customer", "get paying", "send survey", "survey to",
+    "collect feedback from", "onboarding feedback", "real signup",
+)
 
 
 def _task_requires_evidence(task_title: str) -> bool:
     """Tasks claiming real-world outcomes can't be self-reported — need URL/screenshot/payment."""
     t = (task_title or "").lower()
-    return any(phrase in t for phrase in _MILESTONE_PHRASES)
+    return any(stem in t for stem in _MILESTONE_STEMS)
 
 
 def _infer_stage(goal: dict) -> str:
-    """Infer current business stage from verified (evidence-backed) task notes."""
-    notes_blob = " ".join(
-        t.get("notes", "")
-        for g in (goal.get("goals") or [])
-        for t in (g.get("tasks") or [])
-        if t.get("status") == "done"
-    ).lower()
+    """Infer current business stage conservatively — only advance on verified external evidence.
+
+    Words like 'signup' and 'user' are freely written by agents in outreach plans and
+    email templates. Stage must NOT advance on notes alone; it needs a completed goal
+    whose title itself is a real-world milestone (not just prep work) AND enough
+    wall-clock time to have passed for the milestone to be credible."""
+    import time as _time
     completed_titles = " ".join(
         (g.get("title") or "").lower()
         for g in (goal.get("goals") or [])
         if g.get("status") == "done"
     )
-    if any(w in notes_blob for w in ("revenue", "paying", "sale", "mrr", "first dollar", "stripe", "subscription")):
+    # Revenue milestone: completed goal mentions revenue/paying/stripe in title
+    revenue_words = ("revenue", "paying customer", "mrr", "first sale", "stripe", "first dollar")
+    if any(w in completed_titles for w in revenue_words):
         return "early_revenue"
-    if any(w in notes_blob for w in ("user", "signup", "subscriber", "waitlist", "beta", "onboard")):
+    # Traction milestone: only if a "users" goal is done AND it's been ≥24h since launch.
+    # Agents routinely mark outreach-prep goals done in minutes — that is NOT traction.
+    traction_title_words = ("first user", "first signup", "real user", "real signup",
+                            "10 real", "10 user", "10 signup", "user signup")
+    if any(w in completed_titles for w in traction_title_words):
+        # Require ≥24h since the first goal was created (launch) to prevent same-run advancement.
+        first_created = ""
+        for g in (goal.get("goals") or []):
+            ca = g.get("created_at") or ""
+            if ca and (not first_created or ca < first_created):
+                first_created = ca
+        if first_created:
+            try:
+                import calendar
+                epoch = calendar.timegm(_time.strptime(first_created, "%Y-%m-%dT%H:%M:%SZ"))
+                hours_since_launch = (_time.time() - epoch) / 3600
+                if hours_since_launch < 24:
+                    logger.debug(
+                        "_infer_stage: traction goal done but only %.1fh since launch — staying at 'launched'",
+                        hours_since_launch,
+                    )
+                    return "launched"
+            except Exception:
+                pass
         return "first_traction"
+    # Launched: a build/deploy/launch goal completed
     if any(w in completed_titles for w in ("launch", "build", "deploy", "ship", "product")):
         return "launched"
     return "pre_launch"
@@ -438,18 +467,39 @@ def _agent_delivered(output: Any, task: dict | None = None) -> bool:
         if status in _NON_DELIVERY_STATUSES:
             return False
         if requires_evidence:
-            evidence = (
-                output.get("evidence")
-                or output.get("proof")
-                or output.get("url")
-                or output.get("deploy_url")
-                or output.get("live_url")
-                or output.get("repo_url")
-                or output.get("source")
-                or output.get("signup_url")
-                or output.get("payment_id")
-                or output.get("stripe_id")
-            )
+            # User-acquisition tasks need signup/payment proof, NOT just a repo/deploy URL.
+            # repo_url and deploy_url are build artifacts that agents always have — accepting
+            # them as evidence for "acquire users" lets agents hallucinate traction.
+            t_lower = task_title.lower()
+            _is_user_task = any(w in t_lower for w in (
+                "signup", "signups", "sign up", "user signup", "real user", "real signup",
+                "10 real", "onboard", "survey to", "collect feedback from", "first user",
+                "acquire user", "get user", "get signup",
+            ))
+            if _is_user_task:
+                # Only strong real-world proof accepted
+                evidence = (
+                    output.get("evidence")
+                    or output.get("proof")
+                    or output.get("signup_url")
+                    or output.get("payment_id")
+                    or output.get("stripe_id")
+                    or output.get("signup_count")
+                    or output.get("user_count")
+                )
+            else:
+                evidence = (
+                    output.get("evidence")
+                    or output.get("proof")
+                    or output.get("url")
+                    or output.get("deploy_url")
+                    or output.get("live_url")
+                    or output.get("repo_url")
+                    or output.get("source")
+                    or output.get("signup_url")
+                    or output.get("payment_id")
+                    or output.get("stripe_id")
+                )
             if not evidence:
                 logger.info(
                     "goal_engine: task '%s' requires evidence — agent must include "
