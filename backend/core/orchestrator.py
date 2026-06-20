@@ -2363,6 +2363,17 @@ class Orchestrator:
             shared["company_name"] = _company_name
             await publish(session_id, {"type": "company_name", "name": _company_name})
             logger.info("continue_run: propagated company_name=%r for %s", _company_name, founder_id)
+        # Inject prior build artifacts so continuation agents don't rebuild from scratch.
+        # The web/technical agents see prior_repo_url and prior_deploy_url and reuse them.
+        try:
+            from backend.missions.company_goal import get_company_repo as _gcr
+            _prior_repo = _gcr(founder_id, company_id)
+            if _prior_repo:
+                shared["prior_repo_url"] = _prior_repo
+                logger.info("continue_run: injecting prior_repo_url=%s", _prior_repo)
+        except Exception:
+            pass
+
         context_policy = RunContextPolicy(
             session_id=session_id,
             founder_id=founder_id,

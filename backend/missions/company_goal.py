@@ -111,7 +111,9 @@ def _read(founder_id: str, company_id: str | None = None) -> dict[str, Any] | No
             legacy = json.loads(legacy_path.read_text()) if legacy_path.exists() else None
         except Exception:
             legacy = None
-        if isinstance(legacy, dict) and legacy.get("company_id") == resolved_company_id:
+        # Fall back to founder-level file regardless of company_id mismatch —
+        # older accounts and pre-workspace accounts store goals there.
+        if isinstance(legacy, dict):
             path.write_text(json.dumps(legacy, indent=2, sort_keys=True))
     # When querying as founder (company_id == founder_id) and no direct file, fall back
     # to the most recently updated workspace-level goal file in the founder's subdirectory.
@@ -179,7 +181,12 @@ def get_company_repo(founder_id: str, company_id: str | None = None) -> str:
     """The company's pinned product repo_url, or '' if none built yet."""
     with _lock:
         goal = _read(founder_id, company_id)
-        return str((goal or {}).get("repo_url") or "")
+        repo = str((goal or {}).get("repo_url") or "")
+        if not repo and company_id and company_id != founder_id:
+            # Legacy: goal may live at the founder-level path (pre-workspace accounts)
+            legacy = _read(founder_id, founder_id)
+            repo = str((legacy or {}).get("repo_url") or "")
+        return repo
 
 
 def set_company_repo(founder_id: str, company_id: str | None = None, repo_url: str = "") -> None:

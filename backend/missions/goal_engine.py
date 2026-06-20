@@ -768,6 +768,15 @@ async def dispatch_current_goal(
     current_goal_id = cg.get("id", "")
     try:
         from backend.core.session_store import get_session_meta
+        # Also block if the ROOT/launch session is still in-flight — a follow-up
+        # dispatched while the launch run is still completing its agents would
+        # re-run agents the launch hasn't finished yet, causing duplicate builds.
+        root_sid = str(goal.get("root_session_id") or goal.get("source_session_id") or "")
+        if root_sid:
+            root_meta = get_session_meta(root_sid) or {}
+            if root_meta.get("status") == "running":
+                logger.info("dispatch_current_goal: root session %s still running — skipping dispatch to avoid duplicate agent runs", root_sid)
+                return {"ok": True, "skipped": "root_session_running", "session_id": root_sid}
         for rec in (goal.get("operating_sessions") or []):
             if rec.get("goal_id") != current_goal_id:
                 continue
