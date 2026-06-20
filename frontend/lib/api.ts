@@ -1244,6 +1244,8 @@ export interface SessionMeta {
   parent_session_id: string;
   kind: string;
   credits_used?: number;
+  headroom_tokens_saved?: number;
+  headroom_tokens_before?: number;
 }
 
 /** Public, unauthenticated session header — lets /s/<id> links work without the
