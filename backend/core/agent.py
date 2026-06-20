@@ -433,7 +433,7 @@ class Agent:
         # MiMo: $0.14→$0.0028/M on cache hit (50x cheaper). hy3/ling also benefit.
         try:
             from headroom import compress as _hr_compress
-            _hr = _hr_compress(messages, model=self.model, model_limit=128000)
+            _hr = _hr_compress(messages, model=self.model, model_limit=128000, compress_user_messages=True)
             if _hr.tokens_saved and _hr.tokens_saved > 0:
                 logger.debug("%s headroom: saved %d tokens (%.0f%%)", self.name,
                              _hr.tokens_saved, (_hr.compression_ratio or 0) * 100)
