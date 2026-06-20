@@ -431,6 +431,15 @@ class Agent:
         #   [0] system prompt  — never changes within a run (or across runs for same agent)
         #   [1] initial user   — goal + shared context, stable for the entire agent loop
         # MiMo: $0.14→$0.0028/M on cache hit (50x cheaper). hy3/ling also benefit.
+        try:
+            from headroom import compress as _hr_compress
+            _hr = _hr_compress(messages, model=self.model, model_limit=128000)
+            if _hr.tokens_saved and _hr.tokens_saved > 0:
+                logger.debug("%s headroom: saved %d tokens (%.0f%%)", self.name,
+                             _hr.tokens_saved, (_hr.compression_ratio or 0) * 100)
+            messages = _hr.messages
+        except Exception as _hr_err:
+            logger.debug("%s headroom compress skipped: %s", self.name, _hr_err)
         if is_openrouter and messages:
             messages = cacheable_messages(messages)
         # Cap the per-call output. The agent loop only ever emits a small JSON action
