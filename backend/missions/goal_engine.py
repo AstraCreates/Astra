@@ -373,45 +373,25 @@ def _infer_stage(goal: dict) -> str:
 
     Words like 'signup' and 'user' are freely written by agents in outreach plans and
     email templates. Stage must NOT advance on notes alone; it needs a completed goal
-    whose title itself is a real-world milestone (not just prep work) AND enough
-    wall-clock time to have passed for the milestone to be credible."""
-    import time as _time
+    whose title itself is a real-world milestone (not just prep work)."""
     completed_titles = " ".join(
         (g.get("title") or "").lower()
         for g in (goal.get("goals") or [])
         if g.get("status") == "done"
     )
+    launched = any(w in completed_titles for w in ("launch", "build", "deploy", "ship", "product"))
     # Revenue milestone: completed goal mentions revenue/paying/stripe in title
     revenue_words = ("revenue", "paying customer", "mrr", "first sale", "stripe", "first dollar")
     if any(w in completed_titles for w in revenue_words):
         return "early_revenue"
-    # Traction milestone: only if a "users" goal is done AND it's been ≥24h since launch.
-    # Agents routinely mark outreach-prep goals done in minutes — that is NOT traction.
+    # Traction milestone: only after the product is actually launched/built.
+    # Waiting for outreach replies is a post-launch phase, not a clock-based one.
     traction_title_words = ("first user", "first signup", "real user", "real signup",
                             "10 real", "10 user", "10 signup", "user signup")
     if any(w in completed_titles for w in traction_title_words):
-        # Require ≥24h since the first goal was created (launch) to prevent same-run advancement.
-        first_created = ""
-        for g in (goal.get("goals") or []):
-            ca = g.get("created_at") or ""
-            if ca and (not first_created or ca < first_created):
-                first_created = ca
-        if first_created:
-            try:
-                import calendar
-                epoch = calendar.timegm(_time.strptime(first_created, "%Y-%m-%dT%H:%M:%SZ"))
-                hours_since_launch = (_time.time() - epoch) / 3600
-                if hours_since_launch < 24:
-                    logger.debug(
-                        "_infer_stage: traction goal done but only %.1fh since launch — staying at 'launched'",
-                        hours_since_launch,
-                    )
-                    return "launched"
-            except Exception:
-                pass
-        return "first_traction"
+        return "first_traction" if launched else "pre_launch"
     # Launched: a build/deploy/launch goal completed
-    if any(w in completed_titles for w in ("launch", "build", "deploy", "ship", "product")):
+    if launched:
         return "launched"
     return "pre_launch"
 

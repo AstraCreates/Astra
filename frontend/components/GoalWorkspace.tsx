@@ -4776,7 +4776,22 @@ export function GoalWorkspace({
   const [connected, setConnected] = useState(false);
   const everConnected = useRef(false);
   const notified = useRef(false);
+  const agentNotified = useRef<Set<string>>(new Set());
   const errorCount = useRef(0);
+
+  const notifyAgentPopup = useCallback((title: string, body: string, dedupeKey: string) => {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    if (agentNotified.current.has(dedupeKey)) return;
+    agentNotified.current.add(dedupeKey);
+    try {
+      new Notification(title, { body, icon: "/favicon.ico" });
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    notified.current = false;
+    agentNotified.current.clear();
+  }, [sessionId]);
 
   // Persist to localStorage whenever state changes
   useEffect(() => { saveCache(agents, planTasks, done, autoCompanyName, selectedStack, runArtifacts, safeRunActions, outcomes, companyGenome, approvalQueue, stackOperatingPlan, stackManifest, companyGoal); }, [agents, planTasks, done, autoCompanyName, selectedStack, runArtifacts, safeRunActions, outcomes, companyGenome, approvalQueue, stackOperatingPlan, stackManifest, companyGoal, saveCache]);
@@ -5041,6 +5056,11 @@ export function GoalWorkspace({
             }
           }
           setActiveAgent(agent);
+          notifyAgentPopup(
+            `Astra — ${AGENT_LABELS[agent] ?? agent.replace(/_/g, " ")}`,
+            event.instruction ? `Started: ${String(event.instruction).slice(0, 120)}` : "Started working.",
+            `${sessionId}:${agent}:start:${event.task_id ?? cur.task_id ?? ""}`,
+          );
           next[agent] = { ...cur, status: "running", instruction: event.instruction ?? cur.instruction, task_id: event.task_id ?? cur.task_id, log: addLog("info", "Started") };
         } else if (event.type === "agent_action") {
           const rawArgs = event.args;
@@ -5192,10 +5212,20 @@ export function GoalWorkspace({
             webQualityError: (result.web_quality_error as string | undefined) ?? cur.webQualityError,
             log: addLog(hasOutput ? "result" : "error", hasOutput ? "Complete" : "No structured output emitted"),
           };
+          notifyAgentPopup(
+            `Astra — ${AGENT_LABELS[agent] ?? agent.replace(/_/g, " ")}`,
+            hasOutput ? "Completed work." : "Finished without a structured output.",
+            `${sessionId}:${agent}:${hasOutput ? "done" : "empty"}:${event.task_id ?? cur.task_id ?? ""}`,
+          );
         } else if (event.type === "agent_error") {
           const qualityError = typeof event.error === "string" && event.error.toLowerCase().includes("fallback template")
             ? "fallback_template_persisted_after_retries"
             : cur.webQualityError;
+          notifyAgentPopup(
+            `Astra — ${AGENT_LABELS[agent] ?? agent.replace(/_/g, " ")}`,
+            typeof event.error === "string" ? `Error: ${event.error.slice(0, 140)}` : "Hit an error.",
+            `${sessionId}:${agent}:error:${event.task_id ?? cur.task_id ?? ""}`,
+          );
           next[agent] = { ...cur, status: "error", webQualityError: qualityError, log: addLog("error", event.error ?? "Error") };
         } else if (event.type === "mirror_verdict") {
           next[agent] = { ...cur, mirrorVerdict: event.verdict, mirrorCritique: event.critique };
@@ -5272,7 +5302,7 @@ export function GoalWorkspace({
       });
     };
     return () => es.close();
-  }, [done, refreshCompanyGoal, sessionId]);
+  }, [activeAgent, done, notifyAgentPopup, refreshCompanyGoal, sessionId]);
 
   useEffect(() => {
     if (!done || notified.current) return;
