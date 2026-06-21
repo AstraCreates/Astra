@@ -24,8 +24,20 @@ def _session_dir(session_id: str, founder_id: str | None = None) -> Path:
 
 def delete_session_notes(session_id: str, founder_id: str | None = None) -> None:
     """Delete all vault notes for a session. Best-effort."""
+    import re as _re
+    import os as _os
+    if not session_id or not _re.fullmatch(r"[A-Za-z0-9_-]{1,128}", session_id):
+        logger.warning("delete_session_notes: invalid session_id rejected")
+        return
+    if founder_id and not _re.fullmatch(r"[A-Za-z0-9_@.\-]{1,256}", founder_id):
+        logger.warning("delete_session_notes: invalid founder_id rejected")
+        return
     try:
-        d = _session_dir(session_id, founder_id)
+        root = _sessions_root(founder_id).resolve()
+        d = (_sessions_root(founder_id) / session_id).resolve()
+        if not str(d).startswith(str(root) + _os.sep):
+            logger.warning("delete_session_notes: path escape rejected session=%s", session_id)
+            return
         if d.exists():
             shutil.rmtree(d, ignore_errors=True)
     except Exception as exc:
