@@ -531,7 +531,7 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
         return (
           <PageHeader
             title="Library"
-            subtitle="Files and templates injected into agent context during runs."
+            subtitle="Everything your company builds — context files you upload, deliverables agents generate, and code patterns."
             actions={
               mode === "files" ? (
                 <HeaderPrimaryBtn label="+ New File" onClick={() => { setShowNewForm(true); setSelectedFile(null); }} />
@@ -558,7 +558,7 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
                 : "border-transparent text-gray-500 hover:text-gray-800"
             }`}
           >
-            {m === "files" ? "My Files" : m === "templates" ? "Templates" : "Funding Kit"}
+            {m === "files" ? "Files" : m === "templates" ? "Code Patterns" : "Funding Kit"}
             {m === "files" && files.length > 0 && (
               <span className={`ml-1.5 text-xs ${mode === m ? "text-blue-400" : "text-gray-400"}`}>{files.length}</span>
             )}
@@ -611,45 +611,56 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
                 {loadingFiles && <div className="text-sm text-gray-400 text-center py-12">Loading...</div>}
                 {!loadingFiles && filesError && <div className="text-sm text-red-500 text-center py-12 px-4">{filesError}</div>}
                 {!loadingFiles && !filesError && filteredFiles.length === 0 && (
-                  <div className="text-sm text-gray-400 text-center py-12 px-4">
-                    {activeDept === "All" ? "No files yet. Create one!" : `No ${activeDept} files.`}
+                  <div className="flex flex-col items-center text-center px-5 py-12 gap-2">
+                    <div className="text-3xl">📂</div>
+                    <p className="text-sm font-medium text-gray-500">
+                      {activeDept === "All" ? "No files yet" : `No ${activeDept} files`}
+                    </p>
+                    <p className="text-xs text-gray-400 leading-relaxed max-w-[200px]">
+                      {activeDept === "All"
+                        ? "Upload context files for agents to read, or run a goal — deliverables appear here automatically."
+                        : `No ${activeDept} files. Upload one or run a related goal.`}
+                    </p>
                   </div>
                 )}
-                {!loadingFiles && filteredFiles.map((file) => (
-                  <div key={file.id}>
-                    {deleteConfirm === file.id ? (
-                      <div className="px-5 py-4 border-b border-[#E5E7EB] bg-red-50">
-                        <p className="text-xs text-red-700 mb-3">Delete <strong>{file.filename}</strong>?</p>
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleDelete(file.id)}
-                            className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg transition-colors"
-                          >
-                            Delete
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm(null)}
-                            className="text-xs text-gray-600 hover:text-gray-800 border border-gray-300 px-3 py-1.5 rounded-lg transition-colors"
-                          >
-                            Cancel
-                          </button>
+                {!loadingFiles && (() => {
+                  const generated = filteredFiles.filter((f) => f.source_tag);
+                  const manual = filteredFiles.filter((f) => !f.source_tag);
+                  const showSections = activeDept === "All" && generated.length > 0 && manual.length > 0;
+                  const renderFile = (file: LibraryFile) => (
+                    <div key={file.id}>
+                      {deleteConfirm === file.id ? (
+                        <div className="px-5 py-4 border-b border-[#E5E7EB] bg-red-50">
+                          <p className="text-xs text-red-700 mb-3">Delete <strong>{file.filename}</strong>?</p>
+                          <div className="flex gap-2">
+                            <button onClick={() => handleDelete(file.id)} className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg transition-colors">Delete</button>
+                            <button onClick={() => setDeleteConfirm(null)} className="text-xs text-gray-600 hover:text-gray-800 border border-gray-300 px-3 py-1.5 rounded-lg transition-colors">Cancel</button>
+                          </div>
                         </div>
+                      ) : (
+                        <FileRow file={file} selected={selectedFile?.id === file.id} onSelect={() => { setSelectedFile(file); setShowNewForm(false); }} onDelete={() => setDeleteConfirm(file.id)} />
+                      )}
+                    </div>
+                  );
+                  if (showSections) return (
+                    <>
+                      <div className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide bg-gray-50 border-b border-[#E5E7EB]">
+                        ⚡ Deliverables — generated by agents
                       </div>
-                    ) : (
-                      <FileRow
-                        file={file}
-                        selected={selectedFile?.id === file.id}
-                        onSelect={() => { setSelectedFile(file); setShowNewForm(false); }}
-                        onDelete={() => setDeleteConfirm(file.id)}
-                      />
-                    )}
-                  </div>
-                ))}
+                      {generated.map(renderFile)}
+                      <div className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide bg-gray-50 border-b border-[#E5E7EB]">
+                        📁 Context files — uploaded by you
+                      </div>
+                      {manual.map(renderFile)}
+                    </>
+                  );
+                  return filteredFiles.map(renderFile);
+                })()}
               </div>
 
               {/* Footer */}
               <div className="px-5 py-3 border-t border-[#E5E7EB] text-xs text-gray-400 flex items-center justify-between">
-                <span>{files.length} file{files.length !== 1 ? "s" : ""}</span>
+                <span>{files.filter((f) => !f.source_tag).length} context · {files.filter((f) => f.source_tag).length} generated</span>
                 <span>{files.filter((f) => f.is_canonical).length} canonical</span>
               </div>
             </div>
@@ -669,15 +680,31 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-center px-10">
                   <div className="text-5xl mb-5">&#128193;</div>
-                  <h3 className="text-sm font-semibold text-[#111827] mb-2">Select a file to edit</h3>
-                  <p className="text-sm text-gray-400 max-w-xs leading-relaxed">
-                    Canonical files (marked with &#9733;) are automatically injected into agent system prompts for context.
+                  <h3 className="text-sm font-semibold text-[#111827] mb-2">Your company's file library</h3>
+                  <p className="text-sm text-gray-400 max-w-xs leading-relaxed mb-4">
+                    Two kinds of files live here:
                   </p>
+                  <div className="text-left space-y-3 mb-7 max-w-xs">
+                    <div className="flex gap-2.5 items-start">
+                      <span className="text-base shrink-0">📁</span>
+                      <div>
+                        <p className="text-xs font-semibold text-gray-700">Context files</p>
+                        <p className="text-xs text-gray-400">Files you upload — business plans, brand guides, research. Canonical ones (★) are auto-read by agents.</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2.5 items-start">
+                      <span className="text-base shrink-0">⚡</span>
+                      <div>
+                        <p className="text-xs font-semibold text-gray-700">Deliverables</p>
+                        <p className="text-xs text-gray-400">PDFs, docs, and files agents generate for you — legal agreements, pitch decks, marketing copy.</p>
+                      </div>
+                    </div>
+                  </div>
                   <button
                     onClick={() => setShowNewForm(true)}
-                    className="mt-7 bg-[#002EFF] hover:bg-[#0024CC] text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
+                    className="bg-[#002EFF] hover:bg-[#0024CC] text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
                   >
-                    Create First File
+                    Upload a file
                   </button>
                 </div>
               )}
@@ -879,10 +906,9 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-center px-10">
                   <div className="text-5xl mb-5">&#128218;</div>
-                  <h3 className="text-sm font-semibold text-[#111827] mb-2">Agent code templates</h3>
+                  <h3 className="text-sm font-semibold text-[#111827] mb-2">Code patterns agents use when building</h3>
                   <p className="text-sm text-gray-400 max-w-sm leading-relaxed">
-                    Agents search these templates before writing code — working patterns for auth, payments,
-                    deployments, and more. Select one to view.
+                    Before writing any code, agents search these patterns — working scaffolds for auth, payments, deployments, email, and more. Read-only. Select one to inspect.
                   </p>
                 </div>
               )}

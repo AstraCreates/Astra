@@ -188,6 +188,18 @@ class Orchestrator:
         )
         return any(marker in h for marker in fallback_markers)
 
+    async def _sync_session_deliverables(self, session_id: str, founder_id: str, completed: dict) -> None:
+        """Sync any generated files from a completed run into the founder's library."""
+        try:
+            from backend.deliverables import sync_deliverables_to_library
+            for agent_name, result in completed.items():
+                if isinstance(result, dict) and not result.get("error"):
+                    await asyncio.to_thread(
+                        sync_deliverables_to_library, founder_id, session_id, agent_name, result
+                    )
+        except Exception as _e:
+            logger.warning("deliverables library sync failed session=%s: %s", session_id, _e)
+
     async def _bootstrap_operating_after_run(self, session_id: str, founder_id: str, goal: str) -> None:
         """End of a run → drive the sequential goal engine: finalize the north star,
         and if the current goal is complete, plan + dispatch the next one (auto-chain)."""
@@ -1323,6 +1335,7 @@ class Orchestrator:
             await asyncio.gather(*[_run_task(t) for t in bypass_tasks])
             await publish(session_id, {"type": "goal_done", "session_id": session_id})
             asyncio.create_task(self._bootstrap_operating_after_run(session_id, founder_id, goal))
+            asyncio.create_task(self._sync_session_deliverables(session_id, founder_id, completed))
             if _original_models:
                 for _name, _orig in _original_models.items():
                     self.specialists[_name].model = _orig
@@ -2177,6 +2190,7 @@ class Orchestrator:
         # never fires in practice. The bootstrap is idempotent and best-effort, so it is
         # safe to run after goal_error too.
         asyncio.create_task(self._bootstrap_operating_after_run(session_id, founder_id, goal))
+        asyncio.create_task(self._sync_session_deliverables(session_id, founder_id, completed))
         async def _graph_sync_after_session() -> None:
             try:
                 from backend.tools.graph_rag_ingest import run_graph_rag_sync
@@ -2525,6 +2539,7 @@ class Orchestrator:
         await asyncio.gather(*[_run_task_guarded(t) for t in tasks])
         await publish(session_id, {"type": "goal_done", "results": completed})
         asyncio.create_task(self._bootstrap_operating_after_run(session_id, founder_id, instruction))
+        asyncio.create_task(self._sync_session_deliverables(session_id, founder_id, completed))
         try:
             from backend.tools.obsidian_logger import obsidian_backend_log
             from backend.core.events import _event_log
