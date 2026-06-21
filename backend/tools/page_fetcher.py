@@ -4,7 +4,6 @@ Used by agents to read actual page content, not raw HTML.
 """
 import logging
 import re
-from typing import Optional
 
 import requests
 
@@ -17,12 +16,6 @@ _HEADERS = {
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.5",
-}
-
-_JUNK_TAGS = {
-    "nav", "header", "footer", "aside", "script", "style", "noscript",
-    "iframe", "svg", "form", "button", "input", "select", "textarea",
-    "advertisement", "ads", "banner",
 }
 
 
@@ -113,95 +106,13 @@ def search_and_read(query: str, max_results: int = 3, max_chars_per_page: int = 
 
 
 def _extract(html: str, base_url: str = "") -> tuple[str, str, list]:
-    """Extract clean text, title, and links from raw HTML."""
-    _re_strip = lambda h: (re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", h)).strip(), "", [])
-
+    """Extract clean text and title from raw HTML via trafilatura."""
     try:
-        from bs4 import BeautifulSoup
-    except ImportError:
-        text, title, links = _re_strip(html)
-        return text[:6000], title, links
-
-    try:
-        soup = BeautifulSoup(html, "html.parser")
+        import trafilatura
+        meta = trafilatura.extract_metadata(html)
+        title = (meta.title or "") if meta else ""
+        text = trafilatura.extract(html, no_fallback=False, include_tables=True) or ""
+        return text, title, []
     except Exception:
-        text, title, links = _re_strip(html)
-        return text[:6000], title, links
-
-    try:
-        # Title
-        title_tag = soup.find("title")
-        title = title_tag.get_text(strip=True) if title_tag else ""
-    except Exception:
-        title = ""
-
-    try:
-        # Remove junk elements
-        for tag in _JUNK_TAGS:
-            for el in list(soup.find_all(tag)):
-                el.decompose()
-
-        # Remove elements by class/id hints
-        junk_patterns = re.compile(
-            r"(nav|menu|sidebar|footer|header|cookie|banner|popup|modal|ad-|ads-|advertisement)",
-            re.I,
-        )
-        for el in list(soup.find_all(attrs={"class": True})):
-            try:
-                classes = " ".join(el.get("class") or [])
-                if junk_patterns.search(classes):
-                    el.decompose()
-            except Exception:
-                pass
-        for el in list(soup.find_all(attrs={"id": True})):
-            try:
-                if junk_patterns.search(el.get("id") or ""):
-                    el.decompose()
-            except Exception:
-                pass
-    except Exception:
-        pass
-
-    try:
-        # Extract main content — prefer <main>, <article>, <section> over body
-        main = (
-            soup.find("main")
-            or soup.find("article")
-            or soup.find("div", attrs={"role": "main"})
-            or soup.find("div", class_=re.compile(r"content|main|article|post|body", re.I))
-            or soup.body
-            or soup
-        )
-
-        # Get text with newlines preserved
-        lines = []
-        for el in main.find_all(["h1", "h2", "h3", "h4", "p", "li", "td", "th", "pre", "blockquote"]):
-            try:
-                text = el.get_text(separator=" ", strip=True)
-                if len(text) > 3:
-                    lines.append(text)
-            except Exception:
-                pass
-    except Exception as e:
-        logger.warning("_extract content parse failed: %s", e)
-        raw, _, _ = _re_strip(html)
-        return raw[:6000], title, []
-
-    try:
-        # Extract links
-        links = []
-        for a in soup.find_all("a", href=True):
-            try:
-                href = a.get("href", "")
-                link_text = a.get_text(strip=True)
-                if href and href.startswith("http") and link_text:
-                    links.append({"text": link_text[:80], "url": href})
-            except Exception:
-                pass
-    except Exception:
-        links = []
-
-    text = "\n\n".join(lines)
-    # Collapse excessive whitespace
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    return text, title, links
+        text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html)).strip()
+        return text[:6000], "", []
