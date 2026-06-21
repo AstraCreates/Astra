@@ -929,6 +929,21 @@ MVP_REQUIRED = [
     "README.md",
 ]
 
+# For the technical agent: the product must have auth + a dashboard, not just a
+# landing page. MVP_REQUIRED is kept as the web-agent default (landing page only).
+# PRODUCT_REQUIRED is used when no explicit required_files is given to the
+# technical agent — the completion loop keeps iterating until ALL of these exist,
+# which forces the LLM to actually build auth, a dashboard, and the API layer.
+PRODUCT_REQUIRED = [
+    "frontend/package.json",
+    "frontend/app/page.tsx",
+    "frontend/app/(auth)/login/page.tsx",
+    "frontend/app/dashboard/page.tsx",
+    "frontend/app/api/auth/route.ts",
+    "frontend/lib/auth.ts",
+    "README.md",
+]
+
 
 def _build_doctor(local: str) -> None:
     """Deterministic fixes for the most common LLM build-breakers, applied per-file so
@@ -1300,7 +1315,9 @@ def run_mvp_loop(
     Avoids session state pollution that caused the PM loop to spin forever.
     """
     if required_files is None:
-        required_files = MVP_REQUIRED
+        # Technical agent builds the product (auth + dashboard + core features).
+        # Web agent builds only the landing page. Different default file sets.
+        required_files = PRODUCT_REQUIRED if agent == "technical" else MVP_REQUIRED
     elif isinstance(required_files, str):
         # LLM sometimes passes the list serialized as a JSON/Python string — parse it.
         try:
@@ -1435,8 +1452,12 @@ def run_mvp_loop(
             + (f"FOLLOW THIS BUILD PLAN EXACTLY — implement every page, feature, route, and data "
                f"model in it. This is the spec, not a suggestion:\n\n{build_plan}\n\n" if build_plan else "")
             + (f"Context:\n{context}\n\n" if context else "")
-            + "Create real, production-ready code for ALL of these files (and any others needed to run):\n"
+            + "You MUST create ALL of these files — they are REQUIRED and the build is considered "
+              "incomplete until every one of them exists with real, working code:\n"
             + manifest + "\n\n"
+            + "CRITICAL: do NOT stop after creating a landing page. The required files above include "
+              "auth pages, a dashboard, and API routes — you must build ALL of them. A landing-page-only "
+              "build that skips auth and dashboard is a FAILED build.\n"
             + "Rules: no stubs, no TODOs, no placeholders — every function, route, and component fully "
               "implemented and runnable. Build the ENTIRE product (auth + dashboard + the core features "
               "from the plan), file by file, using your Write/Edit/Bash tools. Keep working until the whole "
@@ -1492,11 +1513,12 @@ def run_mvp_loop(
         _run_claude(local, build_prompt, session_id=build_sid, timeout=1800,
                     founder_id=founder_id, app_session_id=session_id, agent=agent)
 
-        # Completion loop: keep going until required files exist. Default is one
-        # follow-up; extra rounds are configurable because each round is an
-        # expensive autonomous coding pass. Skipped on incremental (no file-chasing
-        # — the change set is intentionally small, not the full MVP manifest).
-        completion_rounds = 0 if incremental else max(0, int(getattr(settings, "mvp_max_completion_rounds", 1) or 1))
+        # Completion loop: keep going until required files exist. Technical agent gets
+        # 2 rounds by default (landing page pass rarely creates auth+dashboard on the
+        # first try); web/other stay at 1. Skipped on incremental (change is intentionally
+        # small, not the full MVP manifest).
+        _default_rounds = 2 if agent == "technical" else 1
+        completion_rounds = 0 if incremental else max(0, int(getattr(settings, "mvp_max_completion_rounds", _default_rounds) or _default_rounds))
         for _round in range(completion_rounds):
             _stage_all(local)
             missing = _missing_mvp_files(local, required_files)
