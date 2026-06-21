@@ -46,6 +46,11 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
   return fetch(input, { ...init, headers: existing });
 }
 
+export async function checkOk(res: Response): Promise<Response> {
+  if (res.ok) return res;
+  throw new Error(await res.text());
+}
+
 export interface Task {
   id: string;
   goal_id: string;
@@ -1046,7 +1051,7 @@ export async function submitGoal(
   } finally {
     clearTimeout(timer);
   }
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1106,19 +1111,19 @@ export async function createWorkspace(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, name, goal, stack_id: stackId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function listWorkspaces(founderId: string): Promise<Workspace[]> {
   const res = await apiFetch(`${BASE}/workspaces?founder_id=${encodeURIComponent(founderId)}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getWorkspace(workspaceId: string): Promise<Workspace> {
   const res = await apiFetch(`${BASE}/workspaces/${encodeURIComponent(workspaceId)}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1132,7 +1137,7 @@ export async function updateWorkspace(workspaceId: string, fields: Partial<Pick<
 
 export async function getWorkspaceVault(workspaceId: string): Promise<Record<string, WorkspaceVaultEntry>> {
   const res = await apiFetch(`${BASE}/workspaces/${encodeURIComponent(workspaceId)}/vault`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1146,14 +1151,14 @@ export interface AgentCatalogEntry {
 
 export async function getAgentCatalog(): Promise<AgentCatalogEntry[]> {
   const res = await apiFetch(`${BASE}/agents/catalog`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.agents ?? [];
 }
 
 export async function getStacks(): Promise<AgentStackTemplate[]> {
   const res = await apiFetch(`${BASE}/stacks`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.stacks ?? [];
 }
@@ -1169,7 +1174,7 @@ export async function getCustomStackPackage(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ agents, instruction, founder_id: founderId, company_name: companyName }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1179,32 +1184,32 @@ export async function recommendStack(instruction: string, companyStage?: string)
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ instruction, company_stage: companyStage }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getStackReadiness(founderId: string, stackId: string): Promise<StackReadiness> {
   const res = await apiFetch(`${BASE}/stacks/${encodeURIComponent(stackId)}/readiness/${encodeURIComponent(founderId)}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getConnectorCoverage(founderId: string, stackId: string): Promise<ConnectorCoverage> {
   const res = await apiFetch(`${BASE}/stacks/${encodeURIComponent(stackId)}/connector-coverage/${encodeURIComponent(founderId)}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getConnectorSetup(founderId: string, stackId: string): Promise<ConnectorSetupPlan> {
   const res = await apiFetch(`${BASE}/stacks/${encodeURIComponent(stackId)}/connector-setup/${encodeURIComponent(founderId)}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getConnectorValidation(founderId: string, stackId: string, live = false): Promise<ConnectorValidationReport> {
   const suffix = live ? "?live=true" : "";
   const res = await apiFetch(`${BASE}/stacks/${encodeURIComponent(stackId)}/connector-validation/${encodeURIComponent(founderId)}${suffix}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1214,7 +1219,7 @@ export async function getStackOperatingPlan(stackId: string, goal = "", companyN
   if (companyName) params.set("company_name", companyName);
   const suffix = params.toString() ? `?${params.toString()}` : "";
   const res = await apiFetch(`${BASE}/stacks/${encodeURIComponent(stackId)}/operating-plan${suffix}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1224,7 +1229,7 @@ export async function getStackManifest(stackId: string, goal = "", companyName =
   if (companyName) params.set("company_name", companyName);
   const suffix = params.toString() ? `?${params.toString()}` : "";
   const res = await apiFetch(`${BASE}/stacks/${encodeURIComponent(stackId)}/manifest${suffix}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1354,25 +1359,25 @@ export async function getSessionImages(sessionId: string): Promise<SessionImages
 
 export async function getSessionDigest(sessionId: string): Promise<SessionDigest> {
   const res = await apiFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/digest`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getSubteamReport(sessionId: string, team = "engineering"): Promise<SubteamReport> {
   const res = await apiFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/subteam-report?team=${encodeURIComponent(team)}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getSessionWorkboard(sessionId: string): Promise<SessionWorkboard> {
   const res = await apiFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/workboard`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getSessionState(sessionId: string): Promise<SessionStateSnapshot> {
   const res = await apiFetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/state`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1387,7 +1392,7 @@ export interface SessionBenchmark {
 
 export async function getSessionBenchmark(sessionId: string, founderId: string): Promise<SessionBenchmark> {
   const res = await apiFetch(`${BASE}/insights/benchmark/${encodeURIComponent(sessionId)}?founder_id=${encodeURIComponent(founderId)}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1398,7 +1403,7 @@ export async function respondWebTask(taskId: string, fields: Record<string, stri
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ fields }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1408,7 +1413,7 @@ export async function askSession(sessionId: string, question: string, founderId?
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question, founder_id: founderId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1423,13 +1428,13 @@ export async function continueSession(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, prior_session_id: priorSessionId, instruction, agents }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getGoalStatus(goalId: string): Promise<GoalStatus> {
   const res = await apiFetch(`${BASE}/status/${goalId}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1439,7 +1444,7 @@ export async function approveTask(taskId: string): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ task_id: taskId, approval_token: "founder" }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
 }
 
 export async function rejectTask(taskId: string, reason: string): Promise<void> {
@@ -1448,7 +1453,7 @@ export async function rejectTask(taskId: string, reason: string): Promise<void> 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ task_id: taskId, reason }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
 }
 
 export async function decideStackApproval(
@@ -1463,7 +1468,7 @@ export async function decideStackApproval(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ session_id: sessionId, gate_key: gateKey, decision, founder_id: founderId, note }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
 }
 
 export async function setupAccounts(
@@ -1485,13 +1490,13 @@ export async function setupAccounts(
       include_foundation: true,
     }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getSetupStatus(founderId: string): Promise<SetupStatus> {
   const res = await apiFetch(`${BASE}/setup/${founderId}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1505,14 +1510,14 @@ export async function saveServiceCredential(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, service, credentials }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
 }
 
 export async function getComposioOAuthUrls(
   founderId: string
 ): Promise<Record<string, string>> {
   const res = await apiFetch(`${BASE}/setup/composio/connect/${founderId}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.oauth_urls ?? {};
 }
@@ -1523,7 +1528,7 @@ export async function getCompanyBrain(founderId: string, viewerId = "", companyI
   if (companyId) params.set("company_id", companyId);
   const suffix = params.toString() ? `?${params.toString()}` : "";
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}${suffix}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1537,7 +1542,7 @@ export async function syncCompanyBrain(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sources, company_id: companyId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1552,7 +1557,7 @@ export async function importCompanyBrainSources(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sources, limit, company_id: companyId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1567,7 +1572,7 @@ export async function syncGraphRag(
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1579,7 +1584,7 @@ export async function getGraphRagVisualization(
   if (companyId) params.set("company_id", companyId);
   const suffix = params.toString() ? `?${params}` : "";
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/graph-rag${suffix}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1594,7 +1599,7 @@ export async function getCompanyBrainAgentContext(
   if (viewerId) params.set("viewer_id", viewerId);
   if (companyId) params.set("company_id", companyId);
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/agent-context?${params}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1609,14 +1614,14 @@ export async function askCompanyBrain(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question, limit, company_id: companyId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getCompanySubteamReport(founderId: string, team = "engineering", days = 7): Promise<CompanySubteamReport> {
   const params = new URLSearchParams({ team, days: String(days) });
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/subteam-report?${params}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1630,7 +1635,7 @@ export async function configureCompanyBrainSync(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...config, company_id: companyId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1644,13 +1649,13 @@ export async function runCompanyBrainSync(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sources, company_id: companyId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getCompanyBrainSchedulerStatus(): Promise<{ ok: boolean; scheduler: BrainSchedulerState }> {
   const res = await apiFetch(`${BASE}/brain/scheduler/status`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1665,7 +1670,7 @@ export async function searchCompanyBrain(
   if (viewerId) params.set("viewer_id", viewerId);
   if (companyId) params.set("company_id", companyId);
   const res = await apiFetch(`${BASE}/brain/${encodeURIComponent(founderId)}/search?${params}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1679,7 +1684,7 @@ export async function addCompanyBrainRecord(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...record, company_id: companyId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1694,7 +1699,7 @@ export async function reviseCompanyBrainRecord(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...revision, company_id: companyId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1708,7 +1713,7 @@ export async function configureCompanyBrainAccess(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...body, company_id: companyId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1723,7 +1728,7 @@ export async function ingestCompanyBrainRecords(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ source, records, company_id: companyId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1738,7 +1743,7 @@ export async function maintainCompanyBrain(
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1753,13 +1758,13 @@ export async function updateBrainProposal(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ status, company_id: companyId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getPlatformStatus(): Promise<PlatformStatus> {
   const res = await apiFetch(`${BASE}/admin/platform`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1778,7 +1783,7 @@ export async function getDeployEvidence(
   });
   if (baseUrl) params.set("base_url", baseUrl);
   const res = await apiFetch(`${BASE}/admin/deploy-evidence?${params}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1790,7 +1795,7 @@ export async function getProductionRequirements(
   const params = new URLSearchParams({ founder_id: founderId, stack_id: stackId });
   if (baseUrl) params.set("base_url", baseUrl);
   const res = await apiFetch(`${BASE}/admin/production-requirements?${params}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1803,7 +1808,7 @@ export async function getLaunchReadiness(
   const params = new URLSearchParams({ founder_id: founderId, stack_id: stackId, report_id: reportId });
   if (baseUrl) params.set("base_url", baseUrl);
   const res = await apiFetch(`${BASE}/admin/launch-readiness?${params}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1818,7 +1823,7 @@ export async function runProductionVerification(
     save: String(body.save ?? true),
   });
   const res = await apiFetch(`${BASE}/admin/production-verification?${params}`, { method: "POST" });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1832,19 +1837,19 @@ export async function runProductionLaunch(
     live_connectors: String(body.live_connectors ?? true),
   });
   const res = await apiFetch(`${BASE}/admin/production-launch?${params}`, { method: "POST" });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getProductionLaunchProof(proofId = "latest"): Promise<ProductionLaunchProofResponse> {
   const res = await apiFetch(`${BASE}/admin/production-launch/reports/${encodeURIComponent(proofId)}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getProductionVerificationReports(limit = 5): Promise<ProductionVerificationReports> {
   const res = await apiFetch(`${BASE}/admin/production-verification/reports?limit=${encodeURIComponent(String(limit))}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1858,7 +1863,7 @@ export function productionVerificationBundleUrl(reportId = "latest"): string {
 
 export async function verifyProductionVerificationManifest(reportId = "latest"): Promise<ProductionVerificationManifestVerification> {
   const res = await apiFetch(`${BASE}/admin/production-verification/reports/${encodeURIComponent(reportId)}/manifest/verify`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1867,7 +1872,7 @@ export async function getOrganization(orgId: string, founderId = ""): Promise<Or
   if (founderId) params.set("founder_id", founderId);
   const suffix = params.toString() ? `?${params.toString()}` : "";
   const res = await apiFetch(`${BASE}/orgs/${encodeURIComponent(orgId)}${suffix}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1893,13 +1898,13 @@ export async function createOrganizationInvite(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function getOrganizationInvite(token: string): Promise<OrganizationInvite> {
   const res = await apiFetch(`${BASE}/invites/${encodeURIComponent(token)}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1909,7 +1914,7 @@ export async function acceptOrganizationInvite(token: string, founderId: string)
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1922,7 +1927,7 @@ export async function updateOrganizationMember(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1935,7 +1940,7 @@ export async function updateOrganizationSubscription(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1948,7 +1953,7 @@ export async function updateOrganizationControls(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1956,7 +1961,7 @@ export async function getOrganizationBilling(
   orgId: string
 ): Promise<{ org: OrganizationAccount; billing: BillingConfigStatus }> {
   const res = await apiFetch(`${BASE}/orgs/${encodeURIComponent(orgId)}/billing`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1969,7 +1974,7 @@ export async function createOrganizationCheckout(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1982,7 +1987,7 @@ export async function createOrganizationBillingPortal(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -1995,7 +2000,7 @@ export interface ModelSettingsResponse {
 
 export async function getModelSettings(founderId: string): Promise<ModelSettingsResponse> {
   const res = await apiFetch(`${BASE}/model-settings?founder_id=${encodeURIComponent(founderId)}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2009,7 +2014,7 @@ export async function setModelOverride(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, agent_key: agentKey, model }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2021,7 +2026,7 @@ export async function clearModelOverride(
     `${BASE}/model-settings/${encodeURIComponent(agentKey)}?founder_id=${encodeURIComponent(founderId)}`,
     { method: "DELETE" }
   );
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2048,7 +2053,7 @@ export async function getLibraryFiles(
   const params = new URLSearchParams({ founder_id: founderId });
   if (department) params.set("department", department);
   const res = await apiFetch(`${BASE}/library?${params}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.files ?? [];
 }
@@ -2060,7 +2065,7 @@ export async function getLibraryFile(
   const res = await apiFetch(
     `${BASE}/library/${encodeURIComponent(fileId)}?founder_id=${encodeURIComponent(founderId)}`
   );
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.file;
 }
@@ -2077,7 +2082,7 @@ export async function createLibraryFile(body: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.file;
 }
@@ -2097,7 +2102,7 @@ export async function updateLibraryFile(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.file;
 }
@@ -2110,7 +2115,7 @@ export async function deleteLibraryFile(
     `${BASE}/library/${encodeURIComponent(fileId)}?founder_id=${encodeURIComponent(founderId)}`,
     { method: "DELETE" }
   );
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
 }
 
 export interface ExampleFile {
@@ -2143,13 +2148,13 @@ export interface DeploymentRecord {
 export async function getDeployment(sessionId: string): Promise<DeploymentRecord | null> {
   const res = await apiFetch(`${BASE}/deployments/${encodeURIComponent(sessionId)}`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function listDeployments(founderId: string): Promise<DeploymentRecord[]> {
   const res = await apiFetch(`${BASE}/deployments?founder_id=${encodeURIComponent(founderId)}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.deployments ?? [];
 }
@@ -2313,7 +2318,7 @@ export async function postponeCompanyTask(
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, company_id: companyId, postponed }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2322,7 +2327,7 @@ export async function markCompanyTaskDone(founderId: string, taskId: string, com
     method: "PATCH", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, company_id: companyId, status: "done" }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return (await res.json()).task;
 }
 
@@ -2330,7 +2335,7 @@ export async function runCompanyCycle(founderId: string, companyId = ""): Promis
   const params = new URLSearchParams({ founder_id: founderId });
   if (companyId) params.set("company_id", companyId);
   const res = await apiFetch(`${BASE}/missions/company-goal/run?${params}`, { method: "POST" });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2341,7 +2346,7 @@ export async function approveNextGoal(
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, company_id: companyId, approved }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2349,7 +2354,7 @@ export async function setCompanyGoalStatus(founderId: string, status: "operating
   const params = new URLSearchParams({ founder_id: founderId, status });
   if (companyId) params.set("company_id", companyId);
   const res = await apiFetch(`${BASE}/missions/company-goal/status?${params}`, { method: "PATCH" });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2380,7 +2385,7 @@ export async function getMissions(founderId: string, companyId = ""): Promise<Mi
   const params = new URLSearchParams({ founder_id: founderId });
   if (companyId) params.set("company_id", companyId);
   const res = await apiFetch(`${BASE}/missions?${params}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.missions ?? [];
 }
@@ -2393,7 +2398,7 @@ export async function createMission(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const result = await res.json();
   return result.mission ?? result;
 }
@@ -2404,7 +2409,7 @@ export async function updateMission(id: string, data: Partial<Mission>): Promise
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const result = await res.json();
   return result.mission ?? result;
 }
@@ -2413,7 +2418,7 @@ export async function deleteMission(id: string): Promise<void> {
   const res = await apiFetch(`${BASE}/missions/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
 }
 
 export async function runMission(id: string): Promise<{ ok: boolean; session_id: string }> {
@@ -2421,7 +2426,7 @@ export async function runMission(id: string): Promise<{ ok: boolean; session_id:
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2429,7 +2434,7 @@ export async function getCompanyGoal(founderId: string, companyId = ""): Promise
   const params = new URLSearchParams({ founder_id: founderId });
   if (companyId) params.set("company_id", companyId);
   const res = await apiFetch(`${BASE}/missions/company-goal?${params}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   const goal = data.company_goal ?? null;
   if (!goal || !data.current_goal) return goal;
@@ -2450,7 +2455,7 @@ export async function approveMissionTask(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, company_id: companyId, approved, note }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2473,7 +2478,7 @@ export async function updateMissionTask(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const result = await res.json();
   return result.task ?? result;
 }
@@ -2484,7 +2489,7 @@ export async function syncMissionNotion(founderId: string, companyId = ""): Prom
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, company_id: companyId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2505,7 +2510,7 @@ export interface Skill {
 
 export async function listSkills(founderId: string): Promise<Skill[]> {
   const res = await apiFetch(`${BASE}/skills?founder_id=${encodeURIComponent(founderId)}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.skills ?? [];
 }
@@ -2514,7 +2519,7 @@ export async function getSkill(founderId: string, skillId: string): Promise<Skil
   const res = await apiFetch(
     `${BASE}/skills/${encodeURIComponent(skillId)}?founder_id=${encodeURIComponent(founderId)}`
   );
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.skill;
 }
@@ -2528,7 +2533,7 @@ export async function createSkill(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, ...body }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.skill;
 }
@@ -2543,7 +2548,7 @@ export async function updateSkill(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, ...body }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.skill;
 }
@@ -2553,7 +2558,7 @@ export async function deleteSkill(founderId: string, skillId: string): Promise<v
     `${BASE}/skills/${encodeURIComponent(skillId)}?founder_id=${encodeURIComponent(founderId)}`,
     { method: "DELETE" }
   );
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
 }
 
 export async function attachSkill(
@@ -2565,7 +2570,7 @@ export async function attachSkill(
     `${BASE}/skills/${encodeURIComponent(skillId)}/attach?founder_id=${encodeURIComponent(founderId)}&agent_key=${encodeURIComponent(agentKey)}`,
     { method: "POST" }
   );
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.skill;
 }
@@ -2579,7 +2584,7 @@ export async function detachSkill(
     `${BASE}/skills/${encodeURIComponent(skillId)}/attach?founder_id=${encodeURIComponent(founderId)}&agent_key=${encodeURIComponent(agentKey)}`,
     { method: "DELETE" }
   );
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.skill;
 }
@@ -2591,7 +2596,7 @@ export async function getSkillsForAgent(
   const res = await apiFetch(
     `${BASE}/skills/for-agent?founder_id=${encodeURIComponent(founderId)}&agent_key=${encodeURIComponent(agentKey)}`
   );
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   const data = await res.json();
   return data.skills ?? [];
 }
@@ -2616,7 +2621,7 @@ export async function getCredits(founderId: string): Promise<CreditBalance> {
   const res = await apiFetch(
     `${BASE}/credits?founder_id=${encodeURIComponent(founderId)}`
   );
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2629,7 +2634,7 @@ export async function purchaseCredits(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, pack }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2644,7 +2649,7 @@ export async function rerunAgent(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ founder_id: founderId, instruction: instruction ?? "" }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2713,7 +2718,7 @@ export async function getCustomAgentToolCatalog(): Promise<{
   connectors: CustomAgentConnectorMeta[];
 }> {
   const res = await apiFetch(`${BASE}/custom-agents/tool-catalog`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2724,13 +2729,13 @@ export async function startConnectorConnect(
   const res = await apiFetch(
     `${BASE}/custom-agents/${encodeURIComponent(founderId)}/connect/${encodeURIComponent(connectorKey)}`,
   );
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function listCustomAgents(founderId: string): Promise<CustomAgent[]> {
   const res = await apiFetch(`${BASE}/custom-agents/${encodeURIComponent(founderId)}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return (await res.json()).agents;
 }
 
@@ -2740,7 +2745,7 @@ export async function createCustomAgent(founderId: string, input: CustomAgentInp
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2754,7 +2759,7 @@ export async function updateCustomAgent(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2762,7 +2767,7 @@ export async function deleteCustomAgent(founderId: string, agentId: string): Pro
   const res = await apiFetch(`${BASE}/custom-agents/${encodeURIComponent(founderId)}/${encodeURIComponent(agentId)}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
 }
 
 export async function runCustomAgent(
@@ -2775,7 +2780,7 @@ export async function runCustomAgent(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ goal: opts.goal, company_id: opts.companyId }),
   });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
@@ -2832,13 +2837,13 @@ export interface FundingKitStatus {
 export async function getFundingStatus(founderId: string, companyId?: string): Promise<FundingKitStatus> {
   const params = companyId ? `?company_id=${encodeURIComponent(companyId)}` : "";
   const res = await apiFetch(`${BASE}/funding/status/${encodeURIComponent(founderId)}${params}`);
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }
 
 export async function triggerFundingGenerate(founderId: string, companyId?: string): Promise<{ started: boolean }> {
   const params = companyId ? `?company_id=${encodeURIComponent(companyId)}` : "";
   const res = await apiFetch(`${BASE}/funding/generate/${encodeURIComponent(founderId)}${params}`, { method: "POST" });
-  if (!res.ok) throw new Error(await res.text());
+  await checkOk(res);
   return res.json();
 }

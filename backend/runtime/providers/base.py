@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -37,9 +37,3 @@ class ProviderResponse:
     usage: dict[str, int] = field(default_factory=dict)
     finish_reason: str | None = None
     raw_metadata: dict[str, Any] = field(default_factory=dict)
-
-
-class ProviderAdapter(Protocol):
-    capabilities: ProviderCapabilities
-
-    def complete(self, request: ProviderRequest) -> ProviderResponse: ...

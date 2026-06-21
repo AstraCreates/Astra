@@ -11,7 +11,6 @@ import uuid
 from typing import Any
 
 from backend.core.agent import Agent, AgentContext
-from backend.core.bus import AgentBus
 from backend.core.context_policy import RunContextPolicy
 from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
 
@@ -162,10 +161,6 @@ class Orchestrator:
     def __init__(self, planner: Agent, specialists: dict[str, Agent]):
         self.planner = planner
         self.specialists = specialists
-        self.bus = AgentBus()
-        for agent in specialists.values():
-            self.bus.register(agent)
-        self.bus.register(planner)
 
     _AGENT_CAPS = (
         "SPECIALIST CAPABILITIES:\n"

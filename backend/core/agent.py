@@ -8,7 +8,6 @@ import json
 import logging
 import os
 import re
-import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
@@ -309,16 +308,6 @@ def _format_tool_result_raw(tool_name: str, result: Any) -> str:
     except Exception:
         return str(result)
 
-
-
-@dataclass
-class Message:
-    sender: str
-    recipient: str
-    content: str
-    msg_id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
-
-
 @dataclass
 class AgentContext:
     goal: str
@@ -394,7 +383,6 @@ class Agent:
         self._deadline_seconds = deadline_seconds
         self._library_files: list[dict] = library_files or []
         self._skills: list[str] = skills or []
-        self._inbox: asyncio.Queue = asyncio.Queue()
         self._llm: Optional[openai.OpenAI] = None
 
     def _get_llm(self) -> openai.OpenAI:
@@ -2034,9 +2022,3 @@ class Agent:
             parent_task_id=ctx.task_id,
         )
         return await agent.run(sub_ctx)
-
-    async def receive(self, msg: Message) -> None:
-        await self._inbox.put(msg)
-
-    async def send(self, bus: "AgentBus", recipient: str, content: str) -> None:
-        await bus.route(Message(sender=self.name, recipient=recipient, content=content))
