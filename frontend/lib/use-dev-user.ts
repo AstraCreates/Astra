@@ -45,12 +45,13 @@ export function useDevUser() {
     : null;
   const userId = signedInUserId || getOrCreateUserId();
 
-  // Keep localStorage in sync so ApiAuthBridge always sends the right founder ID.
+  // Keep localStorage in sync so ApiAuthBridge always sends the right founder ID + email.
   useEffect(() => {
     if (isSignedIn && googleEmail) {
       const stableId = normalizeSignedInUserId(googleEmail);
       localStorage.setItem(AUTH_USER_ID_KEY, stableId);
       localStorage.setItem(DEV_USER_ID_KEY, stableId);
+      localStorage.setItem("astra_auth_email", googleEmail);
     }
   }, [isSignedIn, googleEmail]);
 

@@ -947,7 +947,7 @@ def _fallback_copilot_reply(actions: list[dict[str, Any]]) -> str:
     return "I completed the requested action."
 
 
-async def run_copilot(founder_id: str, session_id: str, message: str) -> dict[str, Any]:
+async def run_copilot(founder_id: str, session_id: str, message: str, founder_email: str = "") -> dict[str, Any]:
     """Run one copilot turn: load history, let the model use tools, reply, persist."""
     from backend.tools._llm import generate
 
@@ -958,7 +958,11 @@ async def run_copilot(founder_id: str, session_id: str, message: str) -> dict[st
         "You are the founder's Copilot inside an Astra session — a hands-on operator that ACTS on "
         "the company, not a status narrator. You can call tools to query the company brain, read and "
         "approve goals, steer the running agents, run a cycle, and check status.\n\n"
-        f"TOOLS:\n{tool_docs}\n\n"
+        + (f"FOUNDER ACCOUNT:\n  email: {founder_email}\n  founder_id: {founder_id}\n"
+           "Use this email as the founder's contact email whenever building websites, "
+           "writing copy, or setting up contact forms — never invent a placeholder email.\n\n"
+           if founder_email else "")
+        + f"TOOLS:\n{tool_docs}\n\n"
         "You can natively drive the whole company: see every agent (list_agents), dispatch any of them "
         "on any directive (dispatch_agents), create/activate goals with per-workstream tasks (set_goal), "
         "approve the next goal, steer running agents, run a cycle.\n\n"

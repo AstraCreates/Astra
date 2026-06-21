@@ -1489,7 +1489,8 @@ async def copilot_chat(session_id: str, body: dict, request: Request):
         raise HTTPException(status_code=400, detail="message is required")
     from backend.copilot import run_copilot
     fid = body.get("founder_id") or founder_id or ""
-    return await run_copilot(fid, session_id, message)
+    founder_email = request.headers.get("x-astra-email") or body.get("founder_email") or ""
+    return await run_copilot(fid, session_id, message, founder_email=founder_email)
 
 
 @router.get("/copilot/{session_id}")

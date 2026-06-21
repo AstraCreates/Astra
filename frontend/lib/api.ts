@@ -12,12 +12,24 @@ async function authHeaders(): Promise<Record<string, string>> {
   try {
     if (apiAuthProvider) {
       const auth = await apiAuthProvider();
-      if (auth?.userId) return { "x-astra-user-id": auth.userId };
+      if (auth?.userId) {
+        const h: Record<string, string> = { "x-astra-user-id": auth.userId };
+        if (typeof window !== "undefined") {
+          const email = localStorage.getItem("astra_auth_email");
+          if (email) h["x-astra-email"] = email;
+        }
+        return h;
+      }
     }
     // Fallback: read directly from localStorage
     if (typeof window !== "undefined") {
       const userId = localStorage.getItem("astra_auth_user_id") || localStorage.getItem("astra_dev_user_id");
-      if (userId) return { "x-astra-user-id": userId };
+      if (userId) {
+        const h: Record<string, string> = { "x-astra-user-id": userId };
+        const email = localStorage.getItem("astra_auth_email");
+        if (email) h["x-astra-email"] = email;
+        return h;
+      }
     }
   } catch {
     // ignore

@@ -2401,12 +2401,33 @@ class Orchestrator:
         except Exception as _cb:
             logger.warning("Company brain continuation context skipped: %s", _cb)
 
-        # If agents explicitly specified, skip planning
+        # If agents explicitly specified, still ask planner for per-agent instructions
         if agents:
-            tasks = [
-                {"id": f"c_{a}", "agent": a, "instruction": instruction, "depends_on": []}
-                for a in agents if a in self.specialists
-            ]
+            valid_agents = [a for a in agents if a in self.specialists]
+            agent_list = ", ".join(valid_agents)
+            _plan_system = (
+                "You are a planning coordinator. A founder is continuing work on their company.\n"
+                + self._AGENT_CAPS
+                + f"\nYou MUST assign tasks to EXACTLY these agents (no others): {agent_list}.\n"
+                "Return a task plan JSON with one entry per agent, each with a specific instruction.\n"
+                "Format: {\"tasks\": [{\"id\": \"c1\", \"agent\": \"<name>\", \"instruction\": \"<specific>\", \"depends_on\": []}]}"
+            )
+            _plan_user = (
+                f"Goal: {instruction}\n\n"
+                f"Prior company context:\n{shared.get('company_vault_context', '')[:3000]}\n\n"
+                f"Write a specific instruction for each of these agents: {agent_list}. "
+                "Each instruction must reference what that agent should actually do for this goal."
+            )
+            tasks = await self._llm_plan([
+                {"role": "system", "content": _plan_system},
+                {"role": "user", "content": _plan_user},
+            ])
+            # Fallback: if planner fails or returns wrong agents, use uniform instruction
+            if not tasks or {t["agent"] for t in tasks} - set(self.specialists):
+                tasks = [
+                    {"id": f"c_{a}", "agent": a, "instruction": instruction, "depends_on": []}
+                    for a in valid_agents
+                ]
         else:
             # Ask planner which agents are needed for this follow-up
             system = (
