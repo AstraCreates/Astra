@@ -238,6 +238,7 @@ button:not(:disabled):active { transform: scale(0.97); }
   animation: astraSlideDown 0.22s var(--ease-out-quint, cubic-bezier(0.22,1,0.36,1)) both; }
 
 @keyframes astraSlideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
+@keyframes astraSlideUp   { from { opacity: 0; transform: translateY(10px); }  to { opacity: 1; transform: none; } }
 
 /* ── Entrance animations ────────────────────────────────────────────────── */
 

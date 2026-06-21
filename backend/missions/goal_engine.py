@@ -457,15 +457,16 @@ def _agent_delivered(output: Any, task: dict | None = None) -> bool:
                 "acquire user", "get user", "get signup",
             ))
             if _is_user_task:
-                # Only strong real-world proof accepted
+                # Only strong real-world proof accepted.
+                # signup_count/user_count alone are hallucination-prone;
+                # require them paired with a verifiable URL or payment ID.
+                _has_url = output.get("signup_url") or output.get("payment_id") or output.get("stripe_id")
+                _has_count = output.get("signup_count") or output.get("user_count")
                 evidence = (
                     output.get("evidence")
                     or output.get("proof")
-                    or output.get("signup_url")
-                    or output.get("payment_id")
-                    or output.get("stripe_id")
-                    or output.get("signup_count")
-                    or output.get("user_count")
+                    or _has_url
+                    or (_has_count and _has_url)
                 )
             else:
                 evidence = (

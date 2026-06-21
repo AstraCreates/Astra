@@ -269,6 +269,13 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const agentAnswerInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (agentQuestion && agentQuestion.options.length === 0) { setTimeout(() => agentAnswerInputRef.current?.focus(), 0); } }, [agentQuestion]);
   const [toastErr, setToastErr] = useState("");
+  const [agentToasts, setAgentToasts] = useState<{ id: number; label: string; status: "running" | "done" | "error" }[]>([]);
+  const toastIdRef = useRef(0);
+  const pushAgentToast = useCallback((label: string, status: "running" | "done" | "error") => {
+    const id = ++toastIdRef.current;
+    setAgentToasts(t => [...t.slice(-3), { id, label, status }]);
+    setTimeout(() => setAgentToasts(t => t.filter(x => x.id !== id)), 4000);
+  }, []);
   const [restartConfirm, setRestartConfirm] = useState(false);
   const [takeover, setTakeover] = useState(false);
   const [previewRestarting, setPreviewRestarting] = useState(false);
@@ -353,7 +360,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       case "agent_start":
         ensureAg(ev.agent); st.agents[ev.agent].status = "running";
         if (ev.instruction) st.agents[ev.agent].instruction = ev.instruction;
-        addLog(ev.agent, "start", ev.instruction || "Started"); break;
+        addLog(ev.agent, "start", ev.instruction || "Started");
+        pushAgentToast(AGENT_LABELS[ev.agent] ?? ev.agent, "running"); break;
       case "agent_thinking": case "reasoning":
         if (ev.agent) addLog(ev.agent, "think", ev.text || ev.reasoning || ev.content || ""); break;
       case "agent_tool_call": case "agent_action": case "tool_use": {
@@ -386,11 +394,13 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         const _sum = (_r && typeof _r === "object")
           ? (String(_r.summary || _r.output_summary || _r.headline || _r.tldr || _r.text || _r.formatted_text || "")).trim().slice(0, 400)
           : "";
-        addLog(ev.agent, "done", _sum || "Agent finished"); break;
+        addLog(ev.agent, "done", _sum || "Agent finished");
+        pushAgentToast(AGENT_LABELS[ev.agent] ?? ev.agent, "done"); break;
       }
       case "agent_error":
         ensureAg(ev.agent); st.agents[ev.agent].status = "error"; st.agents[ev.agent].currentTool = null;
-        addLog(ev.agent, "error", ev.error || ev.message || "Error"); break;
+        addLog(ev.agent, "error", ev.error || ev.message || "Error");
+        pushAgentToast(AGENT_LABELS[ev.agent] ?? ev.agent, "error"); break;
       case "stack_artifact": case "artifact": {
         const art = ev.artifact || ev;
         if (!art.key && !art.title) break;
@@ -436,7 +446,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       default: return; // ignore pings/unknown without re-render
     }
     force();
-  }, []);
+  }, [pushAgentToast]);
 
   // Load meta + state, then connect SSE.
   useEffect(() => {
@@ -1658,6 +1668,24 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
       {showSessionTour && (
         <SessionTour onDone={() => { localStorage.setItem("astra_session_tour_done", "1"); setShowSessionTour(false); }} />
+      )}
+
+      {/* Agent activity toasts — fixed bottom-right, auto-dismiss 4s */}
+      {agentToasts.length > 0 && (
+        <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 200, display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end", pointerEvents: "none" }}>
+          {agentToasts.map(t => (
+            <div key={t.id} style={{
+              background: t.status === "done" ? "var(--mint)" : t.status === "error" ? "var(--red)" : "var(--blue)",
+              color: "#fff", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 600,
+              boxShadow: "0 4px 16px rgba(0,0,0,.25)", display: "flex", alignItems: "center", gap: 8,
+              animation: "astraSlideUp 0.2s ease both", maxWidth: 260,
+              fontFamily: "var(--font-geist-sans), system-ui, sans-serif",
+            }}>
+              <span>{t.status === "done" ? "✓" : t.status === "error" ? "✗" : "●"}</span>
+              <span>{t.label} {t.status === "done" ? "done" : t.status === "error" ? "error" : "started"}</span>
+            </div>
+          ))}
+        </div>
       )}
 
     </div>
