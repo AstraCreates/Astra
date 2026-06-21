@@ -1462,6 +1462,27 @@ def company_brain_context(
     )["formatted"]
 
 
+def purge_session_records(founder_id: str, session_id: str, company_id: str | None = None) -> int:
+    """Delete all brain records written during a specific session. Returns count removed."""
+    if not founder_id or not session_id:
+        return 0
+    try:
+        data = _load(founder_id, company_id)
+        before = len(data.get("records") or [])
+        data["records"] = [
+            r for r in (data.get("records") or [])
+            if (r.get("metadata") or {}).get("session_id") != session_id
+        ]
+        removed = before - len(data["records"])
+        if removed:
+            _save(founder_id, data, company_id)
+        return removed
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("purge_session_records failed founder=%s: %s", founder_id, exc)
+        return 0
+
+
 def get_company_name(founder_id: str, company_id: str | None = None) -> str:
     """Best-effort canonical company name for a founder, so operating/continuation runs
     use the SAME name the launch run picked instead of inventing a new one. Order:

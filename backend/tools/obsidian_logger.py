@@ -1,6 +1,7 @@
 """Obsidian vault tools — organized by founder / session / agent."""
 import json
 import logging
+import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,16 @@ def _sessions_root(founder_id: str | None = None) -> Path:
 
 def _session_dir(session_id: str, founder_id: str | None = None) -> Path:
     return _sessions_root(founder_id) / session_id
+
+
+def delete_session_notes(session_id: str, founder_id: str | None = None) -> None:
+    """Delete all vault notes for a session. Best-effort."""
+    try:
+        d = _session_dir(session_id, founder_id)
+        if d.exists():
+            shutil.rmtree(d, ignore_errors=True)
+    except Exception as exc:
+        logger.warning("delete_session_notes failed session=%s: %s", session_id, exc)
 
 
 def _note_path(agent: str, session_id: str, founder_id: str | None = None) -> Path:

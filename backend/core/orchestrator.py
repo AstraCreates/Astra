@@ -936,6 +936,7 @@ class Orchestrator:
         canonical: bool = False,
         stale_risk: str = "medium",
         company_id: str = "",
+        session_id: str = "",
     ) -> None:
         """Best-effort write of operator records into the Company Brain."""
         try:
@@ -949,7 +950,7 @@ class Orchestrator:
                 kind=kind,
                 canonical=canonical,
                 stale_risk=stale_risk,
-                metadata={"company_id": company_id or founder_id},
+                metadata={"company_id": company_id or founder_id, "session_id": session_id},
             )
         except Exception as exc:
             logger.warning("Company brain record write failed for %s: %s", title, exc)
@@ -1147,6 +1148,7 @@ class Orchestrator:
                     canonical=True,
                     stale_risk="low",
                     company_id=company_id,
+                    session_id=session_id,
                 )
                 await self._persist_brain_record(
                     founder_id=founder_id,
@@ -1156,6 +1158,7 @@ class Orchestrator:
                     canonical=True,
                     stale_risk="low",
                     company_id=company_id,
+                    session_id=session_id,
                 )
             except Exception as _op:
                 logger.warning("Stack manifest brain record failed: %s", _op)
@@ -2213,6 +2216,7 @@ class Orchestrator:
                 canonical=False,
                 stale_risk="low",
                 company_id=company_id,
+                session_id=session_id,
             )
             save_session_state(session_id, _event_log.get(session_id, []))
         except Exception as _digest_err:

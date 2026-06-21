@@ -687,6 +687,22 @@ def handle_session_deleted(session_id: str) -> dict[str, Any]:
                     g["operating_sessions"] = [r for r in (g.get("operating_sessions") or []) if r.get("session_id") != session_id]
                     _save(g)
                     detached += 1
+    # Purge brain records and vault notes written during this session
+    try:
+        from backend.tools.company_brain import purge_session_records
+        from backend.tools.obsidian_logger import delete_session_notes
+        # Best-effort: try each founder that had a goal tied to this session
+        seen_founders: set[str] = set()
+        for goal in list_company_goals():
+            fid = goal.get("founder_id")
+            if fid and fid not in seen_founders:
+                purge_session_records(fid, session_id)
+                seen_founders.add(fid)
+        delete_session_notes(session_id)
+    except Exception as _ce:
+        import logging as _log
+        _log.getLogger(__name__).warning("brain/vault cleanup failed session=%s: %s", session_id, _ce)
+
     return {"deleted_goals": deleted, "detached_runs": detached}
 
 
