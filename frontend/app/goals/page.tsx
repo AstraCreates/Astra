@@ -1,5 +1,5 @@
-import ChecklistPage from "@/components/ChecklistPage";
+import GoalsView from "@/components/GoalsView";
 
 export default function GoalsPage() {
-  return <ChecklistPage />;
+  return <GoalsView />;
 }
