@@ -16,8 +16,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
+
+from backend.tenant_auth import require_founder_access
 
 from backend.skills.store import (
     attach_skill,
@@ -85,9 +87,10 @@ class ResolveProposalRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 @skills_router.post("")
-async def api_create_skill(body: CreateSkillRequest) -> dict[str, Any]:
+async def api_create_skill(body: CreateSkillRequest, request: Request) -> dict[str, Any]:
     if not body.founder_id:
         raise HTTPException(status_code=400, detail="founder_id is required")
+    require_founder_access(request, body.founder_id, min_role="operator")
     if not body.name:
         raise HTTPException(status_code=400, detail="name is required")
     skill = create_skill(
@@ -103,26 +106,30 @@ async def api_create_skill(body: CreateSkillRequest) -> dict[str, Any]:
 
 @skills_router.get("/for-agent")
 async def api_skills_for_agent(
+    request: Request,
     founder_id: str = Query(...),
     agent_key: str = Query(...),
 ) -> dict[str, Any]:
     """Return all skills attached to a specific agent."""
     if not founder_id or not agent_key:
         raise HTTPException(status_code=400, detail="founder_id and agent_key are required")
+    require_founder_access(request, founder_id, min_role="viewer")
     skills = get_skills_for_agent(founder_id, agent_key)
     return {"founder_id": founder_id, "agent_key": agent_key, "skills": skills}
 
 
 @skills_router.get("")
-async def api_list_skills(founder_id: str = Query(...)) -> dict[str, Any]:
+async def api_list_skills(request: Request, founder_id: str = Query(...)) -> dict[str, Any]:
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id query param required")
+    require_founder_access(request, founder_id, min_role="viewer")
     skills = list_skills(founder_id)
     return {"founder_id": founder_id, "skills": skills}
 
 
 @skills_router.post("/proposals")
-async def api_create_skill_proposal(body: CreateProposalRequest) -> dict[str, Any]:
+async def api_create_skill_proposal(body: CreateProposalRequest, request: Request) -> dict[str, Any]:
+    require_founder_access(request, body.founder_id, min_role="operator")
     try:
         proposal = create_proposal(**body.model_dump())
     except ValueError as exc:

@@ -14,6 +14,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from backend.tenant_auth import require_founder_access, actor_or_body
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +52,11 @@ class CheckoutRequest(BaseModel):
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @credits_router.get("/credits")
-async def get_credits_route(founder_id: str = ""):
+async def get_credits_route(request: Request, founder_id: str = ""):
     """Return the founder's credit balance and last 20 transactions."""
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id query param required")
+    require_founder_access(request, founder_id, min_role="viewer")
 
     from backend.credits.store import get_credits
     from backend.credits.gold_price import get_gold_price
@@ -74,10 +76,11 @@ async def get_credits_route(founder_id: str = ""):
 
 
 @credits_router.post("/credits/deduct")
-async def deduct_credits_route(body: DeductRequest):
+async def deduct_credits_route(body: DeductRequest, request: Request):
     """Deduct credits from a founder's balance. Returns 402 if insufficient."""
     if not body.founder_id:
         raise HTTPException(status_code=400, detail="founder_id is required")
+    require_founder_access(request, body.founder_id, min_role="operator")
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="amount must be a positive integer")
 
@@ -96,10 +99,11 @@ async def deduct_credits_route(body: DeductRequest):
 
 
 @credits_router.post("/credits/add")
-async def add_credits_route(body: AddRequest):
+async def add_credits_route(body: AddRequest, request: Request):
     """Add credits to a founder's balance (admin grant or Stripe purchase)."""
     if not body.founder_id:
         raise HTTPException(status_code=400, detail="founder_id is required")
+    require_founder_access(request, body.founder_id, min_role="admin")
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="amount must be a positive integer")
     if body.type not in ("grant", "purchase", "refund"):

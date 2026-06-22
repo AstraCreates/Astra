@@ -10,9 +10,12 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any
+
+_write_lock = threading.Lock()
 
 
 PLANS: dict[str, dict[str, Any]] = {
@@ -122,7 +125,8 @@ def _load(org_id: str, founder_id: str | None = None) -> dict[str, Any]:
 
 def _save(data: dict[str, Any]) -> dict[str, Any]:
     data["updated_at"] = _now()
-    _path(data["org_id"]).write_text(json.dumps(data, indent=2, sort_keys=True))
+    with _write_lock:
+        _path(data["org_id"]).write_text(json.dumps(data, indent=2, sort_keys=True))
     try:
         from backend.storage_adapter import mirror_document
         mirror_document("accounts", data["org_id"], data)
