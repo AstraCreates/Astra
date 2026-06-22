@@ -94,9 +94,10 @@ export default function DashboardView() {
 
   const load = useCallback(async () => {
     if (!userId) return;
-    setError(""); setSessions(null);
+    setError("");
+    // Don't reset sessions to null on refresh — keeps existing count visible while refetching
     try { setSessions(await listSessions(userId, 50)); }
-    catch (e) { setError(e instanceof Error ? e.message : String(e)); setSessions([]); }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)); setSessions((p) => p ?? []); }
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
