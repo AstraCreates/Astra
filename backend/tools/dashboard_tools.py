@@ -141,6 +141,19 @@ def dashboard_add_element(
 
     with _lock(founder_id):
         elements = _load(founder_id)
+        # Replace existing tile from same agent+section+title (dedup across re-runs).
+        # This prevents stale tiles accumulating every run.
+        def _is_stale(e: dict) -> bool:
+            return (
+                e.get("agent") == agent
+                and e.get("section", "") == (section or "")
+                and e.get("title", "").strip().lower() == title.strip().lower()
+            )
+        elements = [e for e in elements if not _is_stale(e)]
+        # Also cap total tiles to 20 — oldest non-pinned tiles drop off
+        MAX_TILES = 20
+        if len(elements) >= MAX_TILES:
+            elements = elements[-(MAX_TILES - 1):]
         if order < 0 or order >= len(elements):
             elements.append(element)
         else:

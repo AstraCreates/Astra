@@ -800,12 +800,21 @@ class Agent:
         dashboard_section = ""
         if "dashboard_add_element" in self.tools:
             dashboard_section = (
-                "\nDASHBOARD (optional): If you produce something a founder would want to monitor at a glance "
-                "— a key metric, competitor table, status check, action list — you may call "
-                "dashboard_add_element(founder_id=<FOUNDER_ID from context>, ...) before done. "
-                "Don't tile routine steps or intermediate progress. "
-                "Types: metric, chart, table, status_board, progress, list, markdown, button. "
-                f"Use section= to group. Pass agent={self.name!r}.\n"
+                f"\nDASHBOARD (optional): Call dashboard_add_element ONLY if your tools returned a concrete result a founder needs to track. "
+                "Hard rules:\n"
+                "- ONLY tile real numbers/data from actual tool results. Never tile estimated, placeholder, or 'N/A' values.\n"
+                "- ONLY tile if it answers: revenue, users, conversion, burn, churn, pipeline, or a live blocker/risk.\n"
+                "- Max 2 tiles per agent. Prefer 1 tight tile over 2 vague ones.\n"
+                "- Use 'metric' for single numbers (e.g. value='1,243', unit='$', label='MRR'). "
+                "Use 'table' for comparisons (competitors, pricing). "
+                "Use 'status_board' for live system/integration health. "
+                "Use 'list' only for prioritized action items with specific next steps.\n"
+                "- NEVER tile: task summaries, agent status, intermediate steps, generic 'completed' messages, "
+                "things the founder already sees in the run view, or anything without a concrete value.\n"
+                "- BAD: title='Market Research Done', type='markdown', content='Completed research...'\n"
+                "- GOOD: title='Top Competitors', type='table', columns=['Company','Price','Users'], rows=[...real data...]\n"
+                "- GOOD: title='Signups This Week', type='metric', value='47', trend='+12% vs last week', trend_up=True\n"
+                f"Pass agent={self.name!r} and the current session_id. Use section= to group related tiles.\n"
             )
 
         return (

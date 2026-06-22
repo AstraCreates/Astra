@@ -138,12 +138,14 @@ async def api_create_skill_proposal(body: CreateProposalRequest, request: Reques
 
 
 @skills_router.get("/proposals/list")
-async def api_list_skill_proposals(founder_id: str = Query(...), status: str | None = None) -> dict[str, Any]:
+async def api_list_skill_proposals(request: Request, founder_id: str = Query(...), status: str | None = None) -> dict[str, Any]:
+    require_founder_access(request, founder_id, min_role="viewer")
     return {"founder_id": founder_id, "proposals": list_proposals(founder_id, status)}
 
 
 @skills_router.post("/proposals/{proposal_id}/resolve")
-async def api_resolve_skill_proposal(proposal_id: str, body: ResolveProposalRequest) -> dict[str, Any]:
+async def api_resolve_skill_proposal(proposal_id: str, body: ResolveProposalRequest, request: Request) -> dict[str, Any]:
+    require_founder_access(request, body.founder_id, min_role="operator")
     try:
         proposal = resolve_proposal(body.founder_id, proposal_id, body.status, body.reviewer)
     except ValueError as exc:
@@ -155,10 +157,12 @@ async def api_resolve_skill_proposal(proposal_id: str, body: ResolveProposalRequ
 
 @skills_router.post("/proposals/{proposal_id}/activate")
 async def api_activate_skill_proposal(
+    request: Request,
     proposal_id: str,
     founder_id: str = Query(...),
     reviewer: str = Query(...),
 ) -> dict[str, Any]:
+    require_founder_access(request, founder_id, min_role="operator")
     result = activate_proposal(founder_id, proposal_id, reviewer)
     if result is None:
         raise HTTPException(status_code=409, detail="Proposal must exist and be approved")
@@ -166,7 +170,8 @@ async def api_activate_skill_proposal(
 
 
 @skills_router.post("/{skill_id}/rollback")
-async def api_rollback_skill(skill_id: str, founder_id: str = Query(...)) -> dict[str, Any]:
+async def api_rollback_skill(request: Request, skill_id: str, founder_id: str = Query(...)) -> dict[str, Any]:
+    require_founder_access(request, founder_id, min_role="operator")
     skill = rollback_skill(founder_id, skill_id)
     if skill is None:
         raise HTTPException(status_code=409, detail="Skill has no prior version to restore")
@@ -174,9 +179,10 @@ async def api_rollback_skill(skill_id: str, founder_id: str = Query(...)) -> dic
 
 
 @skills_router.get("/{skill_id}")
-async def api_get_skill(skill_id: str, founder_id: str = Query(...)) -> dict[str, Any]:
+async def api_get_skill(request: Request, skill_id: str, founder_id: str = Query(...)) -> dict[str, Any]:
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id query param required")
+    require_founder_access(request, founder_id, min_role="viewer")
     skill = get_skill(founder_id, skill_id)
     if skill is None:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -184,9 +190,10 @@ async def api_get_skill(skill_id: str, founder_id: str = Query(...)) -> dict[str
 
 
 @skills_router.patch("/{skill_id}")
-async def api_update_skill(skill_id: str, body: UpdateSkillRequest) -> dict[str, Any]:
+async def api_update_skill(request: Request, skill_id: str, body: UpdateSkillRequest) -> dict[str, Any]:
     if not body.founder_id:
         raise HTTPException(status_code=400, detail="founder_id is required")
+    require_founder_access(request, body.founder_id, min_role="operator")
     skill = update_skill(
         founder_id=body.founder_id,
         skill_id=skill_id,
@@ -201,9 +208,10 @@ async def api_update_skill(skill_id: str, body: UpdateSkillRequest) -> dict[str,
 
 
 @skills_router.delete("/{skill_id}")
-async def api_delete_skill(skill_id: str, founder_id: str = Query(...)) -> dict[str, Any]:
+async def api_delete_skill(request: Request, skill_id: str, founder_id: str = Query(...)) -> dict[str, Any]:
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id query param required")
+    require_founder_access(request, founder_id, min_role="operator")
     deleted = delete_skill(founder_id, skill_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -212,12 +220,14 @@ async def api_delete_skill(skill_id: str, founder_id: str = Query(...)) -> dict[
 
 @skills_router.post("/{skill_id}/attach")
 async def api_attach_skill(
+    request: Request,
     skill_id: str,
     founder_id: str = Query(...),
     agent_key: str = Query(...),
 ) -> dict[str, Any]:
     if not founder_id or not agent_key:
         raise HTTPException(status_code=400, detail="founder_id and agent_key are required")
+    require_founder_access(request, founder_id, min_role="operator")
     skill = attach_skill(founder_id, skill_id, agent_key)
     if skill is None:
         raise HTTPException(status_code=404, detail="Skill not found")
@@ -226,12 +236,14 @@ async def api_attach_skill(
 
 @skills_router.delete("/{skill_id}/attach")
 async def api_detach_skill(
+    request: Request,
     skill_id: str,
     founder_id: str = Query(...),
     agent_key: str = Query(...),
 ) -> dict[str, Any]:
     if not founder_id or not agent_key:
         raise HTTPException(status_code=400, detail="founder_id and agent_key are required")
+    require_founder_access(request, founder_id, min_role="operator")
     skill = detach_skill(founder_id, skill_id, agent_key)
     if skill is None:
         raise HTTPException(status_code=404, detail="Skill not found")
