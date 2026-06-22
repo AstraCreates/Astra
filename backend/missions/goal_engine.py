@@ -967,9 +967,12 @@ async def after_run(founder_id: str, session_id: str, state: dict[str, Any]) -> 
         cur = current_goal(founder_id, company_id)
         # Propose the next goal when the current goal is complete. A completed goal's
         # status is already "done" (complete_agent_workstream flips it during ticking),
-        # so guard on != "proposed" (don't stack a second proposal on an unapproved one)
-        # — NOT == "active", which is never true by the time a goal finishes.
-        if goal and goal.get("status") != "paused" and cur and cur.get("status") != "proposed" and _goal_is_complete(cur):
+        # so guard on != "proposed" (don't stack a second proposal on an unapproved one).
+        # Also accept cur.status=="done" directly: tick_from_agent runs in executor threads
+        # that may finish after after_run starts, so _goal_is_complete may return False
+        # even though complete_agent_workstream already flipped the goal to "done".
+        _goal_done = (cur is not None) and (cur.get("status") == "done" or _goal_is_complete(cur))
+        if goal and goal.get("status") != "paused" and cur and cur.get("status") != "proposed" and _goal_done:
             if not chain_allowed(goal):
                 logger.info("goal_engine: founder=%s goal complete but daily new-goal cap hit — not proposing", founder_id)
                 return

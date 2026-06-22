@@ -4,10 +4,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
+import { useEffect, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import CreditsDisplay from "@/components/CreditsDisplay";
 import NotificationBell from "@/components/NotificationBell";
-import ThemeToggle from "@/components/ThemeToggle";
 import { desktopDownloadHref } from "@/lib/desktop-download";
 
 const LINKS: { href: string; ic: string; label: string; match: (p: string) => boolean }[] = [
@@ -26,9 +26,10 @@ function initials(id: string) { return (id || "?").replace(/^(user_|google_)/, "
 export default function RedesignSidebar({ mobile = false, open = false, onClose }: { mobile?: boolean; open?: boolean; onClose?: () => void } = {}) {
   const pathname = usePathname() || "/";
   const { userId, isSignedIn, user } = useDevUser();
-  const companyName = typeof window !== "undefined"
-    ? localStorage.getItem("astra_onboarding_company") || ""
-    : "";
+  const [companyName, setCompanyName] = useState("");
+  useEffect(() => {
+    setCompanyName(localStorage.getItem("astra_onboarding_company") || "");
+  }, []);
 
   // On mobile the sidebar is an off-canvas drawer (fixed, slides in over content);
   // on desktop it's the usual sticky in-flow column.
@@ -61,7 +62,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
         </div>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "10px 8px", flex: 1, overflowY: "auto" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "10px 8px", flex: 1, overflowY: "hidden" }}>
         {LINKS.map((l) => (
           l.href === "/" ? (
             // Dashboard: hard-navigate to the clean site root so it ALWAYS resets to
@@ -111,7 +112,6 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
           🍎 Download macOS
         </a>
       </div>
-      <div style={{ padding: "6px 12px 4px", display: "flex", justifyContent: "center" }}><ThemeToggle /></div>
       <div style={{ padding: "6px 12px 10px", display: "flex", justifyContent: "center" }}><CreditsDisplay /></div>
       <div style={{ padding: "0 8px 14px", display: "flex", flexDirection: "column", gap: 1 }}>
         <Link href="/settings" className={`nl${pathname.startsWith("/settings") ? " on" : ""}`} style={{ textDecoration: "none" }}><span style={{ width: 18, textAlign: "center" }}>⚙</span>Settings</Link>
@@ -123,7 +123,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
             </div>
           </div>
           {isSignedIn
-            ? <button onClick={() => signOut({ callbackUrl: "/" })} className="m-tap" style={{ background: "none", border: "none", fontSize: 10, color: "var(--fm)", cursor: "pointer", fontFamily: "var(--font-instrument), sans-serif", padding: "2px 4px", borderRadius: 4, flexShrink: 0 }}>sign out</button>
+            ? <button onClick={() => { localStorage.removeItem("astra_remember_me"); signOut({ callbackUrl: "/" }); }} className="m-tap" style={{ background: "none", border: "none", fontSize: 10, color: "var(--fm)", cursor: "pointer", fontFamily: "var(--font-instrument), sans-serif", padding: "2px 4px", borderRadius: 4, flexShrink: 0 }}>sign out</button>
             : <button onClick={() => signIn("google", { callbackUrl: "/" })} className="m-tap" style={{ background: "none", border: "none", fontSize: 10, color: "var(--blue)", cursor: "pointer", fontFamily: "var(--font-instrument), sans-serif", padding: "2px 4px", borderRadius: 4, flexShrink: 0, fontWeight: 600 }}>sign in</button>}
         </div>
       </div>

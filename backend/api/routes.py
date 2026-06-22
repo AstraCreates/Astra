@@ -484,6 +484,7 @@ async def submit_goal(body: GoalRequest, request: Request):
 
 @router.get("/stream/{session_id}")
 async def stream_goal(session_id: str, request: Request):
+    await _require_session_access(request, session_id, min_role="viewer")
     raw_last = request.headers.get("Last-Event-ID") or request.query_params.get("lastEventId")
     last_event_id: int | None = None
     if raw_last:
@@ -806,14 +807,19 @@ async def replay_session(session_id: str, request: Request):
 @router.get("/sessions/{session_id}/cost")
 async def session_cost(session_id: str, request: Request):
     """Token usage and estimated USD cost for a session."""
+    await _require_session_access(request, session_id, min_role="viewer")
     from backend.core.usage import get_session_cost
     return get_session_cost(session_id)
 
 
 @router.get("/cost")
-async def all_cost(request: Request):
-    """Aggregate token usage and cost across all sessions (admin)."""
+async def all_cost(request: Request, founder_id: str = ""):
+    """Aggregate token usage and cost across all sessions. Scoped to founder if provided."""
     from backend.core.usage import get_all_sessions_cost
+    if founder_id:
+        require_founder_access(request, founder_id, min_role="admin")
+    else:
+        actor_or_body(request)
     return get_all_sessions_cost()
 
 
@@ -971,13 +977,15 @@ async def ask_session(session_id: str, body: SessionAskRequest, request: Request
 
 
 @router.post("/approve")
-async def approve_task(body: ApproveRequest):
+async def approve_task(body: ApproveRequest, request: Request):
+    actor_or_body(request)
     await update_task_status(body.task_id, "approved")
     return {"task_id": body.task_id, "status": "approved"}
 
 
 @router.post("/reject")
-async def reject_task(body: RejectRequest):
+async def reject_task(body: RejectRequest, request: Request):
+    actor_or_body(request)
     await update_task_status(body.task_id, "rejected")
     return {"task_id": body.task_id, "status": "rejected", "reason": body.reason}
 

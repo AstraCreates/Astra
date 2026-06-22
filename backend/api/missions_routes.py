@@ -201,8 +201,12 @@ async def get_company_goal(
     goal = load_company_goal(founder_id, resolved_company_id)
     cur = None
     if goal:
-        from backend.missions.company_goal import current_goal as _cur, goal_credits
+        from backend.missions.company_goal import current_goal as _cur, goal_credits, sweep_stale_tasks
         from backend.core.session_store import get_session_credits
+        # Auto-heal: if no operating session is actively running, tasks stuck "in_progress"
+        # with no done_agents are stale (agent ran but session terminated). Reset to "pending"
+        # so the checklist + GoalPanel don't show permanently stuck state.
+        sweep_stale_tasks(founder_id, resolved_company_id)
         # Per-goal credit spend (sum of each goal's sessions).
         credits_by_goal = goal_credits(founder_id, resolved_company_id)
         for go in goal.get("goals") or []:

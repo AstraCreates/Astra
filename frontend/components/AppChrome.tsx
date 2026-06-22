@@ -128,6 +128,9 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
     const rememberMe = localStorage.getItem("astra_remember_me");
     const sessionActive = sessionStorage.getItem("astra_session_active");
     if (rememberMe === "0" && !sessionActive) {
+      // Clear the flag before signing out — stale "0" otherwise re-triggers
+      // this sign-out on every future browser open, looping indefinitely.
+      localStorage.removeItem("astra_remember_me");
       signOut({ callbackUrl: "/" });
       return;
     }
