@@ -679,12 +679,25 @@ def handle_session_deleted(session_id: str) -> dict[str, Any]:
                 deleted += 1
             continue
         runs = goal.get("operating_sessions") or []
+        deleted_run = next((r for r in runs if r.get("session_id") == session_id), None)
         kept = [r for r in runs if r.get("session_id") != session_id]
         if len(kept) != len(runs):
             with _lock:
                 g = _read(founder_id, company_id)
                 if g is not None:
                     g["operating_sessions"] = [r for r in (g.get("operating_sessions") or []) if r.get("session_id") != session_id]
+                    # Reset any tasks that are stuck "in_progress" for the deleted run's
+                    # goal back to "pending" — the agent ran but the session is gone,
+                    # so those tasks would otherwise be frozen forever and the checklist
+                    # would never update.
+                    goal_id = (deleted_run or {}).get("goal_id", "")
+                    cg = next((go for go in g.get("goals") or [] if go.get("id") == goal_id), None) if goal_id else None
+                    if cg and cg.get("status") not in ("done",):
+                        changed_tasks = False
+                        for t in cg.get("tasks") or []:
+                            if t.get("status") == "in_progress" and not t.get("done_agents"):
+                                t["status"] = "pending"
+                                changed_tasks = True
                     _save(g)
                     detached += 1
     # Purge brain records and vault notes written during this session
@@ -704,6 +717,49 @@ def handle_session_deleted(session_id: str) -> dict[str, Any]:
         _log.getLogger(__name__).warning("brain/vault cleanup failed session=%s: %s", session_id, _ce)
 
     return {"deleted_goals": deleted, "detached_runs": detached}
+
+
+def sweep_stale_tasks(founder_id: str, company_id: str | None = None) -> bool:
+    """Reset tasks stuck "in_progress" with no done_agents back to "pending" when no
+    operating session is actively running for that goal. Called on each GET so the
+    checklist/GoalPanel self-heal after sessions terminate without delivering.
+    Returns True if any tasks were reset."""
+    from backend.core.session_store import get_session_meta
+    g = _read(founder_id, company_id)
+    if g is None:
+        return False
+    cid = g.get("current_goal_id", "")
+    cg = next((go for go in g.get("goals") or [] if go.get("id") == cid), None)
+    if not cg or cg.get("status") in ("done", "proposed"):
+        return False
+    # Check if any operating session for this goal is actively running.
+    running_sids = set()
+    for r in g.get("operating_sessions") or []:
+        if r.get("goal_id") != cid:
+            continue
+        sid = r.get("session_id", "")
+        if not sid:
+            continue
+        meta = get_session_meta(sid) or {}
+        if meta.get("status") not in ("done", "error", "killed", "stalled"):
+            running_sids.add(sid)
+    if running_sids:
+        return False  # active session running — don't touch tasks
+    changed = False
+    with _lock:
+        g2 = _read(founder_id, company_id)
+        if g2 is None:
+            return False
+        cg2 = next((go for go in g2.get("goals") or [] if go.get("id") == cid), None)
+        if not cg2 or cg2.get("status") in ("done", "proposed"):
+            return False
+        for t in cg2.get("tasks") or []:
+            if t.get("status") == "in_progress" and not t.get("done_agents"):
+                t["status"] = "pending"
+                changed = True
+        if changed:
+            _save(g2)
+    return changed
 
 
 def goal_credits(founder_id: str, company_id: str | None = None) -> dict[str, int]:
