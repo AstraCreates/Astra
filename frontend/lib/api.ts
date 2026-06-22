@@ -46,9 +46,22 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
   return fetch(input, { ...init, headers: existing });
 }
 
+async function apiErrorMessage(res: Response): Promise<string> {
+  try {
+    const text = await res.text();
+    const json = JSON.parse(text);
+    if (typeof json?.detail === "string") return json.detail;
+    if (typeof json?.message === "string") return json.message;
+    if (typeof json?.error === "string") return json.error;
+    return text || `Request failed (${res.status})`;
+  } catch {
+    return `Request failed (${res.status})`;
+  }
+}
+
 export async function checkOk(res: Response): Promise<Response> {
   if (res.ok) return res;
-  throw new Error(await res.text());
+  throw new Error(await apiErrorMessage(res));
 }
 
 export interface Task {
