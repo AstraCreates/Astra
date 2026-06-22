@@ -25,7 +25,7 @@ export default function LiveStatusPanel() {
     let alive = true;
     const load = async () => {
       try {
-        const res = await apiFetch(`${API}/api/company/${companyId || founderId}/monitoring`);
+        const res = await apiFetch(`${API}/company/${companyId || founderId}/monitoring`);
         if (!res.ok) return;
         const data = await res.json();
         if (alive) setMon(data);

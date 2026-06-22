@@ -1,0 +1,62 @@
+{"ts":"2026-06-20T04:24:45.822Z","cmd":"goto","args":"http://localhost:3000/","origin":"http://localhost:3000/","durationMs":32,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:24:49.102Z","cmd":"status","args":"","origin":"http://localhost:3000/","durationMs":2,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:26:13.876Z","cmd":"screenshot","args":"/tmp/astra-home.png","origin":"http://localhost:3000/","durationMs":572,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:27:45.992Z","cmd":"goto","args":"http://localhost:3100/","origin":"http://localhost:3100/","durationMs":91,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:27:49.105Z","cmd":"screenshot","args":"/tmp/astra-dashboard.png","origin":"http://localhost:3100/","durationMs":33,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:28:01.795Z","cmd":"goto","args":"http://localhost:3100/?dev=1","origin":"http://localhost:3100/?dev=1","durationMs":32,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:28:03.889Z","cmd":"screenshot","args":"/tmp/astra-dev-bypass.png","origin":"http://localhost:3100/?dev=1","durationMs":44,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:28:03.923Z","cmd":"eval","args":"document.location.href","origin":"http://localhost:3100/?dev=1","durationMs":2,"status":"error","hasCookies":false,"mode":"launched","error":"File not found: document.location.href"}
+{"ts":"2026-06-20T04:28:24.212Z","cmd":"snapshot","args":"","origin":"http://localhost:3100/?dev=1","durationMs":8,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:28:29.859Z","cmd":"eval","args":"localStorage.setItem('astra_onboarding_done','1')","origin":"http://localhost:3100/?dev=1","durationMs":0,"status":"error","hasCookies":false,"mode":"launched","error":"File not found: localStorage.setItem('astra_onboarding_done','1')"}
+{"ts":"2026-06-20T04:28:34.534Z","cmd":"js","args":"localStorage.setItem('astra_onboarding_done','1'); localStorage.setItem('astra_onboarding_company','Astra QA'); localStorage.setItem('astra_onboarding_name','Dev'); window.location.reload();","origin":"http://localhost:3100/?dev=1","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:28:47.453Z","cmd":"screenshot","args":"/tmp/astra-dashboard2.png","origin":"http://localhost:3100/?dev=1","durationMs":34,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:28:55.747Z","cmd":"storage","args":"","origin":"http://localhost:3100/?dev=1","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:29:00.881Z","cmd":"reload","args":"","origin":"http://localhost:3100/?dev=1","durationMs":31,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:29:04.976Z","cmd":"screenshot","args":"/tmp/astra-dashboard3.png","origin":"http://localhost:3100/?dev=1","durationMs":40,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:30:23.761Z","cmd":"js","args":"localStorage.setItem('astra_dev_qa_bypass','1')","origin":"http://localhost:3100/?dev=1","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:30:25.826Z","cmd":"reload","args":"","origin":"http://localhost:3100/?dev=1","durationMs":30,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:30:30.924Z","cmd":"screenshot","args":"/tmp/astra-qa1.png","origin":"http://localhost:3100/?dev=1","durationMs":40,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:30:54.133Z","cmd":"console","args":"","origin":"http://localhost:3100/?dev=1","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:31:02.934Z","cmd":"network","args":"","origin":"http://localhost:3100/?dev=1","durationMs":0,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:31:15.114Z","cmd":"goto","args":"http://localhost:3100/goals","origin":"http://localhost:3100/goals","durationMs":246,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:31:18.218Z","cmd":"screenshot","args":"/tmp/astra-goals.png","origin":"http://localhost:3100/goals","durationMs":59,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:31:24.034Z","cmd":"goto","args":"http://localhost:3100/outreach","origin":"http://localhost:3100/outreach","durationMs":212,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:31:26.138Z","cmd":"screenshot","args":"/tmp/astra-outreach.png","origin":"http://localhost:3100/outreach","durationMs":57,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:31:26.385Z","cmd":"goto","args":"http://localhost:3100/brain","origin":"http://localhost:3100/brain","durationMs":220,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:31:28.497Z","cmd":"screenshot","args":"/tmp/astra-brain.png","origin":"http://localhost:3100/brain","durationMs":69,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:31:48.529Z","cmd":"goto","args":"http://localhost:3100/","origin":"http://localhost:3100/","durationMs":26,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:31:51.601Z","cmd":"click","args":"button --text Light","origin":"http://localhost:3100/","durationMs":21,"status":"error","hasCookies":false,"mode":"launched","error":"click: Error: strict mode violation: locator('button') resolved to 22 elements:\n    1) <button title=\"Get notified when runs complete\">…</button> aka getByRole('button', { name: '🔔 Enable notifications' })\n    2) <button title=\"Dark mode\" aria-label=\"Switch to dark mode\">…</button> aka getByRole('b…"}
+{"ts":"2026-06-20T04:32:22.719Z","cmd":"screenshot","args":"/tmp/astra-dark.png","origin":"http://localhost:3100/","durationMs":42,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:32:26.630Z","cmd":"click","args":"[data-theme-toggle]","origin":"http://localhost:3100/","durationMs":35000,"status":"error","hasCookies":false,"mode":"launched","error":"click: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('[data-theme-toggle]')\u001b[22m\n"}
+{"ts":"2026-06-20T04:32:28.402Z","cmd":"snapshot","args":"","origin":"http://localhost:3100/","durationMs":3,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:32:33.915Z","cmd":"click","args":"@e15","origin":"http://localhost:3100/","durationMs":26,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:32:34.990Z","cmd":"screenshot","args":"/tmp/astra-dark.png","origin":"http://localhost:3100/","durationMs":40,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:32:53.951Z","cmd":"goto","args":"http://localhost:3100/library","origin":"http://localhost:3100/library","durationMs":277,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:32:56.062Z","cmd":"screenshot","args":"/tmp/astra-library.png","origin":"http://localhost:3100/library","durationMs":52,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:32:56.354Z","cmd":"goto","args":"http://localhost:3100/agents","origin":"http://localhost:3100/agents","durationMs":245,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:32:58.447Z","cmd":"screenshot","args":"/tmp/astra-agents.png","origin":"http://localhost:3100/agents","durationMs":52,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:34:32.637Z","cmd":"goto","args":"http://localhost:3100/brain","origin":"http://localhost:3100/brain","durationMs":28,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:34:36.743Z","cmd":"screenshot","args":"/tmp/astra-brain-fixed.png","origin":"http://localhost:3100/brain","durationMs":57,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:34:54.743Z","cmd":"goto","args":"http://localhost:3100/agents","origin":"http://localhost:3100/agents","durationMs":23,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:34:57.834Z","cmd":"screenshot","args":"/tmp/astra-agents-fixed.png","origin":"http://localhost:3100/agents","durationMs":39,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:35:28.829Z","cmd":"goto","args":"http://localhost:3100/","origin":"http://localhost:3100/","durationMs":25,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:35:31.883Z","cmd":"snapshot","args":"","origin":"http://localhost:3100/","durationMs":8,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:36:08.449Z","cmd":"goto","args":"http://localhost:3100/settings","origin":"http://localhost:3100/settings","durationMs":232,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:36:10.557Z","cmd":"screenshot","args":"/tmp/astra-settings.png","origin":"http://localhost:3100/settings","durationMs":59,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:36:10.829Z","cmd":"goto","args":"http://localhost:3100/integrations","origin":"http://localhost:3100/integrations","durationMs":222,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:36:12.926Z","cmd":"screenshot","args":"/tmp/astra-integrations.png","origin":"http://localhost:3100/integrations","durationMs":53,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:36:26.757Z","cmd":"goto","args":"http://localhost:3100/?new=1","origin":"http://localhost:3100/?new=1","durationMs":26,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:36:29.888Z","cmd":"screenshot","args":"/tmp/astra-newrun.png","origin":"http://localhost:3100/?new=1","durationMs":85,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:36:38.916Z","cmd":"viewport","args":"1280 900","origin":"http://localhost:3100/?new=1","durationMs":0,"status":"error","hasCookies":false,"mode":"launched","error":"Unexpected positional arg: 900. Usage: viewport [WxH] [--scale <n>]"}
+{"ts":"2026-06-20T04:36:39.037Z","cmd":"screenshot","args":"/tmp/astra-newrun2.png","origin":"http://localhost:3100/?new=1","durationMs":91,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:36:42.991Z","cmd":"viewport","args":"1280x900","origin":"http://localhost:3100/?new=1","durationMs":1,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:36:44.129Z","cmd":"screenshot","args":"/tmp/astra-newrun3.png","origin":"http://localhost:3100/?new=1","durationMs":106,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:36:52.396Z","cmd":"prettyscreenshot","args":"/tmp/astra-newrun-pretty.png","origin":"http://localhost:3100/?new=1","durationMs":133,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:37:01.579Z","cmd":"snapshot","args":"","origin":"http://localhost:3100/?new=1","durationMs":4,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:37:10.884Z","cmd":"viewport","args":"1440x820","origin":"http://localhost:3100/?new=1","durationMs":8,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:37:12.052Z","cmd":"screenshot","args":"/tmp/astra-newrun4.png","origin":"http://localhost:3100/?new=1","durationMs":137,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:37:44.417Z","cmd":"viewport","args":"390x844","origin":"http://localhost:3100/?new=1","durationMs":7,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:37:44.477Z","cmd":"goto","args":"http://localhost:3100/","origin":"http://localhost:3100/","durationMs":30,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:37:47.567Z","cmd":"screenshot","args":"/tmp/astra-mobile.png","origin":"http://localhost:3100/","durationMs":50,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:38:03.366Z","cmd":"snapshot","args":"","origin":"http://localhost:3100/","durationMs":6,"status":"ok","hasCookies":false,"mode":"launched"}
+{"ts":"2026-06-20T04:39:04.346Z","cmd":"cleanup","args":"","origin":"http://localhost:3100/","durationMs":3,"status":"ok","hasCookies":false,"mode":"launched"}

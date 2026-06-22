@@ -92,9 +92,9 @@ export default function DashboardView() {
     }
   }, [pendingDel]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!userId) return;
-    setError(""); setSessions(null);
+    setError(""); setError(""); if (!silent) setSessions(null);
     try { setSessions(await listSessions(userId, 50)); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); setSessions([]); }
   }, [userId]);
@@ -214,7 +214,7 @@ export default function DashboardView() {
                 style={{ padding: "9px 20px", fontSize: 12, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", cursor: "pointer", letterSpacing: "0.01em", borderRadius: 8, fontFamily: "var(--font-instrument), sans-serif" }}
               >+ New run</button>
               <button
-                onClick={load}
+                onClick={() => load()}
                 style={{ padding: "9px 16px", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.85)", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", cursor: "pointer", borderRadius: 8, fontFamily: "var(--font-instrument), sans-serif" }}
               >Refresh</button>
             </div>
@@ -273,7 +273,7 @@ export default function DashboardView() {
               <div style={{ fontSize: 34, opacity: .12 }}>⚙</div>
               <div className="empty-title">Backend not reachable</div>
               <div className="empty-sub" style={{ fontSize: 10.5, maxWidth: 280, lineHeight: 1.6 }}>{error}</div>
-              <button className="btn pri" style={{ marginTop: 12 }} onClick={load}>Try again</button>
+              <button className="btn pri" style={{ marginTop: 12 }} onClick={() => load()}>Try again</button>
             </div>
           ) : !regularSessions.length ? (
             <div className="empty">

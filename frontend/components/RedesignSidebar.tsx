@@ -1,6 +1,7 @@
 "use client";
 
 /* Shared redesign sidebar — one consistent shell across every app page. */
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signIn, signOut } from "next-auth/react";
@@ -26,9 +27,10 @@ function initials(id: string) { return (id || "?").replace(/^(user_|google_)/, "
 export default function RedesignSidebar({ mobile = false, open = false, onClose }: { mobile?: boolean; open?: boolean; onClose?: () => void } = {}) {
   const pathname = usePathname() || "/";
   const { userId, isSignedIn, user } = useDevUser();
-  const companyName = typeof window !== "undefined"
-    ? localStorage.getItem("astra_onboarding_company") || ""
-    : "";
+  const [companyName, setCompanyName] = useState("");
+  useEffect(() => {
+    setCompanyName(localStorage.getItem("astra_onboarding_company") || "");
+  }, []);
 
   // On mobile the sidebar is an off-canvas drawer (fixed, slides in over content);
   // on desktop it's the usual sticky in-flow column.

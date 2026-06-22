@@ -815,7 +815,8 @@ async def dispatch_current_goal(
                 continue
             existing_sid = rec.get("session_id", "")
             existing_meta = get_session_meta(existing_sid) or {}
-            if existing_meta.get("status") == "running":
+            existing_status = existing_meta.get("status")
+            if existing_status not in ("done", "error", "killed", "stalled"):
                 logger.info("dispatch_current_goal: session %s already running for goal %s — skipping duplicate", existing_sid, current_goal_id)
                 return {"ok": True, "skipped": "already_running", "session_id": existing_sid}
     except Exception as exc:
