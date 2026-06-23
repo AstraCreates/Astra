@@ -1057,53 +1057,83 @@ function StepChooseStack({ stacks, selectedStackId, onSelect, recommendation, on
 
 // ── Mode select (new vs existing business) ────────────────────────────────────
 
-function StepModeSelect({ onSelect }: { onSelect: (mode: "new" | "existing") => void }) {
+function ModeIcon({ type }: { type: "new" | "existing" }) {
+  if (type === "new") return (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <path d="M11 2L20 19H2L11 2Z" fill={T.blue} fillOpacity="0.18" stroke={T.blue} strokeWidth="1.6" strokeLinejoin="round" />
+      <line x1="11" y1="8" x2="11" y2="14" stroke={T.blue} strokeWidth="1.4" strokeLinecap="round" />
+      <circle cx="11" cy="16" r="1" fill={T.blue} />
+    </svg>
+  );
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 32, alignItems: "center", textAlign: "center" }}>
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+      <rect x="2" y="2" width="8" height="8" rx="1.5" fill={T.blue} fillOpacity="0.18" stroke={T.blue} strokeWidth="1.4" />
+      <rect x="12" y="2" width="8" height="8" rx="1.5" fill={T.blue} fillOpacity="0.18" stroke={T.blue} strokeWidth="1.4" />
+      <rect x="2" y="12" width="8" height="8" rx="1.5" fill={T.blue} fillOpacity="0.18" stroke={T.blue} strokeWidth="1.4" />
+      <rect x="12" y="12" width="8" height="8" rx="1.5" fill={T.blue} fillOpacity="0.12" stroke={T.blue} strokeWidth="1.4" strokeDasharray="2 1.5" />
+    </svg>
+  );
+}
+
+function StepModeSelect({ onSelect }: { onSelect: (mode: "new" | "existing") => void }) {
+  const [hovered, setHovered] = useState<"new" | "existing" | null>(null);
+  const opts: { mode: "new" | "existing"; title: string; sub: string }[] = [
+    { mode: "new", title: "New business", sub: "Starting from scratch — turn an idea into a real company" },
+    { mode: "existing", title: "Existing business", sub: "Already operating — scale, automate, and grow what's working" },
+  ];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
       <div>
-        <h1 style={{ fontSize: 32, fontWeight: 700, margin: "0 0 8px", color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif", letterSpacing: "-0.02em" }}>
+        <h1 style={{ fontSize: 30, fontWeight: 700, margin: "0 0 6px", color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif", letterSpacing: "-0.02em" }}>
           Welcome to Astra
         </h1>
-        <p style={{ fontSize: 14, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>
           A team of AI agents working in parallel. Where are you starting from?
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, width: "100%" }}>
-        {([
-          { mode: "new" as const, emoji: "🚀", title: "New business", sub: "Starting from scratch — turn an idea into a real company" },
-          { mode: "existing" as const, emoji: "🏢", title: "Existing business", sub: "Already operating — scale, automate, and grow what's working" },
-        ]).map(opt => (
-          <div
-            key={opt.mode}
-            onClick={() => onSelect(opt.mode)}
-            style={{
-              ...CARD, display: "flex", flexDirection: "column",
-              alignItems: "flex-start", gap: 10, padding: "22px 18px",
-              textAlign: "left", transition: "border-color 0.15s, box-shadow 0.15s",
-            }}
-            onMouseEnter={e => {
-              const el = e.currentTarget as HTMLElement;
-              el.style.borderColor = T.blue;
-              el.style.boxShadow = `0 4px 20px rgba(0,46,255,0.1)`;
-            }}
-            onMouseLeave={e => {
-              const el = e.currentTarget as HTMLElement;
-              el.style.borderColor = T.border;
-              el.style.boxShadow = T.shadow;
-            }}
-          >
-            <span style={{ fontSize: 30 }}>{opt.emoji}</span>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>
-                {opt.title}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {opts.map(opt => {
+          const isHovered = hovered === opt.mode;
+          return (
+            <div
+              key={opt.mode}
+              onClick={() => onSelect(opt.mode)}
+              onMouseEnter={() => setHovered(opt.mode)}
+              onMouseLeave={() => setHovered(null)}
+              style={{
+                display: "flex", alignItems: "center", gap: 16,
+                padding: "18px 20px",
+                borderRadius: 14,
+                border: `1.5px solid ${isHovered ? T.blue : T.border}`,
+                background: isHovered ? T.blueTint : T.white,
+                cursor: "pointer",
+                boxShadow: isHovered ? "0 4px 16px rgba(0,46,255,0.08)" : T.shadow,
+                transition: "border-color 0.14s, background 0.14s, box-shadow 0.14s",
+              }}
+            >
+              <div style={{
+                width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+                background: isHovered ? "rgba(0,46,255,0.1)" : T.surface,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "background 0.14s",
+              }}>
+                <ModeIcon type={opt.mode} />
               </div>
-              <div style={{ fontSize: 12, color: T.textMuted, marginTop: 4, lineHeight: 1.5 }}>
-                {opt.sub}
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif", marginBottom: 3 }}>
+                  {opt.title}
+                </div>
+                <div style={{ fontSize: 12, color: T.textMuted, lineHeight: 1.5 }}>
+                  {opt.sub}
+                </div>
               </div>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, opacity: isHovered ? 1 : 0.3, transition: "opacity 0.14s" }}>
+                <path d="M6 3L11 8L6 13" stroke={T.blue} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -1253,12 +1283,12 @@ function StepExistingBiz({ name, setName, company, setCompany, industry, setIndu
 // ── Existing biz: step 1 — Priority & first goal ──────────────────────────────
 
 const PRIORITIES = [
-  { id: "customers", icon: "🎯", label: "Get more customers", desc: "Fill the pipeline, grow leads, drive conversions", stack: "sales" },
-  { id: "scale", icon: "📈", label: "Scale sales", desc: "Build a repeatable sales system and hit revenue targets", stack: "sales" },
-  { id: "brand", icon: "📣", label: "Build brand presence", desc: "Create content, grow social, run campaigns", stack: "marketing" },
-  { id: "ops", icon: "⚙️", label: "Automate operations", desc: "Streamline workflows, cut admin work, save time", stack: "founder_ops" },
-  { id: "support", icon: "🤝", label: "Improve customer support", desc: "Faster responses, better retention, happier customers", stack: "support" },
-  { id: "product", icon: "🚀", label: "Launch something new", desc: "New product, service line, or market expansion", stack: "product" },
+  { id: "customers", icon: "⊕", label: "Get more customers", desc: "Fill the pipeline, grow leads, drive conversions", stack: "sales" },
+  { id: "scale", icon: "▲", label: "Scale sales", desc: "Build a repeatable sales system and hit revenue targets", stack: "sales" },
+  { id: "brand", icon: "✦", label: "Build brand presence", desc: "Create content, grow social, run campaigns", stack: "marketing" },
+  { id: "ops", icon: "◎", label: "Automate operations", desc: "Streamline workflows, cut admin work, save time", stack: "founder_ops" },
+  { id: "support", icon: "◈", label: "Improve customer support", desc: "Faster responses, better retention, happier customers", stack: "support" },
+  { id: "product", icon: "◇", label: "Launch something new", desc: "New product, service line, or market expansion", stack: "product" },
 ];
 
 function StepGoalPicker({ priority, setPriority, goal, setGoal, company, onNext, onBack }: {
@@ -1302,12 +1332,12 @@ function StepGoalPicker({ priority, setPriority, goal, setGoal, company, onNext,
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <span style={{ fontSize: 16 }}>{p.icon}</span>
+              <span style={{ fontSize: 13, color: priority === p.id ? T.blue : T.grey, lineHeight: 1, flexShrink: 0 }}>{p.icon}</span>
               <span style={{ fontSize: 12, fontWeight: 700, color: priority === p.id ? T.blue : T.textPrimary, fontFamily: "var(--font-geist-sans), sans-serif" }}>
                 {p.label}
               </span>
             </div>
-            <p style={{ fontSize: 10, color: T.textMuted, margin: 0, lineHeight: 1.4, paddingLeft: 24 }}>
+            <p style={{ fontSize: 10, color: T.textMuted, margin: 0, lineHeight: 1.4, paddingLeft: 21 }}>
               {p.desc}
             </p>
           </div>
