@@ -121,10 +121,7 @@ export default function RunGoalsPanel({ sessions }: Props) {
 
   return (
     <div style={{ border: "1px solid var(--bd2)", borderRadius: 10, background: "var(--surface)", overflow: "hidden" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
-        @keyframes rg-pulse { 0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.45;transform:scale(0.75);} }
-      `}</style>
+      <style>{`@keyframes rg-pulse { 0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.45;transform:scale(0.75);} }`}</style>
 
       {/* Header — text LEFT, ring RIGHT (same layout as original GoalPanel) */}
       <div style={{ padding: "14px 16px 12px", borderBottom: rows.length ? "1px solid var(--bd)" : "none" }}>
@@ -196,11 +193,11 @@ export default function RunGoalsPanel({ sessions }: Props) {
               />
             </svg>
             <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-              <div style={{ fontSize: 18, fontWeight: 400, color: "#002EFF", fontFamily: "'Press Start 2P', monospace", lineHeight: 1 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: "#002EFF", fontFamily: "var(--font-code)", lineHeight: 1 }}>
                 {doneCount}
               </div>
-              <div style={{ fontSize: 7, color: "var(--fm)", letterSpacing: ".04em", fontFamily: "'Press Start 2P', monospace", marginTop: 4 }}>
-                /{total}
+              <div style={{ fontSize: 9, color: "var(--fm)", letterSpacing: ".04em" }}>
+                / {total}
               </div>
             </div>
           </div>
