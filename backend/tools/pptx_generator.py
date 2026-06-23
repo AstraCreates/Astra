@@ -275,7 +275,26 @@ def generate_pptx(
         )
 
     prs.save(filepath)
-    return {"generated": True, "path": filepath, "filename": Path(filepath).name}
+
+    # Save companion JSON for browser slideshow rendering
+    slides_data = [{"title": title or company_name or "Pitch Deck", "bullets": [], "is_cover": True}]
+    for section in slide_list:
+        if isinstance(section, str):
+            section = {"heading": "", "body": section}
+        heading = str(section.get("heading") or section.get("title") or "")
+        body = str(section.get("body") or section.get("content") or "")
+        bullets = [b.strip() for b in body.split("\n") if b.strip()]
+        if heading or bullets:
+            slides_data.append({"title": heading, "bullets": bullets})
+    slides_json_path = filepath.replace(".pptx", ".slides.json")
+    try:
+        import json as _json
+        Path(slides_json_path).write_text(_json.dumps(slides_data, ensure_ascii=False), encoding="utf-8")
+    except Exception as exc:
+        logger.warning("pptx: could not save slides.json: %s", exc)
+        slides_json_path = ""
+
+    return {"generated": True, "path": filepath, "filename": Path(filepath).name, "slides_json_path": slides_json_path}
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────

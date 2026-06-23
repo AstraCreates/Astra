@@ -15,7 +15,7 @@ import {
   type FundingKitStatus,
 } from "@/lib/api";
 import PageHeader, { HeaderPrimaryBtn } from "@/components/PageHeader";
-import { PdfEmbed } from "@/components/GoalWorkspace";
+import { PdfEmbed, PitchDeckSlideshow } from "@/components/GoalWorkspace";
 import { useCompany } from "@/lib/company-context";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -415,6 +415,8 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
   const [fundingTriggering, setFundingTriggering] = useState(false);
   const [fundingError, setFundingError] = useState("");
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
+  const [pptxSlides, setPptxSlides] = useState<{ title?: string; bullets?: string[]; is_cover?: boolean }[]>([]);
+  const [pptxSlidesFilename, setPptxSlidesFilename] = useState<string>("");
 
   const refreshFunding = useCallback(async () => {
     if (!founderId) return;
@@ -783,15 +785,25 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
                 </div>
               </div>
 
-              {/* Right: full-height PDF viewer */}
+              {/* Right: full-height PDF/slideshow viewer */}
               <div className="flex-1 flex flex-col min-w-0 min-h-0">
                 {activeDoc?.source_path ? (() => {
                   const isPptx = activeDoc.filename.toLowerCase().endsWith(".pptx");
+                  // Fetch companion slides JSON when PPTX selected
+                  if (isPptx && pptxSlidesFilename !== activeDoc.filename) {
+                    setPptxSlidesFilename(activeDoc.filename);
+                    setPptxSlides([]);
+                    const slidesFilename = activeDoc.filename.replace(/\.pptx$/i, ".slides.json");
+                    fetch(`/api/files/${encodeURIComponent(slidesFilename)}`)
+                      .then(r => r.ok ? r.json() : null)
+                      .then(data => { if (Array.isArray(data)) setPptxSlides(data); })
+                      .catch(() => {});
+                  }
                   return (
                     <>
                       <div className="flex items-center gap-3 px-5 py-2.5 border-b border-[#E5E7EB] bg-gray-50 shrink-0">
                         <span className="text-xs font-medium text-gray-600 flex-1 truncate">{activeDoc.label}</span>
-                        {isPptx && <span className="text-xs bg-green-50 text-green-700 border border-green-200 rounded px-2 py-0.5 font-medium shrink-0">PowerPoint</span>}
+                        {isPptx && <span className="text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded px-2 py-0.5 font-medium shrink-0">Pitch Deck</span>}
                         <a
                           href={`/api/files/${encodeURIComponent(activeDoc.filename)}?download=1`}
                           download={activeDoc.filename}
@@ -800,23 +812,30 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
                           Download ↓
                         </a>
                       </div>
-                      <div className="flex-1 min-h-0">
+                      <div className="flex-1 min-h-0 overflow-y-auto p-4">
                         {isPptx ? (
-                          <div className="flex flex-col items-center justify-center h-full text-center px-8 gap-4">
-                            <div style={{ fontSize: 48 }}>📊</div>
-                            <div>
-                              <p className="text-sm font-semibold text-gray-700 mb-1">{activeDoc.label}</p>
-                              <p className="text-xs text-gray-400 mb-5">PowerPoint files can&apos;t be previewed in the browser — download to open in PowerPoint or Google Slides.</p>
-                              <a
-                                href={`/api/files/${encodeURIComponent(activeDoc.filename)}?download=1`}
-                                download={activeDoc.filename}
-                                className="btn pri"
-                                style={{ textDecoration: "none", display: "inline-block" }}
-                              >
-                                Download .pptx ↓
-                              </a>
+                          pptxSlides.length > 0 ? (
+                            <PitchDeckSlideshow
+                              slides={pptxSlides}
+                              downloadPath={activeDoc.filename}
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-center px-8 gap-4">
+                              <div style={{ fontSize: 48 }}>📊</div>
+                              <div>
+                                <p className="text-sm font-semibold text-gray-700 mb-1">{activeDoc.label}</p>
+                                <p className="text-xs text-gray-400 mb-5">Loading slideshow…</p>
+                                <a
+                                  href={`/api/files/${encodeURIComponent(activeDoc.filename)}?download=1`}
+                                  download={activeDoc.filename}
+                                  className="btn pri"
+                                  style={{ textDecoration: "none", display: "inline-block" }}
+                                >
+                                  Download .pptx ↓
+                                </a>
+                              </div>
                             </div>
-                          </div>
+                          )
                         ) : (
                           <iframe
                             src={`/api/files/${encodeURIComponent(activeDoc.filename)}`}

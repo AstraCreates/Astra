@@ -1240,6 +1240,139 @@ function LegalPreview({ state, founderId, company }: { state: AgentState; founde
   );
 }
 
+interface SlideData { title?: string; heading?: string; body?: string; bullets?: string[] | string; content?: string; }
+
+export function PitchDeckSlideshow({ slides, downloadPath }: { slides: SlideData[]; downloadPath?: string }) {
+  const [idx, setIdx] = useState(0);
+  const total = slides.length;
+  if (total === 0) return null;
+  const slide = slides[idx];
+  const title = slide.title ?? slide.heading ?? `Slide ${idx + 1}`;
+  const rawBullets = slide.bullets ?? slide.body ?? slide.content ?? "";
+  const bullets: string[] = Array.isArray(rawBullets)
+    ? rawBullets.map(String)
+    : typeof rawBullets === "string"
+      ? rawBullets.split(/\n|•/).map(s => s.trim()).filter(Boolean)
+      : [];
+
+  const isCover = idx === 0;
+
+  return (
+    <div style={{ borderRadius: 16, overflow: "hidden", border: "1px solid rgba(0,0,0,0.12)", boxShadow: "0 4px 24px rgba(0,0,0,0.12)" }}>
+      {/* Slide viewport */}
+      <div style={{
+        position: "relative",
+        background: isCover ? "#002EFF" : "#fff",
+        minHeight: 280,
+        padding: isCover ? "32px 28px 28px" : "0",
+        display: "flex",
+        flexDirection: "column",
+      }}>
+        {/* Slide number badge */}
+        <div style={{
+          position: "absolute", top: 10, right: 12,
+          fontSize: 10, fontWeight: 600, letterSpacing: "0.07em",
+          color: isCover ? "rgba(255,255,255,0.55)" : "rgba(0,46,255,0.4)",
+          fontFamily: "var(--font-ibm-mono, monospace)",
+        }}>
+          {idx + 1} / {total}
+        </div>
+
+        {isCover ? (
+          /* Cover slide */
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", paddingTop: 24 }}>
+            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.12em", color: "rgba(255,255,255,0.55)", marginBottom: 10 }}>Investor Presentation</div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: "#fff", lineHeight: 1.2, letterSpacing: "-0.02em", marginBottom: 12 }}>{title}</div>
+            {bullets.length > 0 && (
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.75)", lineHeight: 1.6 }}>{bullets[0]}</div>
+            )}
+            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 4, background: "rgba(255,255,255,0.15)" }} />
+          </div>
+        ) : (
+          /* Content slide */
+          <div style={{ display: "flex", height: "100%", minHeight: 280 }}>
+            {/* Left accent bar */}
+            <div style={{ width: 4, background: "#002EFF", flexShrink: 0 }} />
+            <div style={{ flex: 1, padding: "20px 24px 24px" }}>
+              {/* Header band */}
+              <div style={{ background: "rgba(0,46,255,0.04)", borderBottom: "1px solid rgba(0,46,255,0.08)", padding: "10px 0 12px", marginBottom: 16 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", letterSpacing: "-0.01em", lineHeight: 1.25 }}>{title}</div>
+              </div>
+              {/* Bullets */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {bullets.map((b, i) => (
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#002EFF", marginTop: 5, flexShrink: 0 }} />
+                    <span style={{ fontSize: 12.5, color: "#374151", lineHeight: 1.6 }}>{b}</span>
+                  </div>
+                ))}
+                {bullets.length === 0 && (
+                  <span style={{ fontSize: 12, color: "#9CA3AF", fontStyle: "italic" }}>No content</span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Controls bar */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        padding: "8px 12px",
+        background: "rgba(0,0,0,0.03)",
+        borderTop: "1px solid rgba(0,0,0,0.07)",
+      }}>
+        <button
+          onClick={() => setIdx(i => Math.max(0, i - 1))}
+          disabled={idx === 0}
+          style={{
+            padding: "5px 12px", borderRadius: 7, border: "1px solid rgba(0,0,0,0.12)",
+            background: idx === 0 ? "transparent" : "#002EFF",
+            color: idx === 0 ? "rgba(0,0,0,0.25)" : "#fff",
+            fontSize: 12, fontWeight: 600, cursor: idx === 0 ? "default" : "pointer",
+          }}
+        >← Prev</button>
+        <div style={{ flex: 1, display: "flex", gap: 3, justifyContent: "center", flexWrap: "wrap" }}>
+          {slides.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setIdx(i)}
+              style={{
+                width: i === idx ? 18 : 6, height: 6, borderRadius: 3,
+                background: i === idx ? "#002EFF" : "rgba(0,0,0,0.15)",
+                border: "none", cursor: "pointer", padding: 0,
+                transition: "width 0.15s, background 0.15s",
+              }}
+            />
+          ))}
+        </div>
+        <button
+          onClick={() => setIdx(i => Math.min(total - 1, i + 1))}
+          disabled={idx === total - 1}
+          style={{
+            padding: "5px 12px", borderRadius: 7, border: "1px solid rgba(0,0,0,0.12)",
+            background: idx === total - 1 ? "transparent" : "#002EFF",
+            color: idx === total - 1 ? "rgba(0,0,0,0.25)" : "#fff",
+            fontSize: 12, fontWeight: 600, cursor: idx === total - 1 ? "default" : "pointer",
+          }}
+        >Next →</button>
+        {downloadPath && (
+          <a
+            href={fileUrl(downloadPath) + "?download=1"}
+            download
+            style={{
+              padding: "5px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600,
+              color: "#002EFF", background: "rgba(0,46,255,0.07)",
+              border: "1px solid rgba(0,46,255,0.2)", textDecoration: "none",
+              marginLeft: 4,
+            }}
+          >↓ PPTX</a>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SalesPreview({ state }: { state: AgentState }) {
   const r = state.result;
   const leadsArr = r?.leads as Array<Record<string, unknown>> | undefined;
@@ -1248,13 +1381,23 @@ function SalesPreview({ state }: { state: AgentState }) {
   const seq = r?.sequence ?? r?.outreach_sequence ?? r?.email_sequence ?? (r?.outreach as Record<string, unknown> | undefined)?.sequence;
   const crmContacts = (r?.crm_contacts ?? r?.contacts ?? []) as Array<Record<string, unknown>>;
   const sequences = (r?.sequences ?? []) as Array<Record<string, unknown>>;
-  if (!r || !lead) {
+  const pitchSlides = (r?.pitch_deck_outline ?? []) as SlideData[];
+  const pitchPdfPath = (r?.pitch_deck_pdf ?? r?.pitch_deck_pptx ?? r?.pptx_path) as string | undefined;
+  if (!r || (!lead && pitchSlides.length === 0)) {
     return state.status === "done" ? <GenericResultOutput result={state.result} /> : <LiveRunningLog state={state} label="Finding leads & building outreach…" />;
   }
   const steps: unknown[] = Array.isArray(seq) ? seq : typeof seq === "string" ? (() => { try { return JSON.parse(seq); } catch { return []; } })() : [];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {/* Pipeline stats */}
+      {/* Pitch deck slideshow — shown first if present */}
+      {pitchSlides.length > 0 && (
+        <div>
+          <div style={{ fontSize: 9, textTransform: "uppercase" as const, letterSpacing: "0.1em", color: "var(--fg-mute)", marginBottom: 6 }}>Pitch Deck — {pitchSlides.length} slides</div>
+          <PitchDeckSlideshow slides={pitchSlides} downloadPath={pitchPdfPath} />
+        </div>
+      )}
+      {/* Pipeline stats — only when lead data present */}
+      {lead && <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
         {[
           { label: "Leads", value: Array.isArray(leadsArr) ? leadsArr.length : (lead ? 1 : 0), color: "#60A5FA", bg: "rgba(96,165,250,0.08)", border: "rgba(96,165,250,0.2)" },
@@ -1321,6 +1464,7 @@ function SalesPreview({ state }: { state: AgentState }) {
           ))}
         </div>
       )}
+      </>}
     </div>
   );
 }
