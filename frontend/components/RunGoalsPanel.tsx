@@ -1,7 +1,5 @@
 "use client";
 
-// Dashboard left-panel: shows what each run is trying to accomplish.
-
 import type { SessionIndexEntry } from "@/lib/api";
 
 function extractGoalTitle(raw: string): string {
@@ -32,14 +30,41 @@ interface Props {
   sessions: SessionIndexEntry[] | null;
 }
 
-function SecLabel({ children }: { children: React.ReactNode }) {
+function ArcRing({ done, total }: { done: number; total: number }) {
+  const r = 30;
+  const circ = 2 * Math.PI * r;
+  const pct = total > 0 ? done / total : 0;
+  const offset = circ * (1 - pct);
+  const allDone = total > 0 && done === total;
+
   return (
-    <div style={{
-      fontSize: 9, fontWeight: 700, letterSpacing: ".1em",
-      textTransform: "uppercase", color: "var(--fd)",
-      fontFamily: "var(--font-code)", marginBottom: 8,
-    }}>
-      {children}
+    <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
+      <div style={{ position: "relative", width: 76, height: 76, flexShrink: 0 }}>
+        <svg width={76} height={76} viewBox="0 0 76 76" style={{ transform: "rotate(-90deg)" }}>
+          <circle cx={38} cy={38} r={r} fill="none" stroke="var(--bd)" strokeWidth={5} />
+          <circle
+            cx={38} cy={38} r={r} fill="none"
+            stroke={allDone ? "var(--green)" : "var(--blue)"}
+            strokeWidth={5}
+            strokeDasharray={circ}
+            strokeDashoffset={total === 0 ? circ : offset}
+            strokeLinecap="round"
+            style={{ transition: "stroke-dashoffset .6s ease" }}
+          />
+        </svg>
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: allDone ? "var(--green)" : "var(--fg)", fontFamily: "var(--font-code)", lineHeight: 1 }}>{done}</div>
+          <div style={{ fontSize: 9, color: "var(--fm)", letterSpacing: ".04em" }}>/ {total}</div>
+        </div>
+      </div>
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", lineHeight: 1.3 }}>
+          {allDone ? "All goals complete" : total === 0 ? "No goals yet" : done === 0 ? "Getting started" : `${done} of ${total} done`}
+        </div>
+        <div style={{ fontSize: 10.5, color: "var(--fm)", marginTop: 3 }}>
+          {total - done > 0 ? `${total - done} in progress` : ""}
+        </div>
+      </div>
     </div>
   );
 }
@@ -62,8 +87,9 @@ function GoalRow({ session }: { session: SessionIndexEntry }) {
     <div
       onClick={() => window.location.assign(`/s/${session.session_id}`)}
       style={{
-        display: "flex", alignItems: "flex-start", gap: 9,
-        padding: "8px 10px", borderRadius: 7, cursor: "pointer",
+        display: "flex", alignItems: "flex-start", gap: 10,
+        padding: "8px 14px", cursor: "pointer",
+        opacity: (done || failed) ? 0.65 : 1,
         transition: "background 0.1s",
       }}
       onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--s2, rgba(0,0,0,0.04))"; }}
@@ -77,11 +103,10 @@ function GoalRow({ session }: { session: SessionIndexEntry }) {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           fontSize: 12, fontWeight: 500,
-          color: done || failed ? "var(--fd)" : "var(--fg)",
-          lineHeight: 1.4,
+          color: "var(--fg)", lineHeight: 1.4,
           overflow: "hidden", display: "-webkit-box",
           WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
-          textDecoration: done ? "line-through" : "none",
+          textDecoration: (done || failed) ? "line-through" : "none",
         }}>
           {title}
         </div>
@@ -98,11 +123,10 @@ export default function RunGoalsPanel({ sessions }: Props) {
     return <div style={{ fontSize: 11, color: "var(--fm)", padding: "6px 2px" }}>Loading…</div>;
   }
 
-  // Only show top-level sessions (no follow-up children)
   const tops = sessions.filter(s => !s.parent_session_id && s.stack_id !== "custom");
-
   const active = tops.filter(s => s.status === "running" || s.status === "stalled");
-  const recent = tops.filter(s => s.status !== "running" && s.status !== "stalled").slice(0, 8);
+  const completed = tops.filter(s => s.status !== "running" && s.status !== "stalled");
+  const doneCount = tops.filter(s => s.status === "done").length;
 
   if (tops.length === 0) {
     return (
@@ -116,35 +140,22 @@ export default function RunGoalsPanel({ sessions }: Props) {
     );
   }
 
+  // Ordered list: active first, then completed (most recent 6)
+  const rows = [...active, ...completed.slice(0, 6)];
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column" }}>
       <style>{`@keyframes rg-pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.45; transform:scale(0.75); } }`}</style>
 
-      {active.length > 0 && (
-        <div>
-          <SecLabel>Active</SecLabel>
-          <div style={{ border: "1px solid var(--bd)", borderRadius: 8, overflow: "hidden", background: "var(--surface)" }}>
-            {active.map((s, i) => (
-              <div key={s.session_id} style={{ borderTop: i > 0 ? "1px solid var(--bd)" : "none" }}>
-                <GoalRow session={s} />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <ArcRing done={doneCount} total={tops.length} />
 
-      {recent.length > 0 && (
-        <div>
-          <SecLabel>Recent</SecLabel>
-          <div style={{ border: "1px solid var(--bd)", borderRadius: 8, overflow: "hidden", background: "var(--surface)" }}>
-            {recent.map((s, i) => (
-              <div key={s.session_id} style={{ borderTop: i > 0 ? "1px solid var(--bd)" : "none" }}>
-                <GoalRow session={s} />
-              </div>
-            ))}
+      <div style={{ border: "1px solid var(--bd2)", borderRadius: 10, background: "var(--surface)", overflow: "hidden" }}>
+        {rows.map((s, i) => (
+          <div key={s.session_id} style={{ borderTop: i > 0 ? "1px solid var(--bd)" : "none" }}>
+            <GoalRow session={s} />
           </div>
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   );
 }
