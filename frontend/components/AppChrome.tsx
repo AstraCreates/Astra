@@ -105,7 +105,7 @@ function SignInScreen() {
         </label>
 
         <p style={{ fontSize: 11, color: "var(--fm)", margin: "12px 0 0", lineHeight: 1.5 }}>
-          By continuing, you agree to our terms and privacy policy.
+          By continuing, you agree to our <a href="/terms" style={{ color: "var(--blue)", textDecoration: "underline", cursor: "pointer" }}>terms</a> and <a href="/privacy" style={{ color: "var(--blue)", textDecoration: "underline", cursor: "pointer" }}>privacy policy</a>.
         </p>
       </div>
     </div>
