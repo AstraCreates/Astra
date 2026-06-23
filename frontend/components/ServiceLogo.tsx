@@ -3,13 +3,15 @@
 import { useState } from "react";
 
 const SI = "https://cdn.simpleicons.org";
+// jsDelivr fallback for icons removed from cdn.simpleicons.org in recent versions
+const JD = "https://cdn.jsdelivr.net/npm/simple-icons@13/icons";
 
 export const SERVICE_LOGOS: Record<string, string> = {
   github:           `${SI}/github/181717`,
   vercel:           `${SI}/vercel/000000`,
-  sendgrid:         `${SI}/sendgrid/009BDE`,
+  sendgrid:         `${JD}/sendgrid.svg`,
   gmail:            `${SI}/gmail/EA4335`,
-  linkedin:         `${SI}/linkedin/0A66C2`,
+  linkedin:         `${JD}/linkedin.svg`,
   googlecalendar:   `${SI}/googlecalendar/4285F4`,
   google_calendar:  `${SI}/googlecalendar/4285F4`,
   notion:           `${SI}/notion/000000`,
@@ -35,6 +37,11 @@ export const SERVICE_LOGOS: Record<string, string> = {
   analytics:        `${SI}/posthog/000000`,
   sentry:           `${SI}/sentry/362D59`,
   aws:              `${SI}/amazonaws/232F3E`,
+  twilio:           `${JD}/twilio.svg`,
+  lemonsqueezy:     `${SI}/lemonsqueezy/FFD231`,
+  square:           `${SI}/square/3E4348`,
+  yelp:             `${SI}/yelp/FF1A1A`,
+  // printful has no icon in simpleicons — falls back to letter initial
 };
 
 export default function ServiceLogo({

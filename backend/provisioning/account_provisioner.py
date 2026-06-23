@@ -376,6 +376,13 @@ async def get_founder_setup_status(founder_id: str) -> dict:
         "tiktok": bool(creds.get("tiktok", {}).get("access_token")),
         "meta_ads": bool(creds.get("meta_ads", {}).get("access_token")),
         "composio": bool(creds.get("composio", {}).get("api_key")),
+        # Ecomm / local-service integrations
+        "klaviyo": bool(creds.get("klaviyo", {}).get("api_key")),
+        "printful": bool(creds.get("printful", {}).get("api_key")),
+        "lemonsqueezy": bool(creds.get("lemonsqueezy", {}).get("api_key")),
+        "square": bool(creds.get("square", {}).get("access_token")),
+        "yelp": bool(creds.get("yelp", {}).get("api_key")),
+        "twilio": bool(creds.get("twilio", {}).get("account_sid") and creds.get("twilio", {}).get("auth_token")),
         "apps": apps,
         "zero_touch": await asyncio.to_thread(get_zero_touch_readiness),
     }

@@ -190,6 +190,7 @@ function IntegrationModal({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const [phase, setPhase] = useState<ModalPhase>("connecting");
+  const phaseRef = useRef<ModalPhase>("connecting");
   const [stepName, setStepName] = useState("Starting…");
   const [stepNum, setStepNum] = useState(0);
   const [message, setMessage] = useState("");
@@ -203,9 +204,10 @@ function IntegrationModal({
     const ws = new WebSocket(`${wsBase}/connect/${serviceKey}/stream/${founderId}`);
     wsRef.current = ws;
 
-    ws.onopen = () => setPhase("running");
-    ws.onerror = () => { setPhase("error"); setMessage("WebSocket connection failed."); };
-    ws.onclose = () => { if (phase !== "done" && phase !== "error") setPhase("error"); };
+    const updatePhase = (p: ModalPhase) => { phaseRef.current = p; setPhase(p); };
+    ws.onopen = () => updatePhase("running");
+    ws.onerror = () => { updatePhase("error"); setMessage("WebSocket connection failed."); };
+    ws.onclose = () => { if (phaseRef.current !== "done" && phaseRef.current !== "error") updatePhase("error"); };
 
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
@@ -226,20 +228,20 @@ function IntegrationModal({
       if (msg.type === "user_control") {
         setStepName(msg.step); setStepNum(msg.step_num ?? 1);
         setMessage(msg.message || "Sign in in the browser below.");
-        setPhase("user_control");
+        updatePhase("user_control");
       } else if (msg.type === "status") {
         setStepName(msg.step); setStepNum(msg.step_num);
-        setPhase("running"); setMessage("");
+        updatePhase("running"); setMessage("");
       } else if (msg.type === "interaction_needed") {
         setStepName(msg.step); setMessage(msg.message);
         setFields(msg.fields || []); setFormValues({});
-        setFormError(""); setPhase("interaction_needed");
+        setFormError(""); updatePhase("interaction_needed");
       } else if (msg.type === "bot_filling") {
-        setPhase("bot_filling"); setMessage("Filling your information…");
+        updatePhase("bot_filling"); setMessage("Filling your information…");
       } else if (msg.type === "done") {
-        setPhase("done"); onConnected();
+        updatePhase("done"); onConnected();
       } else if (msg.type === "error") {
-        setPhase("error"); setMessage(msg.message || "An error occurred.");
+        updatePhase("error"); setMessage(msg.message || "An error occurred.");
       }
     };
 
@@ -501,6 +503,9 @@ function ServiceCard({
       window.history.replaceState({}, "", window.location.pathname);
       setJustConnected(true);
       onSaved();
+    } else if (params.get("github_error")) {
+      window.history.replaceState({}, "", window.location.pathname);
+      setError(`GitHub OAuth failed: ${params.get("github_error")}`);
     }
   }, [svc.key, onSaved]);
 
@@ -791,14 +796,24 @@ function StripeCard({ founderId, email }: { founderId: string; email: string }) 
 
 // ── ComposioKeyCard ────────────────────────────────────────────────────────
 
-function ComposioKeyCard({ connected }: {
+function ComposioKeyCard({ connected, saving, error, onSave }: {
   connected: boolean;
   saving?: boolean;
   error?: string | null;
   onSave?: (key: string) => Promise<void>;
 }) {
+  const [showForm, setShowForm] = useState(false);
+  const [keyValue, setKeyValue] = useState("");
+
+  const handleSave = async () => {
+    if (!keyValue.trim() || !onSave) return;
+    await onSave(keyValue.trim());
+    setKeyValue("");
+    setShowForm(false);
+  };
+
   return (
-    <div style={cardStyle(connected, false)}>
+    <div style={cardStyle(connected, showForm && !connected)}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: connected ? c.greenTint : c.bg }}>
         <ServiceLogo serviceKey="composio" label="Composio" size={26} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -809,7 +824,56 @@ function ComposioKeyCard({ connected }: {
           </div>
           <span style={{ fontSize: 12, color: c.grey }}>Enables Gmail, LinkedIn, Notion, Linear, Calendar</span>
         </div>
+        <button
+          onClick={() => { setShowForm(v => !v); setKeyValue(""); }}
+          className="m-tap"
+          style={{
+            padding: "6px 14px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
+            background: connected ? c.greenTint : c.bg,
+            border: `1px solid ${connected ? c.greenBorder : c.border}`,
+            color: connected ? c.green : c.textSecondary,
+            cursor: "pointer",
+          }}
+        >
+          {connected ? "Reconnect ↗" : "Connect ↗"}
+        </button>
       </div>
+      {showForm && (
+        <div style={{ borderTop: `1px solid ${c.blueBorder}`, padding: "14px 18px", background: c.blueTint, display: "flex", flexDirection: "column", gap: 10 }}>
+          <p style={{ margin: 0, fontSize: 13, color: c.textSecondary, lineHeight: 1.6 }}>
+            Paste your <strong>Composio API key</strong> from{" "}
+            <a href="https://app.composio.dev/settings" target="_blank" rel="noopener noreferrer" style={{ color: c.blue }}>app.composio.dev/settings ↗</a>
+          </p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={keyValue}
+              onChange={e => setKeyValue(e.target.value)}
+              placeholder="cp_xxxxxxxxxxxxxxxx"
+              onKeyDown={e => e.key === "Enter" && handleSave()}
+              style={{
+                flex: 1, padding: "8px 12px", fontSize: 13, borderRadius: 8,
+                border: `1px solid ${c.border}`, background: c.bg, color: c.text, outline: "none",
+                fontFamily: "var(--font-geist-mono, monospace)",
+              }}
+              onFocus={e => (e.target.style.borderColor = c.blue)}
+              onBlur={e => (e.target.style.borderColor = c.border)}
+            />
+            <button
+              onClick={handleSave}
+              disabled={saving || !keyValue.trim()}
+              style={{
+                padding: "0 16px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
+                background: c.blue, color: "#FFFFFF", border: "none",
+                cursor: saving || !keyValue.trim() ? "not-allowed" : "pointer",
+                opacity: saving || !keyValue.trim() ? 0.6 : 1,
+              }}
+            >
+              {saving ? "…" : "Save"}
+            </button>
+          </div>
+          {error && <p style={{ fontSize: 12, color: c.red, margin: 0 }}>{error}</p>}
+        </div>
+      )}
     </div>
   );
 }
@@ -934,7 +998,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 // ── TwilioGuideCard ────────────────────────────────────────────────────────
 
-function TwilioGuideCard({ connected }: { connected: boolean }) {
+function TwilioGuideCard({ connected, founderId, onSaved }: { connected: boolean; founderId: string; onSaved: () => void }) {
   const [open, setOpen] = useState(false);
   const steps = [
     "Go to twilio.com/try-twilio and sign up (free trial includes $15 credit)",
@@ -947,6 +1011,25 @@ function TwilioGuideCard({ connected }: { connected: boolean }) {
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function saveTwilio() {
+    if (!sid.trim() || !token.trim()) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await saveServiceCredential(founderId, "twilio", { account_sid: sid.trim(), auth_token: token.trim() });
+      setSaved(true);
+      setSid("");
+      setToken("");
+      setOpen(false);
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div style={cardStyle(connected || saved, open)}>
@@ -992,10 +1075,23 @@ function TwilioGuideCard({ connected }: { connected: boolean }) {
               onFocus={e => (e.target.style.borderColor = c.blue)} onBlur={e => (e.target.style.borderColor = c.border)}
             />
           </div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <button
+              onClick={saveTwilio}
+              disabled={saving || !sid.trim() || !token.trim()}
+              style={{
+                padding: "7px 18px", borderRadius: 8, fontSize: 13, fontWeight: 500,
+                background: c.blue, color: "#FFFFFF", border: "none",
+                cursor: saving || !sid.trim() || !token.trim() ? "not-allowed" : "pointer",
+                opacity: saving || !sid.trim() || !token.trim() ? 0.6 : 1,
+              }}
+            >
+              {saving ? "Saving…" : "Save credentials →"}
+            </button>
             <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noopener noreferrer"
               style={{ fontSize: 13, color: c.blue, textDecoration: "none" }}>twilio.com/try-twilio ↗</a>
           </div>
+          {error && <p style={{ margin: 0, fontSize: 12, color: c.red }}>{error}</p>}
         </div>
       )}
     </div>
@@ -1097,9 +1193,15 @@ export default function SetupPage() {
     }
   }
 
-  const connectedCount = status ? Object.values(status).filter(Boolean).length : 0;
-  const totalServices = status ? Object.keys(status).length : 6;
-  const progressPct = status ? (connectedCount / totalServices) * 100 : 0;
+  // Count only boolean service keys — exclude nested objects like `apps` and `zero_touch`.
+  const SERVICE_KEYS: (keyof SetupStatus)[] = [
+    "github", "vercel", "sendgrid", "supabase",
+    "instagram", "tiktok", "meta_ads", "composio",
+    "klaviyo", "printful", "lemonsqueezy", "square", "yelp", "twilio",
+  ];
+  const connectedCount = status ? SERVICE_KEYS.filter(k => status[k]).length : 0;
+  const totalServices = SERVICE_KEYS.length;
+  const progressPct = (connectedCount / totalServices) * 100;
 
   return (
     <>
@@ -1191,8 +1293,8 @@ export default function SetupPage() {
               onSaved={loadStatus}
             />
           ))}
-          {/* Twilio — guide only (phone verify required) */}
-          <TwilioGuideCard connected={!!status?.twilio} />
+          {/* Twilio — SID + Auth Token */}
+          <TwilioGuideCard connected={!!status?.twilio} founderId={founderId} onSaved={loadStatus} />
         </div>
       </div>
 
