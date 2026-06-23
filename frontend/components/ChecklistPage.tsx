@@ -208,6 +208,7 @@ export default function ChecklistPage() {
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   type TabKey = "needsYou" | "inProgress" | "upNext" | "done";
   const [tab, setTab] = useState<TabKey>("needsYou");
+  const [userPickedTab, setUserPickedTab] = useState(false);
   const [catMenuOpen, setCatMenuOpen] = useState(false);
 
   const load = useCallback(async () => {
@@ -251,14 +252,16 @@ export default function ChecklistPage() {
     return { needsYou, inProgress, upNext, done };
   }, [visibleItems, tasks]);
 
-  // Land on the first tab that actually has something (priority order).
+  // On initial load, jump to the first tab that has something.
+  // Skip once the user has explicitly clicked a tab.
   useEffect(() => {
+    if (userPickedTab) return;
     const order: TabKey[] = ["needsYou", "inProgress", "upNext", "done"];
     if (buckets[tab].length === 0) {
       const next = order.find(k => buckets[k].length > 0);
       if (next && next !== tab) setTab(next);
     }
-  }, [buckets, tab]);
+  }, [buckets, tab, userPickedTab]);
 
   // Header + sidebar stats (across ALL items, regardless of filter).
   const stats = useMemo(() => {
@@ -316,7 +319,7 @@ export default function ChecklistPage() {
             return (
               <button
                 key={t.key}
-                onClick={() => setTab(t.key)}
+                onClick={() => { setTab(t.key); setUserPickedTab(true); }}
                 style={{
                   display: "flex", alignItems: "center", gap: 7,
                   padding: "13px 14px 12px", border: "none", background: "transparent",
