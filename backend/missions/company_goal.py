@@ -790,7 +790,9 @@ def sweep_stale_tasks(founder_id: str, company_id: str | None = None) -> bool:
         if not cg2 or cg2.get("status") in ("done", "proposed"):
             return False
         for t in cg2.get("tasks") or []:
-            if t.get("status") == "in_progress" and not t.get("done_agents"):
+            if t.get("status") == "in_progress":
+                # Reset to pending regardless of done_agents — keeps done_agents intact so
+                # already-completed sub-agents don't re-run on the next dispatch.
                 t["status"] = "pending"
                 changed = True
         if changed:

@@ -200,10 +200,11 @@ function MenuRow({
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 export default function ChecklistPage() {
-  const { user } = useDevUser();
+  const { userId } = useDevUser();
   const { companyId, activeCompany } = useCompany();
-  const founderId = user?.id || "";
+  const founderId = userId;
   const [tasks, setTasks] = useState<CompanyTask[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedCat, setSelectedCat] = useState<string | null>(null);
   type TabKey = "needsYou" | "inProgress" | "upNext" | "done";
   const [tab, setTab] = useState<TabKey>("needsYou");
@@ -217,7 +218,9 @@ export default function ChecklistPage() {
       // is reflected in the checklist (not just the current active goal).
       const allTasks = (g?.goals ?? []).flatMap(goal => goal.tasks ?? []);
       setTasks(allTasks);
-    } catch {}
+    } catch {} finally {
+      setLoading(false);
+    }
   }, [companyId, founderId]);
 
   useEffect(() => {
@@ -380,22 +383,28 @@ export default function ChecklistPage() {
 
         {/* Active tab body */}
         <div style={{ flex: 1, overflowY: "auto", padding: "22px 24px 56px" }}>
-          {tab === "needsYou" && buckets.needsYou.length > 0 && (
-            <p style={{ fontSize: 12, color: "var(--fd)", margin: "0 0 16px", lineHeight: 1.5 }}>
-              Agents finished their part — these are waiting on you to act.
-            </p>
-          )}
-          {buckets[tab].length === 0 ? (
-            <p style={{ fontSize: 13, color: "var(--fd)", padding: "20px 0" }}>
-              {tab === "needsYou" ? "Nothing waiting on you right now."
-               : tab === "inProgress" ? "No agents are working on this list right now."
-               : tab === "upNext" ? "Nothing queued."
-               : "Nothing completed yet."}
-            </p>
+          {loading ? (
+            <p style={{ fontSize: 13, color: "var(--fd)", padding: "20px 0" }}>Loading…</p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              {buckets[tab].map(({ item, state }) => <TaskRow key={item.id} item={item} state={state} />)}
-            </div>
+            <>
+              {tab === "needsYou" && buckets.needsYou.length > 0 && (
+                <p style={{ fontSize: 12, color: "var(--fd)", margin: "0 0 16px", lineHeight: 1.5 }}>
+                  Agents finished their part — these are waiting on you to act.
+                </p>
+              )}
+              {buckets[tab].length === 0 ? (
+                <p style={{ fontSize: 13, color: "var(--fd)", padding: "20px 0" }}>
+                  {tab === "needsYou" ? "Nothing waiting on you right now."
+                   : tab === "inProgress" ? "No agents are working on this list right now."
+                   : tab === "upNext" ? "Nothing queued."
+                   : "Nothing completed yet."}
+                </p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  {buckets[tab].map(({ item, state }) => <TaskRow key={item.id} item={item} state={state} />)}
+                </div>
+              )}
+            </>
           )}
         </div>
       </main>
