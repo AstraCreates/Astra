@@ -1060,9 +1060,9 @@ function StepChooseStack({ stacks, selectedStackId, onSelect, recommendation, on
 function ModeIcon({ type }: { type: "new" | "existing" }) {
   if (type === "new") return (
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-      <path d="M11 2L20 19H2L11 2Z" fill={T.blue} fillOpacity="0.18" stroke={T.blue} strokeWidth="1.6" strokeLinejoin="round" />
-      <line x1="11" y1="8" x2="11" y2="14" stroke={T.blue} strokeWidth="1.4" strokeLinecap="round" />
-      <circle cx="11" cy="16" r="1" fill={T.blue} />
+      <circle cx="11" cy="11" r="9" fill={T.blue} fillOpacity="0.12" stroke={T.blue} strokeWidth="1.4" />
+      <path d="M11 15V8" stroke={T.blue} strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M7.5 11.5L11 8L14.5 11.5" stroke={T.blue} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
   return (
