@@ -87,7 +87,7 @@ export default function RunGoalsPanel({ sessions }: Props) {
     return <div style={{ fontSize: 11, color: "var(--fm)", padding: "6px 2px" }}>Loading…</div>;
   }
 
-  const tops = sessions.filter(s => !s.parent_session_id && s.stack_id !== "custom");
+  const tops = sessions.filter(s => !s.parent_session_id);
   const active = tops.filter(s => s.status === "running" || s.status === "stalled");
   const completed = tops.filter(s => s.status !== "running" && s.status !== "stalled");
   const doneCount = tops.filter(s => s.status === "done").length;
