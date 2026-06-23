@@ -91,7 +91,7 @@ export default function NewGoalView() {
       if (attachments.length) {
         instruction += "\n\nAttached context:\n" + attachments.map((a) => `--- ${a.name} ---\n${a.content.slice(0, 8000)}`).join("\n\n");
       }
-      const stackId = (quiz?.businessType ? STACK_MAP[quiz.businessType] : "") || selStack || "idea_to_revenue";
+      const stackId = selStack || (quiz?.businessType ? STACK_MAP[quiz.businessType] : "") || "idea_to_revenue";
       const data = await submitGoal(userId, instruction, {}, stackId);
       if (!data.session_id) throw new Error("No session_id returned");
       window.location.assign(`/s/${data.session_id}`);
