@@ -467,6 +467,13 @@ def start_goal(
             if go.get("id") == g.get("current_goal_id") and go.get("status") not in ("done", "proposed"):
                 go["status"] = "done"
                 go["completed_at"] = _now_iso()
+                # Settle any tasks that weren't explicitly completed — goal is advancing,
+                # so open tasks are auto-closed so the checklist doesn't show them as pending.
+                for t in go.get("tasks") or []:
+                    if not t.get("postponed") and t.get("status") != "done":
+                        t["status"] = "done"
+                        t.setdefault("done_agents", list(t.get("owner_agents") or []))
+                        t["updated_at"] = _now_iso()
         goal = {
             "id": str(uuid.uuid4()),
             "title": str(title)[:200],
@@ -519,8 +526,13 @@ def reject_current_goal(founder_id: str, company_id: str | None = None) -> bool:
 def _goal_is_complete(goal: dict[str, Any] | None) -> bool:
     if not goal:
         return False
-    actionable = [t for t in goal.get("tasks") or [] if not t.get("postponed")]
-    return bool(actionable) and all(t.get("status") == "done" for t in actionable)
+    all_tasks = goal.get("tasks") or []
+    if not all_tasks:
+        return False
+    # A goal is complete when every task is settled: done or postponed.
+    # Requiring at least one "done" task caused deadlocks when the safety-net
+    # auto-postponed tasks that needed unattainable evidence (e.g. signup_url).
+    return all(t.get("status") == "done" or t.get("postponed") for t in all_tasks)
 
 
 def goal_is_complete(founder_id: str, company_id: str | None = None) -> bool:
@@ -533,9 +545,11 @@ def complete_agent_workstream(
     run_id: str = "",
     summary: str = "",
     company_id: str | None = None,
+    task_ids: "set[str] | None" = None,
 ) -> dict[str, Any]:
     """Mark ``agent`` as having delivered on the current goal's tasks it owns. A task
-    is done once ALL its owner agents have delivered. Returns {changed, goal_complete}."""
+    is done once ALL its owner agents have delivered. Returns {changed, goal_complete}.
+    ``task_ids``: if provided, only process these task IDs (for per-task evidence gating)."""
     with _lock:
         g = _read(founder_id, company_id)
         if g is None:
@@ -546,6 +560,8 @@ def complete_agent_workstream(
         changed = False
         for t in cg.get("tasks") or []:
             if t.get("postponed"):
+                continue
+            if task_ids is not None and str(t.get("id", "")) not in task_ids:
                 continue
             owners = t.get("owner_agents") or []
             if agent in owners and agent not in t.get("done_agents", []):

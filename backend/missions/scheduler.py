@@ -134,6 +134,20 @@ async def _scheduler_tick() -> int:
             continue  # nothing actionable
         if not is_due(goal, safety_interval):
             continue  # a run started recently — not stalled
+        # Only recover CRASHED runs. If the last session for this goal completed normally
+        # (status="done"), the agents already ran and couldn't deliver required evidence
+        # (e.g. signup_url, payment_id). Re-dispatching produces identical failed runs.
+        recent_sessions = sorted(
+            [r for r in (goal.get("operating_sessions") or []) if r.get("goal_id") == cg.get("id")],
+            key=lambda r: r.get("updated_at") or r.get("created_at") or "",
+        )
+        if recent_sessions and recent_sessions[-1].get("status") == "done":
+            logger.info(
+                "missions_scheduler: goal %s last session completed normally — "
+                "skipping re-dispatch (open tasks need evidence agents cannot provide)",
+                cg.get("id"),
+            )
+            continue
         # Attempt cap: if this goal already got max_goal_attempts runs and STILL has open
         # tasks, an agent keeps failing to deliver. Stop retrying — postpone the stuck
         # tasks so the goal can complete and the company moves on (the founder can revisit

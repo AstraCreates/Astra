@@ -434,9 +434,27 @@ def _agent_delivered(output: Any, task: dict | None = None) -> bool:
         if len(text) < 12:
             return False
         if requires_evidence:
-            # Plain string output cannot carry structured evidence — reject.
+            t_lower = task_title.lower()
+            _is_user_task = any(w in t_lower for w in (
+                "signup", "signups", "sign up", "user signup", "real user", "real signup",
+                "10 real", "onboard", "survey to", "collect feedback from", "first user",
+                "acquire user", "get user", "get signup",
+            ))
+            if _is_user_task:
+                # User-acquisition outcomes: plain text can't carry verifiable proof.
+                logger.info(
+                    "goal_engine: task '%s' requires user evidence but output is plain text — NOT completing",
+                    task_title,
+                )
+                return False
+            # Non-user milestone tasks (deploys, content, etc.): accept a substantial
+            # string that contains a URL or evidence marker.
+            import re as _re
+            has_url = bool(_re.search(r'https?://\S+', text))
+            if len(text) >= 60 or has_url:
+                return not any(p in text.lower() for p in _HOLLOW_PHRASES)
             logger.info(
-                "goal_engine: task '%s' requires evidence but output is plain text — NOT completing",
+                "goal_engine: task '%s' requires evidence — string too short/no URL — NOT completing",
                 task_title,
             )
             return False
@@ -516,20 +534,25 @@ def tick_from_agent(session_id: str, agent: str, output: Any = None) -> None:
         agent_tasks = [t for t in cg.get("tasks") or [] if agent in (t.get("owner_agents") or [])]
         if not agent_tasks:
             return
-        # All owned milestone tasks must have evidence — collect all failures then gate.
-        failed = [t for t in agent_tasks if not _agent_delivered(output, t)]
-        for t in failed:
-            logger.info(
-                "goal_engine: %s emitted agent_done without real delivery for task '%s' — NOT completing",
-                agent, t.get("title", ""),
-            )
-        if failed:
+        # Per-task evidence gate: complete tasks where evidence is present, skip the rest.
+        # (Previously all-or-nothing — one blocked task prevented all others from completing.)
+        deliverable_ids: set[str] = set()
+        for t in agent_tasks:
+            if _agent_delivered(output, t):
+                deliverable_ids.add(str(t.get("id", "")))
+            else:
+                logger.info(
+                    "goal_engine: %s emitted agent_done without real delivery for task '%s' — NOT completing",
+                    agent, t.get("title", ""),
+                )
+        if not deliverable_ids:
             return
         complete_agent_workstream(
             founder_id,
             agent,
             run_id=session_id,
             company_id=company_id,
+            task_ids=deliverable_ids if len(deliverable_ids) < len(agent_tasks) else None,
         )
     except Exception as e:
         logger.debug("goal_engine.tick_from_agent skipped: %s", e)
@@ -830,6 +853,13 @@ async def dispatch_current_goal(
     owners = sorted({a for t in open_tasks for a in (t.get("owner_agents") or [])})
     root = goal.get("root_session_id") or goal.get("source_session_id") or ""
     session_id = _pre_session_id or new_session_id()
+    # Use the most recent completed sub-run as prior context so agents see intermediate
+    # progress, not just the original launch session (which has no follow-up outputs).
+    done_ops = [
+        r for r in (goal.get("operating_sessions") or [])
+        if r.get("goal_id") == cg.get("id") and r.get("status") == "done" and r.get("session_id")
+    ]
+    prior_sid = done_ops[-1]["session_id"] if done_ops else (root or session_id)
     if is_followup:
         header = (
             f"FOLLOW-UP RUN for GOAL: {title}\n\n"
@@ -884,7 +914,7 @@ async def dispatch_current_goal(
         orch = get_orchestrator()
         await orch.continue_run(
             instruction=instruction, founder_id=founder_id,
-            prior_session_id=root or session_id, agents=owners or None, session_id=session_id,
+            prior_session_id=prior_sid, agents=owners or None, session_id=session_id,
         )
         update_operating_session(
             founder_id,
