@@ -36,11 +36,11 @@ function GoalRow({ session, last }: { session: SessionIndexEntry; last: boolean 
   const done = session.status === "done";
   const failed = session.status === "error" || session.status === "killed";
 
-  const dot = running ? "var(--blue)"
-    : stalled ? "var(--amber)"
-    : done    ? "var(--green)"
-    : failed  ? "var(--red)"
-    : "var(--fm)";
+  const dot = running ? "#002EFF"
+    : stalled ? "#d97706"
+    : done    ? "#16a34a"
+    : failed  ? "#dc2626"
+    : "#a3a3a3";
 
   const title = extractGoalTitle(session.goal || "Untitled run");
   const faded = done || failed;
@@ -98,7 +98,7 @@ export default function RunGoalsPanel({ sessions }: Props) {
   const r = 30;
   const circ = 2 * Math.PI * r;
   const offset = total > 0 ? circ * (1 - doneCount / total) : circ;
-  const ringColor = allDone ? "var(--green)" : hasActive ? "var(--blue)" : "var(--green)";
+  const ringColor = hasActive ? "#002EFF" : "#16a34a";
 
   const rows = [...active, ...completed.slice(0, 6)];
 
