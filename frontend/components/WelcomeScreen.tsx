@@ -58,24 +58,27 @@ export default function WelcomeScreen() {
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          padding: 11px 22px;
-          font-size: 12px;
-          font-weight: 700;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          color: #111827;
-          background: rgba(255,255,255,0.58);
-          border: 1px solid rgba(17,24,39,0.12);
-          border-radius: 999px;
+          gap: 8px;
+          padding: 12px 28px;
+          font-size: 13px;
+          font-weight: 600;
+          letter-spacing: 0.01em;
+          color: #ffffff;
+          background: rgba(0,0,0,0.42);
+          border: 1px solid rgba(255,255,255,0.22);
+          border-radius: 100px;
           text-decoration: none;
-          backdrop-filter: blur(10px);
-          transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+          box-shadow: 0 2px 12px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.08);
+          transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
           font-family: var(--font-geist-sans), "Geist", sans-serif;
         }
         .ws-btn-secondary:hover {
           transform: translateY(-1px);
-          background: rgba(255,255,255,0.8);
-          border-color: rgba(17,24,39,0.2);
+          background: rgba(0,0,0,0.58);
+          border-color: rgba(255,255,255,0.35);
+          box-shadow: 0 4px 20px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.1);
         }
       `}</style>
 
@@ -155,6 +158,9 @@ export default function WelcomeScreen() {
               Get Started
             </button>
             <a className="ws-btn-secondary" href={desktopDownloadHref}>
+              <svg width="14" height="17" viewBox="0 0 14 17" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M13.014 12.53c-.29.636-.636 1.221-1.04 1.755-.546.72-1.003 1.22-1.365 1.498-.546.463-1.13.7-1.755.715-.45 0-.99-.128-1.617-.387-.628-.259-1.207-.387-1.737-.387-.556 0-1.151.128-1.789.387-.64.259-1.154.394-1.546.408-.6.025-1.199-.217-1.797-.729-.39-.303-.865-.82-1.424-1.554C.335 13.457-.11 12.3-.11 11.1c0-1.27.282-2.365.848-3.28A4.926 4.926 0 0 1 2.55 5.944a4.708 4.708 0 0 1 2.365-.672c.463 0 1.072.143 1.83.424.756.282 1.24.425 1.452.425.158 0 .695-.167 1.606-.5.86-.311 1.586-.44 2.181-.39 1.612.13 2.822.763 3.628 1.903-1.44.873-2.152 2.094-2.138 3.66.013 1.22.454 2.235 1.32 3.042.393.372.831.66 1.22.845l-.001-.151ZM9.856.76c0 .957-.349 1.85-1.045 2.677C8.1 4.33 7.11 4.79 6.036 4.707a3.364 3.364 0 0 1-.025-.415c0-.918.4-1.9 1.11-2.703.354-.407.806-.745 1.354-1.014C9.022.306 9.543.155 10.03.125c.017.145.025.29.025.435h-.199Z" fill="currentColor"/>
+              </svg>
               Download for macOS
             </a>
           </div>
