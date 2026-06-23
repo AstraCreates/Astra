@@ -30,6 +30,21 @@ interface Props {
   sessions: SessionIndexEntry[] | null;
 }
 
+function StatChip({ children, color }: { children: React.ReactNode; color?: string }) {
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      fontSize: 9.5, fontWeight: 700, fontFamily: "var(--font-code)",
+      letterSpacing: ".06em", textTransform: "uppercase",
+      color: color ?? "#737373",
+      background: color ? `${color}18` : "rgba(0,0,0,0.05)",
+      padding: "3px 8px", borderRadius: 100,
+    }}>
+      {children}
+    </span>
+  );
+}
+
 function GoalRow({ session, last }: { session: SessionIndexEntry; last: boolean }) {
   const running = session.status === "running";
   const stalled = session.status === "stalled";
@@ -50,13 +65,13 @@ function GoalRow({ session, last }: { session: SessionIndexEntry; last: boolean 
       onClick={() => window.location.assign(`/s/${session.session_id}`)}
       style={{
         display: "flex", alignItems: "flex-start", gap: 10,
-        padding: "10px 16px",
+        padding: "9px 16px",
         borderBottom: last ? "none" : "1px solid var(--bd)",
         cursor: "pointer",
-        opacity: faded ? 0.6 : 1,
+        opacity: faded ? 0.55 : 1,
         transition: "background 0.1s",
       }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--s2, rgba(0,0,0,0.035))"; }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.03)"; }}
       onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
     >
       <span style={{
@@ -66,7 +81,7 @@ function GoalRow({ session, last }: { session: SessionIndexEntry; last: boolean 
       }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: 12.5, fontWeight: 500,
+          fontSize: 12, fontWeight: 500,
           color: "var(--fg)", lineHeight: 1.4,
           overflow: "hidden", display: "-webkit-box",
           WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
@@ -74,7 +89,7 @@ function GoalRow({ session, last }: { session: SessionIndexEntry; last: boolean 
         }}>
           {title}
         </div>
-        <div style={{ fontSize: 10, color: "var(--fd)", fontFamily: "var(--font-code)", marginTop: 2 }}>
+        <div style={{ fontSize: 10, color: "#a3a3a3", fontFamily: "var(--font-code)", marginTop: 2 }}>
           {ago(session.created_at)}
         </div>
       </div>
@@ -88,19 +103,20 @@ export default function RunGoalsPanel({ sessions }: Props) {
   }
 
   const tops = sessions.filter(s => !s.parent_session_id);
+  const runningCount = tops.filter(s => s.status === "running").length;
+  const stalledCount = tops.filter(s => s.status === "stalled").length;
+  const doneCount = tops.filter(s => s.status === "done").length;
+  const failedCount = tops.filter(s => s.status === "error" || s.status === "killed").length;
+  const total = tops.length;
+  const hasActive = runningCount + stalledCount > 0;
+
   const active = tops.filter(s => s.status === "running" || s.status === "stalled");
   const completed = tops.filter(s => s.status !== "running" && s.status !== "stalled");
-  const doneCount = tops.filter(s => s.status === "done").length;
-  const total = tops.length;
-  const allDone = total > 0 && doneCount === total;
-  const hasActive = active.length > 0;
+  const rows = [...active, ...completed.slice(0, 6)];
 
   const r = 30;
   const circ = 2 * Math.PI * r;
   const offset = total > 0 ? circ * (1 - doneCount / total) : circ;
-  const ringColor = hasActive ? "#002EFF" : "#16a34a";
-
-  const rows = [...active, ...completed.slice(0, 6)];
 
   if (tops.length === 0) {
     return (
@@ -114,51 +130,62 @@ export default function RunGoalsPanel({ sessions }: Props) {
     );
   }
 
-  const summaryText = allDone
-    ? "All goals complete"
-    : doneCount === 0
-    ? "Getting started"
-    : `${doneCount} of ${total} complete`;
-
-  const subText = hasActive
-    ? `${active.length} running`
-    : allDone
-    ? `${total} total`
-    : `${total - doneCount} remaining`;
+  const headline = hasActive
+    ? runningCount > 0 ? "◈ Operating" : "⚠ Needs attention"
+    : doneCount === total ? "◎ All complete" : "◌ No active runs";
 
   return (
     <div style={{ border: "1px solid var(--bd2)", borderRadius: 10, background: "var(--surface)", overflow: "hidden" }}>
       <style>{`@keyframes rg-pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.45; transform:scale(0.75); } }`}</style>
 
-      {/* Header: ring + summary */}
-      <div style={{ padding: "14px 16px 12px", display: "flex", alignItems: "center", gap: 14, borderBottom: rows.length ? "1px solid var(--bd)" : "none" }}>
-        {/* Arc ring */}
-        <div style={{ position: "relative", width: 68, height: 68, flexShrink: 0 }}>
-          <svg width={68} height={68} viewBox="0 0 76 76" style={{ transform: "rotate(-90deg)" }}>
-            <circle cx={38} cy={38} r={r} fill="none" stroke="var(--bd)" strokeWidth={5} />
-            <circle
-              cx={38} cy={38} r={r} fill="none"
-              stroke={ringColor}
-              strokeWidth={5}
-              strokeDasharray={circ}
-              strokeDashoffset={offset}
-              strokeLinecap="round"
-              style={{ transition: "stroke-dashoffset .6s ease, stroke .4s ease" }}
-            />
-          </svg>
-          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ fontSize: 20, fontWeight: 800, color: ringColor, fontFamily: "var(--font-code)", lineHeight: 1 }}>{doneCount}</div>
-            <div style={{ fontSize: 9, color: "var(--fm)", letterSpacing: ".04em" }}>/ {total}</div>
-          </div>
-        </div>
+      {/* Header */}
+      <div style={{ padding: "14px 16px 13px", borderBottom: rows.length ? "1px solid var(--bd)" : "none" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
 
-        {/* Summary text */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: ringColor, lineHeight: 1.3 }}>
-            {summaryText}
+          {/* Arc ring */}
+          <div style={{ position: "relative", width: 72, height: 72, flexShrink: 0 }}>
+            <svg width={72} height={72} viewBox="0 0 76 76" style={{ transform: "rotate(-90deg)" }}>
+              <circle cx={38} cy={38} r={r} fill="none" stroke="rgba(0,46,255,0.12)" strokeWidth={5} />
+              <circle
+                cx={38} cy={38} r={r} fill="none"
+                stroke="#002EFF"
+                strokeWidth={5}
+                strokeDasharray={circ}
+                strokeDashoffset={offset}
+                strokeLinecap="round"
+                style={{ transition: "stroke-dashoffset .6s ease" }}
+              />
+            </svg>
+            <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: "#002EFF", fontFamily: "var(--font-code)", lineHeight: 1 }}>{doneCount}</div>
+              <div style={{ fontSize: 9, color: "#737373", fontFamily: "var(--font-code)", letterSpacing: ".04em" }}>/ {total}</div>
+            </div>
           </div>
-          <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 4 }}>
-            {subText}
+
+          {/* Right: label + title + chips */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{
+              fontSize: 9, fontWeight: 700, letterSpacing: ".08em",
+              textTransform: "uppercase", fontFamily: "var(--font-code)",
+              color: "#002EFF", marginBottom: 5,
+            }}>
+              {headline}
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--fg)", lineHeight: 1.25, marginBottom: 8 }}>
+              {doneCount === total
+                ? "All goals complete"
+                : doneCount === 0
+                ? "Getting started"
+                : `${doneCount} of ${total} goals done`}
+            </div>
+            {/* Stat chips */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+              {runningCount > 0 && <StatChip color="#002EFF">● {runningCount} running</StatChip>}
+              {stalledCount > 0 && <StatChip color="#d97706">⚠ {stalledCount} stalled</StatChip>}
+              {doneCount > 0 && <StatChip color="#16a34a">✓ {doneCount} done</StatChip>}
+              {failedCount > 0 && <StatChip color="#dc2626">✗ {failedCount} failed</StatChip>}
+              <StatChip>◌ {total} total</StatChip>
+            </div>
           </div>
         </div>
       </div>
