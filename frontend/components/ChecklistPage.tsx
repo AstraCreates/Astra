@@ -24,7 +24,14 @@ function agentMatches(taskAgents: string[], autoAgent: string): boolean {
 
 function matchingTask(item: CLItem, tasks: CompanyTask[]): CompanyTask | null {
   if (!item.autoAgent) return null;
-  return tasks.find(t => agentMatches(t.owner_agents ?? [], item.autoAgent!)) ?? null;
+  const candidates = tasks.filter(t => agentMatches(t.owner_agents ?? [], item.autoAgent!));
+  if (candidates.length === 0) return null;
+  // Prefer done tasks (across all goals) over in-progress over pending.
+  return (
+    candidates.find(t => t.status === "done") ??
+    candidates.find(t => t.status === "in_progress") ??
+    candidates[0]
+  );
 }
 
 function getRowState(item: CLItem, tasks: CompanyTask[]): RowState {
@@ -206,8 +213,10 @@ export default function ChecklistPage() {
     if (!founderId) return;
     try {
       const g = await getCompanyGoal(founderId, companyId);
-      const entry = g?.goals?.find(x => x.id === g.current_goal_id) ?? null;
-      setTasks(entry?.tasks ?? []);
+      // Aggregate tasks across ALL goals so completed work from prior goals
+      // is reflected in the checklist (not just the current active goal).
+      const allTasks = (g?.goals ?? []).flatMap(goal => goal.tasks ?? []);
+      setTasks(allTasks);
     } catch {}
   }, [companyId, founderId]);
 
