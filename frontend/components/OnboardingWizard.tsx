@@ -70,39 +70,39 @@ const COMPOSIO_APP_KEYS: Record<string, string> = {
 // ── Design tokens ─────────────────────────────────────────────────────────────
 
 const T = {
-  white: "#FFFFFF",
-  surface: "#F3F4F7",
-  textPrimary: "#111827",
-  textSecondary: "#374151",
-  textMuted: "#9CA3AF",
-  grey: "#6B7280",
-  blue: "#002EFF",
-  blueHover: "#0024CC",
-  blueTint: "#E8ECFF",
-  blueMid: "#99AAFF",
-  mint: "#7CFFC6",
-  border: "#E5E7EB",
-  borderStrong: "#D1D5DB",
-  green: "#16A34A",
-  greenTint: "#F0FDF4",
-  greenBorder: "#86EFAC",
-  red: "#DC2626",
-  redTint: "#FEF2F2",
-  redBorder: "#FECACA",
-  shadow: "0 1px 3px rgba(0,0,0,0.08)",
-  shadowMd: "0 4px 16px rgba(0,0,0,0.06)",
+  bg:            "#05070D",           // page background
+  white:         "#0D111C",           // panel / card surface (dark)
+  surface:       "#141926",           // elevated surface within panel
+  textPrimary:   "#F6F8FF",
+  textSecondary: "#CAD2E4",
+  textMuted:     "#8590A6",
+  grey:          "#8590A6",
+  blue:          "#0B31FF",
+  blueHover:     "#0024D9",
+  blueTint:      "rgba(11,49,255,0.12)",
+  blueMid:       "rgba(11,49,255,0.35)",
+  mint:          "#7CFFC6",
+  border:        "rgba(255,255,255,0.09)",
+  borderStrong:  "rgba(255,255,255,0.18)",
+  green:         "#22C55E",
+  greenTint:     "rgba(34,197,94,0.10)",
+  greenBorder:   "rgba(34,197,94,0.30)",
+  red:           "#F87171",
+  redTint:       "rgba(248,113,113,0.10)",
+  redBorder:     "rgba(248,113,113,0.30)",
+  shadow:        "0 1px 4px rgba(0,0,0,0.5)",
+  shadowMd:      "0 8px 40px rgba(0,0,0,0.6)",
 };
 
 // ── Shared style objects ──────────────────────────────────────────────────────
 
 const CARD: React.CSSProperties = {
-  borderRadius: 16,
+  borderRadius: 12,
   border: `1px solid ${T.border}`,
   background: T.white,
-  padding: "16px 18px",
+  padding: "14px 16px",
   cursor: "pointer",
-  transition: "border-color 0.15s, background 0.15s",
-  boxShadow: T.shadow,
+  transition: "border-color 0.14s, background 0.14s",
 };
 
 const CARD_SELECTED: React.CSSProperties = {
@@ -115,55 +115,53 @@ const BTN_PRIMARY: React.CSSProperties = {
   padding: "10px 28px",
   borderRadius: 999,
   background: T.blue,
-  color: T.white,
+  color: "#FFFFFF",
   border: "none",
   fontSize: 14,
   fontWeight: 600,
   cursor: "pointer",
-  letterSpacing: "0.02em",
+  letterSpacing: "0.01em",
   fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
+  transition: "opacity 0.15s",
 };
 
 const BTN_GHOST: React.CSSProperties = {
   padding: "10px 20px",
   borderRadius: 999,
-  background: T.white,
-  color: T.textSecondary,
+  background: "transparent",
+  color: T.textMuted,
   border: `1px solid ${T.border}`,
   fontSize: 13,
   cursor: "pointer",
   fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
+  transition: "border-color 0.14s",
 };
 
 const INPUT: React.CSSProperties = {
   width: "100%",
-  padding: "12px 16px",
-  borderRadius: 12,
+  padding: "11px 14px",
+  borderRadius: 10,
   border: `1px solid ${T.border}`,
-  background: T.white,
+  background: "#05070D",
   color: T.textPrimary,
   fontSize: 14,
   outline: "none",
   boxSizing: "border-box",
   fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-  transition: "border-color 0.15s",
+  transition: "border-color 0.14s",
 };
 
 const LABEL: React.CSSProperties = {
-  fontSize: 11,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase" as const,
+  fontSize: 12,
   color: T.textMuted,
-  fontWeight: 600,
+  fontWeight: 500,
   fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
 };
 
 const SECTION_LABEL: React.CSSProperties = {
-  fontSize: 10,
-  letterSpacing: "0.1em",
-  textTransform: "uppercase" as const,
+  fontSize: 11,
   color: T.textMuted,
-  fontWeight: 600,
+  fontWeight: 500,
   marginBottom: 6,
   fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
 };
@@ -171,21 +169,21 @@ const SECTION_LABEL: React.CSSProperties = {
 // ── Step dots ─────────────────────────────────────────────────────────────────
 
 function StepDots({ step, total = 4 }: { step: number; total?: number }) {
+  const pct = total <= 1 ? 100 : Math.round((step / (total - 1)) * 100);
   return (
-    <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 36 }}>
-      {Array.from({ length: total }, (_, i) => (
-        <div
-          key={i}
-          style={{
-            width: 24,
-            height: 8,
-            borderRadius: 999,
-            background: i === step ? T.blue : i < step ? T.blueMid : T.border,
-            clipPath: `inset(0 ${i === step ? 0 : 66.67}% 0 0 round 999px)`,
-            transition: "clip-path 0.25s cubic-bezier(0.22,1,0.36,1), background 0.25s",
-          }}
-        />
-      ))}
+    <div style={{ marginBottom: 32 }}>
+      <div style={{ height: 2, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
+        <div style={{
+          height: "100%",
+          width: `${pct}%`,
+          background: T.blue,
+          borderRadius: 2,
+          transition: "width 0.35s cubic-bezier(0.22,1,0.36,1)",
+        }} />
+      </div>
+      <div style={{ marginTop: 10, fontSize: 11, color: T.textMuted }}>
+        Step {step + 1} of {total}
+      </div>
     </div>
   );
 }
@@ -272,7 +270,7 @@ function StepCustomStack({ selected, onToggle, onBack, onNext, stackName, setSta
           value={stackName}
           onChange={e => setStackName(e.target.value)}
           placeholder="e.g. My Growth Stack"
-          style={{ width: "100%", padding: "9px 12px", fontSize: 14, fontWeight: 600, border: `1.5px solid ${T.border}`, borderRadius: 10, background: T.white, color: T.textPrimary, outline: "none", fontFamily: "var(--font-geist-sans), sans-serif", boxSizing: "border-box" }}
+          style={{ width: "100%", padding: "9px 12px", fontSize: 14, fontWeight: 600, border: `1.5px solid ${T.border}`, borderRadius: 10, background: "#05070D", color: T.textPrimary, outline: "none", fontFamily: "var(--font-geist-sans), sans-serif", boxSizing: "border-box" }}
         />
       </div>
 
@@ -440,7 +438,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
     flexShrink: 0,
     whiteSpace: "nowrap",
     background: T.blue,
-    color: T.white,
+    color: "#FFFFFF",
     border: "none",
     cursor: "pointer",
     fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
@@ -460,7 +458,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
     fontSize: 12,
     fontFamily: "var(--font-mono, monospace)",
     border: `1px solid ${T.border}`,
-    background: T.white,
+    background: "#05070D",
     color: T.textPrimary,
     outline: "none",
   };
@@ -660,7 +658,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
       boxShadow: T.shadow,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px" }}>
-        <span style={{ fontSize: 20, lineHeight: 1, flexShrink: 0 }}>🔗</span>
+        <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0, color: T.blue }}>◈</span>
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span style={{ fontSize: 13, fontWeight: 500, color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>Composio</span>
@@ -1383,47 +1381,48 @@ function StepDone({ name, company, stackName, onLaunch }: {
   name: string; company: string; stackName: string; onLaunch: () => void;
 }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 28, alignItems: "center", textAlign: "center" }}>
-      <div style={{ fontSize: 56, lineHeight: 1 }}>🎉</div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 32, alignItems: "center", textAlign: "center" }}>
+      {/* Pulsing blue mark */}
+      <div style={{ position: "relative", width: 64, height: 64, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div className="astra-pulse" style={{
+          position: "absolute", inset: -14, borderRadius: "50%",
+          border: "1px solid rgba(11,49,255,0.4)",
+          animation: "pulse-ring 2.2s ease-out infinite",
+        }} />
+        <div style={{
+          width: 48, height: 48, background: T.blue, borderRadius: "50%",
+          WebkitMask: "url('/logo.png') center/contain no-repeat",
+          mask: "url('/logo.png') center/contain no-repeat",
+        }} />
+      </div>
 
       <div>
-        <h2 style={{ fontSize: 28, fontWeight: 700, margin: "0 0 10px", color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif", letterSpacing: "-0.02em" }}>
-          You're all set{name ? `, ${name.split(" ")[0]}` : ""}!
+        <h2 style={{ fontSize: 30, fontWeight: 700, margin: "0 0 10px", color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif", letterSpacing: "-0.02em" }}>
+          {name ? `${name.split(" ")[0]}, you're ready` : "You're ready"}
         </h2>
-        <p style={{ fontSize: 14, color: T.textMuted, margin: 0, lineHeight: 1.7 }}>
-          {company && <><strong style={{ color: T.textPrimary }}>{company}</strong> is ready to build with the </>}
-          {!company && "You're building with the "}
-          <strong style={{ color: T.textPrimary }}>{stackName}</strong> stack.
-          <br />
-          A brief tour will show you around when you launch.
+        <p style={{ fontSize: 14, color: T.textMuted, margin: 0, lineHeight: 1.7, maxWidth: "36ch" }}>
+          {company && <><strong style={{ color: T.textSecondary }}>{company}</strong> launches with the </>}
+          {!company && "Running the "}
+          <strong style={{ color: T.textSecondary }}>{stackName}</strong> stack.
+          Agents start immediately.
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, width: "100%", maxWidth: 420 }}>
+      {/* Flat stat row — no cards */}
+      <div style={{ display: "flex", borderTop: `1px solid ${T.border}`, paddingTop: 24, width: "100%" }}>
         {[
-          ["🤖", "AI agents", "working in parallel"],
-          ["📦", "Artifacts", "docs, code, plans"],
-          ["⚡", "Real actions", "deploy, send, file"],
-        ].map(([icon, label, desc]) => (
-          <div key={label} style={{
-            padding: "16px 12px",
-            borderRadius: 14,
-            border: `1px solid ${T.border}`,
-            background: T.surface,
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-            alignItems: "center",
-            boxShadow: T.shadow,
-          }}>
-            <span style={{ fontSize: 22 }}>{icon}</span>
-            <span style={{ fontSize: 12, fontWeight: 600, color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>{label}</span>
-            <span style={{ fontSize: 10, color: T.textMuted }}>{desc}</span>
+          ["Agents", "work in parallel"],
+          ["Artifacts", "docs, code, plans"],
+          ["Actions", "deploy, send, file"],
+        ].map(([label, desc], i) => (
+          <div key={label} style={{ flex: 1, textAlign: "center", borderLeft: i > 0 ? `1px solid ${T.border}` : "none", padding: "0 12px" }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: T.textSecondary, marginBottom: 3, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>{label}</div>
+            <div style={{ fontSize: 11, color: T.textMuted }}>{desc}</div>
           </div>
         ))}
       </div>
 
-      <button style={{ ...BTN_PRIMARY, padding: "14px 44px", fontSize: 15 }} onClick={onLaunch}>
+      <button style={{ ...BTN_PRIMARY, padding: "14px 48px", fontSize: 15 }} onClick={onLaunch}>
         Launch workspace →
       </button>
     </div>
@@ -1572,14 +1571,26 @@ export default function OnboardingWizard() {
     {launching && (
       <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "linear-gradient(135deg, #002eff 0%, #1a45ff 25%, #5df5e0 65%, #fefff6 100%)" }} />
     )}
+    <style>{`
+      @keyframes pulse-ring {
+        0%   { transform: scale(0.85); opacity: 0.9; }
+        70%  { transform: scale(1.22); opacity: 0;   }
+        100% { transform: scale(1.22); opacity: 0;   }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .astra-pulse { animation: none !important; }
+      }
+    `}</style>
+    <div style={{ position: "fixed", inset: 0, pointerEvents: "none", background: "radial-gradient(ellipse 70% 45% at 50% 0%, rgba(11,49,255,0.13) 0%, transparent 70%)" }} />
     <div style={{
       minHeight: "100vh",
       display: "flex",
       alignItems: "flex-start",
       justifyContent: "center",
       padding: "48px 16px",
-      background: "linear-gradient(160deg, rgba(0,46,255,0.06) 0%, #F3F4F7 40%)",
+      background: "#05070D",
       fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
+      position: "relative",
     }}>
       {/* Logo */}
       <div style={{ position: "fixed", top: 24, left: 28, display: "flex", alignItems: "center", gap: 8 }}>
