@@ -492,9 +492,15 @@ async def stream_events(session_id: str, last_event_id: int | None = None) -> As
                 if ev.get("type") in _STATE_EVENTS:
                     yield _fmt(eid, _strip_base64(ev))
 
-    # Already completed — send closed signal immediately (after replay)
+    # Already completed — send closed signal immediately (after replay).
+    # Use the actual terminal event type (goal_done vs goal_error) from the log.
     if session_id in _completed:
-        yield _fmt(_event_counters.get(session_id, 0), {"type": "goal_done"})
+        _log = _event_log.get(session_id, [])
+        _terminal = next(
+            (e for _, e in reversed(_log) if e.get("type") in ("goal_done", "goal_error")),
+            {"type": "goal_done"},
+        )
+        yield _fmt(_event_counters.get(session_id, 0), _terminal)
         return
 
     q = _get_queue(session_id)

@@ -443,6 +443,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       case "agent_question":
         setAgentQuestion({ request_id: ev.request_id, question: ev.question, options: ev.options ?? [], hint: ev.hint ?? "" });
         return;
+      case "session_expired":
+        st.status = "error";
+        sseRef.current?.close();
+        break;
       default: return; // ignore pings/unknown without re-render
     }
     force();
@@ -540,6 +544,11 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       const es = new EventSource(`${API}/stream/${sessionId}`);
       sseRef.current = es;
       es.onmessage = (e) => { try { const ev = JSON.parse(e.data); if (ev.type !== "ping") handleEvent(ev); } catch {} };
+      es.onerror = () => {
+        // EventSource auto-reconnects; don't touch status (would flash error during brief disconnect).
+        // If the session is still "running" after a dropped connection, the reconnect will replay
+        // any missed events via Last-Event-ID so the UI catches up automatically.
+      };
     })();
 
     return () => { alive = false; sseRef.current?.close(); sseRef.current = null; };
@@ -652,7 +661,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       S.current.paused = next; force();
     } catch {}
   };
-  const sel = (dept: string | null, art: string | null) => { S.current.selDept = dept; S.current.selArt = art; S.current.tab = art ? "read" : (dept === "technical" ? "terminal" : "updates"); if (dept || art) setTeamTab(false); force(); };
+  const sel = (dept: string | null, art: string | null) => { S.current.selDept = dept; S.current.selArt = art; S.current.tab = art ? "read" : "updates"; if (dept || art) setTeamTab(false); force(); };
 
   // ── Derived render data ──
   const st = S.current;
@@ -1069,9 +1078,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             {st.selArt
               ? <div className={`dtab${st.tab === "read" ? " on" : ""}`} onClick={() => { st.tab = "read"; force(); }}>Read it</div>
               : st.selDept ? <>
-                  {st.selDept === "technical"
-                    ? <div className={`dtab${st.tab === "terminal" ? " on" : ""}`} onClick={() => { st.tab = "terminal"; force(); }}>Terminal</div>
-                    : <div className={`dtab${st.tab === "updates" ? " on" : ""}`} onClick={() => { st.tab = "updates"; force(); }}>Updates</div>}
+                  <div className={`dtab${st.tab === "updates" ? " on" : ""}`} onClick={() => { st.tab = "updates"; force(); }}>Updates</div>
+                  {st.selDept === "technical" && <div className={`dtab${st.tab === "terminal" ? " on" : ""}`} onClick={() => { st.tab = "terminal"; force(); }}>Terminal</div>}
                   <div className={`dtab${st.tab === "tech" ? " on" : ""}`} onClick={() => { st.tab = "tech"; force(); }}>Technical logs</div>
                   <div className={`dtab${st.tab === "sources" ? " on" : ""}`} onClick={() => { st.tab = "sources"; force(); }}>Sources</div>
                 </>

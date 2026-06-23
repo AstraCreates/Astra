@@ -1329,7 +1329,9 @@ class Orchestrator:
                     result = await agent.run(ctx)
                     completed[tid] = result
                     context_policy.persist_agent_result(agent_name=agent_name, task=task, result=result)
-                    await publish(session_id, {"type": "agent_done", "agent": agent_name, "task_id": tid, "result": result})
+                    # agent.run() internally emits agent_done; don't re-emit it here (double toast)
+                    if isinstance(result, dict) and result.get("status") in ("budget_exhausted", "max_iterations_reached"):
+                        await publish(session_id, {"type": "agent_error", "agent": agent_name, "task_id": tid, "error": result.get("status", "agent failed")})
                 except Exception as _agent_exc:
                     err_msg = str(_agent_exc)[:400]
                     completed[tid] = {"error": err_msg}
@@ -1505,6 +1507,21 @@ class Orchestrator:
             })
             result = await agent.run(ctx)
 
+            # If the agent exhausted its budget or hit max iterations it returned an error
+            # status without emitting agent_done. Emit agent_error now so the UI gets a
+            # terminal event and the agent stops showing as "running". Skip verification
+            # retries — re-running a budget-exhausted agent will just hit the same wall.
+            if isinstance(result, dict) and result.get("status") in ("budget_exhausted", "max_iterations_reached"):
+                err_reason = result.get("reason") or result.get("status", "agent failed")
+                await publish(session_id, {
+                    "type": "agent_error",
+                    "agent": agent_name,
+                    "task_id": tid,
+                    "error": str(err_reason)[:300],
+                })
+                completed[tid] = result
+                return
+
             # Deep verification + self-correction loop (ALL agents).
             # Run the artifact through the verification ladder (shape → executable →
             # semantic). If it fails, feed the concrete problems back to the agent and
@@ -1548,11 +1565,15 @@ class Orchestrator:
                     unlimited_credits=bool((constraints or {}).get("unlimited_credits", False)),
                     shared={**ctx.shared, "verification_retry": True, "verification_retry_count": _attempt},
                 )
+                # Use agent_action instead of agent_start so the UI doesn't show a
+                # phantom "agent restarted" toast and doesn't reset agent status to running.
                 await publish(session_id, {
-                    "type": "agent_start",
+                    "type": "agent_action",
                     "agent": agent_name,
-                    "task_id": f"{tid}_retry_{_attempt}",
-                    "instruction": f"Self-correction attempt {_attempt} after verification failure",
+                    "task_id": tid,
+                    "action": "self_correction",
+                    "tool": "verification_gate",
+                    "args": {"attempt": _attempt, "correction": _correction[:200]},
                 })
                 _retry_result = await agent.run(retry_ctx)
                 if isinstance(_retry_result, dict):
