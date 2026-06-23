@@ -1055,6 +1055,298 @@ function StepChooseStack({ stacks, selectedStackId, onSelect, recommendation, on
   );
 }
 
+// ── Mode select (new vs existing business) ────────────────────────────────────
+
+function StepModeSelect({ onSelect }: { onSelect: (mode: "new" | "existing") => void }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 32, alignItems: "center", textAlign: "center" }}>
+      <div>
+        <h1 style={{ fontSize: 32, fontWeight: 700, margin: "0 0 8px", color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif", letterSpacing: "-0.02em" }}>
+          Welcome to Astra
+        </h1>
+        <p style={{ fontSize: 14, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>
+          A team of AI agents working in parallel. Where are you starting from?
+        </p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, width: "100%" }}>
+        {([
+          { mode: "new" as const, emoji: "🚀", title: "New business", sub: "Starting from scratch — turn an idea into a real company" },
+          { mode: "existing" as const, emoji: "🏢", title: "Existing business", sub: "Already operating — scale, automate, and grow what's working" },
+        ]).map(opt => (
+          <div
+            key={opt.mode}
+            onClick={() => onSelect(opt.mode)}
+            style={{
+              ...CARD, display: "flex", flexDirection: "column",
+              alignItems: "flex-start", gap: 10, padding: "22px 18px",
+              textAlign: "left", transition: "border-color 0.15s, box-shadow 0.15s",
+            }}
+            onMouseEnter={e => {
+              const el = e.currentTarget as HTMLElement;
+              el.style.borderColor = T.blue;
+              el.style.boxShadow = `0 4px 20px rgba(0,46,255,0.1)`;
+            }}
+            onMouseLeave={e => {
+              const el = e.currentTarget as HTMLElement;
+              el.style.borderColor = T.border;
+              el.style.boxShadow = T.shadow;
+            }}
+          >
+            <span style={{ fontSize: 30 }}>{opt.emoji}</span>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>
+                {opt.title}
+              </div>
+              <div style={{ fontSize: 12, color: T.textMuted, marginTop: 4, lineHeight: 1.5 }}>
+                {opt.sub}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Existing biz: step 0 — Business profile ───────────────────────────────────
+
+const INDUSTRIES = [
+  { id: "saas", label: "Tech / SaaS", icon: "⬡" },
+  { id: "ecomm", label: "E-commerce", icon: "◈" },
+  { id: "local", label: "Local Service", icon: "◉" },
+  { id: "agency", label: "Agency / Consulting", icon: "◇" },
+  { id: "food", label: "Food & Beverage", icon: "▦" },
+  { id: "retail", label: "Retail / Shop", icon: "▣" },
+  { id: "health", label: "Health & Wellness", icon: "◎" },
+  { id: "finance", label: "Finance", icon: "≡" },
+  { id: "education", label: "Education", icon: "◉" },
+  { id: "real_estate", label: "Real Estate", icon: "▲" },
+  { id: "content", label: "Media / Creator", icon: "◈" },
+  { id: "other", label: "Other", icon: "◇" },
+];
+
+const TEAM_SIZES = [
+  { id: "solo", label: "Solo / Just me" },
+  { id: "small", label: "2–10 people" },
+  { id: "mid", label: "11–50 people" },
+  { id: "large", label: "50+ people" },
+];
+
+const BIZ_AGE = [
+  { id: "lt1", label: "< 1 year" },
+  { id: "1to3", label: "1–3 years" },
+  { id: "3to10", label: "3–10 years" },
+  { id: "gt10", label: "10+ years" },
+];
+
+function StepExistingBiz({ name, setName, company, setCompany, industry, setIndustry, teamSize, setTeamSize, yearsInBiz, setYearsInBiz, onNext, onBack }: {
+  name: string; setName: (v: string) => void;
+  company: string; setCompany: (v: string) => void;
+  industry: string; setIndustry: (v: string) => void;
+  teamSize: string; setTeamSize: (v: string) => void;
+  yearsInBiz: string; setYearsInBiz: (v: string) => void;
+  onNext: () => void; onBack: () => void;
+}) {
+  const canAdvance = company.trim().length > 0 && industry && teamSize && yearsInBiz;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div>
+        <h2 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 6px", color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif", letterSpacing: "-0.02em" }}>
+          Tell us about your business
+        </h2>
+        <p style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>
+          Agents use this to tailor every output to your specific situation.
+        </p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={LABEL}>Your name</label>
+          <input style={INPUT} placeholder="Alex" value={name} onChange={e => setName(e.target.value)} />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={LABEL}>Business name <span style={{ color: T.red }}>*</span></label>
+          <input style={INPUT} placeholder="Acme Co." value={company} onChange={e => setCompany(e.target.value)} />
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <label style={LABEL}>Industry <span style={{ color: T.red }}>*</span></label>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 7 }}>
+          {INDUSTRIES.map(ind => (
+            <div
+              key={ind.id}
+              onClick={() => setIndustry(ind.id)}
+              style={{
+                borderRadius: 10, border: `1.5px solid ${industry === ind.id ? T.blue : T.border}`,
+                background: industry === ind.id ? T.blueTint : T.white,
+                padding: "8px 10px", cursor: "pointer",
+                transition: "border-color 0.12s, background 0.12s",
+                display: "flex", alignItems: "center", gap: 6,
+              }}
+            >
+              <span style={{ fontSize: 12, color: T.grey }}>{ind.icon}</span>
+              <span style={{ fontSize: 10.5, fontWeight: 500, color: industry === ind.id ? T.blue : T.textPrimary, fontFamily: "var(--font-geist-sans), sans-serif" }}>
+                {ind.label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={LABEL}>Team size <span style={{ color: T.red }}>*</span></label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {TEAM_SIZES.map(t => (
+              <div
+                key={t.id}
+                onClick={() => setTeamSize(t.id)}
+                style={{
+                  borderRadius: 10, border: `1.5px solid ${teamSize === t.id ? T.blue : T.border}`,
+                  background: teamSize === t.id ? T.blueTint : T.white,
+                  padding: "8px 12px", cursor: "pointer",
+                  fontSize: 12, fontWeight: 500, color: teamSize === t.id ? T.blue : T.textPrimary,
+                  fontFamily: "var(--font-geist-sans), sans-serif",
+                  transition: "border-color 0.12s, background 0.12s",
+                }}
+              >
+                {t.label}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={LABEL}>Time in business <span style={{ color: T.red }}>*</span></label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {BIZ_AGE.map(a => (
+              <div
+                key={a.id}
+                onClick={() => setYearsInBiz(a.id)}
+                style={{
+                  borderRadius: 10, border: `1.5px solid ${yearsInBiz === a.id ? T.blue : T.border}`,
+                  background: yearsInBiz === a.id ? T.blueTint : T.white,
+                  padding: "8px 12px", cursor: "pointer",
+                  fontSize: 12, fontWeight: 500, color: yearsInBiz === a.id ? T.blue : T.textPrimary,
+                  fontFamily: "var(--font-geist-sans), sans-serif",
+                  transition: "border-color 0.12s, background 0.12s",
+                }}
+              >
+                {a.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <button style={BTN_GHOST} onClick={onBack}>← Back</button>
+        <button style={{ ...BTN_PRIMARY, opacity: canAdvance ? 1 : 0.4 }} onClick={onNext} disabled={!canAdvance}>
+          Continue →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Existing biz: step 1 — Priority & first goal ──────────────────────────────
+
+const PRIORITIES = [
+  { id: "customers", icon: "🎯", label: "Get more customers", desc: "Fill the pipeline, grow leads, drive conversions", stack: "sales" },
+  { id: "scale", icon: "📈", label: "Scale sales", desc: "Build a repeatable sales system and hit revenue targets", stack: "sales" },
+  { id: "brand", icon: "📣", label: "Build brand presence", desc: "Create content, grow social, run campaigns", stack: "marketing" },
+  { id: "ops", icon: "⚙️", label: "Automate operations", desc: "Streamline workflows, cut admin work, save time", stack: "founder_ops" },
+  { id: "support", icon: "🤝", label: "Improve customer support", desc: "Faster responses, better retention, happier customers", stack: "support" },
+  { id: "product", icon: "🚀", label: "Launch something new", desc: "New product, service line, or market expansion", stack: "product" },
+];
+
+function StepGoalPicker({ priority, setPriority, goal, setGoal, company, onNext, onBack }: {
+  priority: string; setPriority: (v: string) => void;
+  goal: string; setGoal: (v: string) => void;
+  company: string; onNext: () => void; onBack: () => void;
+}) {
+  const selected = PRIORITIES.find(p => p.id === priority);
+  const canAdvance = priority && goal.trim().length > 8;
+  const placeholder =
+    priority === "customers" ? `e.g. Build an outbound email sequence targeting ${company || "our ideal customers"} — I want 50 new leads per week.` :
+    priority === "brand" ? `e.g. Create a 30-day content calendar for ${company || "our brand"} across Instagram and LinkedIn.` :
+    priority === "ops" ? `e.g. Automate our client onboarding — it currently takes 2 hours of manual work per new client.` :
+    priority === "scale" ? `e.g. Build a sales playbook and CRM pipeline for ${company || "our sales team"}.` :
+    priority === "support" ? `e.g. Set up a help-desk system and first-response templates for ${company || "our customers"}.` :
+    priority === "product" ? `e.g. Launch a ${company ? company + " " : ""}loyalty subscription tier — I want it live in 60 days.` :
+    `Tell us what you want Astra to do for ${company || "your business"} first.`;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div>
+        <h2 style={{ fontSize: 24, fontWeight: 700, margin: "0 0 6px", color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif", letterSpacing: "-0.02em" }}>
+          What's your main priority?
+        </h2>
+        <p style={{ fontSize: 13, color: T.textMuted, margin: 0, lineHeight: 1.6 }}>
+          Agents build everything around this — you can adjust anytime.
+        </p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        {PRIORITIES.map(p => (
+          <div
+            key={p.id}
+            onClick={() => setPriority(p.id)}
+            style={{
+              borderRadius: 12, border: `1.5px solid ${priority === p.id ? T.blue : T.border}`,
+              background: priority === p.id ? T.blueTint : T.white,
+              padding: "12px 14px", cursor: "pointer",
+              transition: "border-color 0.12s, background 0.12s",
+              boxShadow: T.shadow,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 16 }}>{p.icon}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: priority === p.id ? T.blue : T.textPrimary, fontFamily: "var(--font-geist-sans), sans-serif" }}>
+                {p.label}
+              </span>
+            </div>
+            <p style={{ fontSize: 10, color: T.textMuted, margin: 0, lineHeight: 1.4, paddingLeft: 24 }}>
+              {p.desc}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {selected && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={LABEL}>
+            What specifically do you want Astra to tackle first? <span style={{ color: T.red }}>*</span>
+          </label>
+          <textarea
+            style={{ ...INPUT, minHeight: 88, resize: "vertical", lineHeight: 1.6 }}
+            placeholder={placeholder}
+            value={goal}
+            onChange={e => setGoal(e.target.value)}
+          />
+          <span style={{ fontSize: 11, color: T.textMuted }}>Be specific — agents use this as their first objective.</span>
+        </div>
+      )}
+
+      {selected && (
+        <div style={{ padding: "10px 14px", background: T.blueTint, border: `1px solid ${T.blueMid}`, borderRadius: 12, fontSize: 12, color: T.textSecondary }}>
+          Recommended stack: <span style={{ color: T.blue, fontWeight: 600 }}>
+            {FALLBACK_STACKS.find(s => s.stack_id === selected.stack)?.name ?? selected.stack}
+          </span>
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <button style={BTN_GHOST} onClick={onBack}>← Back</button>
+        <button style={{ ...BTN_PRIMARY, opacity: canAdvance ? 1 : 0.4 }} onClick={onNext} disabled={!canAdvance}>
+          Continue →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Step 4: Done ──────────────────────────────────────────────────────────────
 
 function StepDone({ name, company, stackName, onLaunch }: {
@@ -1116,7 +1408,11 @@ export default function OnboardingWizard() {
   const founderId = userId === "anon" ? "founder_001" : userId;
   const userEmail = user.email ?? "";
 
+  // "": show mode select; "new": startup flow; "existing": business owner flow
+  const [mode, setMode] = useState<"" | "new" | "existing">("");
   const [step, setStep] = useState(0);
+
+  // Shared fields
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
   const [goal, setGoal] = useState("");
@@ -1130,9 +1426,15 @@ export default function OnboardingWizard() {
   const [readiness, setReadiness] = useState<StackReadiness | null>(null);
   const [quizContext, setQuizContext] = useState("");
 
+  // Existing-biz-only fields
+  const [industry, setIndustry] = useState("");
+  const [teamSize, setTeamSize] = useState("");
+  const [yearsInBiz, setYearsInBiz] = useState("");
+  const [bizPriority, setBizPriority] = useState("");
+
   function onQuizComplete(r: QuizResult) {
     setQuizContext(r.contextBlock);
-    setManualOverride(true);            // quiz pick beats goal-text recommendation
+    setManualOverride(true);
     if (r.stackId) setSelectedStackId(r.stackId);
     setStep(2);
   }
@@ -1145,6 +1447,7 @@ export default function OnboardingWizard() {
   useEffect(() => { getStacks().then(s => setStacks(s.length > 0 ? s : FALLBACK_STACKS)).catch(() => setStacks(FALLBACK_STACKS)); }, []);
 
   useEffect(() => {
+    if (mode !== "new") return;
     if (goal.trim().length < 16) { setRecommendation(null); return; }
     const timer = window.setTimeout(() => {
       recommendStack(goal).then(r => {
@@ -1153,7 +1456,7 @@ export default function OnboardingWizard() {
       }).catch(() => setRecommendation(null));
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [goal, manualOverride]);
+  }, [goal, manualOverride, mode]);
 
   useEffect(() => {
     if (selectedStackId === "custom") { setReadiness(null); return; }
@@ -1165,16 +1468,11 @@ export default function OnboardingWizard() {
 
   const [launching, setLaunching] = useState(false);
 
-  // localStorage may be full (quota exceeded). A thrown setItem must never block
-  // navigation, AND the onboarding-done flag MUST persist — AppHome gates the whole
-  // app on it, so if it doesn't save the user is stuck on the welcome screen. Try
-  // increasingly aggressive eviction until the (tiny) write succeeds.
   function lsSet(key: string, val: string) {
     try { localStorage.setItem(key, val); return; } catch { /* full */ }
     for (const k of ["astra_sessions", "astra_workspaces", "astra_events", "astra_chapters"]) {
       try { localStorage.removeItem(k); localStorage.setItem(key, val); return; } catch { /* keep evicting */ }
     }
-    // Last resort: wipe everything so the critical flag lands (loses local history).
     try { localStorage.clear(); localStorage.setItem(key, val); } catch { /* localStorage unavailable */ }
   }
 
@@ -1195,16 +1493,34 @@ export default function OnboardingWizard() {
 
     const g = goal.trim();
     if (g) {
-      const nm = (company.trim() || name.trim());
+      const nm = company.trim() || name.trim();
       const stack = selectedStackId || "idea_to_revenue";
-      const base = nm ? `Company/project name: ${nm}\n\n${g}` : g;
-      const instruction = quizContext ? `${quizContext}\n\n---\n${base}` : base;
-      const constraints = (selectedStackId === "custom" && customAgents.length > 0)
+      let instruction: string;
+
+      if (mode === "existing") {
+        const industryLabel = INDUSTRIES.find(i => i.id === industry)?.label ?? industry;
+        const teamLabel = TEAM_SIZES.find(t => t.id === teamSize)?.label ?? teamSize;
+        const ageLabel = BIZ_AGE.find(a => a.id === yearsInBiz)?.label ?? yearsInBiz;
+        const priorityLabel = PRIORITIES.find(p => p.id === bizPriority)?.label ?? bizPriority;
+        const ctx = [
+          `[Existing business — context for Astra agents]`,
+          nm ? `Company: ${nm}` : null,
+          industry ? `Industry: ${industryLabel}` : null,
+          teamSize ? `Team size: ${teamLabel}` : null,
+          yearsInBiz ? `In business: ${ageLabel}` : null,
+          bizPriority ? `Priority focus: ${priorityLabel}` : null,
+        ].filter(Boolean).join("\n");
+        instruction = `${ctx}\n\n---\n${g}`;
+      } else {
+        const base = nm ? `Company/project name: ${nm}\n\n${g}` : g;
+        instruction = quizContext ? `${quizContext}\n\n---\n${base}` : base;
+      }
+
+      const constraints = selectedStackId === "custom" && customAgents.length > 0
         ? { agents: customAgents } : {};
       submitGoal(founderId, instruction, constraints, stack).catch(() => {});
     }
 
-    // Set localStorage flag so PostOnboardingScreen fires reliably on next render.
     lsSet("astra_show_welcome", "1");
     router.replace(`/?welcome=1&name=${encodeURIComponent(name.trim())}`);
   }
@@ -1213,6 +1529,13 @@ export default function OnboardingWizard() {
     lsSet("astra_onboarding_done", "1");
     router.push("/");
   }
+
+  // Dot counts per mode and step
+  const isCustom = selectedStackId === "custom";
+  const dotStep = mode === "new"
+    ? (isCustom ? step : step >= 4 ? step - 1 : step)
+    : step; // existing: 0=profile,1=priority,2=stack,(3=custom),4=connect,5=done
+  const dotTotal = isCustom ? 6 : 5;
 
   return (
     <>
@@ -1235,10 +1558,7 @@ export default function OnboardingWizard() {
           WebkitMask: "url('/logo.png') center/contain no-repeat",
           mask: "url('/logo.png') center/contain no-repeat",
         }} />
-        <span style={{
-          fontSize: 13, letterSpacing: "0.18em", textTransform: "uppercase",
-          color: T.textPrimary, fontWeight: 700,
-        }}>Astra</span>
+        <span style={{ fontSize: 13, letterSpacing: "0.18em", textTransform: "uppercase", color: T.textPrimary, fontWeight: 700 }}>Astra</span>
       </div>
 
       {/* Wizard card */}
@@ -1251,65 +1571,118 @@ export default function OnboardingWizard() {
         boxShadow: T.shadowMd,
         padding: "36px 40px",
       }}>
-        <StepDots
-          step={selectedStackId === "custom" ? step : (step >= 4 ? step - 1 : step)}
-          total={selectedStackId === "custom" ? 6 : 5}
-        />
-
-        {step === 0 && (
-          <StepWelcome
-            name={name} setName={setName}
-            company={company} setCompany={setCompany}
-            goal={goal} setGoal={setGoal}
-            onNext={() => setStep(1)}
-          />
+        {/* Mode select — no step dots */}
+        {mode === "" && (
+          <StepModeSelect onSelect={m => { setMode(m); setStep(0); }} />
         )}
 
-        {step === 1 && (
-          <StepQuiz
-            onComplete={onQuizComplete}
-            onBack={() => setStep(0)}
-            onSkip={() => setStep(2)}
-          />
+        {/* ── New business path ─────────────────────────────────────────── */}
+        {mode === "new" && (
+          <>
+            <StepDots step={dotStep} total={dotTotal} />
+
+            {step === 0 && (
+              <StepWelcome
+                name={name} setName={setName}
+                company={company} setCompany={setCompany}
+                goal={goal} setGoal={setGoal}
+                onNext={() => setStep(1)}
+              />
+            )}
+            {step === 1 && (
+              <StepQuiz onComplete={onQuizComplete} onBack={() => setStep(0)} onSkip={() => setStep(2)} />
+            )}
+            {step === 2 && (
+              <StepChooseStack
+                stacks={stacks} selectedStackId={selectedStackId}
+                onSelect={id => { setManualOverride(true); setSelectedStackId(id); }}
+                recommendation={recommendation} onBack={() => setStep(1)}
+                onNext={() => setStep(isCustom ? 3 : 4)}
+              />
+            )}
+            {step === 3 && isCustom && (
+              <StepCustomStack
+                selected={customAgents} onToggle={toggleCustomAgent}
+                onBack={() => setStep(2)} onNext={() => setStep(4)}
+                stackName={customStackName} setStackName={setCustomStackName}
+              />
+            )}
+            {step === 4 && (
+              <StepConnectIntegrations
+                stackName={stackName} readiness={readiness}
+                founderId={founderId} userEmail={userEmail}
+                onBack={() => setStep(isCustom ? 3 : 2)} onNext={() => setStep(5)}
+              />
+            )}
+            {step === 5 && (
+              <StepDone name={name} company={company} stackName={stackName} onLaunch={handleLaunch} />
+            )}
+          </>
         )}
 
-        {step === 2 && (
-          <StepChooseStack
-            stacks={stacks} selectedStackId={selectedStackId}
-            onSelect={id => { setManualOverride(true); setSelectedStackId(id); }}
-            recommendation={recommendation} onBack={() => setStep(1)}
-            onNext={() => setStep(selectedStackId === "custom" ? 3 : 4)}
-          />
-        )}
+        {/* ── Existing business path ────────────────────────────────────── */}
+        {mode === "existing" && (
+          <>
+            <StepDots step={dotStep} total={dotTotal} />
 
-        {step === 3 && selectedStackId === "custom" && (
-          <StepCustomStack
-            selected={customAgents} onToggle={toggleCustomAgent}
-            onBack={() => setStep(2)} onNext={() => setStep(4)}
-            stackName={customStackName} setStackName={setCustomStackName}
-          />
-        )}
-
-        {step === 4 && (
-          <StepConnectIntegrations
-            stackName={stackName} readiness={readiness}
-            founderId={founderId} userEmail={userEmail}
-            onBack={() => setStep(selectedStackId === "custom" ? 3 : 2)} onNext={() => setStep(5)}
-          />
-        )}
-
-        {step === 5 && (
-          <StepDone name={name} company={company} stackName={stackName} onLaunch={handleLaunch} />
+            {step === 0 && (
+              <StepExistingBiz
+                name={name} setName={setName}
+                company={company} setCompany={setCompany}
+                industry={industry} setIndustry={setIndustry}
+                teamSize={teamSize} setTeamSize={setTeamSize}
+                yearsInBiz={yearsInBiz} setYearsInBiz={setYearsInBiz}
+                onBack={() => setMode("")}
+                onNext={() => setStep(1)}
+              />
+            )}
+            {step === 1 && (
+              <StepGoalPicker
+                priority={bizPriority} setPriority={setBizPriority}
+                goal={goal} setGoal={setGoal}
+                company={company}
+                onBack={() => setStep(0)}
+                onNext={() => {
+                  const p = PRIORITIES.find(pr => pr.id === bizPriority);
+                  if (p && !manualOverride) setSelectedStackId(p.stack);
+                  setStep(2);
+                }}
+              />
+            )}
+            {step === 2 && (
+              <StepChooseStack
+                stacks={stacks} selectedStackId={selectedStackId}
+                onSelect={id => { setManualOverride(true); setSelectedStackId(id); }}
+                recommendation={null}
+                onBack={() => setStep(1)}
+                onNext={() => setStep(isCustom ? 3 : 4)}
+              />
+            )}
+            {step === 3 && isCustom && (
+              <StepCustomStack
+                selected={customAgents} onToggle={toggleCustomAgent}
+                onBack={() => setStep(2)} onNext={() => setStep(4)}
+                stackName={customStackName} setStackName={setCustomStackName}
+              />
+            )}
+            {step === 4 && (
+              <StepConnectIntegrations
+                stackName={stackName} readiness={readiness}
+                founderId={founderId} userEmail={userEmail}
+                onBack={() => setStep(isCustom ? 3 : 2)} onNext={() => setStep(5)}
+              />
+            )}
+            {step === 5 && (
+              <StepDone name={name} company={company} stackName={stackName} onLaunch={handleLaunch} />
+            )}
+          </>
         )}
 
         {/* Dev skip */}
         <div style={{ marginTop: 24, textAlign: "center" }}>
           <button
             onClick={handleSkip}
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              fontSize: 11, color: T.textMuted, textDecoration: "underline", opacity: 0.5,
-            }}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: T.textMuted, textDecoration: "underline", opacity: 0.5 }}
           >
             Skip onboarding (dev)
           </button>
