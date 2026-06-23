@@ -255,7 +255,12 @@ def reconcile_operating_sessions(founder_id: str, company_id: str | None = None)
     """Flip operating-run records stuck at "running" to a terminal state when the
     underlying session is no longer running (a backend restart killed the run
     mid-dispatch before update_operating_session fired). Returns count fixed."""
+    import calendar as _cal
+    import os as _os
+    import time as _time
     from backend.core.session_store import get_session_meta
+    stale_seconds = int(_os.environ.get("ASTRA_RUN_STALE_SECONDS", "14400"))
+    now = _time.time()
     with _lock:
         goal = _read(founder_id, company_id)
         if goal is None:
@@ -270,6 +275,21 @@ def reconcile_operating_sessions(founder_id: str, company_id: str | None = None)
                 rec["status"] = "done" if st == "done" else "error"
                 rec["updated_at"] = _now_iso()
                 fixed += 1
+            elif st == "running":
+                # Session index also shows "running" — check if it's a stale zombie.
+                # has_active_run() already ignores sessions older than stale_seconds, so
+                # if the session index says "running" but the session is past the stale
+                # window, the scheduler will dispatch a new run while this record stays
+                # "running". Flip it to "error" so the scheduler's done-check works correctly.
+                ts = meta.get("created_at") or rec.get("started_at") or ""
+                try:
+                    epoch = _cal.timegm(_time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ"))
+                except Exception:
+                    continue
+                if (now - epoch) >= stale_seconds:
+                    rec["status"] = "error"
+                    rec["updated_at"] = _now_iso()
+                    fixed += 1
         if fixed:
             _save(goal)
         return fixed

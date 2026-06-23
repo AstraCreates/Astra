@@ -168,10 +168,25 @@ export default function GoalsView() {
     return () => clearInterval(t);
   }, [load]);
 
-  const tops = (sessions ?? []).filter(s => !s.parent_session_id);
+  const allSessions = sessions ?? [];
+  const statusById = new Map(allSessions.map(s => [s.session_id, s.status]));
+
+  const isActive = (st: string) => st === "running" || st === "stalled";
+
+  // Promote a sub-run to top-level when it's active but its parent is done.
+  // Without this, running operating sessions are hidden inside a "Completed" parent card.
+  const isPromoted = (s: SessionIndexEntry): boolean => {
+    if (!s.parent_session_id) return false;
+    return isActive(s.status) && !isActive(statusById.get(s.parent_session_id) ?? "");
+  };
+
+  const tops = allSessions.filter(s => !s.parent_session_id || isPromoted(s));
+
+  // Only nest children whose parent is itself active (running/stalled).
+  // Done sub-runs under done parents remain nested; active sub-runs are promoted above.
   const childMap = new Map<string, SessionIndexEntry[]>();
-  for (const s of (sessions ?? [])) {
-    if (s.parent_session_id) {
+  for (const s of allSessions) {
+    if (s.parent_session_id && !isPromoted(s)) {
       const arr = childMap.get(s.parent_session_id) ?? [];
       arr.push(s);
       childMap.set(s.parent_session_id, arr);
@@ -180,7 +195,7 @@ export default function GoalsView() {
 
   const running = tops.filter(s => s.status === "running");
   const stalled = tops.filter(s => s.status === "stalled");
-  const completed = tops.filter(s => s.status !== "running" && s.status !== "stalled");
+  const completed = tops.filter(s => !isActive(s.status));
 
   const activeCount = running.length + stalled.length;
 

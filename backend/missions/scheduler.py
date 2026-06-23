@@ -137,10 +137,11 @@ async def _scheduler_tick() -> int:
         # Only recover CRASHED runs. If the last session for this goal completed normally
         # (status="done"), the agents already ran and couldn't deliver required evidence
         # (e.g. signup_url, payment_id). Re-dispatching produces identical failed runs.
-        recent_sessions = sorted(
-            [r for r in (goal.get("operating_sessions") or []) if r.get("goal_id") == cg.get("id")],
-            key=lambda r: r.get("updated_at") or r.get("created_at") or "",
-        )
+        # operating_sessions is append-only → last element is most recent (no sort needed).
+        # Sorting by updated_at/created_at is wrong: new "running" sessions only have
+        # "started_at", so they'd sort to the front and [-1] would pick an old "done"
+        # session, causing the done-check to falsely skip re-dispatch.
+        recent_sessions = [r for r in (goal.get("operating_sessions") or []) if r.get("goal_id") == cg.get("id")]
         if recent_sessions and recent_sessions[-1].get("status") == "done":
             logger.info(
                 "missions_scheduler: goal %s last session completed normally — "
