@@ -6,7 +6,7 @@ import { listSessions, deleteSessionRemote, killSession, getSessionDigest, AGENT
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import AstraGradient from "./AstraGradient";
-import RunGoalsPanel from "./RunGoalsPanel";
+import GoalPanel from "./GoalPanel";
 import LiveStatusPanel from "./LiveStatusPanel";
 import DashboardCanvas from "./DashboardCanvas";
 
@@ -236,7 +236,7 @@ export default function DashboardView() {
             <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fd)", fontFamily: "var(--font-code)", marginBottom: 12 }}>
               Goals
             </div>
-            <RunGoalsPanel sessions={sessions} />
+            <GoalPanel defaultShowDone />
           </div>
 
           {/* ── Right: Sessions ── */}
