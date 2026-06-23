@@ -30,53 +30,6 @@ interface Props {
   sessions: SessionIndexEntry[] | null;
 }
 
-function GoalRow({ session, last }: { session: SessionIndexEntry; last: boolean }) {
-  const running = session.status === "running";
-  const done = session.status === "done";
-  const failed = session.status === "error" || session.status === "killed";
-  const faded = done || failed;
-
-  const dot = running ? "#002EFF"
-    : session.status === "stalled" ? "#d97706"
-    : done    ? "#16a34a"
-    : failed  ? "#dc2626"
-    : "#a3a3a3";
-
-  return (
-    <div
-      onClick={() => window.location.assign(`/s/${session.session_id}`)}
-      style={{
-        display: "flex", alignItems: "flex-start", gap: 10,
-        padding: "8px 14px",
-        borderBottom: last ? "none" : "1px solid var(--bd)",
-        cursor: "pointer", opacity: faded ? 0.55 : 1,
-        transition: "background 0.1s",
-      }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.03)"; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-    >
-      <span style={{
-        marginTop: 5, width: 7, height: 7, borderRadius: "50%",
-        flexShrink: 0, background: dot,
-        ...(running ? { animation: "rg-pulse 1.5s ease-in-out infinite" } : {}),
-      }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 12, fontWeight: 500, color: "var(--fg)", lineHeight: 1.4,
-          overflow: "hidden", display: "-webkit-box",
-          WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
-          textDecoration: faded ? "line-through" : "none",
-        }}>
-          {extractGoalTitle(session.goal || "Untitled run")}
-        </div>
-        <div style={{ fontSize: 10, color: "#a3a3a3", fontFamily: "var(--font-code), monospace", marginTop: 2 }}>
-          {ago(session.created_at)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function RunGoalsPanel({ sessions }: Props) {
   if (sessions === null) {
     return <div style={{ fontSize: 11, color: "var(--fm)", padding: "6px 2px" }}>Loading…</div>;
@@ -92,27 +45,23 @@ export default function RunGoalsPanel({ sessions }: Props) {
     );
   }
 
-  const runningCount  = tops.filter(s => s.status === "running").length;
-  const stalledCount  = tops.filter(s => s.status === "stalled").length;
-  const doneCount     = tops.filter(s => s.status === "done").length;
-  const failedCount   = tops.filter(s => s.status === "error" || s.status === "killed").length;
-  const total         = tops.length;
-  const hasActive     = runningCount + stalledCount > 0;
+  const runningCount = tops.filter(s => s.status === "running").length;
+  const stalledCount = tops.filter(s => s.status === "stalled").length;
+  const doneCount    = tops.filter(s => s.status === "done").length;
+  const failedCount  = tops.filter(s => s.status === "error" || s.status === "killed").length;
+  const total        = tops.length;
+  const allDone      = doneCount === total;
+  const hasActive    = runningCount + stalledCount > 0;
 
-  // Arc ring math
-  const r    = 30;
-  const circ = 2 * Math.PI * r;
-  const offset = total > 0 ? circ * (1 - doneCount / total) : circ;
+  // Arc ring — identical math to original GoalPanel
+  const r      = 30;
+  const circ   = 2 * Math.PI * r;
+  const offset = circ * (1 - doneCount / total);
 
-  // Status label
-  const statusLabel = runningCount > 0  ? "◈ Operating"
-    : stalledCount > 0 ? "⚠ Needs attention"
-    : doneCount === total ? "◎ All complete"
-    : "◌ No active runs";
-
-  const statusColor = runningCount > 0 ? "#002EFF"
-    : stalledCount > 0 ? "#d97706"
-    : "#16a34a";
+  const statusLabel = runningCount > 0 ? "◈ Operating"
+    : stalledCount > 0                 ? "⚠ Needs attention"
+    : allDone                          ? "◎ All complete"
+    :                                    "◌ No active runs";
 
   const rows = [
     ...tops.filter(s => s.status === "running" || s.status === "stalled"),
@@ -120,71 +69,44 @@ export default function RunGoalsPanel({ sessions }: Props) {
   ];
 
   return (
-    <div style={{ border: "1px solid var(--bd2)", borderRadius: 10, background: "var(--surface)", overflow: "hidden" }}>
+    <div style={{ border: "1px solid var(--bd2)", background: "var(--surface)", borderRadius: 10, overflow: "hidden" }}>
       <style>{`@keyframes rg-pulse { 0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.45;transform:scale(0.75);} }`}</style>
 
-      {/* Header — text LEFT, ring RIGHT (same layout as original GoalPanel) */}
+      {/* Header — copied exactly from original GoalPanel active-goal block */}
       <div style={{ padding: "14px 16px 12px", borderBottom: rows.length ? "1px solid var(--bd)" : "none" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
 
-          {/* LEFT: labels + stats */}
+          {/* Left: label + summary + counts */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            {/* Status label */}
             <div style={{
               fontSize: 9, fontWeight: 700, letterSpacing: ".08em",
-              textTransform: "uppercase",
-              fontFamily: "var(--font-code), monospace",
-              color: statusColor, marginBottom: 6,
+              textTransform: "uppercase", fontFamily: "var(--font-code)",
+              marginBottom: 6, color: "var(--blue)",
             }}>
               {statusLabel}
             </div>
-
-            {/* Title */}
-            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--fg)", lineHeight: 1.3, marginBottom: 8 }}>
-              {doneCount === total
-                ? "All goals complete"
-                : doneCount === 0 && !hasActive
-                ? "No runs completed yet"
-                : hasActive
-                ? `${runningCount + stalledCount} goal${runningCount + stalledCount > 1 ? "s" : ""} in progress`
-                : `${doneCount} of ${total} complete`}
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--fg)", lineHeight: 1.3 }}>
+              {allDone ? "All goals complete"
+                : hasActive ? `${runningCount + stalledCount} in progress`
+                : `${doneCount} of ${total} done`}
             </div>
-
-            {/* Stat rows — code font, same style as GoalPanel */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              {runningCount > 0 && (
-                <div style={{ fontSize: 10, fontFamily: "var(--font-code), monospace", color: "#002EFF", fontWeight: 600 }}>
-                  ● {runningCount} running
-                </div>
-              )}
-              {stalledCount > 0 && (
-                <div style={{ fontSize: 10, fontFamily: "var(--font-code), monospace", color: "#d97706", fontWeight: 600 }}>
-                  ⚠ {stalledCount} stalled
-                </div>
-              )}
-              {doneCount > 0 && (
-                <div style={{ fontSize: 10, fontFamily: "var(--font-code), monospace", color: "#16a34a", fontWeight: 600 }}>
-                  ✓ {doneCount} done
-                </div>
-              )}
-              {failedCount > 0 && (
-                <div style={{ fontSize: 10, fontFamily: "var(--font-code), monospace", color: "#dc2626", fontWeight: 600 }}>
-                  ✗ {failedCount} failed
-                </div>
-              )}
-              <div style={{ fontSize: 10, fontFamily: "var(--font-code), monospace", color: "#a3a3a3" }}>
-                ◌ {total} total
-              </div>
+            {/* Counts row — same style as GoalPanel task counts */}
+            <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+              {runningCount > 0 && <span style={{ fontSize: 10, color: "var(--blue)", fontFamily: "var(--font-code)", fontWeight: 600 }}>● {runningCount} running</span>}
+              {stalledCount > 0 && <span style={{ fontSize: 10, color: "var(--amber)", fontFamily: "var(--font-code)", fontWeight: 600 }}>⚠ {stalledCount} stalled</span>}
+              {doneCount > 0    && <span style={{ fontSize: 10, color: "var(--green)", fontFamily: "var(--font-code)", fontWeight: 600 }}>✓ {doneCount} done</span>}
+              {failedCount > 0  && <span style={{ fontSize: 10, color: "var(--red)", fontFamily: "var(--font-code)", fontWeight: 600 }}>✗ {failedCount} failed</span>}
+              {!hasActive && doneCount === 0 && <span style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)" }}>◌ {total} total</span>}
             </div>
           </div>
 
-          {/* RIGHT: arc progress ring — exactly like original GoalPanel */}
+          {/* Right: arc progress ring — pixel-for-pixel match of original GoalPanel */}
           <div style={{ position: "relative", width: 76, height: 76, flexShrink: 0 }}>
             <svg width={76} height={76} viewBox="0 0 76 76" style={{ transform: "rotate(-90deg)" }}>
               <circle cx={38} cy={38} r={r} fill="none" stroke="var(--bd)" strokeWidth={5} />
               <circle
                 cx={38} cy={38} r={r} fill="none"
-                stroke="#002EFF"
+                stroke={allDone ? "var(--green)" : "var(--blue)"}
                 strokeWidth={5}
                 strokeDasharray={circ}
                 strokeDashoffset={offset}
@@ -193,12 +115,10 @@ export default function RunGoalsPanel({ sessions }: Props) {
               />
             </svg>
             <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-              <div style={{ fontSize: 22, fontWeight: 800, color: "#002EFF", fontFamily: "var(--font-code)", lineHeight: 1 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, color: allDone ? "var(--green)" : "var(--fg)", fontFamily: "var(--font-code)", lineHeight: 1 }}>
                 {doneCount}
               </div>
-              <div style={{ fontSize: 9, color: "var(--fm)", letterSpacing: ".04em" }}>
-                / {total}
-              </div>
+              <div style={{ fontSize: 9, color: "var(--fm)", letterSpacing: ".04em" }}>/ {total}</div>
             </div>
           </div>
 
@@ -206,9 +126,52 @@ export default function RunGoalsPanel({ sessions }: Props) {
       </div>
 
       {/* Goal rows */}
-      {rows.map((s, i) => (
-        <GoalRow key={s.session_id} session={s} last={i === rows.length - 1} />
-      ))}
+      {rows.map((s, i) => {
+        const running = s.status === "running";
+        const done    = s.status === "done";
+        const failed  = s.status === "error" || s.status === "killed";
+        const faded   = done || failed;
+        const dot     = running         ? "var(--blue)"
+          : s.status === "stalled"      ? "var(--amber)"
+          : done                        ? "var(--green)"
+          : failed                      ? "var(--red)"
+          : "var(--fm)";
+
+        return (
+          <div
+            key={s.session_id}
+            onClick={() => window.location.assign(`/s/${s.session_id}`)}
+            style={{
+              display: "flex", alignItems: "flex-start", gap: 10,
+              padding: "8px 14px",
+              borderBottom: i < rows.length - 1 ? "1px solid var(--bd)" : "none",
+              cursor: "pointer", opacity: faded ? 0.6 : 1,
+              transition: "background 0.1s",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--s2, rgba(0,0,0,0.03))"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+          >
+            <span style={{
+              marginTop: 5, width: 7, height: 7, borderRadius: "50%",
+              flexShrink: 0, background: dot,
+              ...(running ? { animation: "rg-pulse 1.5s ease-in-out infinite" } : {}),
+            }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: 12, color: faded ? "var(--fd)" : "var(--fg)",
+                lineHeight: 1.4, textDecoration: faded ? "line-through" : "none",
+                overflow: "hidden", display: "-webkit-box",
+                WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+              }}>
+                {extractGoalTitle(s.goal || "Untitled run")}
+              </div>
+              <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 2, fontFamily: "var(--font-code)" }}>
+                {ago(s.created_at)}
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
