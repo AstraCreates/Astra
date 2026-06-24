@@ -73,7 +73,6 @@ def generate_ai_approval_gates(
 ) -> dict[str, dict[str, str]]:
     """Return {agent_id: gate_dict} using AI, falling back to static dict on error."""
     try:
-        import openai
         from backend.config import settings
         from backend.core.key_rotator import get_openrouter_key
 
@@ -82,15 +81,8 @@ def generate_ai_approval_gates(
             logger.warning("ai_gates: no OpenRouter key — using static fallback")
             return fallback
 
-        client = openai.OpenAI(
-            base_url=settings.openrouter_base_url,
-            api_key=api_key,
-            timeout=timeout,
-            default_headers={
-                "HTTP-Referer": "https://astracreates.com",
-                "X-Title": "Astra",
-            },
-        )
+        from backend.core.llm_client import get_or_client
+        client = get_or_client(settings.openrouter_base_url, api_key)
 
         task_lines = "\n".join(
             f"- agent={t['agent']} title={t['stack_task_title']!r} "

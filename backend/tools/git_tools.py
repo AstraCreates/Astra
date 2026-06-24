@@ -3,7 +3,7 @@ Git tools for the technical agent — write files, commit, push to a GitHub repo
 run_mvp_loop is the primary entry point: iterates Claude Code until MVP is complete.
 
 Workspaces live at ~/Documents/astra-workspaces/<session_id>/<repo_name>/
-free-claude-code proxies the claude CLI to DeepInfra so no Anthropic key needed.
+free-claude-code proxies the claude CLI through OpenRouter so no Anthropic key needed.
 """
 import hashlib
 import json
@@ -14,8 +14,6 @@ import subprocess
 import threading
 import uuid
 from pathlib import Path
-
-import openai
 
 from backend.config import settings
 
@@ -30,7 +28,7 @@ logger = logging.getLogger(__name__)
 def _find_claude_bin() -> str:
     """Find openclaude binary (supports --provider flag). Falls back to claude."""
     import shutil
-    # openclaude first — it supports --provider openai for DeepInfra
+    # openclaude first — it supports --provider openai for OpenRouter
     for candidate in [
         "/opt/homebrew/bin/openclaude",
         "/usr/local/bin/openclaude",
@@ -809,11 +807,12 @@ def _pm_respond(agent_output: str, goal: str, context: str, missing: list[str]) 
     env = _make_env()
     api_key = env.get("OPENAI_API_KEY", "")
     base_url = env.get("OPENAI_BASE_URL", settings.openrouter_base_url)
-    # These review calls run against the DeepInfra endpoint, so use a model valid
+    # These review calls run against the OpenRouter endpoint, so use a model valid
     # there (planner_model_name may be an OpenRouter-only slug -> 404).
     model = getattr(settings, "mvp_build_model", "") or "xiaomi/mimo-v2.5-pro"
 
-    client = openai.OpenAI(base_url=base_url, api_key=api_key)
+    from backend.core.llm_client import get_or_client
+    client = get_or_client(base_url, api_key)
     missing_str = ", ".join(missing) if missing else "none — MVP may be complete"
     user_msg = (
         f"Goal: {goal}\n"
@@ -861,8 +860,9 @@ Respond with a JSON object:
 def _planner_review(local: str, goal: str, files: list[str]) -> dict:
     """Independent planner LLM review of the built codebase. Returns {pass, issues, fix_instructions}."""
     env = _make_env()
-    client = openai.OpenAI(base_url=env["OPENAI_BASE_URL"], api_key=env["OPENAI_API_KEY"])
-    # These review calls run against the DeepInfra endpoint, so use a model valid
+    from backend.core.llm_client import get_or_client
+    client = get_or_client(env["OPENAI_BASE_URL"], env["OPENAI_API_KEY"])
+    # These review calls run against the OpenRouter endpoint, so use a model valid
     # there (planner_model_name may be an OpenRouter-only slug -> 404).
     model = getattr(settings, "mvp_build_model", "") or "xiaomi/mimo-v2.5-pro"
 
@@ -1239,7 +1239,8 @@ def _generate_build_plan(goal: str, context: str = "", kind: str = "app", founde
     model = getattr(settings, "build_plan_model", "") or "minimax/minimax-m3"
     research = _build_plan_research(founder_id)
     try:
-        client = openai.OpenAI(base_url=env["OPENAI_BASE_URL"], api_key=env["OPENAI_API_KEY"])
+        from backend.core.llm_client import get_or_client
+        client = get_or_client(env["OPENAI_BASE_URL"], env["OPENAI_API_KEY"])
         user_msg = (
             f"PRODUCT GOAL:\n{goal}\n\n"
             + (f"RESEARCH (market / ICP / pain / competitors — base the plan on this):\n{research}\n\n" if research else "")

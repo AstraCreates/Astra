@@ -4,14 +4,16 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_key: str = ""
-    # Model that drives openclaude for technical-agent MVP builds. Must be a
-    # strong agentic/tool-use model (DeepSeek-V4-Flash chats instead of building).
-    mvp_build_model: str = "xiaomi/mimo-v2.5-pro"
+    # Model that drives openclaude for technical-agent MVP builds. Non-pro MiMo
+    # is 3× cheaper than Pro ($0.14 vs $0.435/M input) and still writes code reliably.
+    mvp_build_model: str = "xiaomi/mimo-v2.5"
     # Technical wrapper orchestrates a multi-step workflow (build → provision infra via
-    # browser → self-QA the live site → fix), so it gets the smart model for reliable
+    # browser → self-QA the live site → fix), so it gets a smart model for reliable
     # tool decisions; the heavy code generation is still done by mvp_build_model in
     # run_mvp_loop / openclaude. Few wrapper calls, so the cost impact is small.
-    technical_agent_model: str = "deepseek/deepseek-v4-pro"
+    # Flash not Pro: the wrapper loop has no prompt caching wired, Pro's $0.435/M
+    # input rate is wasteful for ~20 orchestration calls per build.
+    technical_agent_model: str = "deepseek/deepseek-v4-flash"
     # 12 was too tight: the build workflow (resolve repo → run_mvp_loop →
     # provision → QA → obsidian_log → done) plus tool-failure retries blew the
     # cap and force-synthesized BEFORE deploy/log finished. 20 matches the other
@@ -19,7 +21,7 @@ class Settings(BaseSettings):
     technical_agent_max_iterations: int = 20
     # Web agent wrapper model (drives its tool calls: repo create, run_mvp_loop).
     # Dedicated so it isn't pinned by the env-overridden or_planner_model (hy3).
-    web_agent_model: str = "xiaomi/mimo-v2.5-pro"
+    web_agent_model: str = "xiaomi/mimo-v2.5"
     mvp_max_completion_rounds: int = 1
     # Compiler-as-critic recovery: re-run `npm run build`, feed real errors to the
     # coder, re-verify — up to this many rounds before giving up.
@@ -41,28 +43,35 @@ class Settings(BaseSettings):
     openrouter_api_key_2: str = ""
     openrouter_api_key_3: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # Planner stays on Pro: the agent tool loop wires cacheable_messages, so the
+    # cheap cache-read rate ($0.0036/M) applies. Pro is smarter for tool decisions.
     or_planner_model: str = "deepseek/deepseek-v4-pro"
-    or_highoutput_model: str = "deepseek/deepseek-v4-pro"
+    # High-output → Flash: _llm.generate(), web_search, funding/kit have NO prompt
+    # caching wired, so Pro's $0.435/M full-input rate dominates. Flash is 4.4×
+    # cheaper on fresh input ($0.098/M) with near-identical output quality for
+    # docs/copy/HTML synthesis.
+    or_highoutput_model: str = "deepseek/deepseek-v4-flash"
     or_light_model: str = "xiaomi/mimo-v2.5"
-    # Tool-use model — DeepSeek V4 Flash (strong agentic/tool-calling, 1M ctx)
+    # Tool-use model — Pro: agent tool loop has caching + needs strong tool calling.
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
     tooluse_model_name: str = "deepseek/deepseek-v4-pro"
     # Planner — DeepSeek V4 Pro: $0.435/$0.87/M, cache read $0.0036/M (5x cheaper
-    # cached than V4 Flash), Intelligence Index 52, 1M ctx, strong tool calling
-    # (replaced hy3-preview, which mangled tool calls and never finished tasks).
+    # cached than V4 Flash), Intelligence Index 52, 1M ctx, strong tool calling.
+    # Used by the agent tool loop which wires cacheable_messages.
     planner_model_base_url: str = "https://openrouter.ai/api/v1"
     planner_model_api_key: str = ""
     planner_model_name: str = "deepseek/deepseek-v4-pro"
-    # Chat model — DeepSeek V4 Flash
+    # Chat model — DeepSeek V4 Flash: chat endpoint has no prompt caching; Flash
+    # is 4.4× cheaper on fresh input than Pro with equivalent chat quality.
     chat_model_base_url: str = "https://openrouter.ai/api/v1"
     chat_model_api_key: str = ""
-    chat_model_name: str = "deepseek/deepseek-v4-pro"
+    chat_model_name: str = "deepseek/deepseek-v4-flash"
     # Light model — MiMo: cheap, fast for research and short repeated tasks
     light_model_base_url: str = "https://openrouter.ai/api/v1"
     light_model_name: str = "xiaomi/mimo-v2.5"
-    # High-output model — DeepSeek V4 Flash via OpenRouter
+    # High-output model — DeepSeek V4 Flash via OpenRouter (no caching wired here)
     highoutput_model_base_url: str = "https://openrouter.ai/api/v1"
-    highoutput_model_name: str = "deepseek/deepseek-v4-pro"
+    highoutput_model_name: str = "deepseek/deepseek-v4-flash"
     vertex_project: str = ""
     vertex_location: str = "us-central1"
 
@@ -167,7 +176,6 @@ class Settings(BaseSettings):
     posthog_project_id: str = ""
     clerk_secret_key: str = ""
     clerk_webhook_secret: str = ""
-    deepinfra_api_key: str = ""
     notion_token: str = ""
     notion_operating_parent_id: str = ""
 

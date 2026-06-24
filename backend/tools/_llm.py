@@ -2,28 +2,26 @@
 Sync LLM helper for content-generation tools.
 
 Models:
-  "fast"      → DeepSeek-V4-Flash        (default, general purpose)
-  "large"     → DeepSeek-V4-Flash        (docs, copy)
-  "instruct"  → Llama-4-Scout-17B        (strict rule-following)
-  "nemotron"  → DeepSeek-V4-Flash  (HTML/design generation)
-  "image"     → FLUX-2-pro               (image generation)
+  "fast"      → MiMo-v2.5             (default, general purpose)
+  "large"     → DeepSeek V4 Flash     (docs, copy)
+  "instruct"  → DeepSeek V4 Flash     (strict rule-following)
+  "nemotron"  → DeepSeek V4 Flash     (HTML/design generation)
+  "image"     → Gemini 2.5 Flash Image (image generation via OpenRouter)
 """
+import hashlib
 import logging
 import re
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Text generation moved to OpenRouter: light=MiMo, heavy(docs/html/design)=hy3-preview.
 _FAST_MODEL = settings.or_light_model           # xiaomi/mimo-v2.5
-_LARGE_MODEL = settings.or_highoutput_model     # tencent/hy3-preview
-_INSTRUCT_MODEL = settings.or_highoutput_model  # tencent/hy3-preview
-_NEMOTRON_MODEL = settings.or_highoutput_model  # tencent/hy3-preview
+_LARGE_MODEL = settings.or_highoutput_model     # deepseek/deepseek-v4-flash
+_INSTRUCT_MODEL = settings.or_highoutput_model  # deepseek/deepseek-v4-flash
+_NEMOTRON_MODEL = settings.or_highoutput_model  # deepseek/deepseek-v4-flash
 _PROMPT_MODEL = settings.or_light_model         # xiaomi/mimo-v2.5
-# Image generation has no OpenRouter equivalent — stays on DeepInfra (FLUX).
-_IMAGE_MODEL = "black-forest-labs/FLUX-2-pro"
-_IMAGE_BASE = "https://api.deepinfra.com/v1/openai"
-_DI_BASE = settings.openrouter_base_url
+_OR_BASE = settings.openrouter_base_url
+_GEMINI_IMAGE_MODEL = "google/gemini-2.5-flash-image"
 
 
 def _provider_routing(json_mode: bool = False) -> dict:
@@ -32,20 +30,52 @@ def _provider_routing(json_mode: bool = False) -> dict:
     return {"provider": {"allow_fallbacks": True}}
 
 
-def _api_key() -> str:
+def _or_api_key() -> str:
     from backend.core.key_rotator import get_openrouter_key
     return get_openrouter_key() or settings.openrouter_api_key or settings.planner_model_api_key
 
 
+# ── Response cache ───────────────────────────────────────────────────────────────
+# Redis-backed cache for generate() calls. Identical (model, prompt, params)
+# within the TTL returns the cached response without hitting the LLM. Huge win
+# for repeated content generation (e.g. the same doc regenerated across runs).
+import os as _os
+_CACHE_TTL = int(_os.environ.get("ASTRA_LLM_CACHE_TTL", "3600"))  # 1h default
+
+
+def _cache_key(model: str, prompt: str, max_tokens: int | None, json_mode: bool, temperature: float) -> str:
+    raw = f"{model}|{prompt}|{max_tokens}|{json_mode}|{temperature}"
+    return "llm:gen:" + hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _cache_get(key: str) -> str | None:
+    try:
+        import redis
+        r = redis.from_url(settings.redis_url, decode_responses=True)
+        return r.get(key)
+    except Exception:
+        return None
+
+
+def _cache_set(key: str, value: str) -> None:
+    try:
+        import redis
+        r = redis.from_url(settings.redis_url, decode_responses=True)
+        r.setex(key, _CACHE_TTL, value)
+    except Exception:
+        pass
+
+
 def generate(prompt: str, max_tokens: int | None = None, json_mode: bool = False, model: str = "large", temperature: float = 0.7) -> str:
     """Call an LLM for content generation. Returns raw text.
-    model="fast"     → DeepSeek-V4-Flash (general)
-    model="large"    → gpt-oss-120b (high-output docs/copy)
-    model="instruct" → Qwen3-235B (strict rule-following: HTML, design constraints)
-    model="nemotron" → NVIDIA-Nemotron-3-Super-120B (HTML/design generation)
+    model="fast"     → MiMo-v2.5 (general)
+    model="large"    → DeepSeek V4 Flash (high-output docs/copy)
+    model="instruct" → DeepSeek V4 Flash (strict rule-following: HTML, design constraints)
+    model="nemotron" → DeepSeek V4 Flash (HTML/design generation)
     """
-    import openai
-    client = openai.OpenAI(base_url=_DI_BASE, api_key=_api_key())
+    from backend.core.llm_client import get_or_client
+    from backend.core.llm_cache import openrouter_extra_body
+
     if model == "large":
         selected = _LARGE_MODEL
     elif model == "instruct":
@@ -54,9 +84,16 @@ def generate(prompt: str, max_tokens: int | None = None, json_mode: bool = False
         selected = _NEMOTRON_MODEL
     else:
         selected = _FAST_MODEL
-    # json mode: our build/agent models (hy3-preview etc.) have NO OpenRouter
-    # provider that supports response_format — requesting it 404s/400s. Ask for JSON
-    # in the prompt instead; callers parse leniently.
+
+    # Response cache — skip the LLM call entirely on cache hit.
+    ckey = _cache_key(selected, prompt, max_tokens, json_mode, temperature)
+    cached = _cache_get(ckey)
+    if cached is not None:
+        return cached
+
+    # json mode: our build/agent models have NO OpenRouter provider that supports
+    # response_format — requesting it 404s/400s. Ask for JSON in the prompt instead;
+    # callers parse leniently.
     content_prompt = prompt
     if json_mode:
         content_prompt = prompt + "\n\nRespond with ONLY a single valid JSON object. No prose, no markdown fences."
@@ -71,17 +108,19 @@ def generate(prompt: str, max_tokens: int | None = None, json_mode: bool = False
     # Without reasoning:{effort:none}, hy3-preview/mimo spend the entire max_tokens budget
     # on the <think> channel and return EMPTY content — which silently broke plan_next_goal
     # (no next goal proposed) and every other generate()-based content tool.
-    from backend.core.llm_cache import openrouter_extra_body
     kwargs["extra_body"] = openrouter_extra_body(selected) or _provider_routing(json_mode)
+    client = get_or_client(_OR_BASE, _or_api_key())
     resp = client.chat.completions.create(**kwargs, timeout=300.0)
     if not getattr(resp, "choices", None):
         return ""
     content = resp.choices[0].message.content or ""
-    return re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+    if content:
+        _cache_set(ckey, content)
+    return content
 
 
-import os as _os
-_IMAGE_COST = 0.03          # FLUX-2-pro cost per image in USD
+_IMAGE_COST = 0.03          # Gemini image cost per generation in USD (approx)
 # Per founder per month. Override with ASTRA_IMAGE_MONTHLY_BUDGET; set to 0 (or
 # negative) for UNLIMITED — useful during development.
 _IMAGE_MONTHLY_BUDGET = float(_os.environ.get("ASTRA_IMAGE_MONTHLY_BUDGET", "1.50"))
@@ -151,25 +190,24 @@ def _save_image_to_vault(url: str | None, b64: str | None, prompt: str, founder_
 
 
 def generate_image(description: str, width: int = 1024, height: int = 1024, founder_id: str = "", session_id: str = "") -> dict:
-    """Generate an ad image using FLUX-2-pro via OpenAI-compatible images/generations endpoint.
-    Uses gpt-oss-120b to write an optimized prompt, then calls FLUX. Returns b64_json.
+    """Generate an ad image using Gemini 2.5 Flash Image via OpenRouter.
+    Uses MiMo to write an optimized prompt, then calls Gemini. Returns b64_json.
     """
-    import openai
-
     # Check monthly budget
     if founder_id:
         allowed, remaining = _check_image_budget(founder_id)
         if not allowed:
-            return {"error": f"Monthly image budget exhausted (${_IMAGE_MONTHLY_BUDGET:.2f}/month). Resets next month.", "model": _IMAGE_MODEL}
+            return {"error": f"Monthly image budget exhausted (${_IMAGE_MONTHLY_BUDGET:.2f}/month). Resets next month.", "model": _GEMINI_IMAGE_MODEL}
 
-    # Step 1: Write an optimized FLUX prompt from the concept description
-    client = openai.OpenAI(base_url=_DI_BASE, api_key=_api_key())
+    # Step 1: Write an optimized image prompt from the concept description
+    from backend.core.llm_client import get_or_client
+    client = get_or_client(_OR_BASE, _or_api_key())
     prompt_resp = client.chat.completions.create(
         model=_PROMPT_MODEL,
         messages=[
             {"role": "system", "content": (
-                "You are a world-class art director who writes FLUX diffusion model prompts for premium brand advertising.\n\n"
-                "FLUX PROMPT RULES — follow exactly:\n"
+                "You are a world-class art director who writes diffusion model prompts for premium brand advertising.\n\n"
+                "PROMPT RULES — follow exactly:\n"
                 "1. 50-70 words maximum. Every word must earn its place.\n"
                 "2. Start with the SUBJECT: one specific person or object, described precisely (age, clothing, posture, expression).\n"
                 "3. SETTING: one concrete environment (not 'studio' — say 'sunlit Copenhagen coffee shop', 'Tokyo rooftop at dusk').\n"
@@ -187,7 +225,7 @@ def generate_image(description: str, width: int = 1024, height: int = 1024, foun
             )},
             {"role": "user", "content": (
                 f"Brand/product concept:\n{description}\n\n"
-                "Write the FLUX prompt now. Be specific and cinematic."
+                "Write the image prompt now. Be specific and cinematic."
             )},
         ],
         max_tokens=120,
@@ -200,58 +238,33 @@ def generate_image(description: str, width: int = 1024, height: int = 1024, foun
     import re as _re
     image_prompt = _re.sub(r'^["\'`]|["\'`]$', '', image_prompt).strip()
     image_prompt = _re.sub(r'^(prompt|image|here is|here\'s)[:\s]+', '', image_prompt, flags=_re.IGNORECASE).strip()
-    logger.info("FLUX prompt: %s", image_prompt)
+    logger.info("Image prompt: %s", image_prompt)
 
-    # Step 2: FLUX generates image via OpenAI-compatible images/generations endpoint.
-    # OpenRouter has no images endpoint — this call stays on DeepInfra.
-    try:
-        _img_key = settings.deepinfra_api_key or settings.agent_model_api_key
-        img_client = openai.OpenAI(base_url=_IMAGE_BASE, api_key=_img_key)
-        size = f"{width}x{height}"
-        img_resp = img_client.images.generate(
-            model=_IMAGE_MODEL,
-            prompt=image_prompt,
-            size=size,
-            n=1,
-            response_format="b64_json",
-            timeout=120.0,
-        )
-        b64 = img_resp.data[0].b64_json if img_resp.data else None
-        local_path = None
-        if founder_id and b64:
-            _record_image_spend(founder_id)
-            if session_id:
-                local_path = _save_image_to_vault(None, b64, image_prompt, founder_id, session_id)
-        return {
-            "prompt": image_prompt,
-            "url": None,
-            "base64": b64,
-            "model": _IMAGE_MODEL,
-            "width": width,
-            "height": height,
-            "local_path": local_path,
-        }
-    except Exception as e:
-        return {"prompt": image_prompt, "error": str(e), "model": _IMAGE_MODEL}
-
-
-_GEMINI_IMAGE_MODEL = "google/gemini-2.5-flash-image"
-_OR_BASE = "https://openrouter.ai/api/v1"
-
-
-def _or_api_key() -> str:
-    return settings.openrouter_api_key or settings.agent_model_api_key
+    # Step 2: Gemini generates image via OpenRouter
+    result = _gemini_image(image_prompt, founder_id, session_id)
+    if "error" in result:
+        return {"prompt": image_prompt, "error": result["error"], "model": _GEMINI_IMAGE_MODEL}
+    return {
+        "prompt": image_prompt,
+        "url": None,
+        "base64": result["base64"],
+        "model": _GEMINI_IMAGE_MODEL,
+        "width": width,
+        "height": height,
+        "local_path": result.get("local_path"),
+    }
 
 
 def _gemini_image(prompt: str, founder_id: str = "", session_id: str = "") -> dict:
     """Call Gemini image model via OpenRouter. Returns {base64, prompt} or {error}."""
-    import openai, re as _re
+    import re as _re
     if founder_id:
         allowed, _ = _check_image_budget(founder_id)
         if not allowed:
             return {"error": "Monthly image budget exhausted."}
     try:
-        client = openai.OpenAI(base_url=_OR_BASE, api_key=_or_api_key())
+        from backend.core.llm_client import get_or_client
+        client = get_or_client(_OR_BASE, _or_api_key())
         resp = client.chat.completions.create(
             model=_GEMINI_IMAGE_MODEL,
             messages=[{"role": "user", "content": prompt}],

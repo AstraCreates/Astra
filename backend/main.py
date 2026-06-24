@@ -344,9 +344,10 @@ async def mcp_http(request: Request):
                 if not specialist:
                     payload = {"ok": False, "error": f"Unknown agent: {agent_name}"}
                 else:
-                    client = _openai.AsyncOpenAI(
-                        base_url=settings.chat_model_base_url or settings.agent_model_base_url,
-                        api_key=settings.chat_model_api_key or settings.agent_model_api_key,
+                    from backend.core.llm_client import get_async_or_client
+                    client = get_async_or_client(
+                        settings.chat_model_base_url or settings.agent_model_base_url,
+                        settings.chat_model_api_key or settings.agent_model_api_key,
                     )
                     resp = await client.chat.completions.create(
                         model=settings.chat_model_name or settings.agent_model_name,

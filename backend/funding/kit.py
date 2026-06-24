@@ -80,14 +80,8 @@ def mark_stale(founder_id: str) -> None:
 # ── LLM helper ─────────────────────────────────────────────────────────────────
 
 def _call_llm(prompt: str) -> str:
-    import openai
-    from backend.config import settings
-    from backend.core.key_rotator import get_openrouter_key
-    client = openai.OpenAI(
-        base_url=settings.openrouter_base_url,
-        api_key=get_openrouter_key() or settings.agent_model_api_key,
-        default_headers={"HTTP-Referer": "https://astracreates.com", "X-Title": "Astra"},
-    )
+    from backend.core.llm_client import get_or_client
+    client = get_or_client(settings.openrouter_base_url, get_openrouter_key() or settings.agent_model_api_key)
     resp = client.chat.completions.create(
         model=settings.highoutput_model_name,
         messages=[{"role": "user", "content": prompt}],

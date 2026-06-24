@@ -6,8 +6,6 @@ import base64
 import logging
 from pathlib import Path
 
-import openai
-
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
@@ -17,13 +15,11 @@ def _vision_model() -> str:
     return settings.browser_use_model or "google/gemini-2.5-pro"
 
 
-def get_vision_client() -> openai.OpenAI:
+def get_vision_client():
+    from backend.core.llm_client import get_or_client
     from backend.core.key_rotator import get_openrouter_key
     key = get_openrouter_key() or settings.openrouter_api_key
-    return openai.OpenAI(
-        base_url=settings.openrouter_base_url,
-        api_key=key,
-    )
+    return get_or_client(settings.openrouter_base_url, key)
 
 
 def describe_screenshot(screenshot_b64: str, context: str = "") -> str:

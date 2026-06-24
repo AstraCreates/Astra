@@ -1180,13 +1180,11 @@ def _detect_rerun_intent(instruction: str, available_agents: list[str]) -> dict 
     Returns {agent, instruction, tools_only} or None if it's a general chat message.
     """
     try:
-        import openai, json as _json
+        import json as _json
         from backend.config import settings
         from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
-        client = openai.OpenAI(
-            base_url=settings.openrouter_base_url,
-            api_key=settings.openrouter_api_key or settings.agent_model_api_key,
-        )
+        from backend.core.llm_client import get_or_client
+        client = get_or_client(settings.openrouter_base_url, settings.openrouter_api_key or settings.agent_model_api_key)
         agents_list = ", ".join(available_agents)
         messages = [
             {"role": "system", "content": (
@@ -1435,7 +1433,8 @@ async def chat_agent(agent_key: str, body: AskRequest, request: Request):
 
     try:
         from backend.core.llm_cache import cacheable_messages, is_openrouter_base_url, openrouter_extra_body
-        client = _openai.AsyncOpenAI(base_url=base_url, api_key=api_key)
+        from backend.core.llm_client import get_async_or_client
+        client = get_async_or_client(base_url, api_key)
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": body.question},
