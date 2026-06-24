@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, AGENT_LABELS, type SessionImages } from "@/lib/api";
+import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, AGENT_LABELS, rerunAgent, type SessionImages } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import { signIn } from "next-auth/react";
@@ -252,11 +252,15 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         const r = await apiFetch(`${API}/copilot/${sessionId}`);
         const d = await r.json();
         if (Array.isArray(d.history)) {
-          setCopilot(d.history.map((h: any) => ({
-            role: h.role,
-            content: h.content,
-            actions: normalizeCopilotActions(h.actions),
-          })));
+          setCopilot((prev) => {
+            // If user already sent messages before history loaded, keep them.
+            if (prev.length > 0) return prev;
+            return d.history.map((h: any) => ({
+              role: h.role,
+              content: h.content,
+              actions: normalizeCopilotActions(h.actions),
+            }));
+          });
         }
       } catch {}
     })();
@@ -1301,6 +1305,35 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 ← Back
               </button>
             )}
+
+            {st.selDept && !st.selArt && (() => {
+              const d = st.selDept === "__other" ? { ags: otherAgs } : DEPTS[st.selDept] || { ags: [] };
+              const ags = (d.ags || []).filter((a) => st.agents[a]);
+              if (ags.length === 0) return null;
+              return (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: "4px 0 10px" }}>
+                  {ags.map((k) => {
+                    const a = st.agents[k];
+                    const label = (AGENT_LABELS as Record<string, string>)[k] || k;
+                    const s = a.status;
+                    const color = s === "done" ? "var(--green)" : s === "error" ? "var(--red)" : s === "running" ? "var(--blue)" : "var(--fm)";
+                    const rerunnable = s === "done" || s === "error";
+                    return (
+                      <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 10, fontSize: 9.5, background: "var(--bg2)", border: `1px solid ${color}80`, color, lineHeight: "18px" }}>
+                        {label}
+                        {rerunnable && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); rerunAgent(sessionId, k, founderId).then(() => { S.current.agents[k].status = "queued"; force(); }).catch(() => showErr("Rerun failed")); }}
+                            style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12, lineHeight: 1, color, opacity: .7 }}
+                            title={`Rerun ${label}`}
+                          >↻</button>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             {/* selected dept — updates / tech logs / sources */}
             {st.selDept && !st.selArt && (() => {
