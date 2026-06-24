@@ -57,6 +57,27 @@ export function getAuthToken(): string | null {
   return _cachedAuthToken;
 }
 
+// One-shot gate: resolves when ApiAuthBridge finishes its first token fetch (success or failure).
+// Prevents SSE connections from firing before we know whether the user is authenticated.
+let _authReadyResolve: (() => void) | null = null;
+let _authResolved = false;
+const _authReady = new Promise<void>((resolve) => { _authReadyResolve = resolve; });
+
+export function _resolveAuthReady(): void {
+  if (!_authResolved) {
+    _authResolved = true;
+    _authReadyResolve?.();
+  }
+}
+
+export function waitForAuthReady(timeoutMs = 2000): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+  return Promise.race([
+    _authReady,
+    new Promise<void>((resolve) => window.setTimeout(resolve, timeoutMs)),
+  ]);
+}
+
 export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
   const existing = new Headers(init.headers);
   const auth = await authHeaders();
@@ -1316,8 +1337,13 @@ export function openEventStream(
   };
 
   const connect = async () => {
+    let firstConnect = true;
     while (!closed) {
       try {
+        if (firstConnect) {
+          firstConnect = false;
+          await waitForAuthReady(2000);
+        }
         const headers = new Headers(await authHeaders());
         headers.set("Accept", "text/event-stream");
         if (lastEventIdRef.value && lastEventIdRef.value !== "0") headers.set("Last-Event-ID", lastEventIdRef.value);

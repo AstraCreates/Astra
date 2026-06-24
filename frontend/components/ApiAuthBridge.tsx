@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { setApiAuthProvider, _setCachedAuthToken } from "@/lib/api";
+import { setApiAuthProvider, _setCachedAuthToken, _resolveAuthReady } from "@/lib/api";
 import { useDevUser, getOrCreateUserId } from "@/lib/use-dev-user";
 
 export default function ApiAuthBridge() {
@@ -12,6 +12,8 @@ export default function ApiAuthBridge() {
   // Fetch the HS256 session JWT from the server-side token route when signed in.
   // Stored in a ref (not state) to avoid re-renders — only used as auth header value.
   useEffect(() => {
+    // Don't resolve auth gate while auth state is still loading — SSE would connect without a token.
+    if (isLoading) return;
     let cancelled = false;
     const refreshBearer = async () => {
       try {
@@ -20,6 +22,7 @@ export default function ApiAuthBridge() {
         if (cancelled) return;
         bearerRef.current = data?.token ?? null;
         _setCachedAuthToken(bearerRef.current);
+        _resolveAuthReady();
         try {
           const rawPayload = bearerRef.current?.split(".")[1] || "";
           const normalized = rawPayload.replace(/-/g, "+").replace(/_/g, "/");
@@ -33,6 +36,7 @@ export default function ApiAuthBridge() {
         if (!cancelled) {
           bearerRef.current = null;
           bearerExpiryRef.current = 0;
+          _resolveAuthReady();
         }
       }
     };
@@ -40,6 +44,7 @@ export default function ApiAuthBridge() {
       bearerRef.current = null;
       bearerExpiryRef.current = 0;
       _setCachedAuthToken(null);
+      _resolveAuthReady();
       return;
     }
     void refreshBearer();
@@ -51,7 +56,7 @@ export default function ApiAuthBridge() {
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [isSignedIn]);
+  }, [isSignedIn, isLoading]);
 
   useEffect(() => {
     if (isLoading) return;
