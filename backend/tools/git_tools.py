@@ -821,15 +821,16 @@ def _pm_respond(agent_output: str, goal: str, context: str, missing: list[str]) 
         f"Agent's last message:\n{agent_output[-2000:]}\n\n"
         f"What do you say next? If MVP is done, respond: DONE"
     )
+    from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
     resp = client.chat.completions.create(
         model=model,
-        messages=[
+        messages=cacheable_messages([
             {"role": "system", "content": _PM_SYSTEM},
             {"role": "user", "content": user_msg},
-        ],
+        ], breakpoints=(0,)),  # cache stable system prompt only
         temperature=0.2,
         timeout=30.0,
-        extra_body={"provider": {"allow_fallbacks": True}},
+        extra_body=openrouter_extra_body(model),
     )
     reply = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""
     reply = re.sub(r"<think>.*?</think>", "", reply, flags=re.DOTALL).strip()
@@ -888,17 +889,16 @@ def _planner_review(local: str, goal: str, files: list[str]) -> dict:
         f"Key file samples:\n{sample_block}"
     )
     try:
+        from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
         resp = client.chat.completions.create(
             model=model,
-            messages=[
+            messages=cacheable_messages([
                 {"role": "system", "content": _PLANNER_REVIEW_SYSTEM},
-                # hy3-preview has no provider supporting response_format — ask for JSON
-                # in the prompt instead of using json mode (which 404s/400s).
                 {"role": "user", "content": user_msg + "\n\nRespond with ONLY a single valid JSON object — no prose, no markdown."},
-            ],
+            ], breakpoints=(0,)),  # cache stable system prompt
             temperature=0.1,
             timeout=60.0,
-            extra_body={"provider": {"allow_fallbacks": True}},
+            extra_body=openrouter_extra_body(model),
         )
         raw = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or "{}"
         raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
@@ -1251,18 +1251,19 @@ def _generate_build_plan(goal: str, context: str = "", kind: str = "app", founde
               'e.g. FILES: ["app/dashboard/page.tsx", "app/api/auth/[...nextauth]/route.ts"].'
         )
         def _ask(max_toks: int) -> str:
+            from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
             resp = client.chat.completions.create(
                 model=model,
-                messages=[
+                messages=cacheable_messages([
                     {"role": "system", "content": _BUILD_PLAN_SYSTEM},
                     {"role": "user", "content": user_msg},
-                ],
+                ], breakpoints=(0,)),
                 temperature=0.3,
                 timeout=180.0,
                 max_tokens=max_toks,
                 # minimax-m3 is a reasoning model — disable reasoning so the token
                 # budget goes to the actual plan, not <think> that gets stripped to "".
-                extra_body={"provider": {"allow_fallbacks": True}, "reasoning": {"effort": "none"}},
+                extra_body=openrouter_extra_body(model, {"reasoning": {"effort": "none"}}),
             )
             raw = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""
             # Drop complete think blocks; if that empties it, drop only the trailing

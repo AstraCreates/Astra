@@ -203,37 +203,38 @@ def generate_image(description: str, width: int = 1024, height: int = 1024, foun
 
     # Step 1: Write an optimized image prompt from the concept description
     from backend.core.llm_client import get_or_client
+    from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
     client = get_or_client(_OR_BASE, _or_api_key())
+
+    _IMG_SYSTEM = (
+        "You are a world-class art director who writes diffusion model prompts for premium brand advertising.\n\n"
+        "PROMPT RULES — follow exactly:\n"
+        "1. 50-70 words maximum. Every word must earn its place.\n"
+        "2. Start with the SUBJECT: one specific person or object, described precisely (age, clothing, posture, expression).\n"
+        "3. SETTING: one concrete environment (not 'studio' — say 'sunlit Copenhagen coffee shop', 'Tokyo rooftop at dusk').\n"
+        "4. LIGHTING: 3-5 words, cinematic and specific ('low golden backlight', 'overcast diffused daylight', 'single tungsten key light').\n"
+        "5. COMPOSITION: camera angle + negative space location for copy ('wide shot, large empty sky in top half', 'tight portrait, left third clear').\n"
+        "6. MOOD: 2-3 words of emotional tone ('understated ambition', 'quiet focus', 'joyful momentum').\n"
+        "7. END with exactly: 'shot on Leica, editorial advertising photography, magazine spread quality'\n\n"
+        "HARD BANS — never include these:\n"
+        "- No text, words, letters, logos, or watermarks in the scene\n"
+        "- No 'photorealistic', 'hyperrealistic', 'ultra HD', 'masterpiece', '8K'\n"
+        "- No vague moods ('beautiful', 'stunning', 'amazing')\n"
+        "- No generic settings ('modern office', 'white background', 'studio')\n"
+        "- No brand names\n\n"
+        "Output ONLY the prompt text. No explanation, no quotes, no markdown, no prefix."
+    )
+    _IMG_USER = f"Brand/product concept:\n{description}\n\nWrite the image prompt now. Be specific and cinematic."
     prompt_resp = client.chat.completions.create(
         model=_PROMPT_MODEL,
-        messages=[
-            {"role": "system", "content": (
-                "You are a world-class art director who writes diffusion model prompts for premium brand advertising.\n\n"
-                "PROMPT RULES — follow exactly:\n"
-                "1. 50-70 words maximum. Every word must earn its place.\n"
-                "2. Start with the SUBJECT: one specific person or object, described precisely (age, clothing, posture, expression).\n"
-                "3. SETTING: one concrete environment (not 'studio' — say 'sunlit Copenhagen coffee shop', 'Tokyo rooftop at dusk').\n"
-                "4. LIGHTING: 3-5 words, cinematic and specific ('low golden backlight', 'overcast diffused daylight', 'single tungsten key light').\n"
-                "5. COMPOSITION: camera angle + negative space location for copy ('wide shot, large empty sky in top half', 'tight portrait, left third clear').\n"
-                "6. MOOD: 2-3 words of emotional tone ('understated ambition', 'quiet focus', 'joyful momentum').\n"
-                "7. END with exactly: 'shot on Leica, editorial advertising photography, magazine spread quality'\n\n"
-                "HARD BANS — never include these:\n"
-                "- No text, words, letters, logos, or watermarks in the scene\n"
-                "- No 'photorealistic', 'hyperrealistic', 'ultra HD', 'masterpiece', '8K'\n"
-                "- No vague moods ('beautiful', 'stunning', 'amazing')\n"
-                "- No generic settings ('modern office', 'white background', 'studio')\n"
-                "- No brand names\n\n"
-                "Output ONLY the prompt text. No explanation, no quotes, no markdown, no prefix."
-            )},
-            {"role": "user", "content": (
-                f"Brand/product concept:\n{description}\n\n"
-                "Write the image prompt now. Be specific and cinematic."
-            )},
-        ],
+        messages=cacheable_messages([
+            {"role": "system", "content": _IMG_SYSTEM},
+            {"role": "user", "content": _IMG_USER},
+        ], breakpoints=(0,)),  # cache stable system prompt only
         max_tokens=120,
         temperature=0.6,
         timeout=30.0,
-        extra_body=_provider_routing(),
+        extra_body=openrouter_extra_body(_PROMPT_MODEL),
     )
     image_prompt = ((prompt_resp.choices[0].message.content if getattr(prompt_resp, "choices", None) else "") or description).strip()
     # Strip any accidental quotes or prefixes the model adds

@@ -212,21 +212,22 @@ async def _custom_deep_research(query: str) -> dict:
 
     # Synthesize with OpenRouter planner model
     try:
+        from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
         from backend.core.llm_client import get_or_client
         client = get_or_client(settings.planner_model_base_url, settings.planner_model_api_key)
-        prompt = (
-            f"You are a research analyst. Based on the search data below, write a comprehensive research report "
-            f"on: {query}\n\n"
-            f"Cover: market size/TAM, key players/competitors, trends, use cases, opportunities, risks.\n"
-            f"Write in professional prose with clear sections. Be specific and cite data where visible.\n\n"
-            f"SEARCH DATA:\n{combined[:8000]}"
-        )
         resp = client.chat.completions.create(
             model=settings.planner_model_name,
-            messages=[{"role": "user", "content": prompt}],
+            messages=cacheable_messages([
+                {"role": "system", "content": (
+                    "You are a research analyst. Write a comprehensive research report covering: "
+                    "market size/TAM, key players/competitors, trends, use cases, opportunities, risks. "
+                    "Write in professional prose with clear sections. Be specific and cite data where visible."
+                )},
+                {"role": "user", "content": f"Query: {query}\n\nSEARCH DATA:\n{combined[:8000]}"},
+            ], breakpoints=(0,)),  # cache stable system prompt
             temperature=0.2,
             max_tokens=2000,
-            extra_body={"provider": {"allow_fallbacks": True}},
+            extra_body=openrouter_extra_body(settings.planner_model_name),
         )
         report = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""
     except Exception as e:
