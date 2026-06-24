@@ -46,7 +46,7 @@ def _trusted_headers_allowed() -> bool:
         settings = _settings()
         return bool(settings.astra_trust_auth_headers) or not bool(settings.astra_require_auth)
     except Exception:
-        return True
+        return False  # fail closed — never trust headers if config unreadable
 
 
 def _dev_auth_allowed() -> bool:
@@ -54,7 +54,7 @@ def _dev_auth_allowed() -> bool:
         settings = _settings()
         return bool(settings.astra_allow_dev_auth) or not bool(settings.astra_require_auth)
     except Exception:
-        return True
+        return False  # fail closed
 
 
 def _verified_jwt_subject(token: str) -> str | None:

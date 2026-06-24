@@ -94,8 +94,8 @@ class Settings(BaseSettings):
 
     # Credential store encryption key — generated once and fixed in .env
     astra_creds_key: str = ""
-    astra_require_auth: bool = False
-    astra_trust_auth_headers: bool = False
+    astra_require_auth: bool = True
+    astra_trust_auth_headers: bool = True   # header-based identity trusted until JWT is wired
     astra_allow_dev_auth: bool = False
     astra_jwt_issuer: str = ""
     astra_jwt_audience: str = ""
@@ -125,7 +125,7 @@ class Settings(BaseSettings):
     nwra_card_number: str = ""
     nwra_card_expiry_month: str = ""
     nwra_card_expiry_year: str = ""
-    nwra_card_cvv: str = ""
+    # nwra_card_cvv intentionally removed — storing CVV at rest violates PCI-DSS
     nwra_card_name: str = ""
     nwra_billing_address: str = ""
     nwra_billing_city: str = ""

@@ -256,6 +256,14 @@ async def metrics():
 async def mcp_http(request: Request):
     import json as _json
     import asyncio as _asyncio
+    from backend.tenant_auth import request_user_id as _request_user_id
+    from backend.config import settings as _cfg
+
+    # Authenticate — derive caller identity from verified token/trusted header.
+    # initialize + tools/list are allowed unauthenticated (metadata only).
+    # Any tools/call that mutates state requires an authenticated identity.
+    _caller_id: str | None = _request_user_id(request)
+
     body = await request.body()
     try:
         req = _json.loads(body)
@@ -286,9 +294,23 @@ async def mcp_http(request: Request):
             from backend.astra_mcp import TOOLS
             result = {"tools": TOOLS}
         elif method == "tools/call":
+            # Require authenticated identity for all tool calls
+            if _cfg.astra_require_auth and not _caller_id:
+                return Response(
+                    content=_json.dumps({"jsonrpc": "2.0", "id": request_id, "error": {"code": -32001, "message": "Unauthorized"}}),
+                    media_type="application/json", status_code=401,
+                )
             name = params.get("name", "")
             args = params.get("arguments") or {}
-            founder_id = args.get("founder_id") or "founder_001"
+            # founder_id ALWAYS comes from auth context — never from caller-supplied args
+            founder_id = _caller_id or "founder_001"
+            # Reject if caller tries to impersonate another founder
+            if args.get("founder_id") and args["founder_id"] != founder_id:
+                return Response(
+                    content=_json.dumps({"jsonrpc": "2.0", "id": request_id, "error": {"code": -32002, "message": "Forbidden: founder_id mismatch"}}),
+                    media_type="application/json", status_code=403,
+                )
+            args.pop("founder_id", None)  # strip — will be injected from auth context
             if name == "astra_submit_goal":
                 from backend.core.session_ids import new_session_id
                 from backend.core.factory import get_orchestrator
