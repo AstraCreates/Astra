@@ -1390,9 +1390,10 @@ function StepDone({ name, company, stackName, onLaunch }: {
           animation: "pulse-ring 2.2s ease-out infinite",
         }} />
         <div style={{
-          width: 48, height: 48, background: T.blue, borderRadius: "50%",
+          width: 48, height: 48, background: T.blue,
           WebkitMask: "url('/logo.png') center/contain no-repeat",
           mask: "url('/logo.png') center/contain no-repeat",
+          position: "relative", zIndex: 1,
         }} />
       </div>
 
