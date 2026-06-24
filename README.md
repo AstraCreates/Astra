@@ -338,6 +338,7 @@ Key docs:
 
 - [Production Launch Runbook](/Users/ishaangubbala/Documents/Astra/docs/Production_Launch_Runbook.md)
 - [Security Alignment Roadmap](/Users/ishaangubbala/Documents/Astra/docs/Security_Alignment_Roadmap.md)
+- [Desktop Signing And Release](/Users/ishaangubbala/Documents/Astra/docs/Desktop_Release_Signing.md)
 
 ---
 

@@ -1442,7 +1442,7 @@ export async function approveTask(taskId: string): Promise<void> {
   const res = await apiFetch(`${BASE}/approve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ task_id: taskId, approval_token: "founder" }),
+    body: JSON.stringify({ task_id: taskId }),
   });
   await checkOk(res);
 }

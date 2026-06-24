@@ -18,3 +18,5 @@ desktop/src-tauri/target/
 venv3.12/
 venv/
 .gstack/
+private_keys/
+.appstoreconnect/

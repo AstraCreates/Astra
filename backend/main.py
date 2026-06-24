@@ -30,11 +30,15 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Astra API", version="1.0.0")
 
+from backend.config import settings as _settings
+_cors_origins = [o.strip() for o in _settings.frontend_url.split(",") if o.strip()]
+if not _cors_origins:
+    _cors_origins = ["http://localhost:3003"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "x-astra-user-id", "x-user-id", "x-astra-email", "x-astra-session"],
     expose_headers=["Content-Type", "Cache-Control", "X-Accel-Buffering"],
 )
 

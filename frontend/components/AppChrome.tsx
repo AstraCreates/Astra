@@ -122,7 +122,9 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoading } = useDevUser();
 
   useEffect(() => {
-    if (typeof window !== "undefined" && localStorage.getItem("astra_qa_bypass") === "1") {
+    if (process.env.NODE_ENV !== "production" &&
+        typeof window !== "undefined" &&
+        localStorage.getItem("astra_qa_bypass") === "1") {
       setQaBypass(true);
       setSessionChecked(true);
     }

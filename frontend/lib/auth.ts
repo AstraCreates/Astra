@@ -39,11 +39,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: "/",
     error: "/",
   },
-  secret: process.env.NEXTAUTH_SECRET ?? "astra-dev-secret-change-in-prod",
+  secret: (() => {
+    const s = process.env.NEXTAUTH_SECRET;
+    if (!s && process.env.NODE_ENV === "production") {
+      throw new Error("NEXTAUTH_SECRET must be set in production");
+    }
+    return s ?? "astra-dev-secret-change-in-prod";
+  })(),
   trustHost: true,
-  // The app is served over HTTP (no TLS yet). NextAuth otherwise sets `Secure`
-  // / `__Secure-`-prefixed cookies behind a proxy, which mobile browsers refuse
-  // to store on an insecure origin — so sign-in "just refreshes" and never
-  // establishes a session. Force non-secure cookies so HTTP sign-in persists.
-  useSecureCookies: false,
+  // Non-secure cookies only in dev/HTTP. In production TLS is required and
+  // NextAuth sets Secure cookies automatically via trustHost.
+  useSecureCookies: process.env.NODE_ENV === "production",
 });
