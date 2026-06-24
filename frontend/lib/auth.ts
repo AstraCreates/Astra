@@ -58,7 +58,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     return s ?? "astra-dev-secret-change-in-prod";
   })(),
   trustHost: true,
-  // Non-secure cookies only in dev/HTTP. In production TLS is required and
-  // NextAuth sets Secure cookies automatically via trustHost.
-  useSecureCookies: process.env.NODE_ENV === "production",
 });
