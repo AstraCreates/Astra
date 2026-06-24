@@ -911,6 +911,9 @@ async def dispatch_current_goal(
 
     try:
         from backend.core.factory import get_orchestrator
+        from backend.core.events import register_parent_session
+        if root and session_id != root:
+            register_parent_session(session_id, root)
         orch = get_orchestrator()
         await orch.continue_run(
             instruction=instruction, founder_id=founder_id,
