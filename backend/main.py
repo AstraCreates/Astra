@@ -345,18 +345,19 @@ async def mcp_http(request: Request):
                     payload = {"ok": False, "error": f"Unknown agent: {agent_name}"}
                 else:
                     from backend.core.llm_client import get_async_or_client
+                    from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
                     client = get_async_or_client(
                         settings.chat_model_base_url or settings.agent_model_base_url,
                         settings.chat_model_api_key or settings.agent_model_api_key,
                     )
                     resp = await client.chat.completions.create(
                         model=settings.chat_model_name or settings.agent_model_name,
-                        messages=[
+                        messages=cacheable_messages([
                             {"role": "system", "content": specialist.role},
                             {"role": "user", "content": args["question"]},
-                        ],
+                        ], breakpoints=(0,)),
                         max_tokens=1024,
-                        extra_body={"provider": {"allow_fallbacks": True}},
+                        extra_body=openrouter_extra_body(settings.chat_model_name or settings.agent_model_name),
                     )
                     payload = {"ok": True, "agent": agent_name, "response": (resp.choices[0].message.content if getattr(resp, "choices", None) else "")}
                 result = _tool_result(payload)

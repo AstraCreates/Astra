@@ -94,14 +94,16 @@ def generate_ai_approval_gates(
             f"Tasks to evaluate:\n{task_lines}"
         )
 
+        from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
         resp = client.chat.completions.create(
             model=settings.or_light_model,
-            messages=[
+            messages=cacheable_messages([
                 {"role": "system", "content": _SYSTEM},
                 {"role": "user", "content": user_msg},
-            ],
+            ], breakpoints=(0,)),
             max_tokens=1024,
             temperature=0,
+            extra_body=openrouter_extra_body(settings.or_light_model),
         )
         raw = resp.choices[0].message.content or ""
         gates = _parse_gates(raw)
