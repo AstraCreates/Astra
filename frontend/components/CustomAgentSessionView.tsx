@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { killSession, getSessionState } from "@/lib/api";
+import { killSession, getSessionState, getAuthToken } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import { extractFilePaths, PdfEmbed, EmailDeliverableButton } from "@/components/GoalWorkspace";
 
@@ -86,7 +86,9 @@ export default function CustomAgentSessionView({ sessionId, agentName, goal, ini
     // assumes a localStorage log cache this view doesn't have) — without it,
     // reloading mid-run wipes the visible log back to "waiting," looking like
     // the run restarted even though it never did.
-    const es = new EventSource(`${API}/stream/${sessionId}?lastEventId=0`);
+    const _token = getAuthToken();
+    const _qs = _token ? `&token=${encodeURIComponent(_token)}` : "";
+    const es = new EventSource(`${API}/stream/${sessionId}?lastEventId=0${_qs}`);
 
     es.onmessage = (e) => {
       let ev: Record<string, unknown>;

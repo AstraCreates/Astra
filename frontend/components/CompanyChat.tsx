@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import LiquidGlass from "@/components/LiquidGlass";
-import { AGENT_LABELS, apiFetch, askCompanyBrain } from "@/lib/api";
+import { AGENT_LABELS, apiFetch, askCompanyBrain, getAuthToken } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -136,7 +136,9 @@ export default function CompanyChat({
       const { session_id } = await res.json();
 
       if (esRef.current) esRef.current.close();
-      const es = new EventSource(`${BASE}/stream/${session_id}`);
+      const _token = getAuthToken();
+      const _qs = _token ? `?token=${encodeURIComponent(_token)}` : "";
+      const es = new EventSource(`${BASE}/stream/${session_id}${_qs}`);
       esRef.current = es;
 
       es.onmessage = (e) => {

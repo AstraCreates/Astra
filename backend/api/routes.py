@@ -484,6 +484,11 @@ async def submit_goal(body: GoalRequest, request: Request):
 
 @router.get("/stream/{session_id}")
 async def stream_goal(session_id: str, request: Request):
+    # EventSource can't send Authorization headers — accept JWT via ?token= query param
+    # and inject it as a header so the standard auth flow picks it up.
+    token = request.query_params.get("token")
+    if token and not request.headers.get("authorization"):
+        request.scope["headers"] = list(request.scope.get("headers", [])) + [(b"authorization", f"Bearer {token}".encode())]
     await _require_session_access(request, session_id, min_role="viewer")
     raw_last = request.headers.get("Last-Event-ID") or request.query_params.get("lastEventId")
     last_event_id: int | None = None

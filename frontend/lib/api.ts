@@ -8,12 +8,20 @@ export function setApiAuthProvider(provider: ApiAuthProvider | null) {
   apiAuthProvider = provider;
 }
 
+// Cached JWT for sync access (e.g. EventSource which can't use async authHeaders)
+let _cachedAuthToken: string | null = null;
+
+export function getAuthToken(): string | null {
+  return _cachedAuthToken;
+}
+
 async function authHeaders(): Promise<Record<string, string>> {
   try {
     if (apiAuthProvider) {
       const auth = await apiAuthProvider();
       // Prefer verified JWT Bearer — backend derives identity from token, not header
       if (auth?.token) {
+        _cachedAuthToken = auth.token;
         const h: Record<string, string> = { "Authorization": `Bearer ${auth.token}` };
         if (typeof window !== "undefined") {
           const email = localStorage.getItem("astra_auth_email");
@@ -1244,7 +1252,9 @@ export async function getStackManifest(stackId: string, goal = "", companyName =
 }
 
 export function streamGoal(sessionId: string): EventSource {
-  return new EventSource(`${BASE}/stream/${sessionId}`);
+  const token = getAuthToken();
+  const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+  return new EventSource(`${BASE}/stream/${sessionId}${qs}`);
 }
 
 export interface SessionIndexEntry {

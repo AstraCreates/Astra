@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, AGENT_LABELS, rerunAgent, type SessionImages } from "@/lib/api";
+import { apiFetch, authHeaders, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, AGENT_LABELS, rerunAgent, type SessionImages } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import { signIn } from "next-auth/react";
@@ -545,7 +545,11 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       if (S.current.status === "loading") S.current.status = "running";
       force();
 
-      const es = new EventSource(`${API}/stream/${sessionId}`);
+      // EventSource can't send Authorization headers — pass JWT as query param.
+      const h = await authHeaders();
+      const auth = h.get("Authorization");
+      const qs = auth ? `?token=${encodeURIComponent(auth.replace("Bearer ", ""))}` : "";
+      const es = new EventSource(`${API}/stream/${sessionId}${qs}`);
       sseRef.current = es;
       es.onmessage = (e) => { try { const ev = JSON.parse(e.data); if (ev.type !== "ping") handleEvent(ev); } catch {} };
       es.onerror = () => {
