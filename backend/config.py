@@ -55,12 +55,12 @@ class Settings(BaseSettings):
     # Tool-use model — Pro: agent tool loop has caching + needs strong tool calling.
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
     tooluse_model_name: str = "deepseek/deepseek-v4-pro"
-    # Planner — DeepSeek V4 Pro: $0.435/$0.87/M, cache read $0.0036/M (5x cheaper
-    # cached than V4 Flash), Intelligence Index 52, 1M ctx, strong tool calling.
-    # Used by the agent tool loop which wires cacheable_messages.
+    # Web-search synthesis model — uncached, so input price dominates.
+    # Used by web_search.py deep_research → Flash is 4.4× cheaper input
+    # than Pro for synthesis calls.
     planner_model_base_url: str = "https://openrouter.ai/api/v1"
     planner_model_api_key: str = ""
-    planner_model_name: str = "deepseek/deepseek-v4-pro"
+    planner_model_name: str = "deepseek/deepseek-v4-flash"
     # Chat model — DeepSeek V4 Flash: chat endpoint has no prompt caching; Flash
     # is 4.4× cheaper on fresh input than Pro with equivalent chat quality.
     chat_model_base_url: str = "https://openrouter.ai/api/v1"
