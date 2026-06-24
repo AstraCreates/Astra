@@ -1208,7 +1208,7 @@ def _detect_rerun_intent(instruction: str, available_agents: list[str]) -> dict 
         ]
         resp = client.chat.completions.create(
             model=settings.or_planner_model,
-            messages=cacheable_messages(messages),
+            messages=cacheable_messages(messages, breakpoints=(0,)),
             extra_body=openrouter_extra_body(settings.or_planner_model),
             max_tokens=300,
             temperature=0,
@@ -1442,7 +1442,7 @@ async def chat_agent(agent_key: str, body: AskRequest, request: Request):
         is_openrouter = is_openrouter_base_url(base_url)
         resp = await client.chat.completions.create(
             model=model_name,
-            messages=cacheable_messages(messages) if is_openrouter else messages,
+            messages=cacheable_messages(messages, breakpoints=(0,)) if is_openrouter else messages,
             extra_body=openrouter_extra_body(model_name) if is_openrouter else None,
             temperature=0.7,
             timeout=60.0,

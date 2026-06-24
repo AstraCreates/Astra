@@ -630,7 +630,7 @@ class Orchestrator:
             resp = await asyncio.to_thread(
                 client.chat.completions.create,
                 model=settings.or_planner_model,
-                messages=cacheable_messages(messages),
+                messages=cacheable_messages(messages, breakpoints=(0,)),
                 extra_body=openrouter_extra_body(settings.or_planner_model),
                 max_tokens=10,
                 temperature=0.85,
@@ -670,7 +670,7 @@ class Orchestrator:
             resp = await asyncio.to_thread(
                 client.chat.completions.create,
                 model=settings.or_planner_model,
-                messages=cacheable_messages(messages),
+                messages=cacheable_messages(messages, breakpoints=(0,)),
                 extra_body=openrouter_extra_body(settings.or_planner_model),
                 max_tokens=400,
                 temperature=0.7,

@@ -26,12 +26,6 @@ _OR_BASE = settings.openrouter_base_url
 _GEMINI_IMAGE_MODEL = "google/gemini-2.5-flash-image"
 
 
-def _provider_routing(json_mode: bool = False) -> dict:
-    """OpenRouter provider routing: only use providers that support the request
-    params (json mode) and allow cross-provider fallback on error/rate-limit."""
-    return {"provider": {"allow_fallbacks": True}}
-
-
 def _or_api_key() -> str:
     from backend.core.key_rotator import get_openrouter_key
     return get_openrouter_key() or settings.openrouter_api_key or settings.planner_model_api_key
@@ -44,6 +38,20 @@ def _or_api_key() -> str:
 import os as _os
 _CACHE_TTL = int(_os.environ.get("ASTRA_LLM_CACHE_TTL", "3600"))  # 1h default
 
+# Module-level pooled Redis client — avoid a fresh connection per cache get/set.
+_redis_client = None
+
+
+def _redis():
+    global _redis_client
+    if _redis_client is None:
+        try:
+            import redis
+            _redis_client = redis.from_url(settings.redis_url, decode_responses=True)
+        except Exception:
+            _redis_client = False  # mark unavailable; don't retry every call
+    return _redis_client or None
+
 
 def _cache_key(model: str, prompt: str, max_tokens: int | None, json_mode: bool, temperature: float) -> str:
     raw = f"{model}|{prompt}|{max_tokens}|{json_mode}|{temperature}"
@@ -51,18 +59,20 @@ def _cache_key(model: str, prompt: str, max_tokens: int | None, json_mode: bool,
 
 
 def _cache_get(key: str) -> str | None:
+    r = _redis()
+    if r is None:
+        return None
     try:
-        import redis
-        r = redis.from_url(settings.redis_url, decode_responses=True)
         return r.get(key)
     except Exception:
         return None
 
 
 def _cache_set(key: str, value: str) -> None:
+    r = _redis()
+    if r is None:
+        return
     try:
-        import redis
-        r = redis.from_url(settings.redis_url, decode_responses=True)
         r.setex(key, _CACHE_TTL, value)
     except Exception:
         pass
@@ -110,7 +120,7 @@ def generate(prompt: str, max_tokens: int | None = None, json_mode: bool = False
     # Without reasoning:{effort:none}, hy3-preview/mimo spend the entire max_tokens budget
     # on the <think> channel and return EMPTY content — which silently broke plan_next_goal
     # (no next goal proposed) and every other generate()-based content tool.
-    kwargs["extra_body"] = openrouter_extra_body(selected) or _provider_routing(json_mode)
+    kwargs["extra_body"] = openrouter_extra_body(selected)
     client = get_or_client(_OR_BASE, _or_api_key())
     resp = client.chat.completions.create(**kwargs, timeout=300.0)
     if not getattr(resp, "choices", None):
