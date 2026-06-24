@@ -8,6 +8,8 @@ Models:
   "nemotron"  → DeepSeek V4 Flash     (HTML/design generation)
   "image"     → Gemini 2.5 Flash Image (image generation via OpenRouter)
 """
+from __future__ import annotations
+
 import hashlib
 import logging
 import re
