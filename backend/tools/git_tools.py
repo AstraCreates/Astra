@@ -417,29 +417,59 @@ def _autoprovision_env(
 
     if uses_supabase:
         try:
-            from backend.config import settings as _s
-            if getattr(_s, "supabase_management_token", ""):
-                logger.info("Auto-provisioning Supabase project for %s / %s", founder_id, project_name)
-                from backend.provisioning.supabase_provisioner import provision_supabase_project
-                result = provision_supabase_project(
-                    founder_id=founder_id,
-                    project_name=project_name[:32],
-                )
-                if result.get("created") and result.get("project_url"):
-                    url = result["project_url"]
-                    anon = result.get("anon_key", "")
-                    svc = result.get("service_role_key", "")
-                    base.update({
-                        "NEXT_PUBLIC_SUPABASE_URL": url,
-                        "NEXT_PUBLIC_SUPABASE_ANON_KEY": anon,
-                        "SUPABASE_URL": url,
-                        "SUPABASE_ANON_KEY": anon,
-                        "SUPABASE_SERVICE_ROLE_KEY": svc,
-                        "DATABASE_URL": result.get("db_connection_string", ""),
-                    })
-                    logger.info("Supabase provisioned: %s", url)
+            # Check credentials_store first — avoids re-provisioning on every rebuild.
+            _existing_creds: dict = {}
+            if founder_id:
+                try:
+                    from backend.provisioning.credentials_store import load_all_credentials
+                    _existing_creds = (load_all_credentials(founder_id) or {}).get("supabase", {})
+                except Exception:
+                    pass
+
+            if _existing_creds.get("project_url") and _existing_creds.get("anon_key"):
+                url = _existing_creds["project_url"]
+                anon = _existing_creds.get("anon_key", "")
+                svc = _existing_creds.get("service_role_key", "")
+                logger.info("Reusing stored Supabase project for %s: %s", founder_id, url)
+            else:
+                from backend.config import settings as _s
+                if not getattr(_s, "supabase_management_token", ""):
+                    url = anon = svc = ""
                 else:
-                    logger.warning("Supabase provisioning returned: %s", result)
+                    logger.info("Auto-provisioning Supabase project for %s / %s", founder_id, project_name)
+                    from backend.provisioning.supabase_provisioner import provision_supabase_project
+                    result = provision_supabase_project(
+                        founder_id=founder_id,
+                        project_name=project_name[:32],
+                    )
+                    if result.get("created") and result.get("project_url"):
+                        url = result["project_url"]
+                        anon = result.get("anon_key", "")
+                        svc = result.get("service_role_key", "")
+                        # Persist so future rebuilds skip this 60s wait.
+                        if founder_id:
+                            try:
+                                from backend.provisioning.credentials_store import store_credentials
+                                store_credentials(founder_id, "supabase", {
+                                    "project_url": url, "anon_key": anon,
+                                    "service_role_key": svc,
+                                    "ref": result.get("ref", ""),
+                                })
+                            except Exception:
+                                pass
+                        logger.info("Supabase provisioned: %s", url)
+                    else:
+                        logger.warning("Supabase provisioning returned: %s", result)
+                        url = anon = svc = ""
+
+            if url and anon:
+                base.update({
+                    "NEXT_PUBLIC_SUPABASE_URL": url,
+                    "NEXT_PUBLIC_SUPABASE_ANON_KEY": anon,
+                    "SUPABASE_URL": url,
+                    "SUPABASE_ANON_KEY": anon,
+                    "SUPABASE_SERVICE_ROLE_KEY": svc,
+                })
         except Exception as e:
             logger.warning("Supabase auto-provision failed, using placeholder: %s", e)
 
@@ -1651,8 +1681,8 @@ def run_mvp_loop(
         try:
             ph = _placeholder_env(local)
             (Path(local) / ".env.local").write_text("\n".join(f"{k}={v}" for k, v in ph.items()) + "\n")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to write .env.local placeholder: %s", e)
 
         _sanitize_package_json(local)
         if is_github:

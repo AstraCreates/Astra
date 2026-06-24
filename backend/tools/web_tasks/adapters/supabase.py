@@ -45,7 +45,9 @@ class SupabaseAdapter(WebTaskAdapter):
                 or "astra-app"
             )
             result = supabase_create_project(project_name=project_name)
-            if not result.get("project_ref"):
+            # provisioner returns "ref"; normalise so callers see both names
+            ref = result.get("ref") or result.get("project_ref") or ""
+            if not ref:
                 # Fall back to browser login if management token is unavailable.
                 ensured = await self._ensure_logged_in(ctx)
                 if ensured:
@@ -56,19 +58,30 @@ class SupabaseAdapter(WebTaskAdapter):
                     "Supabase project creation needs either a management token or manual dashboard completion.",
                     [],
                 )
+            anon_key = result.get("anon_key", "")
+            service_role_key = result.get("service_role_key", "")
             artifacts = {
                 "supabase": {
-                    "project_ref": result.get("project_ref"),
-                    "anon_key": result.get("anon_key"),
-                    "service_role_key": result.get("service_role_key"),
-                    "dashboard_url": result.get("dashboard_url"),
+                    "project_ref": ref,
+                    "project_url": result.get("project_url", f"https://{ref}.supabase.co"),
+                    "anon_key": anon_key,
+                    "service_role_key": service_role_key,
+                    "dashboard_url": result.get("dashboard_url", ""),
                 }
             }
             if result.get("dashboard_url"):
                 ctx.snapshot.current_url = result["dashboard_url"]
                 ctx.snapshot.evidence.final_url = result["dashboard_url"]
             await ctx.add_check("project_created")
-            await ctx.add_check("project_keys_extracted")
+            if anon_key:
+                await ctx.add_check("project_keys_extracted")
+            # Persist credentials so _autoprovision_env and other tools can find them
+            if ctx.request.founder_id:
+                try:
+                    from backend.provisioning.credentials_store import store_credentials
+                    store_credentials(ctx.request.founder_id, "supabase", artifacts["supabase"])
+                except Exception:
+                    pass
             return await ctx.complete(artifacts)
 
         ensured = await self._ensure_logged_in(ctx)

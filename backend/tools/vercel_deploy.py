@@ -444,7 +444,9 @@ def vercel_deploy_from_github(
                 if v
             ]
             if env_payload:
-                requests.post(env_url, json=env_payload, headers=headers, timeout=15)
+                env_resp = requests.post(env_url, json=env_payload, headers=headers, timeout=15)
+                if not env_resp.ok:
+                    logger.warning("Vercel env vars failed to set (status %s): %s", env_resp.status_code, env_resp.text[:200])
 
         # Trigger deployment from latest commit on default branch
         deploy_url = f"{_VERCEL_API}/v13/deployments"
