@@ -32,6 +32,20 @@ def request_user_id(request: Request) -> str | None:
             value = request.headers.get(header)
             if value:
                 return value.strip()
+
+    # Query params for EventSource/WebSocket (browsers can't set custom headers).
+    # Prefer verified JWT; fall back to trusted user_id param.
+    qp = getattr(request, "query_params", {})
+    token_qp = qp.get("token", "")
+    if token_qp:
+        sub = _verified_jwt_subject(token_qp)
+        if sub:
+            return sub
+    if _trusted_headers_allowed():
+        for param in ("user_id", "founder_id"):
+            value = qp.get(param, "")
+            if value:
+                return value.strip()
     return None
 
 
