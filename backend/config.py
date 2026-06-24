@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     # Credential store encryption key — generated once and fixed in .env
     astra_creds_key: str = ""
     astra_require_auth: bool = True
-    astra_trust_auth_headers: bool = True   # header-based identity trusted until JWT is wired
+    astra_trust_auth_headers: bool = False  # must be False in prod; JWT Bearer is the only verified path
     astra_allow_dev_auth: bool = False
     astra_jwt_issuer: str = ""
     astra_jwt_audience: str = ""

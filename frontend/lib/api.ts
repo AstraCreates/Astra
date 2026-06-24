@@ -12,6 +12,16 @@ async function authHeaders(): Promise<Record<string, string>> {
   try {
     if (apiAuthProvider) {
       const auth = await apiAuthProvider();
+      // Prefer verified JWT Bearer — backend derives identity from token, not header
+      if (auth?.token) {
+        const h: Record<string, string> = { "Authorization": `Bearer ${auth.token}` };
+        if (typeof window !== "undefined") {
+          const email = localStorage.getItem("astra_auth_email");
+          if (email) h["x-astra-email"] = email;
+        }
+        return h;
+      }
+      // Fallback: header-based identity (dev/unauthenticated only)
       if (auth?.userId) {
         const h: Record<string, string> = { "x-astra-user-id": auth.userId };
         if (typeof window !== "undefined") {
@@ -21,7 +31,7 @@ async function authHeaders(): Promise<Record<string, string>> {
         return h;
       }
     }
-    // Fallback: read directly from localStorage
+    // Last resort: read from localStorage (unauthenticated / dev mode only)
     if (typeof window !== "undefined") {
       const userId = localStorage.getItem("astra_auth_user_id") || localStorage.getItem("astra_dev_user_id");
       if (userId) {
