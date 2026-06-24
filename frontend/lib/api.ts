@@ -48,7 +48,7 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 /** Returns auth credentials for use in URLs where custom headers can't be set (EventSource, WS). */
-export async function getAuthCredentials(): Promise<{ token?: string | null; userId?: string | null }> {
+export async function getAuthToken(): Promise<{ token?: string | null; userId?: string | null }> {
   try {
     if (apiAuthProvider) return (await apiAuthProvider()) ?? {};
     if (typeof window !== "undefined") {
