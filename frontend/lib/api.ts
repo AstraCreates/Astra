@@ -47,16 +47,14 @@ async function authHeaders(): Promise<Record<string, string>> {
   return {};
 }
 
-/** Returns auth credentials for use in URLs where custom headers can't be set (EventSource, WS). */
-export async function getAuthToken(): Promise<{ token?: string | null; userId?: string | null }> {
-  try {
-    if (apiAuthProvider) return (await apiAuthProvider()) ?? {};
-    if (typeof window !== "undefined") {
-      const userId = localStorage.getItem("astra_auth_user_id") || localStorage.getItem("astra_dev_user_id");
-      if (userId) return { userId };
-    }
-  } catch { /* ignore */ }
-  return {};
+// Sync token cache for EventSource/WebSocket URLs (can't set custom headers).
+// Updated by ApiAuthBridge whenever the bearer token changes.
+let _cachedAuthToken: string | null = null;
+export function _setCachedAuthToken(token: string | null) { _cachedAuthToken = token; }
+
+/** Returns the cached JWT for use in EventSource/WS URLs (?token=...). Sync — may be null on first load. */
+export function getAuthToken(): string | null {
+  return _cachedAuthToken;
 }
 
 export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
