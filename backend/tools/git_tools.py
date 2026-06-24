@@ -334,7 +334,116 @@ def _placeholder_env(local: str) -> dict:
             except Exception:
                 pass
             break
+    # Fallback: scan package.json deps and inject known service placeholders even
+    # when the repo has no .env.example — prevents SDK "URL and Key required" crashes.
+    env.update(_infer_service_env(local, env))
     return env
+
+
+# Known service → env vars that must always be non-empty for the SDK to init.
+_SERVICE_ENV_TEMPLATES: dict[str, dict[str, str]] = {
+    "supabase": {
+        "NEXT_PUBLIC_SUPABASE_URL": "https://placeholder.supabase.co",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY": "placeholder_" + "x" * 40,
+        "SUPABASE_URL": "https://placeholder.supabase.co",
+        "SUPABASE_ANON_KEY": "placeholder_" + "x" * 40,
+        "SUPABASE_SERVICE_ROLE_KEY": "placeholder_" + "x" * 40,
+    },
+    "stripe": {
+        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_placeholder" + "x" * 24,
+        "STRIPE_SECRET_KEY": "sk_test_placeholder" + "x" * 24,
+        "STRIPE_WEBHOOK_SECRET": "whsec_placeholder" + "x" * 24,
+    },
+    "clerk": {
+        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_placeholder" + "x" * 40,
+        "CLERK_SECRET_KEY": "sk_test_placeholder" + "x" * 40,
+    },
+    "resend": {
+        "RESEND_API_KEY": "re_placeholder_" + "x" * 24,
+    },
+}
+
+_SERVICE_DEP_PATTERNS: dict[str, list[str]] = {
+    "supabase": ["@supabase/supabase-js", "@supabase/ssr", "@supabase/auth-helpers-nextjs"],
+    "stripe": ["stripe", "@stripe/stripe-js", "@stripe/react-stripe-js"],
+    "clerk": ["@clerk/nextjs", "@clerk/clerk-sdk-node"],
+    "resend": ["resend"],
+}
+
+
+def _infer_service_env(local: str, existing: dict) -> dict:
+    """Return placeholder env vars for services detected in package.json deps."""
+    extra: dict[str, str] = {}
+    pkg = Path(local) / "package.json"
+    if not pkg.exists():
+        return extra
+    try:
+        data = json.loads(pkg.read_text())
+        all_deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+    except Exception:
+        return extra
+    for service, dep_names in _SERVICE_DEP_PATTERNS.items():
+        if any(d in all_deps for d in dep_names):
+            for k, v in _SERVICE_ENV_TEMPLATES.get(service, {}).items():
+                if k not in existing:  # don't override .env.example values
+                    extra[k] = v
+    return extra
+
+
+def _autoprovision_env(
+    local: str,
+    founder_id: str,
+    project_name: str,
+    session_id: str = "",
+) -> dict:
+    """Return real provisioned credentials for detected services, or valid placeholders.
+
+    Called once per build before starting the local preview. Blocks until provisioning
+    completes (Supabase ~60s) — preview starts after. Falls back to placeholders so
+    the preview still launches even when provisioning fails or token is absent.
+    """
+    base = _placeholder_env(local)
+
+    # Supabase: provision a real project when management token is configured.
+    pkg = Path(local) / "package.json"
+    uses_supabase = False
+    if pkg.exists():
+        try:
+            data = json.loads(pkg.read_text())
+            all_deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+            uses_supabase = any(d in all_deps for d in _SERVICE_DEP_PATTERNS["supabase"])
+        except Exception:
+            pass
+
+    if uses_supabase:
+        try:
+            from backend.config import settings as _s
+            if getattr(_s, "supabase_management_token", ""):
+                logger.info("Auto-provisioning Supabase project for %s / %s", founder_id, project_name)
+                from backend.provisioning.supabase_provisioner import provision_supabase_project
+                result = provision_supabase_project(
+                    founder_id=founder_id,
+                    project_name=project_name[:32],
+                )
+                if result.get("created") and result.get("project_url"):
+                    url = result["project_url"]
+                    anon = result.get("anon_key", "")
+                    svc = result.get("service_role_key", "")
+                    base.update({
+                        "NEXT_PUBLIC_SUPABASE_URL": url,
+                        "NEXT_PUBLIC_SUPABASE_ANON_KEY": anon,
+                        "SUPABASE_URL": url,
+                        "SUPABASE_ANON_KEY": anon,
+                        "SUPABASE_SERVICE_ROLE_KEY": svc,
+                        "DATABASE_URL": result.get("db_connection_string", ""),
+                    })
+                    logger.info("Supabase provisioned: %s", url)
+                else:
+                    logger.warning("Supabase provisioning returned: %s", result)
+        except Exception as e:
+            logger.warning("Supabase auto-provision failed, using placeholder: %s", e)
+
+    return base
 
 
 def _vercel_root_dir(local: str) -> str:
@@ -1537,10 +1646,11 @@ def run_mvp_loop(
                         founder_id=founder_id, app_session_id=session_id, agent=agent)
 
         # Placeholder env so the verification build + deploy work without real keys.
+        # Always writes .env.local — _placeholder_env now infers service vars from
+        # package.json deps even when the repo has no .env.example.
         try:
             ph = _placeholder_env(local)
-            if ph:
-                (Path(local) / ".env.local").write_text("\n".join(f"{k}={v}" for k, v in ph.items()) + "\n")
+            (Path(local) / ".env.local").write_text("\n".join(f"{k}={v}" for k, v in ph.items()) + "\n")
         except Exception:
             pass
 
@@ -1655,6 +1765,17 @@ def run_mvp_loop(
         # build), run the MVP on the server itself on a free port for a live preview.
         local_preview = False
         if not deploy_url:
+            try:
+                # Provision real service credentials (Supabase etc.) before starting
+                # the preview so the app boots with a live DB, not placeholder values.
+                _project_name = Path(local).name
+                real_env = _autoprovision_env(local, founder_id, _project_name, session_id)
+                if real_env:
+                    (Path(local) / ".env.local").write_text(
+                        "\n".join(f"{k}={v}" for k, v in real_env.items()) + "\n"
+                    )
+            except Exception as e:
+                logger.warning("autoprovision env failed, using placeholders: %s", e)
             try:
                 from backend.tools.local_preview import start_local_preview
                 # Key preview by root session so child builds replace the same slot
