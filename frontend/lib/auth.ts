@@ -58,4 +58,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     return s ?? "astra-dev-secret-change-in-prod";
   })(),
   trustHost: true,
+  // HTTP deployment: NextAuth behind nginx proxy infers HTTPS and sets Secure cookies,
+  // which browsers refuse to store/send over HTTP. Force off until TLS is added.
+  useSecureCookies: false,
 });
