@@ -89,8 +89,12 @@ class Settings(BaseSettings):
     instagram_access_token: str = ""
     instagram_business_account_id: str = ""
 
-    # Composio — replaces per-service OAuth for Gmail, LinkedIn, GitHub, Calendar, Notion
+    # Composio — legacy, not used for new integrations
     composio_api_key: str = ""
+
+    # LinkedIn OAuth
+    linkedin_client_id: str = ""
+    linkedin_client_secret: str = ""
 
     # Credential store encryption key — generated once and fixed in .env
     astra_creds_key: str = ""

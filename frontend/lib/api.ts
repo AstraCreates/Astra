@@ -489,13 +489,15 @@ export interface SetupStatus {
   instagram: boolean;
   tiktok: boolean;
   meta_ads: boolean;
+  linkedin?: boolean;
+  notion?: boolean;
+  linear?: boolean;
   klaviyo?: boolean;
   printful?: boolean;
   yelp?: boolean;
   lemonsqueezy?: boolean;
   square?: boolean;
   twilio?: boolean;
-  composio?: boolean;
   apps?: Record<string, boolean>;
   zero_touch?: {
     ready: boolean;
@@ -506,7 +508,6 @@ export interface SetupStatus {
       imap_detail: string;
       web_password_configured: boolean;
     };
-    composio_api_key_configured: boolean;
     browser_runtime: {
       headless: boolean;
       proxy_configured: boolean;

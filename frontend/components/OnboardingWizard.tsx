@@ -50,15 +50,9 @@ const TOKEN_CONFIG: Record<string, { service: string; credKey: string; createUrl
 };
 
 const COMPOSIO_APPS = new Set([
-  "gmail",
-  "linkedin",
-  "google_calendar",
-  "googlecalendar",
+  // Only services that still require Composio OAuth (no direct connection yet)
   "google_drive",
   "google_sheets",
-  "notion",
-  "linear",
-  "product_tracker",
 ]);
 
 const COMPOSIO_APP_KEYS: Record<string, string> = {
@@ -175,10 +169,12 @@ function StepDots({ step, total = 4 }: { step: number; total?: number }) {
       <div style={{ height: 2, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
         <div style={{
           height: "100%",
-          width: `${pct}%`,
+          width: "100%",
           background: T.blue,
           borderRadius: 2,
-          transition: "width 0.35s cubic-bezier(0.22,1,0.36,1)",
+          transform: `scaleX(${pct / 100})`,
+          transformOrigin: "left",
+          transition: "transform 0.35s cubic-bezier(0.22,1,0.36,1)",
         }} />
       </div>
       <div style={{ marginTop: 10, fontSize: 11, color: T.textMuted }}>
@@ -404,7 +400,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
           vercel: prev.vercel || status.vercel,
           sendgrid: prev.sendgrid || status.sendgrid,
           supabase: prev.supabase || status.supabase,
-          __composio__: prev.__composio__ || !!status.composio,
+          __composio__: prev.__composio__,
           ...Object.fromEntries(Object.entries(appStatus).filter(([, value]) => value)),
         }));
       })
@@ -1573,6 +1569,7 @@ export default function OnboardingWizard() {
       <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "linear-gradient(135deg, #002eff 0%, #1a45ff 25%, #5df5e0 65%, #fefff6 100%)" }} />
     )}
     <style>{`
+      body::before, body::after { display: none !important; }
       @keyframes pulse-ring {
         0%   { transform: scale(0.85); opacity: 0.9; }
         70%  { transform: scale(1.22); opacity: 0;   }

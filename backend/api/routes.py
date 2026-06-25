@@ -2136,7 +2136,7 @@ async def gmail_oauth_url(founder_id: str, request: Request):
         "response_type": "code",
         "access_type": "offline",
         "prompt": "consent",
-        "scope": "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email",
+        "scope": "https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/calendar",
         "state": _oauth_state_create(founder_id),
         "include_granted_scopes": "true",
     })
@@ -2284,6 +2284,82 @@ async def github_callback(code: str = "", state: str = "", error: str = ""):
     logger.info("GitHub OAuth connected for founder %s", founder_id)
 
     return RedirectResponse(url=f"{fe_base}/integrations?github_connected=1")
+
+
+@router.get("/linkedin/oauth-url/{founder_id}")
+async def linkedin_oauth_url(founder_id: str, request: Request):
+    """Return the LinkedIn OAuth authorization URL."""
+    require_founder_access(request, founder_id, min_role="admin")
+    from backend.config import settings
+    from urllib.parse import urlencode
+    if not settings.linkedin_client_id:
+        raise HTTPException(status_code=500, detail="LINKEDIN_CLIENT_ID not configured")
+    redirect_uri = f"{settings.backend_url}/api/linkedin/callback"
+    params = urlencode({
+        "response_type": "code",
+        "client_id": settings.linkedin_client_id,
+        "redirect_uri": redirect_uri,
+        "scope": "openid profile email w_member_social",
+        "state": _oauth_state_create(founder_id),
+    })
+    return {"url": f"https://www.linkedin.com/oauth/v2/authorization?{params}"}
+
+
+@router.get("/linkedin/callback")
+async def linkedin_callback(code: str = "", state: str = "", error: str = ""):
+    """LinkedIn OAuth callback. Exchanges code for access token and stores it."""
+    import httpx
+    from fastapi.responses import RedirectResponse
+    from backend.config import settings
+    from backend.provisioning.credentials_store import store_credentials
+
+    from urllib.parse import quote as _urlquote
+    fe_base = settings.frontend_url
+
+    def _err_redirect(msg: str):
+        return RedirectResponse(url=f"{fe_base}/integrations?linkedin_error={_urlquote(msg, safe='')}")
+
+    if error:
+        return _err_redirect(error)
+    if not code or not state:
+        return _err_redirect("missing_params")
+
+    founder_id = _oauth_state_consume(state)
+    if not founder_id:
+        return _err_redirect("invalid_state")
+
+    redirect_uri = f"{settings.backend_url}/api/linkedin/callback"
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            "https://www.linkedin.com/oauth/v2/accessToken",
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirect_uri,
+                "client_id": settings.linkedin_client_id,
+                "client_secret": settings.linkedin_client_secret,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=15,
+        )
+
+    try:
+        data = resp.json()
+    except Exception:
+        logger.error("LinkedIn token exchange returned non-JSON response (status %s)", resp.status_code)
+        return _err_redirect("exchange_failed")
+    access_token = data.get("access_token")
+    if not access_token:
+        logger.error("LinkedIn OAuth exchange failed: %s", data)
+        return _err_redirect("exchange_failed")
+
+    store_credentials(founder_id, "linkedin", {
+        "access_token": access_token,
+        "expires_in": data.get("expires_in"),
+    })
+    logger.info("LinkedIn OAuth connected for founder %s", founder_id)
+    return RedirectResponse(url=f"{fe_base}/integrations?linkedin_connected=1")
 
 
 @router.get("/setup/{founder_id}")

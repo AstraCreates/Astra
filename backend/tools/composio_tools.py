@@ -265,15 +265,10 @@ def gmail_get_message(founder_id: str, message_id: str) -> dict:
 
 
 def composio_gmail_send(founder_id: str, to: str, subject: str, body: str) -> dict:
-    """Send email via founder's Gmail. Tries Composio SDK → direct Gmail API → Resend."""
-    result = _run("GMAIL_SEND_EMAIL", {"recipient_email": to, "subject": subject, "body": body}, founder_id)
-    if not result.get("error"):
-        return result
-    # Composio SDK broken (410) or not configured — try direct Gmail API
+    """Send email via founder's Gmail (direct Gmail API) with Resend fallback."""
     direct = gmail_send_direct(founder_id, to, subject, body)
     if not direct.get("error"):
         return direct
-    # Fall back to Resend if key is set
     try:
         from backend.tools.resend_tools import resend_send_email
         from backend.config import settings
@@ -281,7 +276,7 @@ def composio_gmail_send(founder_id: str, to: str, subject: str, body: str) -> di
             return resend_send_email(to=to, subject=subject, html=f"<pre>{body}</pre>", from_email="astra@astra.ai")
     except Exception:
         pass
-    return {"error": f"All Gmail paths failed. Composio: {result.get('error')}. Direct: {direct.get('error')}"}
+    return {"error": f"Gmail send failed: {direct.get('error')}"}
 
 
 # ---------------------------------------------------------------------------
@@ -289,8 +284,47 @@ def composio_gmail_send(founder_id: str, to: str, subject: str, body: str) -> di
 # ---------------------------------------------------------------------------
 
 def composio_linkedin_post(founder_id: str, text: str) -> dict:
-    """Create a LinkedIn post from founder's account. Args: founder_id, text."""
-    return _run("LINKEDIN_CREATE_LINKED_IN_POST", {"text": text}, founder_id)
+    """Create a LinkedIn post from founder's connected account. Args: founder_id, text."""
+    import requests as _req
+    from backend.provisioning.credentials_store import load_credentials
+    creds = load_credentials(founder_id, "linkedin")
+    access_token = (creds or {}).get("access_token")
+    if not access_token:
+        return {"error": "LinkedIn not connected — connect via Integrations page"}
+    # Resolve person URN via OpenID Connect userinfo
+    profile_resp = _req.get(
+        "https://api.linkedin.com/v2/userinfo",
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=10,
+    )
+    if not profile_resp.ok:
+        return {"error": f"LinkedIn profile fetch failed ({profile_resp.status_code}) — reconnect LinkedIn on Integrations page"}
+    sub = profile_resp.json().get("sub")
+    if not sub:
+        return {"error": "Could not resolve LinkedIn profile URN"}
+    person_urn = f"urn:li:person:{sub}"
+    payload = {
+        "author": person_urn,
+        "lifecycleState": "PUBLISHED",
+        "specificContent": {
+            "com.linkedin.ugc.ShareContent": {
+                "shareCommentary": {"text": text},
+                "shareMediaCategory": "NONE",
+            }
+        },
+        "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
+    }
+    resp = _req.post(
+        "https://api.linkedin.com/v2/ugcPosts",
+        headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/json", "X-Restli-Protocol-Version": "2.0.0"},
+        json=payload,
+        timeout=15,
+    )
+    if resp.ok:
+        return {"ok": True, "post_id": resp.headers.get("x-linkedin-id", ""), "text": text}
+    if resp.status_code == 403:
+        return {"error": "LinkedIn post failed: insufficient permissions. The app requires LinkedIn Marketing Developer Platform approval to post. Visit https://developer.linkedin.com/product-catalog to apply."}
+    return {"error": f"LinkedIn post failed {resp.status_code}: {resp.text[:200]}"}
 
 
 # ---------------------------------------------------------------------------
@@ -298,11 +332,23 @@ def composio_linkedin_post(founder_id: str, text: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def _github_username(founder_id: str) -> str | None:
-    """Resolve the actual GitHub username from the founder's connected account."""
-    result = _run("GITHUB_GET_THE_AUTHENTICATED_USER", {}, founder_id)
-    if isinstance(result, dict):
-        data = result.get("data", result)
-        return data.get("login")
+    """Resolve the GitHub username from the founder's stored OAuth token."""
+    import requests as _req
+    from backend.provisioning.credentials_store import load_credentials
+    creds = load_credentials(founder_id, "github")
+    token = (creds or {}).get("token")
+    if not token:
+        return None
+    try:
+        resp = _req.get(
+            "https://api.github.com/user",
+            headers={"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"},
+            timeout=10,
+        )
+        if resp.ok:
+            return resp.json().get("login")
+    except Exception as e:
+        logger.warning("GitHub username fetch failed: %s", e)
     return None
 
 
@@ -315,13 +361,26 @@ def composio_github_create_pr(
     base: str = "main",
     owner: str = "",
 ) -> dict:
-    """Open a GitHub PR using founder's OAuth. Args: founder_id, repo (just the repo name, not owner/repo), title, body, head (branch name), base='main'. Auto-resolves GitHub username as owner."""
-    resolved_owner = owner or _github_username(founder_id) or founder_id
-    return _run(
-        "GITHUB_CREATE_A_PULL_REQUEST",
-        {"owner": resolved_owner, "repo": repo, "title": title, "body": body, "head": head, "base": base},
-        founder_id,
+    """Open a GitHub PR using founder's stored OAuth token. Args: founder_id, repo (just the repo name), title, body, head (branch name), base='main'."""
+    import requests as _req
+    from backend.provisioning.credentials_store import load_credentials
+    creds = load_credentials(founder_id, "github")
+    token = (creds or {}).get("token")
+    if not token:
+        return {"error": "GitHub not connected — connect via Integrations page"}
+    resolved_owner = owner or _github_username(founder_id)
+    if not resolved_owner:
+        return {"error": "Could not resolve GitHub username — ensure GitHub is connected via Integrations page"}
+    resp = _req.post(
+        f"https://api.github.com/repos/{resolved_owner}/{repo}/pulls",
+        headers={"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"},
+        json={"title": title, "body": body, "head": head, "base": base},
+        timeout=15,
     )
+    data = resp.json()
+    if resp.ok:
+        return {"ok": True, "number": data.get("number"), "url": data.get("html_url"), "title": title}
+    return {"error": data.get("message", resp.text[:200])}
 
 
 def composio_github_create_issue(
@@ -331,13 +390,26 @@ def composio_github_create_issue(
     body: str,
     owner: str = "",
 ) -> dict:
-    """Open a GitHub issue using founder's OAuth. Args: founder_id, repo (just the repo name, not owner/repo), title, body. Auto-resolves GitHub username as owner."""
-    resolved_owner = owner or _github_username(founder_id) or founder_id
-    return _run(
-        "GITHUB_CREATE_AN_ISSUE",
-        {"owner": resolved_owner, "repo": repo, "title": title, "body": body},
-        founder_id,
+    """Open a GitHub issue using founder's stored OAuth token. Args: founder_id, repo (just the repo name), title, body."""
+    import requests as _req
+    from backend.provisioning.credentials_store import load_credentials
+    creds = load_credentials(founder_id, "github")
+    token = (creds or {}).get("token")
+    if not token:
+        return {"error": "GitHub not connected — connect via Integrations page"}
+    resolved_owner = owner or _github_username(founder_id)
+    if not resolved_owner:
+        return {"error": "Could not resolve GitHub username — ensure GitHub is connected via Integrations page"}
+    resp = _req.post(
+        f"https://api.github.com/repos/{resolved_owner}/{repo}/issues",
+        headers={"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"},
+        json={"title": title, "body": body},
+        timeout=15,
     )
+    data = resp.json()
+    if resp.ok:
+        return {"ok": True, "number": data.get("number"), "url": data.get("html_url"), "title": title}
+    return {"error": data.get("message", resp.text[:200])}
 
 
 # ---------------------------------------------------------------------------
@@ -349,37 +421,45 @@ def composio_linear_create_issue(
     title: str,
     description: str,
 ) -> dict:
-    """Create a Linear issue via GraphQL. Args: founder_id, title, description. Auto-fetches team_id."""
-    # Get first available team
-    teams_result = _run(
-        "LINEAR_RUN_QUERY_OR_MUTATION",
-        {"query_or_mutation": "query { teams { nodes { id name } } }"},
-        founder_id,
+    """Create a Linear issue via GraphQL using the founder's stored API key. Args: founder_id, title, description."""
+    import requests as _req
+    from backend.provisioning.credentials_store import load_credentials
+    creds = load_credentials(founder_id, "linear")
+    api_key = (creds or {}).get("api_key")
+    if not api_key:
+        return {"error": "Linear not connected — connect via Integrations page"}
+
+    headers = {"Authorization": api_key, "Content-Type": "application/json"}
+
+    teams_resp = _req.post(
+        "https://api.linear.app/graphql",
+        headers=headers,
+        json={"query": "{ teams { nodes { id name } } }"},
+        timeout=15,
     )
-    if teams_result.get("error") and "410" in str(teams_result.get("error", "")):
-        return {"ok": True, "note": "Linear (Composio 410) — issue logged locally", "title": title}
-
-    teams = []
-    if isinstance(teams_result, dict):
-        # Composio wraps under data, Linear wraps its response under data.data
-        outer = teams_result.get("data") or {}
-        inner = outer.get("data") or outer
-        teams = (inner.get("teams") or {}).get("nodes", [])
+    if not teams_resp.ok:
+        return {"error": f"Linear API error {teams_resp.status_code}"}
+    teams = teams_resp.json().get("data", {}).get("teams", {}).get("nodes", [])
     team_id = teams[0].get("id") if teams else None
-
     if not team_id:
-        return {"ok": True, "note": "No Linear team found — issue logged locally", "title": title}
+        return {"error": "No Linear workspace team found — ensure the API key has team access"}
 
     mutation = (
         "mutation CreateIssue($title: String!, $teamId: String!, $description: String) {"
         "  issueCreate(input: {title: $title, teamId: $teamId, description: $description}) {"
         "    success issue { id title url } } }"
     )
-    return _run(
-        "LINEAR_RUN_QUERY_OR_MUTATION",
-        {"query_or_mutation": mutation, "variables": {"title": title, "teamId": team_id, "description": description}},
-        founder_id,
+    resp = _req.post(
+        "https://api.linear.app/graphql",
+        headers=headers,
+        json={"query": mutation, "variables": {"title": title, "teamId": team_id, "description": description}},
+        timeout=15,
     )
+    if resp.ok:
+        data = resp.json().get("data", {}).get("issueCreate", {})
+        issue = data.get("issue") or {}
+        return {"ok": True, "id": issue.get("id"), "url": issue.get("url"), "title": title}
+    return {"error": f"Linear mutation failed {resp.status_code}: {resp.text[:200]}"}
 
 
 # ---------------------------------------------------------------------------
@@ -393,26 +473,57 @@ def composio_calendar_create_event(
     end_time: str = "",
     attendees: list | None = None,
     description: str = "",
+    timezone: str = "UTC",
 ) -> dict:
-    """Create a Google Calendar event. start/end_time in ISO 8601."""
+    """Create a Google Calendar event using the founder's Google OAuth tokens. start/end_time in ISO 8601 (include UTC offset for non-UTC times, e.g. 2024-07-01T14:00:00-05:00)."""
+    import requests as _req
     from backend.tools._arg_utils import parse_list_arg
+    from backend.provisioning.credentials_store import load_credentials, store_credentials
     if not founder_id or not summary or not start_time or not end_time:
         return {"error": "founder_id, summary, start_time, and end_time are required"}
     attendees = parse_list_arg(attendees, "attendees") or []
-    result = _run(
-        "GOOGLECALENDAR_CREATE_EVENT",
-        {
+
+    creds = load_credentials(founder_id, "gmail") or {}
+    if not creds.get("access_token"):
+        return {"error": "Google Calendar not connected — reconnect Gmail via Integrations page to grant calendar access"}
+
+    access_token = creds.get("access_token")
+
+    def _make_body() -> dict:
+        event_body: dict = {
             "summary": summary,
-            "start_datetime": start_time,
-            "end_datetime": end_time,
-            "attendees": attendees,
             "description": description,
-        },
-        founder_id,
-    )
-    if result.get("error") and "410" in str(result.get("error", "")):
-        return {"ok": True, "note": "Google Calendar (Composio 410) — event logged locally", "summary": summary, "start": start_time}
-    return result
+            "start": {"dateTime": start_time, "timeZone": timezone},
+            "end": {"dateTime": end_time, "timeZone": timezone},
+        }
+        attendee_list = [{"email": a} for a in attendees if "@" in str(a)]
+        if attendee_list:
+            event_body["attendees"] = attendee_list
+        return event_body
+
+    def _post(token: str):
+        return _req.post(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json=_make_body(),
+            timeout=15,
+        )
+
+    resp = _post(access_token)
+    if resp.status_code == 401:
+        new_token = _gmail_refresh_token(creds)
+        if new_token:
+            creds["access_token"] = new_token
+            store_credentials(founder_id, "gmail", creds)
+            resp = _post(new_token)
+        else:
+            return {"error": "Google Calendar token expired — reconnect Gmail via Integrations page"}
+    if resp.status_code == 403:
+        return {"error": "Calendar access not granted — reconnect Gmail via Integrations page to include calendar permissions"}
+    if resp.ok:
+        data = resp.json()
+        return {"ok": True, "event_id": data.get("id"), "html_link": data.get("htmlLink"), "summary": summary}
+    return {"error": f"Google Calendar API error {resp.status_code}: {resp.text[:200]}"}
 
 
 # ---------------------------------------------------------------------------
@@ -424,14 +535,21 @@ def composio_notion_create_page(
     title: str,
     parent_id: str = "",
 ) -> dict:
-    """Create a Notion page. Args: founder_id, title, parent_id (optional). Falls back to direct Notion API or logs locally."""
-    from backend.config import settings
+    """Create a Notion page using the founder's Notion integration token. Falls back to env-level token or logs locally."""
+    import requests as _req
+    from backend.provisioning.credentials_store import load_credentials
 
-    # Try direct Notion API first (requires NOTION_TOKEN in env)
-    notion_token = getattr(settings, "notion_token", None) or ""
+    # Per-founder token takes priority
+    creds = load_credentials(founder_id, "notion")
+    notion_token = (creds or {}).get("token")
+
+    # Fall back to platform-wide env token
+    if not notion_token:
+        from backend.config import settings
+        notion_token = getattr(settings, "notion_token", None) or ""
+
     if notion_token:
         try:
-            import requests as _req
             headers = {
                 "Authorization": f"Bearer {notion_token}",
                 "Content-Type": "application/json",
@@ -452,12 +570,11 @@ def composio_notion_create_page(
         except Exception as e:
             logger.warning("Direct Notion API failed: %s", e)
 
-    # Composio Notion actions are deprecated (HTTP 410) — log locally and return graceful result
     logger.info("Notion unavailable — page '%s' logged locally for founder %s", title, founder_id)
     return {
         "ok": True,
         "title": title,
-        "note": "Notion integration unavailable. Set NOTION_TOKEN env var to enable direct Notion API. Page content logged to Obsidian.",
+        "note": "Notion not connected — connect via Integrations page. Page content logged to Obsidian.",
         "logged_locally": True,
     }
 

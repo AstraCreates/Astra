@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import ServiceLogo from "@/components/ServiceLogo";
 import { useDevUser } from "@/lib/use-dev-user";
 import Link from "next/link";
-import { apiFetch, saveServiceCredential, getComposioOAuthUrls, getSetupStatus, SetupStatus } from "@/lib/api";
+import { apiFetch, saveServiceCredential, getSetupStatus, SetupStatus } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -127,13 +127,30 @@ const ECOMM_SERVICES = [
   },
 ] as const;
 
-const COMPOSIO_APPS = [
-  { key: "linkedin", label: "LinkedIn", icon: "▪", desc: "Post announcements" },
-  { key: "googlecalendar", label: "Calendar", icon: "▣", desc: "Schedule meetings" },
-  { key: "notion", label: "Notion", icon: "▷", desc: "Update wiki" },
-  { key: "linear", label: "Linear", icon: "◈", desc: "Track issues" },
-  { key: "github", label: "GitHub PRs", icon: "●", desc: "Open PRs via Composio" },
-];
+const WORKSPACE_SERVICES = [
+  {
+    key: "notion",
+    credKey: "token",
+    label: "Notion",
+    icon: "▷",
+    desc: "Update wikis and documents",
+    placeholder: "secret_xxxxxxxxxxxxxxxxxxxx",
+    createUrl: "https://www.notion.so/profile/integrations",
+    createLabel: "notion.so/profile/integrations",
+    steps: 2,
+  },
+  {
+    key: "linear",
+    credKey: "api_key",
+    label: "Linear",
+    icon: "◈",
+    desc: "Create and track issues",
+    placeholder: "lin_api_xxxxxxxxxxxxxxxxxxxx",
+    createUrl: "https://linear.app/settings/api",
+    createLabel: "linear.app/settings/api",
+    steps: 2,
+  },
+] as const;
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -476,7 +493,7 @@ function IntegrationModal({
 
 // ── ServiceCard ────────────────────────────────────────────────────────────
 
-type AnyService = typeof SERVICES[number] | typeof ECOMM_SERVICES[number];
+type AnyService = typeof SERVICES[number] | typeof ECOMM_SERVICES[number] | typeof WORKSPACE_SERVICES[number];
 
 function ServiceCard({
   svc, connected, founderId, onSaved,
@@ -794,194 +811,71 @@ function StripeCard({ founderId, email }: { founderId: string; email: string }) 
   );
 }
 
-// ── ComposioKeyCard ────────────────────────────────────────────────────────
+// ── LinkedInCard ───────────────────────────────────────────────────────────
 
-function ComposioKeyCard({ connected, saving, error, onSave }: {
-  connected: boolean;
-  saving?: boolean;
-  error?: string | null;
-  onSave?: (key: string) => Promise<void>;
-}) {
-  const [showForm, setShowForm] = useState(false);
-  const [keyValue, setKeyValue] = useState("");
-
-  const handleSave = async () => {
-    if (!keyValue.trim() || !onSave) return;
-    await onSave(keyValue.trim());
-    setKeyValue("");
-    setShowForm(false);
-  };
-
-  return (
-    <div style={cardStyle(connected, showForm && !connected)}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: connected ? c.greenTint : c.bg }}>
-        <ServiceLogo serviceKey="composio" label="Composio" size={26} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 14, fontWeight: 600, color: c.text }}>Composio</span>
-            <StatusDot connected={connected} />
-            {connected && <span style={{ fontSize: 11, color: c.green, fontWeight: 500 }}>Connected</span>}
-          </div>
-          <span style={{ fontSize: 12, color: c.grey }}>Enables Gmail, LinkedIn, Notion, Linear, Calendar</span>
-        </div>
-        <button
-          onClick={() => { setShowForm(v => !v); setKeyValue(""); }}
-          className="m-tap"
-          style={{
-            padding: "6px 14px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
-            background: connected ? c.greenTint : c.bg,
-            border: `1px solid ${connected ? c.greenBorder : c.border}`,
-            color: connected ? c.green : c.textSecondary,
-            cursor: "pointer",
-          }}
-        >
-          {connected ? "Reconnect ↗" : "Connect ↗"}
-        </button>
-      </div>
-      {showForm && (
-        <div style={{ borderTop: `1px solid ${c.blueBorder}`, padding: "14px 18px", background: c.blueTint, display: "flex", flexDirection: "column", gap: 10 }}>
-          <p style={{ margin: 0, fontSize: 13, color: c.textSecondary, lineHeight: 1.6 }}>
-            Paste your <strong>Composio API key</strong> from{" "}
-            <a href="https://app.composio.dev/settings" target="_blank" rel="noopener noreferrer" style={{ color: c.blue }}>app.composio.dev/settings ↗</a>
-          </p>
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              value={keyValue}
-              onChange={e => setKeyValue(e.target.value)}
-              placeholder="cp_xxxxxxxxxxxxxxxx"
-              onKeyDown={e => e.key === "Enter" && handleSave()}
-              style={{
-                flex: 1, padding: "8px 12px", fontSize: 13, borderRadius: 8,
-                border: `1px solid ${c.border}`, background: c.bg, color: c.text, outline: "none",
-                fontFamily: "var(--font-geist-mono, monospace)",
-              }}
-              onFocus={e => (e.target.style.borderColor = c.blue)}
-              onBlur={e => (e.target.style.borderColor = c.border)}
-            />
-            <button
-              onClick={handleSave}
-              disabled={saving || !keyValue.trim()}
-              style={{
-                padding: "0 16px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
-                background: c.blue, color: "#FFFFFF", border: "none",
-                cursor: saving || !keyValue.trim() ? "not-allowed" : "pointer",
-                opacity: saving || !keyValue.trim() ? 0.6 : 1,
-              }}
-            >
-              {saving ? "…" : "Save"}
-            </button>
-          </div>
-          {error && <p style={{ fontSize: 12, color: c.red, margin: 0 }}>{error}</p>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── ComposioAppCard ────────────────────────────────────────────────────────
-
-function ComposioAppCard({
-  app, oauthUrl, founderId, initialConnected,
-}: {
-  app: typeof COMPOSIO_APPS[number];
-  oauthUrl: string;
-  founderId: string;
-  initialConnected: boolean;
-}) {
-  const [isConnected, setIsConnected] = useState(initialConnected);
-  const [popupOpen, setPopupOpen] = useState(false);
-  const popupRef = useRef<Window | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => { setIsConnected(initialConnected); }, [initialConnected]);
-
-  const isError = !oauthUrl || oauthUrl.startsWith("error:");
-
-  const openOAuth = () => {
-    if (isError) return;
-    const popup = window.open(oauthUrl, `composio_${app.key}`, "width=900,height=660,scrollbars=yes,resizable=yes");
-    if (!popup) { window.open(oauthUrl, "_blank"); return; }
-    popupRef.current = popup;
-    setPopupOpen(true);
-
-    pollRef.current = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(pollRef.current!);
-        setPopupOpen(false);
-        apiFetch(`${BASE}/setup/composio/connected/${founderId}`)
-          .then(r => r.json())
-          .then(data => { if (data.apps?.[app.key]) setIsConnected(true); })
-          .catch(() => {});
-        return;
-      }
-      apiFetch(`${BASE}/setup/composio/connected/${founderId}`)
-        .then(r => r.json())
-        .then(data => {
-          if (data.apps?.[app.key]) {
-            setIsConnected(true);
-            popup.close();
-            clearInterval(pollRef.current!);
-            setPopupOpen(false);
-          }
-        })
-        .catch(() => {});
-    }, 2500);
-  };
-
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
-
-  return (
-    <div style={{ ...cardStyle(isConnected, popupOpen && !isConnected), opacity: isError ? 0.45 : 1 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", background: isConnected ? c.greenTint : c.bg }}>
-        <ServiceLogo serviceKey={app.key} label={app.label} size={24} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: c.text }}>{app.label}</span>
-            <StatusDot connected={isConnected} />
-            {isConnected && <span style={{ fontSize: 11, color: c.green, fontWeight: 500 }}>Connected</span>}
-            {popupOpen && !isConnected && <span style={{ fontSize: 11, color: c.blue, fontWeight: 500 }}>Authorizing…</span>}
-          </div>
-          <span style={{ fontSize: 12, color: c.grey }}>{isError ? "Requires Composio API key" : app.desc}</span>
-        </div>
-        <button
-          onClick={openOAuth}
-          disabled={isError || popupOpen}
-          style={{
-            padding: "5px 14px", borderRadius: 8, fontSize: 12, flexShrink: 0, fontWeight: 500,
-            background: isConnected ? c.greenTint : c.bg,
-            border: `1px solid ${isConnected ? c.greenBorder : c.border}`,
-            color: isConnected ? c.green : isError ? c.textMuted : c.textSecondary,
-            cursor: isError || popupOpen ? "not-allowed" : "pointer",
-          }}
-        >
-          {popupOpen ? "Waiting…" : isConnected ? "Reconnect ↗" : "Connect ↗"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ComposioAppGrid({ founderId, composioUrls }: { founderId: string; composioUrls: Record<string, string> }) {
-  const [connected, setConnected] = useState<Record<string, boolean>>({});
+function LinkedInCard({ founderId, onSaved, linkedinConnected }: { founderId: string; onSaved: () => void; linkedinConnected: boolean }) {
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [justConnected, setJustConnected] = useState(false);
 
   useEffect(() => {
-    apiFetch(`${BASE}/setup/composio/connected/${founderId}`)
-      .then(r => r.json())
-      .then(data => setConnected(data.apps ?? {}))
-      .catch(() => {});
-  }, [founderId]);
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("linkedin_connected") === "1") {
+      window.history.replaceState({}, "", window.location.pathname);
+      setJustConnected(true);
+      onSaved();
+    }
+    if (params.get("linkedin_error")) {
+      window.history.replaceState({}, "", window.location.pathname);
+      setError(`LinkedIn connection failed: ${params.get("linkedin_error")}`);
+    }
+  }, [onSaved]);
+
+  const connect = async () => {
+    setConnecting(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`${BASE}/linkedin/oauth-url/${founderId}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.detail ?? `Error ${res.status}`);
+        setConnecting(false);
+        return;
+      }
+      if (data.url) window.location.href = data.url;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to reach server");
+      setConnecting(false);
+    }
+  };
+
+  const isConnected = linkedinConnected || justConnected;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {COMPOSIO_APPS.map(app => (
-        <ComposioAppCard
-          key={app.key}
-          app={app}
-          oauthUrl={composioUrls[app.key] ?? ""}
-          founderId={founderId}
-          initialConnected={connected[app.key] === true}
-        />
-      ))}
+    <div style={cardStyle(isConnected, false)}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 18px", background: isConnected ? c.greenTint : c.bg }}>
+        <ServiceLogo serviceKey="linkedin" label="LinkedIn" size={26} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 600, color: c.text }}>LinkedIn</span>
+            <StatusDot connected={isConnected} />
+            {isConnected && <span style={{ fontSize: 11, color: c.green, fontWeight: 500 }}>Connected</span>}
+          </div>
+          <span style={{ fontSize: 12, color: c.grey }}>Post thought leadership content from your account</span>
+        </div>
+        <button onClick={connect} disabled={connecting} className="m-tap" style={{
+          padding: "6px 14px", borderRadius: 8, fontSize: 13, flexShrink: 0, fontWeight: 500,
+          background: isConnected ? c.greenTint : c.bg,
+          border: `1px solid ${isConnected ? c.greenBorder : c.border}`,
+          color: isConnected ? c.green : c.textSecondary,
+          cursor: connecting ? "wait" : "pointer",
+        }}>
+          {connecting ? "Redirecting…" : isConnected ? "Reconnect ↗" : "Connect ↗"}
+        </button>
+      </div>
+      {error && <div style={{ borderTop: `1px solid ${c.redBorder}`, padding: "10px 18px", background: c.redTint }}>
+        <p style={{ margin: 0, fontSize: 12, color: c.red }}>{error}</p>
+      </div>}
     </div>
   );
 }
@@ -1106,11 +1000,6 @@ export default function SetupPage() {
   const email = "";
 
   const [status, setStatus] = useState<SetupStatus | null>(null);
-  const [composioKey, setComposioKey] = useState("");
-  const [savingComposio, setSavingComposio] = useState(false);
-  const [composioUrls, setComposioUrls] = useState<Record<string, string> | null>(null);
-  const [loadingUrls, setLoadingUrls] = useState(false);
-  const [composioError, setComposioError] = useState<string | null>(null);
   const [autoProvisioning, setAutoProvisioning] = useState(false);
   const [autoEmail, setAutoEmail] = useState("");
   const [autoPassword, setAutoPassword] = useState("");
@@ -1128,6 +1017,10 @@ export default function SetupPage() {
     square: !!status?.square,
     yelp: !!status?.yelp,
   };
+  const workspaceConnected: Partial<Record<(typeof WORKSPACE_SERVICES)[number]["key"], boolean>> = {
+    notion: !!status?.notion,
+    linear: !!status?.linear,
+  };
 
   const loadStatus = useCallback(async () => {
     try {
@@ -1136,41 +1029,10 @@ export default function SetupPage() {
     } catch { /* no creds yet */ }
   }, [founderId]);
 
-  const loadComposioUrls = useCallback(async () => {
-    setLoadingUrls(true);
-    setComposioError(null);
-    try {
-      const urls = await getComposioOAuthUrls(founderId);
-      setComposioUrls(urls);
-    } catch (e) {
-      setComposioError(e instanceof Error ? e.message : "Failed");
-    } finally {
-      setLoadingUrls(false);
-    }
-  }, [founderId]);
-
   useEffect(() => {
     if (!founderId) return;
-    queueMicrotask(() => {
-      loadStatus();
-      loadComposioUrls();
-    });
-  }, [founderId, loadStatus, loadComposioUrls]);
-
-  async function saveComposioKey() {
-    const key = composioKey.trim();
-    if (!key) return;
-    setSavingComposio(true);
-    try {
-      await saveServiceCredential(founderId, "composio", { api_key: key });
-      setComposioKey("");
-      await loadComposioUrls();
-    } catch (e) {
-      setComposioError(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSavingComposio(false);
-    }
-  }
+    queueMicrotask(() => { loadStatus(); });
+  }, [founderId, loadStatus]);
 
   async function runAutoProvision() {
     if (!autoEmail.trim() || !autoPassword.trim()) return;
@@ -1185,7 +1047,6 @@ export default function SetupPage() {
       const d = await r.json();
       setAutoResult(d.summary ?? ["Done"]);
       await loadStatus();
-      await loadComposioUrls();
     } catch (e) {
       setAutoResult([e instanceof Error ? e.message : "Failed"]);
     } finally {
@@ -1193,15 +1054,14 @@ export default function SetupPage() {
     }
   }
 
-  // Count only boolean service keys — exclude nested objects like `apps` and `zero_touch`.
   const SERVICE_KEYS: (keyof SetupStatus)[] = [
     "github", "vercel", "sendgrid", "supabase",
-    "instagram", "tiktok", "meta_ads", "composio",
+    "instagram", "tiktok", "meta_ads",
+    "linkedin", "notion", "linear",
     "klaviyo", "printful", "lemonsqueezy", "square", "yelp", "twilio",
   ];
   const connectedCount = status ? SERVICE_KEYS.filter(k => status[k]).length : 0;
   const totalServices = SERVICE_KEYS.length;
-  const progressPct = (connectedCount / totalServices) * 100;
 
   return (
     <>
@@ -1234,49 +1094,26 @@ export default function SetupPage() {
         <StripeCard founderId={founderId} email={email} />
       </div>
 
-      {/* Composio */}
+      {/* Gmail */}
       <div>
-        <SectionLabel>Composio — Gmail · LinkedIn · Calendar · Notion · Linear</SectionLabel>
+        <SectionLabel>Email</SectionLabel>
+        <GmailDirectCard founderId={founderId} onSaved={loadStatus} gmailConnected={!!status?.apps?.["gmail_direct"]} />
+      </div>
+
+      {/* Workspace tools */}
+      <div>
+        <SectionLabel>Workspace tools</SectionLabel>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <ComposioKeyCard
-            connected={!!composioUrls && Object.keys(composioUrls).length > 0}
-            saving={savingComposio}
-            error={composioError}
-            onSave={async (key) => {
-              setSavingComposio(true);
-              setComposioError(null);
-              try {
-                await saveServiceCredential(founderId, "composio", { api_key: key });
-                setComposioKey("");
-                await loadComposioUrls();
-              } catch (e) {
-                setComposioError(e instanceof Error ? e.message : "Save failed");
-              } finally {
-                setSavingComposio(false);
-              }
-            }}
-          />
-
-          {composioError && <p style={{ fontSize: 12, color: c.red, margin: "0 0 4px 0" }}>{composioError}</p>}
-
-          {composioUrls && Object.keys(composioUrls).length > 0 && (
-            <ComposioAppGrid founderId={founderId} composioUrls={composioUrls} />
-          )}
-
-          {!composioUrls && !loadingUrls && (
-            <button
-              onClick={loadComposioUrls}
-              style={{
-                alignSelf: "flex-start", padding: "7px 16px", borderRadius: 8, fontSize: 13,
-                background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer", fontWeight: 500,
-              }}
-            >
-              Load OAuth links →
-            </button>
-          )}
-
-          {/* Direct Gmail OAuth — needed for actual sending since Composio action execution is deprecated */}
-          <GmailDirectCard founderId={founderId} onSaved={loadStatus} gmailConnected={!!status?.apps?.["gmail_direct"]} />
+          <LinkedInCard founderId={founderId} onSaved={loadStatus} linkedinConnected={!!status?.linkedin} />
+          {WORKSPACE_SERVICES.map(svc => (
+            <ServiceCard
+              key={svc.key}
+              svc={svc}
+              connected={workspaceConnected[svc.key] ?? false}
+              founderId={founderId}
+              onSaved={loadStatus}
+            />
+          ))}
         </div>
       </div>
 

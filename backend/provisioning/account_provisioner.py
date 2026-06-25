@@ -367,6 +367,18 @@ async def get_founder_setup_status(founder_id: str) -> dict:
     if live_apps.get("googlecalendar"):
         apps["google_calendar"] = True
 
+    # Direct credential checks (no Composio)
+    linkedin_creds = creds.get("linkedin") or {}
+    notion_creds = creds.get("notion") or {}
+    linear_creds = creds.get("linear") or {}
+    if linkedin_creds.get("access_token"):
+        apps["linkedin"] = True
+    if notion_creds.get("token"):
+        apps["notion"] = True
+    if linear_creds.get("api_key"):
+        apps["linear"] = True
+        apps["product_tracker"] = True
+
     return {
         "github": bool(creds.get("github", {}).get("token")),
         "vercel": bool(creds.get("vercel", {}).get("token")),
@@ -375,7 +387,9 @@ async def get_founder_setup_status(founder_id: str) -> dict:
         "instagram": bool(creds.get("instagram", {}).get("access_token")),
         "tiktok": bool(creds.get("tiktok", {}).get("access_token")),
         "meta_ads": bool(creds.get("meta_ads", {}).get("access_token")),
-        "composio": bool(creds.get("composio", {}).get("api_key")),
+        "linkedin": bool(linkedin_creds.get("access_token")),
+        "notion": bool(notion_creds.get("token")),
+        "linear": bool(linear_creds.get("api_key")),
         # Ecomm / local-service integrations
         "klaviyo": bool(creds.get("klaviyo", {}).get("api_key")),
         "printful": bool(creds.get("printful", {}).get("api_key")),
@@ -422,8 +436,6 @@ def get_zero_touch_readiness() -> dict[str, Any]:
     imap = _check_test_inbox_auth(test_email, imap_password)
     anti_bot_ready = bool(capsolver_path or proxy_server)
     blockers: list[str] = []
-    if not settings.composio_api_key:
-        blockers.append("COMPOSIO_API_KEY is not configured.")
     if not test_email:
         blockers.append("TEST_EMAIL_BASE is not configured.")
     elif not imap_password:
