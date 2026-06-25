@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { listSessions, deleteSessionRemote, killSession, getSessionDigest, AGENT_LABELS, type SessionIndexEntry, type SessionDigest } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
@@ -60,6 +60,7 @@ export default function DashboardView() {
   const [greeting, setGreeting] = useState("");
   const [digests, setDigests] = useState<Map<string, SessionDigest>>(new Map());
   const [showCompleted, setShowCompleted] = useState(false);
+  const retriedRef = useRef(false);
   useEffect(() => {
     if (typeof window !== "undefined") {
       const fullName = localStorage.getItem("astra_onboarding_name") || "";
@@ -101,6 +102,15 @@ export default function DashboardView() {
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // If first load returns empty, retry once after 2s — handles the race between
+  // submitGoal completing and the session index being updated after onboarding.
+  useEffect(() => {
+    if (sessions === null || sessions.length > 0 || retriedRef.current) return;
+    retriedRef.current = true;
+    const t = setTimeout(() => void load(), 2000);
+    return () => clearTimeout(t);
+  }, [sessions, load]);
 
   useEffect(() => {
     if (!userId) return;
@@ -163,10 +173,10 @@ export default function DashboardView() {
         .sc-row.stalled::before { background: var(--amber); }
         .sc-row.running { border-color: var(--bb) !important; }
         .sc-row.running::before { background: linear-gradient(90deg, var(--blue), var(--mint)); animation: sc-shimmer 2s ease-in-out infinite; }
-        .sc-child { margin-left: 20px; border-left: 3px solid var(--bb) !important; border-radius: 0 8px 8px 0 !important; }
+        .sc-child { margin-left: 20px; border-left: 1px solid var(--bd) !important; border-radius: 0 8px 8px 0 !important; }
         .sc-child::before { border-radius: 0 8px 0 0 !important; }
         .sc-progress-track { height: 5px; background: var(--bd); border-radius: 3px; overflow: hidden; margin-top: 8px; }
-        .sc-progress-fill { height: 100%; border-radius: 3px; transition: width 0.8s ease; }
+        .sc-progress-fill { height: 100%; width: 100%; border-radius: 3px; transform-origin: left; transition: transform 0.8s ease; }
         .sc-progress-indeterminate { height: 100%; width: 35%; border-radius: 3px; animation: sc-indeterminate 1.4s ease-in-out infinite; }
       `}</style>
 
@@ -397,7 +407,7 @@ export default function DashboardView() {
                             </div>
                             <div className="sc-progress-track">
                               {progressPct !== null ? (
-                                <div className="sc-progress-fill" style={{ width: `${progressPct}%`, background: isDone ? "var(--green)" : "var(--blue)" }} />
+                                <div className="sc-progress-fill" style={{ transform: `scaleX(${progressPct / 100})`, background: isDone ? "var(--green)" : "var(--blue)" }} />
                               ) : (
                                 <div className="sc-progress-indeterminate" style={{ background: "var(--blue)" }} />
                               )}

@@ -1544,7 +1544,7 @@ export default function OnboardingWizard() {
 
       const constraints = selectedStackId === "custom" && customAgents.length > 0
         ? { agents: customAgents } : {};
-      await submitGoal(founderId, instruction, constraints, stack).catch(() => {});
+      submitGoal(founderId, instruction, constraints, stack).catch(() => {});
     }
 
     lsSet("astra_show_welcome", "1");
