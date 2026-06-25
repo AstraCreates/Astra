@@ -26,7 +26,7 @@ class StackPackageRequest(BaseModel):
 
 class ApproveRequest(BaseModel):
     task_id: str
-    approval_token: str
+    approval_token: Optional[str] = None  # deprecated, ignored — auth from request identity
     note: Optional[str] = None
 
 

@@ -25,6 +25,8 @@ _event_counters: dict[str, int] = {}
 
 _MAX_BUFFER = 2000  # max events kept per session
 _REDIS_TTL = 8 * 3600  # 8 hours
+# child_session_id → parent_session_id for agent-status event forwarding
+_parent_map: dict[str, str] = {}
 _RUNTIME_EVENT_TYPES = {
     "agent_budget_update", "agent_budget_exhausted",
     "tool_guardrail_warning", "tool_guardrail_blocked", "tool_unavailable",
@@ -339,6 +341,20 @@ async def publish(session_id: str, event: dict) -> None:
     # Strip base64 before putting into SSE queue to prevent browser crashes
     sse_event = _strip_base64(event)
     await _get_queue(session_id).put((event_id, sse_event))
+    # Forward agent status events to parent session so the root session view shows
+    # live agent states from child sessions (e.g. dispatch_current_goal sub-runs).
+    _etype = event.get("type")
+    if _etype in {"agent_start", "agent_done", "agent_error"}:
+        parent_sid = _parent_map.get(session_id)
+        if parent_sid:
+            parent_eid = _next_id(parent_sid)
+            forwarded = dict(sse_event, _forwarded_from=session_id)
+            _buffer(parent_sid, parent_eid, forwarded)
+            # Also log to parent so reconnecting clients get the state via replay.
+            if parent_sid not in _event_log:
+                _event_log[parent_sid] = []
+            _event_log[parent_sid].append((parent_eid, forwarded))
+            await _get_queue(parent_sid).put((parent_eid, forwarded))
     # Event-driven goal ticking: when an agent finishes, mark the company goal's
     # tasks it owns (no timer). Cheap + best-effort; offloaded so it never blocks.
     _etype = event.get("type")
@@ -368,6 +384,12 @@ _main_loop: asyncio.AbstractEventLoop | None = None
 def set_main_loop(loop: asyncio.AbstractEventLoop) -> None:
     global _main_loop
     _main_loop = loop
+
+
+def register_parent_session(child_sid: str, parent_sid: str) -> None:
+    """Forward agent status events from child_sid to parent_sid's SSE stream."""
+    if child_sid and parent_sid and child_sid != parent_sid:
+        _parent_map[child_sid] = parent_sid
 
 
 def publish_sync(session_id: str, event: dict) -> None:

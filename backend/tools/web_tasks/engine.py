@@ -111,7 +111,21 @@ async def _run_composite_saas_task(ctx: WebTaskContext) -> WebTaskResult:
     await ctx.add_check("github_authenticated")
     await ctx.add_check("deploy_token_extracted")
     await ctx.add_check("project_keys_extracted")
-    return await ctx.complete({"github": combined.get("github", {}), "vercel": combined.get("vercel", {}), "supabase": combined.get("supabase", {})})
+    # Persist Supabase credentials so _autoprovision_env and other tools find them
+    # without re-provisioning on every build.
+    sb = combined.get("supabase", {})
+    if sb.get("anon_key") and ctx.request.founder_id:
+        try:
+            from backend.provisioning.credentials_store import store_credentials
+            store_credentials(ctx.request.founder_id, "supabase", {
+                "project_url": sb.get("project_url", ""),
+                "anon_key": sb.get("anon_key", ""),
+                "service_role_key": sb.get("service_role_key", ""),
+                "ref": sb.get("project_ref", ""),
+            })
+        except Exception:
+            pass
+    return await ctx.complete({"github": combined.get("github", {}), "vercel": combined.get("vercel", {}), "supabase": sb})
 
 
 async def run_web_task(

@@ -1,6 +1,11 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
+// Normalize Google email to a stable founder ID — must match backend normalizeSignedInUserId
+export function normalizeEmailToFounderId(email: string): string {
+  return "google_" + email.toLowerCase().replace(/[^a-z0-9]/g, "_");
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     Google({
@@ -24,10 +29,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       (session as { accessToken?: string }).accessToken = token.accessToken as string | undefined;
       return session;
     },
-    jwt({ token, account }) {
+    jwt({ token, account, profile }) {
       // Persist the Google OAuth access token so we can call the People API.
       if (account?.access_token) {
         token.accessToken = account.access_token;
+      }
+      // Normalize sub to email-based founder ID so it matches the localStorage identity
+      // format used everywhere else in the app.
+      const email = (profile as { email?: string } | undefined)?.email ?? (token.email as string | undefined);
+      if (email) {
+        token.sub = normalizeEmailToFounderId(email);
       }
       return token;
     },
@@ -39,11 +50,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     signIn: "/",
     error: "/",
   },
-  secret: process.env.NEXTAUTH_SECRET ?? "astra-dev-secret-change-in-prod",
+  secret: (() => {
+    const s = process.env.NEXTAUTH_SECRET;
+    if (!s && process.env.NODE_ENV === "production") {
+      console.warn("NEXTAUTH_SECRET not set — using dev fallback. Auth will not work.");
+    }
+    return s ?? "astra-dev-secret-change-in-prod";
+  })(),
   trustHost: true,
-  // The app is served over HTTP (no TLS yet). NextAuth otherwise sets `Secure`
-  // / `__Secure-`-prefixed cookies behind a proxy, which mobile browsers refuse
-  // to store on an insecure origin — so sign-in "just refreshes" and never
-  // establishes a session. Force non-secure cookies so HTTP sign-in persists.
+  // HTTP deployment: NextAuth behind nginx proxy infers HTTPS and sets Secure cookies,
+  // which browsers refuse to store/send over HTTP. Force off until TLS is added.
   useSecureCookies: false,
 });

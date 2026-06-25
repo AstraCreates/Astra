@@ -384,8 +384,9 @@ async def file_llc_live(
                                 name_parts[0] if name_parts else "")
                 await page.fill("input[name='paymentInformation.last_name']",
                                 " ".join(name_parts[1:]) if len(name_parts) > 1 else "")
-                await page.fill("input[name='paymentInformation.cvc']",
-                                settings.nwra_card_cvv)
+                # CVV must not be stored in config (PCI-DSS). Leave blank — NWRA
+                # payment flow requires manual CVV entry or a tokenized card vault.
+                # await page.fill("input[name='paymentInformation.cvc']", settings.nwra_card_cvv)
                 await _select_vue(page, None, "Month", settings.nwra_card_expiry_month)
                 await _select_vue(page, None, "Year", settings.nwra_card_expiry_year)
                 await page.fill("input[name='paymentInformation.line1']",

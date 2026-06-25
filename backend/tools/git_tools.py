@@ -3,7 +3,7 @@ Git tools for the technical agent — write files, commit, push to a GitHub repo
 run_mvp_loop is the primary entry point: iterates Claude Code until MVP is complete.
 
 Workspaces live at ~/Documents/astra-workspaces/<session_id>/<repo_name>/
-free-claude-code proxies the claude CLI to DeepInfra so no Anthropic key needed.
+free-claude-code proxies the claude CLI through OpenRouter so no Anthropic key needed.
 """
 import hashlib
 import json
@@ -14,8 +14,6 @@ import subprocess
 import threading
 import uuid
 from pathlib import Path
-
-import openai
 
 from backend.config import settings
 
@@ -30,7 +28,7 @@ logger = logging.getLogger(__name__)
 def _find_claude_bin() -> str:
     """Find openclaude binary (supports --provider flag). Falls back to claude."""
     import shutil
-    # openclaude first — it supports --provider openai for DeepInfra
+    # openclaude first — it supports --provider openai for OpenRouter
     for candidate in [
         "/opt/homebrew/bin/openclaude",
         "/usr/local/bin/openclaude",
@@ -336,7 +334,146 @@ def _placeholder_env(local: str) -> dict:
             except Exception:
                 pass
             break
+    # Fallback: scan package.json deps and inject known service placeholders even
+    # when the repo has no .env.example — prevents SDK "URL and Key required" crashes.
+    env.update(_infer_service_env(local, env))
     return env
+
+
+# Known service → env vars that must always be non-empty for the SDK to init.
+_SERVICE_ENV_TEMPLATES: dict[str, dict[str, str]] = {
+    "supabase": {
+        "NEXT_PUBLIC_SUPABASE_URL": "https://placeholder.supabase.co",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY": "placeholder_" + "x" * 40,
+        "SUPABASE_URL": "https://placeholder.supabase.co",
+        "SUPABASE_ANON_KEY": "placeholder_" + "x" * 40,
+        "SUPABASE_SERVICE_ROLE_KEY": "placeholder_" + "x" * 40,
+    },
+    "stripe": {
+        "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY": "pk_test_placeholder" + "x" * 24,
+        "STRIPE_SECRET_KEY": "sk_test_placeholder" + "x" * 24,
+        "STRIPE_WEBHOOK_SECRET": "whsec_placeholder" + "x" * 24,
+    },
+    "clerk": {
+        "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_placeholder" + "x" * 40,
+        "CLERK_SECRET_KEY": "sk_test_placeholder" + "x" * 40,
+    },
+    "resend": {
+        "RESEND_API_KEY": "re_placeholder_" + "x" * 24,
+    },
+}
+
+_SERVICE_DEP_PATTERNS: dict[str, list[str]] = {
+    "supabase": ["@supabase/supabase-js", "@supabase/ssr", "@supabase/auth-helpers-nextjs"],
+    "stripe": ["stripe", "@stripe/stripe-js", "@stripe/react-stripe-js"],
+    "clerk": ["@clerk/nextjs", "@clerk/clerk-sdk-node"],
+    "resend": ["resend"],
+}
+
+
+def _infer_service_env(local: str, existing: dict) -> dict:
+    """Return placeholder env vars for services detected in package.json deps."""
+    extra: dict[str, str] = {}
+    pkg = Path(local) / "package.json"
+    if not pkg.exists():
+        return extra
+    try:
+        data = json.loads(pkg.read_text())
+        all_deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+    except Exception:
+        return extra
+    for service, dep_names in _SERVICE_DEP_PATTERNS.items():
+        if any(d in all_deps for d in dep_names):
+            for k, v in _SERVICE_ENV_TEMPLATES.get(service, {}).items():
+                if k not in existing:  # don't override .env.example values
+                    extra[k] = v
+    return extra
+
+
+def _autoprovision_env(
+    local: str,
+    founder_id: str,
+    project_name: str,
+    session_id: str = "",
+) -> dict:
+    """Return real provisioned credentials for detected services, or valid placeholders.
+
+    Called once per build before starting the local preview. Blocks until provisioning
+    completes (Supabase ~60s) — preview starts after. Falls back to placeholders so
+    the preview still launches even when provisioning fails or token is absent.
+    """
+    base = _placeholder_env(local)
+
+    # Supabase: provision a real project when management token is configured.
+    pkg = Path(local) / "package.json"
+    uses_supabase = False
+    if pkg.exists():
+        try:
+            data = json.loads(pkg.read_text())
+            all_deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+            uses_supabase = any(d in all_deps for d in _SERVICE_DEP_PATTERNS["supabase"])
+        except Exception:
+            pass
+
+    if uses_supabase:
+        try:
+            # Check credentials_store first — avoids re-provisioning on every rebuild.
+            _existing_creds: dict = {}
+            if founder_id:
+                try:
+                    from backend.provisioning.credentials_store import load_all_credentials
+                    _existing_creds = (load_all_credentials(founder_id) or {}).get("supabase", {})
+                except Exception:
+                    pass
+
+            if _existing_creds.get("project_url") and _existing_creds.get("anon_key"):
+                url = _existing_creds["project_url"]
+                anon = _existing_creds.get("anon_key", "")
+                svc = _existing_creds.get("service_role_key", "")
+                logger.info("Reusing stored Supabase project for %s: %s", founder_id, url)
+            else:
+                from backend.config import settings as _s
+                if not getattr(_s, "supabase_management_token", ""):
+                    url = anon = svc = ""
+                else:
+                    logger.info("Auto-provisioning Supabase project for %s / %s", founder_id, project_name)
+                    from backend.provisioning.supabase_provisioner import provision_supabase_project
+                    result = provision_supabase_project(
+                        founder_id=founder_id,
+                        project_name=project_name[:32],
+                    )
+                    if result.get("created") and result.get("project_url"):
+                        url = result["project_url"]
+                        anon = result.get("anon_key", "")
+                        svc = result.get("service_role_key", "")
+                        # Persist so future rebuilds skip this 60s wait.
+                        if founder_id:
+                            try:
+                                from backend.provisioning.credentials_store import store_credentials
+                                store_credentials(founder_id, "supabase", {
+                                    "project_url": url, "anon_key": anon,
+                                    "service_role_key": svc,
+                                    "ref": result.get("ref", ""),
+                                })
+                            except Exception:
+                                pass
+                        logger.info("Supabase provisioned: %s", url)
+                    else:
+                        logger.warning("Supabase provisioning returned: %s", result)
+                        url = anon = svc = ""
+
+            if url and anon:
+                base.update({
+                    "NEXT_PUBLIC_SUPABASE_URL": url,
+                    "NEXT_PUBLIC_SUPABASE_ANON_KEY": anon,
+                    "SUPABASE_URL": url,
+                    "SUPABASE_ANON_KEY": anon,
+                    "SUPABASE_SERVICE_ROLE_KEY": svc,
+                })
+        except Exception as e:
+            logger.warning("Supabase auto-provision failed, using placeholder: %s", e)
+
+    return base
 
 
 def _vercel_root_dir(local: str) -> str:
@@ -809,11 +946,12 @@ def _pm_respond(agent_output: str, goal: str, context: str, missing: list[str]) 
     env = _make_env()
     api_key = env.get("OPENAI_API_KEY", "")
     base_url = env.get("OPENAI_BASE_URL", settings.openrouter_base_url)
-    # These review calls run against the DeepInfra endpoint, so use a model valid
+    # These review calls run against the OpenRouter endpoint, so use a model valid
     # there (planner_model_name may be an OpenRouter-only slug -> 404).
     model = getattr(settings, "mvp_build_model", "") or "xiaomi/mimo-v2.5-pro"
 
-    client = openai.OpenAI(base_url=base_url, api_key=api_key)
+    from backend.core.llm_client import get_or_client
+    client = get_or_client(base_url, api_key)
     missing_str = ", ".join(missing) if missing else "none — MVP may be complete"
     user_msg = (
         f"Goal: {goal}\n"
@@ -822,15 +960,16 @@ def _pm_respond(agent_output: str, goal: str, context: str, missing: list[str]) 
         f"Agent's last message:\n{agent_output[-2000:]}\n\n"
         f"What do you say next? If MVP is done, respond: DONE"
     )
+    from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
     resp = client.chat.completions.create(
         model=model,
-        messages=[
+        messages=cacheable_messages([
             {"role": "system", "content": _PM_SYSTEM},
             {"role": "user", "content": user_msg},
-        ],
+        ], breakpoints=(0,)),  # cache stable system prompt only
         temperature=0.2,
         timeout=30.0,
-        extra_body={"provider": {"allow_fallbacks": True}},
+        extra_body=openrouter_extra_body(model),
     )
     reply = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""
     reply = re.sub(r"<think>.*?</think>", "", reply, flags=re.DOTALL).strip()
@@ -861,8 +1000,9 @@ Respond with a JSON object:
 def _planner_review(local: str, goal: str, files: list[str]) -> dict:
     """Independent planner LLM review of the built codebase. Returns {pass, issues, fix_instructions}."""
     env = _make_env()
-    client = openai.OpenAI(base_url=env["OPENAI_BASE_URL"], api_key=env["OPENAI_API_KEY"])
-    # These review calls run against the DeepInfra endpoint, so use a model valid
+    from backend.core.llm_client import get_or_client
+    client = get_or_client(env["OPENAI_BASE_URL"], env["OPENAI_API_KEY"])
+    # These review calls run against the OpenRouter endpoint, so use a model valid
     # there (planner_model_name may be an OpenRouter-only slug -> 404).
     model = getattr(settings, "mvp_build_model", "") or "xiaomi/mimo-v2.5-pro"
 
@@ -888,17 +1028,16 @@ def _planner_review(local: str, goal: str, files: list[str]) -> dict:
         f"Key file samples:\n{sample_block}"
     )
     try:
+        from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
         resp = client.chat.completions.create(
             model=model,
-            messages=[
+            messages=cacheable_messages([
                 {"role": "system", "content": _PLANNER_REVIEW_SYSTEM},
-                # hy3-preview has no provider supporting response_format — ask for JSON
-                # in the prompt instead of using json mode (which 404s/400s).
                 {"role": "user", "content": user_msg + "\n\nRespond with ONLY a single valid JSON object — no prose, no markdown."},
-            ],
+            ], breakpoints=(0,)),  # cache stable system prompt
             temperature=0.1,
             timeout=60.0,
-            extra_body={"provider": {"allow_fallbacks": True}},
+            extra_body=openrouter_extra_body(model),
         )
         raw = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or "{}"
         raw = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip()
@@ -1239,7 +1378,8 @@ def _generate_build_plan(goal: str, context: str = "", kind: str = "app", founde
     model = getattr(settings, "build_plan_model", "") or "minimax/minimax-m3"
     research = _build_plan_research(founder_id)
     try:
-        client = openai.OpenAI(base_url=env["OPENAI_BASE_URL"], api_key=env["OPENAI_API_KEY"])
+        from backend.core.llm_client import get_or_client
+        client = get_or_client(env["OPENAI_BASE_URL"], env["OPENAI_API_KEY"])
         user_msg = (
             f"PRODUCT GOAL:\n{goal}\n\n"
             + (f"RESEARCH (market / ICP / pain / competitors — base the plan on this):\n{research}\n\n" if research else "")
@@ -1250,18 +1390,19 @@ def _generate_build_plan(goal: str, context: str = "", kind: str = "app", founde
               'e.g. FILES: ["app/dashboard/page.tsx", "app/api/auth/[...nextauth]/route.ts"].'
         )
         def _ask(max_toks: int) -> str:
+            from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
             resp = client.chat.completions.create(
                 model=model,
-                messages=[
+                messages=cacheable_messages([
                     {"role": "system", "content": _BUILD_PLAN_SYSTEM},
                     {"role": "user", "content": user_msg},
-                ],
+                ], breakpoints=(0,)),
                 temperature=0.3,
                 timeout=180.0,
                 max_tokens=max_toks,
                 # minimax-m3 is a reasoning model — disable reasoning so the token
                 # budget goes to the actual plan, not <think> that gets stripped to "".
-                extra_body={"provider": {"allow_fallbacks": True}, "reasoning": {"effort": "none"}},
+                extra_body=openrouter_extra_body(model, {"reasoning": {"effort": "none"}}),
             )
             raw = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""
             # Drop complete think blocks; if that empties it, drop only the trailing
@@ -1535,12 +1676,13 @@ def run_mvp_loop(
                         founder_id=founder_id, app_session_id=session_id, agent=agent)
 
         # Placeholder env so the verification build + deploy work without real keys.
+        # Always writes .env.local — _placeholder_env now infers service vars from
+        # package.json deps even when the repo has no .env.example.
         try:
             ph = _placeholder_env(local)
-            if ph:
-                (Path(local) / ".env.local").write_text("\n".join(f"{k}={v}" for k, v in ph.items()) + "\n")
-        except Exception:
-            pass
+            (Path(local) / ".env.local").write_text("\n".join(f"{k}={v}" for k, v in ph.items()) + "\n")
+        except Exception as e:
+            logger.warning("Failed to write .env.local placeholder: %s", e)
 
         _sanitize_package_json(local)
         if is_github:
@@ -1653,6 +1795,17 @@ def run_mvp_loop(
         # build), run the MVP on the server itself on a free port for a live preview.
         local_preview = False
         if not deploy_url:
+            try:
+                # Provision real service credentials (Supabase etc.) before starting
+                # the preview so the app boots with a live DB, not placeholder values.
+                _project_name = Path(local).name
+                real_env = _autoprovision_env(local, founder_id, _project_name, session_id)
+                if real_env:
+                    (Path(local) / ".env.local").write_text(
+                        "\n".join(f"{k}={v}" for k, v in real_env.items()) + "\n"
+                    )
+            except Exception as e:
+                logger.warning("autoprovision env failed, using placeholders: %s", e)
             try:
                 from backend.tools.local_preview import start_local_preview
                 # Key preview by root session so child builds replace the same slot

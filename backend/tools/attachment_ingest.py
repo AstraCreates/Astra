@@ -39,16 +39,10 @@ def extract_pdf_text(data: bytes) -> str:
 def describe_image(data: bytes, mime: str) -> str:
     """Transcribe and describe an image via an OpenRouter vision model."""
     import base64
-    import openai
-    from backend.config import settings
-    from backend.core.key_rotator import get_openrouter_key
+    from backend.core.llm_client import get_or_client
 
     b64 = base64.b64encode(data).decode("ascii")
-    client = openai.OpenAI(
-        base_url=settings.openrouter_base_url,
-        api_key=get_openrouter_key() or settings.openrouter_api_key,
-        default_headers={"HTTP-Referer": "https://astracreates.com", "X-Title": "Astra"},
-    )
+    client = get_or_client(settings.openrouter_base_url, get_openrouter_key() or settings.openrouter_api_key)
     resp = client.chat.completions.create(
         model=_VISION_MODEL,
         messages=[{

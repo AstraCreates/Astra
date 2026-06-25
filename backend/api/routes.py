@@ -484,6 +484,11 @@ async def submit_goal(body: GoalRequest, request: Request):
 
 @router.get("/stream/{session_id}")
 async def stream_goal(session_id: str, request: Request):
+    # EventSource can't send Authorization headers — accept JWT via ?token= query param
+    # and inject it as a header so the standard auth flow picks it up.
+    token = request.query_params.get("token")
+    if token and not request.headers.get("authorization"):
+        request.scope["headers"] = list(request.scope.get("headers", [])) + [(b"authorization", f"Bearer {token}".encode())]
     await _require_session_access(request, session_id, min_role="viewer")
     raw_last = request.headers.get("Last-Event-ID") or request.query_params.get("lastEventId")
     last_event_id: int | None = None
@@ -814,12 +819,17 @@ async def session_cost(session_id: str, request: Request):
 
 @router.get("/cost")
 async def all_cost(request: Request, founder_id: str = ""):
-    """Aggregate token usage and cost across all sessions. Scoped to founder if provided."""
-    from backend.core.usage import get_all_sessions_cost
+    """Aggregate token usage and cost. founder_id scopes to that founder (viewer+); global view requires platform admin."""
+    from backend.core.usage import get_all_sessions_cost, get_session_cost
+    from backend.core.session_store import list_sessions
+    from backend.tenant_auth import require_platform_admin
     if founder_id:
-        require_founder_access(request, founder_id, min_role="admin")
-    else:
-        actor_or_body(request)
+        require_founder_access(request, founder_id, min_role="viewer")
+        session_ids = [s["session_id"] for s in list_sessions(founder_id, limit=500)]
+        sessions = [get_session_cost(sid) for sid in session_ids]
+        grand_total = sum(s["total_cost_usd"] for s in sessions)
+        return {"sessions": sessions, "grand_total_usd": round(grand_total, 6), "session_count": len(sessions)}
+    require_platform_admin(request)
     return get_all_sessions_cost()
 
 
@@ -1072,9 +1082,10 @@ async def get_org_invite(token: str):
 
 @router.post("/invites/{token}/accept")
 async def accept_org_invite(token: str, body: dict, request: Request):
-    user_id = str(body.get("founder_id") or actor_or_body(request)).strip()
+    # Identity must come from auth context, never from client-supplied body.
+    user_id = str(actor_or_body(request)).strip()
     if not user_id:
-        raise HTTPException(status_code=400, detail="founder_id required")
+        raise HTTPException(status_code=401, detail="Authentication required")
     from backend.accounts import accept_org_invite
     try:
         org = accept_org_invite(token, user_id=user_id)
@@ -1174,13 +1185,11 @@ def _detect_rerun_intent(instruction: str, available_agents: list[str]) -> dict 
     Returns {agent, instruction, tools_only} or None if it's a general chat message.
     """
     try:
-        import openai, json as _json
+        import json as _json
         from backend.config import settings
         from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
-        client = openai.OpenAI(
-            base_url=settings.openrouter_base_url,
-            api_key=settings.openrouter_api_key or settings.agent_model_api_key,
-        )
+        from backend.core.llm_client import get_or_client
+        client = get_or_client(settings.openrouter_base_url, settings.openrouter_api_key or settings.agent_model_api_key)
         agents_list = ", ".join(available_agents)
         messages = [
             {"role": "system", "content": (
@@ -1204,7 +1213,7 @@ def _detect_rerun_intent(instruction: str, available_agents: list[str]) -> dict 
         ]
         resp = client.chat.completions.create(
             model=settings.or_planner_model,
-            messages=cacheable_messages(messages),
+            messages=cacheable_messages(messages, breakpoints=(0,)),
             extra_body=openrouter_extra_body(settings.or_planner_model),
             max_tokens=300,
             temperature=0,
@@ -1429,7 +1438,8 @@ async def chat_agent(agent_key: str, body: AskRequest, request: Request):
 
     try:
         from backend.core.llm_cache import cacheable_messages, is_openrouter_base_url, openrouter_extra_body
-        client = _openai.AsyncOpenAI(base_url=base_url, api_key=api_key)
+        from backend.core.llm_client import get_async_or_client
+        client = get_async_or_client(base_url, api_key)
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": body.question},
@@ -1437,7 +1447,7 @@ async def chat_agent(agent_key: str, body: AskRequest, request: Request):
         is_openrouter = is_openrouter_base_url(base_url)
         resp = await client.chat.completions.create(
             model=model_name,
-            messages=cacheable_messages(messages) if is_openrouter else messages,
+            messages=cacheable_messages(messages, breakpoints=(0,)) if is_openrouter else messages,
             extra_body=openrouter_extra_body(model_name) if is_openrouter else None,
             temperature=0.7,
             timeout=60.0,
@@ -2009,16 +2019,6 @@ async def stripe_oauth_url(founder_id: str, request: Request, email: str = "", f
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/stripe/debug-callback")
-async def stripe_debug_callback(code: str = "", state: str = "", error: str = ""):
-    """Debug version — returns raw result instead of redirecting."""
-    from backend.tools.stripe_tools import exchange_oauth_code
-    if error:
-        return {"stripe_error": error}
-    result = exchange_oauth_code(code)
-    return {"code": code[:12], "state": state, "result": result}
-
-
 @router.get("/stripe/callback")
 async def stripe_callback(code: str = "", state: str = "", error: str = "", frontend_base: str = "http://localhost:3003"):
     """
@@ -2464,11 +2464,18 @@ async def get_vault_sessions(founder_id: str, request: Request):
 @router.get("/vault/{founder_id}/note")
 async def get_vault_note(founder_id: str, request: Request, session_id: str, agent: str):
     """Return full markdown content of one agent note."""
+    import re as _re
     require_founder_access(request, founder_id, min_role="viewer")
-    from backend.tools.obsidian_logger import _note_path
+    if not _re.fullmatch(r"[A-Za-z0-9_-]{1,128}", session_id):
+        raise HTTPException(status_code=400, detail="Invalid session_id")
+    if not _re.fullmatch(r"[A-Za-z0-9_-]{1,64}", agent):
+        raise HTTPException(status_code=400, detail="Invalid agent")
+    from backend.tools.obsidian_logger import _note_path, _sessions_root
     path = _note_path(agent, session_id, founder_id)
-    if not path.exists():
-        path = _note_path(agent, session_id, None)
+    # Containment check — never escape founder's sessions root
+    root = _sessions_root(founder_id).resolve()
+    if not str(path.resolve()).startswith(str(root)):
+        raise HTTPException(status_code=400, detail="Invalid path")
     if not path.exists():
         raise HTTPException(status_code=404, detail="Note not found")
     return {"content": path.read_text(errors="replace"), "agent": agent, "session_id": session_id}
@@ -2486,7 +2493,10 @@ async def clerk_webhook(request: Request):
     body = await request.body()
     secret = settings.clerk_webhook_secret
 
-    # Verify Clerk/svix signature when secret is configured
+    if not secret:
+        raise HTTPException(status_code=503, detail="Webhook secret not configured")
+
+    # Verify Clerk/svix signature
     if secret:
         svix_id = request.headers.get("svix-id", "")
         svix_ts = request.headers.get("svix-timestamp", "")
@@ -2554,7 +2564,9 @@ async def platform_stripe_webhook(request: Request):
 
     body = await request.body()
     signature = request.headers.get("stripe-signature", "")
-    if settings.stripe_webhook_secret and not verify_stripe_signature(body, signature, settings.stripe_webhook_secret):
+    if not settings.stripe_webhook_secret:
+        raise HTTPException(status_code=503, detail="Stripe webhook secret not configured")
+    if not verify_stripe_signature(body, signature, settings.stripe_webhook_secret):
         raise HTTPException(status_code=401, detail="Invalid Stripe signature")
     try:
         payload = json.loads(body)
@@ -2839,6 +2851,12 @@ async def llc_stream(websocket: WebSocket, founder_id: str, company_name: str = 
     import sys
     import queue
     import threading
+
+    try:
+        require_founder_access(websocket, founder_id, min_role="operator")
+    except Exception:
+        await websocket.close(code=4401)
+        return
 
     await websocket.accept()
     main_loop = asyncio.get_running_loop()

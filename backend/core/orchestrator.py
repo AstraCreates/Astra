@@ -630,7 +630,7 @@ class Orchestrator:
             resp = await asyncio.to_thread(
                 client.chat.completions.create,
                 model=settings.or_planner_model,
-                messages=cacheable_messages(messages),
+                messages=cacheable_messages(messages, breakpoints=(0,)),
                 extra_body=openrouter_extra_body(settings.or_planner_model),
                 max_tokens=10,
                 temperature=0.85,
@@ -670,7 +670,7 @@ class Orchestrator:
             resp = await asyncio.to_thread(
                 client.chat.completions.create,
                 model=settings.or_planner_model,
-                messages=cacheable_messages(messages),
+                messages=cacheable_messages(messages, breakpoints=(0,)),
                 extra_body=openrouter_extra_body(settings.or_planner_model),
                 max_tokens=400,
                 temperature=0.7,
@@ -1529,6 +1529,10 @@ class Orchestrator:
             # what turns "produced something" into "produced something that passes."
             from backend.stacks import verify_task_artifacts as _verify_base, run_deep_verification
             _max_retries = int(os.getenv("ASTRA_VERIFY_RETRIES", "2"))
+            # Research agents gather real-world data; re-running the pipeline never
+            # meaningfully improves the output and blocks all downstream agents.
+            if agent_name.startswith("research"):
+                _max_retries = 0
             deep_verdict: dict = {}
             _attempt = 0
             while True:
@@ -1869,6 +1873,8 @@ class Orchestrator:
             founder_prompt = research_review.get("founder_prompt") if isinstance(research_review.get("founder_prompt"), dict) else {}
             if research_review.get("founder_prompt_needed") and founder_prompt:
                 from backend.core.events import input_response_wait
+                _blocking_research_decision = os.environ.get("ASTRA_RESEARCH_DECISION_BLOCKING", "").lower() in ("1", "true", "yes")
+                _research_decision_timeout = float(os.environ.get("ASTRA_RESEARCH_DECISION_TIMEOUT", "180"))
 
                 request_id = str(uuid.uuid4())
                 await publish(session_id, {
@@ -1883,7 +1889,9 @@ class Orchestrator:
                     "option_details": founder_prompt.get("option_details") or {},
                     "hint": "Add nuance if you want the team to adapt the direction.",
                 })
-                founder_response = await input_response_wait(request_id, timeout=1800.0)
+                founder_response = None
+                if _blocking_research_decision:
+                    founder_response = await input_response_wait(request_id, timeout=_research_decision_timeout)
                 if founder_response:
                     decision = str(founder_response.get("answer") or "").strip()
                     shared["research_direction_decision"] = decision
@@ -1899,7 +1907,8 @@ class Orchestrator:
                         "type": "research_direction_decision",
                         "decision": "Continue as planned",
                         "review": research_review,
-                        "timed_out": True,
+                        "timed_out": bool(_blocking_research_decision),
+                        "auto_continue": not _blocking_research_decision,
                     })
 
         # Now apply enriched instructions from background replan (if ready) before launching other agents

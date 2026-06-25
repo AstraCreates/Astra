@@ -180,11 +180,8 @@ async def _maybe_handle_email_verification(page: Any, goal: str, session: dict) 
 
 
 def _get_vision_client():
-    import openai
-    from backend.config import settings
-    from backend.core.key_rotator import get_openrouter_key
-    key = get_openrouter_key() or settings.openrouter_api_key
-    return openai.OpenAI(base_url=settings.openrouter_base_url, api_key=key)
+    from backend.core.llm_client import get_or_client
+    return get_or_client(settings.openrouter_base_url, get_openrouter_key() or settings.openrouter_api_key)
 
 
 def _vision_next_action(

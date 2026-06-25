@@ -32,7 +32,7 @@ def deep_research(query: str, focus: str = "") -> dict:
 
 
 # Synthesis runs against planner_model_base_url (OpenRouter); use an OpenRouter model.
-_DEEPINFRA_MODELS = [settings.or_highoutput_model]
+_OPENROUTER_MODELS = [settings.or_highoutput_model]
 _GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b"]
 
 
@@ -88,23 +88,23 @@ async def _run_open_deep_research(query: str) -> dict:
 
     last_err = None
 
-    # --- Pass 1: DeepInfra gpt-oss-120b ---
+    # --- Pass 1: OpenRouter high-output model ---
     _saved_oai = {k: os.environ.get(k) for k in ("OPENAI_API_KEY", "OPENAI_BASE_URL")}
     try:
         if settings.planner_model_api_key:
             os.environ["OPENAI_API_KEY"] = settings.planner_model_api_key
         if settings.planner_model_base_url:
             os.environ["OPENAI_BASE_URL"] = settings.planner_model_base_url
-        for model_name in _DEEPINFRA_MODELS:
+        for model_name in _OPENROUTER_MODELS:
             try:
                 res = await _try_odr_model(deep_researcher, SearchAPI, HumanMessage, AIMessage,
                                            f"openai:{model_name}", {}, query)
                 if res:
-                    logger.info("deep_research succeeded with DeepInfra %s", model_name)
+                    logger.info("deep_research succeeded with OpenRouter %s", model_name)
                     return res
             except Exception as e:
                 last_err = e
-                logger.warning("DeepInfra %s failed: %s", model_name, e)
+                logger.warning("OpenRouter %s failed: %s", model_name, e)
     finally:
         for k, v in _saved_oai.items():
             if v is None: os.environ.pop(k, None)
@@ -182,7 +182,7 @@ async def _run_open_deep_research(query: str) -> dict:
 async def _custom_deep_research(query: str) -> dict:
     """
     Parallel multi-query search + LLM synthesis. Used when open_deep_research unavailable.
-    Generates sub-queries, searches in parallel, reads pages, synthesizes with DeepInfra.
+    Generates sub-queries, searches in parallel, reads pages, synthesizes with OpenRouter.
     """
     import asyncio
     from backend.config import settings
@@ -210,26 +210,24 @@ async def _custom_deep_research(query: str) -> dict:
     if not combined.strip():
         return {"query": query, "report": "No research data found.", "sources": [], "model": "custom:no_data"}
 
-    # Synthesize with DeepInfra planner model
+    # Synthesize with OpenRouter planner model
     try:
-        import openai as _openai
-        client = _openai.OpenAI(
-            base_url=settings.planner_model_base_url,
-            api_key=settings.planner_model_api_key,
-        )
-        prompt = (
-            f"You are a research analyst. Based on the search data below, write a comprehensive research report "
-            f"on: {query}\n\n"
-            f"Cover: market size/TAM, key players/competitors, trends, use cases, opportunities, risks.\n"
-            f"Write in professional prose with clear sections. Be specific and cite data where visible.\n\n"
-            f"SEARCH DATA:\n{combined[:8000]}"
-        )
+        from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
+        from backend.core.llm_client import get_or_client
+        client = get_or_client(settings.planner_model_base_url, settings.planner_model_api_key)
         resp = client.chat.completions.create(
             model=settings.planner_model_name,
-            messages=[{"role": "user", "content": prompt}],
+            messages=cacheable_messages([
+                {"role": "system", "content": (
+                    "You are a research analyst. Write a comprehensive research report covering: "
+                    "market size/TAM, key players/competitors, trends, use cases, opportunities, risks. "
+                    "Write in professional prose with clear sections. Be specific and cite data where visible."
+                )},
+                {"role": "user", "content": f"Query: {query}\n\nSEARCH DATA:\n{combined[:8000]}"},
+            ], breakpoints=(0,)),  # cache stable system prompt
             temperature=0.2,
             max_tokens=2000,
-            extra_body={"provider": {"allow_fallbacks": True}},
+            extra_body=openrouter_extra_body(settings.planner_model_name),
         )
         report = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or ""
     except Exception as e:

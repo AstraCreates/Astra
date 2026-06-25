@@ -1539,6 +1539,17 @@ class Agent:
         return []
 
     async def _execute_tool(self, tool_name: str, args: dict, ctx: AgentContext) -> Any:
+        # Sanitize inputs: scan for prompt injection patterns, recurse into dicts/lists.
+        # Sanitize outputs: redact credential-bearing keys before re-entering LLM context.
+        # Allowlist enforcement is skipped here (stale in security.py) — guardrails handle it.
+        try:
+            from proprietary_agent.security import ToolSecurityLayer as _TSL
+            _tsl: _TSL = getattr(self, "_security_layer", None) or _TSL()
+            if not hasattr(self, "_security_layer"):
+                self._security_layer = _tsl  # type: ignore[attr-defined]
+            args = _tsl._sanitize_inputs(args)
+        except Exception:
+            pass
         fn = self.tools.get(tool_name)
         if fn is None:
             # Explicit aliases first (fast, exact), then fuzzy-match the hallucinated
@@ -1704,6 +1715,12 @@ class Agent:
                 if post.action == "warn":
                     await self._emit(ctx, "tool_guardrail_warning", tool=tool_name,
                                      code=post.code, message=post.message, count=post.count)
+            # Redact credential-bearing keys before result enters LLM context
+            if isinstance(result, dict):
+                try:
+                    result = self._security_layer.sanitize_output(tool_name, result)  # type: ignore[attr-defined]
+                except Exception:
+                    pass
             result_preview = str(result)[:200] if result is not None else "None"
             logger.debug("[%s] ← %s  %.1fs  result=%.200s", self.name, tool_name, elapsed, result_preview)
             if saferun_action:

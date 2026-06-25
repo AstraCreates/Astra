@@ -12,6 +12,16 @@ async function authHeaders(): Promise<Record<string, string>> {
   try {
     if (apiAuthProvider) {
       const auth = await apiAuthProvider();
+      // Prefer verified JWT Bearer — backend derives identity from token, not header
+      if (auth?.token) {
+        const h: Record<string, string> = { "Authorization": `Bearer ${auth.token}` };
+        if (typeof window !== "undefined") {
+          const email = localStorage.getItem("astra_auth_email");
+          if (email) h["x-astra-email"] = email;
+        }
+        return h;
+      }
+      // Fallback: header-based identity (dev/unauthenticated only)
       if (auth?.userId) {
         const h: Record<string, string> = { "x-astra-user-id": auth.userId };
         if (typeof window !== "undefined") {
@@ -21,7 +31,7 @@ async function authHeaders(): Promise<Record<string, string>> {
         return h;
       }
     }
-    // Fallback: read directly from localStorage
+    // Last resort: read from localStorage (unauthenticated / dev mode only)
     if (typeof window !== "undefined") {
       const userId = localStorage.getItem("astra_auth_user_id") || localStorage.getItem("astra_dev_user_id");
       if (userId) {
@@ -35,6 +45,37 @@ async function authHeaders(): Promise<Record<string, string>> {
     // ignore
   }
   return {};
+}
+
+// Sync token cache for EventSource/WebSocket URLs (can't set custom headers).
+// Updated by ApiAuthBridge whenever the bearer token changes.
+let _cachedAuthToken: string | null = null;
+export function _setCachedAuthToken(token: string | null) { _cachedAuthToken = token; }
+
+/** Returns the cached JWT for use in EventSource/WS URLs (?token=...). Sync — may be null on first load. */
+export function getAuthToken(): string | null {
+  return _cachedAuthToken;
+}
+
+// One-shot gate: resolves when ApiAuthBridge finishes its first token fetch (success or failure).
+// Prevents SSE connections from firing before we know whether the user is authenticated.
+let _authReadyResolve: (() => void) | null = null;
+let _authResolved = false;
+const _authReady = new Promise<void>((resolve) => { _authReadyResolve = resolve; });
+
+export function _resolveAuthReady(): void {
+  if (!_authResolved) {
+    _authResolved = true;
+    _authReadyResolve?.();
+  }
+}
+
+export function waitForAuthReady(timeoutMs = 2000): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
+  return Promise.race([
+    _authReady,
+    new Promise<void>((resolve) => window.setTimeout(resolve, timeoutMs)),
+  ]);
 }
 
 export async function apiFetch(input: string, init: RequestInit = {}): Promise<Response> {
@@ -1234,8 +1275,136 @@ export async function getStackManifest(stackId: string, goal = "", companyName =
   return res.json();
 }
 
-export function streamGoal(sessionId: string): EventSource {
-  return new EventSource(`${BASE}/stream/${sessionId}`);
+export type StreamEventMessage = {
+  data: string;
+  lastEventId: string;
+  type: string;
+};
+
+export type StreamMessageHandler = (event: StreamEventMessage) => void;
+export type StreamErrorHandler = (error: unknown) => void;
+export type StreamOpenHandler = () => void;
+
+export type StreamSubscription = {
+  onopen: StreamOpenHandler | null;
+  onmessage: StreamMessageHandler | null;
+  onerror: StreamErrorHandler | null;
+  close(): void;
+};
+
+function parseEventStreamChunk(
+  rawEvent: string,
+  lastEventIdRef: { value: string },
+): StreamEventMessage | null {
+  const lines = rawEvent.split(/\r?\n/);
+  let data = "";
+  let eventType = "message";
+  let nextLastEventId = lastEventIdRef.value;
+  for (const line of lines) {
+    if (!line || line.startsWith(":")) continue;
+    const idx = line.indexOf(":");
+    const field = idx === -1 ? line : line.slice(0, idx);
+    const value = idx === -1 ? "" : line.slice(idx + 1).replace(/^ /, "");
+    if (field === "data") {
+      data += (data ? "\n" : "") + value;
+    } else if (field === "event" && value) {
+      eventType = value;
+    } else if (field === "id") {
+      nextLastEventId = value;
+    }
+  }
+  if (!data) return null;
+  lastEventIdRef.value = nextLastEventId;
+  return { data, lastEventId: nextLastEventId, type: eventType };
+}
+
+export function openEventStream(
+  url: string,
+  options: { lastEventId?: string | number; reconnectDelayMs?: number } = {},
+): StreamSubscription {
+  const aborter = new AbortController();
+  const reconnectDelayMs = options.reconnectDelayMs ?? 1500;
+  const lastEventIdRef = { value: options.lastEventId == null ? "" : String(options.lastEventId) };
+  let closed = false;
+  let authRetries = 0;
+  const subscription: StreamSubscription = {
+    onopen: null,
+    onmessage: null,
+    onerror: null,
+    close() {
+      closed = true;
+      aborter.abort();
+    },
+  };
+
+  const connect = async () => {
+    let firstConnect = true;
+    while (!closed) {
+      try {
+        if (firstConnect) {
+          firstConnect = false;
+          await waitForAuthReady(2000);
+        }
+        const headers = new Headers(await authHeaders());
+        headers.set("Accept", "text/event-stream");
+        if (lastEventIdRef.value && lastEventIdRef.value !== "0") headers.set("Last-Event-ID", lastEventIdRef.value);
+        const res = await fetch(url, {
+          method: "GET",
+          headers,
+          signal: aborter.signal,
+          cache: "no-store",
+        });
+        if (!res.ok) {
+          const detail = await res.text().catch(() => "");
+          const err = new Error(detail || `Stream failed (${res.status})`);
+          if (res.status === 401 || res.status === 403) {
+            // Auth may not be ready yet (race with ApiAuthBridge token fetch).
+            // Retry a few times before giving up permanently.
+            if (authRetries < 4) {
+              authRetries++;
+              await new Promise((resolve) => window.setTimeout(resolve, authRetries * 800));
+              continue;
+            }
+            subscription.onerror?.(err);
+            return;
+          }
+          authRetries = 0;
+          throw err;
+        }
+        authRetries = 0;
+        if (!res.body) throw new Error("Stream body missing");
+        subscription.onopen?.();
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (!closed) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split(/\n\n/);
+          buffer = events.pop() ?? "";
+          for (const rawEvent of events) {
+            const parsed = parseEventStreamChunk(rawEvent, lastEventIdRef);
+            if (parsed) subscription.onmessage?.(parsed);
+          }
+        }
+        if (closed || aborter.signal.aborted) return;
+        subscription.onerror?.(new Error("Event stream disconnected"));
+      } catch (error) {
+        if (closed || aborter.signal.aborted) return;
+        subscription.onerror?.(error);
+        await new Promise((resolve) => window.setTimeout(resolve, reconnectDelayMs));
+        continue;
+      }
+    }
+  };
+
+  void connect();
+  return subscription;
+}
+
+export function streamGoal(sessionId: string): StreamSubscription {
+  return openEventStream(`${BASE}/stream/${sessionId}`);
 }
 
 export interface SessionIndexEntry {
@@ -1443,7 +1612,7 @@ export async function approveTask(taskId: string): Promise<void> {
   const res = await apiFetch(`${BASE}/approve`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ task_id: taskId, approval_token: "founder" }),
+    body: JSON.stringify({ task_id: taskId }),
   });
   await checkOk(res);
 }

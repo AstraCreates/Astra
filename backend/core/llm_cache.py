@@ -47,4 +47,4 @@ def openrouter_extra_body(model: str, extra: dict[str, Any] | None = None) -> di
     # cached tokens, so we'd both lose the cache savings AND bill cached tokens at the full
     # input rate. Required for caching to be reflected for every model that supports it.
     body.setdefault("usage", {"include": True})
-    return body or None
+    return body
