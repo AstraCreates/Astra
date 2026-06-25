@@ -106,7 +106,7 @@ def _lane_packet(
         "id": task.id,
         "agent": task.agent,
         "title": task.title,
-        "phase": _phase(index, task),
+        "phase": getattr(task, "phase", "") or _phase(index, task),
         "mission": task.instruction,
         "depends_on": list(task.depends_on),
         "connector_dependencies": sorted(connector_map.get(task.agent, [])),
@@ -262,17 +262,28 @@ def _gate_matches_lane(gate_key: str, lane: dict[str, Any]) -> bool:
     return False
 
 
+_AGENT_PHASE: dict[str, str] = {
+    "research": "diagnose",
+    "design": "design",
+    "web": "deploy",
+    "technical": "deploy",
+    "marketing": "deploy",
+    "sales": "deploy",
+    "legal": "govern",
+    "finance": "govern",
+    "ops": "operate",
+}
+
+
 def _phase(index: int, task: StackTaskTemplate) -> str:
-    text = f"{task.id} {task.title} {task.agent}".lower()
-    if index == 0 or any(term in text for term in ("research", "insight", "market", "buyer", "context")):
+    # Map by agent base name (most reliable signal)
+    agent_base = task.agent.split("_")[0]
+    if agent_base in _AGENT_PHASE:
+        return _AGENT_PHASE[agent_base]
+    # First task is always diagnose
+    if index == 0:
         return "diagnose"
-    if any(term in text for term in ("design", "technical", "architecture", "product", "roadmap", "system")):
-        return "design"
-    if any(term in text for term in ("web", "sales", "marketing", "campaign", "pipeline", "support")):
-        return "deploy"
-    if any(term in text for term in ("legal", "risk", "compliance", "approval")):
-        return "govern"
-    return "operate"
+    return "deploy"
 
 
 def _milestone_phase_names(index: int) -> set[str]:

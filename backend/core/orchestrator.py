@@ -2137,16 +2137,53 @@ class Orchestrator:
                 logger.info("Orchestrator: session %s killed — halting scheduling", session_id)
                 break
 
+            # ── Phase-gate check ─────────────────────────────────────────────
+            # Walk the phase order; fire at most one gate per scheduler tick.
+            # When a phase's tasks all complete, block here until the founder
+            # approves before any task in the next phase can start. Empty phases
+            # are auto-cleared so the gate always targets the next phase with real
+            # work (correct label, no redundant gates).
+            for _ph_idx, _ph in enumerate(_PHASE_ORDER[:-1]):
+                _next_ph = _PHASE_ORDER[_ph_idx + 1]
+                if _next_ph in _phase_gates_cleared:
+                    continue  # next phase already cleared
+                if _ph not in _phase_gates_cleared:
+                    continue  # this phase hasn't been entered yet
+                _ph_tasks = _tasks_by_phase.get(_ph, [])
+                if not _ph_tasks:
+                    # No work in this phase → nothing to review, clear the next gate.
+                    _phase_gates_cleared.add(_next_ph)
+                    continue
+                _ph_done = (
+                    all(t["id"] in completed for t in _ph_tasks)
+                    and not any(t["id"] in in_flight for t in _ph_tasks)
+                )
+                if not _ph_done:
+                    continue  # phase still running — don't gate yet
+                if cancellation.is_killed(session_id):
+                    break
+                # Label the gate with the next phase that actually has work.
+                _gate_target = next(
+                    (p for p in _PHASE_ORDER[_ph_idx + 1:]
+                     if _tasks_by_phase.get(p) and p not in _phase_gates_cleared),
+                    _next_ph,
+                )
+                _gate_ok = await _phase_gate(_ph, _gate_target, _ph_tasks)
+                if _gate_ok and not cancellation.is_killed(session_id):
+                    _phase_gates_cleared.add(_next_ph)
+                break  # restart while-loop to re-evaluate with updated cleared set
+
+            if cancellation.is_killed(session_id):
+                logger.info("Orchestrator: session %s killed — halting scheduling", session_id)
+                break
+
             all_ready = [
                 t for t in remaining
                 if all(dep in completed for dep in t.get("depends_on", []))
             ]
 
-            # Dispatch purely by dependencies — a task runs the moment its depends_on
-            # are complete (legal/sales/marketing right after research, in parallel with
-            # design; web after design; technical after web). Phase gates are
-            # informational/non-blocking and no longer serialize independent agents.
-            ready_to_launch = all_ready
+            # Only launch tasks whose phase gate has been cleared.
+            ready_to_launch = [t for t in all_ready if _task_phase(t) in _phase_gates_cleared]
             for t in ready_to_launch:
                 remaining.remove(t)
                 in_flight.add(t["id"])
@@ -2157,6 +2194,16 @@ class Orchestrator:
                 logger.info("Launched: %s, remaining: %s, in_flight: %s", [t["agent"] for t in ready_to_launch], [t["agent"] for t in remaining], in_flight)
 
             if not running:
+                # Check for genuine deadlock vs. tasks blocked only by phase gates
+                _phase_blocked = [
+                    t for t in remaining
+                    if all(dep in completed for dep in t.get("depends_on", []))
+                    and _task_phase(t) not in _phase_gates_cleared
+                ]
+                if _phase_blocked:
+                    # Tasks are waiting for a phase gate — loop back to fire it.
+                    logger.debug("Phase gate pending; %d tasks awaiting clearance: %s", len(_phase_blocked), [t["agent"] for t in _phase_blocked])
+                    continue
                 if remaining:
                     logger.error("Dependency cycle or missing dep — aborting. remaining=%s, completed=%s", [(t["agent"], t.get("depends_on", [])) for t in remaining], list(completed.keys()))
                 break

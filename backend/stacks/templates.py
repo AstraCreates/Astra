@@ -45,6 +45,7 @@ class StackTaskTemplate:
     instruction: str
     depends_on: list[str] = field(default_factory=list)
     artifacts: list[str] = field(default_factory=list)
+    phase: str = ""  # Explicit phase: diagnose|design|deploy|govern|operate. Empty → heuristic.
 
 
 @dataclass(frozen=True)
@@ -110,6 +111,7 @@ IDEA_TO_REVENUE_STACK = AgentStackTemplate(
                 "that downstream agents can use directly."
             ),
             artifacts=["market_brief", "icp_brief", "pricing_hypothesis"],
+            phase="diagnose",
         ),
         StackTaskTemplate(
             id="t_design",
@@ -121,6 +123,7 @@ IDEA_TO_REVENUE_STACK = AgentStackTemplate(
             ),
             depends_on=["t_research"],
             artifacts=["brand_direction"],
+            phase="design",
         ),
         StackTaskTemplate(
             id="t_web",
@@ -133,6 +136,7 @@ IDEA_TO_REVENUE_STACK = AgentStackTemplate(
             ),
             depends_on=["t_research", "t_design"],
             artifacts=["landing_page", "website_copy"],
+            phase="deploy",
         ),
         StackTaskTemplate(
             id="t_technical",
@@ -146,6 +150,7 @@ IDEA_TO_REVENUE_STACK = AgentStackTemplate(
             # Runs AFTER the web agent so it extends the same Next.js repo.
             depends_on=["t_research", "t_web"],
             artifacts=["mvp_roadmap", "technical_plan"],
+            phase="deploy",
         ),
         StackTaskTemplate(
             id="t_marketing",
@@ -158,6 +163,7 @@ IDEA_TO_REVENUE_STACK = AgentStackTemplate(
             ),
             depends_on=["t_research"],
             artifacts=["gtm_plan", "launch_content"],
+            phase="deploy",
         ),
         StackTaskTemplate(
             id="t_sales",
@@ -169,6 +175,7 @@ IDEA_TO_REVENUE_STACK = AgentStackTemplate(
             ),
             depends_on=["t_research"],
             artifacts=["crm_setup", "cold_email_sequence", "sales_playbook"],
+            phase="deploy",
         ),
         StackTaskTemplate(
             id="t_legal",
@@ -181,6 +188,7 @@ IDEA_TO_REVENUE_STACK = AgentStackTemplate(
             ),
             depends_on=["t_research"],
             artifacts=["legal_checklist", "policy_outline"],
+            phase="govern",
         ),
         StackTaskTemplate(
             id="t_ops",
@@ -193,6 +201,7 @@ IDEA_TO_REVENUE_STACK = AgentStackTemplate(
             ),
             depends_on=["t_research", "t_web", "t_technical", "t_marketing", "t_sales", "t_legal"],
             artifacts=["thirty_day_plan", "investor_memo", "founder_next_actions"],
+            phase="operate",
         ),
     ],
     artifacts=[
@@ -396,10 +405,10 @@ FOUNDER_OPS_STACK = AgentStackTemplate(
     description="Creates the founder operating rhythm: goals, decisions, investor materials, team rituals, knowledge base, and execution tracking.",
     input_prompts=["What part of the company feels disorganized?", "What decisions or deadlines are coming up?", "Where does the team currently work?"],
     tasks=[
-        StackTaskTemplate("o_research", "research", "Company context map", "Research and structure the company context, market pressure, current priorities, risks, and open questions.", artifacts=["company_context_brief"]),
-        StackTaskTemplate("o_ops", "ops", "Operating system", "Create the operating cadence, weekly review, decision log, metrics, owner map, investor update, and 30-day execution calendar.", depends_on=["o_research"], artifacts=["operating_cadence", "decision_log", "investor_update", "thirty_day_execution_calendar"]),
-        StackTaskTemplate("o_technical", "technical", "Systems architecture", "Define the lightweight internal systems, data model, integrations, and automation handoffs needed for the founder ops command center.", depends_on=["o_research"], artifacts=["ops_system_architecture", "integration_plan"]),
-        StackTaskTemplate("o_legal", "legal", "Risk and compliance checklist", "Identify legal, compliance, privacy, hiring, and fundraising risks that should be tracked in the founder operating system.", depends_on=["o_research"], artifacts=["risk_register"]),
+        StackTaskTemplate("o_research", "research", "Company context map", "Research and structure the company context, market pressure, current priorities, risks, and open questions.", artifacts=["company_context_brief"], phase="diagnose"),
+        StackTaskTemplate("o_ops", "ops", "Operating system", "Create the operating cadence, weekly review, decision log, metrics, owner map, investor update, and 30-day execution calendar.", depends_on=["o_research"], artifacts=["operating_cadence", "decision_log", "investor_update", "thirty_day_execution_calendar"], phase="deploy"),
+        StackTaskTemplate("o_technical", "technical", "Systems architecture", "Define the lightweight internal systems, data model, integrations, and automation handoffs needed for the founder ops command center.", depends_on=["o_research"], artifacts=["ops_system_architecture", "integration_plan"], phase="deploy"),
+        StackTaskTemplate("o_legal", "legal", "Risk and compliance checklist", "Identify legal, compliance, privacy, hiring, and fundraising risks that should be tracked in the founder operating system.", depends_on=["o_research"], artifacts=["risk_register"], phase="deploy"),
     ],
     artifacts=[
         StackArtifact("company_context_brief", "Company context brief", "research", "Structured context, priorities, risks, and questions."),
@@ -434,10 +443,10 @@ SUPPORT_STACK = AgentStackTemplate(
     description="Builds ticket taxonomy, macros, knowledge base outline, escalation rules, feedback reporting, and customer-facing response guidelines.",
     input_prompts=["What support requests repeat most often?", "Where do tickets/messages arrive?", "What needs escalation to humans?"],
     tasks=[
-        StackTaskTemplate("c_research", "research", "Customer issue map", "Research customer segments, common support categories, competitor support patterns, and self-serve expectations.", artifacts=["support_issue_map"]),
-        StackTaskTemplate("c_ops", "ops", "Support workflow", "Create ticket triage, SLA rules, escalation workflow, reporting cadence, and feedback loop into product.", depends_on=["c_research"], artifacts=["triage_workflow", "sla_policy", "feedback_loop"]),
-        StackTaskTemplate("c_marketing", "marketing", "Customer communication", "Draft support macros, tone rules, onboarding emails, and customer-facing help copy.", depends_on=["c_research"], artifacts=["support_macros", "customer_comms"]),
-        StackTaskTemplate("c_technical", "technical", "Support system plan", "Define knowledge base structure, support tooling, integration points, data capture, and automation boundaries.", depends_on=["c_research"], artifacts=["knowledge_base_plan", "support_integration_plan"]),
+        StackTaskTemplate("c_research", "research", "Customer issue map", "Research customer segments, common support categories, competitor support patterns, and self-serve expectations.", artifacts=["support_issue_map"], phase="diagnose"),
+        StackTaskTemplate("c_ops", "ops", "Support workflow", "Create ticket triage, SLA rules, escalation workflow, reporting cadence, and feedback loop into product.", depends_on=["c_research"], artifacts=["triage_workflow", "sla_policy", "feedback_loop"], phase="deploy"),
+        StackTaskTemplate("c_marketing", "marketing", "Customer communication", "Draft support macros, tone rules, onboarding emails, and customer-facing help copy.", depends_on=["c_research"], artifacts=["support_macros", "customer_comms"], phase="deploy"),
+        StackTaskTemplate("c_technical", "technical", "Support system plan", "Define knowledge base structure, support tooling, integration points, data capture, and automation boundaries.", depends_on=["c_research"], artifacts=["knowledge_base_plan", "support_integration_plan"], phase="deploy"),
     ],
     artifacts=[
         StackArtifact("support_issue_map", "Support issue map", "research", "Common issues, categories, and customer expectations."),
