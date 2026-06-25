@@ -419,6 +419,9 @@ export interface SessionDigest {
     pending_approvals: number;
     saferun_actions: number;
     errors: number;
+    phases_done: number;
+    phases_pending: number;
+    phases_total: number;
   };
   done_agents: string[];
   running_agents: string[];
