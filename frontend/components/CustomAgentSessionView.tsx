@@ -1,15 +1,8 @@
 "use client";
 
-/**
- * Focused session view for custom agent runs (stack_id: "custom").
- * Shows a live log feed, agent name, status, and kill control.
- * Much simpler than the full company SessionView.
- */
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { killSession, getSessionState, getAuthToken } from "@/lib/api";
-import PageHeader from "@/components/PageHeader";
 import { extractFilePaths, PdfEmbed, EmailDeliverableButton } from "@/components/GoalWorkspace";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -39,7 +32,29 @@ function safeStr(v: unknown, limit = 400): string {
   try { return JSON.stringify(v).slice(0, limit); } catch { return ""; }
 }
 
-export default function CustomAgentSessionView({ sessionId, agentName, goal, initialStatus, founderId }: Props) {
+const LINE_COLOR: Record<LogLine["kind"], string> = {
+  info:     "var(--blue)",
+  think:    "var(--fm)",
+  tool:     "#d97706",
+  result:   "var(--fd)",
+  done:     "var(--green)",
+  error:    "var(--red)",
+  artifact: "#7c3aed",
+};
+
+const LINE_PREFIX: Record<LogLine["kind"], string> = {
+  info:     "·",
+  think:    "···",
+  tool:     "⚙",
+  result:   "→",
+  done:     "✓",
+  error:    "✗",
+  artifact: "◈",
+};
+
+export default function CustomAgentSessionView({
+  sessionId, agentName, goal, initialStatus, founderId,
+}: Props) {
   const router = useRouter();
   const [status, setStatus] = useState<Status>(initialStatus);
   const [log, setLog] = useState<LogLine[]>([]);
@@ -47,17 +62,13 @@ export default function CustomAgentSessionView({ sessionId, agentName, goal, ini
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
-  // Once the run finishes (on mount if already done, or live when it ends),
-  // pull the agent's structured result so any generated PDFs can be shown.
+  // Pull structured result once run finishes (for deliverables).
   useEffect(() => {
     if (status === "running") return;
     let cancelled = false;
     getSessionState(sessionId).then(state => {
       if (cancelled) return;
       const agents = state.agents ?? {};
-      // The state endpoint returns every agent in the default stack template
-      // (all "waiting", result: null) plus our actual custom agent under a
-      // "custom_<founder>_<slug>" key — that's the one with the real result.
       const customKey = Object.keys(agents).find(k => k.startsWith("custom_"));
       const agentState = (customKey ? agents[customKey] : Object.values(agents)[0]) as Record<string, unknown> | undefined;
       setResult((agentState?.result as Record<string, unknown>) ?? null);
@@ -67,7 +78,6 @@ export default function CustomAgentSessionView({ sessionId, agentName, goal, ini
 
   const deliverablePaths = useMemo(() => extractFilePaths(result ?? {}), [result]);
 
-  // Auto-scroll as log grows
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [log.length]);
@@ -78,14 +88,7 @@ export default function CustomAgentSessionView({ sessionId, agentName, goal, ini
   }
 
   useEffect(() => {
-    // Don't open SSE for sessions that already finished before this mount.
     if (initialStatus !== "running") return;
-
-    // lastEventId=0 forces the backend's "replay everything since this id"
-    // branch instead of its sparse "fresh connect" state-only replay (which
-    // assumes a localStorage log cache this view doesn't have) — without it,
-    // reloading mid-run wipes the visible log back to "waiting," looking like
-    // the run restarted even though it never did.
     const _token = getAuthToken();
     const _qs = _token ? `&token=${encodeURIComponent(_token)}` : "";
     const es = new EventSource(`${API}/stream/${sessionId}?lastEventId=0${_qs}`);
@@ -99,16 +102,13 @@ export default function CustomAgentSessionView({ sessionId, agentName, goal, ini
         case "goal_start":
           push("info", "Agent started");
           break;
-
         case "agent_start":
           push("info", safeStr(ev.instruction || "Running…"));
           break;
-
         case "agent_thinking":
         case "reasoning":
           push("think", safeStr(ev.text || ev.reasoning || ev.content));
           break;
-
         case "agent_tool_call":
         case "agent_action":
         case "tool_use": {
@@ -118,12 +118,10 @@ export default function CustomAgentSessionView({ sessionId, agentName, goal, ini
           push("tool", `${name}(${argsStr})`);
           break;
         }
-
         case "agent_action_result":
         case "tool_result":
           push("result", safeStr(ev.result || ev.output || ev.content));
           break;
-
         case "agent_done": {
           const r = ev.result as Record<string, unknown> | null;
           const summary = r
@@ -132,24 +130,20 @@ export default function CustomAgentSessionView({ sessionId, agentName, goal, ini
           push("done", summary || "Agent finished");
           break;
         }
-
         case "agent_error":
           push("error", safeStr(ev.error || ev.message || "Error"));
           break;
-
         case "stack_artifact":
         case "artifact": {
           const art = (ev.artifact || ev) as Record<string, unknown>;
           if (art.title) push("artifact", `Created: ${art.title}`);
           break;
         }
-
         case "goal_done":
           push("done", "Run complete");
           setStatus("done");
           es.close();
           break;
-
         case "goal_error":
           push("error", safeStr(ev.error || "Run failed"));
           setStatus("error");
@@ -158,10 +152,7 @@ export default function CustomAgentSessionView({ sessionId, agentName, goal, ini
       }
     };
 
-    es.onerror = () => {
-      // Connection closes when run ends — not an error we surface.
-    };
-
+    es.onerror = () => {};
     return () => { es.close(); };
   }, [sessionId, initialStatus]);
 
@@ -172,66 +163,110 @@ export default function CustomAgentSessionView({ sessionId, agentName, goal, ini
     setKilling(false);
   }
 
+  const statusColor =
+    status === "running" ? "var(--blue)"
+    : status === "done" ? "var(--green)"
+    : "var(--red)";
+
   const statusLabel =
-    status === "running" ? "Running…"
-    : status === "done" ? "Completed"
+    status === "running" ? "Running"
+    : status === "done" ? "Done"
     : "Failed";
 
-  const statusDot =
-    status === "running" ? "bg-blue-500 animate-pulse"
-    : status === "done" ? "bg-green-500"
-    : "bg-red-500";
-
   return (
-    <div className="h-full flex flex-col bg-white">
-      <PageHeader
-        title={agentName || "Custom Agent"}
-        subtitle={goal || ""}
-        actions={
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => router.push("/agents")}
-              className="text-xs font-medium text-white/80 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
-            >
-              ← Agents
-            </button>
-            {status === "running" && (
-              <button
-                onClick={handleKill}
-                disabled={killing}
-                className="text-xs font-medium bg-white text-[#001AFF] px-3 py-1.5 rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors"
-              >
-                {killing ? "Stopping…" : "Stop"}
-              </button>
-            )}
-          </div>
-        }
-      />
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflow: "hidden", background: "var(--bg)" }}>
 
-      {/* Status bar */}
-      <div className="flex items-center gap-2 px-6 py-2.5 border-b border-gray-100 bg-gray-50 text-xs text-gray-500 shrink-0">
-        <div className={`w-2 h-2 rounded-full ${statusDot}`} />
-        {statusLabel}
-        <span className="mx-2 text-gray-300">·</span>
-        <span className="font-mono text-[10px] text-gray-400 truncate">{sessionId}</span>
+      {/* ── Topbar ── */}
+      <div style={{
+        height: 48, display: "flex", alignItems: "center", padding: "0 18px",
+        gap: 12, borderBottom: "1px solid var(--bd)",
+        background: "var(--surface)", flexShrink: 0,
+      }}>
+        <button
+          onClick={() => router.push("/agents")}
+          style={{
+            display: "flex", alignItems: "center", gap: 5, background: "none",
+            border: "none", cursor: "pointer", color: "var(--fm)", fontSize: 12,
+            fontFamily: "var(--font-instrument), sans-serif", padding: "4px 8px",
+            borderRadius: 6, transition: "color .12s, background .12s",
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--fg)"; (e.currentTarget as HTMLButtonElement).style.background = "var(--s3)"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--fm)"; (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
+        >
+          ← Agents
+        </button>
+
+        <div style={{ width: 1, height: 20, background: "var(--bd)", flexShrink: 0 }} />
+
+        {/* Status dot */}
+        <div style={{
+          width: 7, height: 7, borderRadius: "50%", background: statusColor, flexShrink: 0,
+          boxShadow: status === "running" ? `0 0 0 3px color-mix(in srgb, ${statusColor} 20%, transparent)` : undefined,
+        }} />
+
+        {/* Agent name */}
+        <div style={{
+          fontSize: 13, fontWeight: 700, color: "var(--fg)",
+          fontFamily: "var(--font-instrument), sans-serif",
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          flex: 1,
+        }}>
+          {agentName || "Custom Agent"}
+        </div>
+
+        <div style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)", flexShrink: 0 }}>
+          {statusLabel}
+        </div>
+
+        {status === "running" && (
+          <button
+            onClick={handleKill}
+            disabled={killing}
+            style={{
+              fontSize: 11, fontWeight: 600, color: "var(--red)",
+              background: "var(--rdim)", border: "1px solid var(--rb)",
+              borderRadius: 6, padding: "4px 12px", cursor: "pointer",
+              opacity: killing ? 0.5 : 1, transition: "opacity .15s",
+              fontFamily: "var(--font-instrument), sans-serif",
+            }}
+          >
+            {killing ? "Stopping…" : "Stop"}
+          </button>
+        )}
       </div>
 
-      {/* Deliverables — always visible once the run finishes, so it's obvious
-          whether there's something here or not. */}
+      {/* ── Goal strip ── */}
+      {goal && (
+        <div style={{
+          padding: "9px 18px", borderBottom: "1px solid var(--bd)",
+          background: "var(--s2)", flexShrink: 0,
+        }}>
+          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fm)", fontFamily: "var(--font-code)", marginBottom: 2 }}>
+            Goal
+          </div>
+          <div style={{ fontSize: 12, color: "var(--fd)", lineHeight: 1.5, fontFamily: "var(--font-instrument), sans-serif" }}>
+            {goal}
+          </div>
+        </div>
+      )}
+
+      {/* ── Deliverables (shown once done) ── */}
       {status !== "running" && (
-        <div className="px-6 py-5 border-b-2 border-blue-100 bg-blue-50/60 shrink-0">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-lg">📄</span>
-            <span className="text-sm font-bold text-gray-900">
-              Deliverables{deliverablePaths.length > 0 ? ` (${deliverablePaths.length})` : ""}
-            </span>
+        <div style={{
+          padding: "14px 18px", borderBottom: "1px solid var(--bd)",
+          background: "var(--surface)", flexShrink: 0,
+        }}>
+          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fm)", fontFamily: "var(--font-code)", marginBottom: 10 }}>
+            Deliverables{deliverablePaths.length > 0 ? ` · ${deliverablePaths.length}` : ""}
           </div>
           {deliverablePaths.length === 0 ? (
-            <div className="text-sm text-gray-500">No files were generated by this run.</div>
+            <div style={{ fontSize: 12, color: "var(--fm)", fontFamily: "var(--font-instrument), sans-serif" }}>
+              No files generated by this run.
+            </div>
           ) : (
-            <div className="space-y-3">
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {deliverablePaths.map(p => (
-                <div key={p} className="space-y-2">
+                <div key={p} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <PdfEmbed path={p} height={300} />
                   {founderId && <EmailDeliverableButton founderId={founderId} path={p} />}
                 </div>
@@ -241,80 +276,90 @@ export default function CustomAgentSessionView({ sessionId, agentName, goal, ini
         </div>
       )}
 
-      {/* Log feed */}
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-1.5 font-mono text-[12px]">
+      {/* ── Log feed ── */}
+      <div style={{
+        flex: 1, overflowY: "auto", padding: "16px 18px",
+        display: "flex", flexDirection: "column", gap: 3,
+        minHeight: 0,
+      }}>
         {log.length === 0 && status === "running" && (
-          <div className="text-gray-400 flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            color: "var(--fm)", fontSize: 11,
+            fontFamily: "var(--font-code)",
+          }}>
+            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", animation: "sc-shimmer 1.5s ease-in-out infinite" }} />
             Waiting for agent output…
           </div>
         )}
 
         {log.length === 0 && status !== "running" && (
-          <div className="text-gray-400 text-sm font-sans">No log available for this run.</div>
+          <div style={{ fontSize: 12, color: "var(--fm)", fontFamily: "var(--font-instrument), sans-serif" }}>
+            No log available for this run.
+          </div>
         )}
 
-        {log.map((line) => (
-          <LogRow key={line.id} line={line} />
+        {log.map(line => (
+          <div
+            key={line.id}
+            style={{
+              display: "flex", gap: 10, alignItems: "flex-start",
+              fontSize: 11.5, lineHeight: 1.6,
+              fontFamily: "var(--font-code)",
+              color: line.kind === "think" ? "var(--fm)" : undefined,
+              fontStyle: line.kind === "think" ? "italic" : undefined,
+            }}
+          >
+            <span style={{ color: LINE_COLOR[line.kind], flexShrink: 0, width: 14, textAlign: "right", opacity: 0.7, marginTop: 1 }}>
+              {LINE_PREFIX[line.kind]}
+            </span>
+            <span style={{ color: LINE_COLOR[line.kind], wordBreak: "break-word", minWidth: 0 }}>
+              {line.text}
+            </span>
+          </div>
         ))}
 
         {status === "running" && log.length > 0 && (
-          <div className="flex items-center gap-1.5 text-gray-400 pt-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-            <span>Running…</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, color: "var(--fm)", fontSize: 11, fontFamily: "var(--font-code)", marginTop: 4 }}>
+            <div style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--blue)", animation: "sc-shimmer 1.5s ease-in-out infinite" }} />
+            Running…
           </div>
         )}
 
         {status === "done" && (
-          <div className="mt-4 pt-4 border-t border-gray-100 font-sans">
-            <span className="text-green-600 font-medium text-sm">✓ Run completed.</span>
+          <div style={{
+            marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--bd)",
+            display: "flex", alignItems: "center", gap: 16,
+            fontFamily: "var(--font-instrument), sans-serif",
+          }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--green)" }}>✓ Run completed</span>
             <button
               onClick={() => router.push("/agents")}
-              className="ml-4 text-sm text-blue-600 hover:underline"
+              style={{ fontSize: 12, color: "var(--blue)", background: "none", border: "none", cursor: "pointer", padding: 0, fontWeight: 600, fontFamily: "inherit" }}
             >
-              Back to Custom Agents →
+              Back to Agents →
             </button>
           </div>
         )}
 
         {status === "error" && (
-          <div className="mt-4 pt-4 border-t border-gray-100 font-sans">
-            <span className="text-red-600 font-medium text-sm">✗ Run failed.</span>
+          <div style={{
+            marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--bd)",
+            display: "flex", alignItems: "center", gap: 16,
+            fontFamily: "var(--font-instrument), sans-serif",
+          }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--red)" }}>✗ Run failed</span>
             <button
               onClick={() => router.push("/agents")}
-              className="ml-4 text-sm text-blue-600 hover:underline"
+              style={{ fontSize: 12, color: "var(--blue)", background: "none", border: "none", cursor: "pointer", padding: 0, fontWeight: 600, fontFamily: "inherit" }}
             >
-              Back to Custom Agents →
+              Back to Agents →
             </button>
           </div>
         )}
 
         <div ref={logEndRef} />
       </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Log row
-// ---------------------------------------------------------------------------
-
-const ROW_STYLES: Record<LogLine["kind"], { color: string; prefix: string }> = {
-  info:     { color: "text-blue-500",   prefix: "·" },
-  think:    { color: "text-gray-400 italic", prefix: "···" },
-  tool:     { color: "text-amber-700",  prefix: "⚙" },
-  result:   { color: "text-gray-600",   prefix: "→" },
-  done:     { color: "text-green-600",  prefix: "✓" },
-  error:    { color: "text-red-600",    prefix: "✗" },
-  artifact: { color: "text-purple-600", prefix: "📄" },
-};
-
-function LogRow({ line }: { line: LogLine }) {
-  const { color, prefix } = ROW_STYLES[line.kind];
-  return (
-    <div className={`${color} leading-relaxed flex gap-2`}>
-      <span className="shrink-0 w-5 text-right opacity-60">{prefix}</span>
-      <span className="break-words min-w-0">{line.text}</span>
     </div>
   );
 }
