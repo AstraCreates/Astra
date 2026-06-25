@@ -82,6 +82,9 @@ def build_session_digest(session_id: str, events: list[tuple[int, dict]]) -> dic
     running_agents = [agent for agent, state in agent_state.items() if state.get("status") == "running"]
     blocked_approvals = [item for item in approvals.values() if item.get("status") == "triggered"]
     pending_approvals = [item for item in approvals.values() if item.get("status") == "armed"]
+    phase_gates = [item for item in approvals.values() if item.get("is_phase_gate")]
+    phases_done = len([g for g in phase_gates if g.get("status") == "approved"])
+    phases_pending = len([g for g in phase_gates if g.get("status") == "armed"])
     ready_artifacts = [item for item in artifacts if item.get("status") == "ready"]
     outcome_units = sum(int(item.get("value") or 0) for item in outcomes if isinstance(item.get("value"), int))
 
@@ -121,6 +124,9 @@ def build_session_digest(session_id: str, events: list[tuple[int, dict]]) -> dic
             "pending_approvals": len(pending_approvals),
             "saferun_actions": len(saferun),
             "errors": len(errors),
+            "phases_done": phases_done,
+            "phases_pending": phases_pending,
+            "phases_total": len(phase_gates),
         },
         "done_agents": done_agents,
         "running_agents": running_agents,

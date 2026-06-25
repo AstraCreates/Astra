@@ -329,11 +329,12 @@ export default function DashboardView() {
                   const isRunning = s.status === "running";
                   const isDone = s.status === "done";
                   const digest = digests.get(s.session_id);
-                  const plannedAgents = digest?.counts.planned_agents ?? 0;
-                  const doneAgents = digest?.counts.done_agents ?? 0;
-                  const totalAgents = Math.max(plannedAgents, doneAgents);
+                  const phasesDone = digest?.counts.phases_done ?? 0;
+                  const phasesPending = digest?.counts.phases_pending ?? 0;
+                  const phasesTotal = digest?.counts.phases_total ?? 0;
                   const progressPct = isDone ? 100
-                    : (isRunning && totalAgents > 0) ? Math.min(100, Math.round((doneAgents / totalAgents) * 100))
+                    : phasesPending > 0 ? 50
+                    : (phasesDone > 0 && phasesTotal > 0) ? 75
                     : null;
                   const currentAgents = (digest?.running_agents ?? [])
                     .map(a => AGENT_LABELS[a as keyof typeof AGENT_LABELS] ?? a);
@@ -397,7 +398,7 @@ export default function DashboardView() {
                           <div>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                               <span style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)" }}>
-                                {isDone ? "All agents done" : totalAgents > 0 ? `${doneAgents} / ${totalAgents} agents` : "Loading…"}
+                                {isDone ? "All done" : phasesPending > 0 ? "Phase 1 done · approval needed" : phasesDone > 0 ? "Phase 2 running…" : "Phase 1 running…"}
                               </span>
                               {progressPct !== null && (
                                 <span style={{ fontSize: 10, color: isDone ? "var(--green)" : "var(--blue)", fontFamily: "var(--font-code)", fontWeight: 600 }}>

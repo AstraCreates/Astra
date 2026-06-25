@@ -124,60 +124,10 @@ async def _scheduler_tick() -> int:
                 except Exception as exc:
                     logger.error("missions_scheduler: next-goal proposal recovery failed founder=%s: %s", founder_id, exc, exc_info=True)
             continue
-        # Only an APPROVED (active) goal is the scheduler's business. Proposed goals
-        # wait for the founder's sign-off; completed goals wait for the next proposal.
-        # No auto-chaining here — that's a human decision now.
-        if not cg or cg.get("status") != "active":
-            continue
-        open_tasks = [t for t in cg.get("tasks", []) if not t.get("postponed") and t.get("status") != "done"]
-        if not open_tasks:
-            continue  # nothing actionable
-        if not is_due(goal, safety_interval):
-            continue  # a run started recently — not stalled
-        # Only recover CRASHED runs. If the last session for this goal completed normally
-        # (status="done"), the agents already ran and couldn't deliver required evidence
-        # (e.g. signup_url, payment_id). Re-dispatching produces identical failed runs.
-        # operating_sessions is append-only → last element is most recent (no sort needed).
-        # Sorting by updated_at/created_at is wrong: new "running" sessions only have
-        # "started_at", so they'd sort to the front and [-1] would pick an old "done"
-        # session, causing the done-check to falsely skip re-dispatch.
-        recent_sessions = [r for r in (goal.get("operating_sessions") or []) if r.get("goal_id") == cg.get("id")]
-        if recent_sessions and recent_sessions[-1].get("status") == "done":
-            logger.info(
-                "missions_scheduler: goal %s last session completed normally — "
-                "skipping re-dispatch (open tasks need evidence agents cannot provide)",
-                cg.get("id"),
-            )
-            continue
-        # Attempt cap: if this goal already got max_goal_attempts runs and STILL has open
-        # tasks, an agent keeps failing to deliver. Stop retrying — postpone the stuck
-        # tasks so the goal can complete and the company moves on (the founder can revisit
-        # them). This is what prevents endless follow-up runs of the same goal.
-        attempts = sum(1 for r in goal.get("operating_sessions") or [] if r.get("goal_id") == cg.get("id"))
-        if attempts >= max_goal_attempts:
-            for t in open_tasks:
-                try:
-                    await asyncio.to_thread(
-                        postpone_task,
-                        founder_id,
-                        t.get("id"),
-                        True,
-                        company_id,
-                    )
-                except Exception:
-                    pass
-            logger.warning("missions_scheduler: goal %s hit %d-attempt cap — postponed %d stuck task(s) so it can complete",
-                           cg.get("id"), max_goal_attempts, len(open_tasks))
-            continue
-        if not budget_allows(goal):
-            continue
-        logger.info("missions_scheduler: recovering stalled goal founder=%s (%d open tasks, attempt %d)", founder_id, len(open_tasks), attempts + 1)
-        try:
-            result = await dispatch_current_goal(founder_id, company_id)
-            if result.get("ok") and result.get("session_id"):
-                dispatched += 1
-        except Exception as exc:
-            logger.error("missions_scheduler: stalled-goal recovery failed founder=%s: %s", founder_id, exc, exc_info=True)
+        # Stalled-goal auto-redispatch is disabled. Runs only start when the founder
+        # explicitly submits a goal — the scheduler no longer restarts them automatically.
+        # (This prevents unexpected "Launch the company" sessions appearing without user action.)
+        continue
 
     return dispatched
 

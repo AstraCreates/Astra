@@ -2004,17 +2004,6 @@ class Orchestrator:
             })
             logger.info("Phase gate published: %s → %s (%d artifacts)", phase_name, next_phase, len(gate_artifacts))
 
-            # Speed: phase gates are NON-BLOCKING by default. The gate is still
-            # published (the UI shows the phase deliverables), but the pipeline does
-            # NOT sit idle for up to 2h waiting for a human click — it auto-advances.
-            # Human checkpoints live in the goal system (milestone approvals). Set
-            # ASTRA_PHASE_GATES_BLOCKING=1 to restore the blocking 2h-wait behaviour.
-            import os as _os
-            if _os.environ.get("ASTRA_PHASE_GATES_BLOCKING", "").lower() not in ("1", "true", "yes"):
-                await publish(session_id, {"type": "stack_approval_decision", "gate_key": gate_key, "decision": "approved"})
-                logger.info("Phase gate '%s' auto-advanced (non-blocking mode)", phase_name)
-                return True
-
             from backend.core.events import approval_decision_wait
             decision = await approval_decision_wait(session_id, gate_key, timeout=7200)
             if cancellation.is_killed(session_id):
