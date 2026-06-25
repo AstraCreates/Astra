@@ -651,7 +651,7 @@ export default function SettingsPage() {
           desc="Re-run the setup wizard to change your stack or reconnect integrations"
           action={
             <button
-              onClick={() => { localStorage.removeItem("astra_onboarding_done"); window.location.href = "/onboarding"; }}
+              onClick={() => { localStorage.removeItem("astra_onboarding_done"); window.location.href = "/"; }}
               style={{
                 fontSize: 13, padding: "6px 14px", borderRadius: 8,
                 background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer",

@@ -40,20 +40,17 @@ export default function AppHome() {
     <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "transparent" }} />
   );
 
-  // Post-onboarding celebration screen — runs here so pull-up reveals the real dashboard
-  if (showWelcome) {
-    const name = welcomeName || (typeof window !== "undefined" ? localStorage.getItem("astra_onboarding_name") || "" : "");
-    function handleWelcomeDone() {
-      try { localStorage.setItem("astra_show_tour", "1"); } catch {}
-      router.replace("/");
-      setTimeout(() => window.dispatchEvent(new CustomEvent("astra:show-tour")), 200);
-    }
-    return <PostOnboardingScreen name={name} onComplete={handleWelcomeDone} />;
-  }
-
   // Not onboarded — show animated landing, not a redirect (avoids flash)
   if (!onboarded) {
     return <WelcomeScreen />;
+  }
+
+  const postName = welcomeName || (typeof window !== "undefined" ? localStorage.getItem("astra_onboarding_name") || "" : "");
+
+  function handleWelcomeDone() {
+    try { localStorage.setItem("astra_show_tour", "1"); } catch {}
+    router.replace("/");
+    setTimeout(() => window.dispatchEvent(new CustomEvent("astra:show-tour")), 200);
   }
 
   // Normal routing
@@ -73,6 +70,8 @@ export default function AppHome() {
       ) : (
         <DashboardView />
       )}
+      {/* PostOnboarding overlay — fixed on top so DashboardView loads sessions in background */}
+      {showWelcome && <PostOnboardingScreen name={postName} onComplete={handleWelcomeDone} />}
     </div>
   );
 }
