@@ -1570,6 +1570,7 @@ export default function OnboardingWizard() {
     )}
     <style>{`
       body::before, body::after { display: none !important; }
+      body { background: #02040A !important; }
       @keyframes pulse-ring {
         0%   { transform: scale(0.85); opacity: 0.9; }
         70%  { transform: scale(1.22); opacity: 0;   }
