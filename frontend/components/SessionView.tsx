@@ -434,7 +434,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         break;
       }
       case "stack_approval_decision":
-        if (ev.gate_key) st.decidedKeys.add(ev.gate_key);
+        if (ev.gate_key && ev.decision !== "rejected") st.decidedKeys.add(ev.gate_key);
+        else if (ev.gate_key && ev.decision === "rejected") st.decidedKeys.delete(ev.gate_key);
         st.approvals = st.approvals.filter((a) => a.gate_key !== ev.gate_key); break;
       case "company_operating":
         st.status = "done";
@@ -595,14 +596,14 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const decide = async (key: string, decision: "approved" | "skipped" | "rejected", note?: string) => {
     if (!key) { showErr("Approval missing gate key — refresh the page and try again."); return; }
     const snapshot = S.current.approvals;
-    S.current.decidedKeys.add(key);
+    if (decision !== "rejected") S.current.decidedKeys.add(key);
     S.current.approvals = S.current.approvals.filter((a) => a.gate_key !== key);
     S.current.revisionGate = null; S.current.revisionNote = "";
     force();
     try {
       await decideStackApproval(sessionId, key, decision as any, founderId, note);
     } catch (e) {
-      S.current.decidedKeys.delete(key);
+      if (decision !== "rejected") S.current.decidedKeys.delete(key);
       S.current.approvals = snapshot;
       force();
       showErr(`Approval failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -1582,7 +1583,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                       <div style={{ fontFamily: "var(--font-code)", fontSize: 22, fontWeight: 700, color: "var(--blue)", lineHeight: 1, letterSpacing: "-.02em" }}>{p.pct}%</div>
                       <div style={{ fontSize: 8, fontFamily: "var(--font-code)", letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fm)" }}>Profile complete</div>
                       <div style={{ width: 120, height: 2, background: "var(--bd)", overflow: "hidden", marginTop: 2 }}>
-                        <div style={{ width: `${p.pct}%`, height: "100%", background: "var(--blue)", transition: `width .7s ${ease}` }} />
+                        <div style={{ width: "100%", height: "100%", background: "var(--blue)", transformOrigin: "left", transform: `scaleX(${p.pct / 100})`, transition: `transform .7s ${ease}` }} />
                       </div>
                     </div>
                   </div>

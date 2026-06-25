@@ -66,6 +66,11 @@ def build_session_digest(session_id: str, events: list[tuple[int, dict]]) -> dic
         elif event_type == "stack_approval_queue":
             for item in event.get("approval_queue", []):
                 approvals[item.get("key", "")] = item
+        elif event_type == "approval_request":
+            req = event.get("request") or {}
+            key = req.get("gate_key", "")
+            if key:
+                approvals[key] = {**req, "status": req.get("status", "armed")}
         elif event_type == "stack_approval_decision":
             key = event.get("gate_key", "")
             if key in approvals:

@@ -422,7 +422,7 @@ export default function DashboardView() {
                             {currentAgents.join(" · ")}
                           </div>
                         )}
-                        {isRunning && currentAgents.length === 0 && totalAgents === 0 && (
+                        {isRunning && currentAgents.length === 0 && phasesTotal === 0 && phasesDone === 0 && (
                           <div style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)", marginTop: 7 }}>
                             Initializing agents…
                           </div>
