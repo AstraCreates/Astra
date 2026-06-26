@@ -147,46 +147,60 @@ export default function LaunchCompleteScreen({
 
   const isOut = phase === "out";
 
+  const personName = (founderName || displayName).trim();
+  const FF = "var(--font-geist-sans), 'Geist', sans-serif";
+
   return (
     <div style={{
-      position: "fixed", inset: 0, zIndex: 9999,
-      overflow: "hidden",
+      position: "fixed", inset: 0, zIndex: 9999, overflow: "hidden",
+      background: "linear-gradient(135deg, #002eff 0%, #1a45ff 25%, #5df5e0 65%, #fefff6 100%)",
       opacity: isOut ? 0 : 1,
       transform: isOut ? "scale(1.04)" : "scale(1)",
       transition: isOut ? "opacity 0.5s ease, transform 0.5s ease" : "none",
     }}>
-      {/* Congrats phase */}
-      <AnimatePresence>
-        {phase === "congrats" && (
-          <motion.div
-            key="congrats"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, scale: 1.06 }}
-            transition={{ duration: 0.5 }}
-            style={{
-              position: "absolute", inset: 0,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              background: "linear-gradient(135deg, #002eff 0%, #1a45ff 25%, #5df5e0 65%, #fefff6 100%)",
-              flexDirection: "column",
-            }}
-          >
-            <AstraGradient />
-            <Confetti />
+      {/* Gradient — stays mounted the whole time */}
+      <AstraGradient />
 
-            {/* Logo */}
-            <div style={{ position: "absolute", top: 24, left: 28, display: "flex", alignItems: "center", gap: 8, zIndex: 10 }}>
-              <div style={{
-                width: 26, height: 26, flexShrink: 0,
-                background: "#002eff",
-                WebkitMask: "url('/logo.png') center/contain no-repeat",
-                mask: "url('/logo.png') center/contain no-repeat",
-              }} />
-              <span style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "#002eff", fontWeight: 700, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>Astra</span>
-            </div>
+      {/* Confetti — only during congrats */}
+      {phase === "congrats" && <Confetti />}
 
-            <div style={{ position: "relative", zIndex: 10, textAlign: "center", padding: "0 32px" }}>
-              {/* Trophy / celebration emoji */}
+      {/* Logo — always visible */}
+      <div style={{ position: "absolute", top: 24, left: 28, display: "flex", alignItems: "center", gap: 8, zIndex: 10 }}>
+        <div style={{
+          width: 26, height: 26, flexShrink: 0, background: "#002eff",
+          WebkitMask: "url('/logo.png') center/contain no-repeat",
+          mask: "url('/logo.png') center/contain no-repeat",
+        }} />
+        <span style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "#002eff", fontWeight: 700, fontFamily: FF }}>Astra</span>
+      </div>
+
+      {/* Skip — only on launch phase */}
+      {phase === "launch" && (
+        <button onClick={dismiss} style={{
+          position: "absolute", top: 22, right: 24, zIndex: 10,
+          background: "rgba(0,0,0,0.1)", border: "1px solid rgba(0,0,0,0.13)",
+          borderRadius: 20, padding: "5px 14px", cursor: "pointer",
+          fontSize: 12, color: "#002eff", fontWeight: 500, fontFamily: FF,
+          backdropFilter: "blur(8px)",
+        }}>Skip</button>
+      )}
+
+      {/* Content layers — only text/content transitions, no bg re-mount */}
+      <div style={{
+        position: "absolute", inset: 0,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        flexDirection: "column",
+      }}>
+        <AnimatePresence mode="wait">
+          {phase === "congrats" ? (
+            <motion.div
+              key="congrats-content"
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20, filter: "blur(8px)" }}
+              transition={FADE}
+              style={{ position: "relative", zIndex: 10, textAlign: "center", padding: "0 32px" }}
+            >
               <motion.div
                 initial={{ scale: 0, rotate: -20 }}
                 animate={{ scale: 1, rotate: 0 }}
@@ -197,137 +211,74 @@ export default function LaunchCompleteScreen({
               </motion.div>
 
               <motion.h1
-                initial={{ opacity: 0, y: 24 }}
+                initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ ...FADE, delay: 0.25 }}
+                transition={{ ...FADE, delay: 0.2 }}
                 style={{
-                  fontSize: "clamp(32px, 6vw, 72px)",
-                  fontWeight: 800,
-                  color: "#002eff",
-                  margin: 0,
-                  lineHeight: 1.05,
-                  letterSpacing: "-0.035em",
-                  fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
+                  fontSize: "clamp(32px, 6vw, 72px)", fontWeight: 800,
+                  color: "#002eff", margin: 0, lineHeight: 1.05,
+                  letterSpacing: "-0.035em", fontFamily: FF,
                 }}
               >
                 Congratulations,
                 <br />
-                <span style={{ color: "#111" }}>{(founderName || displayName).trim()}!</span>
+                <span style={{ color: "#111" }}>{personName}!</span>
               </motion.h1>
 
               <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ ...FADE, delay: 0.55 }}
-                style={{
-                  marginTop: 18, fontSize: 16,
-                  color: "#3344aa",
-                  fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-                }}
+                transition={{ ...FADE, delay: 0.45 }}
+                style={{ marginTop: 18, fontSize: 16, color: "#3344aa", fontFamily: FF }}
               >
                 Your launch is complete.
               </motion.p>
-            </div>
 
-            {/* Click to continue */}
-            <motion.button
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.9 }}
-              onClick={() => setPhase("launch")}
-              style={{
-                position: "absolute", bottom: 32,
-                background: "transparent", border: "none",
-                fontSize: 13, color: "#002eff", cursor: "pointer",
-                fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-                letterSpacing: "0.04em",
-              }}
-            >
-              tap to continue →
-            </motion.button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Launch details phase */}
-      <AnimatePresence>
-        {phase === "launch" && (
-          <motion.div
-            key="launch"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.6 }}
-            style={{
-              position: "absolute", inset: 0,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              background: "linear-gradient(135deg, #002eff 0%, #1a45ff 25%, #5df5e0 65%, #fefff6 100%)",
-            }}
-          >
-            <AstraGradient />
-
-            {/* Skip */}
-            <button
-              onClick={dismiss}
-              style={{
-                position: "absolute", top: 22, right: 24,
-                background: "rgba(0,0,0,0.12)", border: "1px solid rgba(0,0,0,0.15)",
-                borderRadius: 20, padding: "5px 14px", cursor: "pointer",
-                fontSize: 12, color: "#002eff", fontWeight: 500, zIndex: 10,
-                fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-                backdropFilter: "blur(8px)",
-              }}
-            >
-              Skip
-            </button>
-
-            {/* Logo */}
-            <div style={{ position: "absolute", top: 24, left: 28, display: "flex", alignItems: "center", gap: 8, zIndex: 10 }}>
-              <div style={{
-                width: 26, height: 26, flexShrink: 0,
-                background: "#002eff",
-                WebkitMask: "url('/logo.png') center/contain no-repeat",
-                mask: "url('/logo.png') center/contain no-repeat",
-              }} />
-              <span style={{ fontSize: 12, letterSpacing: "0.2em", textTransform: "uppercase", color: "#002eff", fontWeight: 700, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>Astra</span>
-            </div>
-
-            {/* Main content */}
-            <div style={{ position: "relative", zIndex: 2, width: "100%", maxWidth: 700, padding: "0 32px", display: "flex", flexDirection: "column", alignItems: "center", gap: 40 }}>
-
-              {/* Headline block */}
-              <motion.div
-                initial={{ opacity: 0, y: 32, filter: "blur(12px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                transition={{ ...FADE, delay: 0.1 }}
-                style={{ textAlign: "center" }}
+              <motion.button
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.85 }}
+                onClick={() => setPhase("launch")}
+                style={{
+                  marginTop: 40, background: "transparent", border: "none",
+                  fontSize: 13, color: "#002eff", cursor: "pointer",
+                  fontFamily: FF, letterSpacing: "0.04em",
+                }}
               >
-                {/* Badge */}
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ ...FADE, delay: 0.05 }}
-                  style={{
-                    display: "inline-flex", alignItems: "center", gap: 7,
-                    background: "rgba(0,0,0,0.08)", border: "1px solid rgba(0,0,0,0.12)",
-                    borderRadius: 20, padding: "5px 14px", marginBottom: 28,
-                    backdropFilter: "blur(8px)",
-                  }}
-                >
+                tap to continue →
+              </motion.button>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="launch-content"
+              initial={{ opacity: 0, y: 24, filter: "blur(8px)" }}
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              exit={{ opacity: 0 }}
+              transition={FADE}
+              style={{
+                position: "relative", zIndex: 2,
+                width: "100%", maxWidth: 700, padding: "0 32px",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 40,
+              }}
+            >
+              {/* Badge */}
+              <div style={{ textAlign: "center" }}>
+                <div style={{
+                  display: "inline-flex", alignItems: "center", gap: 7,
+                  background: "rgba(0,0,0,0.08)", border: "1px solid rgba(0,0,0,0.12)",
+                  borderRadius: 20, padding: "5px 14px", marginBottom: 28,
+                  backdropFilter: "blur(8px)",
+                }}>
                   <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#16a34a", boxShadow: "0 0 8px #16a34a", flexShrink: 0 }} />
-                  <span style={{ fontSize: 11, color: "#002eff", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>
+                  <span style={{ fontSize: 11, color: "#002eff", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", fontFamily: FF }}>
                     Launch complete
                   </span>
-                </motion.div>
+                </div>
 
                 <h1 style={{
-                  fontSize: "clamp(38px, 7vw, 80px)",
-                  fontWeight: 800,
-                  color: "#002eff",
-                  margin: 0,
-                  lineHeight: 1.0,
-                  letterSpacing: "-0.035em",
-                  fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
+                  fontSize: "clamp(38px, 7vw, 80px)", fontWeight: 800,
+                  color: "#002eff", margin: 0, lineHeight: 1.0,
+                  letterSpacing: "-0.035em", fontFamily: FF,
                 }}>
                   {displayName}
                   <br />
@@ -335,32 +286,21 @@ export default function LaunchCompleteScreen({
                 </h1>
 
                 {stackName && (
-                  <p style={{
-                    marginTop: 18, fontSize: 15, color: "#3344aa", lineHeight: 1.6,
-                    fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
-                  }}>
+                  <p style={{ marginTop: 18, fontSize: 15, color: "#3344aa", lineHeight: 1.6, fontFamily: FF }}>
                     Launched with the <strong style={{ color: "#002eff" }}>{stackName}</strong> stack
                   </p>
                 )}
-              </motion.div>
+              </div>
 
               {/* Stats row */}
               {(agentsRan > 0 || artifactsCreated > 0) && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ ...FADE, delay: 0.3 }}
-                  style={{
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: "rgba(255,255,255,0.65)", border: "1px solid rgba(255,255,255,0.9)",
-                    borderRadius: 18, padding: "20px 8px", backdropFilter: "blur(12px)",
-                    width: "100%",
-                  }}
-                >
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: "rgba(255,255,255,0.65)", border: "1px solid rgba(255,255,255,0.9)",
+                  borderRadius: 18, padding: "20px 8px", backdropFilter: "blur(12px)", width: "100%",
+                }}>
                   {agentsRan > 0 && <Stat value={agentsRan} label="Agents ran" />}
-                  {agentsRan > 0 && artifactsCreated > 0 && (
-                    <div style={{ width: 1, height: 40, background: "rgba(0,46,255,0.15)" }} />
-                  )}
+                  {agentsRan > 0 && artifactsCreated > 0 && <div style={{ width: 1, height: 40, background: "rgba(0,46,255,0.15)" }} />}
                   {artifactsCreated > 0 && <Stat value={artifactsCreated} label="Deliverables" />}
                   {agentsRan > 0 && (
                     <>
@@ -368,21 +308,16 @@ export default function LaunchCompleteScreen({
                       <Stat value="Live" label="Status" />
                     </>
                   )}
-                </motion.div>
+                </div>
               )}
 
               {/* CTA */}
-              <motion.button
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ ...FADE, delay: 0.45 }}
+              <button
                 onClick={dismiss}
                 style={{
-                  background: "#002eff", color: "#fff",
-                  border: "none", borderRadius: 14,
-                  padding: "16px 48px", fontSize: 16, fontWeight: 700,
-                  cursor: "pointer", letterSpacing: "-0.01em",
-                  fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
+                  background: "#002eff", color: "#fff", border: "none", borderRadius: 14,
+                  padding: "16px 48px", fontSize: 16, fontWeight: 700, cursor: "pointer",
+                  letterSpacing: "-0.01em", fontFamily: FF,
                   boxShadow: "0 8px 32px rgba(0,46,255,0.35)",
                   transition: "transform 0.15s ease, box-shadow 0.15s ease",
                 }}
@@ -390,21 +325,15 @@ export default function LaunchCompleteScreen({
                 onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = ""; (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 8px 32px rgba(0,46,255,0.35)"; }}
               >
                 Open workspace →
-              </motion.button>
+              </button>
 
-              {/* Fine print */}
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ ...FADE, delay: 0.65 }}
-                style={{ fontSize: 12, color: "#6677bb", margin: 0, textAlign: "center", fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}
-              >
+              <p style={{ fontSize: 12, color: "#6677bb", margin: 0, textAlign: "center", fontFamily: FF }}>
                 Your agents are continuing to work in the background
-              </motion.p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
