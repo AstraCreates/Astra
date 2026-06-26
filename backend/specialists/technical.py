@@ -12,6 +12,7 @@ from backend.tools.supabase_tools import supabase_generate_schema, supabase_crea
 from backend.tools.posthog_tools import posthog_generate_integration
 from backend.tools.composio_tools import composio_linear_create_issue, composio_notion_create_page
 from backend.tools.stripe_tools import create_product_with_payment_link
+from backend.tools.research_delegate import delegate_research_task
 
 
 def build_technical_agent(**kwargs) -> Agent:
@@ -38,6 +39,13 @@ def build_technical_agent(**kwargs) -> Agent:
             "search_examples('nextauth google oauth') → working NextAuth v5 scaffold; "
             "search_examples('stripe checkout webhook') → Stripe session + webhook pattern; "
             "search_examples('supabase rls schema') → Supabase schema with row-level security.\n\n"
+            "RESEARCH SUB-AGENT: When you need specific API docs, library versions, or integration patterns "
+            "that are NOT in search_examples, spawn a research sub-agent: "
+            "delegate_research_task(target='<topic>', questions=['<q1>', '<q2>', ...]). "
+            "Use this BEFORE writing code for any integration you're unsure about. "
+            "Examples: delegate_research_task(target='Supabase Auth SSR Next.js 15', "
+            "questions=['correct @supabase/ssr cookie pattern', 'middleware.ts example']) — "
+            "returns structured findings with code examples and source URLs.\n\n"
             "AUTH RULES (non-negotiable):\n"
             "- Auth must WORK. Default to email+password (or magic-link) via Supabase Auth (@supabase/ssr) "
             "or NextAuth Credentials — both function with just the Supabase anon key / a NEXTAUTH_SECRET, no "
@@ -117,6 +125,7 @@ def build_technical_agent(**kwargs) -> Agent:
             "obsidian_log": obsidian_log,
             "obsidian_read": obsidian_read,
             "obsidian_append": obsidian_append,
+            "delegate_research_task": delegate_research_task,
         },
         **kwargs,
     )
