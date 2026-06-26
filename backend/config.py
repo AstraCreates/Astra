@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     # Model that drives openclaude for technical-agent MVP builds.
     # Bench (2026-06-26): qwen3-coder-flash matched GLM-5.2 on pass rate (83%)
     # at 2.1× fewer tokens and 5× faster per call ($0.195/$0.975 vs $0.95/$3.00).
-    mvp_build_model: str = "qwen/qwen3-coder-flash"
+    mvp_build_model: str = "z-ai/glm-5.2"
     # Technical wrapper orchestrates a multi-step workflow (build → provision infra via
     # browser → self-QA the live site → fix), so it gets a smart model for reliable
     # tool decisions; the heavy code generation is still done by mvp_build_model in
