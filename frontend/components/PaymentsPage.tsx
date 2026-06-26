@@ -13,6 +13,29 @@ import {
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
+// ── MOCKUP: remove when Stripe is configured ──────────────────────────────────
+const MOCKUP = true;
+const MOCK_STATUS: StripeStatus = { connected: true, charges_enabled: true, payouts_enabled: true, email: "jhinkesh05@gmail.com", livemode: false, upgraded_to_business: false };
+const MOCK_DATA: StripeData = {
+  balance: { available: 184200, pending: 29900, currency: "usd" },
+  mrr: 124700,
+  total_revenue: 381400,
+  currency: "usd",
+  charges: [
+    { id: "ch_1", amount: 4900, currency: "usd", status: "succeeded", description: "NearBy Pro Plan", customer_email: "alex@example.com", created: Math.floor(Date.now() / 1000) - 3600 },
+    { id: "ch_2", amount: 4900, currency: "usd", status: "succeeded", description: "NearBy Pro Plan", customer_email: "priya@example.com", created: Math.floor(Date.now() / 1000) - 86400 },
+    { id: "ch_3", amount: 9900, currency: "usd", status: "succeeded", description: "NearBy Business Plan", customer_email: "marcus@example.com", created: Math.floor(Date.now() / 1000) - 172800 },
+    { id: "ch_4", amount: 4900, currency: "usd", status: "succeeded", description: "NearBy Pro Plan", customer_email: "sara@example.com", created: Math.floor(Date.now() / 1000) - 259200 },
+    { id: "ch_5", amount: 4900, currency: "usd", status: "pending", description: "NearBy Pro Plan", customer_email: "dan@example.com", created: Math.floor(Date.now() / 1000) - 300 },
+    { id: "ch_6", amount: 9900, currency: "usd", status: "succeeded", description: "NearBy Business Plan", customer_email: "lin@example.com", created: Math.floor(Date.now() / 1000) - 432000 },
+    { id: "ch_7", amount: 4900, currency: "usd", status: "failed", description: "NearBy Pro Plan", customer_email: "tom@example.com", created: Math.floor(Date.now() / 1000) - 518400 },
+  ],
+  payouts: [
+    { id: "po_1", amount: 89200, currency: "usd", status: "paid", arrival_date: Math.floor(Date.now() / 1000) - 604800, created: Math.floor(Date.now() / 1000) - 691200 },
+    { id: "po_2", amount: 62400, currency: "usd", status: "in_transit", arrival_date: Math.floor(Date.now() / 1000) + 172800, created: Math.floor(Date.now() / 1000) - 86400 },
+  ],
+};
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface StripeStatus {
@@ -523,14 +546,15 @@ export default function PaymentsPage() {
   const founderId = userId === "anon" ? "founder_001" : userId;
   const email = "";
 
-  const [status, setStatus] = useState<StripeStatus | null>(null);
-  const [data, setData] = useState<StripeData | null>(null);
-  const [loadingStatus, setLoadingStatus] = useState(true);
+  const [status, setStatus] = useState<StripeStatus | null>(MOCKUP ? MOCK_STATUS : null);
+  const [data, setData] = useState<StripeData | null>(MOCKUP ? MOCK_DATA : null);
+  const [loadingStatus, setLoadingStatus] = useState(!MOCKUP);
   const [loadingData, setLoadingData] = useState(false);
   const [dataError, setDataError] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
+    if (MOCKUP) return;
     setLoadingStatus(true);
     try {
       const res = await apiFetch(`${BASE}/stripe/status/${founderId}`);
@@ -543,6 +567,7 @@ export default function PaymentsPage() {
   }, [founderId]);
 
   const fetchData = useCallback(async () => {
+    if (MOCKUP) return;
     setLoadingData(true); setDataError(null);
     try {
       const res = await apiFetch(`${BASE}/stripe/data/${founderId}`);
@@ -556,6 +581,7 @@ export default function PaymentsPage() {
   }, [founderId]);
 
   useEffect(() => {
+    if (MOCKUP) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("stripe_error")) setConnectError(`Stripe error: ${params.get("stripe_error")}`);
     if (params.get("stripe_connected") === "1" || params.get("stripe_error")) {
@@ -565,7 +591,7 @@ export default function PaymentsPage() {
   }, [fetchStatus]);
 
   useEffect(() => {
-    if (status?.connected) fetchData();
+    if (status?.connected && !MOCKUP) fetchData();
   }, [status?.connected, fetchData]);
 
   const revenueData = data ? buildRevenueByDay(data.charges) : [];
