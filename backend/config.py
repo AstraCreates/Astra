@@ -14,9 +14,9 @@ class Settings(BaseSettings):
     # run_mvp_loop / openclaude. Few wrapper calls, so the cost impact is small.
     # Flash not Pro: the wrapper loop has no prompt caching wired, Pro's $0.435/M
     # input rate is wasteful for ~20 orchestration calls per build.
-    # Bench v5 (2026-06-26, AID_v2=213): GLM-5.2 #1 overall (aa=51, P_hard=1.00,
-    # $0.0028/suc). Technical agent drives build + QA loops — plan quality matters most.
-    technical_agent_model: str = "z-ai/glm-5.2"
+    # Bench v11 (2026-06-26, ACES): MiMo-V2.5 #1 (ACES=5661, P_hard=0.98, $0.0003/suc).
+    # Thinking-on in prod (mimo exempt from effort:none suppression in llm_cache.py).
+    technical_agent_model: str = "xiaomi/mimo-v2.5"
     # 20 was too tight for multi-step builds (resolve → run_mvp_loop → provision
     # → QA → fix rounds → obsidian_log → done). 30 gives enough headroom for a
     # full build + one round of error recovery without hitting max_iterations.
@@ -27,9 +27,8 @@ class Settings(BaseSettings):
     # Compiler-as-critic recovery: re-run `npm run build`, feed real errors to the
     # coder, re-verify — up to this many rounds before giving up.
     mvp_max_build_rounds: int = 3
-    # Bench v5 (2026-06-26, AID_v2=213): GLM-5.2 #1 overall (aa=51, P_hard=1.00).
-    # Build spec is a single long-form reasoning call — intelligence dominates over cost.
-    build_plan_model: str = "z-ai/glm-5.2"
+    # Bench v11 (2026-06-26, ACES): MiMo-V2.5 #1 planner winner (ACES=5661, $0.0003/suc).
+    build_plan_model: str = "xiaomi/mimo-v2.5"
     # MVP builds (openclaude tool-use) are billed as separate, higher-rate
     # credits — this multiplier is applied to the build's token-based credit cost.
     mvp_credit_multiplier: float = 3.0
@@ -43,30 +42,30 @@ class Settings(BaseSettings):
     openrouter_api_key_2: str = ""
     openrouter_api_key_3: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    # Bench v5 (2026-06-26, AID_v2): DS-V4-Flash #5 (AID=117, P_hard=0.83, $0.0002/suc).
-    # 3× AID over qwen3-235b at same cost tier; effort=max gives extended thinking headroom.
-    or_planner_model: str = "deepseek/deepseek-v4-flash"
+    # Bench v11 (2026-06-26, ACES): MiMo-V2.5 #1 planner slot winner.
+    or_planner_model: str = "xiaomi/mimo-v2.5"
     # Bench v2 (2026-06-26, LLM-judge): DeepSeek Flash 4.33/5 on NDA + pitch + finance
     # at QAC $0.261/1k. Qwen3-235b was $0.176/1k but capped at 16k max output — truncates
     # long financial models. DeepSeek Flash has 65k output / 1M context, no ceiling issue.
     or_highoutput_model: str = "deepseek/deepseek-v4-flash"
-    # Bench v5 (2026-06-26, AID_v2): DS-V4-Flash #5 (AID=117, $0.0002/suc).
-    or_light_model: str = "deepseek/deepseek-v4-flash"
+    # Bench v11 (2026-06-26, ACES): Qwen3-235b-T #1 light + tooluse winner (ACES=5478, $0.0003/suc).
+    # Thinking-on: -thinking suffix exempts from effort:none in llm_cache.py.
+    or_light_model: str = "qwen/qwen3-235b-a22b-thinking-2507"
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
-    tooluse_model_name: str = "deepseek/deepseek-v4-flash"
+    tooluse_model_name: str = "qwen/qwen3-235b-a22b-thinking-2507"
     # Web-search synthesis model — uncached, so input price dominates.
     # Used by web_search.py deep_research → Flash is 4.4× cheaper input
     # than Pro for synthesis calls.
     planner_model_base_url: str = "https://openrouter.ai/api/v1"
     planner_model_api_key: str = ""
-    planner_model_name: str = "deepseek/deepseek-v4-flash"
+    planner_model_name: str = "xiaomi/mimo-v2.5"
     # Chat model — DeepSeek V4 Flash: chat endpoint has no prompt caching; Flash
     # is 4.4× cheaper on fresh input than Pro with equivalent chat quality.
     chat_model_base_url: str = "https://openrouter.ai/api/v1"
     chat_model_api_key: str = ""
     chat_model_name: str = "deepseek/deepseek-v4-flash"
     light_model_base_url: str = "https://openrouter.ai/api/v1"
-    light_model_name: str = "deepseek/deepseek-v4-flash"
+    light_model_name: str = "qwen/qwen3-235b-a22b-thinking-2507"
     # High-output model — DeepSeek Flash (65k max output vs qwen3-235b's 16k ceiling)
     highoutput_model_base_url: str = "https://openrouter.ai/api/v1"
     highoutput_model_name: str = "deepseek/deepseek-v4-flash"

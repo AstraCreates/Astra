@@ -35,10 +35,12 @@ def openrouter_extra_body(model: str, extra: dict[str, Any] | None = None) -> di
     # (mimo/hy3 were spending most of each call generating reasoning → slow agents).
     _m = (model or "").lower()
     if "deepseek-v4-flash" in _m and "reasoning" not in body:
-        # Flash supports extended thinking — max effort improves P_hard from 0.83 to higher
-        # without changing model cost (reasoning tokens billed at same output rate).
+        # Bench v11 #3: max effort raises P_hard; cost unchanged (same output rate).
         body["reasoning"] = {"effort": "max"}
-    elif ("hy3" in _m or "mimo" in _m or "qwen" in _m or "deepseek" in _m) and "reasoning" not in body:
+    elif ("hy3" in _m or "qwen" in _m or "deepseek" in _m) and "thinking" not in _m and "reasoning" not in body:
+        # Non-thinking Qwen/DeepSeek/HY3: suppress CoT to prevent token-budget exhaustion.
+        # Exempt: qwen3-235b-a22b-thinking-2507 (bench v11 #2) and any -thinking suffixed model.
+        # MiMo omitted: bench v11 #1 with thinking on; suppression would degrade prod to bench mismatch.
         body["reasoning"] = {"effort": "none"}
     # Provider routing: allow_fallbacks lets OpenRouter transparently retry the next
     # provider on error/rate-limit instead of returning a broken body. We do NOT set
