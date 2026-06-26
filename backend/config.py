@@ -14,14 +14,15 @@ class Settings(BaseSettings):
     # run_mvp_loop / openclaude. Few wrapper calls, so the cost impact is small.
     # Flash not Pro: the wrapper loop has no prompt caching wired, Pro's $0.435/M
     # input rate is wasteful for ~20 orchestration calls per build.
-    technical_agent_model: str = "deepseek/deepseek-v4-flash"
+    # Bench (2026-06-26): qwen3-235b matched DeepSeek Flash on pass rate (75%) at
+    # 47% lower RRAT (516 vs 983) and 64% cheaper ($0.049 vs $0.137/1k tasks).
+    technical_agent_model: str = "qwen/qwen3-235b-a22b-2507"
     # 20 was too tight for multi-step builds (resolve → run_mvp_loop → provision
     # → QA → fix rounds → obsidian_log → done). 30 gives enough headroom for a
     # full build + one round of error recovery without hitting max_iterations.
     technical_agent_max_iterations: int = 30
     # Web agent wrapper model (drives its tool calls: repo create, run_mvp_loop).
-    # Dedicated so it isn't pinned by the env-overridden or_planner_model (hy3).
-    web_agent_model: str = "xiaomi/mimo-v2.5"
+    web_agent_model: str = "qwen/qwen3-235b-a22b-2507"
     mvp_max_completion_rounds: int = 1
     # Compiler-as-critic recovery: re-run `npm run build`, feed real errors to the
     # coder, re-verify — up to this many rounds before giving up.
@@ -38,24 +39,27 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     agent_model_base_url: str = "https://openrouter.ai/api/v1"
     agent_model_api_key: str = ""
-    agent_model_name: str = "xiaomi/mimo-v2.5"
+    agent_model_name: str = "qwen/qwen3-235b-a22b-2507"
     # OpenRouter — NOT overridden by Coolify (new field names)
     openrouter_api_key: str = ""
     openrouter_api_key_2: str = ""
     openrouter_api_key_3: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    # Planner stays on Pro: the agent tool loop wires cacheable_messages, so the
-    # cheap cache-read rate ($0.0036/M) applies. Pro is smarter for tool decisions.
-    or_planner_model: str = "deepseek/deepseek-v4-pro"
+    # Bench (2026-06-26): DeepSeek V4 Pro is a thinking model — reasoning burns the
+    # token budget on planner tasks (400-500 limit), leaving content empty (0% pass).
+    # Qwen3-235b: 100% pass, RRAT=408, $0.039/1k tasks. Pro+cache was $0.267/1k.
+    or_planner_model: str = "qwen/qwen3-235b-a22b-2507"
     # High-output → Qwen3-235b-2507: used by legal/finance/marketing agents for
     # docs, copy, HTML synthesis — no caching wired, so cost is fresh-token rate.
     # $0.09/$0.10 per M (same input as Flash, 45% cheaper output) with 235b-class
     # reasoning quality for complex multi-section documents.
     or_highoutput_model: str = "qwen/qwen3-235b-a22b-2507"
-    or_light_model: str = "xiaomi/mimo-v2.5"
-    # Tool-use model — Pro: agent tool loop has caching + needs strong tool calling.
+    # Bench (2026-06-26): MiMo v2.5 is a thinking model — reasoning exhausts token
+    # budget, content always empty (0% pass). Qwen3-235b: 100% pass, RRAT=376,
+    # $0.035/1k tasks — cheaper AND better than MiMo Pro ($0.244/1k).
+    or_light_model: str = "qwen/qwen3-235b-a22b-2507"
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
-    tooluse_model_name: str = "deepseek/deepseek-v4-pro"
+    tooluse_model_name: str = "qwen/qwen3-235b-a22b-2507"
     # Web-search synthesis model — uncached, so input price dominates.
     # Used by web_search.py deep_research → Flash is 4.4× cheaper input
     # than Pro for synthesis calls.
@@ -67,9 +71,8 @@ class Settings(BaseSettings):
     chat_model_base_url: str = "https://openrouter.ai/api/v1"
     chat_model_api_key: str = ""
     chat_model_name: str = "deepseek/deepseek-v4-flash"
-    # Light model — MiMo: cheap, fast for research and short repeated tasks
     light_model_base_url: str = "https://openrouter.ai/api/v1"
-    light_model_name: str = "xiaomi/mimo-v2.5"
+    light_model_name: str = "qwen/qwen3-235b-a22b-2507"
     # High-output model — Qwen3-235b-2507 (no caching wired; funding/kit uses this)
     highoutput_model_base_url: str = "https://openrouter.ai/api/v1"
     highoutput_model_name: str = "qwen/qwen3-235b-a22b-2507"
