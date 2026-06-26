@@ -2588,7 +2588,8 @@ async def serve_file(filename: str, download: bool = False):
     import os as _os
     safe_name = Path(filename).name
     vault = _os.environ.get("OBSIDIAN_VAULT", "/tmp/astra_docs")
-    search_dirs = [Path(vault) / "files", Path(vault), Path("/tmp/astra_docs")]
+    vault_path = Path(vault)
+    search_dirs = [vault_path / "files", vault_path, Path("/tmp/astra_docs")]
     path = None
     for d in search_dirs:
         candidate = d / safe_name
@@ -2617,6 +2618,23 @@ async def serve_file(filename: str, download: bool = False):
                         best = f
             if path:
                 break
+        path = path or best
+    # Last resort: recursive search under vault (covers session-scoped paths like
+    # founders/{id}/sessions/{session_id}/filename.pdf used by custom agents).
+    if path is None and vault_path.is_dir():
+        stem = Path(safe_name).stem
+        req_ext = Path(safe_name).suffix.lower()
+        best = None
+        for f in sorted(vault_path.rglob("*"), key=lambda p: p.stat().st_mtime if p.is_file() else 0, reverse=True):
+            if not f.is_file():
+                continue
+            if f.name == safe_name:
+                path = f
+                break
+            if f.stem == stem or f.stem.startswith(stem + "_"):
+                if not req_ext or f.suffix.lower() == req_ext:
+                    if best is None:
+                        best = f
         path = path or best
     if path is None:
         raise HTTPException(status_code=404, detail="File not found")
