@@ -1092,8 +1092,8 @@ class Orchestrator:
         _bypass_planner = bool((constraints or {}).get("bypass_planner"))
 
         if _bypass_planner:
-            # Fast path for testing — skip all LLM pre-run calls, go straight to agent dispatch
-            company_name = (constraints or {}).get("company_name") or "TestCo"
+            # Fast path for custom agents — skip LLM pre-run calls, go straight to agent dispatch
+            company_name = (constraints or {}).get("company_name") or company_id or founder_id
             shared["company_name"] = company_name
             await publish(session_id, {"type": "company_name", "name": company_name})
             logger.info("bypass_planner=True — skipping company_name LLM, genome, goal_expand")
