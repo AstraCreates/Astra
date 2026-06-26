@@ -4405,7 +4405,7 @@ async def generate_campaign_steps(founder_id: str, campaign_id: str, request: Re
     campaign = campaigns.data[0]
 
     from backend.tools.lead_finder import build_outreach_sequence
-    steps = await asyncio.to_thread(
+    result = await asyncio.to_thread(
         build_outreach_sequence,
         product_name=campaign.get("product_name", "the product"),
         value_prop=campaign.get("value_prop", ""),
@@ -4414,6 +4414,8 @@ async def generate_campaign_steps(founder_id: str, campaign_id: str, request: Re
         lead_title="{{title}}",
         sequence_length=3,
     )
+    # build_outreach_sequence returns {"sequence": [...], ...} — extract the list
+    steps = result.get("sequence") if isinstance(result, dict) else result
 
     db.table("outreach_campaigns").update({"steps": steps}).eq("id", campaign_id).execute()
     return {"steps": steps, "campaign_id": campaign_id}

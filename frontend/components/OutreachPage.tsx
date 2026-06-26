@@ -672,9 +672,11 @@ export default function OutreachPage() {
     try {
       const res = await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${activeCampaign.id}/generate-steps`, { method: "POST" });
       const data = await res.json();
-      setEditingSteps(data.steps ? JSON.parse(JSON.stringify(data.steps)) : []);
-      setActiveCampaign(prev => prev ? { ...prev, steps: data.steps } : prev);
-    } catch { /* ignore */ }
+      if (!res.ok) throw new Error(data.detail ?? "Generate failed");
+      const steps = Array.isArray(data.steps) ? data.steps : [];
+      setEditingSteps(JSON.parse(JSON.stringify(steps)));
+      setActiveCampaign(prev => prev ? { ...prev, steps } : prev);
+    } catch (e) { alert("Sequence generation failed: " + (e instanceof Error ? e.message : e)); }
     finally { setGeneratingSteps(false); }
   };
 
