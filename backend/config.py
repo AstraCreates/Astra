@@ -14,11 +14,10 @@ class Settings(BaseSettings):
     # Flash not Pro: the wrapper loop has no prompt caching wired, Pro's $0.435/M
     # input rate is wasteful for ~20 orchestration calls per build.
     technical_agent_model: str = "deepseek/deepseek-v4-flash"
-    # 12 was too tight: the build workflow (resolve repo → run_mvp_loop →
-    # provision → QA → obsidian_log → done) plus tool-failure retries blew the
-    # cap and force-synthesized BEFORE deploy/log finished. 20 matches the other
-    # build-heavy agents (legal 20, finance/marketing 20-25).
-    technical_agent_max_iterations: int = 20
+    # 20 was too tight for multi-step builds (resolve → run_mvp_loop → provision
+    # → QA → fix rounds → obsidian_log → done). 30 gives enough headroom for a
+    # full build + one round of error recovery without hitting max_iterations.
+    technical_agent_max_iterations: int = 30
     # Web agent wrapper model (drives its tool calls: repo create, run_mvp_loop).
     # Dedicated so it isn't pinned by the env-overridden or_planner_model (hy3).
     web_agent_model: str = "xiaomi/mimo-v2.5"

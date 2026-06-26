@@ -35,7 +35,7 @@ def build_ops_agent(**kwargs) -> Agent:
             "When calling generate_pdf, write FULL substantive bodies for each section (at least 200 words per section) — "
             "do not pass placeholder or one-line bodies. Do NOT call generate_pdf more than once."
         ),
-        max_iterations=20,
+        max_iterations=30,
         tools={
             "generate_pdf": generate_pdf,
             "composio_gmail_send": composio_gmail_send,

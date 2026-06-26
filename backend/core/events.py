@@ -392,6 +392,12 @@ def register_parent_session(child_sid: str, parent_sid: str) -> None:
         _parent_map[child_sid] = parent_sid
 
 
+def reopen_session(session_id: str) -> None:
+    """Remove completion marker so re-run agents can stream new events.
+    Call before publishing agent_start on a session that previously errored/completed."""
+    _completed.discard(session_id)
+
+
 def publish_sync(session_id: str, event: dict) -> None:
     """Fire-and-forget from sync/thread context using the main event loop."""
     try:

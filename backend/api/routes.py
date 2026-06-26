@@ -484,11 +484,6 @@ async def submit_goal(body: GoalRequest, request: Request):
 
 @router.get("/stream/{session_id}")
 async def stream_goal(session_id: str, request: Request):
-    # EventSource can't send Authorization headers — accept JWT via ?token= query param
-    # and inject it as a header so the standard auth flow picks it up.
-    token = request.query_params.get("token")
-    if token and not request.headers.get("authorization"):
-        request.scope["headers"] = list(request.scope.get("headers", [])) + [(b"authorization", f"Bearer {token}".encode())]
     await _require_session_access(request, session_id, min_role="viewer")
     raw_last = request.headers.get("Last-Event-ID") or request.query_params.get("lastEventId")
     last_event_id: int | None = None
@@ -505,8 +500,6 @@ async def stream_goal(session_id: str, request: Request):
         "Cache-Control": "no-cache",
         "X-Accel-Buffering": "no",
         "Connection": "keep-alive",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Last-Event-ID, *",
     })
 
 
@@ -931,12 +924,22 @@ async def rerun_agent(session_id: str, agent_name: str, body: dict, request: Req
     """Rerun a specific agent within an existing session, picking up all prior context."""
     from backend.core.agent import AgentContext
     from backend.core.factory import get_orchestrator
-    from backend.core.events import publish
+    from backend.core.events import publish, reopen_session
+    from backend.core.session_store import update_session_status
+    from backend.workflow_state import load_session_state
     import asyncio
 
     founder_id = body.get("founder_id", "")
     instruction = body.get("instruction", "")
     await _require_session_access(request, session_id, min_role="viewer")
+    # Clear _completed flag so SSE clients don't get an immediate close after rerun.
+    reopen_session(session_id)
+
+    events = await _load_session_events(session_id)
+    snapshot = build_session_state(session_id, events) if events else await asyncio.to_thread(load_session_state, session_id)
+    session_status = str((snapshot or {}).get("status") or "").lower()
+    if session_status and session_status not in {"running", "loading", "done", "error", "stalled", "killed"}:
+        raise HTTPException(status_code=409, detail=f"Session cannot be rerun from status={session_status}.")
 
     orch = get_orchestrator()
     agent = orch.specialists.get(agent_name)
@@ -962,14 +965,20 @@ async def rerun_agent(session_id: str, agent_name: str, body: dict, request: Req
         shared={"prior_vault_notes": vault_context, "rerun": True},
     )
 
+    try:
+        update_session_status(session_id, "running")
+    except Exception:
+        pass
     await publish(session_id, {"type": "agent_start", "agent": agent_name, "task_id": f"rerun_{agent_name}", "instruction": instruction})
 
     async def _run():
         try:
             result = await agent.run(ctx)
             await publish(session_id, {"type": "agent_done", "agent": agent_name, "task_id": f"rerun_{agent_name}", "result": result})
+            await publish(session_id, {"type": "goal_done", "results": {agent_name: result}, "rerun": agent_name})
         except Exception as e:
             await publish(session_id, {"type": "agent_error", "agent": agent_name, "task_id": f"rerun_{agent_name}", "error": str(e)})
+            await publish(session_id, {"type": "goal_error", "error": str(e), "rerun": agent_name})
 
     asyncio.create_task(_run())
     return {"ok": True, "session_id": session_id, "agent": agent_name, "status": "started"}
@@ -1213,7 +1222,7 @@ def _detect_rerun_intent(instruction: str, available_agents: list[str]) -> dict 
         ]
         resp = client.chat.completions.create(
             model=settings.or_planner_model,
-            messages=cacheable_messages(messages, breakpoints=(0,)),
+            messages=messages,
             extra_body=openrouter_extra_body(settings.or_planner_model),
             max_tokens=300,
             temperature=0,
@@ -1447,7 +1456,7 @@ async def chat_agent(agent_key: str, body: AskRequest, request: Request):
         is_openrouter = is_openrouter_base_url(base_url)
         resp = await client.chat.completions.create(
             model=model_name,
-            messages=cacheable_messages(messages, breakpoints=(0,)) if is_openrouter else messages,
+            messages=messages,
             extra_body=openrouter_extra_body(model_name) if is_openrouter else None,
             temperature=0.7,
             timeout=60.0,
