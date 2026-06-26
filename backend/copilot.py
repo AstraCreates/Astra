@@ -905,6 +905,19 @@ def _summarize_copilot_action(tool: str, result: Any) -> dict[str, str]:
     return {"tool": tool, "label": label, "detail": detail, "tone": tone}
 
 
+_DIRECTIVE_WORDS = {
+    "tell", "make", "focus", "change", "stop", "start", "fix", "build", "add",
+    "remove", "update", "switch", "redirect", "adjust", "prioritize", "skip",
+    "continue", "pause", "wrap", "finish", "move", "shift", "speed", "slow",
+    "ignore", "include", "exclude", "emphasize", "drop", "keep", "rewrite",
+}
+
+
+def _is_steer_directive(msg: str) -> bool:
+    low = f" {msg.lower().strip()} "
+    return any(f" {w} " in low or low.startswith(f" {w} "[1:]) for w in _DIRECTIVE_WORDS)
+
+
 def _fallback_copilot_reply(actions: list[dict[str, Any]]) -> str:
     if not actions:
         return "I didn't catch that clearly. Try rephrasing, or tell me which agents to dispatch and what to do."
@@ -999,21 +1012,20 @@ async def run_copilot(founder_id: str, session_id: str, message: str, founder_em
         "You can natively drive the whole company: see every agent (list_agents), dispatch any of them "
         "on any directive (dispatch_agents), create/activate goals with per-workstream tasks (set_goal), "
         "approve the next goal, steer running agents, run a cycle.\n\n"
-        "ACT, don't just describe. When the founder gives an IMPERATIVE — build, make, create, add, fix, "
-        "change, ship, launch, redo, improve (e.g. 'build an app', 'add a pricing page', 'fix the auth') "
-        "— DO IT, never reply with the current goal/status:\n"
-        "  - 'build an app/the product' -> dispatch_agents {agents:['web','technical'], instruction:'build "
-        "the full product on the existing repo: auth + dashboard + core features, demo-accessible preview'}.\n"
-        "  - Other concrete work -> dispatch_agents with the right agents (marketing for GTM, sales for "
-        "pipeline, legal for docs, design for brand, research for validation). Call list_agents if unsure.\n"
-        "  - A broader objective -> set_goal with per-workstream tasks (it dispatches automatically).\n"
-        "  - If running_agents or child_sessions_running is NON-EMPTY and the request is about that work "
-        "-> use steer_agents (don't dispatch again — agents are already on it). Tell the founder they're "
-        "already running and what you steered them with.\n"
-        "  - Only call company_goal/session_status/ask_brain when the founder is ASKING a question, NEVER "
-        "for imperatives.\n"
-        "NEVER dispatch_agents if running_agents or child_sessions_running already covers the task. "
-        "NEVER answer an imperative by restating the goal and listing options — take the action.\n\n"
+        "DECISION TREE — check in this exact order for every message:\n"
+        "1. RUNNING AGENTS + DIRECTIVE: if running_agents or child_sessions_running is NON-EMPTY "
+        "AND the founder is telling them what to do (focus on X, stop Y, wrap up, change direction, etc.) "
+        "→ IMMEDIATELY call steer_agents with the exact directive. Example:\n"
+        '   founder: "tell them to focus on mobile" → {"action":"tool","tool":"steer_agents","args":{"message":"focus on mobile"}}\n'
+        '   founder: "wrap up research" → {"action":"tool","tool":"steer_agents","args":{"message":"wrap up research now and summarize findings"}}\n'
+        "   DO NOT reply, DO NOT dispatch more agents. Just steer.\n"
+        "2. IMPERATIVE + NO RUNNING AGENTS: build, make, create, add, fix, change, ship, launch "
+        "→ dispatch_agents with the right agents. Examples:\n"
+        "   'build an app' → dispatch_agents {agents:['web','technical'], instruction:'build full product: auth + dashboard + core features'}\n"
+        "   'create landing page' → dispatch_agents {agents:['web'], instruction:'...'}\n"
+        "3. BROADER OBJECTIVE: → set_goal with per-workstream tasks (auto-dispatches).\n"
+        "4. QUESTION: 'what is...', 'how is...', 'show me...' → ask_brain / session_status / list_goals.\n"
+        "NEVER dispatch_agents if running_agents is non-empty. NEVER narrate options for an imperative.\n\n"
         "DEPLOY/404 ERRORS: If the founder reports a 404, DEPLOYMENT_NOT_FOUND, or broken URL from an "
         "agent-built site, immediately dispatch_agents with web+technical agents instructed to rebuild and "
         "redeploy the specific site. Use the deploy_url from all_recent_sessions to identify which project "
@@ -1061,6 +1073,19 @@ async def run_copilot(founder_id: str, session_id: str, message: str, founder_em
             continue
         reply = str(act.get("text") or raw).strip()
         break
+
+    # Auto-steer fallback: model replied without calling steer_agents, but agents ARE
+    # running and the message is clearly a directive — push the steer directly.
+    if not actions and _is_steer_directive(message):
+        running = live.get("running_agents") or []
+        child_running = live.get("child_sessions_running") or []
+        if running or child_running:
+            try:
+                await _tool_steer_agents(founder_id, session_id, {"message": message})
+                actions.append({"tool": "steer_agents", "args": {"message": message}, "result": {"ok": True}})
+                reply = f"Sent to the running agents: {message}"
+            except Exception:
+                pass
 
     if not reply:
         reply = _fallback_copilot_reply(actions)
