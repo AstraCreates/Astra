@@ -1374,6 +1374,15 @@ class Orchestrator:
             await asyncio.to_thread(ensure_launch_goal, founder_id, session_id, _planned_agents, goal)
         except Exception as _ge:
             logger.debug("launch goal seed skipped: %s", _ge)
+        # Pin the LLM-extracted company name now that the goal record exists.
+        # _seed_company_identity in ensure_launch_goal uses the EXPANDED goal text
+        # which has lost the "Company/project name: X" prefix, so it never matches.
+        # company_name here is already extracted by _generate_company_name / pinned.
+        try:
+            from backend.missions.company_goal import set_company_name as _scn_post
+            await asyncio.to_thread(_scn_post, founder_id, company_id, company_name)
+        except Exception:
+            pass
 
         # Step 2: execute tasks in dependency order
         completed: dict[str, dict] = {}
