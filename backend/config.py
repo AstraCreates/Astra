@@ -14,25 +14,22 @@ class Settings(BaseSettings):
     # run_mvp_loop / openclaude. Few wrapper calls, so the cost impact is small.
     # Flash not Pro: the wrapper loop has no prompt caching wired, Pro's $0.435/M
     # input rate is wasteful for ~20 orchestration calls per build.
-    # Bench v2 (2026-06-26, LLM-judge quality scoring): qwen3-235b scored 5.0/5 avg
-    # on build_architecture + bug_triage vs 4.5/5 for DeepSeek Flash, at 3× lower QAC
-    # ($0.071 vs $0.204/1k quality-adjusted). DeepSeek Pro 4.5/5 but $0.939/1k (13×).
-    technical_agent_model: str = "qwen/qwen3-235b-a22b-2507"
+    # Bench v5 (2026-06-26, AID_v2=213): GLM-5.2 #1 overall (aa=51, P_hard=1.00,
+    # $0.0028/suc). Technical agent drives build + QA loops — plan quality matters most.
+    technical_agent_model: str = "z-ai/glm-5.2"
     # 20 was too tight for multi-step builds (resolve → run_mvp_loop → provision
     # → QA → fix rounds → obsidian_log → done). 30 gives enough headroom for a
     # full build + one round of error recovery without hitting max_iterations.
     technical_agent_max_iterations: int = 30
     # Web agent wrapper model (drives its tool calls: repo create, run_mvp_loop).
-    web_agent_model: str = "qwen/qwen3-235b-a22b-2507"
+    web_agent_model: str = "deepseek/deepseek-v4-flash"
     mvp_max_completion_rounds: int = 1
     # Compiler-as-critic recovery: re-run `npm run build`, feed real errors to the
     # coder, re-verify — up to this many rounds before giving up.
     mvp_max_build_rounds: int = 3
-    # Model that produces the COMPLETE build spec (pages, data model, features, file
-    # plan) before web/technical agents build, so the build follows a real plan
-    # instead of a one-line goal. Qwen3-235b-2507 is $0.09/$0.10 (vs minimax-m3
-    # $0.30/$1.20) with equivalent long-form reasoning — 10× cheaper on output.
-    build_plan_model: str = "qwen/qwen3-235b-a22b-2507"
+    # Bench v5 (2026-06-26, AID_v2=213): GLM-5.2 #1 overall (aa=51, P_hard=1.00).
+    # Build spec is a single long-form reasoning call — intelligence dominates over cost.
+    build_plan_model: str = "z-ai/glm-5.2"
     # MVP builds (openclaude tool-use) are billed as separate, higher-rate
     # credits — this multiplier is applied to the build's token-based credit cost.
     mvp_credit_multiplier: float = 3.0
@@ -40,29 +37,23 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     agent_model_base_url: str = "https://openrouter.ai/api/v1"
     agent_model_api_key: str = ""
-    agent_model_name: str = "qwen/qwen3-235b-a22b-2507"
+    agent_model_name: str = "deepseek/deepseek-v4-flash"
     # OpenRouter — NOT overridden by Coolify (new field names)
     openrouter_api_key: str = ""
     openrouter_api_key_2: str = ""
     openrouter_api_key_3: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    # Bench v2 (2026-06-26, LLM-judge quality scoring): qwen3-235b scored 4.67/5 on
-    # goal_decomp + error_recovery + tool_routing at QAC $0.064/1k. DeepSeek Flash
-    # scored 5.0/5 but QAC $0.103/1k (1.6× more expensive per quality unit). DeepSeek
-    # Pro 5.0/5 on 2 tasks but QAC $0.413/1k (6×). Qwen3-235b wins on quality-adjusted cost.
-    or_planner_model: str = "qwen/qwen3-235b-a22b-2507"
-    # Bench v2 (2026-06-26, LLM-judge): qwen3-235b scored 4.0/5 avg on NDA clause +
-    # pitch deck + finance model at QAC $0.176/1k. qwen3-coder-flash DISQUALIFIED —
-    # 1/5 on finance model (wrong LTV formula). DeepSeek Flash 4.33/5 but QAC $0.261/1k.
-    # DeepSeek Pro $1.915/1k. MiniMax $2.071/1k. Qwen3-235b wins on quality-adjusted cost.
-    or_highoutput_model: str = "qwen/qwen3-235b-a22b-2507"
-    # Bench v2 (2026-06-26, LLM-judge quality scoring): qwen3-235b scored 5.0/5 avg
-    # on competitor_analysis + market_research + sales_emails at QAC $0.067/1k.
-    # Qwen3-30b: 4.67/5 but QAC $0.102/1k. DeepSeek Flash: 4.67/5 but QAC $0.128/1k.
-    # DeepSeek Pro: 5.0/5 on 2/3 tasks but QAC $0.564/1k. Qwen3-235b wins overall.
-    or_light_model: str = "qwen/qwen3-235b-a22b-2507"
+    # Bench v5 (2026-06-26, AID_v2): DS-V4-Flash #5 (AID=117, P_hard=0.83, $0.0002/suc).
+    # 3× AID over qwen3-235b at same cost tier; effort=max gives extended thinking headroom.
+    or_planner_model: str = "deepseek/deepseek-v4-flash"
+    # Bench v2 (2026-06-26, LLM-judge): DeepSeek Flash 4.33/5 on NDA + pitch + finance
+    # at QAC $0.261/1k. Qwen3-235b was $0.176/1k but capped at 16k max output — truncates
+    # long financial models. DeepSeek Flash has 65k output / 1M context, no ceiling issue.
+    or_highoutput_model: str = "deepseek/deepseek-v4-flash"
+    # Bench v5 (2026-06-26, AID_v2): DS-V4-Flash #5 (AID=117, $0.0002/suc).
+    or_light_model: str = "deepseek/deepseek-v4-flash"
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
-    tooluse_model_name: str = "qwen/qwen3-235b-a22b-2507"
+    tooluse_model_name: str = "deepseek/deepseek-v4-flash"
     # Web-search synthesis model — uncached, so input price dominates.
     # Used by web_search.py deep_research → Flash is 4.4× cheaper input
     # than Pro for synthesis calls.
@@ -75,10 +66,10 @@ class Settings(BaseSettings):
     chat_model_api_key: str = ""
     chat_model_name: str = "deepseek/deepseek-v4-flash"
     light_model_base_url: str = "https://openrouter.ai/api/v1"
-    light_model_name: str = "qwen/qwen3-235b-a22b-2507"
-    # High-output model — Qwen3-235b-2507 (no caching wired; funding/kit uses this)
+    light_model_name: str = "deepseek/deepseek-v4-flash"
+    # High-output model — DeepSeek Flash (65k max output vs qwen3-235b's 16k ceiling)
     highoutput_model_base_url: str = "https://openrouter.ai/api/v1"
-    highoutput_model_name: str = "qwen/qwen3-235b-a22b-2507"
+    highoutput_model_name: str = "deepseek/deepseek-v4-flash"
     vertex_project: str = ""
     vertex_location: str = "us-central1"
 
@@ -129,7 +120,7 @@ class Settings(BaseSettings):
     astra_alert_min_severity: str = "warning"
     astra_runtime_guardrails: bool = True
     astra_tool_registry_v2: bool = False
-    astra_fallback_model: str = "xiaomi/mimo-v2.5"
+    astra_fallback_model: str = "moonshotai/kimi-k2.5"
 
     # Stripe Standard Connect
     stripe_secret_key: str = ""

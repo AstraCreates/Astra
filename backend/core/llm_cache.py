@@ -34,7 +34,11 @@ def openrouter_extra_body(model: str, extra: dict[str, Any] | None = None) -> di
     # their own JSON-structured reasoning, so the trace just burns tokens/latency
     # (mimo/hy3 were spending most of each call generating reasoning → slow agents).
     _m = (model or "").lower()
-    if ("hy3" in _m or "mimo" in _m or "qwen" in _m or "deepseek" in _m) and "reasoning" not in body:
+    if "deepseek-v4-flash" in _m and "reasoning" not in body:
+        # Flash supports extended thinking — max effort improves P_hard from 0.83 to higher
+        # without changing model cost (reasoning tokens billed at same output rate).
+        body["reasoning"] = {"effort": "max"}
+    elif ("hy3" in _m or "mimo" in _m or "qwen" in _m or "deepseek" in _m) and "reasoning" not in body:
         body["reasoning"] = {"effort": "none"}
     # Provider routing: allow_fallbacks lets OpenRouter transparently retry the next
     # provider on error/rate-limit instead of returning a broken body. We do NOT set
