@@ -104,12 +104,14 @@ function Stat({ value, label }: { value: string | number; label: string }) {
 
 export default function LaunchCompleteScreen({
   companyName,
+  founderName = "",
   agentsRan = 0,
   artifactsCreated = 0,
   stackName,
   onComplete,
 }: {
   companyName: string;
+  founderName?: string;
   agentsRan?: number;
   artifactsCreated?: number;
   stackName?: string;
@@ -165,10 +167,11 @@ export default function LaunchCompleteScreen({
             style={{
               position: "absolute", inset: 0,
               display: "flex", alignItems: "center", justifyContent: "center",
-              background: "#fff",
+              background: "linear-gradient(135deg, #002eff 0%, #1a45ff 25%, #5df5e0 65%, #fefff6 100%)",
               flexDirection: "column",
             }}
           >
+            <AstraGradient />
             <Confetti />
 
             {/* Logo */}
@@ -209,7 +212,7 @@ export default function LaunchCompleteScreen({
               >
                 Congratulations,
                 <br />
-                <span style={{ color: "#111" }}>{displayName}!</span>
+                <span style={{ color: "#111" }}>{(founderName || displayName).trim()}!</span>
               </motion.h1>
 
               <motion.p
@@ -218,7 +221,7 @@ export default function LaunchCompleteScreen({
                 transition={{ ...FADE, delay: 0.55 }}
                 style={{
                   marginTop: 18, fontSize: 16,
-                  color: "#6677bb",
+                  color: "#3344aa",
                   fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
                 }}
               >
@@ -235,7 +238,7 @@ export default function LaunchCompleteScreen({
               style={{
                 position: "absolute", bottom: 32,
                 background: "transparent", border: "none",
-                fontSize: 13, color: "#aab", cursor: "pointer",
+                fontSize: 13, color: "#002eff", cursor: "pointer",
                 fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
                 letterSpacing: "0.04em",
               }}

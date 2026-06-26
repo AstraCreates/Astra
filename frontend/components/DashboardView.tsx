@@ -63,13 +63,15 @@ export default function DashboardView() {
   const [showCompleted, setShowCompleted] = useState(false);
   const retriedRef = useRef(false);
   const prevStatusRef = useRef<Map<string, string>>(new Map());
-  const [launchComplete, setLaunchComplete] = useState<{ companyName: string; agentsRan: number; artifactsCreated: number; stackName?: string } | null>(null);
+  const [launchComplete, setLaunchComplete] = useState<{ companyName: string; founderName: string; agentsRan: number; artifactsCreated: number; stackName?: string } | null>(null);
 
   // Settings preview: fire immediately on mount without needing session data.
   useEffect(() => {
     if (!consumePreviewSignal()) return;
     const company = typeof window !== "undefined" ? (localStorage.getItem("astra_onboarding_company") || localStorage.getItem("astra_onboarding_name") || "") : "";
-    setLaunchComplete({ companyName: company, agentsRan: 0, artifactsCreated: 0 });
+    const fullName = typeof window !== "undefined" ? (localStorage.getItem("astra_onboarding_name") || "") : "";
+    const founder = fullName.split(" ")[0] || fullName;
+    setLaunchComplete({ companyName: company, founderName: founder, agentsRan: 0, artifactsCreated: 0 });
   }, []);
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -175,6 +177,7 @@ export default function DashboardView() {
         const digest = digests.get(s.session_id);
         setLaunchComplete({
           companyName: s.company_name || "",
+          founderName: firstName,
           agentsRan: digest?.counts.done_agents ?? 0,
           artifactsCreated: digest?.counts.ready_artifacts ?? 0,
           stackName: s.stack_id ? s.stack_id.replace(/_/g, " ") : undefined,
@@ -589,6 +592,7 @@ export default function DashboardView() {
       {launchComplete && (
         <LaunchCompleteScreen
           companyName={launchComplete.companyName}
+          founderName={launchComplete.founderName}
           agentsRan={launchComplete.agentsRan}
           artifactsCreated={launchComplete.artifactsCreated}
           stackName={launchComplete.stackName}
