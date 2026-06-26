@@ -9,7 +9,7 @@ import AstraGradient from "./AstraGradient";
 import GoalPanel from "./GoalPanel";
 import LiveStatusPanel from "./LiveStatusPanel";
 import DashboardCanvas from "./DashboardCanvas";
-import LaunchCompleteScreen, { shouldShowLaunchComplete, markLaunchCompleteShown } from "./LaunchCompleteScreen";
+import LaunchCompleteScreen, { shouldShowLaunchComplete, markLaunchCompleteShown, consumePreviewSignal } from "./LaunchCompleteScreen";
 
 const GREETINGS = [
   "Welcome back",
@@ -64,6 +64,13 @@ export default function DashboardView() {
   const retriedRef = useRef(false);
   const prevStatusRef = useRef<Map<string, string>>(new Map());
   const [launchComplete, setLaunchComplete] = useState<{ companyName: string; agentsRan: number; artifactsCreated: number; stackName?: string } | null>(null);
+
+  // Settings preview: fire immediately on mount without needing session data.
+  useEffect(() => {
+    if (!consumePreviewSignal()) return;
+    const company = typeof window !== "undefined" ? (localStorage.getItem("astra_onboarding_company") || localStorage.getItem("astra_onboarding_name") || "") : "";
+    setLaunchComplete({ companyName: company, agentsRan: 0, artifactsCreated: 0 });
+  }, []);
   useEffect(() => {
     if (typeof window !== "undefined") {
       const fullName = localStorage.getItem("astra_onboarding_name") || "";

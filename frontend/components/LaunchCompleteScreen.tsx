@@ -6,16 +6,30 @@ import AstraGradient from "./AstraGradient";
 
 const LS_KEY = "astra_launch_complete_shown";
 
+const SIGNAL_KEY = "astra_launch_complete_preview";
+
 export function markLaunchCompleteShown() {
   try { localStorage.setItem(LS_KEY, "1"); } catch {}
 }
 
 export function clearLaunchCompleteShown() {
-  try { localStorage.removeItem(LS_KEY); } catch {}
+  try {
+    localStorage.removeItem(LS_KEY);
+    localStorage.setItem(SIGNAL_KEY, "1");
+  } catch {}
 }
 
 export function shouldShowLaunchComplete(): boolean {
   try { return !localStorage.getItem(LS_KEY); } catch { return false; }
+}
+
+/** Returns true (and consumes the signal) if settings triggered a preview. */
+export function consumePreviewSignal(): boolean {
+  try {
+    if (!localStorage.getItem(SIGNAL_KEY)) return false;
+    localStorage.removeItem(SIGNAL_KEY);
+    return true;
+  } catch { return false; }
 }
 
 const FADE = { duration: 0.7, ease: [0.22, 1, 0.36, 1] as const };
