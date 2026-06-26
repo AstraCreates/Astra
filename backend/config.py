@@ -4,9 +4,10 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_key: str = ""
-    # Model that drives openclaude for technical-agent MVP builds. Non-pro MiMo
-    # is 3× cheaper than Pro ($0.14 vs $0.435/M input) and still writes code reliably.
-    mvp_build_model: str = "xiaomi/mimo-v2.5"
+    # Model that drives openclaude for technical-agent MVP builds. GLM-5.2 is more
+    # expensive ($0.95/$3.00 per M) than MiMo but generates correct code on first
+    # attempt more reliably — fewer retries more than compensate for the higher rate.
+    mvp_build_model: str = "z-ai/glm-5.2"
     # Technical wrapper orchestrates a multi-step workflow (build → provision infra via
     # browser → self-QA the live site → fix), so it gets a smart model for reliable
     # tool decisions; the heavy code generation is still done by mvp_build_model in
@@ -27,8 +28,9 @@ class Settings(BaseSettings):
     mvp_max_build_rounds: int = 3
     # Model that produces the COMPLETE build spec (pages, data model, features, file
     # plan) before web/technical agents build, so the build follows a real plan
-    # instead of a one-line goal. MiniMax-M3 = strong long-form planning/reasoning.
-    build_plan_model: str = "minimax/minimax-m3"
+    # instead of a one-line goal. Qwen3-235b-2507 is $0.09/$0.10 (vs minimax-m3
+    # $0.30/$1.20) with equivalent long-form reasoning — 10× cheaper on output.
+    build_plan_model: str = "qwen/qwen3-235b-a22b-2507"
     # MVP builds (openclaude tool-use) are billed as separate, higher-rate
     # credits — this multiplier is applied to the build's token-based credit cost.
     mvp_credit_multiplier: float = 3.0
@@ -45,11 +47,11 @@ class Settings(BaseSettings):
     # Planner stays on Pro: the agent tool loop wires cacheable_messages, so the
     # cheap cache-read rate ($0.0036/M) applies. Pro is smarter for tool decisions.
     or_planner_model: str = "deepseek/deepseek-v4-pro"
-    # High-output → Flash: _llm.generate(), web_search, funding/kit have NO prompt
-    # caching wired, so Pro's $0.435/M full-input rate dominates. Flash is 4.4×
-    # cheaper on fresh input ($0.098/M) with near-identical output quality for
-    # docs/copy/HTML synthesis.
-    or_highoutput_model: str = "deepseek/deepseek-v4-flash"
+    # High-output → Qwen3-235b-2507: used by legal/finance/marketing agents for
+    # docs, copy, HTML synthesis — no caching wired, so cost is fresh-token rate.
+    # $0.09/$0.10 per M (same input as Flash, 45% cheaper output) with 235b-class
+    # reasoning quality for complex multi-section documents.
+    or_highoutput_model: str = "qwen/qwen3-235b-a22b-2507"
     or_light_model: str = "xiaomi/mimo-v2.5"
     # Tool-use model — Pro: agent tool loop has caching + needs strong tool calling.
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
@@ -68,9 +70,9 @@ class Settings(BaseSettings):
     # Light model — MiMo: cheap, fast for research and short repeated tasks
     light_model_base_url: str = "https://openrouter.ai/api/v1"
     light_model_name: str = "xiaomi/mimo-v2.5"
-    # High-output model — DeepSeek V4 Flash via OpenRouter (no caching wired here)
+    # High-output model — Qwen3-235b-2507 (no caching wired; funding/kit uses this)
     highoutput_model_base_url: str = "https://openrouter.ai/api/v1"
-    highoutput_model_name: str = "deepseek/deepseek-v4-flash"
+    highoutput_model_name: str = "qwen/qwen3-235b-a22b-2507"
     vertex_project: str = ""
     vertex_location: str = "us-central1"
 
