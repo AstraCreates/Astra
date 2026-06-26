@@ -947,6 +947,39 @@ def _fallback_copilot_reply(actions: list[dict[str, Any]]) -> str:
     return "I completed the requested action."
 
 
+async def _copilot_generate(prompt: str) -> str:
+    """Single LLM call for the copilot — async, no chain-of-thought (latency-optimised)."""
+    import asyncio
+    import httpx
+    from backend.config import settings
+    from backend.core.key_rotator import get_openrouter_key
+
+    key = get_openrouter_key() or settings.agent_model_api_key
+    model = settings.or_highoutput_model  # deepseek/deepseek-v4-flash
+
+    def _call() -> str:
+        with httpx.Client(timeout=60) as c:
+            r = c.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 2000,
+                    "temperature": 0.2,
+                    # Suppress chain-of-thought — copilot only needs short JSON decisions
+                    "reasoning": {"effort": "none"},
+                    "provider": {"allow_fallbacks": True},
+                },
+            )
+        d = r.json()
+        if "error" in d:
+            raise RuntimeError(str(d["error"])[:200])
+        return ((d.get("choices") or [{}])[0]).get("message", {}).get("content") or ""
+
+    return await asyncio.to_thread(_call)
+
+
 async def run_copilot(founder_id: str, session_id: str, message: str, founder_email: str = "") -> dict[str, Any]:
     """Run one copilot turn: load history, let the model use tools, reply, persist."""
     from backend.tools._llm import generate
@@ -1005,7 +1038,7 @@ async def run_copilot(founder_id: str, session_id: str, message: str, founder_em
     for _step in range(8):
         prompt = system + "\n\nCONVERSATION:\n" + "\n".join(convo) + "\n\nYour next JSON step:"
         try:
-            raw = generate(prompt, max_tokens=900, model="large")
+            raw = await _copilot_generate(prompt)
         except Exception as exc:
             reply = f"(copilot error: {exc})"
             break
