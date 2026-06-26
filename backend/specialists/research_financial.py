@@ -4,7 +4,7 @@ import re as _re
 
 from backend.core.agent import Agent, AgentContext
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
-from backend.tools.browser_research import search_and_fetch, fetch_and_read
+from backend.tools.browser_research import search_and_fetch, fetch_and_read, sonar_research
 from backend.tools.web_search import web_search, news_search
 from backend.tools.pdf_generator import generate_pdf
 
@@ -62,21 +62,20 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
 
 
 _FINANCIAL_SEARCH_SEQUENCE = (
-    "FINANCIAL BENCHMARKS RESEARCH (run ALL 12 searches in order):\n"
-    "1.  search_and_fetch('{topic} unit economics CAC customer acquisition cost benchmark 2024 2025')\n"
-    "2.  search_and_fetch('{topic} LTV lifetime value CAC ratio benchmark SaaS startup')\n"
-    "3.  search_and_fetch('{topic} payback period months CAC recovery benchmark industry')\n"
-    "4.  search_and_fetch('{topic} burn rate monthly cash burn benchmark seed Series A startup')\n"
-    "5.  search_and_fetch('{topic} revenue multiple ARR valuation SaaS B2B 2024 2025')\n"
-    "6.  search_and_fetch('{topic} fundraising rounds seed Series A B valuation 2024 2025 site:crunchbase.com OR site:pitchbook.com')\n"
-    "7.  search_and_fetch('{topic} investor return expectations IRR MOIC venture capital')\n"
-    "8.  search_and_fetch('{topic} gross margin net margin operating expenses benchmark')\n"
-    "9.  search_and_fetch('{topic} ARR growth rate net revenue retention NRR benchmark')\n"
-    "10. web_search('{topic} recent funding rounds investors lead Series A 2024 2025')\n"
-    "11. news_search('{topic} funding raised valuation 2025')\n"
-    "12. search_and_fetch('{topic} Rule of 40 magic number sales efficiency benchmark')\n\n"
-    "Then run fetch_and_read on 6+ of the most data-rich URLs (investor reports, Bessemer benchmarks, "
-    "OpenView SaaS survey, a16z, NFX, Crunchbase data pages, PitchBook sector reports).\n\n"
+    "FINANCIAL BENCHMARKS RESEARCH:\n"
+    "1. sonar_research([\n"
+    "     '{topic} unit economics CAC LTV payback period benchmark 2025',\n"
+    "     '{topic} burn rate monthly cash burn benchmark seed Series A startup',\n"
+    "     '{topic} ARR revenue multiple valuation SaaS B2B 2025',\n"
+    "     '{topic} fundraising rounds seed Series A valuation 2024 2025 Crunchbase',\n"
+    "     '{topic} investor return expectations IRR MOIC venture capital',\n"
+    "     '{topic} gross margin net margin operating expenses benchmark',\n"
+    "     '{topic} NRR net revenue retention ARR growth rate benchmark',\n"
+    "     '{topic} Rule of 40 magic number sales efficiency benchmark',\n"
+    "   ]) — sonar fetches and synthesizes authoritative sources internally.\n"
+    "2. web_search('{topic} recent funding rounds investors Series A 2024 2025')\n"
+    "3. news_search('{topic} funding raised valuation 2025')\n"
+    "4. Use fetch_and_read only for specific Bessemer/OpenView/a16z/PitchBook report URLs sonar could not fully read.\n\n"
     "FINAL STEPS (in order):\n"
     "A. obsidian_log with sections: UNIT ECONOMICS (CAC, LTV, LTV:CAC, payback period), "
     "BURN & RUNWAY NORMS, REVENUE MULTIPLES & VALUATION, FUNDRAISING COMPS (recent rounds, investors, "
@@ -101,6 +100,7 @@ def build_research_financial_agent(**kwargs) -> Agent:
     log_name = _re.sub(r"_\d+$", "", agent_name)
     auto_search = _make_auto_logging_tool(search_and_fetch, "search_and_fetch", ctx_holder, log_name)
     auto_fetch = _make_auto_logging_tool(fetch_and_read, "fetch_and_read", ctx_holder, log_name)
+    auto_sonar = _make_auto_logging_tool(sonar_research, "sonar_research", ctx_holder, log_name)
     auto_web = _make_auto_logging_tool(web_search, "web_search", ctx_holder, log_name)
     auto_news = _make_auto_logging_tool(news_search, "news_search", ctx_holder, log_name)
 
@@ -125,8 +125,8 @@ def build_research_financial_agent(**kwargs) -> Agent:
             "(Bessemer Venture Partners, OpenView, a16z, NFX, SaaStr, Crunchbase, PitchBook, "
             "CB Insights, Meritech Capital public comps, and primary investor blogs).\n\n"
             "TOOLS:\n"
-            "- search_and_fetch(query) — searches + fetches full content from multiple sites. PRIMARY tool.\n"
-            "- fetch_and_read(url) — read a specific URL in full depth.\n"
+            "- sonar_research(queries) — PRIMARY tool. List of questions → synthesized cited answers. Replaces search_and_fetch + fetch_and_read loops.\n"
+            "- fetch_and_read(url) — read a specific URL in full depth (only for paywalled reports sonar missed).\n"
             "- web_search(query) — broad web search for recent data.\n"
             "- news_search(query) — recent news and announcements.\n"
             "- obsidian_log — log structured findings after ALL searches complete.\n"
@@ -135,6 +135,7 @@ def build_research_financial_agent(**kwargs) -> Agent:
             + _FINANCIAL_SEARCH_SEQUENCE
         ),
         tools={
+            "sonar_research": auto_sonar,
             "search_and_fetch": auto_search,
             "fetch_and_read": auto_fetch,
             "web_search": auto_web,

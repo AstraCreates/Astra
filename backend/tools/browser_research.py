@@ -428,6 +428,78 @@ def research_papers(query: str, max_results: int = 5) -> dict:
     return search_and_fetch(paper_query, max_results=max_results)
 
 
+def sonar_research(queries=None) -> dict:
+    """Run research queries via Perplexity sonar-pro — each query returns a
+    synthesized answer with citations. Replaces batch_search + fetch_and_read
+    loops: sonar handles web fetching internally.
+
+    queries: list of research question strings (max 12).
+    Returns: {results_by_query, combined_formatted, sources}
+    """
+    if not queries:
+        return {"error": "queries required — pass a list of research question strings"}
+    queries = list(queries)[:12]
+
+    import httpx as _httpx
+    from backend.config import settings as _settings
+    from backend.core.key_rotator import get_openrouter_key as _get_key
+
+    _key = _get_key() or _settings.agent_model_api_key
+
+    def _call(query: str) -> dict:
+        try:
+            r = _httpx.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {_key}", "Content-Type": "application/json"},
+                json={
+                    "model": "perplexity/sonar-pro",
+                    "messages": [{"role": "user", "content": query}],
+                    "provider": {"allow_fallbacks": False},
+                    "usage": {"include": True},
+                },
+                timeout=90,
+            )
+            d = r.json()
+            if "error" in d:
+                return {"query": query, "answer": "", "citations": [], "error": str(d["error"])[:200]}
+            msg = ((d.get("choices") or [{}])[0]).get("message") or {}
+            anns = msg.get("annotations") or []
+            citations = [a.get("url_citation", {}).get("url", "") for a in anns if isinstance(a, dict)]
+            return {"query": query, "answer": msg.get("content") or "", "citations": [c for c in citations if c]}
+        except Exception as exc:
+            return {"query": query, "answer": "", "citations": [], "error": str(exc)}
+
+    results: dict = {}
+    with ThreadPoolExecutor(max_workers=min(len(queries), 6)) as ex:
+        futures = {ex.submit(_call, q): q for q in queries}
+        try:
+            for fut in as_completed(futures, timeout=120):
+                results[futures[fut]] = fut.result()
+        except TimeoutError:
+            for fut, q in futures.items():
+                if q not in results:
+                    results[q] = {"query": q, "answer": "", "citations": [], "error": "timeout"}
+
+    combined, all_sources, seen = [], [], set()
+    for q in queries:
+        r = results.get(q, {})
+        combined.append(f"## {q}\n{r.get('answer', '')}")
+        for url in r.get("citations", []):
+            if url and url not in seen:
+                seen.add(url)
+                all_sources.append({"url": url})
+
+    return {
+        "queries_run": len(queries),
+        "results_by_query": {
+            q: {"answer": results.get(q, {}).get("answer", ""), "citations": results.get(q, {}).get("citations", []), "total": len(results.get(q, {}).get("citations", []))}
+            for q in queries
+        },
+        "combined_formatted": "\n\n".join(combined),
+        "sources": all_sources,
+    }
+
+
 def batch_search(queries: list | None = None, max_results_each: int = 8) -> dict:
     """
     Run multiple search queries IN PARALLEL and return all results combined.
@@ -545,7 +617,7 @@ def run_research_pipeline(topic: str, focus: str = "market", max_results_each: i
             "combined_formatted": "",
             "coverage": {"ready": False, "gaps": ["topic is required"], "source_count": 0, "domain_count": 0},
         }
-    search = batch_search(queries, max_results_each=max_results_each)
+    search = sonar_research(queries)
     coverage = _research_coverage(plan["focus"], queries, search)
     return {
         "topic": plan["topic"],

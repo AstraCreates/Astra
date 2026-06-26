@@ -3,7 +3,7 @@ import functools
 import re as _re
 from backend.core.agent import Agent, AgentContext
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
-from backend.tools.browser_research import search_and_fetch, fetch_and_read
+from backend.tools.browser_research import search_and_fetch, fetch_and_read, sonar_research
 from backend.tools.web_search import web_search, news_search
 
 
@@ -60,21 +60,19 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
 
 
 _MARKET_RESEARCH_SEARCHES = (
-    "MARKET SIZING & ICP RESEARCH (run ALL 12 steps in order):\n"
-    "1. search_and_fetch('{topic} total addressable market TAM size 2024 2025 billion statistics report')\n"
-    "2. search_and_fetch('{topic} serviceable addressable market SAM serviceable obtainable market SOM estimate')\n"
-    "3. search_and_fetch('{topic} market size growth rate CAGR forecast 2025 2026 2027 2030')\n"
-    "4. search_and_fetch('{topic} industry report market research grand view mordor ibisworld statista')\n"
-    "5. search_and_fetch('{topic} target customer profile ICP demographics firmographics buyer persona B2B B2C')\n"
-    "6. search_and_fetch('{topic} customer segments who buys ideal customer buying triggers decision maker')\n"
-    "7. search_and_fetch('{topic} pricing model subscription tiers enterprise SMB cost benchmark 2024 2025')\n"
-    "8. search_and_fetch('{topic} competitor pricing how much does it cost price per user per month')\n"
-    "9. search_and_fetch('{topic} willingness to pay customer survey price sensitivity market research')\n"
-    "10. search_and_fetch('{topic} market opportunity whitespace unmet need problem pain point underserved')\n"
-    "11. web_search('{topic} market size TAM report site:statista.com OR site:grandviewresearch.com OR site:mordorintelligence.com OR site:ibisworld.com')\n"
-    "12. news_search('{topic} market growth investment funding opportunity 2025 2026')\n\n"
-    "After completing all 12 searches, run 6+ fetch_and_read calls on the highest-signal URLs "
-    "(prioritize market research reports, analyst sites, and competitor pricing pages).\n\n"
+    "MARKET SIZING & ICP RESEARCH:\n"
+    "1. sonar_research([\n"
+    "     '{topic} total addressable market TAM SAM SOM size 2025 billion statistics',\n"
+    "     '{topic} market size growth rate CAGR forecast 2025 2026 2027 2030',\n"
+    "     '{topic} industry report grand view mordor ibisworld statista market research',\n"
+    "     '{topic} target customer ICP demographics firmographics buyer persona',\n"
+    "     '{topic} pricing model subscription tiers enterprise SMB cost benchmark 2025',\n"
+    "     '{topic} competitor pricing how much does it cost per user per month',\n"
+    "     '{topic} willingness to pay price sensitivity customer survey',\n"
+    "     '{topic} market opportunity whitespace unmet need underserved segment',\n"
+    "   ]) — sonar fetches and synthesizes sources internally, no separate URL fetching needed.\n"
+    "2. news_search('{topic} market growth investment funding opportunity 2025 2026')\n"
+    "3. Use fetch_and_read only for specific analyst report URLs or paywalled pages sonar could not fully read.\n\n"
     "obsidian_log with ALL of the following sections:\n"
     "- TAM: total addressable market with dollar figure, source, and methodology\n"
     "- SAM: serviceable addressable market with rationale for how it narrows from TAM\n"
@@ -103,6 +101,7 @@ def build_research_market_agent(**kwargs) -> Agent:
     log_name = _re.sub(r"_\d+$", "", agent_name)
     auto_search = _make_auto_logging_tool(search_and_fetch, "search_and_fetch", ctx_holder, log_name)
     auto_fetch = _make_auto_logging_tool(fetch_and_read, "fetch_and_read", ctx_holder, log_name)
+    auto_sonar = _make_auto_logging_tool(sonar_research, "sonar_research", ctx_holder, log_name)
     auto_web = _make_auto_logging_tool(web_search, "web_search", ctx_holder, log_name)
     auto_news = _make_auto_logging_tool(news_search, "news_search", ctx_holder, log_name)
 
@@ -124,8 +123,8 @@ def build_research_market_agent(**kwargs) -> Agent:
             "(analyst reports, primary data, competitor pages) so every output section is backed by hard "
             "numbers from named, cited sources.\n\n"
             "TOOLS:\n"
-            "- search_and_fetch(query) — searches + fetches full content from multiple sites. PRIMARY tool.\n"
-            "- fetch_and_read(url) — read a specific URL in full depth (use for reports and pricing pages).\n"
+            "- sonar_research(queries) — PRIMARY tool. Pass a list of research questions; each returns a synthesized cited answer with sources. Replaces search_and_fetch + fetch_and_read loops.\n"
+            "- fetch_and_read(url) — read a specific URL in full depth (only for paywalled reports sonar missed).\n"
             "- web_search(query) — targeted web search for specific facts or sources.\n"
             "- news_search(query) — recent news and market developments.\n"
             "- obsidian_log — FINAL step only, called once after ALL searches and fetches are complete.\n\n"
@@ -133,6 +132,7 @@ def build_research_market_agent(**kwargs) -> Agent:
             + _MARKET_RESEARCH_SEARCHES
         ),
         tools={
+            "sonar_research": auto_sonar,
             "search_and_fetch": auto_search,
             "fetch_and_read": auto_fetch,
             "web_search": auto_web,

@@ -2,7 +2,7 @@
 import functools
 from backend.core.agent import Agent, AgentContext
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
-from backend.tools.browser_research import search_and_fetch, fetch_and_read
+from backend.tools.browser_research import search_and_fetch, fetch_and_read, sonar_research
 from backend.tools.web_search import web_search, news_search
 from backend.tools.patent_search import patent_search
 from backend.tools.pdf_generator import generate_pdf
@@ -63,21 +63,20 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
 
 
 _REGULATORY_SEARCHES = (
-    "REGULATORY & COMPLIANCE RESEARCH (run ALL 12):\n"
-    "1. search_and_fetch('{topic} regulatory requirements compliance 2024 2025')\n"
-    "2. search_and_fetch('{topic} GDPR data privacy compliance requirements')\n"
-    "3. search_and_fetch('{topic} HIPAA SOC2 ISO27001 compliance requirements')\n"
-    "4. search_and_fetch('{topic} industry specific regulations federal state')\n"
-    "5. search_and_fetch('{topic} licensing requirements permits certifications')\n"
-    "6. search_and_fetch('{topic} legal risks liability exposure startup')\n"
-    "7. search_and_fetch('{topic} FTC FCC SEC FDA regulatory oversight enforcement')\n"
-    "8. search_and_fetch('{topic} international regulations EU UK APAC compliance')\n"
-    "9. search_and_fetch('{topic} terms of service privacy policy requirements')\n"
-    "10. news_search('{topic} regulatory enforcement fine penalty 2024 2025')\n"
-    "11. web_search('{topic} compliance framework checklist requirements')\n"
-    "12. patent_search('{topic} regulatory technology compliance')\n\n"
-    "Then 3 fetch_and_read calls on the most authoritative regulatory sources found "
-    "(government sites, official bodies, legal publishers). Do NOT do more than 3 fetch_and_read calls.\n\n"
+    "REGULATORY & COMPLIANCE RESEARCH:\n"
+    "1. sonar_research([\n"
+    "     '{topic} regulatory requirements compliance 2025',\n"
+    "     '{topic} GDPR CCPA data privacy compliance requirements',\n"
+    "     '{topic} HIPAA SOC2 ISO27001 compliance requirements',\n"
+    "     '{topic} industry-specific regulations federal state licensing',\n"
+    "     '{topic} legal risks liability exposure startup',\n"
+    "     '{topic} FTC FCC SEC FDA regulatory oversight enforcement',\n"
+    "     '{topic} international regulations EU UK APAC compliance',\n"
+    "   ]) — sonar fetches government sites and legal publishers internally.\n"
+    "2. news_search('{topic} regulatory enforcement fine penalty 2024 2025')\n"
+    "3. web_search('{topic} compliance framework checklist requirements')\n"
+    "4. patent_search('{topic} regulatory technology compliance')\n"
+    "5. Use fetch_and_read only for specific government/official body URLs sonar could not fully read. Max 3 calls.\n\n"
     "IMMEDIATELY AFTER the fetches, call generate_pdf BEFORE obsidian_log:\n"
     "generate_pdf(title='Regulatory Risk Report', sections=[{\"heading\": \"APPLICABLE REGULATIONS\", \"body\": \"...\"}, {\"heading\": \"DATA PRIVACY REQUIREMENTS\", \"body\": \"...\"}, {\"heading\": \"RISK FLAGS\", \"body\": \"...\"}, {\"heading\": \"RECOMMENDED ACTIONS\", \"body\": \"...\"}])\n\n"
     "Then obsidian_log with a structured RISK FLAG REPORT containing:\n"
@@ -98,6 +97,7 @@ def build_research_regulatory_agent(**kwargs) -> Agent:
 
     auto_search = _make_auto_logging_tool(search_and_fetch, "search_and_fetch", ctx_holder)
     auto_fetch = _make_auto_logging_tool(fetch_and_read, "fetch_and_read", ctx_holder)
+    auto_sonar = _make_auto_logging_tool(sonar_research, "sonar_research", ctx_holder)
     auto_web = _make_auto_logging_tool(web_search, "web_search", ctx_holder)
     auto_news = _make_auto_logging_tool(news_search, "news_search", ctx_holder)
     auto_patent = _make_auto_logging_tool(patent_search, "patent_search", ctx_holder)
@@ -122,8 +122,8 @@ def build_research_regulatory_agent(**kwargs) -> Agent:
             "NOT entity formation (legal_entity). "
             "You think like a compliance attorney combined with a startup risk advisor.\n\n"
             "TOOLS:\n"
-            "- search_and_fetch(query) — searches + fetches full content. PRIMARY tool.\n"
-            "- fetch_and_read(url) — read a specific URL in full depth.\n"
+            "- sonar_research(queries) — PRIMARY tool. List of questions → synthesized cited answers from authoritative sources. Replaces search_and_fetch + fetch_and_read loops.\n"
+            "- fetch_and_read(url) — read a specific URL (only for official government/legal sources sonar missed, max 3).\n"
             "- web_search(query) — targeted web search.\n"
             "- news_search(query) — recent regulatory enforcement news.\n"
             "- patent_search(query) — IP and regtech landscape.\n"
@@ -133,6 +133,7 @@ def build_research_regulatory_agent(**kwargs) -> Agent:
             + _REGULATORY_SEARCHES
         ),
         tools={
+            "sonar_research": auto_sonar,
             "search_and_fetch": auto_search,
             "fetch_and_read": auto_fetch,
             "web_search": auto_web,
