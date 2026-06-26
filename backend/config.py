@@ -14,8 +14,9 @@ class Settings(BaseSettings):
     # run_mvp_loop / openclaude. Few wrapper calls, so the cost impact is small.
     # Flash not Pro: the wrapper loop has no prompt caching wired, Pro's $0.435/M
     # input rate is wasteful for ~20 orchestration calls per build.
-    # Bench (2026-06-26): qwen3-235b matched DeepSeek Flash on pass rate (75%) at
-    # 47% lower RRAT (516 vs 983) and 64% cheaper ($0.049 vs $0.137/1k tasks).
+    # Bench v2 (2026-06-26, LLM-judge quality scoring): qwen3-235b scored 5.0/5 avg
+    # on build_architecture + bug_triage vs 4.5/5 for DeepSeek Flash, at 3× lower QAC
+    # ($0.071 vs $0.204/1k quality-adjusted). DeepSeek Pro 4.5/5 but $0.939/1k (13×).
     technical_agent_model: str = "qwen/qwen3-235b-a22b-2507"
     # 20 was too tight for multi-step builds (resolve → run_mvp_loop → provision
     # → QA → fix rounds → obsidian_log → done). 30 gives enough headroom for a
@@ -45,18 +46,20 @@ class Settings(BaseSettings):
     openrouter_api_key_2: str = ""
     openrouter_api_key_3: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    # Bench (2026-06-26): DeepSeek V4 Pro is a thinking model — reasoning burns the
-    # token budget on planner tasks (400-500 limit), leaving content empty (0% pass).
-    # Qwen3-235b: 100% pass, RRAT=408, $0.039/1k tasks. Pro+cache was $0.267/1k.
+    # Bench v2 (2026-06-26, LLM-judge quality scoring): qwen3-235b scored 4.67/5 on
+    # goal_decomp + error_recovery + tool_routing at QAC $0.064/1k. DeepSeek Flash
+    # scored 5.0/5 but QAC $0.103/1k (1.6× more expensive per quality unit). DeepSeek
+    # Pro 5.0/5 on 2 tasks but QAC $0.413/1k (6×). Qwen3-235b wins on quality-adjusted cost.
     or_planner_model: str = "qwen/qwen3-235b-a22b-2507"
-    # High-output → Qwen3-235b-2507: used by legal/finance/marketing agents for
-    # docs, copy, HTML synthesis — no caching wired, so cost is fresh-token rate.
-    # $0.09/$0.10 per M (same input as Flash, 45% cheaper output) with 235b-class
-    # reasoning quality for complex multi-section documents.
+    # Bench v2 (2026-06-26, LLM-judge): qwen3-235b scored 4.0/5 avg on NDA clause +
+    # pitch deck + finance model at QAC $0.176/1k. qwen3-coder-flash DISQUALIFIED —
+    # 1/5 on finance model (wrong LTV formula). DeepSeek Flash 4.33/5 but QAC $0.261/1k.
+    # DeepSeek Pro $1.915/1k. MiniMax $2.071/1k. Qwen3-235b wins on quality-adjusted cost.
     or_highoutput_model: str = "qwen/qwen3-235b-a22b-2507"
-    # Bench (2026-06-26): MiMo v2.5 is a thinking model — reasoning exhausts token
-    # budget, content always empty (0% pass). Qwen3-235b: 100% pass, RRAT=376,
-    # $0.035/1k tasks — cheaper AND better than MiMo Pro ($0.244/1k).
+    # Bench v2 (2026-06-26, LLM-judge quality scoring): qwen3-235b scored 5.0/5 avg
+    # on competitor_analysis + market_research + sales_emails at QAC $0.067/1k.
+    # Qwen3-30b: 4.67/5 but QAC $0.102/1k. DeepSeek Flash: 4.67/5 but QAC $0.128/1k.
+    # DeepSeek Pro: 5.0/5 on 2/3 tasks but QAC $0.564/1k. Qwen3-235b wins overall.
     or_light_model: str = "qwen/qwen3-235b-a22b-2507"
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
     tooluse_model_name: str = "qwen/qwen3-235b-a22b-2507"
