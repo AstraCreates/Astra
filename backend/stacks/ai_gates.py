@@ -82,7 +82,7 @@ def generate_ai_approval_gates(
             return fallback
 
         from backend.core.llm_client import get_or_client
-        client = get_or_client(settings.openrouter_base_url, api_key)
+        client = get_or_client(settings.openrouter_base_url, api_key, timeout=timeout)
 
         task_lines = "\n".join(
             f"- agent={t['agent']} title={t['stack_task_title']!r} "

@@ -9,7 +9,9 @@
 """
 from __future__ import annotations
 
+import os
 import threading
+import time
 from typing import Any
 
 _OPENROUTER_HEADERS = {
@@ -17,8 +19,9 @@ _OPENROUTER_HEADERS = {
     "X-Title": "Astra",
 }
 
-_sync_cache: dict[tuple[str, str], Any] = {}
-_async_cache: dict[tuple[str, str], Any] = {}
+_CLIENT_CACHE_TTL_SECONDS = float(os.environ.get("ASTRA_LLM_CLIENT_TTL_SECONDS", "900"))
+_sync_cache: dict[tuple[str, str, float | None], tuple[Any, float]] = {}
+_async_cache: dict[tuple[str, str, float | None], tuple[Any, float]] = {}
 _lock = threading.Lock()
 
 
@@ -42,7 +45,23 @@ def _resolve(base_url: str, api_key: str) -> tuple[str, str]:
     return base_url, api_key
 
 
-def get_or_client(base_url: str = "", api_key: str = "") -> Any:
+def _fresh_entry(cache: dict[tuple[str, str, float | None], tuple[Any, float]], key: tuple[str, str, float | None]) -> Any | None:
+    entry = cache.get(key)
+    if entry is None:
+        return None
+    client, created_at = entry
+    if _CLIENT_CACHE_TTL_SECONDS > 0 and (time.monotonic() - created_at) > _CLIENT_CACHE_TTL_SECONDS:
+        cache.pop(key, None)
+        return None
+    return client
+
+
+def _store_entry(cache: dict[tuple[str, str, float | None], tuple[Any, float]], key: tuple[str, str, float | None], client: Any) -> Any:
+    cache[key] = (client, time.monotonic())
+    return client
+
+
+def get_or_client(base_url: str = "", api_key: str = "", timeout: float | None = None) -> Any:
     """Return a cached sync openai.OpenAI client for the given endpoint.
 
     Caching by (base_url, api_key) means each rotated key gets its own pooled
@@ -51,32 +70,34 @@ def get_or_client(base_url: str = "", api_key: str = "") -> Any:
     import openai
 
     base_url, api_key = _resolve(base_url, api_key)
-    key = (base_url, api_key)
+    key = (base_url, api_key, timeout)
     with _lock:
-        client = _sync_cache.get(key)
+        client = _fresh_entry(_sync_cache, key)
         if client is None:
             client = openai.OpenAI(
                 base_url=base_url,
                 api_key=api_key,
                 default_headers=_or_headers(base_url),
+                timeout=timeout,
             )
-            _sync_cache[key] = client
+            client = _store_entry(_sync_cache, key, client)
         return client
 
 
-def get_async_or_client(base_url: str = "", api_key: str = "") -> Any:
+def get_async_or_client(base_url: str = "", api_key: str = "", timeout: float | None = None) -> Any:
     """Return a cached async openai.AsyncOpenAI client for the given endpoint."""
     import openai
 
     base_url, api_key = _resolve(base_url, api_key)
-    key = (base_url, api_key)
+    key = (base_url, api_key, timeout)
     with _lock:
-        client = _async_cache.get(key)
+        client = _fresh_entry(_async_cache, key)
         if client is None:
             client = openai.AsyncOpenAI(
                 base_url=base_url,
                 api_key=api_key,
                 default_headers=_or_headers(base_url),
+                timeout=timeout,
             )
-            _async_cache[key] = client
+            client = _store_entry(_async_cache, key, client)
         return client

@@ -326,7 +326,8 @@ _STAGE_CONTEXT: dict[str, str] = {
     "launched": (
         "Launched but no verified users yet. Focus: acquire the FIRST 10 real users "
         "(evidence: signup URL + count, onboarding call notes), collect qualitative "
-        "feedback, fix the top 3 onboarding friction points."
+        "feedback after the live product is in users' hands, fix the top 3 onboarding friction points. "
+        "This is a post-launch stage, not a time-based waiting period."
     ),
     "first_traction": (
         "Has real users. Focus: convert the most engaged users to paying customers "
@@ -624,6 +625,7 @@ def plan_next_goal(founder_id: str, company_id: str | None = None) -> dict[str, 
         "1. Goals must be within agent capabilities above — no goals requiring human confirmation.\n"
         "2. Goals claiming users/orders/bookings/revenue MUST specify HOW the agent provides evidence "
         "(e.g. 'return live store URL', 'return Stripe payment ID', 'return signup count from analytics').\n"
+        "   Outreach replies, onboarding feedback, and other traction work only happen AFTER a verified live product exists.\n"
         "3. Tasks must be concrete and verifiable for THIS business type — "
         f"for {biz_label}: focus on what matters (e.g. for ecomm: store, SKUs, email flows; "
         "for local: bookings, reviews, local SEO; for agency: proposals, retainers; "

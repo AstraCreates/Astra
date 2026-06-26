@@ -52,22 +52,71 @@ def _slug_registry_load() -> dict[str, int]:
         return {}
 
 
+def _registry_save(reg: dict[str, int]) -> None:
+    try:
+        _REGISTRY.write_text(json.dumps(reg))
+    except Exception as e:
+        logger.debug("preview registry write failed: %s", e)
+
+
+def _slug_registry_save(reg: dict[str, int]) -> None:
+    try:
+        _SLUG_REGISTRY.write_text(json.dumps(reg))
+    except Exception as e:
+        logger.debug("slug registry write failed: %s", e)
+
+
+def _prune_dead_registry_entries() -> tuple[dict[str, int], dict[str, int]]:
+    reg = _registry_load()
+    slug_reg = _slug_registry_load()
+    live_ports = {port for port in set(reg.values()) | set(slug_reg.values()) if not _port_is_free(port)}
+    clean_reg = {sid: port for sid, port in reg.items() if port in live_ports}
+    clean_slug_reg = {slug: port for slug, port in slug_reg.items() if port in live_ports}
+    if clean_reg != reg:
+        _registry_save(clean_reg)
+    if clean_slug_reg != slug_reg:
+        _slug_registry_save(clean_slug_reg)
+    _slug_to_port.clear()
+    _slug_to_port.update(clean_slug_reg)
+    return clean_reg, clean_slug_reg
+
+
+def _clear_port_conflicts(port: int, keep_session_id: str = "", keep_slug: str = "") -> None:
+    reg, slug_reg = _prune_dead_registry_entries()
+    clean_reg = {
+        sid: mapped_port
+        for sid, mapped_port in reg.items()
+        if mapped_port != port or sid == keep_session_id
+    }
+    clean_slug_reg = {
+        slug: mapped_port
+        for slug, mapped_port in slug_reg.items()
+        if mapped_port != port or slug == keep_slug
+    }
+    if keep_session_id:
+        clean_reg[keep_session_id] = port
+    if keep_slug:
+        clean_slug_reg[keep_slug] = port
+    _registry_save(clean_reg)
+    _slug_registry_save(clean_slug_reg)
+    _slug_to_port.clear()
+    _slug_to_port.update(clean_slug_reg)
+
+
 def _slug_registry_set(slug: str, port: int) -> None:
     with _lock:
-        try:
-            reg = _slug_registry_load()
-            reg[slug] = port
-            _SLUG_REGISTRY.write_text(json.dumps(reg))
-        except Exception as e:
-            logger.debug("slug registry write failed: %s", e)
+        _clear_port_conflicts(port, keep_slug=slug)
 
 
 def get_port_for_slug(slug: str) -> int | None:
     """Return the preview port for a company slug, or None if not running."""
     if slug in _slug_to_port:
-        return _slug_to_port[slug]
+        port = _slug_to_port[slug]
+        if not _port_is_free(port):
+            return port
+        _slug_to_port.pop(slug, None)
     # Fall back to disk registry (survives backend restart)
-    reg = _slug_registry_load()
+    _, reg = _prune_dead_registry_entries()
     port = reg.get(slug)
     if port:
         _slug_to_port[slug] = port
@@ -93,19 +142,14 @@ def _registry_load() -> dict[str, int]:
 
 
 def _registry_set(session_id: str, port: int) -> None:
-    try:
-        reg = _registry_load()
-        reg[session_id] = port
-        _REGISTRY.write_text(json.dumps(reg))
-    except Exception as e:
-        logger.debug("preview registry write failed: %s", e)
+    _clear_port_conflicts(port, keep_session_id=session_id)
 
 
 def _registry_pop(session_id: str) -> int | None:
     try:
-        reg = _registry_load()
+        reg, _ = _prune_dead_registry_entries()
         port = reg.pop(session_id, None)
-        _REGISTRY.write_text(json.dumps(reg))
+        _registry_save(reg)
         return port
     except Exception:
         return None
@@ -133,7 +177,8 @@ def _port_is_free(port: int) -> bool:
 
 
 def _alloc_port() -> int | None:
-    in_use = {p for p, _ in _previews.values()}
+    reg, _ = _prune_dead_registry_entries()
+    in_use = {p for p, _ in _previews.values()} | set(reg.values())
     for port in _PORT_RANGE:
         if port not in in_use and _port_is_free(port):
             return port
@@ -199,13 +244,10 @@ def stop_local_preview(session_id: str) -> bool:
             _slug_to_port.pop(s, None)
         if dead_slugs:
             with _lock:
-                try:
-                    reg = _slug_registry_load()
-                    for s in dead_slugs:
-                        reg.pop(s, None)
-                    _SLUG_REGISTRY.write_text(json.dumps(reg))
-                except Exception:
-                    pass
+                reg = _slug_registry_load()
+                for s in dead_slugs:
+                    reg.pop(s, None)
+                _slug_registry_save(reg)
         logger.info("Stopped local preview for %s (port %s freed)", session_id, port)
         return True
     return bool(entry)
@@ -272,6 +314,8 @@ def start_local_preview(local: str, session_id: str, company_name: str = "") -> 
         _previews[session_id] = (port, proc)
         _registry_set(session_id, port)
         slug = _make_slug(company_name, Path(local).name, session_id)
+        _slug_to_port.clear()
+        _slug_to_port.update(_slug_registry_load())
         _slug_to_port[slug] = port
 
     # Write slug registry outside _lock — _slug_registry_set acquires _lock internally

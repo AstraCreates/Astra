@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, AGENT_LABELS, rerunAgent, getAuthToken, type SessionImages } from "@/lib/api";
+import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, AGENT_LABELS, rerunAgent, openEventStream, type SessionImages, type StreamSubscription } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import { signIn } from "next-auth/react";
@@ -132,13 +132,14 @@ const PHASE_PLANS: Record<string, { name: string; groups: string[] }[]> = {
 };
 
 const DEPTS: Record<string, { n: string; ic: string; ags: string[] }> = {
-  research:  { n: "Research",  ic: "◉", ags: ["research", "research_competitors", "research_market", "research_execution", "research_financial", "research_regulatory"] },
+  research:  { n: "Research",  ic: "◉", ags: ["research", "research_competitors", "research_market", "research_execution", "research_customers", "research_gtm", "research_financial", "research_regulatory"] },
   design:    { n: "Design",    ic: "◈", ags: ["design"] },
   technical: { n: "Technical", ic: "⊞", ags: ["technical", "technical_scaffold", "technical_infra", "technical_data", "web", "web_navigator"] },
   marketing: { n: "Marketing", ic: "◎", ags: ["marketing", "marketing_content", "marketing_outreach", "marketing_seo", "marketing_paid"] },
   legal:     { n: "Legal",     ic: "⊡", ags: ["legal", "legal_docs", "legal_entity", "legal_ip"] },
-  sales:     { n: "Sales",     ic: "◇", ags: ["sales", "sales_pipeline", "sales_enablement", "ops"] },
+  sales:     { n: "Sales",     ic: "◇", ags: ["sales", "sales_pipeline", "sales_enablement"] },
   finance:   { n: "Finance",   ic: "◆", ags: ["finance_model", "finance_fundraise"] },
+  ops:       { n: "Ops",       ic: "▲", ags: ["ops"] },
 };
 // Actionable = an agent actually hit the gate and is blocked waiting on the founder.
 // "armed" is NOT actionable: it's a pre-configured gate slot that exists from the
@@ -238,19 +239,20 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0, headroomSaved: 0, headroomBefore: 0,
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
-  const sseRef = useRef<EventSource | null>(null);
+  const sseRef = useRef<StreamSubscription | null>(null);
   const steerRef = useRef<HTMLInputElement>(null);
   const [copilot, setCopilot] = useState<{ role: string; content: string; actions?: CopilotAction[] }[]>([]);
   const [copilotBusy, setCopilotBusy] = useState(false);
   const [copilotOpen, setCopilotOpen] = useState(false);
-  const copilotLoaded = useRef(false);
+  const copilotLoadedSession = useRef<string | null>(null);
   useEffect(() => {
-    if (!copilotOpen || copilotLoaded.current || !sessionId) return;
-    copilotLoaded.current = true;
+    if (!copilotOpen || !sessionId || copilotLoadedSession.current === sessionId) return;
+    let cancelled = false;
     (async () => {
       try {
         const r = await apiFetch(`${API}/copilot/${sessionId}`);
         const d = await r.json();
+        if (cancelled) return;
         if (Array.isArray(d.history)) {
           setCopilot((prev) => {
             // If user already sent messages before history loaded, keep them.
@@ -262,13 +264,28 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             }));
           });
         }
+        copilotLoadedSession.current = sessionId;
       } catch {}
     })();
+    return () => { cancelled = true; };
   }, [copilotOpen, sessionId]);
+  useEffect(() => {
+    copilotLoadedSession.current = null;
+  }, [sessionId]);
   const [showSessionTour, setShowSessionTour] = useState(false);
   const [designImages, setDesignImages] = useState<SessionImages>({ logos: {}, brand_images: [] });
   const [accessDenied, setAccessDenied] = useState(false);
-  const [agentQuestion, setAgentQuestion] = useState<{ request_id: string; question: string; options: string[]; hint: string } | null>(null);
+  const [agentQuestion, setAgentQuestion] = useState<{
+    request_id: string;
+    title?: string;
+    question: string;
+    options: string[];
+    hint: string;
+    context?: string;
+    recommendation?: string;
+    severity?: "info" | "warning" | "critical";
+    option_details?: Record<string, string>;
+  } | null>(null);
   const [agentAnswer, setAgentAnswer] = useState("");
   const agentAnswerInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (agentQuestion && agentQuestion.options.length === 0) { setTimeout(() => agentAnswerInputRef.current?.focus(), 0); } }, [agentQuestion]);
@@ -446,8 +463,23 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       case "goal_error":
         st.status = "error"; sseRef.current?.close(); break;
       case "agent_question":
-        setAgentQuestion({ request_id: ev.request_id, question: ev.question, options: ev.options ?? [], hint: ev.hint ?? "" });
+        setAgentQuestion({
+          request_id: ev.request_id,
+          title: ev.title ?? "",
+          question: ev.question,
+          options: ev.options ?? [],
+          hint: ev.hint ?? "",
+          context: ev.context ?? "",
+          recommendation: ev.recommendation ?? "",
+          severity: ev.severity ?? "warning",
+          option_details: ev.option_details ?? {},
+        });
         return;
+      case "agent_input_received":
+      case "research_direction_decision":
+        setAgentQuestion(null);
+        setAgentAnswer("");
+        break;
       case "session_expired":
         st.status = "error";
         sseRef.current?.close();
@@ -521,6 +553,23 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               .filter((a: any) => PENDING.has(a.status) && (a.gate_key || a.key))
               .map((a: any) => ({ ...a, gate_key: a.gate_key || a.key }));
           }
+          if (d.pending_agent_question && typeof d.pending_agent_question === "object") {
+            setAgentQuestion({
+              request_id: String(d.pending_agent_question.request_id || ""),
+              title: String(d.pending_agent_question.title || ""),
+              question: String(d.pending_agent_question.question || ""),
+              options: Array.isArray(d.pending_agent_question.options) ? d.pending_agent_question.options.map((v: unknown) => String(v)) : [],
+              hint: String(d.pending_agent_question.hint || ""),
+              context: String(d.pending_agent_question.context || ""),
+              recommendation: String(d.pending_agent_question.recommendation || ""),
+              severity: d.pending_agent_question.severity === "critical" || d.pending_agent_question.severity === "info" ? d.pending_agent_question.severity : "warning",
+              option_details: d.pending_agent_question.option_details && typeof d.pending_agent_question.option_details === "object"
+                ? Object.fromEntries(Object.entries(d.pending_agent_question.option_details).map(([k, v]) => [k, String(v)]))
+                : {},
+            });
+          } else {
+            setAgentQuestion(null);
+          }
           if (d.agents && typeof d.agents === "object") {
             for (const [k, ag] of Object.entries<any>(d.agents)) {
               const rawLog: any[] = ag.log || [];
@@ -546,10 +595,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       if (S.current.status === "loading") S.current.status = "running";
       force();
 
-      // EventSource can't send Authorization headers — pass JWT as query param.
-      const token = getAuthToken();
-      const qs = token ? `?token=${encodeURIComponent(token)}` : "";
-      const es = new EventSource(`${API}/stream/${sessionId}${qs}`);
+      const es = openEventStream(`${API}/stream/${sessionId}`);
       sseRef.current = es;
       es.onmessage = (e) => { try { const ev = JSON.parse(e.data); if (ev.type !== "ping") handleEvent(ev); } catch {} };
       es.onerror = () => {
@@ -881,13 +927,28 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       {agentQuestion && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ background: "var(--surface)", border: "1px solid var(--bd)", borderRadius: 12, padding: "28px 24px", width: "100%", maxWidth: 460, boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}>
-            <div style={{ fontSize: 11, color: "var(--blue)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>Agent question</div>
+            <div style={{ fontSize: 11, color: agentQuestion.severity === "critical" ? "var(--red)" : agentQuestion.severity === "info" ? "var(--blue)" : "var(--amber)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>
+              {agentQuestion.title || "Founder decision needed"}
+            </div>
             <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)", marginBottom: 18, lineHeight: 1.4 }}>{agentQuestion.question}</div>
+            {agentQuestion.context && (
+              <div style={{ fontSize: 12.5, color: "var(--fd)", lineHeight: 1.6, marginBottom: 12 }}>{agentQuestion.context}</div>
+            )}
+            {agentQuestion.recommendation && (
+              <div style={{ marginBottom: 14, padding: "10px 12px", border: "1px solid var(--bd)", background: "var(--bg2)", color: "var(--fg)", fontSize: 12.5, lineHeight: 1.6 }}>
+                <strong>Recommended:</strong> {agentQuestion.recommendation}
+              </div>
+            )}
             {agentQuestion.options.length > 0 ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {agentQuestion.options.map((opt, i) => (
                   <button key={i} className="btn" onClick={() => answerAgentQuestion(opt)}
-                    style={{ textAlign: "left", padding: "10px 14px" }}>{opt}</button>
+                    style={{ textAlign: "left", padding: "10px 14px" }}>
+                    <div>{opt}</div>
+                    {agentQuestion.option_details?.[opt] && (
+                      <div style={{ fontSize: 11, color: "var(--fd)", marginTop: 4, lineHeight: 1.5 }}>{agentQuestion.option_details[opt]}</div>
+                    )}
+                  </button>
                 ))}
               </div>
             ) : (

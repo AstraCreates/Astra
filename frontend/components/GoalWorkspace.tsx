@@ -3600,7 +3600,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
     const full = base + buildAttachmentBlock(attachments);
     const founderId = devUserId === "anon" ? "founder_001" : devUserId;
     try {
-      const constraints: Record<string, unknown> = (selectedStackId === "custom" || selectedStackId === "full_stack") ? { agents: customAgents } : {};
+      const constraints: Record<string, unknown> = selectedStackId === "custom" ? { agents: customAgents } : {};
       const result = await submitGoal(founderId, full, constraints, selectedStackId);
       saveSession({
         sessionId: result.session_id,

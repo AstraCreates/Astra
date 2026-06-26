@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { killSession, getSessionState, getAuthToken } from "@/lib/api";
+import { killSession, getSessionState, openEventStream, type StreamSubscription } from "@/lib/api";
+import PageHeader from "@/components/PageHeader";
 import { extractFilePaths, PdfEmbed, EmailDeliverableButton } from "@/components/GoalWorkspace";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -61,6 +62,7 @@ export default function CustomAgentSessionView({
   const [killing, setKilling] = useState(false);
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const streamRef = useRef<StreamSubscription | null>(null);
 
   // Pull structured result once run finishes (for deliverables).
   useEffect(() => {
@@ -89,9 +91,14 @@ export default function CustomAgentSessionView({
 
   useEffect(() => {
     if (initialStatus !== "running") return;
-    const _token = getAuthToken();
-    const _qs = _token ? `&token=${encodeURIComponent(_token)}` : "";
-    const es = new EventSource(`${API}/stream/${sessionId}?lastEventId=0${_qs}`);
+
+    // lastEventId=0 forces the backend's "replay everything since this id"
+    // branch instead of its sparse "fresh connect" state-only replay (which
+    // assumes a localStorage log cache this view doesn't have) — without it,
+    // reloading mid-run wipes the visible log back to "waiting," looking like
+    // the run restarted even though it never did.
+    const es = openEventStream(`${API}/stream/${sessionId}`, { lastEventId: 0 });
+    streamRef.current = es;
 
     es.onmessage = (e) => {
       let ev: Record<string, unknown>;
@@ -152,8 +159,14 @@ export default function CustomAgentSessionView({
       }
     };
 
-    es.onerror = () => {};
-    return () => { es.close(); };
+    es.onerror = () => {
+      // Connection closes when run ends — not an error we surface.
+    };
+
+    return () => {
+      streamRef.current?.close();
+      streamRef.current = null;
+    };
   }, [sessionId, initialStatus]);
 
   async function handleKill() {

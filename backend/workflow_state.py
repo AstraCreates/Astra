@@ -72,10 +72,13 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
     agent_status: dict[str, str] = {}
     agents: dict[str, dict[str, Any]] = {}
     preview_url = ""
+    pending_agent_question: dict[str, Any] | None = None
 
     for event in event_dicts:
         event_type = event.get("type")
         _update_agent_snapshot(agents, event)
+        if event_type == "goal_start":
+            final_status = "running"
         if event_type == "agent_build" and event.get("kind") == "deploy" and event.get("url"):
             preview_url = event["url"]
         elif event_type == "agent_done" and isinstance(event.get("result"), dict):
@@ -198,10 +201,25 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
                 }
         elif event_type == "agent_start" and event.get("agent"):
             agent_status[str(event.get("agent"))] = "running"
+            final_status = "running"
         elif event_type == "agent_done" and event.get("agent"):
             agent_status[str(event.get("agent"))] = "done"
         elif event_type == "agent_error" and event.get("agent"):
             agent_status[str(event.get("agent"))] = "error"
+        elif event_type == "agent_question" and event.get("request_id"):
+            pending_agent_question = {
+                "request_id": str(event.get("request_id") or ""),
+                "title": str(event.get("title") or ""),
+                "question": str(event.get("question") or ""),
+                "options": list(event.get("options") or []),
+                "hint": str(event.get("hint") or ""),
+                "context": str(event.get("context") or ""),
+                "recommendation": str(event.get("recommendation") or ""),
+                "severity": str(event.get("severity") or "warning"),
+                "option_details": dict(event.get("option_details") or {}),
+            }
+        elif event_type in {"agent_input_received", "research_direction_decision"}:
+            pending_agent_question = None
         elif event_type == "goal_done":
             final_status = "done"
         elif event_type == "goal_error":
@@ -251,6 +269,7 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
         "web_tasks": list(web_tasks.values()),
         "artifacts": list(artifacts.values()),
         "artifact_verifications": list(artifact_verifications.values()),
+        "pending_agent_question": pending_agent_question,
         "outcomes": outcomes[-50:],
         "saferun_actions": list(saferun.values())[-50:],
         "run_ledger": _run_ledger_snapshot(session_id),

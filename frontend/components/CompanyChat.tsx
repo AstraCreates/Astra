@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import LiquidGlass from "@/components/LiquidGlass";
-import { AGENT_LABELS, apiFetch, askCompanyBrain, getAuthToken } from "@/lib/api";
+import { AGENT_LABELS, apiFetch, askCompanyBrain, openEventStream, type StreamSubscription } from "@/lib/api";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -68,7 +68,7 @@ export default function CompanyChat({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const esRef = useRef<EventSource | null>(null);
+  const esRef = useRef<StreamSubscription | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -136,9 +136,7 @@ export default function CompanyChat({
       const { session_id } = await res.json();
 
       if (esRef.current) esRef.current.close();
-      const _token = getAuthToken();
-      const _qs = _token ? `?token=${encodeURIComponent(_token)}` : "";
-      const es = new EventSource(`${BASE}/stream/${session_id}${_qs}`);
+      const es = openEventStream(`${BASE}/stream/${session_id}`);
       esRef.current = es;
 
       es.onmessage = (e) => {
@@ -286,4 +284,3 @@ export default function CompanyChat({
     </LiquidGlass>
   );
 }
-

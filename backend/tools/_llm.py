@@ -11,8 +11,10 @@ Models:
 from __future__ import annotations
 
 import hashlib
+import inspect
 import logging
 import re
+import time
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
@@ -40,21 +42,49 @@ _CACHE_TTL = int(_os.environ.get("ASTRA_LLM_CACHE_TTL", "3600"))  # 1h default
 
 # Module-level pooled Redis client — avoid a fresh connection per cache get/set.
 _redis_client = None
+_redis_retry_after = 0.0
+_REDIS_RETRY_INTERVAL_SECONDS = 30.0
 
 
 def _redis():
-    global _redis_client
-    if _redis_client is None:
-        try:
-            import redis
-            _redis_client = redis.from_url(settings.redis_url, decode_responses=True)
-        except Exception:
-            _redis_client = False  # mark unavailable; don't retry every call
+    global _redis_client, _redis_retry_after
+    if _redis_client not in (None, False):
+        return _redis_client
+    now = time.monotonic()
+    if _redis_client is False and now < _redis_retry_after:
+        return None
+    try:
+        import redis
+        client = redis.from_url(settings.redis_url, decode_responses=True)
+        client.ping()
+        _redis_client = client
+        _redis_retry_after = 0.0
+    except Exception:
+        _redis_client = False
+        _redis_retry_after = now + _REDIS_RETRY_INTERVAL_SECONDS
     return _redis_client or None
 
 
-def _cache_key(model: str, prompt: str, max_tokens: int | None, json_mode: bool, temperature: float) -> str:
-    raw = f"{model}|{prompt}|{max_tokens}|{json_mode}|{temperature}"
+def _cache_namespace() -> str:
+    try:
+        frame = inspect.currentframe()
+        caller = frame.f_back.f_back if frame and frame.f_back else None
+        module = caller.f_globals.get("__name__", "") if caller else ""
+        func = caller.f_code.co_name if caller else ""
+        return f"{module}:{func}"
+    except Exception:
+        return "unknown"
+
+
+def _cache_key(
+    model: str,
+    prompt: str,
+    max_tokens: int | None,
+    json_mode: bool,
+    temperature: float,
+    namespace: str,
+) -> str:
+    raw = f"{namespace}|{model}|{prompt}|{max_tokens}|{json_mode}|{temperature}"
     return "llm:gen:" + hashlib.sha256(raw.encode()).hexdigest()
 
 
@@ -98,7 +128,8 @@ def generate(prompt: str, max_tokens: int | None = None, json_mode: bool = False
         selected = _FAST_MODEL
 
     # Response cache — skip the LLM call entirely on cache hit.
-    ckey = _cache_key(selected, prompt, max_tokens, json_mode, temperature)
+    cache_namespace = _cache_namespace()
+    ckey = _cache_key(selected, prompt, max_tokens, json_mode, temperature, cache_namespace)
     cached = _cache_get(ckey)
     if cached is not None:
         return cached

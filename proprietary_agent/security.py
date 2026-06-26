@@ -129,6 +129,13 @@ _SENSITIVE_KEYS = {
     "access_token", "refresh_token", "authorization", "auth_header",
     "credit_card", "ssn", "social_security",
 }
+_SENSITIVE_KEY_FRAGMENTS = (
+    "secret", "token", "api_key", "apikey", "auth", "password", "passwd",
+    "cookie", "session", "bearer", "key", "private", "credential",
+)
+_SENSITIVE_QUERY_PARAMS = ("token", "access_token", "refresh_token", "code", "key", "api_key", "apikey")
+_BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._\-+/=]+\b", re.IGNORECASE)
+_JWT_RE = re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9._-]+\.[A-Za-z0-9._-]+\b")
 
 
 @dataclass
@@ -233,12 +240,35 @@ class ToolSecurityLayer:
             return data
         if isinstance(data, dict):
             return {
-                k: "[REDACTED]" if k.lower() in _SENSITIVE_KEYS else self._redact_sensitive_fields(v, depth + 1)
+                k: "[REDACTED]" if self._is_sensitive_key(k) else self._redact_sensitive_fields(v, depth + 1)
                 for k, v in data.items()
             }
         if isinstance(data, list):
             return [self._redact_sensitive_fields(item, depth + 1) for item in data]
+        if isinstance(data, tuple):
+            return tuple(self._redact_sensitive_fields(item, depth + 1) for item in data)
+        if isinstance(data, str):
+            return self._redact_sensitive_string(data)
         return data
+
+    def _is_sensitive_key(self, key: Any) -> bool:
+        key_str = str(key).strip().lower()
+        if key_str in _SENSITIVE_KEYS:
+            return True
+        return any(fragment in key_str for fragment in _SENSITIVE_KEY_FRAGMENTS)
+
+    def _redact_sensitive_string(self, value: str) -> str:
+        redacted = value
+        redacted = _BEARER_RE.sub("Bearer [REDACTED]", redacted)
+        redacted = _JWT_RE.sub("[REDACTED_JWT]", redacted)
+        for marker in _SENSITIVE_QUERY_PARAMS:
+            redacted = re.sub(
+                rf"([?&]{re.escape(marker)}=)[^&#\s\"']+",
+                r"\1[REDACTED]",
+                redacted,
+                flags=re.IGNORECASE,
+            )
+        return redacted
 
 
 # Singleton used by engine

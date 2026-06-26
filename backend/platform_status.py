@@ -62,10 +62,27 @@ def _check_models() -> dict[str, Any]:
             "chat_model": bool(settings.chat_model_base_url and settings.chat_model_name and settings.chat_model_api_key),
         }
         missing = [key for key, ok in required.items() if not ok]
+        configured = {
+            "mvp_build_model": settings.mvp_build_model,
+            "technical_agent_model": settings.technical_agent_model,
+            "web_agent_model": settings.web_agent_model,
+            "or_planner_model": settings.or_planner_model,
+            "or_highoutput_model": settings.or_highoutput_model,
+            "or_light_model": settings.or_light_model,
+            "tooluse_model_name": settings.tooluse_model_name,
+            "planner_model_name": settings.planner_model_name,
+            "chat_model_name": settings.chat_model_name,
+        }
+        legacy_models = {key: value for key, value in configured.items() if "hy3-preview" in str(value or "").lower()}
         return {
-            "ok": not missing,
-            "status": "configured" if not missing else "missing_config",
+            "ok": not missing and not legacy_models,
+            "status": "configured" if not missing and not legacy_models else ("legacy_override" if legacy_models else "missing_config"),
             "missing": missing,
+            "configured": configured,
+            "warnings": [
+                f"{key} is still set to legacy model {value}"
+                for key, value in legacy_models.items()
+            ],
         }
     except Exception as exc:
         return {"ok": False, "status": "error", "detail": str(exc)}

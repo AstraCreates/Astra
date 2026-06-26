@@ -6,7 +6,7 @@ if not _secret_val:
     raise RuntimeError("ASTRA_DEPLOY_WEBHOOK_SECRET env var not set")
 SECRET = _secret_val.encode()
 REPO = "/opt/astra/repo"
-BRANCH = os.environ.get("ASTRA_DEPLOY_BRANCH", "codex/website-operator-layer-v1")
+BRANCH = os.environ.get("ASTRA_DEPLOY_BRANCH", "main")
 COMPOSE_FILE = "deploy/docker-compose.prod.yml"
 ENV_FILE = ".env"
 

@@ -2588,26 +2588,31 @@ async def platform_stripe_webhook(request: Request):
 
 @router.get("/files/{filename}")
 async def serve_file(filename: str, download: bool = False):
-    """Serve generated files (PDFs, TXTs) from /tmp/astra_docs.
-    Pass ?download=1 to force attachment download; default is inline (for iframe embeds)."""
+    """Serve generated files (PDFs, TXTs) from the vault files/ directory.
+    Pass ?download=1 to force attachment download; default is inline (for iframe embeds).
+    Search is restricted to vault/files/ — no cross-tenant vault traversal."""
     import mimetypes
     from pathlib import Path
     from fastapi.responses import FileResponse
 
     import os as _os
-    safe_name = Path(filename).name
+    safe_name = Path(filename).name  # strip any directory components
     vault = _os.environ.get("OBSIDIAN_VAULT", "/tmp/astra_docs")
-    vault_path = Path(vault)
-    search_dirs = [vault_path / "files", vault_path, Path("/tmp/astra_docs")]
+    # Only search the shared output directories — never recurse into per-founder subtrees.
+    files_dir = Path(vault) / "files"
+    tmp_dir = Path("/tmp/astra_docs")
+    search_dirs = [files_dir, tmp_dir]
+
     path = None
+    # Exact match first.
     for d in search_dirs:
         candidate = d / safe_name
         if candidate.exists() and candidate.is_file():
             path = candidate
             break
-    # Fallback: agents often reference the logical name (privacy_policy.pdf) while the
-    # saved file carries a uuid suffix (privacy_policy_35419f.pdf). Match by stem +
-    # extension (any extension if none given, since .pdf can fall back to .txt).
+
+    # Stem+extension fuzzy match (agent wrote privacy_policy_35419f.pdf, caller asks
+    # for privacy_policy.pdf). Single-level iterdir only — no recursion into subdirs.
     if path is None:
         stem = Path(safe_name).stem
         req_ext = Path(safe_name).suffix.lower()
@@ -2615,11 +2620,10 @@ async def serve_file(filename: str, download: bool = False):
         for d in search_dirs:
             if not d.is_dir():
                 continue
-            for f in sorted(d.iterdir(), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
+            for f in sorted(d.iterdir(), key=lambda p: p.stat().st_mtime if p.is_file() else 0, reverse=True):
                 if not f.is_file():
                     continue
                 if f.stem == stem or f.stem.startswith(stem + "_"):
-                    # Prefer same extension; otherwise accept (pdf↔txt fallback).
                     if not req_ext or f.suffix.lower() == req_ext:
                         path = f
                         break
@@ -2628,25 +2632,16 @@ async def serve_file(filename: str, download: bool = False):
             if path:
                 break
         path = path or best
-    # Last resort: recursive search under vault (covers session-scoped paths like
-    # founders/{id}/sessions/{session_id}/filename.pdf used by custom agents).
-    if path is None and vault_path.is_dir():
-        stem = Path(safe_name).stem
-        req_ext = Path(safe_name).suffix.lower()
-        best = None
-        for f in sorted(vault_path.rglob("*"), key=lambda p: p.stat().st_mtime if p.is_file() else 0, reverse=True):
-            if not f.is_file():
-                continue
-            if f.name == safe_name:
-                path = f
-                break
-            if f.stem == stem or f.stem.startswith(stem + "_"):
-                if not req_ext or f.suffix.lower() == req_ext:
-                    if best is None:
-                        best = f
-        path = path or best
+
     if path is None:
         raise HTTPException(status_code=404, detail="File not found")
+
+    # Containment check: resolved path must stay within one of the permitted dirs.
+    resolved = path.resolve()
+    allowed_roots = [d.resolve() for d in search_dirs if d.exists()]
+    if not any(resolved.is_relative_to(root) for root in allowed_roots):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     safe_name = path.name
     media_type, _ = mimetypes.guess_type(safe_name)
     if not media_type and safe_name.lower().endswith(".pdf"):

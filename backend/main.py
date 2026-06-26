@@ -38,7 +38,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "x-astra-user-id", "x-user-id", "x-astra-email", "x-astra-session"],
+    allow_headers=["Content-Type", "Authorization", "Last-Event-ID", "x-astra-user-id", "x-user-id", "x-astra-email", "x-astra-session"],
     expose_headers=["Content-Type", "Cache-Control", "X-Accel-Buffering"],
 )
 
@@ -84,6 +84,17 @@ async def startup_background_jobs():
     _pool_size = int(_os.environ.get("ASTRA_THREAD_POOL", "128"))
     loop.set_default_executor(ThreadPoolExecutor(max_workers=_pool_size, thread_name_prefix="astra"))
     logger.info("Thread pool sized to %d workers", _pool_size)
+    logger.info(
+        "Model routing: mvp_build=%s technical=%s web=%s planner=%s highoutput=%s light=%s tooluse=%s chat=%s",
+        _settings.mvp_build_model,
+        _settings.technical_agent_model,
+        _settings.web_agent_model,
+        _settings.or_planner_model,
+        _settings.or_highoutput_model,
+        _settings.or_light_model,
+        _settings.tooluse_model_name,
+        _settings.chat_model_name,
+    )
     from backend.tools.company_brain_scheduler import start_company_brain_scheduler
     start_company_brain_scheduler(interval_seconds=60)
     from backend.missions.scheduler import start_missions_scheduler
@@ -352,10 +363,10 @@ async def mcp_http(request: Request):
                     )
                     resp = await client.chat.completions.create(
                         model=settings.chat_model_name or settings.agent_model_name,
-                        messages=cacheable_messages([
+                        messages=[
                             {"role": "system", "content": specialist.role},
                             {"role": "user", "content": args["question"]},
-                        ], breakpoints=(0,)),
+                        ],
                         max_tokens=1024,
                         extra_body=openrouter_extra_body(settings.chat_model_name or settings.agent_model_name),
                     )
