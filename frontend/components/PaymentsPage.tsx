@@ -13,8 +13,8 @@ import {
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-// ── MOCKUP: remove when Stripe is configured ──────────────────────────────────
-const MOCKUP = true;
+// ── MOCKUP: set true temporarily to preview connected Stripe UI ───────────────
+const MOCKUP = false;
 const MOCK_STATUS: StripeStatus = { connected: true, charges_enabled: true, payouts_enabled: true, email: "jhinkesh05@gmail.com", livemode: false, upgraded_to_business: false };
 const MOCK_DATA: StripeData = {
   balance: { available: 184200, pending: 29900, currency: "usd" },

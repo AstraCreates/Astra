@@ -153,53 +153,31 @@ export default function DashboardView() {
     return () => clearInterval(t);
   }, [sessions]);
 
-  // Detect first non-custom session transitioning running → done, show launch complete screen.
+  // Detect running→done transition OR settings-triggered replay once sessions load.
   useEffect(() => {
     if (!sessions) return;
     const prev = prevStatusRef.current;
+    const isFirstLoad = prev.size === 0;
+    const canShow = shouldShowLaunchComplete();
+    let triggered = false;
     for (const s of sessions) {
       if (s.stack_id === "custom") continue;
       const wasRunning = prev.get(s.session_id) === "running";
       const nowDone = s.status === "done";
-      if (wasRunning && nowDone && shouldShowLaunchComplete()) {
+      if (canShow && !triggered && (wasRunning && nowDone || isFirstLoad && nowDone)) {
         const digest = digests.get(s.session_id);
         setLaunchComplete({
           companyName: s.company_name || "",
           agentsRan: digest?.counts.done_agents ?? 0,
           artifactsCreated: digest?.counts.ready_artifacts ?? 0,
-          stackName: s.stack_id && s.stack_id !== "custom" ? s.stack_id.replace(/_/g, " ") : undefined,
+          stackName: s.stack_id ? s.stack_id.replace(/_/g, " ") : undefined,
         });
         markLaunchCompleteShown();
+        triggered = true;
       }
       prev.set(s.session_id, s.status);
     }
   }, [sessions, digests]);
-
-  // Check on mount: if settings triggered replay
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!shouldShowLaunchComplete()) return;
-    // Only auto-show on mount if a done launch session exists (not running/empty)
-    const t = setTimeout(() => {
-      setSessions(prev => {
-        if (!prev) return prev;
-        const launch = prev.find(s => s.stack_id !== "custom" && s.status === "done");
-        if (launch && shouldShowLaunchComplete()) {
-          const digest = digests.get(launch.session_id);
-          setLaunchComplete({
-            companyName: launch.company_name || "",
-            agentsRan: digest?.counts.done_agents ?? 0,
-            artifactsCreated: digest?.counts.ready_artifacts ?? 0,
-            stackName: launch.stack_id ? launch.stack_id.replace(/_/g, " ") : undefined,
-          });
-          markLaunchCompleteShown();
-        }
-        return prev;
-      });
-    }, 800);
-    return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const running = (sessions || []).filter((s) => s.status === "running").length;
   const stalled = (sessions || []).filter((s) => s.status === "stalled").length;
