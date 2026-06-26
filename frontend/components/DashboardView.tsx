@@ -9,6 +9,7 @@ import AstraGradient from "./AstraGradient";
 import GoalPanel from "./GoalPanel";
 import LiveStatusPanel from "./LiveStatusPanel";
 import DashboardCanvas from "./DashboardCanvas";
+import LaunchCompleteScreen, { shouldShowLaunchComplete, markLaunchCompleteShown } from "./LaunchCompleteScreen";
 
 const GREETINGS = [
   "Welcome back",
@@ -61,6 +62,8 @@ export default function DashboardView() {
   const [digests, setDigests] = useState<Map<string, SessionDigest>>(new Map());
   const [showCompleted, setShowCompleted] = useState(false);
   const retriedRef = useRef(false);
+  const prevStatusRef = useRef<Map<string, string>>(new Map());
+  const [launchComplete, setLaunchComplete] = useState<{ companyName: string; agentsRan: number; artifactsCreated: number; stackName?: string } | null>(null);
   useEffect(() => {
     if (typeof window !== "undefined") {
       const fullName = localStorage.getItem("astra_onboarding_name") || "";
@@ -149,6 +152,54 @@ export default function DashboardView() {
     const t = setInterval(fetchAll, 15_000);
     return () => clearInterval(t);
   }, [sessions]);
+
+  // Detect first non-custom session transitioning running → done, show launch complete screen.
+  useEffect(() => {
+    if (!sessions) return;
+    const prev = prevStatusRef.current;
+    for (const s of sessions) {
+      if (s.stack_id === "custom") continue;
+      const wasRunning = prev.get(s.session_id) === "running";
+      const nowDone = s.status === "done";
+      if (wasRunning && nowDone && shouldShowLaunchComplete()) {
+        const digest = digests.get(s.session_id);
+        setLaunchComplete({
+          companyName: s.company_name || "",
+          agentsRan: digest?.counts.done_agents ?? 0,
+          artifactsCreated: digest?.counts.ready_artifacts ?? 0,
+          stackName: s.stack_id && s.stack_id !== "custom" ? s.stack_id.replace(/_/g, " ") : undefined,
+        });
+        markLaunchCompleteShown();
+      }
+      prev.set(s.session_id, s.status);
+    }
+  }, [sessions, digests]);
+
+  // Check on mount: if settings triggered replay
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!shouldShowLaunchComplete()) return;
+    // Only auto-show on mount if a done launch session exists (not running/empty)
+    const t = setTimeout(() => {
+      setSessions(prev => {
+        if (!prev) return prev;
+        const launch = prev.find(s => s.stack_id !== "custom" && s.status === "done");
+        if (launch && shouldShowLaunchComplete()) {
+          const digest = digests.get(launch.session_id);
+          setLaunchComplete({
+            companyName: launch.company_name || "",
+            agentsRan: digest?.counts.done_agents ?? 0,
+            artifactsCreated: digest?.counts.ready_artifacts ?? 0,
+            stackName: launch.stack_id ? launch.stack_id.replace(/_/g, " ") : undefined,
+          });
+          markLaunchCompleteShown();
+        }
+        return prev;
+      });
+    }, 800);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const running = (sessions || []).filter((s) => s.status === "running").length;
   const stalled = (sessions || []).filter((s) => s.status === "stalled").length;
@@ -549,6 +600,16 @@ export default function DashboardView() {
         </div>
 
       </div>
+
+      {launchComplete && (
+        <LaunchCompleteScreen
+          companyName={launchComplete.companyName}
+          agentsRan={launchComplete.agentsRan}
+          artifactsCreated={launchComplete.artifactsCreated}
+          stackName={launchComplete.stackName}
+          onComplete={() => setLaunchComplete(null)}
+        />
+      )}
     </>
   );
 }

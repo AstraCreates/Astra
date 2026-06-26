@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useDevUser } from "@/lib/use-dev-user";
 import ThemeToggle from "@/components/ThemeToggle";
+import { clearLaunchCompleteShown } from "@/components/LaunchCompleteScreen";
 import {
   createOrganizationBillingPortal,
   createOrganizationCheckout,
@@ -646,6 +647,21 @@ export default function SettingsPage() {
 
       {/* Onboarding */}
       <Section title="Onboarding">
+        <Row
+          label="Preview launch complete screen"
+          desc="Replay the celebration screen that shows when your first launch run finishes"
+          action={
+            <button
+              onClick={() => { clearLaunchCompleteShown(); window.location.href = "/"; }}
+              style={{
+                fontSize: 13, padding: "6px 14px", borderRadius: 8,
+                background: c.bg, color: c.textSecondary, border: `1px solid ${c.border}`, cursor: "pointer",
+              }}
+            >
+              Preview →
+            </button>
+          }
+        />
         <Row
           label="Restart onboarding"
           desc="Re-run the setup wizard to change your stack or reconnect integrations"
