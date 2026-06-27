@@ -24,14 +24,6 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${geist.variable} ${geistMono.variable} ${dmSans.variable} ${ibmPlexMono.variable} ${jetbrainsMono.variable} ${pixelifySans.variable} ${instrumentSans.variable} antialiased`} data-theme="light" suppressHydrationWarning>
-      <head>
-        {/* Redesign baseline is light. Honour a saved preference, default light. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem("astra-theme");if(t!=="dark"&&t!=="light"){t="light"}document.documentElement.setAttribute("data-theme",t)}catch(e){document.documentElement.setAttribute("data-theme","light")}`,
-          }}
-        />
-      </head>
       <body suppressHydrationWarning>
         <SessionWrapper>
           <ApiAuthBridge />

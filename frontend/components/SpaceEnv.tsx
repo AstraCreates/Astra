@@ -32,6 +32,12 @@ const NEBULAE = [
 ] as const;
 
 type RGB = [number, number, number];
+type ThemeMode = "light" | "dark";
+
+function getThemeMode(): ThemeMode {
+  if (typeof document === "undefined") return "light";
+  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+}
 
 interface Star {
   bx: number; by: number;   // base position in scroll-space (by up to 3× H)
@@ -64,6 +70,7 @@ export default function SpaceEnv() {
     let raf   = 0;
     let scrollY = 0;
     let mx = 0.5, my = 0.5;
+    let theme: ThemeMode = getThemeMode();
 
     // ── resize ────────────────────────────────────────────────────────────────
     function resize() {
@@ -94,7 +101,16 @@ export default function SpaceEnv() {
 
     // ── draw ──────────────────────────────────────────────────────────────────
     function draw(now: number) {
-      ctx.fillStyle = "#030510";
+      const dark = theme === "dark";
+      if (dark) {
+        ctx.fillStyle = "#030510";
+      } else {
+        const bg = ctx.createLinearGradient(0, 0, 0, H);
+        bg.addColorStop(0, "#dbe7fb");
+        bg.addColorStop(0.45, "#e8f0ff");
+        bg.addColorStop(1, "#d4e2fb");
+        ctx.fillStyle = bg;
+      }
       ctx.fillRect(0, 0, W, H);
 
       const totalH   = document.documentElement.scrollHeight;
@@ -114,10 +130,13 @@ export default function SpaceEnv() {
         if (ny > H + 350 || ny < -350) continue;
 
         const nr = neb.r * Math.min(W, H);
-        const [r, g, b] = neb.c;
+        const [r, g, b] = dark
+          ? neb.c
+          : ([Math.min(255, neb.c[0] + 95), Math.min(255, neb.c[1] + 120), 255] as RGB);
+        const alpha = dark ? neb.a : neb.a * 0.68;
         const gr = ctx.createRadialGradient(nx, ny, 0, nx, ny, nr);
-        gr.addColorStop(0,    `rgba(${r},${g},${b},${neb.a})`);
-        gr.addColorStop(0.42, `rgba(${r},${g},${b},${neb.a * 0.35})`);
+        gr.addColorStop(0,    `rgba(${r},${g},${b},${alpha})`);
+        gr.addColorStop(0.42, `rgba(${r},${g},${b},${alpha * 0.35})`);
         gr.addColorStop(1,    `rgba(${r},${g},${b},0)`);
         ctx.fillStyle = gr;
         ctx.beginPath();
@@ -152,13 +171,15 @@ export default function SpaceEnv() {
 
         // Slow per-star twinkle
         const twinkle = 0.76 + 0.24 * Math.sin(now * 0.0007 * s.freq + s.phase * 1.6);
-        const alpha   = Math.min(0.98, s.op * twinkle);
-        const { r2: r, g2: g, b2: b } = s;
+        const alpha   = Math.min(0.98, s.op * twinkle * (dark ? 1 : 0.82));
+        const r = dark ? s.r2 : Math.round(s.r2 * 0.38);
+        const g = dark ? s.g2 : Math.round(s.g2 * 0.48);
+        const b = dark ? s.b2 : Math.round(s.b2 * 0.72);
 
         // Soft glow halo for brighter / larger stars
         if (s.r > 1.4 && alpha > 0.38) {
           const halo = ctx.createRadialGradient(sx, sy, 0, sx, sy, s.r * 4.5);
-          halo.addColorStop(0, `rgba(${r},${g},${b},${alpha * 0.22})`);
+          halo.addColorStop(0, `rgba(${r},${g},${b},${alpha * (dark ? 0.22 : 0.17)})`);
           halo.addColorStop(1, `rgba(${r},${g},${b},0)`);
           ctx.fillStyle = halo;
           ctx.beginPath();
@@ -182,8 +203,8 @@ export default function SpaceEnv() {
         ctx.globalCompositeOperation = "lighter";
 
         const inner = ctx.createRadialGradient(bx, by, 0, bx, by, 100);
-        inner.addColorStop(0,   "rgba(160, 220, 255, 0.18)");
-        inner.addColorStop(0.35,"rgba(100, 160, 255, 0.07)");
+        inner.addColorStop(0,   dark ? "rgba(160, 220, 255, 0.18)" : "rgba(120, 170, 255, 0.18)");
+        inner.addColorStop(0.35,dark ? "rgba(100, 160, 255, 0.07)" : "rgba(90, 145, 255, 0.08)");
         inner.addColorStop(1,   "rgba(0, 0, 0, 0)");
         ctx.fillStyle = inner;
         ctx.beginPath();
@@ -191,7 +212,7 @@ export default function SpaceEnv() {
         ctx.fill();
 
         const wide = ctx.createRadialGradient(bx, by, 0, bx, by, 260);
-        wide.addColorStop(0, "rgba(80, 120, 255, 0.055)");
+        wide.addColorStop(0, dark ? "rgba(80, 120, 255, 0.055)" : "rgba(80, 120, 255, 0.05)");
         wide.addColorStop(1, "rgba(0, 0, 0, 0)");
         ctx.fillStyle = wide;
         ctx.beginPath();
@@ -208,9 +229,11 @@ export default function SpaceEnv() {
     const onScroll   = () => { scrollY = window.scrollY; };
     const onMouse    = (e: MouseEvent) => { mx = e.clientX / W; my = e.clientY / H; };
     const onResize   = () => { resize(); init(); };
+    const themeObserver = new MutationObserver(() => { theme = getThemeMode(); });
 
     resize();
     init();
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     window.addEventListener("scroll",    onScroll, { passive: true });
     window.addEventListener("mousemove", onMouse,  { passive: true });
     window.addEventListener("resize",    onResize);
@@ -218,6 +241,7 @@ export default function SpaceEnv() {
 
     return () => {
       cancelAnimationFrame(raf);
+      themeObserver.disconnect();
       window.removeEventListener("scroll",    onScroll);
       window.removeEventListener("mousemove", onMouse);
       window.removeEventListener("resize",    onResize);

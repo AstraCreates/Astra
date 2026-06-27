@@ -31,7 +31,7 @@ function setTheme(theme: Theme): void {
 }
 
 export default function ThemeToggle() {
-  const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, () => "dark");
+  const theme = useSyncExternalStore(subscribeTheme, getThemeSnapshot, () => "light");
   const dark = theme === "dark";
   const nextLabel = dark ? "Light mode" : "Dark mode";
 
