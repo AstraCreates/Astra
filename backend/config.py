@@ -133,6 +133,14 @@ class Settings(BaseSettings):
     # in .env (extra="ignore" drops it). context_compression_v2 was off for exactly this
     # reason — agent conversations grew unbounded (marketing hit 212k tokens/call).
     astra_context_compression_v2: bool = False
+    # Same declare-or-silently-off rule as compression. native_tool_calls switches
+    # agents from JSON-in-prompt to provider-native function-calling (all our agent
+    # models support it); delegation_v2 + skill_review change sub-agent / review paths.
+    # (specialist_manifests + shadow_runtime have no code readers — intentionally not
+    # declared; declaring them would do nothing.)
+    astra_native_tool_calls: bool = False
+    astra_delegation_v2: bool = False
+    astra_skill_review: bool = False
     astra_fallback_model: str = "moonshotai/kimi-k2.5"
 
     # Stripe Standard Connect
