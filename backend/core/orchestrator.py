@@ -158,6 +158,7 @@ def _completion_failures(tasks: list[dict[str, Any]], completed: dict[str, dict]
 
 
 _active_continue_runs: set[str] = set()
+_active_continue_runs_lock = asyncio.Lock()
 
 
 class Orchestrator:
@@ -2352,10 +2353,11 @@ class Orchestrator:
             from backend.core.session_ids import new_session_id
             session_id = new_session_id()
 
-        if session_id in _active_continue_runs:
-            logger.warning("continue_run: session %s already in-flight — skipping duplicate", session_id)
-            return {"ok": False, "reason": "already_running", "session_id": session_id}
-        _active_continue_runs.add(session_id)
+        async with _active_continue_runs_lock:
+            if session_id in _active_continue_runs:
+                logger.error("continue_run: session %s already in-flight — duplicate dispatch suppressed", session_id)
+                return {"ok": False, "reason": "already_running", "session_id": session_id}
+            _active_continue_runs.add(session_id)
         try:
             return await self._continue_run_inner(
                 instruction=instruction,
@@ -2372,8 +2374,8 @@ class Orchestrator:
         instruction: str,
         founder_id: str,
         prior_session_id: str,
-        agents: list[str] | None = None,
-        session_id: str = "",
+        agents: list[str] | None,
+        session_id: str,
     ) -> dict[str, Any]:
         try:
             from backend.core.session_store import get_session_meta as _session_meta
