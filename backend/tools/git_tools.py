@@ -1028,6 +1028,11 @@ def _run_caveman(local: str, prompt: str, session_id: str = None, timeout: int =
         cave_args += ["--no-session"]
     full_prompt = autonomy + "\n\n---\n\n" + prompt
 
+    # Extend caveman's provider-side prompt cache. A build resumes the same session
+    # 4-5× (main build + completion + recovery rounds) minutes apart, each reloading
+    # the full accumulated context — longer cache retention keeps those resends billing
+    # at the cheap cached-input rate instead of full rate.
+    env.setdefault("CAVE_CACHE_RETENTION", "long")
     or_key = env.get("OPENROUTER_API_KEY", "")
     if os.getuid() == 0:
         try:
@@ -1039,6 +1044,7 @@ def _run_caveman(local: str, prompt: str, session_id: str = None, timeout: int =
             "sudo", "-u", "astra", "env",
             f"OPENROUTER_API_KEY={or_key}",
             "HOME=/home/astra",
+            "CAVE_CACHE_RETENTION=long",
             f"npm_config_cache={env.get('npm_config_cache', _NPM_CACHE_DIR)}",
             "npm_config_prefer_offline=true",
             "npm_config_audit=false",

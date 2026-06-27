@@ -193,21 +193,25 @@ class RunContextPolicy:
     ) -> dict[str, Any]:
         query = f"{task.get('instruction') or ''}\n{base_shared.get('company_name', '')}\n{base_shared.get('company_brain_context', '')[:1200]}"
         brain = self._brain_context(query)
+        # The heavy payloads (brain context, deps, vault notes, goal) live ONLY in the
+        # flat shared keys below — NOT also inside run_context_pack. Both the pack and the
+        # flat keys are rendered into the prompt by _render_shared_context, so embedding
+        # the same data in both doubled ~5-8k tokens/call. run_context_pack has no
+        # programmatic readers; it's prompt-only metadata pointing at the flat keys.
+        goal_pack = self._current_goal_pack(agent_name)
+        brain_context_text = _truncate(str(brain.get("context") or brain.get("formatted") or ""), 9000)
+        vault_notes = _truncate(vault_context or "", 5000)
         pack = {
             "policy": {
-                "source_of_truth": "Use this injected Company Brain and current goal context first; call Company Brain tools only for missing facts.",
+                "source_of_truth": "Use current_company_goal, company_brain_context, prior_results and prior_vault_notes (below) as injected source-of-truth; call Company Brain tools only for missing facts.",
                 "max_context_chars": self.max_context_chars,
                 "brain_cache_hit": bool(brain.get("cache_hit")),
             },
-            "company_goal": self._current_goal_pack(agent_name),
             "company_brain": {
-                "context": _truncate(str(brain.get("context") or brain.get("formatted") or ""), 9000),
                 "canonical_sources": _compact_value(brain.get("canonical_sources") or [], 3000),
                 "open_proposals": _compact_value(brain.get("open_proposals") or [], 2000),
                 "retrieval": brain.get("retrieval", "unknown"),
             },
-            "dependency_results": _compact_value(dep_results, 6000),
-            "prior_vault_notes": _truncate(vault_context or "", 5000),
             "resource_budget": {
                 "brain_retrievals_used": self._brain_retrievals,
                 "brain_retrievals_max": self.max_brain_retrievals,
@@ -217,16 +221,15 @@ class RunContextPolicy:
         }
         rendered = _jsonish(pack, self.max_context_chars)
         if len(rendered) > self.max_context_chars:
-            pack["dependency_results"] = "[omitted: context budget exhausted]"
-            pack["prior_vault_notes"] = "[omitted: context budget exhausted]"
-            pack["company_brain"]["context"] = _truncate(pack["company_brain"]["context"], max(2000, self.max_context_chars // 3))
+            pack["company_brain"]["canonical_sources"] = "[omitted: context budget exhausted]"
+            pack["company_brain"]["open_proposals"] = "[omitted: context budget exhausted]"
         return {
             **base_shared,
             "run_context_pack": pack,
-            "current_company_goal": pack["company_goal"],
-            "company_brain_context": pack["company_brain"]["context"] or base_shared.get("company_brain_context", ""),
+            "current_company_goal": goal_pack,
+            "company_brain_context": brain_context_text or base_shared.get("company_brain_context", ""),
             "prior_results": dep_results,
-            "prior_vault_notes": pack["prior_vault_notes"],
+            "prior_vault_notes": vault_notes,
         }
 
     def persist_agent_result(
