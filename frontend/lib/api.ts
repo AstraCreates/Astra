@@ -496,6 +496,20 @@ export interface SessionWorkboard {
 export interface SessionStateSnapshot {
   session_id: string;
   status: "running" | "done" | "error" | "stalled";
+  needs_review?: boolean;
+  review_reason?: string;
+  deployment_checks?: Array<Record<string, unknown>>;
+  session_meta?: {
+    status?: string;
+    goal?: string;
+    company_id?: string;
+    kind?: string;
+    created_at?: string;
+    completed_at?: string | null;
+    needs_review?: boolean;
+    review_reason?: string;
+    deploy_url?: string;
+  };
   company_goal?: CompanyGoal | null;
   event_count: number;
   last_event_id: number;
@@ -1436,6 +1450,9 @@ export interface SessionMeta {
   credits_used?: number;
   headroom_tokens_saved?: number;
   headroom_tokens_before?: number;
+  needs_review?: boolean;
+  review_reason?: string;
+  deploy_url?: string;
 }
 
 /** Public, unauthenticated session header — lets /s/<id> links work without the

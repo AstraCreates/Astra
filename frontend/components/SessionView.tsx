@@ -36,6 +36,10 @@ type SState = {
   selDept: string | null; selArt: string | null; tab: string; paused: boolean;
   revisionGate: string | null; revisionNote: string;
   liveUrl: string;
+  needsReview: boolean;
+  reviewReason: string;
+  completionAuditSummary: string;
+  completionAuditFailures: string[];
   operating: { count: number; summary: string } | null;
   parentId: string;
   startedAt: number;
@@ -65,6 +69,19 @@ function titleCaseTool(raw: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function summarizeAuditFailures(failed: Array<Record<string, unknown>> | undefined): string[] {
+  if (!Array.isArray(failed)) return [];
+  return failed
+    .map((item) => {
+      const key = typeof item?.key === "string" ? item.key.replace(/_/g, " ") : "";
+      const msg = typeof item?.message === "string" ? item.message : typeof item?.summary === "string" ? item.summary : "";
+      const text = [key, msg].filter(Boolean).join(": ").trim();
+      return text || "";
+    })
+    .filter(Boolean)
+    .slice(0, 4);
 }
 
 function normalizeCopilotActions(actions: any): CopilotAction[] {
@@ -236,7 +253,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const S = useRef<SState>({
     status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
     decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false,
-    revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0, headroomSaved: 0, headroomBefore: 0,
+    revisionGate: null, revisionNote: "", liveUrl: "", needsReview: false, reviewReason: "", completionAuditSummary: "", completionAuditFailures: [],
+    operating: null, parentId: "", startedAt: 0, credits: 0, headroomSaved: 0, headroomBefore: 0,
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
   const sseRef = useRef<StreamSubscription | null>(null);
@@ -275,6 +293,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [showSessionTour, setShowSessionTour] = useState(false);
   const [designImages, setDesignImages] = useState<SessionImages>({ logos: {}, brand_images: [] });
   const [accessDenied, setAccessDenied] = useState(false);
+  const [sessionUnavailable, setSessionUnavailable] = useState("");
   const [agentQuestion, setAgentQuestion] = useState<{
     request_id: string;
     title?: string;
@@ -313,6 +332,73 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [teamTab, setTeamTab] = useState(false);
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
   const imgsFetched = useRef(false);
+  const applyStateSnapshot = useCallback((d: any, fromCache = false) => {
+    const st = S.current;
+    if (!st.goal && d.instruction) {
+      const { projectName, cleanGoal } = extractProjectName(String(d.instruction || ""));
+      st.goal = cleanGoal;
+      if (!st.projectName) st.projectName = projectName;
+    }
+    if (d.stack_id) st.stackId = d.stack_id;
+    else if (d.stack?.stack_id && !st.stackId) st.stackId = d.stack.stack_id;
+    if (d.previewUrl) st.liveUrl = d.previewUrl;
+    else if (!st.liveUrl && d.session_meta?.deploy_url) st.liveUrl = d.session_meta.deploy_url;
+    st.status = d.status || st.status;
+    st.needsReview = Boolean(d.needs_review || d.session_meta?.needs_review);
+    st.reviewReason = String(d.review_reason || d.session_meta?.review_reason || "");
+    st.completionAuditSummary = String(d.completion_audit?.summary || "");
+    st.completionAuditFailures = summarizeAuditFailures(d.completion_audit?.failed);
+    if (Array.isArray(d.artifacts) && d.artifacts.length) st.artifacts = d.artifacts;
+    else if (!fromCache) st.artifacts = [];
+    if (Array.isArray(d.approvals)) {
+      st.approvals = d.approvals
+        .filter((a: any) => PENDING.has(a.status) && (a.gate_key || a.key))
+        .map((a: any) => ({ ...a, gate_key: a.gate_key || a.key }));
+    }
+    if (d.pending_agent_question && typeof d.pending_agent_question === "object") {
+      setAgentQuestion({
+        request_id: String(d.pending_agent_question.request_id || ""),
+        title: String(d.pending_agent_question.title || ""),
+        question: String(d.pending_agent_question.question || ""),
+        options: Array.isArray(d.pending_agent_question.options) ? d.pending_agent_question.options.map((v: unknown) => String(v)) : [],
+        hint: String(d.pending_agent_question.hint || ""),
+        context: String(d.pending_agent_question.context || ""),
+        recommendation: String(d.pending_agent_question.recommendation || ""),
+        severity: d.pending_agent_question.severity === "critical" || d.pending_agent_question.severity === "info" ? d.pending_agent_question.severity : "warning",
+        option_details: d.pending_agent_question.option_details && typeof d.pending_agent_question.option_details === "object"
+          ? Object.fromEntries(Object.entries(d.pending_agent_question.option_details).map(([k, v]) => [k, String(v)]))
+          : {},
+      });
+    } else {
+      setAgentQuestion(null);
+    }
+    if (d.agents && typeof d.agents === "object") {
+      for (const [k, ag] of Object.entries<any>(d.agents)) {
+        const rawLog: any[] = ag.log || [];
+        const mapped = rawLog.map((e) => ({ ts: e.ts ?? Date.now(), type: String(e.type || ""), text: safeText(e.text) }));
+        const existing = st.agents[k];
+        const log = (fromCache && existing && existing.log.length >= mapped.length) ? existing.log : mapped;
+        st.agents[k] = {
+          key: k, status: ag.status || existing?.status || "waiting",
+          log,
+          term: existing?.term || [],
+          visitedUrls: ag.visitedUrls || ag.visited_urls || existing?.visitedUrls || [],
+          currentTool: existing?.currentTool ?? null, result: ag.result || existing?.result || null,
+          instruction: ag.instruction || existing?.instruction || "",
+        };
+      }
+    }
+  }, []);
+  const reconcileTerminalState = useCallback(async () => {
+    try {
+      const r = await apiFetch(`${API}/sessions/${sessionId}/state`);
+      if (!r.ok) return;
+      const d = await r.json();
+      applyStateSnapshot(d, true);
+      force();
+    } catch {}
+    sseRef.current?.close();
+  }, [applyStateSnapshot, sessionId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -409,6 +495,15 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         else if (k === "phase" || k === "plan" || k === "build_start") { addLog(a, "think", ev.text || ev.goal || ""); pushTerm(a, "phase", ev.text || ev.goal || ""); }
         break;
       }
+      case "deployment_check_failed": {
+        const agent = ev.agent || "web";
+        ensureAg(agent);
+        st.needsReview = true;
+        st.reviewReason = `Deployment check failed${ev.status ? ` (${ev.status})` : ""}${ev.url ? ` — ${ev.url}` : ""}`;
+        if (st.status === "done") st.status = "stalled";
+        addLog(agent, "error", st.reviewReason);
+        break;
+      }
       case "agent_done": {
         ensureAg(ev.agent); st.agents[ev.agent].status = "done"; st.agents[ev.agent].currentTool = null; st.agents[ev.agent].result = ev.result;
         const _r = ev.result as Record<string, unknown> | null;
@@ -459,9 +554,13 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         st.operating = { count: Number(ev.mission_count || (ev.missions?.length ?? 0)), summary: String(ev.summary || "") };
         break;
       case "goal_done":
-        st.status = "done"; sseRef.current?.close(); break;
+        st.status = "done";
+        void reconcileTerminalState();
+        break;
       case "goal_error":
-        st.status = "error"; sseRef.current?.close(); break;
+        st.status = "error";
+        void reconcileTerminalState();
+        break;
       case "agent_question":
         setAgentQuestion({
           request_id: ev.request_id,
@@ -487,20 +586,26 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       default: return; // ignore pings/unknown without re-render
     }
     force();
-  }, [pushAgentToast]);
+  }, [pushAgentToast, reconcileTerminalState]);
 
   // Load meta + state, then connect SSE.
   useEffect(() => {
     if (!sessionId || !isSignedIn) return;
     let alive = true;
     setAccessDenied(false);
+    setSessionUnavailable("");
     // Restore from cache (keeps logs + selected agent across nav) — else start fresh.
     const cached = SV_CACHE.get(sessionId);
     const fromCache = !!cached;
     if (cached) {
       S.current = cached;
     } else {
-      S.current = { status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [], decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "", liveUrl: "", operating: null, parentId: "", startedAt: 0, credits: 0, headroomSaved: 0, headroomBefore: 0 };
+      S.current = {
+        status: "loading", goal: "", company: "", projectName: "", stackId: "", agents: {}, artifacts: [], approvals: [],
+        decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "",
+        liveUrl: "", needsReview: false, reviewReason: "", completionAuditSummary: "", completionAuditFailures: [],
+        operating: null, parentId: "", startedAt: 0, credits: 0, headroomSaved: 0, headroomBefore: 0,
+      };
       cacheSession(sessionId, S.current);
     }
     force();
@@ -510,10 +615,19 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       // (not your session) or it doesn't exist → block and don't open the stream, so
       // you can only ever view your OWN sessions.
       let meta = null;
-      try { meta = await getSessionMeta(sessionId); } catch {}
+      let metaFetchFailed = false;
+      try { meta = await getSessionMeta(sessionId); } catch { metaFetchFailed = true; }
       if (!alive) return;
       const myFounder = (sessFounder.current || founderId || "").toString();
-      if (!meta || (meta.founder_id && myFounder && meta.founder_id !== myFounder)) {
+      if (metaFetchFailed) {
+        setSessionUnavailable("Session data is temporarily unavailable. Check the local backend or API proxy and try again.");
+        return;
+      }
+      if (!meta) {
+        setSessionUnavailable("Session details could not be loaded. The session may not exist yet, the API may be unavailable, or the request may have been blocked locally.");
+        return;
+      }
+      if (meta.founder_id && myFounder && meta.founder_id !== myFounder) {
         setAccessDenied(true);
         return;
       }
@@ -528,8 +642,11 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         S.current.credits = Number(meta.credits_used || 0);
         S.current.headroomSaved = Number(meta.headroom_tokens_saved || 0);
         S.current.headroomBefore = Number(meta.headroom_tokens_before || 0);
+        S.current.needsReview = Boolean(meta.needs_review);
+        S.current.reviewReason = String(meta.review_reason || "");
         S.current.stackId = meta.stack_id || "";
         S.current.parentId = meta.parent_session_id || "";
+        if (!S.current.liveUrl && meta.deploy_url) S.current.liveUrl = meta.deploy_url;
         if (meta.created_at) { const t = Date.parse(meta.created_at); if (!Number.isNaN(t)) S.current.startedAt = t; }
       }
       // rich state (404 normal)
@@ -537,58 +654,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         const r = await apiFetch(`${API}/sessions/${sessionId}/state`);
         if (r.ok && alive) {
           const d = await r.json();
-          if (!S.current.goal && d.instruction) {
-            const { projectName, cleanGoal } = extractProjectName(d.instruction);
-            S.current.goal = cleanGoal;
-            if (!S.current.projectName) S.current.projectName = projectName;
-          }
-          if (d.stack_id) S.current.stackId = d.stack_id;
-          else if (d.stack?.stack_id && !S.current.stackId) S.current.stackId = d.stack.stack_id;
-          if (d.previewUrl) S.current.liveUrl = d.previewUrl;
-          S.current.status = d.status || S.current.status;
-          if (Array.isArray(d.artifacts) && d.artifacts.length) S.current.artifacts = d.artifacts;
-          else if (!fromCache) S.current.artifacts = [];
-          if (Array.isArray(d.approvals)) {
-            S.current.approvals = d.approvals
-              .filter((a: any) => PENDING.has(a.status) && (a.gate_key || a.key))
-              .map((a: any) => ({ ...a, gate_key: a.gate_key || a.key }));
-          }
-          if (d.pending_agent_question && typeof d.pending_agent_question === "object") {
-            setAgentQuestion({
-              request_id: String(d.pending_agent_question.request_id || ""),
-              title: String(d.pending_agent_question.title || ""),
-              question: String(d.pending_agent_question.question || ""),
-              options: Array.isArray(d.pending_agent_question.options) ? d.pending_agent_question.options.map((v: unknown) => String(v)) : [],
-              hint: String(d.pending_agent_question.hint || ""),
-              context: String(d.pending_agent_question.context || ""),
-              recommendation: String(d.pending_agent_question.recommendation || ""),
-              severity: d.pending_agent_question.severity === "critical" || d.pending_agent_question.severity === "info" ? d.pending_agent_question.severity : "warning",
-              option_details: d.pending_agent_question.option_details && typeof d.pending_agent_question.option_details === "object"
-                ? Object.fromEntries(Object.entries(d.pending_agent_question.option_details).map(([k, v]) => [k, String(v)]))
-                : {},
-            });
-          } else {
-            setAgentQuestion(null);
-          }
-          if (d.agents && typeof d.agents === "object") {
-            for (const [k, ag] of Object.entries<any>(d.agents)) {
-              const rawLog: any[] = ag.log || [];
-              const mapped = rawLog.map((e) => ({ ts: e.ts ?? Date.now(), type: String(e.type || ""), text: safeText(e.text) }));
-              const existing = S.current.agents[k];
-              // When restoring from cache, the cached log may already hold live
-              // updates newer than the snapshot — keep whichever is longer so we
-              // never drop streamed lines on remount.
-              const log = (fromCache && existing && existing.log.length >= mapped.length) ? existing.log : mapped;
-              S.current.agents[k] = {
-                key: k, status: ag.status || existing?.status || "waiting",
-                log,
-                term: existing?.term || [],
-                visitedUrls: ag.visitedUrls || ag.visited_urls || existing?.visitedUrls || [],
-                currentTool: existing?.currentTool ?? null, result: ag.result || existing?.result || null,
-                instruction: ag.instruction || existing?.instruction || "",
-              };
-            }
-          }
+          applyStateSnapshot(d, fromCache);
         }
       } catch {}
       if (!alive) return;
@@ -606,23 +672,27 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     })();
 
     return () => { alive = false; sseRef.current?.close(); sseRef.current = null; };
-  }, [sessionId, founderId, handleEvent, isSignedIn]);
+  }, [sessionId, founderId, handleEvent, isSignedIn, applyStateSnapshot]);
 
   // Poll session meta every 30s to pick up live credits + headroom savings.
   useEffect(() => {
     if (!sessionId) return;
     const id = setInterval(async () => {
-      if (S.current.status !== "running") return;
+      if (S.current.status !== "running" && S.current.status !== "stalled" && S.current.status !== "done") return;
       try {
         const m = await getSessionMeta(sessionId);
         if (!m) return;
         const credits = Number(m.credits_used || 0);
         const saved = Number(m.headroom_tokens_saved || 0);
         const before = Number(m.headroom_tokens_before || 0);
-        if (credits !== S.current.credits || saved !== S.current.headroomSaved) {
+        const reviewChanged = Boolean(m.needs_review) !== S.current.needsReview || String(m.review_reason || "") !== S.current.reviewReason;
+        if (credits !== S.current.credits || saved !== S.current.headroomSaved || reviewChanged) {
           S.current.credits = credits;
           S.current.headroomSaved = saved;
           S.current.headroomBefore = before;
+          S.current.needsReview = Boolean(m.needs_review);
+          S.current.reviewReason = String(m.review_reason || "");
+          if (!S.current.liveUrl && m.deploy_url) S.current.liveUrl = m.deploy_url;
           force();
         }
       } catch {}
@@ -893,7 +963,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const LABELS: Record<string, string> = { think: "Thinking", tool: "Searching", result: "Found", done: "Done", error: "Error", start: "Started" };
 
   const statusPill = (s: string) => {
-    const map: Record<string, [string, string]> = { running: ["blue", "● Running"], done: ["green", "✓ Done"], error: ["red", "✗ Error"], killed: ["red", "■ Stopped"], loading: ["blue", "● Running"] };
+    const map: Record<string, [string, string]> = { running: ["blue", "● Running"], done: ["green", "✓ Done"], stalled: ["amber", "⚠ Review"], error: ["red", "✗ Error"], killed: ["red", "■ Stopped"], loading: ["blue", "● Running"] };
     const [cls, txt] = map[s] || ["", s];
     return <span className={`pill ${cls}`}>{txt}</span>;
   };
@@ -918,6 +988,17 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         <div style={{ fontSize: 16, fontWeight: 700, color: "var(--fg)" }}>You don&apos;t have access to this session</div>
         <div style={{ fontSize: 13, color: "var(--fd)", maxWidth: 360 }}>It belongs to another account, or it doesn&apos;t exist.</div>
         <a href="/" className="btn" style={{ padding: "10px 20px", textDecoration: "none" }}>← Back to dashboard</a>
+      </div>
+    );
+  }
+
+  if (sessionUnavailable) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 14, background: "var(--bg)", padding: 24, textAlign: "center" }}>
+        <div style={{ fontSize: 30 }}>⚠</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "var(--fg)" }}>Session unavailable right now</div>
+        <div style={{ fontSize: 13, color: "var(--fd)", maxWidth: 420 }}>{sessionUnavailable}</div>
+        <button className="btn" onClick={() => window.location.reload()} style={{ padding: "10px 20px" }}>Retry</button>
       </div>
     );
   }
@@ -1069,8 +1150,42 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         );
       })()}
 
+      {(st.needsReview || st.status === "stalled" || st.completionAuditFailures.length > 0) && (
+        <div style={{ background: "rgba(245, 158, 11, 0.14)", borderBottom: "1px solid rgba(245, 158, 11, 0.28)", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 18px", flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontFamily: "var(--font-chakra)", fontSize: 12, fontWeight: 700, color: "var(--amber)" }}>Review needed before calling this run finished</div>
+              <div style={{ fontSize: 10.5, color: "var(--fd)", marginTop: 2 }}>
+                {st.reviewReason || st.completionAuditSummary || st.completionAuditFailures[0] || "Astra found a deploy or handoff issue that needs another pass."}
+              </div>
+              {st.completionAuditFailures.length > 1 && (
+                <div style={{ fontSize: 9.5, color: "var(--fm)", marginTop: 4 }}>
+                  {st.completionAuditFailures.slice(1).join(" · ")}
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {st.liveUrl && isLocalPreview(st.liveUrl) && /deploy|preview|url|404/i.test(`${st.reviewReason} ${st.completionAuditSummary}`) && (
+                <button className="btn sm" onClick={restartPreview} disabled={previewRestarting}>
+                  {previewRestarting ? "Restarting…" : "Restart preview"}
+                </button>
+              )}
+              <button className="btn sm" onClick={() => {
+                setCopilotOpen(true);
+                if (steerRef.current && !steerRef.current.value.trim()) {
+                  steerRef.current.value = st.reviewReason
+                    ? `Fix this run issue: ${st.reviewReason}`
+                    : "Review the completion issues and tell the right agents to fix them.";
+                }
+                steerRef.current?.focus();
+              }}>Ask copilot</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* done / operating banner */}
-      {st.status === "done" && (
+      {(st.status === "done" || st.status === "stalled") && (
         st.operating ? (
           <div className="done-bar" style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{ flex: 1 }}>
@@ -1080,7 +1195,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             <a href="/goals" className="btn sm" style={{ flexShrink: 0, textDecoration: "none", background: "var(--blue)", border: "1px solid var(--blue)", color: "#fff" }}>View missions →</a>
           </div>
         ) : (
-          <div className="done-bar"><div><div className="done-title">✓ Run complete</div><div className="done-sub">All agents finished. Deliverables are in the vault.</div></div></div>
+          <div className="done-bar"><div><div className="done-title">{st.status === "stalled" || st.needsReview ? "⚠ Run finished with review needed" : "✓ Run complete"}</div><div className="done-sub">{st.status === "stalled" || st.needsReview ? (st.reviewReason || st.completionAuditSummary || "Deliverables are ready, but Astra found an issue that still needs attention.") : "All agents finished. Deliverables are in the vault."}</div></div></div>
         )
       )}
 
@@ -1096,7 +1211,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
       {/* status bar */}
       <div className="sbar">
-        {st.status === "done" ? <><span className="sv g">✓</span> Complete · <span className="sv g">{done}</span> agents · <span className="sv g">{artReady}</span> deliverable{artReady !== 1 ? "s" : ""}</>
+        {st.status === "stalled" ? <><span className="sv r">⚠</span> Review needed · <span className="sv g">{done}</span> done <div className="s-sep" /> <span style={{ color: "var(--fd)" }}>{st.completionAuditFailures[0] || st.reviewReason || "Completion audit flagged the run."}</span></>
+        : st.status === "done" ? <><span className="sv g">✓</span> Complete · <span className="sv g">{done}</span> agents · <span className="sv g">{artReady}</span> deliverable{artReady !== 1 ? "s" : ""}</>
         : st.status === "error" ? <><span className="sv r">✗</span> Failed · <span className="sv r">{err}</span> error{err !== 1 ? "s" : ""}</>
         : !total ? <><div className="live-dot" /><span style={{ color: "var(--fd)" }}>Planning your goal…</span></>
         : st.approvals.length ? <><span className="sv r">⚠</span> Approval needed — run paused <div className="s-sep" /> <span className="sv g">{done}</span> done</>
@@ -1733,7 +1849,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           <div className="copilot-thread">
             {copilot.length === 0 && (
               <div className="copilot-empty">
-                Ask or direct Astra. The copilot can answer from your company brain, read &amp; approve goals, steer the running agents, and run a cycle. Try “what’s our current goal?”, “tell the team to focus on pricing”, or “approve the next goal”.
+                Ask or direct Astra. The copilot can read the company brain, inspect completion audits, approve milestones and gates, answer blocked agent questions, pause or resume runs, restart previews, steer live agents, and dispatch new work. Try “what completion issues are blocking this run?”, “approve the next goal”, or “tell the web agent to fix the deploy”.
               </div>
             )}
             {copilot.map((m, i) => (
@@ -1765,7 +1881,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         <div className="steer-wrap">
           <button className="steer-send copilot-toggle" aria-label="Toggle copilot" title="Copilot chat" onClick={() => setCopilotOpen((v) => !v)}>{copilotOpen ? "▾" : "✦"}</button>
           <input ref={steerRef} className="steer-inp" aria-label="Ask or direct Astra"
-            placeholder='Ask or direct Astra — "what’s our goal?" · "focus on pricing" · "approve next goal"'
+            placeholder='Ask or direct Astra — "what completion issues are left?" · "focus on pricing" · "approve next goal"'
             onFocus={() => setCopilotOpen(true)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); setCopilotOpen(true); sendCopilot(); } }} />
           <button className="steer-send copilot-submit" aria-label="Send" onClick={() => { setCopilotOpen(true); sendCopilot(); }}>↑</button>

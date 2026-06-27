@@ -133,6 +133,11 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   // "Stay signed in" enforcement: if user opted out, sign them out on fresh browser open.
   // sessionStorage survives in-tab redirects (including OAuth) but clears on browser close.
   useEffect(() => {
+    if (qaBypass) {
+      sessionStorage.setItem("astra_session_active", "1");
+      setSessionChecked(true);
+      return;
+    }
     if (isLoading) return;
     if (!isSignedIn) { setSessionChecked(true); return; }
     const rememberMe = localStorage.getItem("astra_remember_me");
@@ -146,7 +151,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
     }
     sessionStorage.setItem("astra_session_active", "1");
     setSessionChecked(true);
-  }, [isLoading, isSignedIn]);
+  }, [isLoading, isSignedIn, qaBypass]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

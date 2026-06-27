@@ -102,6 +102,27 @@ def test_workflow_state_marks_done_with_failed_completion_audit_as_stalled():
     assert state["completion_audit"]["ok"] is False
 
 
+def test_workflow_state_includes_durable_review_flags(monkeypatch):
+    monkeypatch.setattr("backend.workflow_state._session_meta_snapshot", lambda _session_id: {
+        "founder_id": "founder_meta",
+        "company_id": "company_meta",
+        "status": "done",
+        "needs_review": True,
+        "review_reason": "deploy check failed: web preview 404",
+        "deploy_url": "https://broken.example.com",
+    })
+    events = [
+        (1, {"type": "goal_done", "results": {}}),
+    ]
+
+    state = build_session_state("session_meta_review", events)
+
+    assert state["founder_id"] == "founder_meta"
+    assert state["needs_review"] is True
+    assert state["review_reason"] == "deploy check failed: web preview 404"
+    assert state["session_meta"]["deploy_url"] == "https://broken.example.com"
+
+
 def test_workflow_state_marks_truncated_running_log_as_stalled(monkeypatch):
     monkeypatch.setattr("backend.workflow_state._run_ledger_snapshot", lambda _session_id: {
         "status": "running",

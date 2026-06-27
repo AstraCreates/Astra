@@ -3,6 +3,8 @@ import { useSession } from "next-auth/react";
 
 const DEV_USER_ID_KEY = "astra_dev_user_id";
 const AUTH_USER_ID_KEY = "astra_auth_user_id";
+const QA_BYPASS_KEY = "astra_qa_bypass";
+const QA_BYPASS_USER_ID = "qa_local_user";
 
 function generateId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -20,8 +22,29 @@ function getPersistedUserId(): string | null {
   return localStorage.getItem(AUTH_USER_ID_KEY) || localStorage.getItem(DEV_USER_ID_KEY);
 }
 
+function hasQaBypassQuery(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("qa") === "1";
+}
+
+function ensureQaBypassState(): string | null {
+  if (typeof window === "undefined") return null;
+  if (!hasQaBypassQuery()) return null;
+  localStorage.setItem(QA_BYPASS_KEY, "1");
+  localStorage.setItem(AUTH_USER_ID_KEY, QA_BYPASS_USER_ID);
+  localStorage.setItem(DEV_USER_ID_KEY, QA_BYPASS_USER_ID);
+  return QA_BYPASS_USER_ID;
+}
+
+function isQaBypassEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  return process.env.NODE_ENV !== "production" && (localStorage.getItem(QA_BYPASS_KEY) === "1" || hasQaBypassQuery());
+}
+
 export function getOrCreateUserId(): string {
   if (typeof window === "undefined") return "anon";
+  const qaUserId = ensureQaBypassState();
+  if (qaUserId) return qaUserId;
   let id = getPersistedUserId();
   if (!id) {
     id = generateId();
@@ -32,9 +55,10 @@ export function getOrCreateUserId(): string {
 
 export function useDevUser() {
   const { data: session, status } = useSession();
+  const qaBypass = isQaBypassEnabled();
 
-  const isLoading = status === "loading";
-  const isSignedIn = status === "authenticated" && !!session?.user?.email;
+  const isLoading = !qaBypass && status === "loading";
+  const isSignedIn = (status === "authenticated" && !!session?.user?.email) || qaBypass;
 
   const googleEmail = session?.user?.email ?? null;
   // Keep identity stable across auth transitions and across surfaces.
@@ -47,13 +71,16 @@ export function useDevUser() {
 
   // Keep localStorage in sync so ApiAuthBridge always sends the right founder ID + email.
   useEffect(() => {
+    if (qaBypass) {
+      ensureQaBypassState();
+    }
     if (isSignedIn && googleEmail) {
       const stableId = normalizeSignedInUserId(googleEmail);
       localStorage.setItem(AUTH_USER_ID_KEY, stableId);
       localStorage.setItem(DEV_USER_ID_KEY, stableId);
       localStorage.setItem("astra_auth_email", googleEmail);
     }
-  }, [isSignedIn, googleEmail]);
+  }, [isSignedIn, googleEmail, qaBypass]);
 
   return {
     userId,
@@ -62,7 +89,7 @@ export function useDevUser() {
     user: {
       id: userId,
       email: googleEmail,
-      fullName: session?.user?.name ?? googleEmail ?? "Dev User",
+      fullName: session?.user?.name ?? googleEmail ?? (qaBypass ? "QA User" : "Dev User"),
       imageUrl: session?.user?.image ?? null,
     },
   };

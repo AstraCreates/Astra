@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
-import { listSessions, deleteSessionRemote, killSession, getSessionDigest, AGENT_LABELS, type SessionIndexEntry, type SessionDigest } from "@/lib/api";
+import { apiFetch, listSessions, deleteSessionRemote, killSession, getSessionDigest, AGENT_LABELS, type SessionIndexEntry, type SessionDigest } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import AstraGradient from "./AstraGradient";
@@ -39,6 +39,45 @@ function ago(ts: string | undefined): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+type CopilotAction = { tool: string; label: string; detail?: string; tone?: "info" | "success" | "warn" };
+
+function titleCaseTool(raw: string): string {
+  return raw
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function normalizeCopilotActions(actions: any): CopilotAction[] {
+  if (!Array.isArray(actions)) return [];
+  return actions
+    .map((action: any) => {
+      if (typeof action === "string") {
+        return { tool: action, label: titleCaseTool(action), tone: "info" as const };
+      }
+      const tool = String(action?.tool || action?.name || "").trim();
+      if (!tool) return null;
+      return {
+        tool,
+        label: String(action?.label || titleCaseTool(tool)),
+        detail: typeof action?.detail === "string" ? action.detail : undefined,
+        tone: action?.tone === "success" || action?.tone === "warn" ? action.tone : "info",
+      };
+    })
+    .filter(Boolean) as CopilotAction[];
+}
+
+function pickCopilotSession(sessions: SessionIndexEntry[]): SessionIndexEntry | null {
+  if (!sessions.length) return null;
+  return (
+    sessions.find((session) => session.status === "stalled") ||
+    sessions.find((session) => session.status === "running") ||
+    sessions[0] ||
+    null
+  );
+}
+
 function StatusPill({ status }: { status: string }) {
   if (status === "running") return <span className="pill blue">● Running</span>;
   if (status === "done") return <span className="pill green">✓ Done</span>;
@@ -61,8 +100,14 @@ export default function DashboardView() {
   const [greeting, setGreeting] = useState("");
   const [digests, setDigests] = useState<Map<string, SessionDigest>>(new Map());
   const [showCompleted, setShowCompleted] = useState(false);
+  const [copilot, setCopilot] = useState<{ role: string; content: string; actions?: CopilotAction[] }[]>([]);
+  const [copilotBusy, setCopilotBusy] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(false);
+  const [copilotSessionId, setCopilotSessionId] = useState("");
   const retriedRef = useRef(false);
   const prevStatusRef = useRef<Map<string, string>>(new Map());
+  const copilotLoadedSession = useRef<string | null>(null);
+  const copilotInputRef = useRef<HTMLInputElement>(null);
   const [launchComplete, setLaunchComplete] = useState<{ companyName: string; founderName: string; agentsRan: number; artifactsCreated: number; stackName?: string } | null>(null);
 
   // Settings preview: fire immediately on mount without needing session data.
@@ -162,6 +207,48 @@ export default function DashboardView() {
     return () => clearInterval(t);
   }, [sessions]);
 
+  useEffect(() => {
+    if (!sessions?.length) {
+      setCopilotSessionId("");
+      return;
+    }
+    const preferred = pickCopilotSession(sessions);
+    if (!preferred) return;
+    setCopilotSessionId((current) => {
+      if (current && sessions.some((session) => session.session_id === current)) return current;
+      return preferred.session_id;
+    });
+  }, [sessions]);
+
+  useEffect(() => {
+    if (!copilotOpen || !copilotSessionId || copilotLoadedSession.current === copilotSessionId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await apiFetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/copilot/${copilotSessionId}`);
+        const d = await r.json();
+        if (cancelled) return;
+        if (Array.isArray(d.history)) {
+          setCopilot((prev) => {
+            if (prev.length > 0) return prev;
+            return d.history.map((item: any) => ({
+              role: item.role,
+              content: item.content,
+              actions: normalizeCopilotActions(item.actions),
+            }));
+          });
+        }
+        copilotLoadedSession.current = copilotSessionId;
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [copilotOpen, copilotSessionId]);
+
+  useEffect(() => {
+    copilotLoadedSession.current = null;
+    setCopilot([]);
+  }, [copilotSessionId]);
+
   // Detect running→done transition OR settings-triggered replay once sessions load.
   useEffect(() => {
     if (!sessions) return;
@@ -193,8 +280,31 @@ export default function DashboardView() {
   const stalled = (sessions || []).filter((s) => s.status === "stalled").length;
   const customSessions = (sessions || []).filter((s) => s.stack_id === "custom");
   const regularSessions = (sessions || []).filter((s) => s.stack_id !== "custom");
+  const copilotSession = (sessions || []).find((session) => session.session_id === copilotSessionId) || null;
+  const copilotTitle = copilotSession ? extractGoalTitle(copilotSession.goal || "Current run") : "";
 
   const headline = greeting && firstName ? `${greeting}, ${firstName}.` : greeting ? `${greeting}.` : "";
+
+  const sendCopilot = useCallback(async () => {
+    const msg = copilotInputRef.current?.value.trim();
+    if (!msg || copilotBusy || !copilotSessionId) return;
+    if (copilotInputRef.current) copilotInputRef.current.value = "";
+    setCopilot((current) => [...current, { role: "founder", content: msg }]);
+    setCopilotBusy(true);
+    try {
+      const r = await apiFetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/copilot/${copilotSessionId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg }),
+      });
+      const d = await r.json();
+      setCopilot((current) => [...current, { role: "copilot", content: d.reply || "(no reply)", actions: normalizeCopilotActions(d.actions) }]);
+    } catch {
+      setCopilot((current) => [...current, { role: "copilot", content: "Copilot error — try again." }]);
+    } finally {
+      setCopilotBusy(false);
+    }
+  }, [copilotBusy, copilotSessionId]);
 
   return (
     <>
@@ -217,6 +327,27 @@ export default function DashboardView() {
         .sc-progress-track { height: 5px; background: var(--bd); border-radius: 3px; overflow: hidden; margin-top: 8px; }
         .sc-progress-fill { height: 100%; width: 100%; border-radius: 3px; transform-origin: left; transition: transform 0.8s ease; }
         .sc-progress-indeterminate { height: 100%; width: 35%; border-radius: 3px; animation: sc-indeterminate 1.4s ease-in-out infinite; }
+        .dash-copilot { position: sticky; bottom: 18px; margin: 0 24px 24px; border: 1px solid var(--bd); background: color-mix(in srgb, var(--surface) 92%, white 8%); backdrop-filter: blur(14px); box-shadow: 0 18px 48px rgba(15,23,42,.14); border-radius: 18px; z-index: 20; overflow: hidden; }
+        .dash-copilot-thread { max-height: 280px; overflow-y: auto; padding: 14px 14px 0; display: flex; flex-direction: column; gap: 10px; }
+        .dash-copilot-row { display: flex; gap: 10px; align-items: flex-start; }
+        .dash-copilot-row.is-founder { justify-content: flex-end; }
+        .dash-copilot-avatar { width: 26px; height: 26px; border-radius: 999px; background: linear-gradient(135deg, var(--blue), #7cffe6); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; }
+        .dash-copilot-bubble { max-width: min(720px, 100%); padding: 10px 12px; border-radius: 14px; background: var(--s2); color: var(--fg); font-size: 12px; line-height: 1.6; white-space: pre-wrap; }
+        .dash-copilot-row.is-founder .dash-copilot-bubble { background: var(--blue); color: #fff; }
+        .dash-copilot-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .dash-copilot-action { padding: 8px 10px; border-radius: 12px; border: 1px solid var(--bd); background: var(--surface); min-width: 0; }
+        .dash-copilot-action.is-success { border-color: rgba(16,185,129,.35); }
+        .dash-copilot-action.is-warn { border-color: rgba(245,158,11,.35); }
+        .dash-copilot-action-label { font-size: 11px; font-weight: 600; color: var(--fg); }
+        .dash-copilot-action-detail { font-size: 10px; color: var(--fm); margin-top: 3px; line-height: 1.5; }
+        .dash-copilot-thinking { display: inline-flex; gap: 5px; align-items: center; padding: 10px 12px; border-radius: 14px; background: var(--s2); }
+        .dash-copilot-thinking span { width: 6px; height: 6px; border-radius: 999px; background: var(--blue); opacity: .35; animation: sc-shimmer 1s ease-in-out infinite; }
+        .dash-copilot-thinking span:nth-child(2) { animation-delay: .12s; }
+        .dash-copilot-thinking span:nth-child(3) { animation-delay: .24s; }
+        .dash-copilot-bar { display: flex; align-items: center; gap: 10px; padding: 12px 14px 14px; border-top: 1px solid var(--bd); }
+        .dash-copilot-input { flex: 1; min-width: 0; height: 42px; border-radius: 12px; border: 1px solid var(--bd); background: var(--surface); color: var(--fg); padding: 0 14px; font-size: 12px; }
+        .dash-copilot-btn { height: 42px; border-radius: 12px; border: 1px solid var(--bd); background: var(--surface); color: var(--fg); padding: 0 14px; cursor: pointer; font-size: 12px; font-weight: 600; }
+        .dash-copilot-btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
       `}</style>
 
       <div style={{ flex: 1, overflowY: "auto" }}>
@@ -585,6 +716,70 @@ export default function DashboardView() {
 
         <div style={{ padding: "0 24px 40px" }}>
           <DashboardCanvas founderId={userId} />
+        </div>
+
+        <div className="dash-copilot">
+          {copilotOpen && (
+            <div className="dash-copilot-thread">
+              {copilot.length === 0 && (
+                <div className="dash-copilot-bubble">
+                  {copilotSession
+                    ? `Ask Astra from the dashboard. Copilot is attached to "${copilotTitle}" and can inspect run state, approvals, deployment issues, company brain context, and steer the active agents from here.`
+                    : "Start a run to activate dashboard copilot context."}
+                </div>
+              )}
+              {copilot.map((message, index) => (
+                <div key={index} className={`dash-copilot-row ${message.role === "founder" ? "is-founder" : "is-astra"}`}>
+                  {message.role !== "founder" && <span className="dash-copilot-avatar">A</span>}
+                  <div className="dash-copilot-bubble">
+                    {message.content}
+                    {message.actions && message.actions.length > 0 && (
+                      <div className="dash-copilot-actions" aria-label="Copilot actions">
+                        {message.actions.map((action, actionIndex) => (
+                          <div key={`${action.tool}-${actionIndex}`} className={`dash-copilot-action is-${action.tone || "info"}`}>
+                            <div className="dash-copilot-action-label">{action.label}</div>
+                            {action.detail && <div className="dash-copilot-action-detail">{action.detail}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {copilotBusy && (
+                <div className="dash-copilot-row is-astra">
+                  <span className="dash-copilot-avatar">A</span>
+                  <div className="dash-copilot-thinking"><span /><span /><span /></div>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="dash-copilot-bar">
+            <button className="dash-copilot-btn" onClick={() => setCopilotOpen((value) => !value)}>
+              {copilotOpen ? "Hide copilot" : "Open copilot"}
+            </button>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 10, color: "var(--fm)", marginBottom: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {copilotSession ? `Context: ${copilotTitle}` : "Context: no run selected yet"}
+              </div>
+              <input
+                ref={copilotInputRef}
+                className="dash-copilot-input"
+                placeholder={copilotSession ? 'Ask Astra from the dashboard — "what needs attention?"' : "Start a run to enable copilot"}
+                disabled={!copilotSession || copilotBusy}
+                onFocus={() => setCopilotOpen(true)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void sendCopilot();
+                  }
+                }}
+              />
+            </div>
+            <button className="dash-copilot-btn primary" disabled={!copilotSession || copilotBusy} onClick={() => { setCopilotOpen(true); void sendCopilot(); }}>
+              Send
+            </button>
+          </div>
         </div>
 
       </div>

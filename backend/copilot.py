@@ -55,6 +55,21 @@ def _clip(text: Any, limit: int = 280) -> str:
     return value[:limit]
 
 
+def _detect_named_agent(message: str, valid_agents: set[str]) -> str:
+    low = f" {str(message or '').lower()} "
+    for agent in sorted(valid_agents, key=len, reverse=True):
+        token = f" {agent.lower()} "
+        if token in low or low.startswith(token.strip() + " "):
+            return agent
+    return ""
+
+
+def _looks_like_deploy_breakage(message: str) -> bool:
+    low = str(message or "").lower()
+    needles = ("404", "deployment_not_found", "deploy", "preview", "broken url", "site is down", "site is broken")
+    return any(needle in low for needle in needles)
+
+
 async def _load_live_context(session_id: str, founder_id: str) -> dict[str, Any]:
     """Fetch the latest durable session snapshot for the copilot prompt."""
     import asyncio
@@ -73,6 +88,12 @@ async def _load_live_context(session_id: str, founder_id: str) -> dict[str, Any]
         meta = get_session_meta(session_id) or {}
     except Exception:
         meta = {}
+
+    try:
+        from backend.approval_workflows import get_approval_workflow
+        approval_workflow = get_approval_workflow(session_id) or {}
+    except Exception:
+        approval_workflow = {}
 
     workboard = state.get("workboard") or {}
     agents = state.get("agents") or {}
@@ -106,6 +127,19 @@ async def _load_live_context(session_id: str, founder_id: str) -> dict[str, Any]
         for approval in approvals[-8:]
         if isinstance(approval, dict)
     ]
+    approval_requests = [
+        {
+            "id": item.get("id"),
+            "gate_key": item.get("gate_key") or item.get("key"),
+            "title": item.get("title"),
+            "status": item.get("status"),
+            "required_role": item.get("required_role"),
+            "agent": item.get("agent"),
+            "reason": _clip(item.get("reason"), 180),
+        }
+        for item in (approval_workflow.get("requests") or [])[:12]
+        if isinstance(item, dict)
+    ]
 
     latest_events = []
     for event in (state.get("digest") or {}).get("recent_events", [])[:10]:
@@ -116,6 +150,38 @@ async def _load_live_context(session_id: str, founder_id: str) -> dict[str, Any]
             "agent": event.get("agent"),
             "text": _clip(event.get("summary") or event.get("message") or event.get("error") or event.get("instruction")),
         })
+
+    completion_audit = state.get("completion_audit") or {}
+    audit_failures = [
+        {
+            "key": item.get("key"),
+            "message": _clip(item.get("message") or item.get("summary") or "", 180),
+        }
+        for item in (completion_audit.get("failed") or [])[:6]
+        if isinstance(item, dict)
+    ]
+    deploy_targets: list[dict[str, str]] = []
+    seen_urls: set[str] = set()
+    for name, agent in sorted(agents.items()):
+        if not isinstance(agent, dict):
+            continue
+        result = agent.get("result") or {}
+        if not isinstance(result, dict):
+            result = {}
+        url = (
+            result.get("deploy_url")
+            or result.get("preview_url")
+            or result.get("live_url")
+            or result.get("url")
+            or agent.get("previewUrl")
+        )
+        if isinstance(url, str) and url.startswith(("http://", "https://")) and url not in seen_urls:
+            seen_urls.add(url)
+            deploy_targets.append({
+                "agent": name,
+                "url": url,
+                "status": str(agent.get("status") or ""),
+            })
 
     # Scan ALL recent sessions — gives copilot visibility into every run, deploy URLs,
     # child sessions, and sibling work so it can answer any question without extra tool calls.
@@ -155,8 +221,9 @@ async def _load_live_context(session_id: str, founder_id: str) -> dict[str, Any]
 
     # Load all company goals so copilot knows every goal's status + tasks.
     all_goals: list[dict] = []
+    goal_pending_approvals: list[dict] = []
     try:
-        from backend.missions.company_goal import get_company_goal
+        from backend.missions.company_goal import get_company_goal, pending_approvals
         cid = meta.get("company_id") or founder_id
         gdata = get_company_goal(founder_id, cid) or {}
         for g in (gdata.get("goals") or []):
@@ -168,6 +235,14 @@ async def _load_live_context(session_id: str, founder_id: str) -> dict[str, Any]
                 "status": g.get("status"),
                 "open_tasks": open_count,
                 "total_tasks": len(tasks),
+            })
+        for task in pending_approvals(founder_id, cid)[:10]:
+            goal_pending_approvals.append({
+                "id": task.get("id"),
+                "title": task.get("title"),
+                "goal_id": task.get("goal_id"),
+                "owner_agents": list(task.get("owner_agents") or [])[:4],
+                "approval": task.get("approval") or {},
             })
     except Exception as exc:
         logger.warning("copilot goals load failed: %s", exc)
@@ -192,14 +267,23 @@ async def _load_live_context(session_id: str, founder_id: str) -> dict[str, Any]
             "stack_id": meta.get("stack_id"),
             "company_id": meta.get("company_id"),
             "kind": meta.get("kind"),
+            "needs_review": bool(meta.get("needs_review")),
+            "review_reason": _clip(meta.get("review_reason"), 220),
         },
         "state": {
             "status": state.get("status"),
             "event_count": state.get("event_count"),
             "last_event_id": state.get("last_event_id"),
             "goal": _clip((state.get("digest") or {}).get("goal") or meta.get("goal"), 280),
+            "preview_url": state.get("previewUrl") or meta.get("deploy_url") or meta.get("preview_url") or "",
         },
         "goal": state.get("company_goal"),
+        "completion_audit": {
+            "ok": completion_audit.get("ok"),
+            "status": completion_audit.get("status"),
+            "summary": completion_audit.get("summary"),
+            "failed": audit_failures,
+        },
         "workboard": {
             "summary": workboard.get("summary"),
             "counts": workboard.get("counts") or {},
@@ -216,6 +300,10 @@ async def _load_live_context(session_id: str, founder_id: str) -> dict[str, Any]
                 if isinstance(item, dict)
             ],
         },
+        "approval_workflow": {
+            "request_count": len(approval_requests),
+            "requests": approval_requests,
+        },
         "agents": [
             {
                 "agent": name,
@@ -230,8 +318,20 @@ async def _load_live_context(session_id: str, founder_id: str) -> dict[str, Any]
         "recent_artifacts": recent_artifacts,
         "recent_approvals": recent_approvals,
         "recent_events": latest_events,
+        "deploy_targets": deploy_targets[:10],
+        "deployment_checks": [
+            {
+                "agent": item.get("agent"),
+                "url": item.get("url"),
+                "status": item.get("status"),
+            }
+            for item in (state.get("deployment_checks") or [])[:10]
+            if isinstance(item, dict)
+        ],
+        "pending_agent_question": state.get("pending_agent_question"),
         "child_sessions_running": child_running,
         "all_goals": all_goals,
+        "goal_pending_approvals": goal_pending_approvals,
         "all_recent_sessions": all_recent_sessions[:30],
     }
 
@@ -282,6 +382,28 @@ async def _tool_approve_next_goal(founder_id: str, session_id: str, args: dict) 
             return {"approved": True, "goal": goal.get("title")}
         return {"approved": False, "error": "no proposed goal to approve"}
     return {"rejected": reject_current_goal(founder_id, company_id)}
+
+
+async def _tool_decide_goal_task(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.missions.company_goal import decide_task
+
+    company_id = _company_for_session(session_id, founder_id)
+    task_id = str(args.get("task_id") or "").strip()
+    approved = bool(args.get("approved", True))
+    note = str(args.get("note") or "")
+    if not task_id:
+        return {"ok": False, "error": "task_id required"}
+    try:
+        task = decide_task(founder_id, task_id, approved, note=note, company_id=company_id)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    return {
+        "ok": True,
+        "task_id": task_id,
+        "approved": approved,
+        "status": task.get("status"),
+        "title": task.get("title"),
+    }
 
 
 async def _tool_steer_agents(founder_id: str, session_id: str, args: dict) -> Any:
@@ -356,6 +478,154 @@ async def _tool_run_cycle(founder_id: str, session_id: str, args: dict) -> Any:
     return {"ok": True, "started": True}
 
 
+async def _tool_pause_session(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.core.cancellation import pause_session
+    target = str(args.get("session_id") or session_id)
+    err = _assert_session_owner(target, founder_id)
+    if err:
+        return {"ok": False, "error": err}
+    pause_session(target)
+    return {"ok": True, "session_id": target, "paused": True}
+
+
+async def _tool_resume_session(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.core.cancellation import resume_session
+    target = str(args.get("session_id") or session_id)
+    err = _assert_session_owner(target, founder_id)
+    if err:
+        return {"ok": False, "error": err}
+    resume_session(target)
+    return {"ok": True, "session_id": target, "paused": False}
+
+
+async def _tool_restart_preview(founder_id: str, session_id: str, args: dict) -> Any:
+    import asyncio
+    import pathlib
+    from backend.core.session_store import get_session_meta
+    from backend.tools.git_tools import WORKSPACE_ROOT, _root_session_id
+    from backend.tools.local_preview import start_local_preview
+
+    target = str(args.get("session_id") or session_id)
+    err = _assert_session_owner(target, founder_id)
+    if err:
+        return {"ok": False, "error": err}
+    meta = get_session_meta(target) or {}
+    root_sid = _root_session_id(target)
+    ws_root = pathlib.Path(WORKSPACE_ROOT)
+    workspace = None
+    for candidate in ws_root.glob(f"{root_sid}"):
+        workspace = candidate
+        break
+    if workspace is None:
+        for candidate in ws_root.glob("*"):
+            if not (candidate / ".oc_session_id").exists():
+                continue
+            oc = (candidate / ".oc_session_id").read_text().strip()
+            if oc and root_sid.startswith(oc[:8]):
+                workspace = candidate
+                break
+    if workspace is None:
+        return {"ok": False, "error": "workspace not found for this session"}
+    inner = workspace
+    subdirs = sorted(
+        [p for p in workspace.iterdir() if p.is_dir() and (p / "package.json").exists()],
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    if subdirs:
+        inner = subdirs[0]
+    company_name = meta.get("company") or meta.get("project_name") or meta.get("company_name") or ""
+    url = await asyncio.to_thread(start_local_preview, str(inner), root_sid, company_name)
+    return {"ok": True, "session_id": target, "preview_url": url}
+
+
+async def _tool_get_completion_audit(founder_id: str, session_id: str, args: dict) -> Any:
+    import asyncio
+    from backend.api.routes import _load_session_events
+    from backend.run_completion_audit import build_run_completion_audit
+    from backend.workflow_state import build_session_state, load_session_state
+
+    target = str(args.get("session_id") or session_id)
+    err = _assert_session_owner(target, founder_id)
+    if err:
+        return {"ok": False, "error": err}
+    events = await _load_session_events(target)
+    state = await asyncio.to_thread(build_session_state, target, events or []) if events else await asyncio.to_thread(load_session_state, target)
+    if not state:
+        return {"ok": False, "error": "session state not found"}
+    return build_run_completion_audit(target, state)
+
+
+async def _tool_get_session_approvals(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.approval_workflows import get_approval_workflow
+
+    target = str(args.get("session_id") or session_id)
+    err = _assert_session_owner(target, founder_id)
+    if err:
+        return {"ok": False, "error": err}
+    workflow = get_approval_workflow(target) or {}
+    return {
+        "ok": True,
+        "session_id": target,
+        "requests": workflow.get("requests") or [],
+        "updated_at": workflow.get("updated_at"),
+    }
+
+
+async def _tool_decide_approval_gate(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.approval_workflows import decide_approval_request
+    from backend.core.events import approval_decision_push, publish
+
+    target = str(args.get("session_id") or session_id)
+    gate_key = str(args.get("gate_key") or "").strip()
+    decision = str(args.get("decision") or "").strip().lower()
+    request_id = str(args.get("request_id") or "").strip() or None
+    note = str(args.get("note") or "")
+    if not gate_key:
+        return {"ok": False, "error": "gate_key required"}
+    err = _assert_session_owner(target, founder_id)
+    if err:
+        return {"ok": False, "error": err}
+    workflow = decide_approval_request(
+        target,
+        gate_key,
+        decision,
+        request_id=request_id,
+        actor_id=founder_id,
+        actor_role="owner",
+        note=note,
+    )
+    if not workflow.get("ok"):
+        return workflow
+    event = {
+        "type": "stack_approval_decision",
+        "gate_key": gate_key,
+        "decision": decision,
+        "founder_id": founder_id,
+        "note": note,
+        "workflow": workflow,
+    }
+    approval_decision_push(target, gate_key, event)
+    await publish(target, event)
+    return {"ok": True, "session_id": target, "gate_key": gate_key, "decision": decision}
+
+
+async def _tool_answer_agent_question(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.core.events import input_response_push, publish
+
+    target = str(args.get("session_id") or session_id)
+    request_id = str(args.get("request_id") or "").strip()
+    answer = str(args.get("answer") or "").strip()
+    err = _assert_session_owner(target, founder_id)
+    if err:
+        return {"ok": False, "error": err}
+    if not request_id or not answer:
+        return {"ok": False, "error": "request_id and answer required"}
+    input_response_push(request_id, {"answer": answer})
+    await publish(target, {"type": "agent_input_received", "request_id": request_id})
+    return {"ok": True, "session_id": target, "request_id": request_id, "answer": answer}
+
+
 def _agent_roster() -> dict[str, str]:
     """All dispatchable specialists → one-line capability."""
     try:
@@ -386,6 +656,7 @@ async def _tool_dispatch_agents(founder_id: str, session_id: str, args: dict) ->
     from backend.core.session_store import register_session
 
     instruction = str(args.get("instruction") or "").strip()
+    instruction_context = str(args.get("context") or "").strip()
     raw_agents = args.get("agents") or []
     if isinstance(raw_agents, str):
         raw_agents = [a.strip() for a in raw_agents.replace(",", " ").split() if a.strip()]
@@ -413,13 +684,20 @@ async def _tool_dispatch_agents(founder_id: str, session_id: str, args: dict) ->
 
     async def _go():
         try:
-            await orch.continue_run(instruction=instruction, founder_id=founder_id,
+            dispatch_instruction = instruction if not instruction_context else f"{instruction}\n\nContext:\n{instruction_context}"
+            await orch.continue_run(instruction=dispatch_instruction, founder_id=founder_id,
                                     prior_session_id=root, agents=valid, session_id=child)
         except Exception as e:
             logger.error("copilot dispatch_agents run failed: %s", e)
 
     asyncio.create_task(_go())
-    return {"ok": True, "dispatched": valid, "session_id": child, "instruction": instruction[:120]}
+    return {
+        "ok": True,
+        "dispatched": valid,
+        "session_id": child,
+        "instruction": instruction[:120],
+        "context": instruction_context[:200],
+    }
 
 
 async def _tool_set_goal(founder_id: str, session_id: str, args: dict) -> Any:
@@ -622,6 +900,29 @@ async def _tool_get_session_digest(founder_id: str, session_id: str, args: dict)
         return {"ok": False, "error": str(e)}
 
 
+async def _tool_get_subteam_report(founder_id: str, session_id: str, args: dict) -> Any:
+    import asyncio
+    from backend.company_reports import build_company_subteam_report
+
+    team = str(args.get("team") or "engineering").strip() or "engineering"
+    days = int(args.get("days") or 7)
+    try:
+        report = await asyncio.to_thread(build_company_subteam_report, founder_id, team, days)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    return {
+        "ok": True,
+        "team": report.get("team"),
+        "summary": report.get("summary"),
+        "record_count": report.get("record_count"),
+        "session_count": report.get("session_count"),
+        "active_work": report.get("active_work") or [],
+        "completed_work": report.get("completed_work") or [],
+        "blockers": report.get("blockers") or [],
+        "next_actions": report.get("next_actions") or [],
+    }
+
+
 async def _tool_read_brain(founder_id: str, session_id: str, args: dict) -> Any:
     """Read the company brain — identity records, canonical facts. args: {limit?}"""
     import asyncio
@@ -816,14 +1117,23 @@ _TOOLS = {
     "dispatch_agents": ("RUN specific agents on a directive now (works even when idle). args: {agents:[..], instruction}. e.g. build the app -> {agents:['web','technical'], instruction:'build the full product app: auth+dashboard+core features on the existing repo, demo-accessible preview'}", _tool_dispatch_agents),
     "set_goal": ("create + activate a company goal with per-workstream tasks, and dispatch it. args: {title, tasks:[{title, workstream}], dispatch?}. workstreams: research, product, marketing, sales, legal, ops", _tool_set_goal),
     "approve_next_goal": ("approve (and start) or reject the PROPOSED next goal. args: {approved: bool}", _tool_approve_next_goal),
+    "decide_goal_task": ("approve or send back a specific goal milestone that is awaiting founder approval. args: {task_id, approved, note?}", _tool_decide_goal_task),
     "steer_agents": ("broadcast a directive to ALL running agents in this session. args: {message}", _tool_steer_agents),
     "message_agent": ("send a directive to ONE specific agent by name. args: {agent, message}. Use when you want only the web/sales/design/etc agent to receive the instruction.", _tool_message_agent),
     "run_cycle": ("dispatch the team on the current approved goal now. args: {}", _tool_run_cycle),
+    "pause_session": ("pause a running session so new work stops advancing until resumed. args: {session_id?}", _tool_pause_session),
+    "resume_session": ("resume a paused session. args: {session_id?}", _tool_resume_session),
+    "restart_preview": ("restart the local preview server for a session workspace. args: {session_id?}", _tool_restart_preview),
     "session_status": ("status of a session (defaults to the current one). args: {session_id?}", _tool_session_status),
     "kill_session": ("stop/kill a running or hung session. args: {session_id?}", _tool_kill_session),
     "rerun_agent": ("re-run a single agent that failed or needs to redo its work. args: {agent_name, session_id?}", _tool_rerun_agent),
     # ── Read session outputs ───────────────────────────────────────────────────
     "get_session_digest": ("full digest of a session — what each agent produced, key outputs, deploy URLs. args: {session_id?}", _tool_get_session_digest),
+    "get_completion_audit": ("inspect whether a run really finished cleanly, including deploy and handoff checks. args: {session_id?}", _tool_get_completion_audit),
+    "get_session_approvals": ("read all current and historical approval requests for a session. args: {session_id?}", _tool_get_session_approvals),
+    "decide_approval_gate": ("approve, skip, or reject a session approval gate. args: {gate_key, decision, session_id?, request_id?, note?}", _tool_decide_approval_gate),
+    "answer_agent_question": ("answer a live agent question so the blocked run can continue. args: {request_id, answer, session_id?}", _tool_answer_agent_question),
+    "get_subteam_report": ("summarize what a functional team has been doing across company memory. args: {team, days?}", _tool_get_subteam_report),
     # ── Brain read/write ───────────────────────────────────────────────────────
     "read_brain": ("read company brain identity records and canonical facts. args: {limit?}", _tool_read_brain),
     "write_brain": ("add or update a company brain record. args: {title, content, type?}. type: insight|decision|fact|milestone|risk|persona|competitor|asset", _tool_write_brain),
@@ -934,9 +1244,35 @@ def _summarize_copilot_action(tool: str, result: Any) -> dict[str, str]:
     elif tool == "approve_next_goal":
         label = "Resolved next goal"
         detail = "Approved and started" if payload.get("approved") else "Rejected"
+    elif tool == "decide_goal_task":
+        label = "Resolved milestone approval"
+        detail = str(payload.get("title") or payload.get("task_id") or "Milestone updated")
     elif tool == "run_cycle":
         label = "Ran another cycle"
         detail = str(payload.get("session_id") or payload.get("message") or "Execution resumed")
+    elif tool == "pause_session":
+        label = "Paused session"
+        detail = str(payload.get("session_id") or "Run paused")
+    elif tool == "resume_session":
+        label = "Resumed session"
+        detail = str(payload.get("session_id") or "Run resumed")
+    elif tool == "restart_preview":
+        label = "Restarted preview"
+        detail = str(payload.get("preview_url") or "Preview restarted")
+    elif tool == "get_completion_audit":
+        label = "Checked completion audit"
+        detail = str(payload.get("status") or payload.get("summary") or "Audit loaded")
+        tone = "info"
+    elif tool == "get_session_approvals":
+        label = "Reviewed approvals"
+        detail = f"{len(payload.get('requests') or [])} request(s)"
+        tone = "info"
+    elif tool == "decide_approval_gate":
+        label = "Resolved approval gate"
+        detail = str(payload.get("decision") or "Decision recorded")
+    elif tool == "answer_agent_question":
+        label = "Answered agent question"
+        detail = str(payload.get("request_id") or "Response submitted")
     elif tool == "session_status":
         label = "Checked session status"
         detail = str(payload.get("status") or "Status refreshed")
@@ -945,7 +1281,7 @@ def _summarize_copilot_action(tool: str, result: Any) -> dict[str, str]:
         label = "Reviewed session outputs"
         detail = str(payload.get("goal") or payload.get("session_id") or "Latest artifacts loaded")
         tone = "info"
-    elif tool in {"ask_brain", "read_brain", "read_vault", "get_library", "read_library_item", "get_outreach", "get_integrations", "company_goal", "list_goals", "list_sessions", "list_agents", "get_cost"}:
+    elif tool in {"ask_brain", "read_brain", "read_vault", "get_library", "read_library_item", "get_outreach", "get_integrations", "company_goal", "list_goals", "list_sessions", "list_agents", "get_cost", "get_subteam_report"}:
         label = tool.replace("_", " ").strip().title() or "Checked context"
         detail = "Context refreshed"
         tone = "info"
@@ -1000,6 +1336,21 @@ def _fallback_copilot_reply(actions: list[dict[str, Any]]) -> str:
 
     if tool == "steer_agents":
         return "I sent that direction to the agents already working on it."
+    if tool == "message_agent":
+        target = result.get("target_agent") or "that agent"
+        return f"I sent that directly to {target}."
+    if tool == "pause_session":
+        return "I paused the session."
+    if tool == "resume_session":
+        return "I resumed the session."
+    if tool == "restart_preview":
+        return "I restarted the preview."
+    if tool == "decide_goal_task":
+        return f"I marked that milestone as {'approved' if result.get('approved') else 'needs changes'}."
+    if tool == "decide_approval_gate":
+        return f"I recorded that approval as {result.get('decision', 'resolved')}."
+    if tool == "answer_agent_question":
+        return "I answered the agent’s question so the run can continue."
 
     if tool == "session_status":
         status = result.get("status")
@@ -1055,7 +1406,8 @@ async def run_copilot(founder_id: str, session_id: str, message: str, founder_em
     system = (
         "You are the founder's Copilot inside an Astra session — a hands-on operator that ACTS on "
         "the company, not a status narrator. You can call tools to query the company brain, read and "
-        "approve goals, steer the running agents, run a cycle, and check status.\n\n"
+        "approve goals, resolve live approval gates, answer blocked agent questions, steer the running agents, "
+        "pause/resume runs, restart previews, run a cycle, and check status.\n\n"
         + (f"FOUNDER ACCOUNT:\n  email: {founder_email}\n  founder_id: {founder_id}\n"
            "Use this email as the founder's contact email whenever building websites, "
            "writing copy, or setting up contact forms — never invent a placeholder email.\n\n"
@@ -1063,7 +1415,9 @@ async def run_copilot(founder_id: str, session_id: str, message: str, founder_em
         + f"TOOLS:\n{tool_docs}\n\n"
         "You can natively drive the whole company: see every agent (list_agents), dispatch any of them "
         "on any directive (dispatch_agents), create/activate goals with per-workstream tasks (set_goal), "
-        "approve the next goal, steer running agents, run a cycle.\n\n"
+        "approve the next goal, approve individual milestones, steer running agents, resolve approval gates, "
+        "answer blocked questions, restart previews, pause/resume runs, inspect completion audits, read subteam reports, "
+        "and run another cycle.\n\n"
         "DECISION TREE — check in this exact order for every message:\n"
         "0. SESSION DONE CHECK: if session_meta.status == 'done' OR state.status == 'done', "
         "the session has COMPLETED — there are NO running agents regardless of what running_agents shows. "
@@ -1086,7 +1440,9 @@ async def run_copilot(founder_id: str, session_id: str, message: str, founder_em
         "   'build an app' → dispatch_agents {agents:['web','technical'], instruction:'build full product: auth + dashboard + core features'}\n"
         "   'redesign the landing page' → dispatch_agents {agents:['design','web'], instruction:'redesign the landing page: ...'}\n"
         "3. BROADER OBJECTIVE: → set_goal with per-workstream tasks (auto-dispatches).\n"
-        "4. QUESTION: 'what is...', 'how is...', 'show me...' → ask_brain / session_status / list_goals.\n"
+        "4. APPROVAL OR BLOCKER: if approval_workflow.requests or goal_pending_approvals or pending_agent_question are relevant, "
+        "use get_session_approvals / decide_approval_gate / decide_goal_task / answer_agent_question.\n"
+        "5. QUESTION: 'what is...', 'how is...', 'show me...' → ask_brain / session_status / list_goals / get_completion_audit.\n"
         "NEVER dispatch_agents if running_agents is non-empty AND session is NOT done. NEVER narrate options for an imperative.\n\n"
         "DEPLOY/404 ERRORS: If the founder reports a 404, DEPLOYMENT_NOT_FOUND, or broken URL from an "
         "agent-built site, immediately dispatch_agents with web+technical agents instructed to rebuild and "
@@ -1143,11 +1499,42 @@ async def run_copilot(founder_id: str, session_id: str, message: str, founder_em
         child_running = live.get("child_sessions_running") or []
         if running or child_running:
             try:
-                await _tool_steer_agents(founder_id, session_id, {"message": message})
-                actions.append({"tool": "steer_agents", "args": {"message": message}, "result": {"ok": True}})
-                reply = f"Sent to the running agents: {message}"
+                named = _detect_named_agent(message, set(_agent_roster().keys()) | set(str(item) for item in running))
+                if named:
+                    await _tool_message_agent(founder_id, session_id, {"agent": named, "message": message})
+                    actions.append({"tool": "message_agent", "args": {"agent": named, "message": message}, "result": {"ok": True, "target_agent": named}})
+                    reply = f"Sent to {named}: {message}"
+                else:
+                    await _tool_steer_agents(founder_id, session_id, {"message": message})
+                    actions.append({"tool": "steer_agents", "args": {"message": message}, "result": {"ok": True, "message": message}})
+                    reply = f"Sent to the running agents: {message}"
             except Exception:
                 pass
+
+    if not actions and _looks_like_deploy_breakage(message):
+        try:
+            deploy_targets = live.get("deploy_targets") or []
+            target_hint = ""
+            if deploy_targets:
+                recent = deploy_targets[0]
+                target_hint = f" Most recent deploy target: {recent.get('agent')} -> {recent.get('url')}."
+            instruction = (
+                "Investigate the broken deployment or preview, rebuild the affected site on the existing project, "
+                "and redeploy a working live URL. Verify the final URL loads successfully before finishing."
+            )
+            context = (
+                f"Founder report: {message}.{target_hint}"
+                f" Review flags: {live.get('session_meta', {}).get('review_reason') or 'none'}."
+            ).strip()
+            result = await _tool_dispatch_agents(
+                founder_id,
+                session_id,
+                {"agents": ["web", "technical"], "instruction": instruction, "context": context},
+            )
+            actions.append({"tool": "dispatch_agents", "args": {"agents": ["web", "technical"], "instruction": instruction}, "result": result})
+            reply = "I started a rebuild and redeploy pass with the web and technical agents."
+        except Exception:
+            pass
 
     if not reply:
         reply = _fallback_copilot_reply(actions)

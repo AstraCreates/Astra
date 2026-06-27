@@ -93,3 +93,35 @@ def test_run_completion_audit_flags_missing_artifacts_and_memory(tmp_path, monke
     assert audit["ok"] is False
     assert "lanes_complete" in failed_keys
     assert "company_brain_handoff" in failed_keys
+
+
+def test_run_completion_audit_flags_failed_deployment_checks(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    session_id = "session_deploy_broken"
+    founder_id = "founder_deploy_broken"
+    stack = get_stack_template("idea_to_revenue")
+    blueprint = build_stack_execution_blueprint(stack, "Launch landing page", "Astra")
+    events = [
+        (1, {"type": "goal_start", "goal": "Launch landing page", "founder_id": founder_id}),
+        (2, {"type": "stack_selected", "stack": stack.to_public_dict()}),
+        (3, {"type": "stack_execution_blueprint", "execution_blueprint": blueprint}),
+        (4, {"type": "agent_done", "agent": "web", "result": {"deploy_url": "https://broken.example.com"}}),
+        (5, {"type": "deployment_check_failed", "agent": "web", "url": "https://broken.example.com", "status": "404"}),
+        (6, {"type": "goal_done", "results": {}}),
+    ]
+
+    add_company_brain_record(
+        founder_id=founder_id,
+        source="astra",
+        title=f"Run Digest - Astra - {session_id}",
+        content="Landing page launch handoff.",
+        kind="run_digest",
+        metadata={"session_id": session_id},
+    )
+
+    state = build_session_state(session_id, events)
+    audit = build_run_completion_audit(session_id, state)
+    failed_keys = {check["key"] for check in audit["failed"]}
+
+    assert audit["ok"] is False
+    assert "deployment_health" in failed_keys

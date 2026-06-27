@@ -902,6 +902,9 @@ async def session_meta_public(session_id: str, request: Request):
         "credits_used": int(meta.get("credits_used", 0)),
         "headroom_tokens_saved": int(meta.get("headroom_tokens_saved", 0)),
         "headroom_tokens_before": int(meta.get("headroom_tokens_before", 0)),
+        "needs_review": bool(meta.get("needs_review")),
+        "review_reason": meta.get("review_reason", ""),
+        "deploy_url": meta.get("deploy_url", "") or meta.get("preview_url", ""),
     }
 
 

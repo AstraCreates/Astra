@@ -30,10 +30,14 @@ def _state_path(session_id: str) -> Path:
 
 def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict[str, Any]:
     event_dicts = [event for _, event in events]
-    founder_id = next((str(event.get("founder_id")) for event in event_dicts if event.get("founder_id")), "")
+    session_meta = _session_meta_snapshot(session_id)
+    founder_id = next(
+        (str(event.get("founder_id")) for event in event_dicts if event.get("founder_id")),
+        str(session_meta.get("founder_id") or ""),
+    )
     company_id = next(
         (str(event.get("company_id")) for event in event_dicts if event.get("company_id")),
-        founder_id,
+        str(session_meta.get("company_id") or founder_id),
     )
     company_goal = None
     if founder_id:
@@ -72,6 +76,7 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
     agent_status: dict[str, str] = {}
     agents: dict[str, dict[str, Any]] = {}
     preview_url = ""
+    deployment_checks: list[dict[str, Any]] = []
     pending_agent_question: dict[str, Any] | None = None
 
     for event in event_dicts:
@@ -85,6 +90,12 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
             _u = event["result"].get("deploy_url") or event["result"].get("url")
             if _u:
                 preview_url = _u
+        elif event_type == "deployment_check_failed":
+            deployment_checks.append({
+                "agent": str(event.get("agent") or ""),
+                "url": str(event.get("url") or ""),
+                "status": str(event.get("status") or ""),
+            })
         if event_type == "approval_request" and event.get("request"):
             request = event["request"]
             item = _approval_request_state(request)
@@ -250,6 +261,19 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
         "session_id": session_id,
         "founder_id": founder_id,
         "status": final_status,
+        "session_meta": {
+            "status": session_meta.get("status"),
+            "goal": session_meta.get("goal"),
+            "company_id": session_meta.get("company_id"),
+            "kind": session_meta.get("kind"),
+            "created_at": session_meta.get("created_at"),
+            "completed_at": session_meta.get("completed_at"),
+            "needs_review": bool(session_meta.get("needs_review")),
+            "review_reason": session_meta.get("review_reason") or "",
+            "deploy_url": session_meta.get("deploy_url") or session_meta.get("preview_url") or "",
+        },
+        "needs_review": bool(session_meta.get("needs_review")),
+        "review_reason": session_meta.get("review_reason") or "",
         "company_goal": company_goal,
         "event_count": len(events),
         "last_event_id": events[-1][0] if events else 0,
@@ -260,6 +284,7 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
         "execution_blueprint": execution_blueprint,
         "agents": agents,
         "previewUrl": preview_url,
+        "deployment_checks": deployment_checks[-20:],
         "lane_status": list(lane_status.values()),
         "company_genome": genome,
         "digest": build_session_digest(session_id, events) if events else None,
@@ -497,6 +522,14 @@ def _run_ledger_snapshot(session_id: str) -> dict[str, Any] | None:
         return get_run(session_id)
     except Exception:
         return None
+
+
+def _session_meta_snapshot(session_id: str) -> dict[str, Any]:
+    try:
+        from backend.core.session_store import get_session_meta
+        return get_session_meta(session_id) or {}
+    except Exception:
+        return {}
 
 
 def _approval_workflow_snapshot(session_id: str) -> dict[str, Any]:

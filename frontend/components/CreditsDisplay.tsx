@@ -17,9 +17,14 @@ function CoinIcon({ size = 14 }: { size?: number }) {
 
 export default function CreditsDisplay() {
   const { userId } = useDevUser();
+  const [hydrated, setHydrated] = useState(false);
   const founderId = userId === "anon" ? "" : userId;
   const [balance, setBalance] = useState<CreditBalance | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   const fetchBalance = useCallback(async () => {
     if (!founderId) return;
@@ -34,7 +39,7 @@ export default function CreditsDisplay() {
     return () => clearInterval(t);
   }, [fetchBalance]);
 
-  if (!founderId) return null;
+  if (!hydrated || !founderId) return null;
 
   const isLow = balance !== null && balance.balance < 10;
 

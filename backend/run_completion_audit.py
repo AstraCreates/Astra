@@ -75,6 +75,7 @@ def build_run_completion_audit(session_id: str, state: dict[str, Any]) -> dict[s
     ]
 
     memory = _company_brain_handoff_check(session_id, state)
+    deployment = _deployment_health_check(state)
     checks = [
         {
             "key": "execution_blueprint_present",
@@ -98,6 +99,16 @@ def build_run_completion_audit(session_id: str, state: dict[str, Any]) -> dict[s
             "ok": memory["ok"],
             "message": "Run handoff evidence is present in Company Brain.",
             "details": memory,
+        },
+        {
+            "key": "deployment_health",
+            "ok": deployment["ok"],
+            "message": (
+                "Deployment outputs stayed healthy after post-run verification."
+                if deployment["ok"]
+                else "Deployment outputs failed post-run verification or triggered review flags."
+            ),
+            "details": deployment,
         },
     ]
     failed = [check for check in checks if not check["ok"]]
@@ -129,6 +140,50 @@ def _company_brain_handoff_check(session_id: str, state: dict[str, Any]) -> dict
         "founder_id": founder_id,
         "matched_records": len(records),
         "record_titles": [record.get("title") for record in records[:5]],
+    }
+
+
+def _deployment_health_check(state: dict[str, Any]) -> dict[str, Any]:
+    urls: list[str] = []
+    for agent in (state.get("agents") or {}).values():
+        if not isinstance(agent, dict):
+            continue
+        result = agent.get("result") or {}
+        if isinstance(result, dict):
+            for key in ("deploy_url", "preview_url", "live_url", "url"):
+                value = result.get(key)
+                if isinstance(value, str) and value.startswith(("http://", "https://")):
+                    urls.append(value)
+                    break
+        preview = agent.get("previewUrl")
+        if isinstance(preview, str) and preview.startswith(("http://", "https://")):
+            urls.append(preview)
+
+    state_preview = state.get("previewUrl")
+    if isinstance(state_preview, str) and state_preview.startswith(("http://", "https://")):
+        urls.append(state_preview)
+
+    session_meta = state.get("session_meta") or {}
+    meta_deploy = session_meta.get("deploy_url")
+    if isinstance(meta_deploy, str) and meta_deploy.startswith(("http://", "https://")):
+        urls.append(meta_deploy)
+
+    deploy_failures = [
+        item for item in (state.get("deployment_checks") or [])
+        if isinstance(item, dict)
+    ]
+    review_reason = str(state.get("review_reason") or session_meta.get("review_reason") or "")
+    needs_review = bool(state.get("needs_review") or session_meta.get("needs_review"))
+    deploy_review_flag = needs_review and "deploy" in review_reason.lower()
+
+    unique_urls = list(dict.fromkeys(urls))
+    ok = not deploy_failures and not deploy_review_flag
+    return {
+        "ok": ok,
+        "deploy_urls": unique_urls[:10],
+        "failed_checks": deploy_failures[:10],
+        "needs_review": needs_review,
+        "review_reason": review_reason,
     }
 
 

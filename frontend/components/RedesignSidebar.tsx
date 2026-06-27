@@ -27,8 +27,10 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
   const pathname = usePathname() || "/";
   const { userId, isSignedIn, user } = useDevUser();
   const [companyName, setCompanyName] = useState("");
+  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
     setCompanyName(localStorage.getItem("astra_onboarding_company") || "");
+    setHydrated(true);
   }, []);
 
   // On mobile the sidebar is an off-canvas drawer (fixed, slides in over content);
@@ -116,15 +118,15 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
       <div style={{ padding: "0 8px 14px", display: "flex", flexDirection: "column", gap: 1 }}>
         <Link href="/settings" className={`nl${pathname.startsWith("/settings") ? " on" : ""}`} style={{ textDecoration: "none" }}><span style={{ width: 18, textAlign: "center" }}>⚙</span>Settings</Link>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px" }}>
-          <div style={{ width: 28, height: 28, borderRadius: "50%", background: isSignedIn ? "var(--green)" : "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-chakra)", fontSize: 10, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{initials(userId)}</div>
+          <div style={{ width: 28, height: 28, borderRadius: "50%", background: hydrated && isSignedIn ? "var(--green)" : "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-chakra)", fontSize: 10, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{hydrated ? initials(userId) : "AN"}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 11, color: "var(--fg)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {isSignedIn ? (user.fullName || userId) : `${userId.replace(/^user_/, "").slice(0, 12)}…`}
+              {hydrated ? (isSignedIn ? (user.fullName || userId) : `${userId.replace(/^user_/, "").slice(0, 12)}…`) : "Astra user"}
             </div>
           </div>
-          {isSignedIn
+          {hydrated && isSignedIn
             ? <button onClick={() => { localStorage.removeItem("astra_remember_me"); signOut({ callbackUrl: "/" }); }} className="m-tap" style={{ background: "none", border: "none", fontSize: 10, color: "var(--fm)", cursor: "pointer", fontFamily: "var(--font-instrument), sans-serif", padding: "2px 4px", borderRadius: 4, flexShrink: 0 }}>sign out</button>
-            : <button onClick={() => signIn("google", { callbackUrl: "/" })} className="m-tap" style={{ background: "none", border: "none", fontSize: 10, color: "var(--blue)", cursor: "pointer", fontFamily: "var(--font-instrument), sans-serif", padding: "2px 4px", borderRadius: 4, flexShrink: 0, fontWeight: 600 }}>sign in</button>}
+            : <button onClick={() => signIn("google", { callbackUrl: "/" })} className="m-tap" style={{ background: "none", border: "none", fontSize: 10, color: "var(--blue)", cursor: "pointer", fontFamily: "var(--font-instrument), sans-serif", padding: "2px 4px", borderRadius: 4, flexShrink: 0, fontWeight: 600 }}>{hydrated ? "sign in" : "..."}</button>}
         </div>
       </div>
     </nav>
