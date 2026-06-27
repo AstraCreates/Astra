@@ -237,10 +237,10 @@ export default function Home() {
         <nav className="lp-nav">
           <div className="lp-nav-inner">
             <div className="lp-nav-brand">
-              <svg viewBox="48 2 224 290" className="lp-nav-mark" aria-hidden="true">
+              <svg viewBox="0 0 320 305" className="lp-nav-mark" aria-hidden="true">
                 <path
                   d="M 113 192 A 95 95 0 1 1 207 192 A 95 95 0 1 1 160 110 A 95 95 0 1 1 113 192 Z"
-                  stroke="currentColor" strokeWidth="20" fill="none"
+                  stroke="currentColor" strokeWidth="22" fill="none"
                   strokeLinecap="round" strokeLinejoin="round"
                 />
               </svg>
