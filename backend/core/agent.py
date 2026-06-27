@@ -85,6 +85,18 @@ def _trim_message_history(messages: list[dict]) -> list[dict]:
     model window. Always keep the system prompt (messages[0]) and the initial goal
     (messages[1]); drop the OLDEST middle turns first, inserting a marker so the
     model knows context was elided. Recent turns (the live working set) are kept."""
+    def _clen(m: dict) -> int:
+        # Count ALL content, not just str. Tool-call / tool-result messages carry
+        # structured (list/dict) content; the old str-only sum ignored them, so the
+        # budget never bound and conversations grew unbounded (marketing → 212k tokens).
+        c = m.get("content", "")
+        if isinstance(c, str):
+            return len(c)
+        try:
+            return len(json.dumps(c, default=str))
+        except Exception:
+            return len(str(c))
+
     try:
         # First hard-cap any single oversized tool result (i>=2) so one giant payload
         # can't blow the window even when there are only a few messages.
@@ -96,18 +108,18 @@ def _trim_message_history(messages: list[dict]) -> list[dict]:
                 m = {**m, "content": c[:_PER_MSG_CAP] + f"\n…[truncated {len(c)} chars to fit context]"}
             capped.append(m)
         messages = capped
-        total = sum(len(m.get("content", "")) for m in messages if isinstance(m.get("content"), str))
+        total = sum(_clen(m) for m in messages)
         if total <= _HISTORY_CHAR_BUDGET:
             return messages
         head = messages[:2]
         tail = messages[2:]
         # Drop from the front of `tail` until under budget, keeping the most recent.
-        head_chars = sum(len(m.get("content", "")) for m in head)
+        head_chars = sum(_clen(m) for m in head)
         budget = _HISTORY_CHAR_BUDGET - head_chars
         kept: list[dict] = []
         running = 0
         for m in reversed(tail):
-            c = len(m.get("content", ""))
+            c = _clen(m)
             if running + c > budget and kept:
                 break
             kept.append(m)

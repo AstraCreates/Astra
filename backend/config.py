@@ -128,6 +128,11 @@ class Settings(BaseSettings):
     astra_alert_min_severity: str = "warning"
     astra_runtime_guardrails: bool = True
     astra_tool_registry_v2: bool = False
+    # NOTE: rollout.enabled() reads astra_<feature> off this Settings object. A flag
+    # whose field is NOT declared here can never turn on, even with ASTRA_<FEATURE>=true
+    # in .env (extra="ignore" drops it). context_compression_v2 was off for exactly this
+    # reason — agent conversations grew unbounded (marketing hit 212k tokens/call).
+    astra_context_compression_v2: bool = False
     astra_fallback_model: str = "moonshotai/kimi-k2.5"
 
     # Stripe Standard Connect
