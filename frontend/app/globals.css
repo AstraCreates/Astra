@@ -753,6 +753,54 @@ p { margin: 0; }
   }
 }
 
+/* ── Landing nav ── */
+.lp-nav {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.lp-nav-inner {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 24px var(--gutter);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: auto;
+}
+
+.lp-nav-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--text-2);
+}
+
+.lp-nav-mark {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  color: var(--text-2);
+}
+
+.lp-nav-wordmark {
+  font-family: var(--font-geist-sans), ui-sans-serif, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  color: var(--text-2);
+  user-select: none;
+}
+
+.lp-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* ── Hero ── */
 .lp-hero {
   min-height: 100svh;

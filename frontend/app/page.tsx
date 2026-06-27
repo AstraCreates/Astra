@@ -232,10 +232,28 @@ export default function Home() {
 
       <div style={{ position: "relative", zIndex: 1 }}>
 
+        {/* ── Nav ───────────────────────────────────────────────── */}
+        <nav className="lp-nav">
+          <div className="lp-nav-inner">
+            <div className="lp-nav-brand">
+              <svg viewBox="48 2 224 290" className="lp-nav-mark" aria-hidden="true">
+                <path
+                  d="M 113 192 A 95 95 0 1 1 207 192 A 95 95 0 1 1 160 110 A 95 95 0 1 1 113 192 Z"
+                  stroke="currentColor" strokeWidth="20" fill="none"
+                  strokeLinecap="round" strokeLinejoin="round"
+                />
+              </svg>
+              <span className="lp-nav-wordmark">ASTRA</span>
+            </div>
+            <div className="lp-nav-actions">
+              <CtaButtons />
+            </div>
+          </div>
+        </nav>
+
         {/* ── Hero ──────────────────────────────────────────────── */}
         <section className="lp-hero">
           <div className="lp-hero-left">
-            <div className="eyebrow">Astra · AI Operating System</div>
             <h1 className="lp-hero-h1">
               You bring the idea.<br />
               <span style={{ color: "var(--brand-dim)" }}>Astra handles everything else.</span>
