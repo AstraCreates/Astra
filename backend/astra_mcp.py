@@ -191,14 +191,29 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "astra_steer",
         "description": (
-            "Send a real-time steering instruction to a running Astra session — redirect agents, "
-            "add constraints, change priorities, or inject new information mid-run."
+            "Broadcast a steering instruction to ALL running agents in a session — "
+            "redirect, add constraints, change priorities, inject information mid-run."
         ),
         "inputSchema": _schema({
             "session_id": {"type": "string", "description": "Session ID of the running session."},
             "message": {"type": "string", "description": "Steering instruction to inject into the running session."},
             "founder_id": {"type": "string", "description": "Founder/user ID."},
         }, ["session_id", "message"]),
+    },
+    {
+        "name": "astra_message_agent",
+        "description": (
+            "Send a directive directly to ONE specific named agent in a running session. "
+            "Only that agent receives the instruction. Use when you want to talk to a specific "
+            "agent as a manager would to an employee (e.g. tell only the web agent to redesign, "
+            "or only the sales agent to focus on enterprise leads)."
+        ),
+        "inputSchema": _schema({
+            "session_id": {"type": "string", "description": "Session ID of the running session."},
+            "agent": {"type": "string", "description": "Agent name to target: web, technical, sales, design, research, marketing, ops, legal, etc."},
+            "message": {"type": "string", "description": "Directive for the agent."},
+            "founder_id": {"type": "string", "description": "Founder/user ID."},
+        }, ["session_id", "agent", "message"]),
     },
     {
         "name": "astra_list_stacks",
@@ -397,6 +412,16 @@ def _steer(args: dict) -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+def _message_agent(args: dict) -> dict:
+    session_id = args["session_id"]
+    agent_name = str(args.get("agent", "")).strip().lower()
+    message = str(args.get("message", "")).strip()
+    try:
+        _post(f"/steer/{session_id}", {"message": message, "agent_name": agent_name})
+        return {"ok": True, "session_id": session_id, "target_agent": agent_name, "delivered": message}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 def _list_stacks(_args: dict) -> dict:
     try:
         data = _get("/stacks")
@@ -515,6 +540,7 @@ _DISPATCH: dict[str, Any] = {
     "astra_session_artifacts": _session_artifacts,
     "astra_chat_agent": _chat_agent,
     "astra_steer": _steer,
+    "astra_message_agent": _message_agent,
     "astra_list_stacks": _list_stacks,
     "astra_list_agents": _list_agents,
     "astra_recommend_stack": _recommend_stack,

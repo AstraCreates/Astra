@@ -446,17 +446,29 @@ async def approval_decision_wait(session_id: str, gate_key: str, timeout: float 
     return None
 
 
-def steer_push(session_id: str, message: str) -> None:
-    """Buffer a founder directive for the agent loop to pick up."""
+def steer_push(session_id: str, message: str, agent_name: str = "") -> None:
+    """Buffer a founder directive. agent_name="" = broadcast to all agents."""
     if session_id not in _steer:
         _steer[session_id] = []
-    _steer[session_id].append(message)
+    _steer[session_id].append({"msg": message, "agent": agent_name.lower().strip()})
 
 
-def steer_pull(session_id: str) -> list[str]:
-    """Drain and return all pending steer messages for this session."""
-    msgs = _steer.pop(session_id, [])
-    return msgs
+def steer_pull(session_id: str, agent_name: str = "") -> list[str]:
+    """Drain steer messages for this agent (broadcast + agent-targeted)."""
+    name = agent_name.lower().strip()
+    all_items = _steer.pop(session_id, [])
+    kept = []
+    out = []
+    for item in all_items:
+        if isinstance(item, str):
+            out.append(item)  # legacy plain-string messages
+        elif not item.get("agent") or item["agent"] == name:
+            out.append(item["msg"])
+        else:
+            kept.append(item)  # targeted at a different agent — put back
+    if kept:
+        _steer[session_id] = kept
+    return out
 
 
 def _fmt(event_id: int, event: dict) -> str:

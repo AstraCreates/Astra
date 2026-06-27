@@ -923,7 +923,7 @@ class Agent:
             # Inject any founder steer messages before calling LLM
             try:
                 from backend.core.events import steer_pull
-                for directive in steer_pull(ctx.session_id):
+                for directive in steer_pull(ctx.session_id, agent_name=self.name):
                     messages.append({"role": "user", "content": f"[FOUNDER DIRECTIVE] {directive}\nAdjust your current plan accordingly and continue."})
                     logger.info("%s received founder directive: %s", self.name, directive[:80])
             except Exception:

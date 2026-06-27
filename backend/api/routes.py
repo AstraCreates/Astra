@@ -1459,6 +1459,7 @@ async def chat_agent(agent_key: str, body: AskRequest, request: Request):
             messages=messages,
             extra_body=openrouter_extra_body(model_name) if is_openrouter else None,
             temperature=0.7,
+            max_tokens=4000,
             timeout=60.0,
         )
         reply = resp.choices[0].message.content or ""
@@ -1484,15 +1485,16 @@ async def steer_session(body: SteerRequest, request: Request):
 
 @router.post("/steer/{session_id}")
 async def steer_session_path(session_id: str, body: dict, request: Request):
-    """Path-param variant — frontend sends POST /steer/{session_id} with {message} body."""
+    """Path-param variant — frontend sends POST /steer/{session_id} with {message, agent_name?} body."""
     from backend.core.events import publish, steer_push
     await _require_session_access(request, session_id, min_role="operator")
     message = body.get("message", "")
-    steer_push(session_id, message)
-    await publish(session_id, {
-        "type": "founder_steer",
-        "message": message,
-    })
+    agent_name = str(body.get("agent_name") or "").strip().lower()
+    steer_push(session_id, message, agent_name=agent_name)
+    event: dict = {"type": "founder_steer", "message": message}
+    if agent_name:
+        event["target_agent"] = agent_name
+    await publish(session_id, event)
     return {"ok": True, "session_id": session_id}
 
 

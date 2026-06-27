@@ -309,6 +309,29 @@ async def _tool_steer_agents(founder_id: str, session_id: str, args: dict) -> An
     return {"ok": True, "delivered": msg}
 
 
+async def _tool_message_agent(founder_id: str, session_id: str, args: dict) -> Any:
+    """Send a directive to ONE specific named agent in this session."""
+    from backend.core.events import steer_push, publish
+    agent_name = str(args.get("agent", "")).strip().lower()
+    msg = str(args.get("message", "")).strip()
+    if not agent_name:
+        return {"ok": False, "error": "agent name required"}
+    if not msg:
+        return {"ok": False, "error": "message required"}
+    try:
+        from backend.core.session_store import is_done
+        if is_done(session_id):
+            return {"ok": False, "error": "session completed — use dispatch_agents or set_goal", "hint": "dispatch_agents"}
+    except Exception:
+        pass
+    steer_push(session_id, msg, agent_name=agent_name)
+    try:
+        await publish(session_id, {"type": "founder_steer", "message": msg, "target_agent": agent_name})
+    except Exception:
+        pass
+    return {"ok": True, "delivered": msg, "target_agent": agent_name}
+
+
 async def _tool_run_cycle(founder_id: str, session_id: str, args: dict) -> Any:
     from backend.missions.goal_engine import dispatch_current_goal
     import asyncio
@@ -436,6 +459,7 @@ _MCP_TOOLS = {
     "search_brain":     ("astra_search_brain", "keyword search the company brain. args: {query}"),
     "brain_graph":      ("astra_brain_graph", "the company knowledge-map nodes/edges. args: {}"),
     "credits":          ("astra_credits", "credit balance + usage. args: {}"),
+    "mcp_message_agent": ("astra_message_agent", "send a directive to ONE specific agent by name. args: {agent, message, session_id?}"),
 }
 
 
@@ -776,7 +800,8 @@ _TOOLS = {
     "dispatch_agents": ("RUN specific agents on a directive now (works even when idle). args: {agents:[..], instruction}. e.g. build the app -> {agents:['web','technical'], instruction:'build the full product app: auth+dashboard+core features on the existing repo, demo-accessible preview'}", _tool_dispatch_agents),
     "set_goal": ("create + activate a company goal with per-workstream tasks, and dispatch it. args: {title, tasks:[{title, workstream}], dispatch?}. workstreams: research, product, marketing, sales, legal, ops", _tool_set_goal),
     "approve_next_goal": ("approve (and start) or reject the PROPOSED next goal. args: {approved: bool}", _tool_approve_next_goal),
-    "steer_agents": ("inject a directive into THIS session's already-running agents. args: {message}", _tool_steer_agents),
+    "steer_agents": ("broadcast a directive to ALL running agents in this session. args: {message}", _tool_steer_agents),
+    "message_agent": ("send a directive to ONE specific agent by name. args: {agent, message}. Use when you want only the web/sales/design/etc agent to receive the instruction.", _tool_message_agent),
     "run_cycle": ("dispatch the team on the current approved goal now. args: {}", _tool_run_cycle),
     "session_status": ("status of a session (defaults to the current one). args: {session_id?}", _tool_session_status),
     "kill_session": ("stop/kill a running or hung session. args: {session_id?}", _tool_kill_session),
@@ -989,7 +1014,7 @@ async def _copilot_generate(prompt: str) -> str:
                 json={
                     "model": model,
                     "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 2000,
+                    "max_tokens": 6000,
                     "temperature": 0.2,
                     # Suppress chain-of-thought — copilot only needs short JSON decisions
                     "reasoning": {"effort": "none"},
@@ -1028,11 +1053,18 @@ async def run_copilot(founder_id: str, session_id: str, message: str, founder_em
         "the session has COMPLETED — there are NO running agents regardless of what running_agents shows. "
         "NEVER call steer_agents for a done session. Treat ALL imperatives as dispatch_agents or set_goal.\n"
         "1. RUNNING AGENTS + DIRECTIVE: if session is NOT done AND running_agents or child_sessions_running is NON-EMPTY "
-        "AND the founder is telling them what to do (focus on X, stop Y, wrap up, change direction, etc.) "
-        "→ IMMEDIATELY call steer_agents with the exact directive. Example:\n"
-        '   founder: "tell them to focus on mobile" → {"action":"tool","tool":"steer_agents","args":{"message":"focus on mobile"}}\n'
-        '   founder: "wrap up research" → {"action":"tool","tool":"steer_agents","args":{"message":"wrap up research now and summarize findings"}}\n'
-        "   DO NOT reply, DO NOT dispatch more agents. Just steer.\n"
+        "AND the founder is giving a directive:\n"
+        "   a) Directive targets a SPECIFIC agent by name (web, sales, design, research, etc.) "
+        "→ message_agent {agent: '<name>', message: '<exact directive>'}. ONLY that agent receives it.\n"
+        "   b) Directive is for ALL agents or no specific agent named "
+        "→ steer_agents {message: '<directive>'}. ALL agents receive it.\n"
+        "   c) Founder asks a QUESTION to a specific agent (e.g. 'ask the sales agent what contacts they found') "
+        "→ chat_agent {agent: '<name>', message: '<question>'}. Returns a grounded answer.\n"
+        "   Examples:\n"
+        '   "tell the web agent to go all out on design" → message_agent {agent:"web", message:"go all out on design — luxury, premium, full rebuild"}\n'
+        '   "tell them all to wrap up" → steer_agents {message:"wrap up and summarize findings now"}\n'
+        '   "ask sales what prospects they found" → chat_agent {agent:"sales", message:"what prospects have you identified so far?"}\n'
+        "   DO NOT reply without acting. DO NOT dispatch more agents.\n"
         "2. IMPERATIVE + NO RUNNING AGENTS (or session done): build, make, create, add, fix, change, ship, launch, redesign, update "
         "→ dispatch_agents with the right agents. Examples:\n"
         "   'build an app' → dispatch_agents {agents:['web','technical'], instruction:'build full product: auth + dashboard + core features'}\n"
