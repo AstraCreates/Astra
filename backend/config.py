@@ -27,8 +27,9 @@ class Settings(BaseSettings):
     # Compiler-as-critic recovery: re-run `npm run build`, feed real errors to the
     # coder, re-verify — up to this many rounds before giving up.
     mvp_max_build_rounds: int = 3
-    # Bench v11 (2026-06-26, ACES): MiMo-V2.5 #1 planner winner (ACES=5661, $0.0003/suc).
-    build_plan_model: str = "xiaomi/mimo-v2.5"
+    # DeepSeek Flash: planning writes long outputs; MiMo's $2.82/M output rate
+    # dominates cost at scale. Flash handles plan-length output at $1.72/M.
+    build_plan_model: str = "deepseek/deepseek-v4-flash"
     # MVP builds (openclaude tool-use) are billed as separate, higher-rate
     # credits — this multiplier is applied to the build's token-based credit cost.
     mvp_credit_multiplier: float = 3.0
@@ -42,30 +43,31 @@ class Settings(BaseSettings):
     openrouter_api_key_2: str = ""
     openrouter_api_key_3: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    # Bench v11 (2026-06-26, ACES): MiMo-V2.5 #1 planner slot winner.
-    or_planner_model: str = "xiaomi/mimo-v2.5"
+    # DeepSeek Flash: long planner outputs at $2.82/M (MiMo) → $1.72/M.
+    or_planner_model: str = "deepseek/deepseek-v4-flash"
     # Bench v2 (2026-06-26, LLM-judge): DeepSeek Flash 4.33/5 on NDA + pitch + finance
     # at QAC $0.261/1k. Qwen3-235b was $0.176/1k but capped at 16k max output — truncates
     # long financial models. DeepSeek Flash has 65k output / 1M context, no ceiling issue.
     or_highoutput_model: str = "deepseek/deepseek-v4-flash"
-    # Bench v11 (2026-06-26, ACES): Qwen3-235b-T #1 light + tooluse winner (ACES=5478, $0.0003/suc).
-    # Thinking-on: -thinking suffix exempts from effort:none in llm_cache.py.
-    or_light_model: str = "qwen/qwen3-235b-a22b-thinking-2507"
+    # DeepSeek Flash: Qwen3-235b-T won bench on quality but runs full thinking (exempt
+    # from effort:none), billing thinking tokens as output at $3.34/M — 17% of prod spend.
+    # Flash ($1.72/M output, no thinking overhead) cuts this line to ~$0.50/M effective.
+    or_light_model: str = "deepseek/deepseek-v4-flash"
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
-    tooluse_model_name: str = "qwen/qwen3-235b-a22b-thinking-2507"
+    tooluse_model_name: str = "deepseek/deepseek-v4-flash"
     # Web-search synthesis model — uncached, so input price dominates.
     # Used by web_search.py deep_research → Flash is 4.4× cheaper input
     # than Pro for synthesis calls.
     planner_model_base_url: str = "https://openrouter.ai/api/v1"
     planner_model_api_key: str = ""
-    planner_model_name: str = "xiaomi/mimo-v2.5"
+    planner_model_name: str = "deepseek/deepseek-v4-flash"
     # Chat model — DeepSeek V4 Flash: chat endpoint has no prompt caching; Flash
     # is 4.4× cheaper on fresh input than Pro with equivalent chat quality.
     chat_model_base_url: str = "https://openrouter.ai/api/v1"
     chat_model_api_key: str = ""
     chat_model_name: str = "deepseek/deepseek-v4-flash"
     light_model_base_url: str = "https://openrouter.ai/api/v1"
-    light_model_name: str = "qwen/qwen3-235b-a22b-thinking-2507"
+    light_model_name: str = "deepseek/deepseek-v4-flash"
     # High-output model — DeepSeek Flash (65k max output vs qwen3-235b's 16k ceiling)
     highoutput_model_base_url: str = "https://openrouter.ai/api/v1"
     highoutput_model_name: str = "deepseek/deepseek-v4-flash"
