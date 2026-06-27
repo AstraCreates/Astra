@@ -5,12 +5,10 @@ class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_key: str = ""
     # Model that drives the coding agent (caveman) for technical-agent MVP builds.
-    # qwen3-coder, not GLM-5.2: GLM was 46% of prod spend (input-token dominated — builds
-    # resend codebase context per tool call). qwen3-coder is cheaper on BOTH sides
-    # ($0.22/$1.80 vs GLM $1.2/$2.31, ~5.5× cheaper input) and coder-specialized.
-    # NOT qwen3-coder-FLASH: it emits XML-text tool calls (<function=write>...) that
-    # caveman can't parse → zero tools execute. qwen3-coder uses native function-calling.
-    mvp_build_model: str = "qwen/qwen3-coder"
+    # deepseek-v4-pro ($0.435/$0.870) — still ~3× cheaper input than GLM-5.2 ($1.2) which
+    # was 46% of prod spend, and native function-calls in caveman. NOT qwen3-coder-FLASH:
+    # it emits XML-text tool calls (<function=write>...) caveman can't parse → 0 tools run.
+    mvp_build_model: str = "deepseek/deepseek-v4-pro"
     # Web-search/research model. perplexity/sonar ($1/$1), NOT sonar-pro ($3/$15) — the
     # pro tier's $15/M output made it 36% of prod spend for marginal research-depth gain.
     research_model: str = "perplexity/sonar"
