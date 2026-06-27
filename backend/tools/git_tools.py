@@ -1375,7 +1375,7 @@ def _generate_build_plan(goal: str, context: str = "", kind: str = "app", founde
     Grounds the plan (look/function/purpose) in the founder's research notes.
     Best-effort — returns {"plan": "", "files": []} on any failure (build still runs)."""
     env = _make_env()
-    model = getattr(settings, "build_plan_model", "") or "minimax/minimax-m3"
+    model = getattr(settings, "build_plan_model", "") or settings.or_light_model or "xiaomi/mimo-v2.5"
     research = _build_plan_research(founder_id)
     try:
         from backend.core.llm_client import get_or_client
@@ -1552,7 +1552,7 @@ def run_mvp_loop(
         # separate website planner). Skipped on incremental (no full re-plan).
         plan_info = {"plan": "", "files": [], "model": ""}
         if agent != "web" and not incremental:
-            _phase("Planning the product (MiniMax-M3)…")
+            _phase("Planning the product…")
             plan_info = _generate_build_plan(goal, context, kind="app", founder_id=founder_id)
         build_plan = plan_info.get("plan") or ""
         if build_plan:
