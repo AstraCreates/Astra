@@ -1548,12 +1548,12 @@ export default function OnboardingWizard() {
     }
 
     lsSet("astra_show_welcome", "1");
-    router.replace(`/?welcome=1&name=${encodeURIComponent(name.trim())}`);
+    router.replace(`/dashboard?welcome=1&name=${encodeURIComponent(name.trim())}`);
   }
 
   async function handleSkip() {
     lsSet("astra_onboarding_done", "1");
-    router.push("/");
+    router.push("/dashboard");
   }
 
   // Dot counts per mode and step

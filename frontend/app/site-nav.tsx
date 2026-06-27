@@ -124,7 +124,7 @@ export default function SiteNav() {
         <TeamBadge />
         <CreditsDisplay />
         <Link
-          href="/?new=1"
+          href="/dashboard?new=1"
           style={{
             display: "inline-flex",
             alignItems: "center",

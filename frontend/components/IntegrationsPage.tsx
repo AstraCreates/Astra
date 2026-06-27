@@ -1232,7 +1232,7 @@ export default function SetupPage() {
       {/* CTA */}
       <div style={{ display: "flex", gap: 10, paddingTop: 4 }}>
         <Link
-          href="/"
+          href="/dashboard"
           style={{
             fontSize: 13, padding: "8px 20px", borderRadius: 8,
             background: c.blue, color: "#FFFFFF", textDecoration: "none", fontWeight: 500,
@@ -1246,4 +1246,3 @@ export default function SetupPage() {
     </>
   );
 }
-

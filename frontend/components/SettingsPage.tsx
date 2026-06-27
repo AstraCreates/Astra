@@ -585,7 +585,7 @@ export default function SettingsPage() {
       {/* Page header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <Link href="/" style={{
+          <Link href="/dashboard" style={{
             fontSize: 13, padding: "6px 14px", borderRadius: 8,
             background: c.bg, color: c.textSecondary,
             border: `1px solid ${c.border}`, textDecoration: "none", fontWeight: 500,

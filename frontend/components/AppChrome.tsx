@@ -28,7 +28,7 @@ function SignInScreen() {
       // survives the OAuth redirect so we know we came from a fresh sign-in
       sessionStorage.setItem("astra_session_active", "1");
     }
-    signIn("google", { callbackUrl: "/" });
+    signIn("google", { callbackUrl: typeof window !== "undefined" ? window.location.href : "/dashboard" });
   };
 
   return (

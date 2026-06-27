@@ -11,7 +11,7 @@ import NotificationBell from "@/components/NotificationBell";
 import { desktopDownloadHref } from "@/lib/desktop-download";
 
 const LINKS: { href: string; ic: string; label: string; match: (p: string) => boolean }[] = [
-  { href: "/", ic: "⬡", label: "Dashboard", match: (p) => p === "/" },
+  { href: "/dashboard", ic: "⬡", label: "Dashboard", match: (p) => p.startsWith("/dashboard") },
   { href: "/goals", ic: "◎", label: "Checklist", match: (p) => p.startsWith("/goals") },
   { href: "/outreach", ic: "✦", label: "Outreach", match: (p) => p.startsWith("/outreach") },
   { href: "/brain", ic: "⌬", label: "Company Brain", match: (p) => p.startsWith("/brain") },
@@ -45,7 +45,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
   return (
     <nav onClick={(e) => { if (mobile && (e.target as HTMLElement).closest("a")) closeOnNav?.(); }} style={navStyle}>
       <div style={{ padding: "20px 16px 16px", borderBottom: "1px solid var(--bd)" }}>
-        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, textDecoration: "none" }}>
+        <Link href="/dashboard" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, textDecoration: "none" }}>
           <div style={{ width: 28, height: 28, background: "var(--blue)", flexShrink: 0, WebkitMask: "url('/logo.png') center/contain no-repeat", mask: "url('/logo.png') center/contain no-repeat" }} />
           <div>
             <div className="nav-wordmark">Astra</div>
@@ -60,17 +60,17 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
         )}
         <NotificationBell />
         <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 2 }}>
-          <Link data-tour="new-goal-btn" href="/?new=1" className="btn" style={{ display: "flex", justifyContent: "center", gap: 7, textDecoration: "none" }}>＋ New run</Link>
+          <Link data-tour="new-goal-btn" href="/dashboard?new=1" className="btn" style={{ display: "flex", justifyContent: "center", gap: 7, textDecoration: "none" }}>＋ New run</Link>
         </div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "10px 8px", flex: 1, overflowY: "hidden" }}>
         {LINKS.map((l) => (
-          l.href === "/" ? (
-            // Dashboard: hard-navigate to the clean site root so it ALWAYS resets to
-            // the dashboard (a Next <Link href="/"> from /?session=x stays put).
-            <Link key={l.href} href="/" data-tour="nav-dashboard"
-               onClick={(e) => { e.preventDefault(); window.location.assign("/"); }}
+          l.href === "/dashboard" ? (
+            // Dashboard: hard-navigate to the clean dashboard route so it ALWAYS
+            // resets there even from a query-heavy state.
+            <Link key={l.href} href="/dashboard" data-tour="nav-dashboard"
+               onClick={(e) => { e.preventDefault(); window.location.assign("/dashboard"); }}
                className={`nl${l.match(pathname) ? " on" : ""}`} style={{ textDecoration: "none" }}>
               <span style={{ width: 18, textAlign: "center" }}>{l.ic}</span>{l.label}
             </Link>

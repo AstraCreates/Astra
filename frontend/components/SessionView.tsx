@@ -987,7 +987,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         <div style={{ fontSize: 30 }}>🔒</div>
         <div style={{ fontSize: 16, fontWeight: 700, color: "var(--fg)" }}>You don&apos;t have access to this session</div>
         <div style={{ fontSize: 13, color: "var(--fd)", maxWidth: 360 }}>It belongs to another account, or it doesn&apos;t exist.</div>
-        <a href="/" className="btn" style={{ padding: "10px 20px", textDecoration: "none" }}>← Back to dashboard</a>
+        <a href="/dashboard" className="btn" style={{ padding: "10px 20px", textDecoration: "none" }}>← Back to dashboard</a>
       </div>
     );
   }

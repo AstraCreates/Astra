@@ -270,7 +270,7 @@ export default function NewGoalView() {
 
         <div className="submit-row">
           <button className="btn pri" disabled={busy} onClick={submit}>{busy ? "Launching…" : "Launch Astra →"}</button>
-          <button className="btn" onClick={() => router.push("/")}>Cancel</button>
+          <button className="btn" onClick={() => router.push("/dashboard")}>Cancel</button>
         </div>
       </div>
     </div>

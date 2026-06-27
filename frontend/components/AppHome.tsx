@@ -49,7 +49,7 @@ export default function AppHome() {
 
   function handleWelcomeDone() {
     try { localStorage.setItem("astra_show_tour", "1"); } catch {}
-    router.replace("/");
+    router.replace("/dashboard");
     setTimeout(() => window.dispatchEvent(new CustomEvent("astra:show-tour")), 200);
   }
 

@@ -391,7 +391,7 @@ export default function DashboardView() {
             <div style={{ display: "flex", gap: 9 }}>
               <button
                 data-tour="dash-new-run"
-                onClick={() => router.push("/?new=1")}
+                onClick={() => router.push("/dashboard?new=1")}
                 style={{ padding: "9px 20px", fontSize: 12, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", cursor: "pointer", letterSpacing: "0.01em", borderRadius: 8, fontFamily: "var(--font-instrument), sans-serif" }}
               >+ New run</button>
               <button
@@ -463,7 +463,7 @@ export default function DashboardView() {
               <div className="empty-sub" style={{ fontSize: 10.5, maxWidth: 280, lineHeight: 1.6 }}>
                 Start your first run and Astra will get to work.
               </div>
-              <button className="btn pri" style={{ marginTop: 12 }} onClick={() => router.push("/?new=1")}>
+              <button className="btn pri" style={{ marginTop: 12 }} onClick={() => router.push("/dashboard?new=1")}>
                 Start first run →
               </button>
             </div>
