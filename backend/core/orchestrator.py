@@ -157,6 +157,9 @@ def _completion_failures(tasks: list[dict[str, Any]], completed: dict[str, dict]
     return failures
 
 
+_active_continue_runs: set[str] = set()
+
+
 class Orchestrator:
     def __init__(self, planner: Agent, specialists: dict[str, Agent]):
         self.planner = planner
@@ -2348,6 +2351,30 @@ class Orchestrator:
         if not session_id:
             from backend.core.session_ids import new_session_id
             session_id = new_session_id()
+
+        if session_id in _active_continue_runs:
+            logger.warning("continue_run: session %s already in-flight — skipping duplicate", session_id)
+            return {"ok": False, "reason": "already_running", "session_id": session_id}
+        _active_continue_runs.add(session_id)
+        try:
+            return await self._continue_run_inner(
+                instruction=instruction,
+                founder_id=founder_id,
+                prior_session_id=prior_session_id,
+                agents=agents,
+                session_id=session_id,
+            )
+        finally:
+            _active_continue_runs.discard(session_id)
+
+    async def _continue_run_inner(
+        self,
+        instruction: str,
+        founder_id: str,
+        prior_session_id: str,
+        agents: list[str] | None = None,
+        session_id: str = "",
+    ) -> dict[str, Any]:
         try:
             from backend.core.session_store import get_session_meta as _session_meta
             prior_meta = _session_meta(prior_session_id) or {}
