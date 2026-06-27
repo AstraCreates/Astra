@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useUser, SignInButton, SignUpButton } from "@clerk/nextjs";
+import { signIn } from "next-auth/react";
 import Link from "next/link";
 import LiquidGlass from "@/components/LiquidGlass";
 import SpaceEnv from "@/components/SpaceEnv";
+import { useDevUser } from "@/lib/use-dev-user";
 
 // ─── content ─────────────────────────────────────────────────────────────────
 
@@ -144,7 +145,7 @@ const EXAMPLE_TERMINAL = [
 // ─── component ───────────────────────────────────────────────────────────────
 
 export default function Home() {
-  const { isSignedIn } = useUser();
+  const { isSignedIn } = useDevUser();
   const agentListRef = useRef<HTMLDivElement>(null);
   const [openFaq, setOpenFaq]   = useState<number | null>(null);
 
@@ -217,12 +218,12 @@ export default function Home() {
     <Link href="/dashboard" className="site-btn site-btn-primary">Go to dashboard →</Link>
   ) : (
     <>
-      <SignUpButton mode="modal">
-        <button className="site-btn site-btn-primary">Start building →</button>
-      </SignUpButton>
-      <SignInButton mode="modal">
-        <button className="site-btn site-btn-ghost">Sign in</button>
-      </SignInButton>
+      <button className="site-btn site-btn-primary" onClick={() => signIn("google", { callbackUrl: "/dashboard" })}>
+        Start building →
+      </button>
+      <button className="site-btn site-btn-ghost" onClick={() => signIn("google", { callbackUrl: "/dashboard" })}>
+        Sign in
+      </button>
     </>
   );
 

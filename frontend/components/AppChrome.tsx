@@ -15,6 +15,8 @@ import { useDevUser } from "@/lib/use-dev-user";
 const BARE_PREFIXES = ["/sign-in", "/sign-up", "/onboarding", "/invite", "/cookies"];
 // Public routes accessible without login (shareable session links)
 const PUBLIC_PREFIXES = [...BARE_PREFIXES, "/s/"];
+// Exact routes that are public landing/marketing pages — no sidebar, no auth gate
+const BARE_EXACT = ["/"];
 
 
 function SignInScreen() {
@@ -177,7 +179,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   // Never leave the drawer "open" lingering when switching to desktop.
   useEffect(() => { if (!isMobile) setDrawerOpen(false); }, [isMobile]);
 
-  if (BARE_PREFIXES.some((b) => pathname.startsWith(b))) {
+  if (BARE_PREFIXES.some((b) => pathname.startsWith(b)) || BARE_EXACT.includes(pathname)) {
     return <main>{children}</main>;
   }
 
