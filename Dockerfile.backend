@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg-dev zlib1g-dev libpng-dev libwebp-dev libfreetype6-dev \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g @gitlawb/openclaude 2>/dev/null || true \
+    && npm install -g @juliusbrussee/caveman-code 2>/dev/null || true \
     && useradd -m -s /bin/bash astra \
     && echo "astra ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
     && mkdir -p /home/astra/.openclaude && chown astra:astra /home/astra/.openclaude

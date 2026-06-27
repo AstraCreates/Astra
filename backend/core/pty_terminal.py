@@ -157,35 +157,51 @@ def open_takeover(app_session_id: str, cols: int = 120, rows: int = 32) -> PtyTe
     env = _make_env()
     env["TERM"] = "xterm-256color"
     model = env.get("OPENAI_MODEL", "") or getattr(settings, "mvp_build_model", "") or "tencent/hy3-preview"
+    is_caveman = getattr(settings, "code_agent", "caveman") == "caveman"
 
-    oc_args = [
-        OPENCLAUDE_BIN,
-        "--provider", "openai",
-        "--model", model,
-        "--allow-dangerously-skip-permissions",
-        "--dangerously-skip-permissions",
-    ]
-    if oc_session_id:
-        oc_args += ["--resume", oc_session_id]
+    if is_caveman:
+        # Interactive caveman TUI resuming the build's session file (no -p).
+        oc_args = [OPENCLAUDE_BIN, "--provider", "openrouter", "--model", model]
+        cave_session = Path(workspace) / ".cave_session.json"
+        if cave_session.exists():
+            oc_args += ["--session", str(cave_session)]
+    else:
+        oc_args = [
+            OPENCLAUDE_BIN,
+            "--provider", "openai",
+            "--model", model,
+            "--allow-dangerously-skip-permissions",
+            "--dangerously-skip-permissions",
+        ]
+        if oc_session_id:
+            oc_args += ["--resume", oc_session_id]
 
-    # openclaude blocks --dangerously-skip-permissions as root, so the build runs
-    # it as the `astra` user. Mirror that: hand the workspace to astra, then drop
-    # privileges via sudo, passing the OpenRouter env through explicitly (sudo
-    # resets the environment).
+    # The build runs the agent as the `astra` user (workspace is astra-owned, and
+    # openclaude blocks --dangerously-skip-permissions as root). Mirror that: hand the
+    # workspace to astra, drop privileges via sudo, passing creds through explicitly
+    # (sudo resets the environment).
     if os.getuid() == 0:
         try:
             subprocess.run(["chown", "-R", "astra:astra", workspace], capture_output=True, timeout=120)
             subprocess.run(["chmod", "-R", "u+rwX", workspace], capture_output=True, timeout=120)
         except Exception:
             pass
-        passthrough = {
-            "OPENAI_API_KEY": env.get("OPENAI_API_KEY", ""),
-            "OPENAI_BASE_URL": env.get("OPENAI_BASE_URL", ""),
-            "OPENAI_MODEL": model,
-            "HOME": "/home/astra",
-            "TERM": "xterm-256color",
-            "npm_config_cache": env.get("npm_config_cache", ""),
-        }
+        if is_caveman:
+            passthrough = {
+                "OPENROUTER_API_KEY": env.get("OPENROUTER_API_KEY", ""),
+                "HOME": "/home/astra",
+                "TERM": "xterm-256color",
+                "npm_config_cache": env.get("npm_config_cache", ""),
+            }
+        else:
+            passthrough = {
+                "OPENAI_API_KEY": env.get("OPENAI_API_KEY", ""),
+                "OPENAI_BASE_URL": env.get("OPENAI_BASE_URL", ""),
+                "OPENAI_MODEL": model,
+                "HOME": "/home/astra",
+                "TERM": "xterm-256color",
+                "npm_config_cache": env.get("npm_config_cache", ""),
+            }
         env_pairs = [f"{k}={v}" for k, v in passthrough.items() if v]
         cmd = ["sudo", "-u", "astra", "env"] + env_pairs + oc_args
     else:

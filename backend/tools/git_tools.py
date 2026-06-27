@@ -25,7 +25,22 @@ _build_semaphore = threading.Semaphore(_BUILD_SLOTS)
 
 logger = logging.getLogger(__name__)
 
-def _find_claude_bin() -> str:
+def _find_caveman_bin() -> str:
+    """Find caveman-code binary (@juliusbrussee/caveman-code)."""
+    import shutil
+    for candidate in [
+        shutil.which("caveman") or "",
+        shutil.which("caveman-code") or "",
+        "/opt/homebrew/bin/caveman",
+        "/usr/local/bin/caveman",
+        "/usr/bin/caveman",
+    ]:
+        if candidate and os.path.isfile(candidate):
+            return candidate
+    return "caveman"
+
+
+def _find_openclaude_bin() -> str:
     """Find openclaude binary (supports --provider flag). Falls back to claude."""
     import shutil
     # openclaude first — it supports --provider openai for OpenRouter
@@ -42,6 +57,15 @@ def _find_claude_bin() -> str:
             return candidate
     return "openclaude"
 
+
+def _find_claude_bin() -> str:
+    """Resolve the active coding-agent binary based on settings.code_agent."""
+    if getattr(settings, "code_agent", "caveman") == "caveman":
+        return _find_caveman_bin()
+    return _find_openclaude_bin()
+
+# Active coding-agent CLI (caveman by default; openclaude as fallback). Other
+# modules import OPENCLAUDE_BIN — name kept for back-compat, points at the active agent.
 OPENCLAUDE_BIN = _find_claude_bin()
 
 
@@ -633,6 +657,9 @@ def _make_env() -> dict:
     env = os.environ.copy()
     env["OPENAI_BASE_URL"] = getattr(settings, "openrouter_base_url", "") or "https://openrouter.ai/api/v1"
     env["OPENAI_API_KEY"] = or_key
+    # caveman's native `openrouter` provider reads OPENROUTER_API_KEY (it ignores
+    # OPENAI_BASE_URL and would otherwise hit api.openai.com).
+    env["OPENROUTER_API_KEY"] = or_key
     env["OPENAI_MODEL"] = getattr(settings, "mvp_build_model", "") or "xiaomi/mimo-v2.5-pro"
     # Persistent, shared npm cache so `npm install` (run by every build pass and every
     # session) pulls packages from local disk instead of re-downloading — the biggest
@@ -669,9 +696,13 @@ def _record_build_usage(result_obj: dict, founder_id: str = "", session_id: str 
         if not founder_id:
             return
         usage = result_obj.get("usage") or {}
-        cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
-        inp = sum(int(usage.get(k, 0) or 0) for k in ("input_tokens", "cache_creation_input_tokens")) + cache_read
-        out = int(usage.get("output_tokens", 0) or 0)
+        # openclaude: input_tokens / output_tokens / cache_read_input_tokens / cache_creation_input_tokens
+        # caveman:    input / output / cacheRead / cacheWrite
+        cache_read = int(usage.get("cache_read_input_tokens", usage.get("cacheRead", 0)) or 0)
+        cache_write = int(usage.get("cache_creation_input_tokens", usage.get("cacheWrite", 0)) or 0)
+        base_in = int(usage.get("input_tokens", usage.get("input", 0)) or 0)
+        inp = base_in + cache_write + cache_read
+        out = int(usage.get("output_tokens", usage.get("output", 0)) or 0)
         total_t = inp + out
         turns = int(result_obj.get("num_turns", 0) or 0)
         if total_t <= 0:
@@ -840,12 +871,195 @@ def _stream_build_events(cmd: list, cwd: str, timeout: int, env: dict,
     return stderr_text
 
 
+def _stream_caveman_events(cmd: list, cwd: str, timeout: int, env: dict,
+                           founder_id: str, app_session_id: str, agent: str = "technical") -> str:
+    """Run caveman (`--mode json`, NDJSON) and bridge its event schema to the same
+    `agent_build` events the openclaude path emits, so the live preview, billing and
+    final-result extraction all work unchanged. Used for both streamed (app_session_id
+    set) and headless runs — publishing is skipped when app_session_id is empty."""
+    import threading as _th
+    from backend.core.events import publish_sync
+
+    files: dict[str, str] = {}
+    result_text = ""
+    turns = 0
+    usage_in = usage_out = usage_cr = usage_cw = 0
+    stderr_lines: list[str] = []
+
+    def pub(ev: dict) -> None:
+        if not app_session_id:
+            return
+        try:
+            publish_sync(app_session_id, {"type": "agent_build", "agent": agent, **ev})
+        except Exception:
+            pass
+
+    def _txt(content) -> str:
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return "\n".join(b.get("text") or "" for b in content if isinstance(b, dict))
+        return str(content or "")
+
+    with _build_semaphore:
+        proc = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, env=env, bufsize=1)
+        watchdog = _th.Timer(timeout, proc.kill)
+        watchdog.daemon = True
+        watchdog.start()
+
+        def _pump_stderr() -> None:
+            try:
+                assert proc.stderr is not None
+                for raw in proc.stderr:
+                    line = raw.strip()
+                    if line:
+                        stderr_lines.append(line)
+            except Exception:
+                pass
+
+        stderr_thread = _th.Thread(target=_pump_stderr, daemon=True)
+        stderr_thread.start()
+        try:
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                line = line.strip()
+                if not line.startswith("{"):
+                    continue  # banner / warnings — not JSON
+                try:
+                    ev = json.loads(line)
+                except Exception:
+                    continue
+                etype = ev.get("type")
+                if etype == "session":
+                    pub({"kind": "start", "tools": []})
+                elif etype == "turn_start":
+                    turns += 1
+                elif etype == "tool_execution_start":
+                    name = ev.get("toolName") or ""
+                    args = ev.get("args") or {}
+                    if name in ("write", "edit"):
+                        path = args.get("path") or args.get("file_path") or ""
+                        content = args.get("content") or args.get("new_string") or ""
+                        if path:
+                            files[path] = content
+                            pub({"kind": "file", "path": path, "content": content[:20000],
+                                 "size": len(content), "verb": "edited" if name == "edit" else "wrote"})
+                    elif name == "bash":
+                        pub({"kind": "command", "command": (args.get("command") or "")[:500], "desc": ""})
+                    else:
+                        tgt = str(args.get("path") or args.get("pattern") or args.get("query") or "")[:120]
+                        pub({"kind": "tool", "tool": name, "target": tgt})
+                elif etype == "tool_execution_end":
+                    out = _txt((ev.get("result") or {}).get("content")).strip()
+                    if out and out != "(no output)":
+                        is_err = bool(ev.get("isError"))
+                        pub({"kind": "error" if is_err else "output", "text": out[-700:],
+                             "command": (ev.get("toolName") or "")[:120]})
+                elif etype == "message_end":
+                    msg = ev.get("message") or {}
+                    if msg.get("role") == "assistant":
+                        u = msg.get("usage") or {}
+                        usage_in += int(u.get("input", 0) or 0)
+                        usage_out += int(u.get("output", 0) or 0)
+                        usage_cr += int(u.get("cacheRead", 0) or 0)
+                        usage_cw += int(u.get("cacheWrite", 0) or 0)
+                        txt = _txt(msg.get("content")).strip()
+                        if txt:
+                            result_text = txt
+                            pub({"kind": "log", "text": txt[:2000]})
+        finally:
+            watchdog.cancel()
+            try:
+                proc.wait(timeout=10)
+            except Exception:
+                proc.kill()
+            stderr_thread.join(timeout=1)
+
+    _record_build_usage(
+        {"usage": {"input": usage_in, "output": usage_out, "cacheRead": usage_cr, "cacheWrite": usage_cw},
+         "num_turns": turns},
+        founder_id, app_session_id,
+    )
+    stderr_text = "\n".join(stderr_lines).strip()
+    if not result_text and stderr_text:
+        pub({"kind": "error", "text": stderr_text[-2000:]})
+    pub({"kind": "done", "files": list(files.keys()), "exit_code": proc.returncode or 0})
+    return result_text or stderr_text
+
+
+def _caveman_session_file(local: str) -> str:
+    """Deterministic per-workspace caveman session file (replaces openclaude's
+    .oc_session_id uuid). Passing the same path each call resumes the session."""
+    return str(Path(local) / ".cave_session.json")
+
+
+def _run_caveman(local: str, prompt: str, session_id: str = None, timeout: int = 480, model: str = None,
+                 founder_id: str = "", app_session_id: str = "", agent: str = "technical") -> str:
+    """Send one message to caveman-code. Mirrors _run_claude's openclaude path but
+    uses caveman's flags: --mode json (NDJSON), --provider openrouter, --session <file>."""
+    import shutil as _shutil
+    if not (os.path.exists(OPENCLAUDE_BIN) or _shutil.which(OPENCLAUDE_BIN)):
+        raise RuntimeError(f"caveman not found at {OPENCLAUDE_BIN}")
+
+    env = _make_env()
+    model = model or env.get("OPENAI_MODEL", "z-ai/glm-5.2")
+    autonomy = (
+        "You are an autonomous coding agent running non-interactively in a sandbox. "
+        "There is NO human to answer questions. NEVER ask what to build or for "
+        "clarification — make reasonable assumptions and proceed immediately. Use your "
+        "write/edit/bash tools to create real, complete, runnable code (not stubs or "
+        "scaffolding). Finish the task fully before stopping."
+    )
+    cave_args = [
+        OPENCLAUDE_BIN, "-p", "--mode", "json",
+        "--provider", "openrouter", "--model", model,
+        "--tools", "read,bash,edit,write,grep,find,ls",
+    ]
+    if session_id:
+        # Mint the openclaude-style uuid file too so PTY takeover / vercel-fix can
+        # discover the run, but caveman resumes via its own session file path.
+        try:
+            Path(local, ".oc_session_id").write_text(session_id)
+        except Exception:
+            pass
+        cave_args += ["--session", _caveman_session_file(local)]
+    else:
+        cave_args += ["--no-session"]
+    full_prompt = autonomy + "\n\n---\n\n" + prompt
+
+    or_key = env.get("OPENROUTER_API_KEY", "")
+    if os.getuid() == 0:
+        try:
+            subprocess.run(["chown", "-R", "astra:astra", local], capture_output=True, timeout=120)
+            subprocess.run(["chmod", "-R", "u+rwX", local], capture_output=True, timeout=120)
+        except Exception:
+            pass
+        cmd = [
+            "sudo", "-u", "astra", "env",
+            f"OPENROUTER_API_KEY={or_key}",
+            "HOME=/home/astra",
+            f"npm_config_cache={env.get('npm_config_cache', _NPM_CACHE_DIR)}",
+            "npm_config_prefer_offline=true",
+            "npm_config_audit=false",
+            "npm_config_fund=false",
+        ] + cave_args + [full_prompt]
+    else:
+        cmd = cave_args + [full_prompt]
+
+    return _stream_caveman_events(cmd, local, timeout, env, founder_id, app_session_id, agent)
+
+
 def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 480, model: str = None,
                 founder_id: str = "", app_session_id: str = "", agent: str = "technical") -> str:
     """
-    Send one message to openclaude. When app_session_id is set, the build streams
-    live to that session (transcript + files). Otherwise returns the final result.
+    Send one message to the coding agent (caveman or openclaude). When app_session_id
+    is set, the build streams live to that session (transcript + files). Otherwise
+    returns the final result.
     """
+    if getattr(settings, "code_agent", "caveman") == "caveman":
+        return _run_caveman(local, prompt, session_id, timeout, model, founder_id, app_session_id, agent)
+
     if not os.path.exists(OPENCLAUDE_BIN):
         raise RuntimeError(f"openclaude not found at {OPENCLAUDE_BIN}")
 
