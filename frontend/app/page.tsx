@@ -237,12 +237,10 @@ export default function Home() {
         <nav className="lp-nav">
           <div className="lp-nav-inner">
             <div className="lp-nav-brand">
-              <svg viewBox="0 0 320 305" className="lp-nav-mark" aria-hidden="true">
-                <path
-                  d="M 113 192 A 95 95 0 1 1 207 192 A 95 95 0 1 1 160 110 A 95 95 0 1 1 113 192 Z"
-                  stroke="currentColor" strokeWidth="22" fill="none"
-                  strokeLinecap="round" strokeLinejoin="round"
-                />
+              <svg viewBox="0 0 320 295" className="lp-nav-mark" aria-hidden="true">
+                <ellipse cx="160" cy="110" rx="42" ry="100" stroke="currentColor" strokeWidth="20" fill="none" strokeLinecap="round" transform="rotate(0, 160, 175)" />
+                <ellipse cx="160" cy="110" rx="42" ry="100" stroke="currentColor" strokeWidth="20" fill="none" strokeLinecap="round" transform="rotate(120, 160, 175)" />
+                <ellipse cx="160" cy="110" rx="42" ry="100" stroke="currentColor" strokeWidth="20" fill="none" strokeLinecap="round" transform="rotate(240, 160, 175)" />
               </svg>
               <span className="lp-nav-wordmark">ASTRA</span>
             </div>

@@ -1,16 +1,5 @@
-<svg viewBox="0 0 320 305" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!--
-    Triquetra: three 300° arcs of circles (r=95) centred at the vertices of
-    an equilateral triangle: A(160,110) top · B(113,192) BL · C(207,192) BR.
-    Full shape bounding box (incl stroke/2): x≈[8,312], y≈[5,297].
-    ViewBox 0 0 320 305 gives ~4px padding on all sides.
-  -->
-  <path
-    d="M 113 192 A 95 95 0 1 1 207 192 A 95 95 0 1 1 160 110 A 95 95 0 1 1 113 192 Z"
-    stroke="white"
-    stroke-width="22"
-    fill="none"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-  />
+<svg viewBox="0 0 320 295" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <ellipse cx="160" cy="110" rx="42" ry="100" stroke="white" stroke-width="20" fill="none" stroke-linecap="round" transform="rotate(0, 160, 175)" />
+  <ellipse cx="160" cy="110" rx="42" ry="100" stroke="white" stroke-width="20" fill="none" stroke-linecap="round" transform="rotate(120, 160, 175)" />
+  <ellipse cx="160" cy="110" rx="42" ry="100" stroke="white" stroke-width="20" fill="none" stroke-linecap="round" transform="rotate(240, 160, 175)" />
 </svg>
