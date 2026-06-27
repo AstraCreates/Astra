@@ -290,6 +290,17 @@ async def _tool_steer_agents(founder_id: str, session_id: str, args: dict) -> An
     msg = str(args.get("message", "")).strip()
     if not msg:
         return {"ok": False, "error": "empty directive"}
+    # Guard: don't steer a dead session — redirect to dispatch_agents/set_goal instead.
+    try:
+        from backend.core.session_store import is_done
+        if is_done(session_id):
+            return {
+                "ok": False,
+                "error": "session already completed — no agents running to steer. Use dispatch_agents or set_goal to start new work.",
+                "hint": "dispatch_agents",
+            }
+    except Exception:
+        pass
     steer_push(session_id, msg)
     try:
         await publish(session_id, {"type": "founder_steer", "message": msg})
@@ -1013,19 +1024,22 @@ async def run_copilot(founder_id: str, session_id: str, message: str, founder_em
         "on any directive (dispatch_agents), create/activate goals with per-workstream tasks (set_goal), "
         "approve the next goal, steer running agents, run a cycle.\n\n"
         "DECISION TREE — check in this exact order for every message:\n"
-        "1. RUNNING AGENTS + DIRECTIVE: if running_agents or child_sessions_running is NON-EMPTY "
+        "0. SESSION DONE CHECK: if session_meta.status == 'done' OR state.status == 'done', "
+        "the session has COMPLETED — there are NO running agents regardless of what running_agents shows. "
+        "NEVER call steer_agents for a done session. Treat ALL imperatives as dispatch_agents or set_goal.\n"
+        "1. RUNNING AGENTS + DIRECTIVE: if session is NOT done AND running_agents or child_sessions_running is NON-EMPTY "
         "AND the founder is telling them what to do (focus on X, stop Y, wrap up, change direction, etc.) "
         "→ IMMEDIATELY call steer_agents with the exact directive. Example:\n"
         '   founder: "tell them to focus on mobile" → {"action":"tool","tool":"steer_agents","args":{"message":"focus on mobile"}}\n'
         '   founder: "wrap up research" → {"action":"tool","tool":"steer_agents","args":{"message":"wrap up research now and summarize findings"}}\n'
         "   DO NOT reply, DO NOT dispatch more agents. Just steer.\n"
-        "2. IMPERATIVE + NO RUNNING AGENTS: build, make, create, add, fix, change, ship, launch "
+        "2. IMPERATIVE + NO RUNNING AGENTS (or session done): build, make, create, add, fix, change, ship, launch, redesign, update "
         "→ dispatch_agents with the right agents. Examples:\n"
         "   'build an app' → dispatch_agents {agents:['web','technical'], instruction:'build full product: auth + dashboard + core features'}\n"
-        "   'create landing page' → dispatch_agents {agents:['web'], instruction:'...'}\n"
+        "   'redesign the landing page' → dispatch_agents {agents:['design','web'], instruction:'redesign the landing page: ...'}\n"
         "3. BROADER OBJECTIVE: → set_goal with per-workstream tasks (auto-dispatches).\n"
         "4. QUESTION: 'what is...', 'how is...', 'show me...' → ask_brain / session_status / list_goals.\n"
-        "NEVER dispatch_agents if running_agents is non-empty. NEVER narrate options for an imperative.\n\n"
+        "NEVER dispatch_agents if running_agents is non-empty AND session is NOT done. NEVER narrate options for an imperative.\n\n"
         "DEPLOY/404 ERRORS: If the founder reports a 404, DEPLOYMENT_NOT_FOUND, or broken URL from an "
         "agent-built site, immediately dispatch_agents with web+technical agents instructed to rebuild and "
         "redeploy the specific site. Use the deploy_url from all_recent_sessions to identify which project "

@@ -2079,6 +2079,10 @@ class Orchestrator:
                         logger.error("Build agent %s raised: %s", t["agent"], _be)
                         if t["id"] not in completed:
                             completed[t["id"]] = {"error": str(_be), "agent": t["agent"]}
+                        await publish(session_id, {
+                            "type": "agent_error", "agent": t["agent"],
+                            "task_id": t["id"], "error": str(_be)[:400],
+                        })
                     return
                 _to = _AGENT_TIMEOUT
                 try:

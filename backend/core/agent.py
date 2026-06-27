@@ -1193,14 +1193,26 @@ class Agent:
             elif action == "computer_use" and browser is not None:
                 detail = parsed.get("action_detail", {})
                 await self._emit(ctx, "agent_action", action="computer_use", detail=detail, reasoning=reasoning)
-                result = await browser.execute_action(detail)
-                state = await browser.page_state()
+                try:
+                    result = await asyncio.wait_for(browser.execute_action(detail), timeout=60)
+                    state = await asyncio.wait_for(browser.page_state(), timeout=30)
+                except asyncio.TimeoutError:
+                    messages.append({"role": "user", "content": "computer_use timed out. Proceed to done with results gathered so far."})
+                    await self._emit(ctx, "agent_action_result", action="computer_use", url="", title="timeout")
+                    continue
+                except Exception as _cu_err:
+                    messages.append({"role": "user", "content": f"computer_use failed: {_cu_err}. Proceed to done with results gathered so far."})
+                    await self._emit(ctx, "agent_action_result", action="computer_use", url="", title="error")
+                    continue
                 await self._emit(ctx, "agent_action_result", action="computer_use", url=state.get("url"), title=state.get("title"))
-                screenshot_b64 = result.get("screenshot_b64") or (
-                    # Auto-capture screenshot after navigate/click so agent sees result
-                    (await browser.execute_action({"action": "screenshot"})).get("screenshot_b64")
-                    if detail.get("action") in ("navigate", "click") else None
-                )
+                try:
+                    screenshot_b64 = result.get("screenshot_b64") or (
+                        # Auto-capture screenshot after navigate/click so agent sees result
+                        (await asyncio.wait_for(browser.execute_action({"action": "screenshot"}), timeout=20)).get("screenshot_b64")
+                        if detail.get("action") in ("navigate", "click") else None
+                    )
+                except Exception:
+                    screenshot_b64 = None
                 text_part = (
                     f"Browser result: {json.dumps({k: v for k, v in result.items() if k != 'screenshot_b64'})}\n"
                     f"URL: {state.get('url', 'unknown')}\n"
