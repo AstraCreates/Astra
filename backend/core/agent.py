@@ -790,6 +790,19 @@ class Agent:
                 parts.append(f"\n--- {fname} [{dept}] ---\n{content}")
             library_section = "\n".join(parts)
 
+        # Universal examples-library nudge — only for agents that have the tool. Pulling
+        # a proven pattern and adapting it beats generate→review→revise loops, which is
+        # where token cost compounds. Currently only technical/web prompts mention it;
+        # this covers marketing/sales/research/legal/etc too.
+        examples_nudge = ""
+        if "search_examples" in (self.tools or {}):
+            examples_nudge = (
+                "\n- BEFORE producing substantial output (code, copy, templates, schemas, "
+                "outlines, legal/marketing/sales docs), call search_examples(query, "
+                f"agent_role='{self.name}') and adapt the closest match instead of writing "
+                "from scratch. Reusing proven patterns means fewer revision rounds.\n"
+            )
+
         # Build skills preamble — prepended before the agent role so the LLM
         # treats skill guidance as the highest-priority context.
         skills_section = ""
@@ -853,6 +866,7 @@ class Agent:
             "- Use exact arg names from tool descriptions.\n"
             "- Treat injected run_context_pack/current_company_goal/company_brain_context as source-of-truth context. "
             "Call Company Brain tools only when that injected context is insufficient for the current task."
+            + examples_nudge
             + library_section
         )
 
