@@ -329,7 +329,23 @@ async def _tool_message_agent(founder_id: str, session_id: str, args: dict) -> A
         await publish(session_id, {"type": "founder_steer", "message": msg, "target_agent": agent_name})
     except Exception:
         pass
-    return {"ok": True, "delivered": msg, "target_agent": agent_name}
+    resp = {"ok": True, "delivered": msg, "target_agent": agent_name}
+    # Delivery feedback: a directive is only consumed when the agent next steps. If the
+    # named agent isn't running right now, say so — it's buffered, not lost, but the
+    # manager should know it won't act until (and unless) that agent runs.
+    try:
+        from backend.workflow_state import build_session_state
+        from backend.core.events import _event_log
+        state = build_session_state(session_id, _event_log.get(session_id, []))
+        running = sorted([n for n, a in (state.get("agents") or {}).items()
+                          if (a or {}).get("status") == "running"])
+        if running and agent_name not in running:
+            resp["warning"] = (f"'{agent_name}' is not currently running "
+                               f"(running: {', '.join(running) or 'none'}); directive buffered.")
+            resp["running_agents"] = running
+    except Exception:
+        pass
+    return resp
 
 
 async def _tool_run_cycle(founder_id: str, session_id: str, args: dict) -> Any:

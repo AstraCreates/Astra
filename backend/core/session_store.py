@@ -184,6 +184,20 @@ def update_session_status(session_id: str, status: str, artifact_count: int | No
             _save_index(index)
 
 
+def merge_session_meta(session_id: str, **fields) -> None:
+    """Merge arbitrary fields into a session's meta (e.g. needs_review, review_reason)."""
+    if not fields:
+        return
+    with _session_lock(session_id):
+        p = meta_path(session_id)
+        try:
+            meta = json.loads(p.read_text()) if p.exists() else {"session_id": session_id}
+        except Exception:
+            meta = {"session_id": session_id}
+        meta.update(fields)
+        p.write_text(json.dumps(meta, indent=2))
+
+
 # ── Event persistence ──────────────────────────────────────────────────────────
 
 def append_event(session_id: str, event_id: int, event: dict) -> None:

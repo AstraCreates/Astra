@@ -446,11 +446,22 @@ async def approval_decision_wait(session_id: str, gate_key: str, timeout: float 
     return None
 
 
+# Drop buffered directives never consumed within this window — a directive targeted
+# at an agent that already finished (or never runs) would otherwise leak forever.
+_STEER_TTL = 1800.0
+
+
+def _steer_fresh(item) -> bool:
+    if isinstance(item, str):
+        return True  # legacy plain string — no ts, keep
+    return (time.time() - item.get("ts", 0)) < _STEER_TTL
+
+
 def steer_push(session_id: str, message: str, agent_name: str = "") -> None:
     """Buffer a founder directive. agent_name="" = broadcast to all agents."""
-    if session_id not in _steer:
-        _steer[session_id] = []
-    _steer[session_id].append({"msg": message, "agent": agent_name.lower().strip()})
+    bucket = [it for it in _steer.get(session_id, []) if _steer_fresh(it)]  # GC stale on write
+    bucket.append({"msg": message, "agent": agent_name.lower().strip(), "ts": time.time()})
+    _steer[session_id] = bucket
 
 
 def steer_pull(session_id: str, agent_name: str = "") -> list[str]:
@@ -462,6 +473,8 @@ def steer_pull(session_id: str, agent_name: str = "") -> list[str]:
     for item in all_items:
         if isinstance(item, str):
             out.append(item)  # legacy plain-string messages
+        elif not _steer_fresh(item):
+            continue  # expired — drop
         elif not item.get("agent") or item["agent"] == name:
             out.append(item["msg"])
         else:
@@ -469,6 +482,11 @@ def steer_pull(session_id: str, agent_name: str = "") -> list[str]:
     if kept:
         _steer[session_id] = kept
     return out
+
+
+def steer_pending(session_id: str) -> list[dict]:
+    """Fresh, undelivered directives still buffered for a session (for delivery feedback)."""
+    return [it for it in _steer.get(session_id, []) if isinstance(it, dict) and _steer_fresh(it)]
 
 
 def _fmt(event_id: int, event: dict) -> str:

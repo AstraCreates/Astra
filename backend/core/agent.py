@@ -926,6 +926,8 @@ class Agent:
                 for directive in steer_pull(ctx.session_id, agent_name=self.name):
                     messages.append({"role": "user", "content": f"[FOUNDER DIRECTIVE] {directive}\nAdjust your current plan accordingly and continue."})
                     logger.info("%s received founder directive: %s", self.name, directive[:80])
+                    # Tell the UI/manager the directive actually landed + is being acted on.
+                    await self._emit(ctx, "steer_delivered", agent=self.name, directive=directive[:200])
             except Exception:
                 pass
             if runtime_feature_enabled("context_compression_v2", ctx.founder_id) and compressor.should_compress(messages):

@@ -203,6 +203,49 @@ class Orchestrator:
                     )
         except Exception as _e:
             logger.warning("deliverables library sync failed session=%s: %s", session_id, _e)
+        await self._verify_deployments(session_id, completed)
+
+    async def _verify_deployments(self, session_id: str, completed: dict) -> None:
+        """Deterministic deploy-finish check: HEAD/GET each deploy_url a completed agent
+        returned. Any non-200/unreachable URL → emit deployment_check_failed + flag the
+        session needs_review so a silent deploy failure doesn't read as success. No LLM."""
+        import httpx
+        from backend.core.events import publish
+
+        failed: list[str] = []
+        for agent_name, result in (completed or {}).items():
+            if not isinstance(result, dict) or result.get("error"):
+                continue
+            url = result.get("deploy_url")
+            if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+                continue
+            label = result.get("agent") or agent_name
+            status: Any = None
+            ok = False
+            try:
+                async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
+                    r = await client.head(url)
+                    status = r.status_code
+                    if status in (403, 405, 501):  # host rejects HEAD — confirm with GET
+                        r = await client.get(url)
+                        status = r.status_code
+                    ok = status < 400
+            except Exception as exc:
+                status = str(exc)[:80]
+            if not ok:
+                failed.append(f"{label} ({url} → {status})")
+                try:
+                    await publish(session_id, {"type": "deployment_check_failed",
+                                               "agent": label, "url": url, "status": str(status)})
+                except Exception:
+                    pass
+        if failed:
+            try:
+                from backend.core.session_store import merge_session_meta
+                merge_session_meta(session_id, needs_review=True,
+                                   review_reason="deploy check failed: " + "; ".join(failed))
+            except Exception as _e:
+                logger.warning("needs_review flag failed session=%s: %s", session_id, _e)
 
     async def _bootstrap_operating_after_run(self, session_id: str, founder_id: str, goal: str) -> None:
         """End of a run → drive the sequential goal engine: finalize the north star,
@@ -2629,10 +2672,25 @@ class Orchestrator:
         import os as _os
         _CONT_TIMEOUT = int(_os.environ.get("ASTRA_AGENT_TIMEOUT", "3600"))
 
+        # Builds (web/technical) legitimately run long, so they get a far more generous
+        # ceiling than other agents — but still a ceiling, or a wedged build (hung
+        # openclaude/caveman, stuck npm) pins the whole run open forever.
+        _BUILD_TIMEOUT = int(_os.environ.get("ASTRA_BUILD_TIMEOUT", "5400"))
+
         async def _run_task_guarded(t: dict) -> None:
             if (t.get("agent") or "").lower().startswith(("web", "technical")):
                 try:
-                    await _run_task(t)
+                    await asyncio.wait_for(_run_task(t), timeout=_BUILD_TIMEOUT)
+                except asyncio.TimeoutError:
+                    logger.error("Build agent %s timed out after %ds", t["agent"], _BUILD_TIMEOUT)
+                    completed[t["id"]] = {"error": f"build_timed_out_after_{_BUILD_TIMEOUT}s",
+                                          "agent": t["agent"], "timed_out": True}
+                    try:
+                        await publish(session_id, {"type": "agent_error", "agent": t["agent"],
+                                                   "task_id": t["id"],
+                                                   "error": f"build timed out after {_BUILD_TIMEOUT}s"})
+                    except Exception:
+                        pass
                 except Exception as e:
                     completed.setdefault(t["id"], {"error": str(e), "agent": t["agent"]})
                 return
