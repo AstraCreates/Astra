@@ -107,7 +107,7 @@ class RunContextPolicy:
         self.session_id = session_id
         self.founder_id = founder_id
         self.company_id = str(constraints.get("company_id") or founder_id)
-        self.max_context_chars = int(policy.get("max_context_chars") or constraints.get("max_context_chars") or _env_int("ASTRA_AGENT_CONTEXT_PACK_CHARS", 24_000))
+        self.max_context_chars = int(policy.get("max_context_chars") or constraints.get("max_context_chars") or _env_int("ASTRA_AGENT_CONTEXT_PACK_CHARS", 16_000))
         self.max_brain_retrievals = int(policy.get("max_brain_retrievals") or constraints.get("max_brain_retrievals") or _env_int("ASTRA_MAX_BRAIN_RETRIEVALS_PER_SESSION", 24))
         self.max_brain_writes = int(policy.get("max_brain_writes") or constraints.get("max_brain_writes") or _env_int("ASTRA_MAX_BRAIN_WRITES_PER_SESSION", 80))
         # Agents are network-bound (OpenRouter streams; GIL released in worker threads),
@@ -199,8 +199,8 @@ class RunContextPolicy:
         # the same data in both doubled ~5-8k tokens/call. run_context_pack has no
         # programmatic readers; it's prompt-only metadata pointing at the flat keys.
         goal_pack = self._current_goal_pack(agent_name)
-        brain_context_text = _truncate(str(brain.get("context") or brain.get("formatted") or ""), 9000)
-        vault_notes = _truncate(vault_context or "", 5000)
+        brain_context_text = _truncate(str(brain.get("context") or brain.get("formatted") or ""), 6000)
+        vault_notes = _truncate(vault_context or "", 3500)
         pack = {
             "policy": {
                 "source_of_truth": "Use current_company_goal, company_brain_context, prior_results and prior_vault_notes (below) as injected source-of-truth; call Company Brain tools only for missing facts.",
@@ -228,7 +228,10 @@ class RunContextPolicy:
             "run_context_pack": pack,
             "current_company_goal": goal_pack,
             "company_brain_context": brain_context_text or base_shared.get("company_brain_context", ""),
-            "prior_results": dep_results,
+            # Compacted (was raw dep_results) so a big dependency payload can't blow the
+            # prompt — _render_shared_context renders this into every call. No code reads
+            # prior_results programmatically; it's prompt-only.
+            "prior_results": _compact_value(dep_results, 4000),
             "prior_vault_notes": vault_notes,
         }
 

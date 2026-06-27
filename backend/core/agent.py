@@ -70,14 +70,15 @@ _MIN_CALLS_BY_AGENT: dict[str, int] = {
 # "formatted" search results / full page text must be bounded, or a research-heavy
 # agent (design, marketing) accumulates 40 iterations of multi-KB results and
 # overflows the model window (observed: 489385 tokens vs 262144 limit).
-_TOOL_RESULT_CHAR_CAP = 80_000
+# Tunable: raise ASTRA_TOOL_RESULT_CAP if agents lose needed detail.
+_TOOL_RESULT_CHAR_CAP = int(os.environ.get("ASTRA_TOOL_RESULT_CAP", "40000"))
 
 
-# Cumulative conversation budget per agent loop. Must stay under the model window:
-# 262,144 tokens ≈ ~940k chars, so 4_000_000 (the old value) was ~4x over and let
-# long tool-heavy loops (design/technical, 40+ iters) overflow. Kept comfortably
-# below the limit to leave room for the system prompt and the response.
-_HISTORY_CHAR_BUDGET = 450_000  # ~110k tokens; + shared + system stays under the 262k model window
+# Cumulative conversation budget per agent loop. Must stay under the model window
+# AND keep input cost down — long tool-heavy loops resend the whole history every
+# turn, so a tighter budget directly cuts billed input tokens. Compression (90k→
+# tunable) usually fires first; this is the hard backstop.
+_HISTORY_CHAR_BUDGET = int(os.environ.get("ASTRA_HISTORY_CHAR_BUDGET", "300000"))  # ~75k tokens
 
 
 def _trim_message_history(messages: list[dict]) -> list[dict]:
@@ -214,8 +215,8 @@ def _format_tool_result(tool_name: str, result: Any) -> str:
 # very FIRST LLM call fails before any trimming can help (observed: marketing at
 # 276,256 tokens vs the 262,144 limit, with 3 research results + brain + genome +
 # manifests accumulated in shared). Bound it here, keeping every key visible.
-_SHARED_CONTEXT_CHAR_CAP = 200_000  # ~50k tokens
-_SHARED_VALUE_CHAR_CAP = 50_000
+_SHARED_CONTEXT_CHAR_CAP = int(os.environ.get("ASTRA_SHARED_CONTEXT_CAP", "100000"))  # ~25k tokens (was 200k)
+_SHARED_VALUE_CHAR_CAP = int(os.environ.get("ASTRA_SHARED_VALUE_CAP", "16000"))  # ~4k tokens/value (was 50k)
 
 
 def _render_shared_context(shared: dict, max_chars: int = _SHARED_CONTEXT_CHAR_CAP) -> str:

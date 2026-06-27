@@ -23,8 +23,13 @@ def _clean(text: str, limit: int = 900) -> str:
 
 
 class AstraContextCompressor:
-    def __init__(self, *, token_threshold: int = 90_000, tail_messages: int = 12):
-        self.token_threshold = token_threshold
+    def __init__(self, *, token_threshold: int | None = None, tail_messages: int = 12):
+        # Lower threshold = compress sooner = lower steady-state context resent each
+        # turn = fewer billed input tokens (at the cost of more summary calls). 64k sits
+        # above the ~32k injection baseline so it doesn't churn on the first tool result.
+        import os
+        self.token_threshold = token_threshold if token_threshold is not None else int(
+            os.environ.get("ASTRA_COMPRESSION_THRESHOLD", "64000"))
         self.tail_messages = tail_messages
 
     def should_compress(self, messages: list[dict[str, Any]]) -> bool:
