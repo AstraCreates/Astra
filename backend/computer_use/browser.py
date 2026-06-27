@@ -164,7 +164,8 @@ class BrowserSession:
           screenshot — {"action": "screenshot"}
         """
         if not self._started:
-            await self.start()
+            import asyncio as _asyncio
+            await _asyncio.wait_for(self.start(), timeout=30)
 
         p = self._page
         act = action.get("action", action.get("type", ""))

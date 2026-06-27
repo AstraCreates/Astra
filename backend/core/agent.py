@@ -1192,6 +1192,9 @@ class Agent:
 
             elif action == "computer_use" and browser is not None:
                 detail = parsed.get("action_detail", {})
+                if not detail or not detail.get("action"):
+                    messages.append({"role": "user", "content": 'computer_use requires action_detail.action. Example: {"action": "navigate", "url": "https://..."}'})
+                    continue
                 await self._emit(ctx, "agent_action", action="computer_use", detail=detail, reasoning=reasoning)
                 try:
                     result = await asyncio.wait_for(browser.execute_action(detail), timeout=60)
