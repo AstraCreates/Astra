@@ -4,10 +4,16 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     supabase_url: str = ""
     supabase_key: str = ""
-    # Model that drives openclaude for technical-agent MVP builds.
-    # Bench (2026-06-26): qwen3-coder-flash matched GLM-5.2 on pass rate (83%)
-    # at 2.1× fewer tokens and 5× faster per call ($0.195/$0.975 vs $0.95/$3.00).
-    mvp_build_model: str = "z-ai/glm-5.2"
+    # Model that drives the coding agent (caveman) for technical-agent MVP builds.
+    # qwen3-coder, not GLM-5.2: GLM was 46% of prod spend (input-token dominated — builds
+    # resend codebase context per tool call). qwen3-coder is cheaper on BOTH sides
+    # ($0.22/$1.80 vs GLM $1.2/$2.31, ~5.5× cheaper input) and coder-specialized.
+    # NOT qwen3-coder-FLASH: it emits XML-text tool calls (<function=write>...) that
+    # caveman can't parse → zero tools execute. qwen3-coder uses native function-calling.
+    mvp_build_model: str = "qwen/qwen3-coder"
+    # Web-search/research model. perplexity/sonar ($1/$1), NOT sonar-pro ($3/$15) — the
+    # pro tier's $15/M output made it 36% of prod spend for marginal research-depth gain.
+    research_model: str = "perplexity/sonar"
     # Which coding-agent CLI drives MVP builds: "caveman" (@juliusbrussee/caveman-code,
     # ~2x fewer tokens, native openrouter provider) or "openclaude" (legacy fallback).
     code_agent: str = "caveman"

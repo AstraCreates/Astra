@@ -452,7 +452,7 @@ def sonar_research(queries=None) -> dict:
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={"Authorization": f"Bearer {_key}", "Content-Type": "application/json"},
                 json={
-                    "model": "perplexity/sonar-pro",
+                    "model": getattr(_settings, "research_model", "") or "perplexity/sonar",
                     "messages": [{"role": "user", "content": query}],
                     "provider": {"allow_fallbacks": False},
                     "usage": {"include": True},

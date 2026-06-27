@@ -1,4 +1,4 @@
-"""delegate_research_task — deep research for technical agents via o4-mini-deep-research."""
+"""delegate_research_task — deep research for technical agents via perplexity/sonar-pro."""
 from __future__ import annotations
 
 from typing import Any
@@ -12,7 +12,7 @@ async def delegate_research_task(
 ) -> dict[str, Any]:
     """Spawn a deep-research call to look up technical information for a build.
 
-    Uses openai/o4-mini-deep-research (built-in web search) — no manual
+    Uses perplexity/sonar-pro (built-in web search) — no manual
     search/fetch orchestration needed. Returns findings with source citations.
 
     Args:
@@ -37,7 +37,7 @@ async def delegate_research_task(
             "https://openrouter.ai/api/v1/chat/completions",
             headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
             json={
-                "model": "perplexity/sonar-pro",
+                "model": getattr(settings, "research_model", "") or "perplexity/sonar",
                 "messages": [{"role": "user", "content": prompt}],
                 "provider": {"allow_fallbacks": False},
                 "usage": {"include": True},
