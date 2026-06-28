@@ -959,10 +959,9 @@ function StepWelcome({ name, setName, company, setCompany, goal, setGoal, brandC
 
 type QuizSub = "type" | "customer" | "stage" | "sub";
 
-function StepQuiz({ onComplete, onBack, onSkip }: {
+function StepQuiz({ onComplete, onBack }: {
   onComplete: (result: QuizResult) => void;
   onBack: () => void;
-  onSkip: () => void;
 }) {
   const [sub, setSub] = useState<QuizSub>("type");
   const [bizType, setBizType] = useState("");
@@ -1023,9 +1022,7 @@ function StepQuiz({ onComplete, onBack, onSkip }: {
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
         <span style={SECTION_LABEL}>Step {subIdx + 1} of {SUBS.length}</span>
-        <button onClick={onSkip} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: T.textMuted, padding: 0 }}>
-          Skip quiz →
-        </button>
+        <span style={{ fontSize: 11, color: T.textMuted }}>Takes ~15 seconds</span>
       </div>
 
       <div>
@@ -1767,7 +1764,7 @@ export default function OnboardingWizard() {
               />
             )}
             {step === 1 && (
-              <StepQuiz onComplete={onQuizComplete} onBack={() => setStep(0)} onSkip={() => setStep(2)} />
+              <StepQuiz onComplete={onQuizComplete} onBack={() => setStep(0)} />
             )}
             {step === 2 && (
               <StepChooseStack
