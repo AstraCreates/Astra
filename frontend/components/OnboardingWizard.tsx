@@ -819,6 +819,33 @@ function BrandPicker({ brandColor, setBrandColor, brandVoice, setBrandVoice }: {
               </button>
             );
           })}
+          {(() => {
+            const isCustom = !!brandColor && !COLOR_PRESETS.some(c => c.hex === brandColor);
+            return (
+              <label
+                title="Pick any color"
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "5px 10px 5px 7px",
+                  border: `1.5px solid ${isCustom ? T.blue : T.border}`, borderRadius: 999,
+                  background: isCustom ? T.blueTint : T.surface, color: T.textSecondary,
+                  fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-geist-sans), sans-serif",
+                }}
+              >
+                <span style={{
+                  width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
+                  background: isCustom ? brandColor : "repeating-conic-gradient(#888 0% 25%, #555 0% 50%) 50% / 8px 8px",
+                  border: "1px solid rgba(255,255,255,0.25)",
+                }} />
+                {isCustom ? brandColor.toUpperCase() : "Custom"}
+                <input
+                  type="color"
+                  value={/^#[0-9a-fA-F]{6}$/.test(brandColor) ? brandColor : "#0B31FF"}
+                  onChange={e => setBrandColor(e.target.value)}
+                  style={{ width: 0, height: 0, opacity: 0, position: "absolute" }}
+                />
+              </label>
+            );
+          })()}
         </div>
       </div>
 
@@ -844,6 +871,12 @@ function BrandPicker({ brandColor, setBrandColor, brandVoice, setBrandVoice }: {
             );
           })}
         </div>
+        <input
+          style={{ ...INPUT, fontSize: 12.5, padding: "8px 11px" }}
+          placeholder="…or describe your own voice (e.g. witty and irreverent, warm and clinical)"
+          value={VOICE_OPTIONS.includes(brandVoice) ? "" : brandVoice}
+          onChange={e => setBrandVoice(e.target.value)}
+        />
       </div>
     </div>
   );
@@ -1637,7 +1670,7 @@ export default function OnboardingWizard() {
       // being auto-decided. Prepended so they're read as source-of-truth context.
       const brandColorLabel = COLOR_PRESETS.find(c => c.hex && c.hex === brandColor)?.label;
       const brandBits = [
-        brandColor ? `Primary brand color: ${brandColorLabel || brandColor} (${brandColor})` : null,
+        brandColor ? `Primary brand color: ${brandColorLabel ? `${brandColorLabel} (${brandColor})` : brandColor}` : null,
         brandVoice ? `Brand voice / tone: ${brandVoice}` : null,
       ].filter(Boolean);
       if (brandBits.length) {
