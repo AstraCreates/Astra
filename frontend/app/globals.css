@@ -3678,7 +3678,7 @@ p { margin: 0; }
 
 .lp-value-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.06fr) minmax(330px, 0.94fr);
+  grid-template-columns: 1fr;
   gap: 22px;
   align-items: start;
 }
@@ -3716,14 +3716,14 @@ p { margin: 0; }
 
 .lp-pricing-panel-head {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(260px, 1.1fr);
+  grid-template-columns: minmax(0, 0.95fr) minmax(260px, 1.05fr);
   gap: 18px;
   align-items: end;
 }
 
 .lp-pricing-columns {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
   gap: 14px;
 }
 
@@ -3780,8 +3780,8 @@ p { margin: 0; }
 .lp-closeout-panel {
   padding: 28px;
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
-  gap: 24px;
+  grid-template-columns: 1fr;
+  gap: 22px;
   align-items: start;
 }
 
@@ -3792,24 +3792,30 @@ p { margin: 0; }
 }
 
 .lp-closeout-cta {
-  min-height: 100%;
+  min-height: 0;
   padding: 26px;
   border-radius: 24px;
   background: var(--lp-panel-bg);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) auto;
+  gap: 20px;
+  align-items: center;
 }
 
 [data-theme="light"] .lp-closeout-cta {
   border-color: rgba(29, 53, 93, 0.09);
 }
 
+.lp-closeout-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .lp-faq-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
   gap: 16px;
 }
 
@@ -3828,6 +3834,14 @@ p { margin: 0; }
   border-color: rgba(29, 53, 93, 0.09);
 }
 
+.lp-faq-title {
+  margin: 0;
+  color: var(--lp-text-strong);
+  font-size: clamp(19px, 1.9vw, 28px);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
 .lp-cohort-card {
   padding: 34px 30px;
   gap: 16px;
@@ -3841,7 +3855,6 @@ p { margin: 0; }
   .lp-hero,
   .lp-run-grid,
   .lp-platform-grid,
-  .lp-value-grid,
   .lp-closeout-grid {
     grid-template-columns: 1fr;
   }
@@ -3855,8 +3868,11 @@ p { margin: 0; }
   }
 
   .lp-pricing-panel-head,
-  .lp-pricing-columns,
-  .lp-closeout-panel {
+  .lp-pricing-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .lp-closeout-cta {
     grid-template-columns: 1fr;
   }
 }
@@ -3878,8 +3894,11 @@ p { margin: 0; }
   .lp-hero-metrics,
   .lp-hero-output-block,
   .lp-value-stat-grid,
-  .lp-faq-grid,
   .lp-run-proof-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lp-faq-grid {
     grid-template-columns: 1fr;
   }
 

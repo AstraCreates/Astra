@@ -655,7 +655,7 @@ export default function Home() {
                 <div className="lp-faq-grid">
                   {FAQS.map((faq) => (
                     <div key={faq.q} className="lp-faq-card">
-                      <h3 className="lp-platform-subtitle">{faq.q}</h3>
+                      <h3 className="lp-faq-title">{faq.q}</h3>
                       <p className="lp-control-copy">{faq.a}</p>
                     </div>
                   ))}
@@ -663,16 +663,18 @@ export default function Home() {
               </div>
 
               <div className="lp-closeout-cta">
-                <span className="lp-agent-label">Start from one clear outcome</span>
-                <h2 className="lp-section-h2" style={{ margin: 0 }}>
-                  You bring the idea.
-                  <br />
-                  <span style={{ color: "var(--lp-brand-dim)" }}>Astra handles everything else.</span>
-                </h2>
-                <p className="lp-control-copy" style={{ maxWidth: "32ch" }}>
-                  From first prompt to launchable company, with a visible run log, preserved outputs, and a system that keeps compounding from there.
-                </p>
-                <div className="lp-hero-cta">
+                <div className="lp-closeout-copy">
+                  <span className="lp-agent-label">Start from one clear outcome</span>
+                  <h2 className="lp-section-h2" style={{ margin: 0 }}>
+                    You bring the idea.
+                    <br />
+                    <span style={{ color: "var(--lp-brand-dim)" }}>Astra handles everything else.</span>
+                  </h2>
+                  <p className="lp-control-copy" style={{ maxWidth: "32ch" }}>
+                    From first prompt to launchable company, with a visible run log, preserved outputs, and a system that keeps compounding from there.
+                  </p>
+                </div>
+                <div className="lp-hero-cta" style={{ justifyContent: "flex-start" }}>
                   <button className="site-btn site-btn-primary lp-primary-cta" onClick={handlePrimaryCta}>
                     {readySignedIn ? "Go to dashboard ->" : "Start a run ->"}
                   </button>
