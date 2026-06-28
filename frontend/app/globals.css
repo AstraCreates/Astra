@@ -3775,6 +3775,13 @@ p { margin: 0; }
 
 .lp-closeout-grid {
   padding-top: 18px;
+  width: 100%;
+}
+
+.lp-closeout-grid > .lg-panel {
+  display: block;
+  width: 100%;
+  max-width: none;
 }
 
 .lp-closeout-panel {
@@ -3783,12 +3790,14 @@ p { margin: 0; }
   grid-template-columns: 1fr;
   gap: 22px;
   align-items: start;
+  width: 100%;
 }
 
 .lp-closeout-main {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
 }
 
 .lp-closeout-cta {
@@ -3817,6 +3826,7 @@ p { margin: 0; }
   display: grid;
   grid-template-columns: repeat(2, minmax(240px, 1fr));
   gap: 16px;
+  width: 100%;
 }
 
 .lp-faq-card {
