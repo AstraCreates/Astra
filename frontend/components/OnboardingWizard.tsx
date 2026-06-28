@@ -769,10 +769,92 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
 
 // ── Step 1: Welcome ───────────────────────────────────────────────────────────
 
-function StepWelcome({ name, setName, company, setCompany, goal, setGoal, onNext }: {
+// ── Brand starting point (founder-owned choices) ──────────────────────────────
+const COLOR_PRESETS: { id: string; label: string; hex: string }[] = [
+  { id: "auto",    label: "Let Astra pick", hex: "" },
+  { id: "indigo",  label: "Indigo",         hex: "#0B31FF" },
+  { id: "emerald", label: "Emerald",        hex: "#059669" },
+  { id: "violet",  label: "Violet",         hex: "#7C3AED" },
+  { id: "crimson", label: "Crimson",        hex: "#DC2626" },
+  { id: "amber",   label: "Amber",          hex: "#D97706" },
+  { id: "teal",    label: "Teal",           hex: "#0D9488" },
+  { id: "slate",   label: "Slate",          hex: "#334155" },
+];
+const VOICE_OPTIONS = ["Professional", "Friendly", "Bold", "Minimal", "Playful", "Luxury"];
+
+function BrandPicker({ brandColor, setBrandColor, brandVoice, setBrandVoice }: {
+  brandColor: string; setBrandColor: (v: string) => void;
+  brandVoice: string; setBrandVoice: (v: string) => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "14px 16px", border: `1px solid ${T.border}`, borderRadius: 12, background: T.white }}>
+      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: T.textMuted }}>
+        Brand starting point <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>— optional, your agents adapt to it</span>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+        <label style={{ ...LABEL, fontSize: 11 }}>Color direction</label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {COLOR_PRESETS.map(c => {
+            const active = brandColor === c.hex;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setBrandColor(c.hex)}
+                title={c.label}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "5px 10px 5px 7px",
+                  border: `1.5px solid ${active ? T.blue : T.border}`, borderRadius: 999,
+                  background: active ? T.blueTint : T.surface, color: T.textSecondary,
+                  fontSize: 11.5, fontWeight: 600, cursor: "pointer", fontFamily: "var(--font-geist-sans), sans-serif",
+                }}
+              >
+                <span style={{
+                  width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
+                  background: c.hex || "conic-gradient(#0B31FF,#059669,#DC2626,#D97706,#7C3AED,#0B31FF)",
+                  border: "1px solid rgba(255,255,255,0.25)",
+                }} />
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+        <label style={{ ...LABEL, fontSize: 11 }}>Brand voice</label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {VOICE_OPTIONS.map(v => {
+            const active = brandVoice === v;
+            return (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setBrandVoice(active ? "" : v)}
+                style={{
+                  padding: "5px 12px", border: `1.5px solid ${active ? T.blue : T.border}`,
+                  borderRadius: 999, background: active ? T.blueTint : T.surface,
+                  color: active ? T.textPrimary : T.textSecondary, fontSize: 11.5, fontWeight: 600,
+                  cursor: "pointer", fontFamily: "var(--font-geist-sans), sans-serif",
+                }}
+              >
+                {v}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StepWelcome({ name, setName, company, setCompany, goal, setGoal, brandColor, setBrandColor, brandVoice, setBrandVoice, onNext }: {
   name: string; setName: (v: string) => void;
   company: string; setCompany: (v: string) => void;
   goal: string; setGoal: (v: string) => void;
+  brandColor: string; setBrandColor: (v: string) => void;
+  brandVoice: string; setBrandVoice: (v: string) => void;
   onNext: () => void;
 }) {
   return (
@@ -807,6 +889,7 @@ function StepWelcome({ name, setName, company, setCompany, goal, setGoal, onNext
               value={company}
               onChange={e => setCompany(e.target.value)}
             />
+            <span style={{ fontSize: 10.5, color: T.textMuted }}>Leave blank and Astra will propose names for you.</span>
           </div>
         </div>
 
@@ -822,6 +905,8 @@ function StepWelcome({ name, setName, company, setCompany, goal, setGoal, onNext
           />
           <span style={{ fontSize: 11, color: T.textMuted }}>Be specific — agents tailor every artifact to your startup.</span>
         </div>
+
+        <BrandPicker brandColor={brandColor} setBrandColor={setBrandColor} brandVoice={brandVoice} setBrandVoice={setBrandVoice} />
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
@@ -1164,12 +1249,14 @@ const BIZ_AGE = [
   { id: "gt10", label: "10+ years" },
 ];
 
-function StepExistingBiz({ name, setName, company, setCompany, industry, setIndustry, teamSize, setTeamSize, yearsInBiz, setYearsInBiz, onNext, onBack }: {
+function StepExistingBiz({ name, setName, company, setCompany, industry, setIndustry, teamSize, setTeamSize, yearsInBiz, setYearsInBiz, brandColor, setBrandColor, brandVoice, setBrandVoice, onNext, onBack }: {
   name: string; setName: (v: string) => void;
   company: string; setCompany: (v: string) => void;
   industry: string; setIndustry: (v: string) => void;
   teamSize: string; setTeamSize: (v: string) => void;
   yearsInBiz: string; setYearsInBiz: (v: string) => void;
+  brandColor: string; setBrandColor: (v: string) => void;
+  brandVoice: string; setBrandVoice: (v: string) => void;
   onNext: () => void; onBack: () => void;
 }) {
   const canAdvance = company.trim().length > 0 && industry && teamSize && yearsInBiz;
@@ -1263,6 +1350,8 @@ function StepExistingBiz({ name, setName, company, setCompany, industry, setIndu
           </div>
         </div>
       </div>
+
+      <BrandPicker brandColor={brandColor} setBrandColor={setBrandColor} brandVoice={brandVoice} setBrandVoice={setBrandVoice} />
 
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <button style={BTN_GHOST} onClick={onBack}>← Back</button>
@@ -1442,6 +1531,8 @@ export default function OnboardingWizard() {
   const [name, setName] = useState("");
   const [company, setCompany] = useState("");
   const [goal, setGoal] = useState("");
+  const [brandColor, setBrandColor] = useState("");  // hex; "" = let Astra pick
+  const [brandVoice, setBrandVoice] = useState("");  // e.g. "Bold"; "" = unset
   const [selectedStackId, setSelectedStackId] = useState("idea_to_revenue");
   const REQUIRED_AGENTS = new Set(["research"]);
   const [customAgents, setCustomAgents] = useState<string[]>(["research", "web", "technical", "marketing"]);
@@ -1542,6 +1633,17 @@ export default function OnboardingWizard() {
         instruction = quizContext ? `${quizContext}\n\n---\n${base}` : base;
       }
 
+      // Founder's brand choices → honored by design/web/marketing agents instead of
+      // being auto-decided. Prepended so they're read as source-of-truth context.
+      const brandColorLabel = COLOR_PRESETS.find(c => c.hex && c.hex === brandColor)?.label;
+      const brandBits = [
+        brandColor ? `Primary brand color: ${brandColorLabel || brandColor} (${brandColor})` : null,
+        brandVoice ? `Brand voice / tone: ${brandVoice}` : null,
+      ].filter(Boolean);
+      if (brandBits.length) {
+        instruction = `[Brand preferences — founder's choices, honor these over any auto-generated defaults]\n${brandBits.join("\n")}\n\n---\n${instruction}`;
+      }
+
       const constraints = selectedStackId === "custom" && customAgents.length > 0
         ? { agents: customAgents } : {};
       submitGoal(founderId, instruction, constraints, stack).catch(() => {});
@@ -1626,6 +1728,8 @@ export default function OnboardingWizard() {
                 name={name} setName={setName}
                 company={company} setCompany={setCompany}
                 goal={goal} setGoal={setGoal}
+                brandColor={brandColor} setBrandColor={setBrandColor}
+                brandVoice={brandVoice} setBrandVoice={setBrandVoice}
                 onNext={() => setStep(1)}
               />
             )}
@@ -1672,6 +1776,8 @@ export default function OnboardingWizard() {
                 industry={industry} setIndustry={setIndustry}
                 teamSize={teamSize} setTeamSize={setTeamSize}
                 yearsInBiz={yearsInBiz} setYearsInBiz={setYearsInBiz}
+                brandColor={brandColor} setBrandColor={setBrandColor}
+                brandVoice={brandVoice} setBrandVoice={setBrandVoice}
                 onBack={() => setMode("")}
                 onNext={() => setStep(1)}
               />
