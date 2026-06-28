@@ -3774,6 +3774,10 @@ p { margin: 0; }
 }
 
 .lp-closeout-grid {
+  /* Single full-width panel — override the stale 2-column grid rule above, which
+     left the lone LiquidGlass child in column 1 and a dead empty column 2. */
+  display: block;
+  grid-template-columns: none;
   padding-top: 18px;
   width: 100%;
 }
