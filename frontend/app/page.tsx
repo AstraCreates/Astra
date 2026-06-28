@@ -667,14 +667,13 @@ export default function Home() {
                   <span className="lp-agent-label">Start from one clear outcome</span>
                   <h2 className="lp-section-h2" style={{ margin: 0 }}>
                     You bring the idea.
-                    <br />
-                    <span style={{ color: "var(--lp-brand-dim)" }}>Astra handles everything else.</span>
+                    <span style={{ color: "var(--lp-brand-dim)" }}> Astra handles everything else.</span>
                   </h2>
-                  <p className="lp-control-copy" style={{ maxWidth: "32ch" }}>
+                  <p className="lp-control-copy">
                     From first prompt to launchable company, with a visible run log, preserved outputs, and a system that keeps compounding from there.
                   </p>
                 </div>
-                <div className="lp-hero-cta" style={{ justifyContent: "flex-start" }}>
+                <div className="lp-hero-cta lp-closeout-actions">
                   <button className="site-btn site-btn-primary lp-primary-cta" onClick={handlePrimaryCta}>
                     {readySignedIn ? "Go to dashboard ->" : "Start a run ->"}
                   </button>
