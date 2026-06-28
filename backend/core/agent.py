@@ -936,6 +936,14 @@ class Agent:
         _consecutive_unknown = 0  # consecutive "unknown action" responses
 
         while i < MAX_ITERATIONS:
+            # Per-agent stop: copilot can halt THIS agent without killing the run.
+            try:
+                from backend.core.cancellation import is_agent_killed
+                if ctx.session_id and is_agent_killed(ctx.session_id, self.name):
+                    await self._emit(ctx, "agent_stopped", agent=self.name, reason="stopped_by_founder")
+                    return {"status": "stopped", "agent": self.name, "reason": "stopped_by_founder"}
+            except Exception:
+                pass
             if ctx.budget and not ctx.budget.consume_iteration():
                 snapshot = ctx.budget.snapshot()
                 payload = {

@@ -657,6 +657,24 @@ async def kill_session(session_id: str, request: Request):
     return {"ok": True, "killed": cancelled, "session_id": session_id}
 
 
+@router.post("/sessions/{session_id}/stop-agent/{agent_name}")
+async def stop_agent(session_id: str, agent_name: str, request: Request):
+    """Instantly stop ONE running agent without killing the rest of the run. The agent
+    halts at its next loop step. Only the session owner may stop."""
+    from backend.core.session_store import get_session_meta
+    meta = get_session_meta(session_id)
+    owner = str((meta or {}).get("founder_id") or "")
+    if owner:
+        require_founder_access(request, owner, min_role="operator")
+    from backend.core import cancellation
+    cancellation.request_kill_agent(session_id, agent_name)
+    try:
+        await publish(session_id, {"type": "agent_stop_requested", "agent": agent_name.lower().strip()})
+    except Exception:
+        pass
+    return {"ok": True, "stopped": agent_name, "session_id": session_id}
+
+
 @router.post("/sessions/{session_id}/pause")
 async def pause_session_route(session_id: str, request: Request):
     """Pause a running session — new agents will not start until resumed."""

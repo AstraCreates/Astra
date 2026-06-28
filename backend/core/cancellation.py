@@ -15,6 +15,11 @@ logger = logging.getLogger(__name__)
 _tasks: dict[str, asyncio.Task] = {}
 _killed: set[str] = set()
 _paused: set[str] = set()
+_killed_agents: set[str] = set()  # "session_id::agent_name" — stop ONE agent, not the run
+
+
+def _agent_key(session_id: str, agent_name: str) -> str:
+    return f"{session_id}::{(agent_name or '').lower().strip()}"
 
 
 def register_task(session_id: str, task: asyncio.Task) -> None:
@@ -25,6 +30,22 @@ def clear(session_id: str) -> None:
     _tasks.pop(session_id, None)
     _killed.discard(session_id)
     _paused.discard(session_id)
+    prefix = f"{session_id}::"
+    for k in [k for k in _killed_agents if k.startswith(prefix)]:
+        _killed_agents.discard(k)
+
+
+def request_kill_agent(session_id: str, agent_name: str) -> None:
+    """Flag ONE agent in a session to stop at its next loop step. Unlike request_kill
+    this leaves the rest of the run alive — the agent's loop checks is_agent_killed()
+    each iteration and exits cleanly (in-flight tool work in a worker thread still
+    finishes, but no further steps run)."""
+    _killed_agents.add(_agent_key(session_id, agent_name))
+    logger.info("Stop agent: %s in session %s flagged", agent_name, session_id)
+
+
+def is_agent_killed(session_id: str, agent_name: str) -> bool:
+    return session_id in _killed or _agent_key(session_id, agent_name) in _killed_agents
 
 
 def pause_session(session_id: str) -> None:

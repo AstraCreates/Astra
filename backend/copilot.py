@@ -754,6 +754,7 @@ _MCP_TOOLS = {
     "brain_graph":      ("astra_brain_graph", "the company knowledge-map nodes/edges. args: {}"),
     "credits":          ("astra_credits", "credit balance + usage. args: {}"),
     "mcp_message_agent": ("astra_message_agent", "send a directive to ONE specific agent by name. args: {agent, message, session_id?}"),
+    "mcp_stop_agent": ("astra_stop_agent", "INSTANTLY stop ONE running agent by name (halts at next step) without killing the run. args: {agent, session_id?}"),
 }
 
 
@@ -832,6 +833,30 @@ async def _tool_kill_session(founder_id: str, session_id: str, args: dict) -> An
     try:
         request_kill(target)
         return {"ok": True, "killed": target}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+async def _tool_stop_agent(founder_id: str, session_id: str, args: dict) -> Any:
+    """Instantly stop ONE running agent by name, without killing the rest of the run.
+    Harder than steering: the agent halts at its next step instead of being asked to
+    wrap up. args: {agent, session_id?}"""
+    from backend.core.cancellation import request_kill_agent
+    from backend.core.events import publish
+    agent_name = str(args.get("agent") or args.get("agent_name") or "").strip().lower()
+    target = str(args.get("session_id") or session_id)
+    if not agent_name:
+        return {"ok": False, "error": "agent name required"}
+    err = _assert_session_owner(target, founder_id)
+    if err:
+        return {"ok": False, "error": err}
+    try:
+        request_kill_agent(target, agent_name)
+        try:
+            await publish(target, {"type": "agent_stop_requested", "agent": agent_name})
+        except Exception:
+            pass
+        return {"ok": True, "stopped": agent_name, "session_id": target}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -1126,6 +1151,7 @@ _TOOLS = {
     "restart_preview": ("restart the local preview server for a session workspace. args: {session_id?}", _tool_restart_preview),
     "session_status": ("status of a session (defaults to the current one). args: {session_id?}", _tool_session_status),
     "kill_session": ("stop/kill a running or hung session. args: {session_id?}", _tool_kill_session),
+    "stop_agent": ("INSTANTLY stop ONE running agent by name (halts at its next step) without killing the rest of the run. Harder than message_agent/steer_agents, which only ask. args: {agent, session_id?}", _tool_stop_agent),
     "rerun_agent": ("re-run a single agent that failed or needs to redo its work. args: {agent_name, session_id?}", _tool_rerun_agent),
     # ── Read session outputs ───────────────────────────────────────────────────
     "get_session_digest": ("full digest of a session — what each agent produced, key outputs, deploy URLs. args: {session_id?}", _tool_get_session_digest),
@@ -1430,10 +1456,14 @@ async def run_copilot(founder_id: str, session_id: str, message: str, founder_em
         "→ steer_agents {message: '<directive>'}. ALL agents receive it.\n"
         "   c) Founder asks a QUESTION to a specific agent (e.g. 'ask the sales agent what contacts they found') "
         "→ chat_agent {agent: '<name>', message: '<question>'}. Returns a grounded answer.\n"
+        "   d) Founder wants to STOP/HALT/KILL one specific agent NOW (e.g. 'stop the web agent', 'kill design') "
+        "→ stop_agent {agent: '<name>'}. Instantly halts THAT agent at its next step; the rest of the run continues. "
+        "Use this (not message_agent) for stop/halt/kill imperatives — message_agent only ASKS, stop_agent ENFORCES.\n"
         "   Examples:\n"
         '   "tell the web agent to go all out on design" → message_agent {agent:"web", message:"go all out on design — luxury, premium, full rebuild"}\n'
         '   "tell them all to wrap up" → steer_agents {message:"wrap up and summarize findings now"}\n'
         '   "ask sales what prospects they found" → chat_agent {agent:"sales", message:"what prospects have you identified so far?"}\n'
+        '   "stop the web agent" / "kill the design agent now" → stop_agent {agent:"web"}\n'
         "   DO NOT reply without acting. DO NOT dispatch more agents.\n"
         "2. IMPERATIVE + NO RUNNING AGENTS (or session done): build, make, create, add, fix, change, ship, launch, redesign, update "
         "→ dispatch_agents with the right agents. Examples:\n"

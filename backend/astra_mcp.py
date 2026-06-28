@@ -216,6 +216,19 @@ TOOLS: list[dict[str, Any]] = [
         }, ["session_id", "agent", "message"]),
     },
     {
+        "name": "astra_stop_agent",
+        "description": (
+            "Instantly STOP one running agent by name — it halts at its next step. Unlike "
+            "astra_message_agent (which only asks the agent to change course), this enforces a "
+            "hard stop while the rest of the run keeps going. Use for 'stop/halt/kill the X agent'."
+        ),
+        "inputSchema": _schema({
+            "session_id": {"type": "string", "description": "Session ID of the running session."},
+            "agent": {"type": "string", "description": "Agent name to stop: web, technical, sales, design, research, marketing, ops, legal, etc."},
+            "founder_id": {"type": "string", "description": "Founder/user ID."},
+        }, ["session_id", "agent"]),
+    },
+    {
         "name": "astra_list_stacks",
         "description": (
             "List all available Astra agent stack presets with their descriptions, "
@@ -422,6 +435,15 @@ def _message_agent(args: dict) -> dict:
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
+def _stop_agent(args: dict) -> dict:
+    session_id = args["session_id"]
+    agent_name = str(args.get("agent", "")).strip().lower()
+    try:
+        _post(f"/sessions/{session_id}/stop-agent/{agent_name}", {})
+        return {"ok": True, "session_id": session_id, "stopped": agent_name}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
 def _list_stacks(_args: dict) -> dict:
     try:
         data = _get("/stacks")
@@ -541,6 +563,7 @@ _DISPATCH: dict[str, Any] = {
     "astra_chat_agent": _chat_agent,
     "astra_steer": _steer,
     "astra_message_agent": _message_agent,
+    "astra_stop_agent": _stop_agent,
     "astra_list_stacks": _list_stacks,
     "astra_list_agents": _list_agents,
     "astra_recommend_stack": _recommend_stack,
