@@ -692,6 +692,184 @@ a { transition: color .15s, background .15s, border-color .15s, opacity .15s, bo
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.34);
 }
 
+/* ── Dashboard Copilot ────────────────────────────────────────────────────
+   Bottom-docked copilot bar on the main dashboard view. */
+.dash-copilot {
+  display: flex;
+  flex-direction: column;
+  margin: 6px 16px 8px;
+  border: 1px solid var(--bd2);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow: 0 16px 46px rgba(17, 16, 24, 0.12);
+  overflow: hidden;
+  backdrop-filter: blur(18px);
+}
+[data-theme="dark"] .dash-copilot {
+  background: rgba(23, 21, 31, 0.96);
+  box-shadow: 0 20px 62px rgba(0, 0, 0, 0.38);
+}
+.dash-copilot-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--bd);
+}
+.dash-copilot-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.dash-copilot-row.is-founder {
+  justify-content: flex-end;
+}
+.dash-copilot-avatar {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--blue);
+  font-size: 10px;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(0, 46, 255, 0.24);
+}
+.dash-copilot-bubble {
+  max-width: min(80%, 720px);
+  padding: 10px 14px;
+  border: 1px solid var(--bd);
+  border-radius: 8px 20px 20px 20px;
+  color: var(--fg);
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgba(17, 16, 24, 0.05);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+.dash-copilot-row.is-founder .dash-copilot-bubble {
+  border-color: var(--blue);
+  border-radius: 20px 20px 8px 20px;
+  color: #fff;
+  background: linear-gradient(135deg, #1640FF 0%, #0024D9 100%);
+  box-shadow: 0 6px 20px rgba(0, 46, 255, 0.20);
+}
+.dash-copilot-thinking {
+  display: flex;
+  gap: 4px;
+  padding: 11px 14px;
+  border: 1px solid var(--bd);
+  border-radius: 8px 20px 20px 20px;
+  background: var(--surface);
+}
+.dash-copilot-thinking span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--fm);
+  animation: astraChatDot 1.2s infinite ease-in-out;
+}
+.dash-copilot-thinking span:nth-child(2) { animation-delay: .15s; }
+.dash-copilot-thinking span:nth-child(3) { animation-delay: .3s; }
+.dash-copilot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+.dash-copilot-action {
+  min-width: 130px;
+  padding: 8px 10px;
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(0, 46, 255, 0.05), rgba(0, 46, 255, 0.01));
+}
+.dash-copilot-action.is-success { border-color: var(--gb); background: linear-gradient(180deg, var(--gdim), rgba(22, 163, 74, 0.02)); }
+.dash-copilot-action.is-warn    { border-color: var(--ab); background: linear-gradient(180deg, var(--adim), rgba(217, 119, 6, 0.02)); }
+.dash-copilot-action-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg);
+}
+.dash-copilot-action-detail {
+  margin-top: 3px;
+  font-family: var(--font-code);
+  font-size: 10px;
+  color: var(--fm);
+  line-height: 1.4;
+}
+.dash-copilot-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+}
+.dash-copilot-btn {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border: 1px solid var(--bd2);
+  border-radius: 8px;
+  background: var(--s2);
+  color: var(--fm);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.dash-copilot-btn:hover {
+  background: var(--s3);
+  color: var(--fg);
+  border-color: var(--bd3, var(--bd2));
+}
+.dash-copilot-btn.primary {
+  background: linear-gradient(135deg, #1640FF 0%, #0024D9 100%);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(0, 46, 255, 0.22);
+}
+.dash-copilot-btn.primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2550FF 0%, #0030E8 100%);
+  box-shadow: 0 6px 18px rgba(0, 46, 255, 0.32);
+}
+.dash-copilot-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+.dash-copilot-ctx {
+  flex: 0 0 auto;
+  max-width: 140px;
+  padding: 3px 8px;
+  border: 1px solid var(--bd2);
+  border-radius: 6px;
+  background: var(--s2);
+  color: var(--fm);
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dash-copilot-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--fg);
+  font-size: 12px;
+  font-family: var(--font-geist-sans), "Geist", sans-serif;
+  line-height: 1.4;
+}
+.dash-copilot-input::placeholder { color: var(--fm); }
+.dash-copilot-input:disabled { cursor: not-allowed; opacity: 0.5; }
+
 /* ── Focus ────────────────────────────────────────────────────────────────
    Visible keyboard focus ring using brand blue. Replaces browser default
    which is invisible on the dark surfaces. */

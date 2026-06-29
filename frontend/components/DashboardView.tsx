@@ -756,26 +756,24 @@ export default function DashboardView() {
           )}
           <div className="dash-copilot-bar">
             <button className="dash-copilot-btn" onClick={() => setCopilotOpen((value) => !value)}>
-              {copilotOpen ? "Hide copilot" : "Open copilot"}
+              {copilotOpen ? "Hide" : "Copilot"}
             </button>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: 10, color: "var(--fm)", marginBottom: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {copilotSession ? `Context: ${copilotTitle}` : "Context: no run selected yet"}
-              </div>
-              <input
-                ref={copilotInputRef}
-                className="dash-copilot-input"
-                placeholder={copilotSession ? 'Ask Astra from the dashboard — "what needs attention?"' : "Start a run to enable copilot"}
-                disabled={!copilotSession || copilotBusy}
-                onFocus={() => setCopilotOpen(true)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    void sendCopilot();
-                  }
-                }}
-              />
-            </div>
+            {copilotSession && (
+              <span className="dash-copilot-ctx">{copilotTitle}</span>
+            )}
+            <input
+              ref={copilotInputRef}
+              className="dash-copilot-input"
+              placeholder={copilotSession ? 'Ask Astra — "what needs attention?"' : "Start a run to enable copilot"}
+              disabled={!copilotSession || copilotBusy}
+              onFocus={() => setCopilotOpen(true)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void sendCopilot();
+                }
+              }}
+            />
             <button className="dash-copilot-btn primary" disabled={!copilotSession || copilotBusy} onClick={() => { setCopilotOpen(true); void sendCopilot(); }}>
               Send
             </button>
