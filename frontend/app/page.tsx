@@ -32,11 +32,7 @@ export default function Home() {
       <div className="sp-page">
         <div className="sp-content">
           <div className="sp-mark">
-            <svg viewBox="0 0 320 295" className="sp-logo-svg" aria-hidden="true">
-              <ellipse cx="160" cy="110" rx="42" ry="100" stroke="currentColor" strokeWidth="20" fill="none" strokeLinecap="round" transform="rotate(0, 160, 175)" />
-              <ellipse cx="160" cy="110" rx="42" ry="100" stroke="currentColor" strokeWidth="20" fill="none" strokeLinecap="round" transform="rotate(120, 160, 175)" />
-              <ellipse cx="160" cy="110" rx="42" ry="100" stroke="currentColor" strokeWidth="20" fill="none" strokeLinecap="round" transform="rotate(240, 160, 175)" />
-            </svg>
+            <div className="sp-logo-img" role="img" aria-label="Astra logo" />
             <span className="sp-wordmark">ASTRA</span>
           </div>
 

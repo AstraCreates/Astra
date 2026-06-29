@@ -2131,15 +2131,17 @@ p { margin: 0; }
   animation: sp-rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.44s both;
 }
 
-.sp-logo-svg {
+.sp-logo-img {
   width: 56px;
   height: 56px;
-  color: #2f55ff;
   flex-shrink: 0;
+  background: #2f55ff;
+  -webkit-mask: url('/logo.png') center / contain no-repeat;
+  mask: url('/logo.png') center / contain no-repeat;
 }
 
-[data-theme="light"] .sp-logo-svg {
-  color: #0b31ff;
+[data-theme="light"] .sp-logo-img {
+  background: #0b31ff;
 }
 
 .sp-wordmark {
