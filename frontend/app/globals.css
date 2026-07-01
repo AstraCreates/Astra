@@ -7,6 +7,16 @@
 
 /* ── Light (default) ─────────────────────────────────────────── */
 :root {
+  /* Aurora color aliases */
+  --white: #ffffff;
+  --black: #000000;
+  --transparent: transparent;
+  --blue-300: #93c5fd;
+  --blue-400: #60a5fa;
+  --blue-500: #3b82f6;
+  --indigo-300: #a5b4fc;
+  --violet-200: #ddd6fe;
+
   /* Backgrounds */
   --bg:           #E8E8E8;
   --bg-surface:   #FFFFFF;
@@ -2084,6 +2094,15 @@ p { margin: 0; }
 /* ═══════════════════════════════════════════════════════════════
    SPLASH PAGE
    ═══════════════════════════════════════════════════════════════ */
+
+@theme {
+  --animate-aurora: aurora 60s linear infinite;
+}
+
+@keyframes aurora {
+  from { background-position: 50% 50%, 50% 50%; }
+  to   { background-position: 350% 50%, 350% 50%; }
+}
 
 @keyframes sp-rise {
   from { opacity: 0; translate: 0 16px; }
