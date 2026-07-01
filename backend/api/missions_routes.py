@@ -201,12 +201,20 @@ async def get_company_goal(
     goal = load_company_goal(founder_id, resolved_company_id)
     cur = None
     if goal:
-        from backend.missions.company_goal import current_goal as _cur, goal_credits, sweep_stale_tasks
+        from backend.missions.company_goal import (
+            current_goal as _cur, goal_credits, sweep_stale_tasks,
+            reconcile_operating_sessions,
+        )
         from backend.core.session_store import get_session_credits
+        # Reconcile first: flip sessions stuck "running" in the JSON to their real
+        # terminal state so sweep_stale_tasks can actually fire.
+        reconcile_operating_sessions(founder_id, resolved_company_id)
         # Auto-heal: if no operating session is actively running, tasks stuck "in_progress"
-        # with no done_agents are stale (agent ran but session terminated). Reset to "pending"
-        # so the checklist + GoalPanel don't show permanently stuck state.
+        # are stale — reset to "pending" so GoalPanel doesn't show permanently stuck state.
         sweep_stale_tasks(founder_id, resolved_company_id)
+        # Re-read after mutations so we return the healed data.
+        from backend.missions.company_goal import get_company_goal as _reload
+        goal = _reload(founder_id, resolved_company_id) or goal
         # Per-goal credit spend (sum of each goal's sessions).
         credits_by_goal = goal_credits(founder_id, resolved_company_id)
         for go in goal.get("goals") or []:
@@ -218,7 +226,16 @@ async def get_company_goal(
         cur = _cur(founder_id, resolved_company_id)
         if cur:
             cur["credits_used"] = credits_by_goal.get(cur.get("id"), 0)
-    return {"company_goal": goal, "current_goal": cur}
+        # Expose whether any session is actively running right now so the
+        # frontend can show idle state instead of a stale in-progress goal.
+        cur_id = goal.get("current_goal_id", "")
+        has_active_session = any(
+            r.get("status") == "running" and r.get("goal_id") == cur_id
+            for r in goal.get("operating_sessions") or []
+        )
+    else:
+        has_active_session = False
+    return {"company_goal": goal, "current_goal": cur, "has_active_session": has_active_session}
 
 
 class CompanyTaskPatch(BaseModel):

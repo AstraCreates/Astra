@@ -127,6 +127,7 @@ export default function GoalPanel({ defaultShowDone = false }: { defaultShowDone
   const paused = goal?.status === "paused";
   const currentEntry: CompanyGoalEntry | null = goal?.goals?.find(g => g.id === goal.current_goal_id) ?? null;
   const proposed = currentEntry?.status === "proposed";
+  const hasActiveSession = goal?.has_active_session ?? false;
   const doneGoals = (goal?.goals ?? []).filter(g => g.status === "done").reverse();
   const tasks = currentEntry?.tasks ?? [];
   const tasksDone = tasks.filter(t => t.status === "done").length;
@@ -248,14 +249,19 @@ export default function GoalPanel({ defaultShowDone = false }: { defaultShowDone
       {/* ── Active goal — Option C: arc ring + pill chips ── */}
       {!proposed && (
         <div>
-          <div style={{ border: "1px solid var(--bd2)", background: "var(--surface)", borderRadius: 10, overflow: "hidden" }}>
+          <div style={{ border: `1px solid ${currentEntry.status === "done" ? "var(--bd)" : "var(--bd2)"}`, background: "var(--surface)", borderRadius: 10, overflow: "hidden" }}>
             {/* Header: status badge + arc ring */}
             <div style={{ padding: "14px 16px 12px", borderBottom: tasks.length ? "1px solid var(--bd)" : "none" }}>
               <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                 {/* Left: label + title + credits */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", fontFamily: "var(--font-code)", marginBottom: 6, color: paused ? "var(--amber)" : currentEntry.kind === "launch" ? "var(--blue)" : "var(--blue)" }}>
-                    {paused ? "⏸ Paused" : currentEntry.kind === "launch" ? "◎ Launch goal" : "◈ Operating"}
+                  <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", fontFamily: "var(--font-code)", marginBottom: 6,
+                    color: currentEntry.status === "done" ? "var(--green)" : paused ? "var(--amber)" : !hasActiveSession ? "var(--fm)" : "var(--blue)" }}>
+                    {currentEntry.status === "done"
+                      ? "✓ Completed"
+                      : paused ? "⏸ Paused"
+                      : !hasActiveSession ? "◌ Idle — no run active"
+                      : currentEntry.kind === "launch" ? "◎ Launch goal" : "◈ Operating"}
                   </div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: "var(--fg)", lineHeight: 1.3 }}>
                     {currentEntry.title}
@@ -269,14 +275,15 @@ export default function GoalPanel({ defaultShowDone = false }: { defaultShowDone
                   const r = 30;
                   const circ = 2 * Math.PI * r;
                   const offset = circ * (1 - pct / 100);
-                  const allDone = tasksDone === tasks.length;
+                  const allDone = tasksDone === tasks.length || currentEntry.status === "done";
+                  const ringColor = allDone ? "var(--green)" : !hasActiveSession ? "var(--fm)" : "var(--blue)";
                   return (
                     <div style={{ position: "relative", width: 76, height: 76, flexShrink: 0 }}>
                       <svg width={76} height={76} viewBox="0 0 76 76" style={{ transform: "rotate(-90deg)" }}>
                         <circle cx={38} cy={38} r={r} fill="none" stroke="var(--bd)" strokeWidth={5} />
                         <circle
                           cx={38} cy={38} r={r} fill="none"
-                          stroke={allDone ? "var(--green)" : "var(--blue)"}
+                          stroke={ringColor}
                           strokeWidth={5}
                           strokeDasharray={circ}
                           strokeDashoffset={offset}
@@ -285,7 +292,7 @@ export default function GoalPanel({ defaultShowDone = false }: { defaultShowDone
                         />
                       </svg>
                       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                        <div style={{ fontSize: 22, fontWeight: 800, color: allDone ? "var(--green)" : "var(--fg)", fontFamily: "var(--font-code)", lineHeight: 1 }}>{tasksDone}</div>
+                        <div style={{ fontSize: 22, fontWeight: 800, color: ringColor, fontFamily: "var(--font-code)", lineHeight: 1 }}>{tasksDone}</div>
                         <div style={{ fontSize: 9, color: "var(--fm)", letterSpacing: ".04em" }}>/ {tasks.length}</div>
                       </div>
                     </div>

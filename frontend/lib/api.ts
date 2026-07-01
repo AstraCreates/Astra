@@ -2499,6 +2499,7 @@ export interface CompanyGoal {
   notion_database_id?: string | null;
   notion_url?: string | null;
   credits_used_total?: number;
+  has_active_session?: boolean;
 }
 
 export async function postponeCompanyTask(
@@ -2632,6 +2633,7 @@ export async function getCompanyGoal(founderId: string, companyId = ""): Promise
   if (!goal.current_goal_id && data.current_goal.id) {
     goal.current_goal_id = data.current_goal.id;
   }
+  goal.has_active_session = data.has_active_session ?? false;
   return goal;
 }
 
