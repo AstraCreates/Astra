@@ -1344,7 +1344,18 @@ class Agent:
                         unique.append({"tool": name, "args": args})
 
                 read_calls = [call for call in unique if call["tool"] in READ_ONLY_TOOLS]
-                write_calls = [call for call in unique if call["tool"] not in READ_ONLY_TOOLS]
+                # external tools (email, SMS, webhooks) never conflict — run parallel with reads
+                # internal writes (brain, files) serialize to prevent races
+                external_calls: list[dict] = []
+                write_calls_serial: list[dict] = []
+                for call in unique:
+                    if call["tool"] in READ_ONLY_TOOLS:
+                        continue
+                    entry = self._runtime_entries.get(call["tool"]) or runtime_tool_registry.get(call["tool"])
+                    if entry and entry.mutability == "external":
+                        external_calls.append(call)
+                    else:
+                        write_calls_serial.append(call)
 
                 async def execute(call: dict) -> tuple[str, Any]:
                     name, args = call["tool"], call["args"]
@@ -1354,9 +1365,10 @@ class Agent:
                     return name, result
 
                 batch_results: list[tuple[str, Any]] = []
-                if read_calls:
-                    batch_results.extend(await asyncio.gather(*(execute(call) for call in read_calls)))
-                for call in write_calls:
+                parallel_calls = read_calls + external_calls
+                if parallel_calls:
+                    batch_results.extend(await asyncio.gather(*(execute(call) for call in parallel_calls)))
+                for call in write_calls_serial:
                     batch_results.append(await execute(call))
                 for name, result in batch_results:
                     _attempted_tools.add(name)
@@ -1908,6 +1920,12 @@ class Agent:
             args = _tsl._sanitize_inputs(args)
         except Exception:
             pass
+        # Inject context-owned fields so model never needs to generate them.
+        # Model schemas should omit these; if model does pass them they're overwritten.
+        if ctx:
+            for _k, _v in (("founder_id", ctx.founder_id), ("session_id", ctx.session_id)):
+                if _v and _k not in args:
+                    args = {_k: _v, **args}
         fn = self.tools.get(tool_name)
         if fn is None:
             # Explicit aliases first (fast, exact), then fuzzy-match the hallucinated

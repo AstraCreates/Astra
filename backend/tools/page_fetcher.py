@@ -20,10 +20,7 @@ _HEADERS = {
 
 
 def fetch_page(url: str, max_chars: int = 6000) -> dict:
-    """
-    Fetch URL and return clean readable text content.
-    Strips navigation, ads, scripts. Returns structured content.
-    """
+    """Fetch URL, return clean text (ads/nav/scripts stripped)."""
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=15, allow_redirects=True)
         resp.raise_for_status()
@@ -48,10 +45,7 @@ def fetch_page(url: str, max_chars: int = 6000) -> dict:
 
 
 def fetch_and_summarize(url: str, focus: str = "") -> dict:
-    """
-    Fetch URL and return a focused summary. If focus is given, extracts
-    only the parts of the page relevant to the focus topic.
-    """
+    """Fetch URL and summarize; if focus given, extracts only paragraphs relevant to that topic."""
     page = fetch_page(url, max_chars=8000)
     if page.get("error") or not page.get("text"):
         return page
@@ -75,10 +69,7 @@ def fetch_and_summarize(url: str, focus: str = "") -> dict:
 
 
 def search_and_read(query: str, max_results: int = 3, max_chars_per_page: int = 3000) -> dict:
-    """
-    Search the web then fetch and read top results. Returns enriched results
-    with actual page content, not just snippets.
-    """
+    """Search web and fetch full page content from top results (not just snippets)."""
     from backend.tools.web_search import web_search
     search_results = web_search(query=query, max_results=max_results + 2)
     results = search_results.get("results", [])

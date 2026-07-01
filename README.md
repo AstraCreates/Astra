@@ -1,12 +1,27 @@
 # Astra
 
-Astra is an AI company-building platform. A founder gives Astra a goal, and Astra turns it into a coordinated operating run: planning the work, dispatching specialist agents, streaming progress, producing artifacts, tracking workspace history, and gating risky actions behind approvals.
+Astra is an AI company-building platform for founders, startup teams, and operator-heavy businesses. Give Astra a business objective and it turns that objective into a coordinated operating run: planning the work, dispatching specialist agents, streaming progress live, producing artifacts, tracking company context, and gating risky actions behind approvals.
 
-The project has grown from a single "six agents build a startup" prototype into a broader platform for AI departments, company memory, missions, workspaces, deployment tracking, credits, teams, model routing, and production-readiness operations.
+The pitch in one line: Astra is trying to turn "build my company" from a prompt into an executable system.
+
+## Pitch-Friendly Framing
+
+- **AI operating system for founders**: Astra helps founders go from idea, to plan, to execution, to deliverables inside one coordinated system.
+- **More than a chatbot**: Astra routes work across specialist agents, preserves company context, and keeps outputs tied to durable runs.
+- **Built for serious operations**: approvals, memory, deployments, billing hooks, and observability make it easier to pitch as infrastructure, not a demo.
 
 ---
 
-## Current Capabilities
+## Why Astra Stands Out
+
+- **From goal to execution**: Astra does not stop at chat. It creates a durable run, plans the work, coordinates agents, and records outcomes.
+- **A full specialist bench**: research, legal, web, design, technical, finance, ops, sales, marketing, SEO, outreach, data, infra, and more all exist as dedicated agent surfaces.
+- **Artifacts over answers**: Astra generates deliverables, keeps workspace history, stores reusable files, and turns sessions into something a founder can actually act on.
+- **AI departments, not one-off prompts**: the Agent Stack Platform compiles business outcomes into reusable execution packages with lanes, connectors, approval gates, and quality checks.
+- **Founder control built in**: risky actions flow through approvals, teams stay scoped, and runs remain inspectable through digests, workboards, and completion audits.
+- **Built for real operations**: deployments, billing hooks, missions, persistent memory, observability, and production-readiness tooling are part of the platform story.
+
+## What Astra Already Does
 
 - **Goal-to-run orchestration**: `POST /goal` creates a durable session, streams Server-Sent Events, dispatches agents, and records artifacts.
 - **Specialist agent team**: research, market research, regulatory research, legal, web, web navigation, design, technical, infra, data, marketing, SEO, paid marketing, outreach, sales, sales enablement, finance/fundraise, finance modeling, ops, and more under `backend/specialists/`.
@@ -16,14 +31,14 @@ The project has grown from a single "six agents build a startup" prototype into 
 - **Missions and company goals**: persistent operating goals, task lists, approvals, scheduled follow-up runs, and Notion sync support.
 - **Company brain / context layer**: durable memory, session digesting, workboards, subteam reports, company reports, and connector-aware context.
 - **Library and attachments**: upload or persist reusable files for agent-readable context.
-- **Deliverables**: PDF/TXT generation, vault storage, email delivery to founder via Resend or Gmail.
+- **Deliverables**: PDF/TXT generation, vault storage, and founder-facing distribution flows.
 - **Skills**: founder-defined skills can be attached to specific agents.
-- **Credits and billing hooks**: token/credit accounting, Stripe checkout/webhook support, and plan-based limits.
+- **Credits and billing hooks**: token/credit accounting, checkout/webhook support, and plan-based limits.
 - **Deployments**: staging/production deployment records and publish endpoints for generated projects.
-- **Integrations**: Stripe, Vercel, GitHub, Composio (Gmail, LinkedIn, Calendar), Notion, Hunter, Apollo, Klaviyo, Twilio, Square, Printful, Yelp, Lemon Squeezy, direct Gmail OAuth, Resend.
+- **Integrations**: Stripe, Vercel, GitHub, Composio, Notion, Hunter, Apollo, Klaviyo, Twilio, Square, Printful, Yelp, Lemon Squeezy, and more.
 - **Teams and auth boundaries**: founder/team access controls, invites, org usage, and optional JWT/header-based auth.
 - **Production operations**: health, readiness, metrics, alerts, smoke checks, production launch, production verification, and admin observability endpoints.
-- **Frontend**: Next.js app with real-time SSE updates, dark/light themes, responsive design, custom agent UI.
+- **Frontend**: Next.js app with real-time SSE updates, responsive design, and custom-agent workflows.
 
 ---
 
@@ -58,7 +73,7 @@ Auto-email result summary to founder (custom agents only)
 
 Generated files (PDFs, TXT reports) are stored in the vault and made available for:
 - Download via the Deliverables tab
-- Email delivery from Astra's no-reply address to the founder's registered Gmail
+- Founder-facing delivery flows
 - Attachment to run-result summary emails (custom agent runs)
 
 The backend is intentionally direct: FastAPI routes, Python agent loops, tool dispatch, Redis/SSE where needed, and local-first JSON/file stores for many product surfaces. External services are optional unless the requested workflow needs them.
@@ -221,29 +236,13 @@ pip install -r requirements.txt
 
 ### Environment
 
-The backend reads `.env` through `backend/config.py`. Most values are optional for local development, but real agent runs need at least model credentials and any service credentials required by the tools you invoke.
+The backend reads local environment configuration through `backend/config.py`. Keep credentials, provider tokens, encryption material, and deployment-specific values in local untracked env files only.
 
-Common variables:
+For local development:
 
-```env
-REDIS_URL=redis://localhost:6379
-OBSIDIAN_VAULT=~/agent-workspace
-
-OPENROUTER_API_KEY=
-AGENT_MODEL_API_KEY=
-PLANNER_MODEL_API_KEY=
-
-GITHUB_TOKEN=
-VERCEL_TOKEN=
-COMPOSIO_API_KEY=
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
-RESEND_API_KEY=
-
-ASTRA_REQUIRE_AUTH=false
-ASTRA_ALLOW_DEV_AUTH=true
-ASTRA_PLATFORM_ADMINS=
-```
+- set the minimal model and storage values required for the flows you want to test
+- add provider credentials only for integrations you are actively using
+- keep production and release configuration in private operator notes, not tracked docs
 
 See [`backend/config.py`](backend/config.py) for the full configuration surface.
 
@@ -265,16 +264,10 @@ npm run dev
 
 Not required for web-only deployments.
 
-The frontend also exposes a desktop installer endpoint at `/api/downloads/desktop`.
-
-- Set `DESKTOP_DOWNLOAD_URL` to redirect the button to a hosted DMG.
-- Or set `DESKTOP_DMG_PATH` to serve a local DMG directly from the server filesystem.
-- If neither is set, the route falls back to `desktop/src-tauri/target/release/bundle/dmg/Astra Desktop_0.1.0_aarch64.dmg`.
-
 ### Run The Backend
 
 ```bash
-uvicorn backend.main:app --host 0.0.0.0 --port 8000
+uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
 Useful checks:
@@ -320,22 +313,11 @@ Then visit `http://localhost` (nginx on port 80 proxies to frontend and API).
 
 Astra includes operator-facing checks and runbooks under `backend/production_*`, `backend/platform_status.py`, `backend/alerts.py`, `backend/deploy_evidence.py`, and `deploy/`.
 
-Notable surfaces:
-
-- `/health`, `/ready`, `/metrics`
-- `/admin/overview`
-- `/admin/system`
-- `/admin/sessions`
-- `/admin/runs`
-- `/admin/alerts`
-- `/admin/smoke`
-- `/admin/production-verification`
-- `/admin/production-launch`
-
-Startup jobs also handle interrupted-session recovery, platform alert checks, 30-day PII purge, company-brain scheduling, and mission scheduling.
+Tracked docs keep the product and architecture story. Environment-specific release steps, secret inventories, and server operations are intentionally kept in local untracked notes.
 
 Key docs:
 
+- [One-Person Company Showcase](/Users/ishaangubbala/Documents/Astra/docs/One_Person_Company_Showcase.md)
 - [Production Launch Runbook](/Users/ishaangubbala/Documents/Astra/docs/Production_Launch_Runbook.md)
 - [Security Alignment Roadmap](/Users/ishaangubbala/Documents/Astra/docs/Security_Alignment_Roadmap.md)
 - [Desktop Signing And Release](/Users/ishaangubbala/Documents/Astra/docs/Desktop_Release_Signing.md)

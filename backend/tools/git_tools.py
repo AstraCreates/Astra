@@ -199,6 +199,165 @@ def _ensure_within_workspace_root(path: Path) -> Path:
     raise ValueError(f"workspace path escapes ASTRA_WORKSPACE: {resolved}")
 
 
+def _scaffold_nextjs_skeleton(local: str) -> None:
+    """Write a bare Next.js 15 + Tailwind v3 skeleton into *local* so caveman/openclaude
+    spends its first round on features, not boilerplate.  Each file is only written if it
+    does not already exist — safe to call on incremental or pre-populated workspaces."""
+    base = Path(local)
+    base.mkdir(parents=True, exist_ok=True)
+
+    files: dict[str, str] = {}
+
+    files["package.json"] = """\
+{
+  "name": "astra-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "15.3.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "15.3.3",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "autoprefixer": "^10.4.21",
+    "typescript": "^5"
+  }
+}
+"""
+
+    files["next.config.ts"] = """\
+import type { NextConfig } from "next";
+const nextConfig: NextConfig = {};
+export default nextConfig;
+"""
+
+    files["tsconfig.json"] = """\
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": { "@/*": ["./*"] }
+  },
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "exclude": ["node_modules"]
+}
+"""
+
+    files["tailwind.config.ts"] = """\
+import type { Config } from "tailwindcss";
+const config: Config = {
+  content: [
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./lib/**/*.{js,ts,jsx,tsx,mdx}",
+  ],
+  theme: { extend: {} },
+  plugins: [],
+};
+export default config;
+"""
+
+    files["postcss.config.mjs"] = """\
+const config = { plugins: { tailwindcss: {}, autoprefixer: {} } };
+export default config;
+"""
+
+    files["app/layout.tsx"] = """\
+import type { Metadata } from "next";
+import "./globals.css";
+export const metadata: Metadata = { title: "App", description: "Built with Astra" };
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}
+"""
+
+    files["app/globals.css"] = """\
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+"""
+
+    files["app/page.tsx"] = """\
+export default function Home() {
+  return <main></main>;
+}
+"""
+
+    files[".gitignore"] = """\
+# dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# env files
+.env
+.env*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+"""
+
+    written: list[str] = []
+    for rel, content in files.items():
+        target = base / rel
+        if not target.exists():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content)
+            written.append(rel)
+
+    if written:
+        logger.info("Scaffolded %d Next.js skeleton files: %s", len(written), written)
+
+
 def remove_workspace(session_id: str) -> bool:
     """Delete a session's entire workspace tree (all repos under it). Best-effort —
     runs as root in the container, so chmod first to clear astra-owned, read-only
@@ -1671,10 +1830,7 @@ def run_mvp_loop(
     founder_id: str = "",
     agent: str = "technical",
 ) -> dict:
-    """
-    Build MVP by calling openclaude once per missing file (no session-id — fresh context each call).
-    Avoids session state pollution that caused the PM loop to spin forever.
-    """
+    """Build a complete MVP product end-to-end: plans, codes, build-checks, and deploys."""
     if required_files is None:
         # Technical agent builds the product (auth + dashboard + core features).
         # Web agent builds only the landing page. Different default file sets.
@@ -1765,6 +1921,12 @@ def run_mvp_loop(
         incremental = built_marker.exists()
         if incremental:
             _phase("Incremental update — changing only what this goal needs (existing product preserved)")
+
+        # Fresh build with no package.json: drop a Next.js 15 + Tailwind skeleton so
+        # caveman skips boilerplate and goes straight to feature work (saves 1-2 rounds).
+        if not incremental and not (Path(local) / "package.json").exists():
+            _phase("Scaffolding Next.js skeleton…")
+            _scaffold_nextjs_skeleton(local)
 
         # Plan the product with MiniMax-M3 BEFORE building (the MVP planner), so
         # openclaude implements a real app from a concrete spec instead of improvising.
@@ -2071,10 +2233,7 @@ def run_claude_in_repo(
     context: str = "",
     founder_id: str = "",
 ) -> dict:
-    """
-    Single Claude Code pass inside a repo. Commits + pushes whatever it writes.
-    For full MVP building, prefer run_mvp_loop instead.
-    """
+    """Single coding-agent pass in a repo, commits and pushes."""
     if not settings.github_token:
         return {"error": "GITHUB_TOKEN not set"}
     if not repo_url or not repo_url.startswith("https://github.com/"):
@@ -2117,10 +2276,7 @@ def write_files_to_repo(
     commit_message: str = "feat: add files",
     session_id: str = "default",
 ) -> dict:
-    """
-    Write specific files directly to a GitHub repo and push.
-    files: {"relative/path.ext": "file content string"}
-    """
+    """Write files to a GitHub repo and push."""
     if not repo_url:
         return {"error": "repo_url is required — pass the GitHub repo URL, e.g. https://github.com/org/repo"}
     if not files:

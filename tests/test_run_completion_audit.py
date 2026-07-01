@@ -95,6 +95,30 @@ def test_run_completion_audit_flags_missing_artifacts_and_memory(tmp_path, monke
     assert "company_brain_handoff" in failed_keys
 
 
+def test_run_completion_audit_stays_pending_for_in_progress_run(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    session_id = "session_live"
+    founder_id = "founder_live"
+    stack = get_stack_template("sales")
+    blueprint = build_stack_execution_blueprint(stack, "Build outbound pipeline", "Astra")
+    first_lane = blueprint["lanes"][0]
+    events = [
+        (1, {"type": "goal_start", "goal": "Build outbound pipeline", "founder_id": founder_id}),
+        (2, {"type": "stack_selected", "stack": stack.to_public_dict()}),
+        (3, {"type": "stack_execution_blueprint", "execution_blueprint": blueprint}),
+        (4, {"type": "agent_start", "agent": first_lane["agent"], "task_id": first_lane["id"]}),
+    ]
+
+    state = build_session_state(session_id, events)
+    audit = build_run_completion_audit(session_id, state)
+
+    assert state["status"] == "running"
+    assert audit["ok"] is True
+    assert audit["status"] == "pending"
+    assert not audit["failed"]
+    assert audit["summary"] == "Run completion audit is tracking progress until the run reaches a terminal state."
+
+
 def test_run_completion_audit_flags_failed_deployment_checks(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     session_id = "session_deploy_broken"

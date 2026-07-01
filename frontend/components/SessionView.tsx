@@ -1150,7 +1150,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         );
       })()}
 
-      {(st.needsReview || st.status === "stalled" || st.completionAuditFailures.length > 0) && (
+      {((st.status === "done" || st.status === "stalled") && (st.needsReview || st.status === "stalled" || st.completionAuditFailures.length > 0)) && (
         <div style={{ background: "rgba(245, 158, 11, 0.14)", borderBottom: "1px solid rgba(245, 158, 11, 0.28)", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 18px", flexWrap: "wrap" }}>
             <div>

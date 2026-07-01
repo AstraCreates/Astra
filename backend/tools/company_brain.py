@@ -480,7 +480,7 @@ def configure_company_brain_access(
     role_permissions: dict[str, list[str]] | None = None,
     company_id: str | None = None,
 ) -> dict[str, Any]:
-    """Configure team roles and permission grants for Company Brain access."""
+    """Configure team roles and permissions for Company Brain."""
     data = _load(founder_id, company_id)
     access = data.setdefault(
         "access_control",
@@ -1100,7 +1100,7 @@ def add_company_brain_record(
     metadata: dict[str, Any] | None = None,
     company_id: str | None = None,
 ) -> dict[str, Any]:
-    """Add a normalized manual/source record to the company brain."""
+    """Add a record to the company brain."""
     resolved_company_id = company_id or str((metadata or {}).get("company_id") or founder_id)
     data = _load(founder_id, resolved_company_id)
     meta = {
@@ -1151,7 +1151,7 @@ def revise_company_brain_record(
     editor_id: str | None = None,
     company_id: str | None = None,
 ) -> dict[str, Any]:
-    """Create a new version of a brain record and deprecate the prior version."""
+    """Create a new version of a brain record (deprecates prior version)."""
     data = _load(founder_id, company_id)
     role = _viewer_role(data, editor_id or founder_id)
     if role != "owner" and "write" not in _role_permissions(data, role):
@@ -1315,7 +1315,7 @@ def search_company_brain(
     viewer_id: str | None = None,
     company_id: str | None = None,
 ) -> dict[str, Any]:
-    """Search the company brain for human and agent context retrieval."""
+    """Search the company brain knowledge base."""
     try:
         limit = int(limit)
     except (TypeError, ValueError):
@@ -1376,7 +1376,7 @@ def company_brain_agent_context(
     viewer_id: str | None = None,
     company_id: str | None = None,
 ) -> dict[str, Any]:
-    """Return compact graph context for IDEs, MCP bridges, and external agents."""
+    """Return compact company brain context for agents."""
     resolved_company_id = company_id or founder_id
     data = _load(founder_id, resolved_company_id)
     search = search_company_brain(
@@ -1508,7 +1508,7 @@ def ask_company_brain(
     limit: int = 8,
     company_id: str | None = None,
 ) -> dict[str, Any]:
-    """Answer a question using company-brain records with explicit citations."""
+    """Answer a question from company brain records with citations."""
     query = question.strip()
     if not query:
         return {

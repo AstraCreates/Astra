@@ -85,63 +85,15 @@ Stack inference: `_analyze_goal()` in `routes.py` calls LLM (DeepSeek fast, JSON
 
 ## Server / Deployment
 
-**VPS**: `root@178.105.231.73`
+The production deployment is containerized and fronted by a reverse proxy. Hostnames, server access details, deploy shortcuts, and persistent-volume locations are intentionally kept out of tracked docs and maintained in a local private operator note.
 
-**Repo on server**: `/opt/astra/repo`
-
-**Deploy workflow**:
-```bash
-# One command — auto-detects what changed and does the right thing:
-deploy
-# Pulls origin/main, then:
-#   Dockerfile.backend or requirements changed → rebuild + restart backend
-#   frontend/ or Dockerfile.frontend changed   → rebuild + restart frontend
-#   anything else                              → hot restart backend (2s, no rebuild)
-```
-
-Manual overrides (run from `/opt/astra/repo`):
-```bash
-# Backend Python change only:
-docker compose restart backend
-
-# Frontend change:
-docker compose build frontend && docker compose up -d frontend
-
-# .env change:
-docker compose up -d --force-recreate backend
-```
-
-**Containers**: `repo-backend-1`, `repo-frontend-1`, nginx, redis
-
-**Ports**: nginx 80/443 public; backend 8000 (currently 0.0.0.0 — audit finding); frontend 3000
-
-**Durable data**: Obsidian vault volume at `/data/astra_docs` in container — never wipe
+Durable storage must live outside ephemeral containers, and deployment changes should preserve workspace, vault, and evidence data.
 
 ---
 
 ## Key Config Fields (`.env`)
 
-```
-# OpenRouter
-OPENROUTER_API_KEY=...
-OR_PLANNER_MODEL=deepseek/deepseek-v4-pro
-OR_HIGHOUTPUT_MODEL=deepseek/deepseek-v4-pro
-OR_LIGHT_MODEL=xiaomi/mimo-v2.5
-
-# Local research GPU (optional — Cloudflare tunnel URL changes on restart)
-LOCAL_RESEARCH_BASE_URL=https://<tunnel>.trycloudflare.com/v1
-LOCAL_RESEARCH_MODEL=Qwen3.6-35B-A3B-UD-Q4_K_M.gguf
-LOCAL_RESEARCH_API_KEY=none
-
-# Credential store (generate once, never change)
-ASTRA_CREDS_KEY=<fernet-key>
-
-# Auth (set true in prod)
-ASTRA_REQUIRE_AUTH=false
-
-# Obsidian vault
-OBSIDIAN_VAULT=~/agent-workspace
-```
+Keep model credentials, connector tokens, encryption keys, tunnel URLs, and environment-specific auth settings in local untracked env files only. Use `backend/config.py` as the source of truth for the available configuration surface.
 
 ---
 
@@ -161,17 +113,13 @@ OBSIDIAN_VAULT=~/agent-workspace
 
 ## Security Findings (open)
 
-| Severity | Finding | Status |
-|---|---|---|
-| 🔴 Critical | Prod API open to internet (`ASTRA_REQUIRE_AUTH=false`, backend on `0.0.0.0:8000`) | Open |
-| 🔴 Critical | Founder impersonation via `x-astra-user-id` header (no auth validation) | Open |
-| 🟠 High | Root SSH password auth on VPS | Open |
-| 🟠 High | SSRF in URL fetchers (`page_fetcher.py`, browser tools) — no private-IP filtering | Open |
-| 🟠 High | CORS `allow_origins=["*"]` | Open |
-| 🟡 Medium | `.env` injection via `_write_env_key` (newline in value) | Open |
-| 🟡 Medium | `/admin/logs` leaks API keys in docker log output | Open |
+Tracked docs keep the long-lived remediation roadmap in [`docs/Security_Alignment_Roadmap.md`](/Users/ishaangubbala/Documents/Astra/docs/Security_Alignment_Roadmap.md). Environment-specific findings, host-level exposure notes, and active incident-response details live in local private operational notes instead.
 
-Fix #1-#2 first: bind backend to `127.0.0.1:8000` in compose + set `ASTRA_REQUIRE_AUTH=true` + add JWT config.
+Current hardening priorities remain:
+
+- production auth enforcement on all privileged surfaces
+- outbound fetch and browser protections against private-network access
+- secret handling that avoids plaintext persistence and log leakage
 
 ---
 

@@ -7,17 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 def deep_research(query: str, focus: str = "") -> dict:
-    """
-    Deep research using open_deep_research (LangChain/LangGraph multi-agent).
-    Spawns parallel researcher agents with DuckDuckGo search, synthesizes a
-    comprehensive report with citations.
-
-    Args:
-        query: Research question or topic
-        focus: Optional focus area (e.g. "market sizing", "competitors")
-    Returns:
-        {query, report: str, sources: [{title, url}], model: str, error?}
-    """
+    """Multi-agent deep research. Returns synthesized report with citations."""
     import asyncio
     full_query = f"{query}. Focus specifically on: {focus}" if focus else query
     try:
@@ -314,7 +304,7 @@ def web_search(query: str, max_results: int = 8) -> dict:
 
 
 def news_search(query: str, max_results: int = 5) -> dict:
-    """Search recent news. Returns {query, results: [{title, url, snippet, date}], formatted: str}."""
+    """Search recent news. Returns results with title, url, snippet, date."""
     try:
         import time as _t
         raw = []
@@ -352,13 +342,13 @@ def news_search(query: str, max_results: int = 5) -> dict:
 
 
 def search_and_read(query: str, max_results: int = 3) -> dict:
-    """Search the web AND fetch + read actual page content from top results. Deeper than web_search."""
+    """Search web + fetch full page content from top results. More thorough than web_search."""
     from backend.tools.page_fetcher import search_and_read as _sar
     return _sar(query=query, max_results=max_results)
 
 
 def fetch_page(url: str) -> dict:
-    """Fetch and read a specific URL. Returns clean readable text content, stripped of ads/nav/footer."""
+    """Fetch a URL, return clean text stripped of ads/nav/footer."""
     from backend.tools.page_fetcher import fetch_page as _fp
     return _fp(url=url)
 

@@ -13,6 +13,7 @@ pi-mlx-server
 .vercel
 .astra/
 deploy/certs/
+node_modules/
 desktop/node_modules/
 desktop/src-tauri/target/
 venv3.12/
@@ -20,3 +21,4 @@ venv/
 .gstack/
 private_keys/
 .appstoreconnect/
+docs/LOCAL_PRIVATE_OPERATIONS.md

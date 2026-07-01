@@ -229,10 +229,13 @@ def schema_from_callable(name: str, fn: Callable) -> dict[str, Any]:
         signature = inspect.signature(fn)
     except Exception:
         signature = None
+    _INJECTED_PARAMS = {"founder_id", "session_id"}
     if signature:
         for param_name, param in signature.parameters.items():
             if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
                 continue
+            if param_name in _INJECTED_PARAMS:
+                continue  # injected from AgentContext, model must not generate these
             if param.annotation is inspect.Parameter.empty:
                 properties[param_name] = {"type": "string"}
             else:

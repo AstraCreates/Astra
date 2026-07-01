@@ -6,10 +6,12 @@ from typing import Any
 
 
 FINAL_APPROVAL_STATES = {"approved", "skipped", "rejected", "expired"}
+TERMINAL_RUN_STATES = {"done", "stalled", "error", "failed", "killed", "cancelled", "stopped"}
 
 
 def build_run_completion_audit(session_id: str, state: dict[str, Any]) -> dict[str, Any]:
     """Audit a persisted session state against its stack execution blueprint."""
+    terminal = _is_terminal_run(state)
     blueprint = state.get("execution_blueprint") or {}
     lanes = blueprint.get("lanes") or []
     lane_status_by_id = {
@@ -74,8 +76,8 @@ def build_run_completion_audit(session_id: str, state: dict[str, Any]) -> dict[s
         for item in approvals
     ]
 
-    memory = _company_brain_handoff_check(session_id, state)
-    deployment = _deployment_health_check(state)
+    memory = _company_brain_handoff_check(session_id, state, required=terminal)
+    deployment = _deployment_health_check(state, required=terminal)
     checks = [
         {
             "key": "execution_blueprint_present",
@@ -97,7 +99,11 @@ def build_run_completion_audit(session_id: str, state: dict[str, Any]) -> dict[s
         {
             "key": "company_brain_handoff",
             "ok": memory["ok"],
-            "message": "Run handoff evidence is present in Company Brain.",
+            "message": (
+                "Run handoff evidence is present in Company Brain."
+                if terminal
+                else "Company Brain handoff will be required before this run can finish."
+            ),
             "details": memory,
         },
         {
@@ -105,45 +111,69 @@ def build_run_completion_audit(session_id: str, state: dict[str, Any]) -> dict[s
             "ok": deployment["ok"],
             "message": (
                 "Deployment outputs stayed healthy after post-run verification."
-                if deployment["ok"]
-                else "Deployment outputs failed post-run verification or triggered review flags."
+                if terminal and deployment["ok"]
+                else (
+                    "Deployment outputs failed post-run verification or triggered review flags."
+                    if terminal
+                    else "Deployment health will be verified before this run is marked finished."
+                )
             ),
             "details": deployment,
         },
     ]
     failed = [check for check in checks if not check["ok"]]
+    if not terminal:
+        failed = [check for check in failed if check["key"] in set()]
+    audit_ok = not failed
+    audit_status = (
+        "pending"
+        if not terminal
+        else ("complete" if audit_ok else "incomplete")
+    )
+    summary = (
+        "Run completion audit passed."
+        if terminal and audit_ok
+        else (
+            f"Run completion audit has {len(failed)} gap(s)."
+            if terminal
+            else "Run completion audit is tracking progress until the run reaches a terminal state."
+        )
+    )
     return {
         "session_id": session_id,
-        "ok": not failed,
-        "status": "complete" if not failed else "incomplete",
+        "ok": audit_ok,
+        "status": audit_status,
         "checks": checks,
         "failed": failed,
-        "summary": "Run completion audit passed." if not failed else f"Run completion audit has {len(failed)} gap(s).",
+        "summary": summary,
     }
 
 
-def _company_brain_handoff_check(session_id: str, state: dict[str, Any]) -> dict[str, Any]:
+def _company_brain_handoff_check(session_id: str, state: dict[str, Any], *, required: bool) -> dict[str, Any]:
+    if not required:
+        return {"ok": True, "required": False, "matched_records": 0, "reason": "Run still in progress."}
     founder_id = _founder_id(state)
     if not founder_id:
-        return {"ok": False, "founder_id": "", "matched_records": 0, "reason": "No founder id in session state."}
+        return {"ok": False, "required": True, "founder_id": "", "matched_records": 0, "reason": "No founder id in session state."}
     try:
         from backend.tools.company_brain import get_company_brain
         brain = get_company_brain(founder_id)
     except Exception as exc:
-        return {"ok": False, "founder_id": founder_id, "matched_records": 0, "reason": str(exc)}
+        return {"ok": False, "required": True, "founder_id": founder_id, "matched_records": 0, "reason": str(exc)}
     records = [
         record for record in brain.get("records", [])
         if session_id in str(record.get("title", "")) or session_id in str(record.get("content", "")) or session_id == str((record.get("metadata") or {}).get("session_id") or "")
     ]
     return {
         "ok": bool(records),
+        "required": True,
         "founder_id": founder_id,
         "matched_records": len(records),
         "record_titles": [record.get("title") for record in records[:5]],
     }
 
 
-def _deployment_health_check(state: dict[str, Any]) -> dict[str, Any]:
+def _deployment_health_check(state: dict[str, Any], *, required: bool) -> dict[str, Any]:
     urls: list[str] = []
     for agent in (state.get("agents") or {}).values():
         if not isinstance(agent, dict):
@@ -177,14 +207,24 @@ def _deployment_health_check(state: dict[str, Any]) -> dict[str, Any]:
     deploy_review_flag = needs_review and "deploy" in review_reason.lower()
 
     unique_urls = list(dict.fromkeys(urls))
-    ok = not deploy_failures and not deploy_review_flag
+    ok = not required or (not deploy_failures and not deploy_review_flag)
     return {
         "ok": ok,
+        "required": required,
         "deploy_urls": unique_urls[:10],
         "failed_checks": deploy_failures[:10],
         "needs_review": needs_review,
         "review_reason": review_reason,
     }
+
+
+def _is_terminal_run(state: dict[str, Any]) -> bool:
+    status = str(state.get("status") or state.get("session_meta", {}).get("status") or "").lower()
+    if status in TERMINAL_RUN_STATES:
+        return True
+    if state.get("session_meta", {}).get("completed_at"):
+        return True
+    return False
 
 
 def _founder_id(state: dict[str, Any]) -> str:

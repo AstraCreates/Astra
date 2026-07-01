@@ -1510,6 +1510,7 @@ class Orchestrator:
                 "agent": agent_name,
                 "instruction": f"{research_instruction}\n\n{_RESEARCH_LANE_FOCUS.get(agent_name, '')}".strip(),
                 "depends_on": [],
+                "phase": "diagnose",  # scheduler starts these first; gate fires when all done
             }
             for tid, agent_name in candidate_research
             if agent_name in self.specialists
@@ -1631,6 +1632,11 @@ class Orchestrator:
                 )
             except Exception:
                 pass
+
+            # Apply enriched instruction if background replan has populated it since task was created.
+            _enriched = shared.get(f"enriched_instruction_{agent_name}")
+            if _enriched:
+                task["instruction"] = _enriched
 
             # Require one output field per deliverable so each artifact card shows its
             # own distinct content (agents used to emit a single merged summary, which
@@ -1905,23 +1911,20 @@ class Orchestrator:
                     pass
             return result, notes
 
-        # Launch research in background
-        research_semaphore = asyncio.Semaphore(max(1, context_policy.max_concurrent_agents))
-        research_bg_tasks = [
-            asyncio.create_task(_run_task_with_limit(t, research_semaphore)) for t in parallel_research_tasks
-        ]
-
-        # Background replan: when research is ready, update shared with enriched instructions
+        # Background replan: fires when primary research lands in completed.
+        # Defined here; launched after _research_ids is set below.
         async def _bg_replan():
             try:
-                # Wait for at least one research agent to finish
-                done, _ = await asyncio.wait(
-                    research_bg_tasks,
-                    return_when=asyncio.FIRST_COMPLETED,
-                    timeout=600,
-                )
-                if not done:
+                # Poll until primary research track is in completed (max 10 min).
+                _pr_id = _research_ids[0] if _research_ids else None
+                if not _pr_id:
                     return
+                for _ in range(300):  # 300 × 2s = 10 min
+                    if _pr_id in completed:
+                        break
+                    await asyncio.sleep(2)
+                else:
+                    return  # timed out
                 research_result, merged_notes = _collect_research()
                 if merged_notes:
                     research_result["obsidian_content"] = "\n\n---\n\n".join(merged_notes)
@@ -1930,7 +1933,6 @@ class Orchestrator:
                     return
                 detailed_tasks = await self._replan_with_research(goal, research_result, agents_needed, stack_context)
                 if detailed_tasks:
-                    # Update shared so any agent that hasn't started yet gets enriched instructions
                     for dt in detailed_tasks:
                         shared[f"enriched_instruction_{dt['agent']}"] = dt["instruction"]
                     await publish(session_id, {
@@ -1939,7 +1941,6 @@ class Orchestrator:
                         "planner_model": self.planner.model,
                         "phase": "detailed",
                     })
-                    # Detailed plan tree in background
                     async def _bg_detailed_plan():
                         try:
                             _rs = research_result.get("obsidian_content") or ""
@@ -1952,11 +1953,9 @@ class Orchestrator:
             except Exception as _rp_err:
                 logger.warning("Background replan failed: %s", _rp_err)
 
-        asyncio.create_task(_bg_replan())
-
         tasks = parallel_research_tasks + other_agents_initial
         logger.info("Task list: research_tasks=%s, other_agents=%s", [t["agent"] for t in parallel_research_tasks], [t["agent"] for t in other_agents_initial])
-        remaining = [t for t in tasks if t["agent"] not in _RESEARCH_AGENTS]
+        remaining = list(tasks)  # research (diagnose) + all specialists
 
         # Map planner's research task ID to actual research task IDs
         # If research_task exists and remaining tasks depend on it, replace with actual research task IDs
@@ -1974,16 +1973,21 @@ class Orchestrator:
 
         logger.info("Non-research remaining tasks: %s", [(t["agent"], t.get("depends_on", [])) for t in remaining])
 
-        # Explicit dependency graph (overrides the planner's coarse deps):
-        #   research → everything.
-        #   design, legal, sales, marketing, ops, finance → run as soon as research is
-        #     done (in parallel with design — they don't need the brand).
-        #   web → needs design (brand colors/fonts) + research.
-        #   technical → builds on web's repo.
+        # Dependency graph — Weft-style granular wiring:
+        #   Primary research track (first/broadest) unblocks design/legal/sales/ops/finance.
+        #   Marketing needs full competitor picture → waits for ALL research.
+        #   web → all research + design (needs brand before building).
+        #   technical → web only.
+        # Enriched instructions from _bg_replan arrive before agents do meaningful work.
         _research_ids = [t["id"] for t in parallel_research_tasks]
+        asyncio.create_task(_bg_replan())  # polls completed[_research_ids[0]], then enriches tasks
+        _primary_res = _research_ids[:1]  # first track = broadest market + ICP research
         _design_task = next((t for t in remaining if t["agent"] == "design"), None)
         _web_task = next((t for t in remaining if t["agent"] == "web"), None)
+        _MARKETING_AGENTS = {"marketing", "marketing_content", "marketing_outreach"}
         for t in remaining:
+            if t.get("phase") == "diagnose":
+                continue  # research tasks have no deps; scheduler starts them first
             a = (t["agent"] or "").lower()
             if a == "web":
                 deps = list(_research_ids)
@@ -1992,120 +1996,97 @@ class Orchestrator:
                 t["depends_on"] = deps
             elif a.startswith("technical"):
                 t["depends_on"] = [_web_task["id"]] if _web_task else list(_research_ids)
-            else:
-                # design / legal / sales / marketing / ops / finance: research only.
+            elif a in _MARKETING_AGENTS:
+                # Marketing competes on competitor data — wait for full research.
                 t["depends_on"] = list(_research_ids)
+            else:
+                # design / legal / sales / ops / finance: primary market track is enough.
+                # Background replan enriches their instructions with competitor data
+                # before they finish their own first LLM pass.
+                t["depends_on"] = list(_primary_res) if _primary_res else list(_research_ids)
 
-        # Wait for ALL research agents to finish, then fill completed so non-research deps resolve
-        logger.info("Waiting for research agents to finish: %s", [t["agent"] for t in parallel_research_tasks])
-        if research_bg_tasks:
-            await asyncio.gather(*research_bg_tasks)
-        logger.info("Research done. completed keys: %s", list(completed.keys()))
-
-        research_result, merged_notes = _collect_research()
-        if merged_notes:
-            research_result["obsidian_content"] = "\n\n---\n\n".join(merged_notes)
-
-        # Build per-lane text dict for the agent discussion
+        # Research discussion + review run in the background. Polls until all research
+        # tasks land in completed, then runs critique/decision and injects into shared.
         import re as _re3
-        _notes_by_lane: dict[str, str] = {}
-        for _rt in parallel_research_tasks:
-            _base_name = _re3.sub(r"_\d+$", "", _rt["agent"])
-            _lane_text = ""
-            for _mn in merged_notes:
-                if _mn.startswith(f"## {_base_name.upper()}"):
-                    _lane_text = _mn
-                    break
-            if not _lane_text:
-                _lane_text = json.dumps(completed.get(_rt["id"], {}), default=str)[:4000]
-            if _lane_text:
-                _notes_by_lane[_rt["agent"]] = _lane_text
 
-        # Run real agent-to-agent discussion before final synthesis
-        if len(_notes_by_lane) >= 2:
-            await publish(session_id, {
-                "type": "research_discussion_start",
-                "agents": list(_notes_by_lane.keys()),
-            })
-            _discussion_turns = await self._research_agent_discussion(
-                goal, _notes_by_lane, session_id, publish
-            )
-            if _discussion_turns:
-                shared["research_discussion"] = _discussion_turns
-                await publish(session_id, {
-                    "type": "research_discussion_complete",
-                    "turns": _discussion_turns,
-                })
-                discussion_text = "## AGENT DISCUSSION\n\n" + "\n\n".join(
-                    f"**Round {t['round']} — {t['role']}:** {t['content']}"
-                    for t in _discussion_turns
-                )
-                merged_notes.append(discussion_text)
+        async def _bg_discussion_review() -> None:
+            try:
+                # Wait for all research tracks (max 20 min).
+                for _ in range(600):
+                    if all(rid in completed for rid in _research_ids):
+                        break
+                    await asyncio.sleep(2)
+                _research_result, _merged_notes = _collect_research()
+                if _merged_notes:
+                    _research_result["obsidian_content"] = "\n\n---\n\n".join(_merged_notes)
 
-        research_review = await self._critical_research_review(goal, research_result, merged_notes)
-        if research_review:
-            shared["research_review"] = research_review
-            await publish(session_id, {"type": "research_review", "review": research_review})
-            founder_prompt = research_review.get("founder_prompt") if isinstance(research_review.get("founder_prompt"), dict) else {}
-            if research_review.get("founder_prompt_needed") and founder_prompt:
-                from backend.core.events import input_response_wait
-                _blocking_research_decision = os.environ.get("ASTRA_RESEARCH_DECISION_BLOCKING", "").lower() in ("1", "true", "yes")
-                _research_decision_timeout = float(os.environ.get("ASTRA_RESEARCH_DECISION_TIMEOUT", "180"))
+                _notes_by_lane: dict[str, str] = {}
+                for _rt in parallel_research_tasks:
+                    _base_name = _re3.sub(r"_\d+$", "", _rt["agent"])
+                    _lane_text = ""
+                    for _mn in _merged_notes:
+                        if _mn.startswith(f"## {_base_name.upper()}"):
+                            _lane_text = _mn
+                            break
+                    if not _lane_text:
+                        _lane_text = json.dumps(completed.get(_rt["id"], {}), default=str)[:4000]
+                    if _lane_text:
+                        _notes_by_lane[_rt["agent"]] = _lane_text
 
-                request_id = str(uuid.uuid4())
-                await publish(session_id, {
-                    "type": "agent_question",
-                    "request_id": request_id,
-                    "title": founder_prompt.get("title") or "Research found a strategic decision",
-                    "question": founder_prompt.get("question") or "The research surfaced a major strategic tradeoff. Which direction should Astra follow?",
-                    "context": founder_prompt.get("context") or research_review.get("summary") or "",
-                    "recommendation": founder_prompt.get("recommendation") or research_review.get("recommended_path") or "",
-                    "severity": founder_prompt.get("severity") or "warning",
-                    "options": founder_prompt.get("options") or [],
-                    "option_details": founder_prompt.get("option_details") or {},
-                    "hint": "Add nuance if you want the team to adapt the direction.",
-                })
-                founder_response = None
-                if _blocking_research_decision:
-                    founder_response = await input_response_wait(request_id, timeout=_research_decision_timeout)
-                if founder_response:
-                    decision = str(founder_response.get("answer") or "").strip()
-                    shared["research_direction_decision"] = decision
-                    shared["research_direction_decision_note"] = founder_response
+                _bg_notes = list(_merged_notes)
+                if len(_notes_by_lane) >= 2:
                     await publish(session_id, {
-                        "type": "research_direction_decision",
-                        "decision": decision,
-                        "review": research_review,
+                        "type": "research_discussion_start",
+                        "agents": list(_notes_by_lane.keys()),
                     })
-                else:
-                    shared["research_direction_decision"] = "Continue as planned"
-                    await publish(session_id, {
-                        "type": "research_direction_decision",
-                        "decision": "Continue as planned",
-                        "review": research_review,
-                        "timed_out": bool(_blocking_research_decision),
-                        "auto_continue": not _blocking_research_decision,
-                    })
+                    _discussion_turns = await self._research_agent_discussion(
+                        goal, _notes_by_lane, session_id, publish
+                    )
+                    if _discussion_turns:
+                        shared["research_discussion"] = _discussion_turns
+                        await publish(session_id, {
+                            "type": "research_discussion_complete",
+                            "turns": _discussion_turns,
+                        })
+                        _bg_notes.append("## AGENT DISCUSSION\n\n" + "\n\n".join(
+                            f"**Round {t['round']} — {t['role']}:** {t['content']}"
+                            for t in _discussion_turns
+                        ))
 
-        # Now apply enriched instructions from background replan (if ready) before launching other agents
-        for t in remaining:
-            enriched = shared.get(f"enriched_instruction_{t['agent']}")
-            if enriched:
-                t["instruction"] = enriched
-                logger.info("Applied enriched instruction to %s", t["agent"])
-            review = shared.get("research_review") or {}
-            decision = shared.get("research_direction_decision")
-            if review or decision:
-                critique_summary = ""
-                if isinstance(review, dict):
-                    critique_summary = str(review.get("summary") or review.get("recommended_path") or "")[:700]
-                appendix_parts = []
-                if critique_summary:
-                    appendix_parts.append(f"Research council critique:\n{critique_summary}")
-                if decision:
-                    appendix_parts.append(f"Founder direction after critique:\n{decision}")
-                if appendix_parts:
-                    t["instruction"] = f"{t['instruction']}\n\n" + "\n\n".join(appendix_parts)
+                _research_review = await self._critical_research_review(goal, _research_result, _bg_notes)
+                if _research_review:
+                    shared["research_review"] = _research_review
+                    await publish(session_id, {"type": "research_review", "review": _research_review})
+                    _founder_prompt = _research_review.get("founder_prompt") if isinstance(_research_review.get("founder_prompt"), dict) else {}
+                    if _research_review.get("founder_prompt_needed") and _founder_prompt:
+                        from backend.core.events import input_response_wait
+                        _blocking = os.environ.get("ASTRA_RESEARCH_DECISION_BLOCKING", "").lower() in ("1", "true", "yes")
+                        _timeout = float(os.environ.get("ASTRA_RESEARCH_DECISION_TIMEOUT", "180"))
+                        _req_id = str(uuid.uuid4())
+                        await publish(session_id, {
+                            "type": "agent_question",
+                            "request_id": _req_id,
+                            "title": _founder_prompt.get("title") or "Research found a strategic decision",
+                            "question": _founder_prompt.get("question") or "The research surfaced a major strategic tradeoff. Which direction should Astra follow?",
+                            "context": _founder_prompt.get("context") or _research_review.get("summary") or "",
+                            "recommendation": _founder_prompt.get("recommendation") or _research_review.get("recommended_path") or "",
+                            "severity": _founder_prompt.get("severity") or "warning",
+                            "options": _founder_prompt.get("options") or [],
+                            "option_details": _founder_prompt.get("option_details") or {},
+                            "hint": "Add nuance if you want the team to adapt the direction.",
+                        })
+                        _resp = await input_response_wait(_req_id, timeout=_timeout) if _blocking else None
+                        if _resp:
+                            shared["research_direction_decision"] = str(_resp.get("answer") or "").strip()
+                            shared["research_direction_decision_note"] = _resp
+                            await publish(session_id, {"type": "research_direction_decision", "decision": shared["research_direction_decision"], "review": _research_review})
+                        else:
+                            shared["research_direction_decision"] = "Continue as planned"
+                            await publish(session_id, {"type": "research_direction_decision", "decision": "Continue as planned", "review": _research_review, "timed_out": bool(_blocking), "auto_continue": not _blocking})
+            except Exception as _dr_err:
+                logger.warning("Background discussion/review failed: %s", _dr_err)
+
+        asyncio.create_task(_bg_discussion_review())
 
         # ── Phase gate infrastructure ─────────────────────────────────────────────
         # After every phase completes, the founder must review deliverables and approve
@@ -2114,11 +2095,11 @@ class Orchestrator:
         _PHASE_ORDER = ["diagnose", "design", "deploy", "govern", "operate"]
 
         def _task_phase(t: dict) -> str:
-            return stack_lane_by_agent.get(t["agent"], {}).get("phase") or "deploy"
+            return t.get("phase") or stack_lane_by_agent.get(t["agent"], {}).get("phase") or "deploy"
 
-        # Map phase → task list (includes research tasks so the gate can list their artifacts)
+        # Map phase → task list (research tasks are now in remaining with phase="diagnose")
         _tasks_by_phase: dict[str, list[dict]] = {}
-        for _t in parallel_research_tasks + list(remaining):
+        for _t in remaining:
             _tasks_by_phase.setdefault(_task_phase(_t), []).append(_t)
 
         async def _phase_gate(phase_name: str, next_phase: str, phase_task_list: list[dict]) -> bool:
@@ -2201,27 +2182,14 @@ class Orchestrator:
             logger.info("Phase gate '%s' approved — proceeding to %s", phase_name, next_phase)
             return True
 
-        # Initialize gate tracking here so the pre-scheduler gate result persists into the scheduler.
+        # "diagnose" pre-cleared so research tasks launch immediately.
+        # Scheduler fires the diagnose→design gate once all research completes.
         _phase_gates_cleared: set[str] = {
             ph for ph in _PHASE_ORDER if not _tasks_by_phase.get(ph)
         } | {"diagnose"}
 
-        # Diagnose phase gate: block before launching design/deploy/etc. agents.
-        # If rejected, research tasks are re-added to remaining and the scheduler runs them.
-        # The scheduler-level gate will re-fire after those tasks complete.
-        if remaining and not cancellation.is_killed(session_id):
-            _first_next = next(
-                (p for p in _PHASE_ORDER if p != "diagnose" and any(_task_phase(t) == p for t in remaining)),
-                "design",
-            )
-            _diagnose_gate_ok = await _phase_gate("diagnose", _first_next, parallel_research_tasks)
-            if _diagnose_gate_ok and not cancellation.is_killed(session_id):
-                # Mark next phase as cleared so the scheduler doesn't re-fire the same gate
-                _phase_gates_cleared.add(_first_next)
-
         # ── Scheduler ──────────────────────────────────────────────────────────────
-        # Run remaining agents in parallel (research is done, deps resolve)
-        logger.info("Starting non-research agents: %s", [t["agent"] for t in remaining])
+        logger.info("Starting scheduler: %s", [t["agent"] for t in remaining])
         in_flight: set[str] = set()
         import os as _os
         # Build agents (web / technical) run with NO outer kill — run_mvp_loop is a
@@ -2296,7 +2264,7 @@ class Orchestrator:
         # (custom stacks, agent-filtered runs, or any plan where an upstream agent was
         # dropped). An unsatisfiable dep would otherwise leave the task permanently
         # un-ready and abort its lane as a false "dependency cycle". Research deps are
-        # already in `completed`; everything else must exist in `remaining`.
+        # All tasks (research + specialists) are in `remaining`.
         _known_ids = set(completed.keys()) | {t["id"] for t in remaining}
         for t in remaining:
             deps = t.get("depends_on", [])

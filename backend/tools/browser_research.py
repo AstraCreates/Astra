@@ -275,11 +275,7 @@ def _extract_links(html: str, base_domain: str = "") -> list[str]:
 
 
 def fetch_and_read(url: str = "") -> dict:
-    """
-    Fetch any URL and return clean extracted text content.
-    Works on websites, research papers (arXiv, PubMed, SSRN), news articles, etc.
-    Paywalled/bot-blocking domains (ResearchGate, Wiley, Springer, etc.) are skipped automatically.
-    """
+    """Fetch a URL, return clean text. Blocked/paywalled domains auto-skipped."""
     if not url:
         return {"error": "url is required — pass the full URL to fetch, e.g. https://example.com"}
     if _is_blocked(url):
@@ -333,11 +329,7 @@ def fetch_and_read(url: str = "") -> dict:
 
 
 def search_and_fetch(query: str = "", max_results: int = 16) -> dict:
-    """
-    Search DuckDuckGo for the query, then fetch and read the actual content
-    of each result page. Returns rich page content, not just snippets.
-    Use for: websites, news, blogs, company pages, research papers, anything.
-    """
+    """Search web then fetch full page content from each result."""
     if not query:
         return {"error": "query is required — pass a search string, e.g. \"competitor pricing SaaS\""}
     raw = _robust_search(query, max_results=max_results * 2)
@@ -429,13 +421,7 @@ def research_papers(query: str, max_results: int = 5) -> dict:
 
 
 def sonar_research(queries=None) -> dict:
-    """Run research queries via Perplexity sonar-pro — each query returns a
-    synthesized answer with citations. Replaces batch_search + fetch_and_read
-    loops: sonar handles web fetching internally.
-
-    queries: list of research question strings (max 12).
-    Returns: {results_by_query, combined_formatted, sources}
-    """
+    """Run queries via Perplexity sonar-pro; each returns synthesized answer with citations."""
     if not queries:
         return {"error": "queries required — pass a list of research question strings"}
     queries = list(queries)[:12]
@@ -501,12 +487,7 @@ def sonar_research(queries=None) -> dict:
 
 
 def batch_search(queries: list | None = None, max_results_each: int = 8) -> dict:
-    """
-    Run multiple search queries IN PARALLEL and return all results combined.
-    Use this to run 3-8 searches simultaneously instead of one at a time.
-    queries: list of search query strings (max 8 for speed).
-    Returns: {results_by_query: {query: {results, formatted}}, combined_formatted: str}
-    """
+    """Run search queries in parallel and return combined results."""
     if not queries:
         return {"error": "queries is required — pass a list of search strings, e.g. [\"competitor A pricing\", \"competitor B features\"]"}
     queries = list(queries)[:12]  # cap to prevent abuse
