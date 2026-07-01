@@ -1570,14 +1570,38 @@ class Agent:
                     await self._emit(ctx, "agent_action", action="tool", tool=tool_name, args=args, reasoning=reasoning)
                     result = await self._execute_tool(tool_name, args, ctx)
                     await self._emit(ctx, "agent_action_result", tool=tool_name, result=result)
-                    if "error" not in result:
+                    result_is_error = isinstance(result, dict) and "error" in result
+                    if not result_is_error:
                         _called_tools.add(tool_name)
                         if isinstance(result, dict):
                             _tool_results.append((tool_name, result))
-                    if "error" in result:
+                    if result_is_error:
                         messages.append({"role": "user", "content": f"TOOL FAILED: {json.dumps(result)}"})
                     else:
-                        messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result)}"})
+                        compact_result = _compact_result_for_state(tool_name, result)
+                        working_state["recent_tools"].append(f"{tool_name}: {compact_result}")
+                        _record_tool_memory(working_state, tool_name, compact_result)
+                        if isinstance(result, dict):
+                            if result.get("path"):
+                                working_state["artifacts"].append(f"{tool_name} -> {result.get('path')}")
+                            elif result.get("url") or result.get("deploy_url") or result.get("repo_url"):
+                                working_state["artifacts"].append(
+                                    f"{tool_name} -> {result.get('deploy_url') or result.get('repo_url') or result.get('url')}"
+                                )
+                        working_state["next_steps"] = [f"Continue from the latest successful tool result: {tool_name}."]
+                        save_agent_state(ctx.session_id, self.name, ctx.task_id, working_state)
+                        messages, working_state = _refresh_working_state(
+                            messages,
+                            session_id=ctx.session_id,
+                            agent_name=self.name,
+                            task_id=ctx.task_id,
+                            query=f"{tool_name} {reasoning}",
+                            sections=_state_sections_for_action("tool", tool_name),
+                        )
+                        if _tool_result_should_enter_transcript(tool_name, result):
+                            messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{compact_result}"})
+                        else:
+                            messages.append({"role": "user", "content": f"{tool_name} completed successfully. The result is stored in working state."})
                 else:
                     messages.append({"role": "user", "content": f"Unknown tool '{tool_name}'. Use: tool, delegate, computer_use, or done."})
 
