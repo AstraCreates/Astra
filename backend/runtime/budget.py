@@ -70,6 +70,9 @@ class RunBudget:
             if self._deadline_exhausted():
                 self._exhausted_reason = "deadline"
                 return False
+            if self.max_cost_usd is not None and self._cost_usd >= self.max_cost_usd:
+                self._exhausted_reason = "cost"
+                return False
             if self.max_tool_calls is not None and self._tool_calls >= self.max_tool_calls:
                 self._exhausted_reason = "tool_calls"
                 return False

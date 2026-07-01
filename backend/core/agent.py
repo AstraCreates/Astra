@@ -14,12 +14,6 @@ from typing import Any, Callable, Optional
 import openai
 
 from backend.config import settings
-from backend.core.agent_state import (
-    load_agent_state,
-    relevant_state_snapshot,
-    reset_agent_state,
-    save_agent_state,
-)
 from backend.core.llm_cache import cacheable_messages, is_openrouter_base_url, openrouter_extra_body
 from backend.runtime.budget import RunBudget
 from backend.runtime.context_compressor import AstraContextCompressor
@@ -77,14 +71,14 @@ _MIN_CALLS_BY_AGENT: dict[str, int] = {
 # agent (design, marketing) accumulates 40 iterations of multi-KB results and
 # overflows the model window (observed: 489385 tokens vs 262144 limit).
 # Tunable: raise ASTRA_TOOL_RESULT_CAP if agents lose needed detail.
-_TOOL_RESULT_CHAR_CAP = int(os.environ.get("ASTRA_TOOL_RESULT_CAP", "12000"))
+_TOOL_RESULT_CHAR_CAP = int(os.environ.get("ASTRA_TOOL_RESULT_CAP", "40000"))
 
 
 # Cumulative conversation budget per agent loop. Must stay under the model window
 # AND keep input cost down — long tool-heavy loops resend the whole history every
 # turn, so a tighter budget directly cuts billed input tokens. Compression (90k→
 # tunable) usually fires first; this is the hard backstop.
-_HISTORY_CHAR_BUDGET = int(os.environ.get("ASTRA_HISTORY_CHAR_BUDGET", "180000"))  # ~45k tokens
+_HISTORY_CHAR_BUDGET = int(os.environ.get("ASTRA_HISTORY_CHAR_BUDGET", "300000"))  # ~75k tokens
 
 
 def _trim_message_history(messages: list[dict]) -> list[dict]:
@@ -221,10 +215,8 @@ def _format_tool_result(tool_name: str, result: Any) -> str:
 # very FIRST LLM call fails before any trimming can help (observed: marketing at
 # 276,256 tokens vs the 262,144 limit, with 3 research results + brain + genome +
 # manifests accumulated in shared). Bound it here, keeping every key visible.
-_SHARED_CONTEXT_CHAR_CAP = int(os.environ.get("ASTRA_SHARED_CONTEXT_CAP", "40000"))  # ~10k tokens
-_SHARED_VALUE_CHAR_CAP = int(os.environ.get("ASTRA_SHARED_VALUE_CAP", "6000"))  # ~1.5k tokens/value
-
-_WORKING_STATE_MESSAGE_PREFIX = "[WORKING STATE]"
+_SHARED_CONTEXT_CHAR_CAP = int(os.environ.get("ASTRA_SHARED_CONTEXT_CAP", "100000"))  # ~25k tokens (was 200k)
+_SHARED_VALUE_CHAR_CAP = int(os.environ.get("ASTRA_SHARED_VALUE_CAP", "16000"))  # ~4k tokens/value (was 50k)
 
 
 def _render_shared_context(shared: dict, max_chars: int = _SHARED_CONTEXT_CHAR_CAP) -> str:
@@ -254,22 +246,6 @@ def _render_shared_context(shared: dict, max_chars: int = _SHARED_CONTEXT_CHAR_C
         budget -= len(entry)
         parts.append(entry)
     return "{\n" + ",\n".join(parts) + "\n}"
-
-
-def _prompt_shared_context(shared: dict) -> dict:
-    """Remove duplicate or large runtime-only fields before prompt rendering."""
-    prompt_shared = dict(shared or {})
-    prompt_shared.pop("task_brief", None)
-    return prompt_shared
-
-
-def _summarize_library_content(content: str, limit: int = 4000) -> str:
-    text = (content or "").strip()
-    if len(text) <= limit:
-        return text
-    head = text[: max(1200, limit // 2)]
-    tail = text[-max(600, limit // 4):]
-    return f"{head}\n\n...[middle omitted for prompt budget]...\n\n{tail}"
 
 
 def _format_tool_result_raw(tool_name: str, result: Any) -> str:
@@ -327,19 +303,6 @@ def _format_tool_result_raw(tool_name: str, result: Any) -> str:
             out.append(text)
         return "\n".join(out) if out else json.dumps(result)
 
-    # Image-generating tools — strip base64, confirm with URL/size only
-    if tool_name in ("generate_logo", "generate_brand_board", "generate_ad_image", "generate_logo_brief"):
-        safe: dict = {}
-        for k, v in result.items():
-            if k in ("base64", "b64", "image_data"):
-                safe[k] = f"[base64 omitted, {len(str(v)):,} chars]"
-            elif isinstance(v, dict):
-                safe[k] = {ik: (f"[base64 omitted, {len(str(iv)):,} chars]" if ik in ("base64", "b64") else iv)
-                           for ik, iv in v.items()}
-            else:
-                safe[k] = v
-        return json.dumps(safe, indent=2)
-
     # Obsidian tools — compact
     if tool_name in ("obsidian_log", "obsidian_read", "obsidian_append"):
         if tool_name == "obsidian_read":
@@ -357,136 +320,6 @@ def _format_tool_result_raw(tool_name: str, result: Any) -> str:
         return json.dumps(result, indent=2)
     except Exception:
         return str(result)
-
-
-def _compact_result_for_state(tool_name: str, result: Any, limit: int = 1200) -> str:
-    """Compact result for the persistent working-state scratchpad."""
-    text = _format_tool_result(tool_name, result)
-    if not isinstance(text, str):
-        text = str(text)
-    text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    return text[:limit] + ("...[truncated]" if len(text) > limit else "")
-
-
-def _record_tool_memory(state: dict[str, Any], tool_name: str, compact_result: str) -> None:
-    memory = state.setdefault("tool_memory", {})
-    bucket = list(memory.get(tool_name) or [])
-    bucket.append(compact_result)
-    memory[tool_name] = bucket[-4:]
-
-
-def _render_working_state(state: dict[str, Any]) -> str:
-    recent_tools = state.get("recent_tools") or []
-    artifacts = state.get("artifacts") or []
-    blockers = state.get("blockers") or []
-    next_steps = state.get("next_steps") or []
-    plan = state.get("plan") or "Not yet established."
-    lines = [
-        _WORKING_STATE_MESSAGE_PREFIX,
-        "Treat this as the authoritative compact scratchpad for the current task.",
-        "",
-        f"Plan:\n{plan}",
-        "",
-        "Recent Tool Results:",
-    ]
-    if recent_tools:
-        for item in recent_tools[-6:]:
-            lines.append(f"- {item}")
-    else:
-        lines.append("- None yet.")
-    lines.extend(["", "Artifacts/Outputs:"])
-    if artifacts:
-        for item in artifacts[-6:]:
-            lines.append(f"- {item}")
-    else:
-        lines.append("- None yet.")
-    lines.extend(["", "Blockers:"])
-    if blockers:
-        for item in blockers[-5:]:
-            lines.append(f"- {item}")
-    else:
-        lines.append("- None recorded.")
-    lines.extend(["", "Next Steps:"])
-    if next_steps:
-        for item in next_steps[-5:]:
-            lines.append(f"- {item}")
-    else:
-        lines.append("- Continue the current task.")
-    return "\n".join(lines)[:8000]
-
-
-def _tool_result_should_enter_transcript(tool_name: str, result: Any) -> bool:
-    """Only some tool results need to live in the visible transcript.
-    Most results should stay in external state and be referenced via the scratchpad."""
-    high_signal = {
-        "obsidian_read",
-        "ask_user",
-        "computer_use",
-        "run_mvp_loop",
-        "spawn_parallel_coders",
-        "run_web_task",
-        "vercel_deploy",
-        "vercel_deploy_from_github",
-    }
-    if tool_name in high_signal:
-        return True
-    if isinstance(result, dict) and any(result.get(k) for k in ("deploy_url", "repo_url", "path", "pdf_path", "url")):
-        return True
-    return False
-
-
-def _upsert_working_state_message(messages: list[dict[str, Any]], state: dict[str, Any]) -> list[dict[str, Any]]:
-    scratch = {"role": "user", "content": _render_working_state(state)}
-    for idx, message in enumerate(messages):
-        if isinstance(message.get("content"), str) and message["content"].startswith(_WORKING_STATE_MESSAGE_PREFIX):
-            messages[idx] = scratch
-            return messages
-    insert_at = 2 if len(messages) >= 2 else len(messages)
-    messages.insert(insert_at, scratch)
-    return messages
-
-
-def _refresh_working_state(
-    messages: list[dict[str, Any]],
-    *,
-    session_id: str,
-    agent_name: str,
-    task_id: str,
-    query: str,
-    sections: tuple[str, ...] = ("plan", "recent_tools", "artifacts", "blockers", "next_steps"),
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    snapshot = relevant_state_snapshot(session_id, agent_name, task_id, query=query, sections=sections)
-    return _upsert_working_state_message(messages, snapshot), snapshot
-
-
-def _estimate_chars(messages: list[dict[str, Any]]) -> int:
-    total = 0
-    for message in messages:
-        content = message.get("content", "")
-        if isinstance(content, str):
-            total += len(content)
-        else:
-            try:
-                total += len(json.dumps(content, default=str))
-            except Exception:
-                total += len(str(content))
-    return total
-
-
-def _state_sections_for_action(action: str | None, tool_name: str = "") -> tuple[str, ...]:
-    act = (action or "").lower()
-    tool = (tool_name or "").lower()
-    if act == "done":
-        return ("plan", "artifacts", "blockers", "next_steps")
-    if act == "delegate":
-        return ("plan", "recent_tools", "artifacts", "next_steps")
-    if act == "computer_use" or tool in {"computer_use", "run_web_task", "vision_browse"}:
-        return ("plan", "recent_tools", "blockers", "next_steps")
-    if act in {"tool", "tool_batch"}:
-        if tool in {"generate_pdf", "vercel_deploy", "vercel_deploy_from_github", "run_mvp_loop", "spawn_parallel_coders"}:
-            return ("plan", "recent_tools", "artifacts", "blockers", "next_steps")
-        return ("plan", "recent_tools", "blockers", "next_steps")
-    return ("plan", "recent_tools", "artifacts", "blockers", "next_steps")
 
 @dataclass
 class AgentContext:
@@ -946,13 +779,14 @@ class Agent:
         # Build library context block if canonical files are present
         library_section = ""
         if self._library_files:
-            files_to_inject = self._library_files[:3]
+            files_to_inject = self._library_files[:5]
             parts = ["\n\nLIBRARY CONTEXT (canonical founder documents — treat as ground truth):"]
             for f in files_to_inject:
                 fname = f.get("filename", "untitled")
                 dept = f.get("department", "")
                 content = f.get("content", "")
-                content = _summarize_library_content(content, 4000)
+                if len(content) > 20_000:
+                    content = content[:20_000] + "\n... [truncated]"
                 parts.append(f"\n--- {fname} [{dept}] ---\n{content}")
             library_section = "\n".join(parts)
 
@@ -1009,20 +843,6 @@ class Agent:
                 f"Pass agent={self.name!r} and the current session_id. Use section= to group related tiles.\n"
             )
 
-        cost_heavy_section = ""
-        if self.name in {"technical", "technical_scaffold", "technical_infra", "technical_data", "web", "research", "research_market", "research_financial", "research_regulatory"}:
-            cost_heavy_section = (
-                "\nEXECUTION STYLE FOR EXPENSIVE TASKS:\n"
-                "- Read TASK BRIEF first and follow it in order.\n"
-                "- Start by extracting: objective, deliverables, dependencies, and exact acceptance checks.\n"
-                "- If the task brief includes templates, use those shapes directly instead of inventing your own output structure.\n"
-                "- Make a short internal plan from the task brief, then execute it. Do not improvise a new workflow unless the brief is missing something critical.\n"
-                "- Prefer one high-yield research/tool pass followed by synthesis over many small exploratory calls.\n"
-                "- Reuse examples, templates, and prior results before generating from scratch.\n"
-                "- Do not re-read the same context source unless new information is required.\n"
-                "- Keep outputs modular: produce the requested artifact sections directly instead of long exploratory prose.\n"
-            )
-
         return (
             skills_section +
             f"You are {self.name}, {self.role}.\n\n"
@@ -1030,7 +850,6 @@ class Agent:
             f"SUB-AGENTS YOU CAN DELEGATE TO:\n{sub_list or '  (none)'}\n\n"
             + ask_user_section
             + dashboard_section
-            + cost_heavy_section
             + "RESPONSE FORMAT — YOU MUST RESPOND WITH A SINGLE JSON OBJECT ONLY. NO PROSE. NO MARKDOWN. NO EXPLANATION.\n\n"
             "Call a tool:\n"
             '{"action": "tool", "tool": "<name>", "args": {<kwargs>}, "reasoning": "<one line>"}\n\n'
@@ -1072,15 +891,13 @@ class Agent:
                 system_prompt = "\n---\n".join(contents) + "\n---\n" + system_prompt
         except Exception:
             pass
-        prompt_shared = _prompt_shared_context(ctx.shared)
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": (
                 f"GOAL: {ctx.goal}\n"
                 f"FOUNDER_ID: {ctx.founder_id}\n"
                 f"SESSION: {ctx.session_id}\n"
-                f"{('TASK BRIEF: ' + json.dumps(ctx.shared.get('task_brief'), indent=2, default=str) + chr(10)) if ctx.shared.get('task_brief') else ''}"
-                f"SHARED CONTEXT: {_render_shared_context(prompt_shared)}"
+                f"SHARED CONTEXT: {_render_shared_context(ctx.shared)}"
             )},
         ]
 
@@ -1103,9 +920,6 @@ class Agent:
         i = 0
         MAX_ITERATIONS = self._max_iterations or 20
         compressor = AstraContextCompressor()
-        reset_agent_state(ctx.session_id, self.name, ctx.task_id)
-        working_state: dict[str, Any] = load_agent_state(ctx.session_id, self.name, ctx.task_id)
-        messages = _upsert_working_state_message(messages, working_state)
         # Track consecutive failures per tool to break infinite retry loops
         _tool_fail_counts: dict[str, int] = {}
         _large_results: dict[str, Any] = {}  # stores large non-dict results (HTML etc.) by tool name
@@ -1154,7 +968,6 @@ class Agent:
             if runtime_feature_enabled("context_compression_v2", ctx.founder_id) and compressor.should_compress(messages):
                 await self._emit(ctx, "context_compression_started", messages=len(messages))
                 try:
-                    pre_chars = _estimate_chars(messages)
                     summary_override = None
                     try:
                         summary_source = compressor.summary_source(messages)
@@ -1168,8 +981,6 @@ class Agent:
                     except Exception:
                         runtime_metric("context_compression_llm_fallback_total")
                     messages, compression = compressor.compress(messages, summary_override=summary_override)
-                    runtime_metric("context_chars_before_compression_total", pre_chars)
-                    runtime_metric("context_chars_after_compression_total", _estimate_chars(messages))
                     runtime_metric("context_compression_total")
                     await self._emit(ctx, "context_compression_completed", **compression)
                 except Exception as exc:
@@ -1179,23 +990,6 @@ class Agent:
                 messages = _trim_message_history(messages)
             if ctx.budget:
                 await self._emit(ctx, "agent_budget_update", budget=ctx.budget.snapshot().__dict__)
-            prompt_chars = _estimate_chars(messages)
-            runtime_metric("prompt_chars_total", prompt_chars)
-            runtime_metric("prompt_iterations_total")
-            runtime_metric("working_state_chars_total", len(_render_working_state(working_state)))
-            if working_state.get("recent_tools"):
-                runtime_metric("working_state_refresh_with_tools_total")
-            await self._emit(
-                ctx,
-                "agent_prompt_metrics",
-                iteration=i,
-                prompt_chars=prompt_chars,
-                prompt_estimated_tokens=max(1, prompt_chars // 4),
-                working_state_chars=len(_render_working_state(working_state)),
-                recent_tool_items=len(working_state.get("recent_tools") or []),
-                artifact_items=len(working_state.get("artifacts") or []),
-                blocker_items=len(working_state.get("blockers") or []),
-            )
             raw = await asyncio.to_thread(self._invoke_llm, messages, ctx)
             parsed = self._parse_json(raw)
             if not parsed:
@@ -1235,17 +1029,6 @@ class Agent:
                     action = "done"
             reasoning = parsed.get("reasoning", "")
             tool_hint = parsed.get("tool", "")
-            if reasoning:
-                working_state["plan"] = str(reasoning)[:700]
-                save_agent_state(ctx.session_id, self.name, ctx.task_id, working_state)
-                messages, working_state = _refresh_working_state(
-                    messages,
-                    session_id=ctx.session_id,
-                    agent_name=self.name,
-                    task_id=ctx.task_id,
-                    query=f"{reasoning} {tool_hint}",
-                    sections=_state_sections_for_action(action, tool_hint),
-                )
             logger.info("[%s] iter=%d  action=%-12s  %s", self.name, i, action, (tool_hint or reasoning)[:80])
             messages.append({"role": "assistant", "content": raw})
             if action in ("done", "tool", "tool_batch", "delegate", "computer_use"):
@@ -1296,17 +1079,6 @@ class Agent:
                         )})
                         continue
                 await self._emit(ctx, "agent_done", result=output)
-                if isinstance(output, dict):
-                    working_state["artifacts"].append(f"done -> {json.dumps(output, default=str)[:700]}")
-                    save_agent_state(ctx.session_id, self.name, ctx.task_id, working_state)
-                    messages, working_state = _refresh_working_state(
-                        messages,
-                        session_id=ctx.session_id,
-                        agent_name=self.name,
-                        task_id=ctx.task_id,
-                        query="done final output artifacts",
-                        sections=_state_sections_for_action("done"),
-                    )
                 logger.info("[%s] DONE — output keys: %s", self.name, list(output.keys()) if isinstance(output, dict) else type(output).__name__)
                 # Auto-log to obsidian if agent never called it
                 if "obsidian_log" in self.tools and "obsidian_log" not in _called_tools and ctx.founder_id and ctx.session_id:
@@ -1344,18 +1116,7 @@ class Agent:
                         unique.append({"tool": name, "args": args})
 
                 read_calls = [call for call in unique if call["tool"] in READ_ONLY_TOOLS]
-                # external tools (email, SMS, webhooks) never conflict — run parallel with reads
-                # internal writes (brain, files) serialize to prevent races
-                external_calls: list[dict] = []
-                write_calls_serial: list[dict] = []
-                for call in unique:
-                    if call["tool"] in READ_ONLY_TOOLS:
-                        continue
-                    entry = self._runtime_entries.get(call["tool"]) or runtime_tool_registry.get(call["tool"])
-                    if entry and entry.mutability == "external":
-                        external_calls.append(call)
-                    else:
-                        write_calls_serial.append(call)
+                write_calls = [call for call in unique if call["tool"] not in READ_ONLY_TOOLS]
 
                 async def execute(call: dict) -> tuple[str, Any]:
                     name, args = call["tool"], call["args"]
@@ -1365,10 +1126,9 @@ class Agent:
                     return name, result
 
                 batch_results: list[tuple[str, Any]] = []
-                parallel_calls = read_calls + external_calls
-                if parallel_calls:
-                    batch_results.extend(await asyncio.gather(*(execute(call) for call in parallel_calls)))
-                for call in write_calls_serial:
+                if read_calls:
+                    batch_results.extend(await asyncio.gather(*(execute(call) for call in read_calls)))
+                for call in write_calls:
                     batch_results.append(await execute(call))
                 for name, result in batch_results:
                     _attempted_tools.add(name)
@@ -1376,30 +1136,13 @@ class Agent:
                         _called_tools.add(name)
                         if isinstance(result, dict):
                             _tool_results.append((name, result))
-                        compact = _compact_result_for_state(name, result)
-                        working_state["recent_tools"].append(f"{name}: {compact}")
-                        _record_tool_memory(working_state, name, compact)
-                    else:
-                        working_state["blockers"].append(f"{name}: {_compact_result_for_state(name, result, 500)}")
-                working_state["next_steps"] = ["Use the batch results to continue execution or synthesize the requested artifact."]
-                save_agent_state(ctx.session_id, self.name, ctx.task_id, working_state)
-                messages, working_state = _refresh_working_state(
-                    messages,
-                    session_id=ctx.session_id,
-                    agent_name=self.name,
-                    task_id=ctx.task_id,
-                    query=" ".join(call["tool"] for call in unique),
-                    sections=_state_sections_for_action("tool_batch"),
-                )
-                visible_batch = [
-                    f"Tool result ({name}):\n{_compact_result_for_state(name, result)}"
-                    for name, result in batch_results
-                    if _tool_result_should_enter_transcript(name, result)
-                ]
-                if visible_batch:
-                    messages.append({"role": "user", "content": "\n\n".join(visible_batch)})
-                else:
-                    messages.append({"role": "user", "content": "Batch tool execution completed. Use the working state snapshot to continue."})
+                messages.append({
+                    "role": "user",
+                    "content": "\n\n".join(
+                        f"Tool result ({name}):\n{_format_tool_result(name, result)}"
+                        for name, result in batch_results
+                    ),
+                })
 
             elif action == "tool":
                 tool_name = parsed.get("tool")
@@ -1452,17 +1195,6 @@ class Agent:
                         _large_results[tool_name] = result
                 if "error" in result:
                     _tool_fail_counts[tool_name] = _tool_fail_counts.get(tool_name, 0) + 1
-                    working_state["blockers"].append(f"{tool_name}: {_compact_result_for_state(tool_name, result, 500)}")
-                    working_state["next_steps"] = [f"Either fix {tool_name} inputs or use a different tool."]
-                    save_agent_state(ctx.session_id, self.name, ctx.task_id, working_state)
-                    messages, working_state = _refresh_working_state(
-                        messages,
-                        session_id=ctx.session_id,
-                        agent_name=self.name,
-                        task_id=ctx.task_id,
-                        query=f"{tool_name} error blocker",
-                        sections=_state_sections_for_action("tool", tool_name),
-                    )
                     if _tool_fail_counts[tool_name] >= 3:
                         # Force the agent to give up on this tool
                         messages.append({"role": "user", "content": (
@@ -1481,37 +1213,11 @@ class Agent:
                     _tool_fail_counts[tool_name] = 0  # reset on success
                     if tool_name in _ONE_SHOT_TOOLS:
                         _one_shot_done.add(tool_name)
-                    compact_result = _compact_result_for_state(tool_name, result)
-                    working_state["recent_tools"].append(f"{tool_name}: {compact_result}")
-                    _record_tool_memory(working_state, tool_name, compact_result)
-                    if isinstance(result, dict):
-                        if result.get("path"):
-                            working_state["artifacts"].append(f"{tool_name} -> {result.get('path')}")
-                        elif result.get("url") or result.get("deploy_url") or result.get("repo_url"):
-                            working_state["artifacts"].append(
-                                f"{tool_name} -> {result.get('deploy_url') or result.get('repo_url') or result.get('url')}"
-                            )
-                    working_state["next_steps"] = [f"Continue from the latest successful tool result: {tool_name}."]
-                    save_agent_state(ctx.session_id, self.name, ctx.task_id, working_state)
-                    messages, working_state = _refresh_working_state(
-                        messages,
-                        session_id=ctx.session_id,
-                        agent_name=self.name,
-                        task_id=ctx.task_id,
-                        query=f"{tool_name} {reasoning}",
-                        sections=_state_sections_for_action("tool", tool_name),
-                    )
-                    if _tool_result_should_enter_transcript(tool_name, result):
-                        content = f"Tool result ({tool_name}):\n{compact_result}"
-                        if i >= MAX_ITERATIONS - 5:
-                            content += f"\n\n[Iteration {i}/{MAX_ITERATIONS}] You are near the iteration limit. Wrap up: call obsidian_log then done unless one more tool call is critical."
-                        if tool_name in _ONE_SHOT_TOOLS:
-                            content += f"\n\nIMPORTANT: {tool_name} completed. Proceed to the next step — do NOT call {tool_name} again."
-                    else:
-                        content = (
-                            f"{tool_name} completed successfully. The result is stored in working state. "
-                            "Continue from the current plan without re-reading the full payload."
-                        )
+                    content = f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result)}"
+                    if i >= MAX_ITERATIONS - 5:
+                        content += f"\n\n[Iteration {i}/{MAX_ITERATIONS}] You are near the iteration limit. Wrap up: call obsidian_log then done unless one more tool call is critical."
+                    if tool_name in _ONE_SHOT_TOOLS:
+                        content += f"\n\nIMPORTANT: {tool_name} completed. Proceed to the next step — do NOT call {tool_name} again."
                     messages.append({"role": "user", "content": content})
 
             elif action == "delegate":
@@ -1579,41 +1285,46 @@ class Agent:
                         except Exception:
                             args = {}
                 if tool_name and tool_name in self.tools:
+                    if tool_name in _ONE_SHOT_TOOLS and tool_name in _one_shot_done:
+                        messages.append({"role": "user", "content": (
+                            f"BLOCKED: {tool_name} already ran successfully this session. "
+                            f"You MUST NOT call it again. Call done with the results you already have."
+                        )})
+                        continue
+                    _tool_call_limit = self._max_tool_calls.get(tool_name)
+                    if _tool_call_limit is not None:
+                        _tool_total_attempts = _tool_attempt_counts.get(tool_name, 0)
+                        if _tool_total_attempts >= _tool_call_limit:
+                            _tool_success_count = sum(1 for tn, _ in _tool_results if tn == tool_name)
+                            messages.append({"role": "user", "content": (
+                                f"BLOCKED: {tool_name} has already been attempted {_tool_total_attempts} time(s) "
+                                f"({_tool_success_count} succeeded, limit={_tool_call_limit}). "
+                                f"Stop calling {tool_name} and move on."
+                            )})
+                            continue
                     await self._emit(ctx, "agent_action", action="tool", tool=tool_name, args=args, reasoning=reasoning)
+                    _attempted_tools.add(tool_name)
+                    _tool_attempt_counts[tool_name] = _tool_attempt_counts.get(tool_name, 0) + 1
                     result = await self._execute_tool(tool_name, args, ctx)
                     await self._emit(ctx, "agent_action_result", tool=tool_name, result=result)
-                    result_is_error = isinstance(result, dict) and "error" in result
-                    if not result_is_error:
+                    if "error" not in result:
                         _called_tools.add(tool_name)
                         if isinstance(result, dict):
                             _tool_results.append((tool_name, result))
-                    if result_is_error:
-                        messages.append({"role": "user", "content": f"TOOL FAILED: {json.dumps(result)}"})
-                    else:
-                        compact_result = _compact_result_for_state(tool_name, result)
-                        working_state["recent_tools"].append(f"{tool_name}: {compact_result}")
-                        _record_tool_memory(working_state, tool_name, compact_result)
-                        if isinstance(result, dict):
-                            if result.get("path"):
-                                working_state["artifacts"].append(f"{tool_name} -> {result.get('path')}")
-                            elif result.get("url") or result.get("deploy_url") or result.get("repo_url"):
-                                working_state["artifacts"].append(
-                                    f"{tool_name} -> {result.get('deploy_url') or result.get('repo_url') or result.get('url')}"
-                                )
-                        working_state["next_steps"] = [f"Continue from the latest successful tool result: {tool_name}."]
-                        save_agent_state(ctx.session_id, self.name, ctx.task_id, working_state)
-                        messages, working_state = _refresh_working_state(
-                            messages,
-                            session_id=ctx.session_id,
-                            agent_name=self.name,
-                            task_id=ctx.task_id,
-                            query=f"{tool_name} {reasoning}",
-                            sections=_state_sections_for_action("tool", tool_name),
-                        )
-                        if _tool_result_should_enter_transcript(tool_name, result):
-                            messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{compact_result}"})
+                        if tool_name in _ONE_SHOT_TOOLS:
+                            _one_shot_done.add(tool_name)
+                    if "error" in result:
+                        _tool_fail_counts[tool_name] = _tool_fail_counts.get(tool_name, 0) + 1
+                        if _tool_fail_counts[tool_name] >= 3:
+                            messages.append({"role": "user", "content": (
+                                f"TOOL {tool_name} FAILED {_tool_fail_counts[tool_name]} TIMES IN A ROW: {json.dumps(result)}\n"
+                                f"STOP trying {tool_name}. Use a different tool or call done."
+                            )})
                         else:
-                            messages.append({"role": "user", "content": f"{tool_name} completed successfully. The result is stored in working state."})
+                            messages.append({"role": "user", "content": f"TOOL FAILED: {json.dumps(result)}"})
+                    else:
+                        _tool_fail_counts[tool_name] = 0
+                        messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result)}"})
                 else:
                     messages.append({"role": "user", "content": f"Unknown tool '{tool_name}'. Use: tool, delegate, computer_use, or done."})
 
@@ -1625,16 +1336,45 @@ class Agent:
                     args = parsed["args"]
                 else:
                     args = {k: v for k, v in parsed.items() if k not in ("action", "reasoning", "tool")}
+                if tool_name in _ONE_SHOT_TOOLS and tool_name in _one_shot_done:
+                    messages.append({"role": "user", "content": (
+                        f"BLOCKED: {tool_name} already ran successfully this session. "
+                        f"You MUST NOT call it again. Call done with the results you already have."
+                    )})
+                    continue
+                _tool_call_limit = self._max_tool_calls.get(tool_name)
+                if _tool_call_limit is not None:
+                    _tool_total_attempts = _tool_attempt_counts.get(tool_name, 0)
+                    if _tool_total_attempts >= _tool_call_limit:
+                        _tool_success_count = sum(1 for tn, _ in _tool_results if tn == tool_name)
+                        messages.append({"role": "user", "content": (
+                            f"BLOCKED: {tool_name} has already been attempted {_tool_total_attempts} time(s) "
+                            f"({_tool_success_count} succeeded, limit={_tool_call_limit}). "
+                            f"Stop calling {tool_name} and move on."
+                        )})
+                        continue
                 await self._emit(ctx, "agent_action", action="tool", tool=tool_name, args=args, reasoning=reasoning)
+                _attempted_tools.add(tool_name)
+                _tool_attempt_counts[tool_name] = _tool_attempt_counts.get(tool_name, 0) + 1
                 result = await self._execute_tool(tool_name, args, ctx)
                 await self._emit(ctx, "agent_action_result", tool=tool_name, result=result)
                 if "error" not in result:
                     _called_tools.add(tool_name)
                     if isinstance(result, dict):
                         _tool_results.append((tool_name, result))
+                    if tool_name in _ONE_SHOT_TOOLS:
+                        _one_shot_done.add(tool_name)
                 if "error" in result:
-                    messages.append({"role": "user", "content": f"TOOL FAILED: {json.dumps(result)}"})
+                    _tool_fail_counts[tool_name] = _tool_fail_counts.get(tool_name, 0) + 1
+                    if _tool_fail_counts[tool_name] >= 3:
+                        messages.append({"role": "user", "content": (
+                            f"TOOL {tool_name} FAILED {_tool_fail_counts[tool_name]} TIMES IN A ROW: {json.dumps(result)}\n"
+                            f"STOP trying {tool_name}. Use a different tool or call done."
+                        )})
+                    else:
+                        messages.append({"role": "user", "content": f"TOOL FAILED: {json.dumps(result)}"})
                 else:
+                    _tool_fail_counts[tool_name] = 0
                     messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result)}"})
 
             else:
@@ -1920,12 +1660,6 @@ class Agent:
             args = _tsl._sanitize_inputs(args)
         except Exception:
             pass
-        # Inject context-owned fields so model never needs to generate them.
-        # Model schemas should omit these; if model does pass them they're overwritten.
-        if ctx:
-            for _k, _v in (("founder_id", ctx.founder_id), ("session_id", ctx.session_id)):
-                if _v and _k not in args:
-                    args = {_k: _v, **args}
         fn = self.tools.get(tool_name)
         if fn is None:
             # Explicit aliases first (fast, exact), then fuzzy-match the hallucinated

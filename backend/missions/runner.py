@@ -105,9 +105,12 @@ def _reconcile_tasks(mission: dict, result: Any, session_id: str) -> list[dict[s
     by_id = {str(task.get("id")): dict(task) for task in existing if task.get("id")}
     open_ids = [str(task.get("id")) for task in existing if task.get("status") not in {"done", "awaiting_approval"} and task.get("id")]
 
-    completed_ids = [str(item) for item in (result.get("completed_tasks") or [])] if isinstance(result, dict) else []
-    blocked_map = result.get("blocked_tasks") or {} if isinstance(result, dict) else {}
-    new_tasks = result.get("next_tasks") or [] if isinstance(result, dict) else []
+    _ct = result.get("completed_tasks") if isinstance(result, dict) else None
+    completed_ids = [str(item) for item in _ct] if _ct is not None else []
+    _bm = result.get("blocked_tasks") if isinstance(result, dict) else None
+    blocked_map = _bm if _bm is not None else {}
+    _nt = result.get("next_tasks") if isinstance(result, dict) else None
+    new_tasks = _nt if _nt is not None else []
     summary = _extract_summary(result, mission.get("department", "mission"))
 
     # Milestones the agent finished don't count as "done" until a human signs off —
@@ -325,7 +328,8 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
         )
 
         result = await agent.run(ctx)
-        success = True
+        if not (isinstance(result, dict) and result.get("status") in ("budget_exhausted", "max_iterations_reached")):
+            success = True
 
         # Auto-log to Obsidian (best-effort)
         try:
@@ -334,6 +338,11 @@ async def run_mission(mission_id: str, session_id: str | None = None) -> dict[st
         except Exception as _ole:
             logger.debug("run_mission: obsidian auto-log skipped: %s", _ole)
 
+    except asyncio.CancelledError:
+        logger.info("run_mission: mission %s cancelled", mission_id)
+        summary = "Cancelled"
+        result = {"error": "cancelled"}
+        raise
     except Exception as exc:
         logger.error(
             "run_mission: agent %s raised during mission %s: %s",

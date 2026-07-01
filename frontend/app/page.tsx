@@ -27,7 +27,7 @@ export default function Home() {
   };
 
   return (
-    <AuroraBackground className="bg-zinc-900 dark:bg-zinc-900">
+    <AuroraBackground className="bg-zinc-50">
       <div className="sp-content">
         <div className="sp-mark">
           <div className="sp-logo-img" role="img" aria-label="Astra logo" />
@@ -35,7 +35,7 @@ export default function Home() {
         </div>
 
         <h1 className="sp-headline">
-          You bring the company,<br />Astra brings the rest.
+          You bring the company,<br />Astra does the rest.
         </h1>
 
         <p className="sp-sub">

@@ -151,6 +151,7 @@ async def launch_custom_agent_run(
             await _email_run_result(founder_id, session_id, agent_id, agent_label, _company_name)
         except asyncio.CancelledError:
             logger.info("custom_agent run killed session=%s", session_id)
+            raise
         except Exception as exc:
             logger.error("custom_agent run error session=%s: %s", session_id, exc, exc_info=True)
             try:

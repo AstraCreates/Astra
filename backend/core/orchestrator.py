@@ -1463,6 +1463,7 @@ class Orchestrator:
                     session_id=session_id,
                     founder_id=founder_id,
                     task_id=tid,
+                    unlimited_credits=bool((constraints or {}).get("unlimited_credits", False)),
                     shared=context_policy.build_agent_shared(
                         base_shared=shared,
                         agent_name=agent_name,
@@ -1744,6 +1745,7 @@ class Orchestrator:
                     session_id=session_id,
                     task_id=tid,
                     unlimited_credits=bool((constraints or {}).get("unlimited_credits", False)),
+                    budget=ctx.budget,  # inherit remaining budget — prevents each retry from getting fresh cap
                     shared={**ctx.shared, "verification_retry": True, "verification_retry_count": _attempt},
                 )
                 retry_ctx.shared["task_brief"] = self._build_task_brief(
