@@ -23,6 +23,10 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
 
+            # Coolify's Traefik proxy grabs port 80/443 — stop it so nginx can bind
+            docker update --restart=no coolify-sentinel coolify-proxy 2>/dev/null || true
+            docker stop coolify-sentinel coolify-proxy 2>/dev/null || true
+
             # Rebuild images and restart all services
             docker compose build backend frontend
             docker compose up -d
