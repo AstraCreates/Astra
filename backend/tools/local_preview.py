@@ -21,6 +21,7 @@ import signal
 import socket
 import subprocess
 import threading
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -43,6 +44,28 @@ _REGISTRY = Path(os.environ.get("ASTRA_PREVIEW_REGISTRY", "/tmp/astra_previews.j
 _SLUG_REGISTRY = Path(os.environ.get("ASTRA_PREVIEW_SLUG_REGISTRY", "/tmp/astra_preview_slugs.json"))
 # In-memory slug→port map (populated on start + recovered from disk on miss)
 _slug_to_port: dict[str, int] = {}
+
+# Concurrency cap for node/Next builds (CPU+RAM heavy)
+_NODE_BUILD_SEM = threading.Semaphore(int(os.environ.get("ASTRA_PREVIEW_BUILD_CONCURRENCY", "2")))
+_BUILD_TIMEOUT_S = int(os.environ.get("ASTRA_PREVIEW_BUILD_TIMEOUT", "300"))
+
+# Idle eviction: kill previews inactive longer than TTL
+_PREVIEW_TTL = int(os.environ.get("ASTRA_PREVIEW_TTL", "1800"))  # 30 min default
+_last_access: dict[str, float] = {}
+
+
+def _eviction_loop() -> None:
+    while True:
+        time.sleep(60)
+        now = time.time()
+        with _lock:
+            stale = [sid for sid, ts in list(_last_access.items()) if now - ts > _PREVIEW_TTL]
+        for sid in stale:
+            logger.info("Evicting idle preview %s (idle >%ss)", sid, _PREVIEW_TTL)
+            stop_local_preview(sid)
+
+
+threading.Thread(target=_eviction_loop, daemon=True, name="preview-eviction").start()
 
 
 def _slug_registry_load() -> dict[str, int]:
@@ -229,6 +252,7 @@ def stop_local_preview(session_id: str) -> bool:
     even when the in-memory Popen handle is gone."""
     with _lock:
         entry = _previews.pop(session_id, None)
+        _last_access.pop(session_id, None)
     port = None
     if entry:
         port, proc = entry
@@ -254,7 +278,11 @@ def stop_local_preview(session_id: str) -> bool:
 
 
 def start_local_preview(local: str, session_id: str, company_name: str = "") -> str | None:
-    """Start the MVP locally and return its public URL, or None if not possible."""
+    """Start the MVP locally and return its public URL, or None if not possible.
+
+    Next.js: runs `next build` (blocking, capped by semaphore) then `next start`
+    (near-zero persistent RAM vs ~1 GB for `npm run dev`).
+    """
     pkg = Path(local) / "package.json"
     deps: dict = {}
     if pkg.exists():
@@ -263,63 +291,101 @@ def start_local_preview(local: str, session_id: str, company_name: str = "") -> 
         except Exception:
             deps = {}
     is_node = pkg.exists()
-    is_next = "next" in deps
+    is_next = is_node and "next" in deps
 
-    # Tear down any prior preview for this session (kills its server + frees port).
+    if not is_node:
+        return None
+
     stop_local_preview(session_id)
 
-    slug = ""
     with _lock:
         port = _alloc_port()
         if not port:
             logger.warning("No free preview port for session %s", session_id)
             return None
+        # Reserve the port immediately so concurrent allocs don't pick the same one.
+        _previews[session_id] = (port, None)  # type: ignore[assignment]
 
-        if is_next:
-            run = f"npm run dev -- -p {port} -H 0.0.0.0"
-        elif is_node:
-            # generic node app honoring $PORT
-            run = "npm start"
-        else:
-            return None
+    env = os.environ.copy()
+    env["PORT"] = str(port)
+    env["HOST"] = "0.0.0.0"
+    env["NODE_OPTIONS"] = "--max-old-space-size=2048"
+    npm_cache = os.environ.get("ASTRA_NPM_CACHE", "/data/npm-cache")
+    log = f"/tmp/preview_{session_id[:8]}_{port}.log"
 
-        env = os.environ.copy()
-        env["PORT"] = str(port)
-        env["HOST"] = "0.0.0.0"
-        npm_cache = os.environ.get("ASTRA_NPM_CACHE", "/data/npm-cache")
-        log = f"/tmp/preview_{session_id[:8]}_{port}.log"
-        # Install deps only if missing (the build pass already populated node_modules
-        # in this same workspace — skip the redundant install for a faster preview),
-        # then start the dev server detached. As the astra user when running as root.
-        inner = (f"cd {local!r} && ([ -d node_modules ] || "
-                 f"npm install --no-audit --no-fund --prefer-offline) >{log} 2>&1; {run} >>{log} 2>&1")
+    def _wrap(inner_sh: str) -> list[str]:
         if os.getuid() == 0:
             subprocess.run(["chmod", "-R", "777", local], capture_output=True)
-            cmd = ["sudo", "-u", "astra", "env", f"PORT={port}", "HOST=0.0.0.0", "HOME=/home/astra",
-                   f"npm_config_cache={npm_cache}", "npm_config_prefer_offline=true",
-                   "sh", "-c", inner]
-        else:
-            cmd = ["sh", "-c", inner]
-        try:
-            # start_new_session=True → own process group so stop_local_preview can
-            # SIGKILL the whole tree (sh → npm → next), not just the shell.
-            proc = subprocess.Popen(
-                cmd, env=env,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-        except Exception as e:
-            logger.warning("Failed to start local preview: %s", e)
-            return None
-        _previews[session_id] = (port, proc)
-        _registry_set(session_id, port)
-        slug = _make_slug(company_name, Path(local).name, session_id)
-        _slug_to_port.clear()
-        _slug_to_port.update(_slug_registry_load())
-        _slug_to_port[slug] = port
+            return [
+                "sudo", "-u", "astra", "env",
+                f"PORT={port}", "HOST=0.0.0.0", "HOME=/home/astra",
+                "NODE_OPTIONS=--max-old-space-size=2048",
+                f"npm_config_cache={npm_cache}", "npm_config_prefer_offline=true",
+                "sh", "-c", inner_sh,
+            ]
+        return ["sh", "-c", inner_sh]
 
-    # Write slug registry outside _lock — _slug_registry_set acquires _lock internally
+    if is_next:
+        build_sh = (
+            f"cd {local!r} && "
+            f"([ -d node_modules ] || npm install --no-audit --no-fund --prefer-offline >>{log} 2>&1) && "
+            f"npx next build >>{log} 2>&1"
+        )
+        logger.info("Building Next.js preview for %s (capped at %d concurrent)", session_id, _NODE_BUILD_SEM._value)
+        acquired = _NODE_BUILD_SEM.acquire(timeout=_BUILD_TIMEOUT_S)
+        if not acquired:
+            logger.warning("Build semaphore timeout for %s", session_id)
+            with _lock:
+                _previews.pop(session_id, None)
+            return None
+        try:
+            r = subprocess.run(_wrap(build_sh), timeout=_BUILD_TIMEOUT_S, capture_output=True)
+            if r.returncode != 0:
+                logger.warning("next build failed for %s (exit %s)", session_id, r.returncode)
+                with _lock:
+                    _previews.pop(session_id, None)
+                return None
+        except subprocess.TimeoutExpired:
+            logger.warning("next build timed out for %s", session_id)
+            with _lock:
+                _previews.pop(session_id, None)
+            return None
+        except Exception as e:
+            logger.warning("next build error for %s: %s", session_id, e)
+            with _lock:
+                _previews.pop(session_id, None)
+            return None
+        finally:
+            _NODE_BUILD_SEM.release()
+
+        start_sh = f"cd {local!r} && npx next start -p {port} -H 0.0.0.0 >>{log} 2>&1"
+    else:
+        start_sh = (
+            f"cd {local!r} && "
+            f"([ -d node_modules ] || npm install --no-audit --no-fund --prefer-offline >>{log} 2>&1); "
+            f"npm start >>{log} 2>&1"
+        )
+
+    try:
+        proc = subprocess.Popen(
+            _wrap(start_sh), env=env,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception as e:
+        logger.warning("Failed to start local preview server: %s", e)
+        with _lock:
+            _previews.pop(session_id, None)
+        return None
+
+    slug = _make_slug(company_name, Path(local).name, session_id)
+    with _lock:
+        _previews[session_id] = (port, proc)
+        _last_access[session_id] = time.time()
+        _slug_to_port.update({slug: port})
+    _registry_set(session_id, port)
     _slug_registry_set(slug, port)
+
     url = _preview_url(slug, port)
-    logger.info("Local preview for %s starting at %s (slug=%s; ready in ~1-2 min)", session_id, url, slug)
+    logger.info("Local preview for %s at %s (slug=%s; static)", session_id, url, slug)
     return url

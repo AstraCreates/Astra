@@ -303,6 +303,19 @@ def _format_tool_result_raw(tool_name: str, result: Any) -> str:
             out.append(text)
         return "\n".join(out) if out else json.dumps(result)
 
+    # Image-generating tools — strip base64, confirm with URL/size only
+    if tool_name in ("generate_logo", "generate_brand_board", "generate_ad_image", "generate_logo_brief"):
+        safe: dict = {}
+        for k, v in result.items():
+            if k in ("base64", "b64", "image_data"):
+                safe[k] = f"[base64 omitted, {len(str(v)):,} chars]"
+            elif isinstance(v, dict):
+                safe[k] = {ik: (f"[base64 omitted, {len(str(iv)):,} chars]" if ik in ("base64", "b64") else iv)
+                           for ik, iv in v.items()}
+            else:
+                safe[k] = v
+        return json.dumps(safe, indent=2)
+
     # Obsidian tools — compact
     if tool_name in ("obsidian_log", "obsidian_read", "obsidian_append"):
         if tool_name == "obsidian_read":

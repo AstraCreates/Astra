@@ -41,6 +41,18 @@ def reload_model_overrides() -> None:
     _orchestrator = None
 
 
+def _self_host_override() -> dict:
+    """When ASTRA_SELF_HOST=true + SELF_HOST_BASE_URL set, route all agents to local inference.
+    Returns a kwargs dict that overrides model/base_url/api_key; empty dict when cloud mode."""
+    if not (settings.astra_self_host and settings.self_host_base_url):
+        return {}
+    return {
+        "model": settings.self_host_model or "local",
+        "model_base_url": settings.self_host_base_url,
+        "model_api_key": "local",
+    }
+
+
 def get_orchestrator() -> Orchestrator:
     global _orchestrator
     if _orchestrator is None:
@@ -49,34 +61,35 @@ def get_orchestrator() -> Orchestrator:
         from backend.core.key_rotator import get_openrouter_key
         _or_key = get_openrouter_key() or settings.agent_model_api_key
         _or_base = settings.openrouter_base_url  # always https://openrouter.ai/api/v1
-        _coder_kwargs = dict(
-            model=settings.or_planner_model,    # hy3-preview
+        _sh = _self_host_override()  # non-empty when ASTRA_SELF_HOST=true
+        _coder_kwargs = {**dict(
+            model=settings.or_planner_model,
             model_base_url=_or_base,
             model_api_key=_or_key,
-        )
-        _deepseek_kwargs = dict(
+        ), **_sh}
+        _deepseek_kwargs = {**dict(
             model="deepseek-ai/DeepSeek-V4-Flash",
             model_base_url=settings.agent_model_base_url,
             model_api_key=settings.agent_model_api_key,
-        )
-        _highoutput_kwargs = dict(
-            model=settings.or_highoutput_model,  # hy3-preview via OpenRouter
+        ), **_sh}
+        _highoutput_kwargs = {**dict(
+            model=settings.or_highoutput_model,
             model_base_url=_or_base,
             model_api_key=_or_key,
-        )
-        _small_kwargs = dict(
-            model=settings.or_light_model,  # xiaomi/mimo-v2.5
+        ), **_sh}
+        _small_kwargs = {**dict(
+            model=settings.or_light_model,
             model_base_url=_or_base,
             model_api_key=_or_key,
-        )
-        _technical_kwargs = dict(
+        ), **_sh}
+        _technical_kwargs = {**dict(
             model=settings.technical_agent_model or settings.or_light_model,
             model_base_url=_or_base,
             model_api_key=_or_key,
             max_iterations=settings.technical_agent_max_iterations,
             max_tool_calls={"run_mvp_loop": 1, "spawn_parallel_coders": 1, "github_create_repo": 1,
                             "obsidian_read": 1, "obsidian_log": 2, "vision_browse": 6},
-        )
+        ), **_sh}
         specialists = {
             # Research — MiMo for fast, repeated, source-grounded cycles
             "research": build_research_agent(agent_name="research", use_computer=True, **_small_kwargs),

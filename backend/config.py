@@ -142,6 +142,13 @@ class Settings(BaseSettings):
     astra_delegation_v2: bool = False
     astra_skill_review: bool = False
     astra_fallback_model: str = "moonshotai/kimi-k2.5"
+    # Self-host stub: when True, agent calls route to local inference (SELF_HOST_BASE_URL /
+    # SELF_HOST_MODEL). Set ASTRA_SELF_HOST=true + SELF_HOST_BASE_URL=http://localhost:8080/v1
+    # + SELF_HOST_MODEL=<loaded model name> to switch to local GPU inference.
+    # Also raise ASTRA_COMPRESSION_THRESHOLD=262144 when self-hosting (256K context fits).
+    astra_self_host: bool = False
+    self_host_base_url: str = ""
+    self_host_model: str = ""
 
     # Stripe Standard Connect
     stripe_secret_key: str = ""
