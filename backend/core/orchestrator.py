@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 _RAW_BLOB_KEYS = {"sources", "results", "raw", "pages", "html", "content",
                   "fetched", "documents", "search_results", "images", "logos",
                   "image", "logo", "b64", "base64", "screenshot"}
-_SHARED_FIELD_CAP = 50_000     # max chars per string field kept in shared
-_SHARED_RESULT_CAP = 100_000   # max chars of any single agent result kept in shared
+_SHARED_FIELD_CAP = 12_000     # max chars per string field kept in shared
+_SHARED_RESULT_CAP = 30_000    # max chars of any single agent result kept in shared
 _RESEARCH_LANE_FOCUS = {
     "research": (
         "Lane focus: market size, growth, ICP, pricing anchors, buyer pain, and timing thesis. "
@@ -534,8 +534,9 @@ class Orchestrator:
             "- Always include research as the first task (id: t1, depends_on: []).\n"
             "- All other agents MUST have depends_on: [\"t1\"] — they wait for research.\n"
             "- DO NOT add agents that are not in the stack roster above.\n"
-            "- Instructions at this stage are brief placeholders — they will be rewritten with research context later.\n\n"
-            "Format: {\"tasks\": [{\"id\": \"t1\", \"agent\": \"research\", \"instruction\": \"...\", \"depends_on\": []}, ...]}"
+            "- Instructions at this stage are brief placeholders — they will be rewritten with research context later.\n"
+            "- Also include a short title and a compact list of intended deliverables for each task.\n\n"
+            "Format: {\"tasks\": [{\"id\": \"t1\", \"agent\": \"research\", \"title\": \"...\", \"instruction\": \"...\", \"deliverables\": [\"...\"], \"depends_on\": []}, ...]}"
         )
         messages = [
             {"role": "system", "content": system},
@@ -568,7 +569,7 @@ class Orchestrator:
 
         system = (
             "You are a planning coordinator. Research on the goal is complete. "
-            "Use the research findings to write DETAILED, SPECIFIC task instructions for each specialist.\n\n"
+            "Use the research findings to write DETAILED, SPECIFIC structured task briefs for each specialist.\n\n"
             + self._AGENT_CAPS +
             "\nRules:\n"
             "- Each agent appears AT MOST ONCE. All run in parallel (depends_on: []).\n"
@@ -577,7 +578,13 @@ class Orchestrator:
             "- technical agent instruction MUST include: product name, core features to build, auth approach, DB schema hint.\n"
             "- web agent instruction MUST include: product name, hero copy, key value props from research, color/style direction.\n"
             "- marketing agent instruction MUST include: target persona from research, specific pain points, competitor differentiation angle.\n\n"
-            "Format: {\"tasks\": [{\"id\": \"t1\", \"agent\": \"<name>\", \"instruction\": \"<detailed>\", \"depends_on\": []}]}"
+            "For each task also include:\n"
+            "- title: 3-6 word task label\n"
+            "- key_steps: array of 3-6 concrete execution steps\n"
+            "- deliverables: array of concrete outputs/artifacts\n"
+            "- constraints: array of non-negotiable rules or limits\n"
+            "- success_definition: one sentence saying what counts as done\n\n"
+            "Format: {\"tasks\": [{\"id\": \"t1\", \"agent\": \"<name>\", \"title\": \"...\", \"instruction\": \"<detailed>\", \"key_steps\": [\"...\"], \"deliverables\": [\"...\"], \"constraints\": [\"...\"], \"success_definition\": \"...\", \"depends_on\": []}]}"
         )
         agents_str = ", ".join(agents_needed)
         user = (
@@ -585,7 +592,7 @@ class Orchestrator:
             f"Agents to assign: {agents_str}\n\n"
             f"Stack context:\n{stack_context}\n\n"
             f"Research findings:\n{research_summary}\n\n"
-            "Write detailed task instructions for each agent using the research above."
+            "Write structured task briefs for each agent using the research above."
         )
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         return await self._llm_plan(messages)
@@ -731,6 +738,102 @@ class Orchestrator:
         except Exception as e:
             logger.warning("Goal expansion failed (%s) — using original", e)
         return goal
+
+    @staticmethod
+    def _build_task_brief(
+        task: dict[str, Any],
+        *,
+        stack_lane: dict[str, Any] | None = None,
+        dep_results: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        dep_results = dep_results or {}
+        deliverables: list[dict[str, Any]] = []
+        for item in (stack_lane or {}).get("deliverables", []) or []:
+            deliverables.append({
+                "artifact_key": item.get("artifact_key"),
+                "title": item.get("title"),
+                "description": item.get("description"),
+                "required": bool(item.get("required", True)),
+                "acceptance_checks": list(item.get("acceptance_checks") or [])[:6],
+            })
+
+        dependency_context = []
+        for dep_id, dep_result in dep_results.items():
+            if dep_result in (None, "", [], {}):
+                continue
+            dependency_context.append({
+                "task_id": dep_id,
+                "summary": Orchestrator._artifact_preview(dep_result, ""),
+            })
+
+        agent_name = str(task.get("agent") or "")
+        work_style_examples: list[str] = []
+        if agent_name in {"technical", "technical_scaffold", "technical_infra", "technical_data", "web"}:
+            work_style_examples = [
+                "Plan implementation in a fixed order: architecture/spec -> build/deploy -> verify -> handoff.",
+                "Prefer existing tools/examples/templates before generating from scratch.",
+                "Return artifact-ready sections directly, not long exploratory prose.",
+            ]
+        elif agent_name.startswith("research") or agent_name == "research":
+            work_style_examples = [
+                "Do one broad evidence pass first, then only a few targeted gap-filling passes.",
+                "Return synthesized findings with numbers, named companies, and cited sources.",
+                "Stop searching when the required deliverables have enough evidence to complete.",
+            ]
+
+        templates: list[dict[str, Any]] = []
+        if agent_name == "technical":
+            templates = [
+                {
+                    "name": "implementation_plan",
+                    "shape": ["product surface", "core modules", "data/auth choice", "verification path"],
+                    "example": "Dashboard MVP -> auth, dashboard, core workflow, billing hook, deploy verification",
+                },
+                {
+                    "name": "handoff",
+                    "shape": ["repo_url", "deploy_url", "files changed", "known gaps", "next engineering step"],
+                    "example": "repo + deploy + what still needs infra or product follow-up",
+                },
+            ]
+        elif agent_name == "web":
+            templates = [
+                {
+                    "name": "landing_page_structure",
+                    "shape": ["hero", "problem/value", "how it works", "FAQ", "CTA"],
+                    "example": "coming-soon page with one primary CTA and no fake proof",
+                },
+            ]
+        elif agent_name.startswith("research") or agent_name == "research":
+            templates = [
+                {
+                    "name": "research_output",
+                    "shape": ["claim", "evidence", "named source", "why it matters"],
+                    "example": "TAM estimate + cited source + implication for this product",
+                },
+            ]
+
+        return {
+            "task_id": task.get("id"),
+            "agent": agent_name,
+            "title": task.get("stack_task_title") or task.get("title") or agent_name,
+            "objective": task.get("instruction", ""),
+            "success_definition": task.get("success_definition") or "",
+            "phase": (stack_lane or {}).get("phase") or task.get("phase") or "",
+            "depends_on": list(task.get("depends_on") or []),
+            "expected_artifacts": list(task.get("expected_artifacts") or []),
+            "key_steps": list(task.get("key_steps") or [])[:8],
+            "constraints": list(task.get("constraints") or [])[:8],
+            "deliverables": deliverables,
+            "dependency_context": dependency_context[:6],
+            "execution_rules": [
+                "Use this task brief as the execution contract.",
+                "Produce the required deliverables before calling done.",
+                "Keep outputs modular and artifact-oriented.",
+                "If blocked, state the exact missing input, approval, or connector.",
+            ],
+            "work_style_examples": work_style_examples,
+            "templates": templates,
+        }
 
     @staticmethod
     def _artifact_output_contract(task: dict, stack_template: Any, agent_name: str) -> str:
@@ -1371,6 +1474,11 @@ class Orchestrator:
                     vault_context=vault_context_text,
                     bypass_approvals=True,  # bypass_planner path skips approval gates for testing
                 )
+                ctx.shared["task_brief"] = self._build_task_brief(
+                    task,
+                    stack_lane=stack_lane,
+                    dep_results=dep_results,
+                )
                 await publish(session_id, {"type": "agent_start", "agent": agent_name, "task_id": tid, "lane_id": lane_id})
                 try:
                     result = await agent.run(ctx)
@@ -1534,6 +1642,7 @@ class Orchestrator:
                 goal=_instruction,
                 founder_id=founder_id,
                 session_id=session_id,
+                task_id=tid,
                 unlimited_credits=bool((constraints or {}).get("unlimited_credits", False)),
                 shared=context_policy.build_agent_shared(
                     base_shared=shared,
@@ -1542,6 +1651,11 @@ class Orchestrator:
                     dep_results=dep_results,
                     vault_context=vault_context_text,
                 ),
+            )
+            ctx.shared["task_brief"] = self._build_task_brief(
+                task,
+                stack_lane=stack_lane,
+                dep_results=dep_results,
             )
             if proprietary_engine:
                 proprietary_engine.on_agent_start(agent_name)
@@ -1622,8 +1736,14 @@ class Orchestrator:
                     + _correction,
                     founder_id=founder_id,
                     session_id=session_id,
+                    task_id=tid,
                     unlimited_credits=bool((constraints or {}).get("unlimited_credits", False)),
                     shared={**ctx.shared, "verification_retry": True, "verification_retry_count": _attempt},
+                )
+                retry_ctx.shared["task_brief"] = self._build_task_brief(
+                    task,
+                    stack_lane=stack_lane,
+                    dep_results=dep_results,
                 )
                 # Use agent_action instead of agent_start so the UI doesn't show a
                 # phantom "agent restarted" toast and doesn't reset agent status to running.
@@ -2640,6 +2760,7 @@ class Orchestrator:
                 goal=_task_instruction,
                 founder_id=founder_id,
                 session_id=session_id,
+                task_id=tid,
                 shared={
                     **context_policy.build_agent_shared(
                         base_shared=shared,
@@ -2652,6 +2773,7 @@ class Orchestrator:
                     "prior_session_id": prior_session_id,
                 },
             )
+            ctx.shared["task_brief"] = self._build_task_brief(task, dep_results={})
             await publish(session_id, {"type": "agent_start", "agent": agent_name, "task_id": tid, "instruction": task["instruction"]})
             result = await agent.run(ctx)
             try:

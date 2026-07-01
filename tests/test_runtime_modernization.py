@@ -10,6 +10,7 @@ from backend.runtime.tool_registry import ToolEntry, ToolRegistry
 from backend.runtime.catalog import infer_context_fields, infer_mutability, infer_toolset
 from backend.runtime.circuit_breaker import disable, enable
 from backend.runtime.rollout import enabled
+from backend.core.agent_state import load_agent_state, save_agent_state, relevant_state_snapshot
 
 
 def test_run_budget_is_atomic_under_concurrency():
@@ -120,6 +121,28 @@ def test_context_compressor_preserves_head_tail_and_bounds_history():
     assert compacted[0]["content"] == "system"
     assert "CONTEXT COMPACTION" in compacted[2]["content"]
     assert compacted[-1] == messages[-1]
+
+
+def test_agent_state_relevant_snapshot_filters_by_query():
+    save_agent_state("s", "research", "t", {
+        "plan": "find market and competitor evidence",
+        "recent_tools": ["web_search: generic", "sonar_research: market sizing"],
+        "tool_memory": {
+            "web_search": ["web_search: generic", "web_search: competitor pricing"],
+            "sonar_research": ["sonar_research: market sizing", "sonar_research: GTM"],
+        },
+        "artifacts": ["report -> /tmp/report.pdf"],
+        "blockers": [],
+        "next_steps": ["synthesize findings"],
+    })
+    snap = relevant_state_snapshot("s", "research", "t", query="sonar_research market", sections=("recent_tools", "artifacts"))
+    assert "sonar_research" in " ".join(snap["recent_tools"])
+    assert snap["artifacts"] == ["report -> /tmp/report.pdf"]
+
+
+def test_agent_state_load_includes_tool_memory_default():
+    state = load_agent_state("missing", "technical", "task")
+    assert "tool_memory" in state
 
 
 def test_production_metadata_inference():

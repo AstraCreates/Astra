@@ -14,7 +14,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-MAX_CHARS = 20000
+MAX_CHARS = 12000
 _VISION_MODEL = "google/gemini-2.5-flash"
 
 

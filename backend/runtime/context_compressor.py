@@ -29,7 +29,7 @@ class AstraContextCompressor:
         # above the ~32k injection baseline so it doesn't churn on the first tool result.
         import os
         self.token_threshold = token_threshold if token_threshold is not None else int(
-            os.environ.get("ASTRA_COMPRESSION_THRESHOLD", "64000"))
+            os.environ.get("ASTRA_COMPRESSION_THRESHOLD", "32000"))
         self.tail_messages = tail_messages
 
     def should_compress(self, messages: list[dict[str, Any]]) -> bool:

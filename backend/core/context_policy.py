@@ -107,7 +107,7 @@ class RunContextPolicy:
         self.session_id = session_id
         self.founder_id = founder_id
         self.company_id = str(constraints.get("company_id") or founder_id)
-        self.max_context_chars = int(policy.get("max_context_chars") or constraints.get("max_context_chars") or _env_int("ASTRA_AGENT_CONTEXT_PACK_CHARS", 16_000))
+        self.max_context_chars = int(policy.get("max_context_chars") or constraints.get("max_context_chars") or _env_int("ASTRA_AGENT_CONTEXT_PACK_CHARS", 12_000))
         self.max_brain_retrievals = int(policy.get("max_brain_retrievals") or constraints.get("max_brain_retrievals") or _env_int("ASTRA_MAX_BRAIN_RETRIEVALS_PER_SESSION", 24))
         self.max_brain_writes = int(policy.get("max_brain_writes") or constraints.get("max_brain_writes") or _env_int("ASTRA_MAX_BRAIN_WRITES_PER_SESSION", 80))
         # Agents are network-bound (OpenRouter streams; GIL released in worker threads),
