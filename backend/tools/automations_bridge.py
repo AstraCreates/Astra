@@ -10,6 +10,7 @@ session token to inject into the iframe via postMessage.
 """
 from __future__ import annotations
 
+import os
 import re
 import secrets
 
@@ -34,6 +35,16 @@ def ensure_automations_account(founder_id: str) -> dict:
     if creds and creds.get("email") and creds.get("password"):
         return creds
 
+    # CE's getPreferredPlatformId() always returns null for non-Cloud editions
+    # on sign-up, which otherwise leaves the account stuck on a perpetual
+    # ONBOARDING-type token that can't actually use the app. Passing platformId
+    # explicitly joins the one platform (created once, see deploy notes)
+    # directly instead — requires AP_ALLOW_OPEN_SIGN_UP=true on the automations
+    # container since there's no per-user invitation flow here.
+    platform_id = os.environ.get("AP_PLATFORM_ID")
+    if not platform_id:
+        raise RuntimeError("AP_PLATFORM_ID is not set — run the one-time platform setup first")
+
     email = _founder_email(founder_id)
     password = secrets.token_urlsafe(24)
     resp = requests.post(
@@ -45,6 +56,7 @@ def ensure_automations_account(founder_id: str) -> dict:
             "lastName": "Founder",
             "trackEvents": False,
             "newsLetter": False,
+            "platformId": platform_id,
         },
         timeout=_TIMEOUT,
     )
