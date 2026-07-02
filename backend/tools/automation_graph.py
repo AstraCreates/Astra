@@ -14,6 +14,9 @@ Node types:
   condition  — gates the branch: if the upstream output doesn't contain the
                configured text, this node and everything downstream of it are
                marked "skipped" instead of running.
+  slack      — posts to a Slack incoming webhook URL. No OAuth needed.
+  email      — sends via the founder's own connected SendGrid key (never a
+               shared credential) — errors clearly if it isn't connected yet.
 
 Execution is a topological walk — graphs are DAGs, condition nodes give one
 level of branch/skip but there's no loop support. Each node's textual output
@@ -177,6 +180,59 @@ def _execute_condition_node(node: dict, upstream_text: str) -> dict:
     return {"summary": upstream_text, "passed": passed}
 
 
+async def _execute_slack_node(node: dict, rendered_config: dict) -> dict:
+    """Posts to a Slack incoming webhook — no OAuth needed, the founder just
+    pastes the webhook URL Slack gives them, same as n8n/Zapier's Slack block."""
+    from backend.tools.url_safety import validate_url
+    import requests
+
+    cfg = rendered_config
+    webhook_url = cfg.get("webhook_url", "")
+    message = cfg.get("message", "")
+    try:
+        validate_url(webhook_url)
+        resp = await asyncio.to_thread(
+            requests.post, webhook_url, json={"text": message}, timeout=15.0, allow_redirects=False,
+        )
+        if resp.status_code >= 400:
+            return {"error": f"Slack webhook returned {resp.status_code}: {resp.text[:200]}"}
+        return {"summary": f"Posted to Slack: {message[:100]}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def _execute_email_node(node: dict, rendered_config: dict, founder_id: str) -> dict:
+    """Sends email via the founder's own connected SendGrid key (set on the
+    Integrations page) — never a shared/hardcoded credential."""
+    from backend.provisioning.credentials_store import load_credentials
+    import requests
+
+    cfg = rendered_config
+    to = cfg.get("to", "")
+    subject = cfg.get("subject", "")
+    body = cfg.get("body", "")
+    creds = load_credentials(founder_id, "sendgrid")
+    api_key = (creds or {}).get("api_key", "")
+    if not api_key:
+        return {"error": "SendGrid isn't connected — connect it on the Integrations page first."}
+    payload = {
+        "personalizations": [{"to": [{"email": to}]}],
+        "from": {"email": cfg.get("from") or to},
+        "subject": subject,
+        "content": [{"type": "text/plain", "value": body}],
+    }
+    try:
+        resp = await asyncio.to_thread(
+            requests.post, "https://api.sendgrid.com/v3/mail/send",
+            headers={"Authorization": f"Bearer {api_key}"}, json=payload, timeout=15.0,
+        )
+        if resp.status_code >= 300:
+            return {"error": f"SendGrid returned {resp.status_code}: {resp.text[:200]}"}
+        return {"summary": f"Emailed {to}: {subject}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dict:
     """Executes a saved flow end-to-end, persisting + streaming per-node status.
     `run_id` must already exist (see automation_store.create_run) — the caller
@@ -230,6 +286,12 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dic
                     result = await _execute_delay_node(node)
                 elif node_type == "condition":
                     result = _execute_condition_node(node, upstream_text)
+                elif node_type == "slack":
+                    rendered_cfg = _render_any(cfg, merged_outputs)
+                    result = await _execute_slack_node(node, rendered_cfg)
+                elif node_type == "email":
+                    rendered_cfg = _render_any(cfg, merged_outputs)
+                    result = await _execute_email_node(node, rendered_cfg, founder_id)
                 elif node_type == "trigger":
                     result = {"summary": "trigger", "status": "ok"}
                 else:

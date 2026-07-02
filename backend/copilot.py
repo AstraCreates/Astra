@@ -1147,8 +1147,12 @@ def _automation_node_schema_hint() -> str:
         "— HTTP request or an existing Windmill flow; "
         "delay (config: {seconds}) — pause before continuing; "
         "condition (config: {contains}) — only continues past this node if the "
-        "upstream output contains this text (case-insensitive). "
-        "Any instruction/url/body field can reference an upstream node's result "
+        "upstream output contains this text (case-insensitive); "
+        "slack (config: {webhook_url, message}) — post to a Slack incoming webhook, "
+        "no OAuth needed, the founder pastes the webhook URL Slack gives them; "
+        "email (config: {to, subject, body, from?}) — sends via the founder's own "
+        "connected SendGrid key (errors clearly if not connected — don't invent a key). "
+        "Any instruction/url/body/message field can reference an upstream node's result "
         "with {{node_id.output}}. Edge: {source, target} (node ids)."
     )
 
