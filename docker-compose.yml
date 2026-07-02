@@ -80,6 +80,69 @@ services:
     networks:
       - default
 
+  # Automations builder (workflow automation, self-hosted). Runs the MIT-licensed
+  # core of Activepieces — NOT their proprietary embed-sdk (that's the one piece
+  # gated behind their Enterprise license; everything here is the plain core,
+  # self-hosted and iframed on our own subdomain, same pattern as n8n).
+  automations-db:
+    image: pgvector/pgvector:0.8.0-pg14
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=activepieces
+      - POSTGRES_USER=activepieces
+      - POSTGRES_PASSWORD=${AP_POSTGRES_PASSWORD:?AP_POSTGRES_PASSWORD must be set}
+    volumes:
+      - automations_db_data:/var/lib/postgresql/data
+
+  automations-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - automations_redis_data:/data
+
+  automations:
+    image: ghcr.io/activepieces/activepieces:0.86.0
+    restart: unless-stopped
+    depends_on:
+      - automations-db
+      - automations-redis
+    environment:
+      - AP_CONTAINER_TYPE=APP
+      - AP_FRONTEND_URL=https://automations.178.105.231.73.nip.io
+      - AP_POSTGRES_HOST=automations-db
+      - AP_POSTGRES_PORT=5432
+      - AP_POSTGRES_DATABASE=activepieces
+      - AP_POSTGRES_USERNAME=activepieces
+      - AP_POSTGRES_PASSWORD=${AP_POSTGRES_PASSWORD}
+      - AP_REDIS_HOST=automations-redis
+      - AP_REDIS_PORT=6379
+      - AP_ENCRYPTION_KEY=${AP_ENCRYPTION_KEY:?AP_ENCRYPTION_KEY must be set}
+      - AP_JWT_SECRET=${AP_JWT_SECRET:?AP_JWT_SECRET must be set}
+    volumes:
+      - automations_cache:/usr/src/app/cache
+
+  # Single worker replica — resource-appropriate for current traffic. Their
+  # default compose runs 5; scale up only if execution throughput needs it.
+  automations-worker:
+    image: ghcr.io/activepieces/activepieces:0.86.0
+    restart: unless-stopped
+    depends_on:
+      - automations
+    environment:
+      - AP_CONTAINER_TYPE=WORKER
+      - AP_FRONTEND_URL=https://automations.178.105.231.73.nip.io
+      - AP_POSTGRES_HOST=automations-db
+      - AP_POSTGRES_PORT=5432
+      - AP_POSTGRES_DATABASE=activepieces
+      - AP_POSTGRES_USERNAME=activepieces
+      - AP_POSTGRES_PASSWORD=${AP_POSTGRES_PASSWORD}
+      - AP_REDIS_HOST=automations-redis
+      - AP_REDIS_PORT=6379
+      - AP_ENCRYPTION_KEY=${AP_ENCRYPTION_KEY}
+      - AP_JWT_SECRET=${AP_JWT_SECRET}
+    volumes:
+      - automations_cache:/usr/src/app/cache
+
   nginx:
     image: nginx:alpine
     restart: unless-stopped
@@ -115,3 +178,6 @@ volumes:
   astra_workspaces_data:
   brain_data:
   n8n_data:
+  automations_db_data:
+  automations_redis_data:
+  automations_cache:
