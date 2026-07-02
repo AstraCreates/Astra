@@ -129,6 +129,12 @@ services:
       - AP_REDIS_PASSWORD=${AP_REDIS_PASSWORD}
       - AP_ENCRYPTION_KEY=${AP_ENCRYPTION_KEY:?AP_ENCRYPTION_KEY must be set}
       - AP_JWT_SECRET=${AP_JWT_SECRET:?AP_JWT_SECRET must be set}
+      # CE requires this to let signups join an existing platform by ID
+      # instead of needing a per-user invitation. Public signup is still
+      # blocked at the nginx edge (see location = /api/v1/authentication/
+      # sign-up above) — this only affects the internal call
+      # automations_bridge.py makes directly to this container.
+      - AP_ALLOW_OPEN_SIGN_UP=true
     volumes:
       - automations_cache:/usr/src/app/cache
     networks:
