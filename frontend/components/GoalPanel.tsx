@@ -58,7 +58,7 @@ function TaskRow({ task, last }: { task: CompanyTask; last: boolean }) {
           )}
           {isDone && task.last_run_id && (
             <a
-              href={`/s/${task.last_run_id}`}
+              href="/library"
               style={{ fontSize: 10, color: "#001AFF", textDecoration: "none", fontWeight: 500, opacity: 0.75 }}
               onMouseEnter={e => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.textDecoration = "underline"; }}
               onMouseLeave={e => { e.currentTarget.style.opacity = "0.75"; e.currentTarget.style.textDecoration = "none"; }}
