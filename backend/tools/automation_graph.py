@@ -1,19 +1,24 @@
 """Executes automation canvas graphs (nodes + edges) natively in Astra.
 
 Node types:
-  agent   — invokes one Astra specialist via Agent.run(ctx), same primitive
-            `rerun_agent` uses standalone (backend/api/routes.py). Full
-            tool access, normal credit tracking (built into Agent._call_llm).
-  prompt  — a direct LLM completion, implemented as an ephemeral no-tools
-            Agent so it reuses the exact same credit-tracking path instead
-            of hand-rolling token counting for a separate code path.
-  action  — HTTP request (SSRF-guarded via backend.tools.url_safety) or a
-            named Windmill flow (backend.tools.automation_runtime), for the
-            classes of automation Windmill is actually good at.
+  agent      — invokes one Astra specialist via Agent.run(ctx), same primitive
+               `rerun_agent` uses standalone (backend/api/routes.py). Full
+               tool access, normal credit tracking (built into Agent._call_llm).
+  prompt     — a direct LLM completion, implemented as an ephemeral no-tools
+               Agent so it reuses the exact same credit-tracking path instead
+               of hand-rolling token counting for a separate code path.
+  action     — HTTP request (SSRF-guarded via backend.tools.url_safety) or a
+               named Windmill flow (backend.tools.automation_runtime), for the
+               classes of automation Windmill is actually good at.
+  delay      — pauses N seconds before continuing.
+  condition  — gates the branch: if the upstream output doesn't contain the
+               configured text, this node and everything downstream of it are
+               marked "skipped" instead of running.
 
-Execution is a simple topological walk — v1 graphs are DAGs with no
-branch/loop logic. Each node's textual output is available to downstream
-nodes via {{node_id.output}} substitution in their config.
+Execution is a topological walk — graphs are DAGs, condition nodes give one
+level of branch/skip but there's no loop support. Each node's textual output
+is available to downstream nodes via {{node_id.output}} substitution in
+their config.
 """
 from __future__ import annotations
 
@@ -155,6 +160,23 @@ async def _execute_action_node(node: dict, rendered_config: dict, founder_id: st
         return {"error": str(e)}
 
 
+async def _execute_delay_node(node: dict) -> dict:
+    cfg = node.get("config") or {}
+    try:
+        seconds = max(0.0, min(float(cfg.get("seconds", 0)), 3600.0))
+    except (TypeError, ValueError):
+        seconds = 0.0
+    await asyncio.sleep(seconds)
+    return {"summary": f"Waited {seconds:g}s"}
+
+
+def _execute_condition_node(node: dict, upstream_text: str) -> dict:
+    cfg = node.get("config") or {}
+    needle = str(cfg.get("contains") or "").strip().lower()
+    passed = (not needle) or (needle in upstream_text.lower())
+    return {"summary": upstream_text, "passed": passed}
+
+
 async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dict:
     """Executes a saved flow end-to-end, persisting + streaming per-node status.
     `run_id` must already exist (see automation_store.create_run) — the caller
@@ -169,6 +191,7 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dic
     nodes = {n["id"]: n for n in flow.get("nodes", [])}
     edges = flow.get("edges", [])
     outputs: dict[str, str] = {}
+    skipped: set[str] = set()
 
     publish_sync(run_id, {"type": "automation_run_started", "run_id": run_id, "flow_id": flow_id})
 
@@ -178,9 +201,17 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dic
             node = nodes.get(node_id)
             if node is None:
                 continue
+
+            upstream = _upstream_ids(node_id, edges)
+            if upstream and skipped.issuperset(upstream):
+                skipped.add(node_id)
+                automation_store.set_node_result(founder_id, run_id, node_id, {"status": "skipped", "output": {}})
+                publish_sync(run_id, {"type": "node_status", "node_id": node_id, "status": "skipped"})
+                continue
+
             publish_sync(run_id, {"type": "node_status", "node_id": node_id, "status": "running"})
 
-            upstream_text = "\n\n".join(f"[{uid}]: {outputs.get(uid, '')}" for uid in _upstream_ids(node_id, edges))
+            upstream_text = "\n\n".join(f"[{uid}]: {outputs.get(uid, '')}" for uid in upstream if uid not in skipped)
             cfg = node.get("config") or {}
             merged_outputs = dict(outputs)
             node_type = node.get("type")
@@ -195,6 +226,10 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dic
                 elif node_type == "action":
                     rendered_cfg = _render_any(cfg, merged_outputs)
                     result = await _execute_action_node(node, rendered_cfg, founder_id)
+                elif node_type == "delay":
+                    result = await _execute_delay_node(node)
+                elif node_type == "condition":
+                    result = _execute_condition_node(node, upstream_text)
                 elif node_type == "trigger":
                     result = {"summary": "trigger", "status": "ok"}
                 else:
@@ -202,6 +237,13 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dic
             except Exception as e:
                 logger.exception("automation node %s failed", node_id)
                 result = {"error": str(e)}
+
+            if node_type == "condition" and result.get("passed") is False:
+                skipped.add(node_id)
+                outputs[node_id] = result.get("summary", "")
+                automation_store.set_node_result(founder_id, run_id, node_id, {"status": "skipped", "output": result})
+                publish_sync(run_id, {"type": "node_status", "node_id": node_id, "status": "skipped", "output": "condition not met"})
+                continue
 
             text = _extract_text(result)
             outputs[node_id] = text

@@ -1132,6 +1132,104 @@ async def _tool_read_vault(founder_id: str, session_id: str, args: dict) -> Any:
         return {"ok": False, "error": str(e)}
 
 
+# ── Automations canvas (native agent/prompt/action flow builder) ───────────────
+
+def _automation_node_schema_hint() -> str:
+    return (
+        "Node: {id, type, config}. type is one of: "
+        "trigger (config: {}) — manual start; "
+        "agent (config: {agent_name, instruction}) — runs one Astra specialist "
+        "with full tool access (research/web/technical/marketing/sales/legal/etc, "
+        "see list_agents); "
+        "prompt (config: {instruction}) — a quick tool-free LLM reply, for text "
+        "transforms/summaries, not research; "
+        "action (config: {method, url, headers?, body?} OR {windmill_flow_path, payload?}) "
+        "— HTTP request or an existing Windmill flow; "
+        "delay (config: {seconds}) — pause before continuing; "
+        "condition (config: {contains}) — only continues past this node if the "
+        "upstream output contains this text (case-insensitive). "
+        "Any instruction/url/body field can reference an upstream node's result "
+        "with {{node_id.output}}. Edge: {source, target} (node ids)."
+    )
+
+
+async def _tool_list_automations(founder_id: str, session_id: str, args: dict) -> Any:
+    """List this founder's saved automation flows."""
+    from backend.core import automation_store
+    flows = automation_store.list_flows(founder_id)
+    return {"flows": [
+        {"id": f["id"], "name": f["name"], "node_count": len(f.get("nodes", [])), "updated_at": f.get("updated_at")}
+        for f in flows
+    ]}
+
+
+async def _tool_get_automation(founder_id: str, session_id: str, args: dict) -> Any:
+    """Read one automation flow's full node/edge definition. args: {flow_id}"""
+    from backend.core import automation_store
+    flow_id = str(args.get("flow_id") or "")
+    flow = automation_store.get_flow(founder_id, flow_id)
+    if not flow:
+        return {"ok": False, "error": f"Flow '{flow_id}' not found"}
+    return flow
+
+
+async def _tool_create_automation(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.core import automation_store
+    name = str(args.get("name") or "Untitled automation")
+    nodes = args.get("nodes") or []
+    edges = args.get("edges") or []
+    if not isinstance(nodes, list) or not nodes:
+        return {"ok": False, "error": "nodes must be a non-empty list"}
+    flow = automation_store.save_flow(founder_id, name, nodes, edges)
+    return {"ok": True, "flow_id": flow["id"], "name": flow["name"]}
+
+
+async def _tool_update_automation(founder_id: str, session_id: str, args: dict) -> Any:
+    """Update an existing automation flow's name/nodes/edges. args: {flow_id, name?, nodes?, edges?}."""
+    from backend.core import automation_store
+    flow_id = str(args.get("flow_id") or "")
+    existing = automation_store.get_flow(founder_id, flow_id)
+    if not existing:
+        return {"ok": False, "error": f"Flow '{flow_id}' not found"}
+    name = str(args.get("name") or existing["name"])
+    nodes = args.get("nodes") if args.get("nodes") is not None else existing["nodes"]
+    edges = args.get("edges") if args.get("edges") is not None else existing["edges"]
+    flow = automation_store.save_flow(founder_id, name, nodes, edges, flow_id=flow_id)
+    return {"ok": True, "flow_id": flow["id"], "name": flow["name"]}
+
+
+async def _tool_delete_automation(founder_id: str, session_id: str, args: dict) -> Any:
+    """Delete an automation flow. args: {flow_id}"""
+    from backend.core import automation_store
+    flow_id = str(args.get("flow_id") or "")
+    ok = automation_store.delete_flow(founder_id, flow_id)
+    return {"ok": ok}
+
+
+async def _tool_run_automation(founder_id: str, session_id: str, args: dict) -> Any:
+    """Run an automation flow now. args: {flow_id}. Returns a run_id — poll
+    get_automation_run to see progress/results, it does not wait for completion."""
+    import asyncio
+    from backend.core import automation_store
+    from backend.tools.automation_graph import run_automation_flow
+    flow_id = str(args.get("flow_id") or "")
+    if not automation_store.get_flow(founder_id, flow_id):
+        return {"ok": False, "error": f"Flow '{flow_id}' not found"}
+    run = automation_store.create_run(founder_id, flow_id)
+    asyncio.create_task(run_automation_flow(founder_id, flow_id, run["run_id"]))
+    return {"ok": True, "run_id": run["run_id"], "status": "running"}
+
+
+async def _tool_get_automation_run(founder_id: str, session_id: str, args: dict) -> Any:
+    """Read an automation run's status and per-node results. args: {run_id}"""
+    from backend.core import automation_store
+    run_id = str(args.get("run_id") or "")
+    run = automation_store.get_run(founder_id, run_id)
+    if not run:
+        return {"ok": False, "error": f"Run '{run_id}' not found"}
+    return run
+
+
 _TOOLS = {
     # ── Core session/run control ───────────────────────────────────────────────
     "ask_brain": ("ask the company brain a question (returns a cited answer). args: {question}", _tool_ask_brain),
@@ -1176,6 +1274,17 @@ _TOOLS = {
     # ── Cost / vault ──────────────────────────────────────────────────────────
     "get_cost": ("get credit usage and cost for a session. args: {session_id?}", _tool_get_cost),
     "read_vault": ("read raw obsidian/vault notes. args: {path?, limit?}", _tool_read_vault),
+    # ── Automations canvas ────────────────────────────────────────────────────
+    "list_automations": ("list this founder's saved automation flows. args: {}", _tool_list_automations),
+    "get_automation": ("read one automation flow's full node/edge definition. args: {flow_id}", _tool_get_automation),
+    "create_automation": (
+        f"create a new automation flow. args: {{name, nodes:[...], edges:[...]}}. {_automation_node_schema_hint()}",
+        _tool_create_automation,
+    ),
+    "update_automation": ("update an existing automation's name/nodes/edges. args: {flow_id, name?, nodes?, edges?}. Same node/edge schema as create_automation.", _tool_update_automation),
+    "delete_automation": ("delete an automation flow. args: {flow_id}", _tool_delete_automation),
+    "run_automation": ("run an automation flow now (async — returns a run_id, doesn't wait). args: {flow_id}", _tool_run_automation),
+    "get_automation_run": ("read an automation run's status and per-node results. args: {run_id}", _tool_get_automation_run),
 }
 
 # Fold in the MCP parity tools (in-process proxies).
