@@ -85,6 +85,7 @@ export default function DashboardCanvas({ founderId }: Props) {
 
   const load = useCallback(async () => {
     if (!founderId) return;
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
     try {
       const data = await getDashboardElements(founderId);
       setElements(data);
@@ -95,9 +96,20 @@ export default function DashboardCanvas({ founderId }: Props) {
 
   // Initial load + 30s poll
   useEffect(() => {
-    load();
-    pollRef.current = setInterval(load, 30_000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    const refreshIfVisible = () => {
+      if (typeof document === "undefined" || document.visibilityState === "visible") {
+        void load();
+      }
+    };
+    refreshIfVisible();
+    pollRef.current = setInterval(refreshIfVisible, 60_000);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    window.addEventListener("focus", refreshIfVisible);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+      window.removeEventListener("focus", refreshIfVisible);
+    };
   }, [load]);
 
   // One-time "power-on" sequence the first time tiles arrive. Tiles stagger their
@@ -117,6 +129,7 @@ export default function DashboardCanvas({ founderId }: Props) {
     for (const el of elements) {
       if (!el.data_source || el.refresh_interval <= 0) continue;
       const doRefresh = async () => {
+        if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
         setRefreshingIds((p) => new Set(p).add(el.id));
         try {
           const updated = await refreshElement(founderId, el.id);
