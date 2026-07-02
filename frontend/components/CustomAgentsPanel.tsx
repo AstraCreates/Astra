@@ -417,15 +417,21 @@ export default function CustomAgentsPanel() {
       const updated = await updateCustomAgent(founderId, modal.agent.id, { ...input, company_id: companyId });
       setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
     } else {
-      const created = await createCustomAgent(founderId, { ...input, company_id: companyId });
+      // clear_schedule is only meaningful on updates; strip it from create payload.
+      const { clear_schedule: _cs, ...createInput } = input;
+      const created = await createCustomAgent(founderId, { ...createInput, company_id: companyId });
       setAgents((prev) => [created, ...prev]);
     }
   }
 
   async function handleDelete(agent: CustomAgent) {
     if (!confirm(`Delete "${agent.name}"?`)) return;
-    await deleteCustomAgent(founderId, agent.id);
-    setAgents((prev) => prev.filter((a) => a.id !== agent.id));
+    try {
+      await deleteCustomAgent(founderId, agent.id);
+      setAgents((prev) => prev.filter((a) => a.id !== agent.id));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to delete agent");
+    }
   }
 
   async function handleRun(agent: CustomAgent) {

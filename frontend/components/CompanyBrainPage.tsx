@@ -573,7 +573,7 @@ export default function CompanyBrainPage() {
   const recordsById = useMemo(() => new Map(records.map(r => [r.id, r])), [records]);
   const openProposals = useMemo(() => (brain?.proposals ?? []).filter(p => p.status === "open"), [brain]);
   const connected = sources.filter(isConnected).length;
-  const shownRecords = searched && results.length >= 0 && query.trim() ? results : records;
+  const shownRecords = searched && query.trim() ? results : records;
 
   /* ── actions (all original handlers preserved) ── */
   async function sync() {
