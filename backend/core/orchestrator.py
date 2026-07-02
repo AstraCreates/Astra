@@ -301,7 +301,14 @@ class Orchestrator:
 
     async def _llm_plan(self, messages: list[dict]) -> list[dict]:
         for attempt in range(5):
-            raw = await asyncio.to_thread(self.planner._call_llm, messages)
+            try:
+                raw = await asyncio.wait_for(
+                    asyncio.to_thread(self.planner._call_llm, messages),
+                    timeout=90.0,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Planner LLM timed out on attempt %d", attempt + 1)
+                raw = ""
             tasks = await self._parse_tasks(raw)
             if tasks:
                 return tasks
@@ -312,7 +319,14 @@ class Orchestrator:
 
     async def _verify_llm_call(self, messages: list[dict]) -> str:
         """LLM handle for the semantic verification judge (L3). Runs on the planner model."""
-        return await asyncio.to_thread(self.planner._call_llm, messages)
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(self.planner._call_llm, messages),
+                timeout=90.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Verifier LLM timed out")
+            return ""
 
     @staticmethod
     def _parse_json_object(raw: str) -> dict[str, Any]:
@@ -2634,26 +2648,23 @@ class Orchestrator:
             constraints={"company_id": company_id},
         )
         try:
-            vault_summary_parts = []
-            for agent_name in self.specialists:
-                ctx_text = await asyncio.to_thread(format_vault_context, agent_name, 5, founder_id)
-                if ctx_text:
-                    vault_summary_parts.append(f"## {agent_name}\n{ctx_text}")
+            from backend.tools.company_brain import company_brain_context as _cb_ctx
+            vault_coros = [asyncio.to_thread(format_vault_context, name, 5, founder_id) for name in self.specialists]
+            brain_coro = asyncio.to_thread(_cb_ctx, founder_id, instruction, 10, company_id=company_id)
+            _results = await asyncio.gather(*vault_coros, brain_coro, return_exceptions=True)
+            vault_results, brain_result = _results[:-1], _results[-1]
+            vault_summary_parts = [
+                f"## {name}\n{ctx_text}"
+                for name, ctx_text in zip(self.specialists, vault_results)
+                if isinstance(ctx_text, str) and ctx_text
+            ]
             shared["company_vault_context"] = "\n\n".join(vault_summary_parts)
+            if isinstance(brain_result, str) and brain_result:
+                shared["company_brain_context"] = brain_result
+            elif isinstance(brain_result, Exception):
+                logger.warning("Company brain continuation context skipped: %s", brain_result)
         except Exception as _ve:
-            logger.warning("Vault load failed: %s", _ve)
-
-        try:
-            from backend.tools.company_brain import company_brain_context, sync_company_brain
-            shared["company_brain_context"] = await asyncio.to_thread(
-                company_brain_context,
-                founder_id,
-                instruction,
-                10,
-                company_id=company_id,
-            )
-        except Exception as _cb:
-            logger.warning("Company brain continuation context skipped: %s", _cb)
+            logger.warning("Context load failed: %s", _ve)
 
         # If agents explicitly specified, still ask planner for per-agent instructions
         if agents:
