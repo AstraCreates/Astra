@@ -70,13 +70,13 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
           l.href === "/dashboard" ? (
             // Dashboard: hard-navigate to the clean dashboard route so it ALWAYS
             // resets there even from a query-heavy state.
-            <Link key={l.href} href="/dashboard" data-tour="nav-dashboard"
+            <Link key={l.href} href="/dashboard" prefetch={false} data-tour="nav-dashboard"
                onClick={(e) => { e.preventDefault(); window.location.assign("/dashboard"); }}
                className={`nl${l.match(pathname) ? " on" : ""}`} style={{ textDecoration: "none" }}>
               <span style={{ width: 18, textAlign: "center" }}>{l.ic}</span>{l.label}
             </Link>
           ) : (
-            <Link key={l.href} href={l.href} data-tour={`nav-${l.label.toLowerCase().replace(/\s+/g, "-")}`} className={`nl${l.match(pathname) ? " on" : ""}`} style={{ textDecoration: "none" }}>
+            <Link key={l.href} href={l.href} prefetch={l.href === "/automations" ? false : undefined} data-tour={`nav-${l.label.toLowerCase().replace(/\s+/g, "-")}`} className={`nl${l.match(pathname) ? " on" : ""}`} style={{ textDecoration: "none" }}>
               <span style={{ width: 18, textAlign: "center" }}>{l.ic}</span>{l.label}
             </Link>
           )
