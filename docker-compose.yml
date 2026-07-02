@@ -84,6 +84,11 @@ services:
   # core of Activepieces — NOT their proprietary embed-sdk (that's the one piece
   # gated behind their Enterprise license; everything here is the plain core,
   # self-hosted and iframed on our own subdomain, same pattern as n8n).
+  # Isolated on its own network (automations-net, not the shared "default"
+  # one) — Activepieces workflows can make arbitrary outbound HTTP requests
+  # (that's the product), so a compromised/malicious workflow must not be
+  # able to resolve or reach backend/redis/n8n by docker service name. Same
+  # reasoning in reverse: nothing on the main stack can reach these either.
   automations-db:
     image: pgvector/pgvector:0.8.0-pg14
     restart: unless-stopped
@@ -93,12 +98,17 @@ services:
       - POSTGRES_PASSWORD=${AP_POSTGRES_PASSWORD:?AP_POSTGRES_PASSWORD must be set}
     volumes:
       - automations_db_data:/var/lib/postgresql/data
+    networks:
+      - automations-net
 
   automations-redis:
     image: redis:7-alpine
     restart: unless-stopped
+    command: redis-server --requirepass ${AP_REDIS_PASSWORD:?AP_REDIS_PASSWORD must be set}
     volumes:
       - automations_redis_data:/data
+    networks:
+      - automations-net
 
   automations:
     image: ghcr.io/activepieces/activepieces:0.86.0
@@ -116,10 +126,13 @@ services:
       - AP_POSTGRES_PASSWORD=${AP_POSTGRES_PASSWORD}
       - AP_REDIS_HOST=automations-redis
       - AP_REDIS_PORT=6379
+      - AP_REDIS_PASSWORD=${AP_REDIS_PASSWORD}
       - AP_ENCRYPTION_KEY=${AP_ENCRYPTION_KEY:?AP_ENCRYPTION_KEY must be set}
       - AP_JWT_SECRET=${AP_JWT_SECRET:?AP_JWT_SECRET must be set}
     volumes:
       - automations_cache:/usr/src/app/cache
+    networks:
+      - automations-net
 
   # Single worker replica — resource-appropriate for current traffic. Their
   # default compose runs 5; scale up only if execution throughput needs it.
@@ -138,10 +151,13 @@ services:
       - AP_POSTGRES_PASSWORD=${AP_POSTGRES_PASSWORD}
       - AP_REDIS_HOST=automations-redis
       - AP_REDIS_PORT=6379
+      - AP_REDIS_PASSWORD=${AP_REDIS_PASSWORD}
       - AP_ENCRYPTION_KEY=${AP_ENCRYPTION_KEY}
       - AP_JWT_SECRET=${AP_JWT_SECRET}
     volumes:
       - automations_cache:/usr/src/app/cache
+    networks:
+      - automations-net
 
   nginx:
     image: nginx:alpine
@@ -160,6 +176,9 @@ services:
     depends_on:
       - backend
       - frontend
+    networks:
+      - default
+      - automations-net
 
   # Issues/renews the TLS cert for 178.105.231.73.nip.io (the only real
   # hostname pointing at this box — astracreates.com's DNS is on Vercel).
@@ -181,3 +200,7 @@ volumes:
   automations_db_data:
   automations_redis_data:
   automations_cache:
+
+networks:
+  default:
+  automations-net:
