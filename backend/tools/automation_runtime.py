@@ -186,7 +186,13 @@ async def automation_trigger_flow(
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             r = await client.post(url, json=body, headers=_headers(settings.automation_token))
             r.raise_for_status()
-            return r.json() if r.content else {"ok": True}
+            if not r.content:
+                return {"ok": True}
+            content_type = (r.headers.get("content-type") or "").lower()
+            if "application/json" in content_type:
+                return r.json()
+            text = r.text.strip()
+            return {"ok": True, "job_id": text} if text else {"ok": True}
     except Exception as e:
         logger.error("automation trigger_flow %s failed: %s", flow_path, e)
         return {"error": str(e)}
