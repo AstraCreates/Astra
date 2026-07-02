@@ -189,15 +189,31 @@ async def _resume_interrupted_sessions() -> None:
                 if not remaining:
                     logger.info("Session %s: all planned agents done", session_id)
                     _completed.add(session_id)
+                    await _asyncio.to_thread(_ss_status, session_id, "done")
                     continue
 
                 logger.info("Session %s: re-running agents %s", session_id, remaining)
+                # Use a child session so future restarts don't re-resume the original.
+                # Mark the original "done" immediately — the child's agent events are
+                # forwarded to the parent stream via register_parent_session.
+                from backend.core.session_ids import new_session_id as _new_sid
+                from backend.core.session_store import register_session as _reg_sess
+                from backend.core.events import register_parent_session as _reg_parent
+                child_sid = _new_sid()
+                try:
+                    _reg_sess(session_id=child_sid, founder_id=founder_id,
+                              goal=goal, parent_session_id=session_id,
+                              kind="operating")
+                except Exception:
+                    pass
+                _reg_parent(child_sid, session_id)
+                await _asyncio.to_thread(_ss_status, session_id, "done")
                 _asyncio.create_task(orch.continue_run(
                     instruction=goal,
                     founder_id=founder_id,
                     prior_session_id=session_id,
                     agents=remaining,
-                    session_id=session_id,
+                    session_id=child_sid,
                 ))
             except Exception as _se:
                 logger.warning("Could not resume session %s: %s", session_id, _se)
