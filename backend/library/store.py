@@ -76,12 +76,14 @@ def create_file(
     is_canonical: bool = False,
     source_path: str = "",
     source_tag: str = "",
+    source_session_id: str = "",
 ) -> dict[str, Any]:
     """Create a new library file. Returns the full file record.
 
-    source_path: absolute path to a PDF/file on disk (renders as embedded
-                 preview in the UI instead of a text editor).
-    source_tag:  human label for what generated this (e.g. agent name).
+    source_path:       absolute path to a PDF/file on disk (renders as embedded
+                       preview in the UI instead of a text editor).
+    source_tag:        human label for what generated this (e.g. agent name).
+    source_session_id: the run/session ID that produced this file.
     """
     file_id = uuid.uuid4().hex[:16]
     now = _now()
@@ -101,6 +103,8 @@ def create_file(
         record["source_path"] = source_path
     if source_tag:
         record["source_tag"] = source_tag
+    if source_session_id:
+        record["source_session_id"] = source_session_id
     meta = {k: v for k, v in record.items() if k != "content"}
     with _lock:
         _file_path(founder_id, file_id).write_text(json.dumps(record, indent=2))

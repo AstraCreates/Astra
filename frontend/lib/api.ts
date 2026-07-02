@@ -2234,6 +2234,7 @@ export interface LibraryFile {
   size_bytes: number;
   source_path?: string;
   source_tag?: string;
+  source_session_id?: string;
 }
 
 export async function getLibraryFiles(

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   LibraryFile,
   ExampleFile,
@@ -390,6 +391,9 @@ interface LibraryPanelProps {
 
 export default function LibraryPanel({ founderId, className = "" }: LibraryPanelProps) {
   const { companyId } = useCompany();
+  const searchParams = useSearchParams();
+  const targetSession = searchParams.get("session");
+  const didAutoSelect = useRef(false);
   const [mode, setMode] = useState<"files" | "templates" | "funding">("files");
 
   // Files state
@@ -472,6 +476,17 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
   }, [founderId]);
 
   useEffect(() => { if (founderId) loadFiles(); }, [founderId, loadFiles]);
+
+  // Auto-select the file matching ?session= URL param (only once per navigation)
+  useEffect(() => {
+    if (!targetSession || didAutoSelect.current || files.length === 0) return;
+    const match = files.find((f) => f.source_session_id === targetSession);
+    if (match) {
+      didAutoSelect.current = true;
+      setSelectedFile(match);
+      setShowNewForm(false);
+    }
+  }, [targetSession, files]);
 
   async function loadExamples() {
     if (examplesLoaded) return;

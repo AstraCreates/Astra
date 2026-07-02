@@ -367,6 +367,7 @@ def sync_deliverables_to_library(
                 is_canonical=True,
                 source_path=str(p),
                 source_tag=agent_label,
+                source_session_id=session_id,
             )
     except Exception as exc:
         import logging

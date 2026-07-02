@@ -141,7 +141,7 @@ function TaskRow({ item, state, task }: { item: CLItem; state: RowState; task?: 
           </span>
           {settled && runId && (
             <a
-              href="/library"
+              href={`/library?session=${runId}`}
               style={{
                 fontSize: 10.5, color: "#001AFF", textDecoration: "none", fontWeight: 500,
                 opacity: 0.7, whiteSpace: "nowrap",
