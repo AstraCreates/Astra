@@ -19,8 +19,8 @@ services:
     depends_on:
       - redis
     ports:
-      - "8000:8000"
-      - "4000-4009:4000-4009"  # local MVP preview servers (Vercel fallback)
+      - "127.0.0.1:8000:8000"
+      - "4000-4009:4000-4009"  # local MVP preview servers (Vercel fallback) — intentionally public, see deploy/nginx.conf
     volumes:
       - ./backend:/app/backend  # live code mount — SCP + restart, no rebuild needed
       - astra_docs_data:/data/astra_docs
@@ -49,7 +49,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
 
   n8n:
     image: n8nio/n8n:latest

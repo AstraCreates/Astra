@@ -31,9 +31,12 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Astra API", version="1.0.0")
 
 from backend.config import settings as _settings
-_cors_origins = [o.strip() for o in _settings.frontend_url.split(",") if o.strip()]
+# Explicit allow-list only — never "*". Header-based auth (x-astra-user-id) means a
+# wildcard origin would let any website drive the API using a visitor's own session.
+# Set via ASTRA_CORS_ORIGINS (comma-separated) in .env; see backend/config.py.
+_cors_origins = [o.strip() for o in _settings.astra_cors_origins.split(",") if o.strip()]
 if not _cors_origins:
-    _cors_origins = ["http://localhost:3003"]
+    _cors_origins = ["http://localhost:3000"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,

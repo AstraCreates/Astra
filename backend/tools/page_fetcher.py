@@ -7,6 +7,8 @@ import re
 
 import requests
 
+from backend.tools.url_safety import safe_get
+
 logger = logging.getLogger(__name__)
 
 _HEADERS = {
@@ -22,7 +24,7 @@ _HEADERS = {
 def fetch_page(url: str, max_chars: int = 6000) -> dict:
     """Fetch URL, return clean text (ads/nav/scripts stripped)."""
     try:
-        resp = requests.get(url, headers=_HEADERS, timeout=15, allow_redirects=True)
+        resp = safe_get(url, headers=_HEADERS, timeout=15)
         resp.raise_for_status()
         content_type = resp.headers.get("content-type", "")
         if "html" not in content_type and "text" not in content_type:

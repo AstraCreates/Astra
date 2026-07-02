@@ -43,8 +43,8 @@ def _fetch_logo_bytes(logo_url_or_path: str) -> bytes | None:
         if p.exists() and p.is_file():
             return p.read_bytes()
         if logo_url_or_path.startswith("http"):
-            import requests
-            resp = requests.get(logo_url_or_path, timeout=5)
+            from backend.tools.url_safety import safe_get
+            resp = safe_get(logo_url_or_path, timeout=5)
             if resp.status_code == 200:
                 return resp.content
     except Exception as exc:

@@ -216,7 +216,8 @@ def _save_image_to_vault(url: str | None, b64: str | None, prompt: str, founder_
             raw = b64.split(",", 1)[-1] if "," in b64 else b64
             img_path.write_bytes(_b64.b64decode(raw))
         elif url:
-            resp = requests.get(url, timeout=30)
+            from backend.tools.url_safety import safe_get
+            resp = safe_get(url, timeout=30)
             resp.raise_for_status()
             img_path.write_bytes(resp.content)
         else:

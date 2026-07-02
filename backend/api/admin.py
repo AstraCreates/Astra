@@ -3,6 +3,7 @@ import asyncio
 import collections
 import os
 import platform
+import re
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -1159,6 +1160,44 @@ async def git_status():
 # Logs
 # ──────────────────────────────────────────────
 
+# Raw docker/journald/server.log output can contain secret values that were
+# logged at startup or during request handling (OpenRouter/Composio/Stripe/
+# Resend/etc. API keys — see backend/config.py Settings fields ending in
+# _key/_token/_secret/_password). Redact known key shapes plus a generic
+# "name=value" / "Authorization: Bearer ..." catch-all before this ever
+# leaves the process, since /admin/logs returns it verbatim to the caller.
+_SECRET_PATTERNS: list[tuple[re.Pattern, str]] = [
+    # OpenAI/OpenRouter-style keys, e.g. sk-or-v1-xxxxxxxx
+    (re.compile(r"sk-[A-Za-z0-9_-]{16,}"), "sk-[REDACTED]"),
+    # Resend keys, e.g. re_xxxxxxxx
+    (re.compile(r"re_[A-Za-z0-9_-]{16,}"), "re_[REDACTED]"),
+    # Stripe keys, e.g. sk_live_xxx / sk_test_xxx / rk_live_xxx / whsec_xxx
+    (re.compile(r"\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{8,}"), "[REDACTED_STRIPE_KEY]"),
+    (re.compile(r"\bwhsec_[A-Za-z0-9]{8,}"), "whsec_[REDACTED]"),
+    # "Authorization: Bearer <token>" headers
+    (
+        re.compile(r"(?i)(authorization\s*:\s*bearer)\s+[A-Za-z0-9._~+/=-]{8,}"),
+        r"\1 [REDACTED]",
+    ),
+    # Generic "<name containing key/token/secret/password>=<value>" or "...: <value>",
+    # covers env-var dumps like OPENROUTER_API_KEY=... or n8n_basic_auth_password: ...
+    (
+        re.compile(
+            r"(?i)\b([a-z0-9_.\-]*(?:api[_-]?key|token|secret|password)[a-z0-9_.\-]*"
+            r"\s*[:=]\s*)([\"']?)[^\s\"']{6,}\2"
+        ),
+        r"\1\2[REDACTED]\2",
+    ),
+]
+
+
+def _redact_secrets(text: str) -> str:
+    """Redact common secret-shaped substrings from log text before it is returned."""
+    for pattern, replacement in _SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
 @router.get("/logs")
 async def recent_logs(lines: int = 300, filter: str = ""):
     _request_counts["/admin/logs"] += 1
@@ -1198,6 +1237,8 @@ async def recent_logs(lines: int = 300, filter: str = ""):
             source = "server.log"
         except Exception:
             pass
+
+    raw_lines = [_redact_secrets(l) for l in raw_lines]
 
     if filter:
         raw_lines = [l for l in raw_lines if filter.lower() in l.lower()]

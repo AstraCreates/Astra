@@ -159,6 +159,14 @@ class Settings(BaseSettings):
     stripe_price_scale: str = ""
     backend_url: str = "http://localhost:8000"
     frontend_url: str = "http://localhost:3003"
+    # Explicit CORS allow-list (comma-separated origins, e.g.
+    # "https://astracreates.com,https://www.astracreates.com"). Browsers send an
+    # Origin header CORS checks against this list; combined with header-based auth
+    # (x-astra-user-id) a wildcard here would let any website drive the API using a
+    # visitor's own session, so this must never be "*" in prod. Defaults to the local
+    # Next.js dev origin only. NOTE: declared here so it isn't silently dropped by
+    # extra="ignore" — same rule as the astra_<feature> flags above.
+    astra_cors_origins: str = "http://localhost:3000"
 
     # NWRA LLC filing — Astra's company card (pays for founder's LLC filing)
     nwra_card_number: str = ""

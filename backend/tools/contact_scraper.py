@@ -24,6 +24,7 @@ from urllib.parse import urlparse
 import requests
 
 from backend.config import settings
+from backend.tools.url_safety import safe_get
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ def _domain_from_url(url: str) -> str:
 
 def _get(url: str, params: dict | None = None, headers: dict | None = None) -> dict | str | None:
     try:
-        r = requests.get(url, params=params, headers=headers or {}, timeout=_TIMEOUT)
+        r = safe_get(url, params=params, headers=headers or {}, timeout=_TIMEOUT)
         r.raise_for_status()
         try:
             return r.json()

@@ -8,6 +8,8 @@ import logging
 import re
 from typing import Any
 
+from backend.tools.url_safety import validate_url
+
 logger = logging.getLogger(__name__)
 
 # In-memory sessions: {session_id: {status, event_queue, input_event, input_data, browser}}
@@ -341,6 +343,10 @@ async def _vision_browse_inner(session_id, url, goal, max_steps, session, emit, 
     await emit("status", {"message": f"Navigating to {url}…", "step": 0})
 
     try:
+        # SSRF guard — block navigation to internal/private addresses (cloud
+        # metadata endpoint, docker-internal services, localhost, etc.)
+        # before the headless browser makes a single request to them.
+        validate_url(url)
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
         try:
             await page.wait_for_load_state("networkidle", timeout=5000)
@@ -435,6 +441,15 @@ async def _vision_browse_inner(session_id, url, goal, max_steps, session, emit, 
         try:
             if act == "navigate":
                 await emit("status", {"message": f"Navigating to {action['url']}", "step": step})
+                # SSRF guard — the vision model chooses this URL, so it must
+                # be re-validated the same as the initial navigation target.
+                # (Residual gap: page.goto follows any server-side redirects
+                # itself; those hops aren't independently re-validated here —
+                # Playwright doesn't expose a per-hop interception point as
+                # simply as requests/urllib do. The initial target is the
+                # part under (LLM/agent) control, so this covers the hole
+                # this task is about.)
+                validate_url(action["url"])
                 await page.goto(action["url"], wait_until="domcontentloaded", timeout=30000)
                 try:
                     await page.wait_for_load_state("networkidle", timeout=5000)

@@ -108,6 +108,12 @@ def _analyze_goal(instruction: str) -> tuple[str | None, str | None]:
 
 
 def _write_env_key(key: str, value: str) -> None:
+    # A newline in either key or value lets a caller inject arbitrary extra
+    # lines into the .env file (e.g. value="foo\nASTRA_REQUIRE_AUTH=false"),
+    # smuggling in unrelated env vars. Reject rather than silently strip —
+    # a legitimate key/value should never contain a line break.
+    if "\n" in key or "\r" in key or "\n" in value or "\r" in value:
+        raise ValueError(f"_write_env_key: key/value for {key!r} must not contain newline characters")
     env_path = ".env"
     try:
         try:

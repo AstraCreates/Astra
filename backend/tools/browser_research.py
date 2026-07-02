@@ -9,6 +9,8 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
+from backend.tools.url_safety import validate_url
+
 logger = logging.getLogger(__name__)
 
 _BH_SRC = "/tmp/browser-harness/src"
@@ -218,8 +220,27 @@ def build_research_queries(topic: str, focus: str = "market", limit: int = 7) ->
     }
 
 
+class _ValidatingRedirectHandler:
+    """urllib redirect handler that re-validates each hop against the SSRF
+    guard before following it (a URL passing the initial check must not be
+    allowed to 302 its way to an internal address)."""
+
+    def __new__(cls):
+        import urllib.request
+
+        class _Handler(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                validate_url(newurl)
+                return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+        return _Handler()
+
+
 def _http_get(url: str, timeout: float = 8.0) -> str:
     """Fetch URL via browser-harness http_get (handles bot detection + gzip)."""
+    # SSRF guard: block internal/private targets before any network call.
+    validate_url(url)
+
     import urllib.request, urllib.error, gzip
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -232,6 +253,10 @@ def _http_get(url: str, timeout: float = 8.0) -> str:
         if _BH_SRC not in sys.path:
             sys.path.insert(0, _BH_SRC)
         from browser_harness.helpers import http_get
+        # NOTE: residual gap — browser_harness.http_get is a third-party
+        # helper we don't control, so redirects it follows internally are
+        # not re-validated per hop here (only the initial URL is checked
+        # above). The urllib fallback path below re-validates every hop.
         return http_get(url, headers=headers, timeout=timeout) or ""
     except Exception:
         pass
@@ -242,7 +267,11 @@ def _http_get(url: str, timeout: float = 8.0) -> str:
         ctx = None
     try:
         req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as r:
+        handlers = [_ValidatingRedirectHandler()]
+        if ctx is not None:
+            handlers.append(urllib.request.HTTPSHandler(context=ctx))
+        opener = urllib.request.build_opener(*handlers)
+        with opener.open(req, timeout=timeout) as r:
             data = r.read()
             if r.headers.get("Content-Encoding") == "gzip":
                 data = gzip.decompress(data)

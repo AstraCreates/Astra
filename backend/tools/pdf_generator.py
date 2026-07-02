@@ -156,8 +156,8 @@ def generate_pdf(title: str = "", sections: list = None, output_dir: str = "", e
             if p.exists():
                 return p.read_bytes()
             if src.startswith("http"):
-                import requests
-                r = requests.get(src, timeout=5)
+                from backend.tools.url_safety import safe_get
+                r = safe_get(src, timeout=5)
                 if r.status_code == 200:
                     return r.content
         except Exception:
