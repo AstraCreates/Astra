@@ -1,0 +1,185 @@
+"""Durable store for the automations canvas: flow definitions (nodes/edges) and
+run history, per founder. Same lock/atomic-write idiom as session_store.py.
+"""
+from __future__ import annotations
+
+import json
+import os
+import threading
+import time
+import uuid
+from pathlib import Path
+from typing import Any
+
+_founder_locks: dict[str, threading.Lock] = {}
+_founder_locks_guard = threading.Lock()
+
+
+def _founder_lock(founder_id: str) -> threading.Lock:
+    lock = _founder_locks.get(founder_id)
+    if lock is None:
+        with _founder_locks_guard:
+            lock = _founder_locks.get(founder_id)
+            if lock is None:
+                lock = threading.Lock()
+                _founder_locks[founder_id] = lock
+    return lock
+
+
+def _vault() -> Path:
+    path = Path(os.environ.get("OBSIDIAN_VAULT", "/tmp/astra_docs"))
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def _safe_id(value: str) -> str:
+    return "".join(c for c in value if c.isalnum() or c in ("_", "-"))[:128] or "unknown"
+
+
+def _founder_dir(founder_id: str) -> Path:
+    d = _vault() / "automations" / _safe_id(founder_id)
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "runs").mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _flows_path(founder_id: str) -> Path:
+    return _founder_dir(founder_id) / "flows.json"
+
+
+def _run_path(founder_id: str, run_id: str) -> Path:
+    return _founder_dir(founder_id) / "runs" / f"{_safe_id(run_id)}.json"
+
+
+def _atomic_write(path: Path, data: dict[str, Any]) -> None:
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
+    tmp.replace(path)
+
+
+def now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+_now = now  # internal alias, kept for brevity within this module
+
+
+# ── Flows ────────────────────────────────────────────────────────────────────
+
+def _load_flows(founder_id: str) -> dict[str, dict]:
+    p = _flows_path(founder_id)
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return {}
+
+
+def list_flows(founder_id: str) -> list[dict]:
+    flows = _load_flows(founder_id)
+    return sorted(flows.values(), key=lambda f: f.get("updated_at", ""), reverse=True)
+
+
+def get_flow(founder_id: str, flow_id: str) -> dict | None:
+    return _load_flows(founder_id).get(flow_id)
+
+
+def save_flow(
+    founder_id: str,
+    name: str,
+    nodes: list[dict],
+    edges: list[dict],
+    flow_id: str = "",
+) -> dict:
+    with _founder_lock(founder_id):
+        flows = _load_flows(founder_id)
+        flow_id = flow_id or f"flow_{uuid.uuid4().hex[:12]}"
+        existing = flows.get(flow_id)
+        flow = {
+            "id": flow_id,
+            "founder_id": founder_id,
+            "name": name,
+            "nodes": nodes,
+            "edges": edges,
+            "created_at": (existing or {}).get("created_at") or _now(),
+            "updated_at": _now(),
+        }
+        flows[flow_id] = flow
+        _atomic_write(_flows_path(founder_id), flows)
+        return flow
+
+
+def delete_flow(founder_id: str, flow_id: str) -> bool:
+    with _founder_lock(founder_id):
+        flows = _load_flows(founder_id)
+        if flow_id not in flows:
+            return False
+        del flows[flow_id]
+        _atomic_write(_flows_path(founder_id), flows)
+        return True
+
+
+# ── Runs ─────────────────────────────────────────────────────────────────────
+
+def create_run(founder_id: str, flow_id: str) -> dict:
+    run_id = f"run_{uuid.uuid4().hex[:16]}"
+    run = {
+        "run_id": run_id,
+        "flow_id": flow_id,
+        "founder_id": founder_id,
+        "status": "running",
+        "node_results": {},
+        "started_at": _now(),
+        "finished_at": None,
+        "error": None,
+    }
+    _atomic_write(_run_path(founder_id, run_id), run)
+    return run
+
+
+def update_run(founder_id: str, run_id: str, **fields: Any) -> None:
+    with _founder_lock(founder_id):
+        p = _run_path(founder_id, run_id)
+        try:
+            run = json.loads(p.read_text())
+        except Exception:
+            run = {"run_id": run_id, "founder_id": founder_id, "node_results": {}}
+        run.update(fields)
+        _atomic_write(p, run)
+
+
+def set_node_result(founder_id: str, run_id: str, node_id: str, result: dict) -> None:
+    with _founder_lock(founder_id):
+        p = _run_path(founder_id, run_id)
+        try:
+            run = json.loads(p.read_text())
+        except Exception:
+            run = {"run_id": run_id, "founder_id": founder_id, "node_results": {}}
+        run.setdefault("node_results", {})[node_id] = result
+        _atomic_write(p, run)
+
+
+def get_run(founder_id: str, run_id: str) -> dict | None:
+    p = _run_path(founder_id, run_id)
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return None
+
+
+def list_runs(founder_id: str, flow_id: str = "", limit: int = 20) -> list[dict]:
+    runs_dir = _founder_dir(founder_id) / "runs"
+    runs = []
+    for f in runs_dir.glob("*.json"):
+        try:
+            run = json.loads(f.read_text())
+        except Exception:
+            continue
+        if flow_id and run.get("flow_id") != flow_id:
+            continue
+        runs.append(run)
+    runs.sort(key=lambda r: r.get("started_at", ""), reverse=True)
+    return runs[:limit]

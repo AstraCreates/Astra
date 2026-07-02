@@ -222,3 +222,15 @@ class CustomStackRequest(BaseModel):
 class AutomationTriggerRequest(BaseModel):
     founder_id: str
     payload: dict = {}
+
+
+class AutomationFlowSaveRequest(BaseModel):
+    founder_id: str
+    name: str
+    nodes: list[dict] = []
+    edges: list[dict] = []
+    flow_id: str = ""
+
+
+class AutomationFlowRunRequest(BaseModel):
+    founder_id: str

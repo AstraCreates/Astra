@@ -60,6 +60,8 @@ from backend.api.schemas import (
     SetupRequest,
     SaveCredentialRequest,
     AutomationTriggerRequest,
+    AutomationFlowSaveRequest,
+    AutomationFlowRunRequest,
     SessionAskRequest,
     StackApprovalDecisionRequest,
     StackPackageRequest,
@@ -308,6 +310,75 @@ async def automations_run_template(template_key: str, body: AutomationTriggerReq
     if result.get("error"):
         raise HTTPException(status_code=400, detail=str(result["error"]))
     return {"ok": True, "result": result, "path": template["path"]}
+
+
+# ── Automations canvas: native flow builder (agent/prompt/action nodes) ────────
+
+@router.get("/automations/flows")
+async def automations_list_flows(founder_id: str, request: Request):
+    require_founder_access(request, founder_id, min_role="viewer")
+    from backend.core import automation_store
+    return {"flows": automation_store.list_flows(founder_id)}
+
+
+@router.get("/automations/flows/{flow_id}")
+async def automations_get_flow(flow_id: str, founder_id: str, request: Request):
+    require_founder_access(request, founder_id, min_role="viewer")
+    from backend.core import automation_store
+    flow = automation_store.get_flow(founder_id, flow_id)
+    if not flow:
+        raise HTTPException(status_code=404, detail="Flow not found")
+    return flow
+
+
+@router.post("/automations/flows")
+async def automations_save_flow(body: AutomationFlowSaveRequest, request: Request):
+    require_founder_access(request, body.founder_id, min_role="editor")
+    from backend.core import automation_store
+    return automation_store.save_flow(
+        body.founder_id, body.name, body.nodes, body.edges, flow_id=body.flow_id,
+    )
+
+
+@router.delete("/automations/flows/{flow_id}")
+async def automations_delete_flow(flow_id: str, founder_id: str, request: Request):
+    require_founder_access(request, founder_id, min_role="editor")
+    from backend.core import automation_store
+    if not automation_store.delete_flow(founder_id, flow_id):
+        raise HTTPException(status_code=404, detail="Flow not found")
+    return {"ok": True}
+
+
+@router.post("/automations/flows/{flow_id}/run")
+async def automations_run_flow(flow_id: str, body: AutomationFlowRunRequest, request: Request):
+    require_founder_access(request, body.founder_id, min_role="editor")
+    from backend.core import automation_store
+    if not automation_store.get_flow(body.founder_id, flow_id):
+        raise HTTPException(status_code=404, detail="Flow not found")
+
+    from backend.tools.automation_graph import run_automation_flow
+    import asyncio
+
+    run = automation_store.create_run(body.founder_id, flow_id)
+    asyncio.create_task(run_automation_flow(body.founder_id, flow_id, run["run_id"]))
+    return {"ok": True, "run_id": run["run_id"], "status": "running"}
+
+
+@router.get("/automations/flows/{flow_id}/runs")
+async def automations_list_runs(flow_id: str, founder_id: str, request: Request, limit: int = 20):
+    require_founder_access(request, founder_id, min_role="viewer")
+    from backend.core import automation_store
+    return {"runs": automation_store.list_runs(founder_id, flow_id=flow_id, limit=limit)}
+
+
+@router.get("/automations/runs/{run_id}")
+async def automations_get_run(run_id: str, founder_id: str, request: Request):
+    require_founder_access(request, founder_id, min_role="viewer")
+    from backend.core import automation_store
+    run = automation_store.get_run(founder_id, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run
 
 
 @router.get("/stacks")

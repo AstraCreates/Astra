@@ -2,9 +2,10 @@
 
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch, waitForAuthReady } from "@/lib/api";
-import PageHeader, { HeaderSecondaryBtn } from "@/components/PageHeader";
+import PageHeader, { HeaderPrimaryBtn, HeaderSecondaryBtn } from "@/components/PageHeader";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -65,6 +66,7 @@ function cardStyle(extra?: CSSProperties): CSSProperties {
 }
 
 export default function AutomationsPage() {
+  const router = useRouter();
   const { userId } = useDevUser();
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -163,7 +165,12 @@ export default function AutomationsPage() {
         subtitle="Run workflow automation inside Astra without a separate login."
         badge={{ label: "native beta", color: "blue" }}
         stats={stats}
-        actions={<HeaderSecondaryBtn label="Refresh" onClick={() => window.location.reload()} />}
+        actions={
+          <div style={{ display: "flex", gap: 8 }}>
+            <HeaderSecondaryBtn label="Refresh" onClick={() => window.location.reload()} />
+            <HeaderPrimaryBtn label="+ New automation" onClick={() => router.push("/automations/canvas/new")} />
+          </div>
+        }
       />
 
       <div style={{ padding: 24, display: "grid", gap: 18 }}>
