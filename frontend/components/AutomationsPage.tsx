@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, waitForAuthReady } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -26,7 +26,11 @@ export default function AutomationsPage() {
   useEffect(() => {
     if (!userId || userId === "anon") return;
     let cancelled = false;
-    apiFetch(`${BASE}/automations/session?founder_id=${encodeURIComponent(userId)}`)
+    // ApiAuthBridge fetches the real Bearer token asynchronously on mount.
+    // Without waiting, this can fire first and fall back to the (now
+    // rejected) trusted x-astra-user-id header, 401ing intermittently.
+    waitForAuthReady()
+      .then(() => apiFetch(`${BASE}/automations/session?founder_id=${encodeURIComponent(userId)}`))
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data) => {
         if (!cancelled && data?.token) {
