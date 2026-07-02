@@ -59,6 +59,7 @@ from backend.api.schemas import (
     RejectRequest,
     SetupRequest,
     SaveCredentialRequest,
+    AutomationTriggerRequest,
     SessionAskRequest,
     StackApprovalDecisionRequest,
     StackPackageRequest,
@@ -206,18 +207,23 @@ async def automations_overview(founder_id: str, request: Request):
     """Return Astra-native automations page data without embedding a third-party UI."""
     require_founder_access(request, founder_id, min_role="viewer")
     from backend.config import settings
+    from backend.tools.automation_runtime import automation_list_flows, starter_automation_catalog
 
     workflows: list[dict[str, object]] = []
+    installed_paths: set[str] = set()
     runtime_status = "standby"
     runtime_detail = "Astra's native automations workspace is live. Runtime wiring is still being finalized."
 
     if settings.automation_token:
         try:
-            from backend.tools.automation_runtime import automation_list_flows
-
             result = await automation_list_flows()
             records = result.get("items") if isinstance(result, dict) else None
             if isinstance(records, list):
+                installed_paths = {
+                    str(item.get("path") or item.get("id") or "").strip("/")
+                    for item in records
+                    if isinstance(item, dict)
+                }
                 workflows = [
                     {
                         "id": str(item.get("path") or item.get("id") or ""),
@@ -251,20 +257,10 @@ async def automations_overview(founder_id: str, request: Request):
         "workflow_count": len(workflows),
         "templates": [
             {
-                "key": "lead_follow_up",
-                "title": "Lead follow-up",
-                "summary": "Send a fast reply, route the lead, and create the next task automatically.",
-            },
-            {
-                "key": "support_triage",
-                "title": "Support triage",
-                "summary": "Turn inbound issues into routed tickets with priority and owner rules.",
-            },
-            {
-                "key": "weekly_digest",
-                "title": "Weekly founder digest",
-                "summary": "Compile pipeline, blockers, and wins into one review-ready summary.",
-            },
+                **template,
+                "installed": template["path"].strip("/") in installed_paths,
+            }
+            for template in starter_automation_catalog()
         ],
         "next_steps": [
             "Keep auth inside Astra only.",
@@ -272,6 +268,46 @@ async def automations_overview(founder_id: str, request: Request):
             "Add builder actions behind Astra-native UI instead of embedding a separate app.",
         ],
     }
+
+
+@router.post("/automations/templates/install_all")
+async def automations_install_all(founder_id: str, request: Request):
+    require_founder_access(request, founder_id, min_role="editor")
+    from backend.tools.automation_runtime import automation_install_all_starters
+
+    return await automation_install_all_starters()
+
+
+@router.post("/automations/templates/{template_key}/install")
+async def automations_install_template(template_key: str, founder_id: str, request: Request):
+    require_founder_access(request, founder_id, min_role="editor")
+    from backend.tools.automation_runtime import automation_install_starter
+
+    result = await automation_install_starter(template_key)
+    if result.get("error"):
+        raise HTTPException(status_code=400, detail=str(result["error"]))
+    return result
+
+
+@router.post("/automations/templates/{template_key}/run")
+async def automations_run_template(template_key: str, body: AutomationTriggerRequest, request: Request):
+    require_founder_access(request, body.founder_id, min_role="editor")
+    from backend.tools.automation_runtime import (
+        STARTER_AUTOMATIONS,
+        automation_default_payload,
+        automation_trigger_flow,
+    )
+
+    template = STARTER_AUTOMATIONS.get(template_key)
+    if not template:
+        raise HTTPException(status_code=404, detail="Unknown automation template")
+
+    payload = automation_default_payload(template_key)
+    payload.update(body.payload or {})
+    result = await automation_trigger_flow(template["path"], payload, founder_id=body.founder_id)
+    if result.get("error"):
+        raise HTTPException(status_code=400, detail=str(result["error"]))
+    return {"ok": True, "result": result, "path": template["path"]}
 
 
 @router.get("/stacks")

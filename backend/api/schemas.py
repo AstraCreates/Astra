@@ -217,3 +217,8 @@ class CustomStackRequest(BaseModel):
     instruction: str
     founder_id: Optional[str] = ""
     company_name: Optional[str] = None
+
+
+class AutomationTriggerRequest(BaseModel):
+    founder_id: str
+    payload: dict = {}

@@ -24,8 +24,10 @@ type Overview = {
   workflow_count: number;
   templates: Array<{
     key: string;
+    path: string;
     title: string;
     summary: string;
+    installed: boolean;
   }>;
   next_steps: string[];
 };
@@ -66,6 +68,18 @@ export default function AutomationsPage() {
   const { userId } = useDevUser();
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [busyKey, setBusyKey] = useState<string>("");
+  const [flash, setFlash] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+
+  async function loadOverview() {
+    if (!userId || userId === "anon") return;
+    setStatus("loading");
+    await waitForAuthReady();
+    const res = await apiFetch(`${BASE}/automations/overview?founder_id=${encodeURIComponent(userId)}`);
+    if (!res.ok) throw new Error(String(res.status));
+    setOverview(await res.json());
+    setStatus("ready");
+  }
 
   useEffect(() => {
     if (!userId || userId === "anon") return;
@@ -73,15 +87,7 @@ export default function AutomationsPage() {
 
     async function load() {
       try {
-        setStatus("loading");
-        await waitForAuthReady();
-        const res = await apiFetch(`${BASE}/automations/overview?founder_id=${encodeURIComponent(userId)}`);
-        if (!res.ok) throw new Error(String(res.status));
-        const data = await res.json();
-        if (!cancelled) {
-          setOverview(data);
-          setStatus("ready");
-        }
+        await loadOverview();
       } catch {
         if (!cancelled) setStatus("error");
       }
@@ -90,6 +96,58 @@ export default function AutomationsPage() {
     load();
     return () => { cancelled = true; };
   }, [userId]);
+
+  async function installAll() {
+    if (!userId) return;
+    try {
+      setBusyKey("install_all");
+      const res = await apiFetch(`${BASE}/automations/templates/install_all?founder_id=${encodeURIComponent(userId)}`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || String(res.status));
+      setFlash({ tone: "success", text: `Installed ${data.installed?.length || 0} starter automations.` });
+      await loadOverview();
+    } catch (e) {
+      setFlash({ tone: "error", text: e instanceof Error ? e.message : "Could not install starter automations." });
+    } finally {
+      setBusyKey("");
+    }
+  }
+
+  async function installTemplate(templateKey: string) {
+    if (!userId) return;
+    try {
+      setBusyKey(`install:${templateKey}`);
+      const res = await apiFetch(`${BASE}/automations/templates/${encodeURIComponent(templateKey)}/install?founder_id=${encodeURIComponent(userId)}`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || String(res.status));
+      setFlash({ tone: "success", text: `${data.title || "Automation"} installed.` });
+      await loadOverview();
+    } catch (e) {
+      setFlash({ tone: "error", text: e instanceof Error ? e.message : "Could not install automation." });
+    } finally {
+      setBusyKey("");
+    }
+  }
+
+  async function runTemplate(templateKey: string) {
+    if (!userId) return;
+    try {
+      setBusyKey(`run:${templateKey}`);
+      const res = await apiFetch(`${BASE}/automations/templates/${encodeURIComponent(templateKey)}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ founder_id: userId, payload: {} }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.detail || String(res.status));
+      const runId = data?.result?.job_id || data?.result?.id || data?.result?.uuid || "queued";
+      setFlash({ tone: "success", text: `Automation run started (${runId}).` });
+    } catch (e) {
+      setFlash({ tone: "error", text: e instanceof Error ? e.message : "Could not start automation run." });
+    } finally {
+      setBusyKey("");
+    }
+  }
 
   const runtimeTone = useMemo(() => tone(overview?.runtime.status || "standby"), [overview?.runtime.status]);
   const stats = overview ? [
@@ -123,6 +181,15 @@ export default function AutomationsPage() {
 
         {status === "ready" && overview && (
           <>
+            {flash && (
+              <div style={cardStyle({
+                padding: 16,
+                color: flash.tone === "success" ? "#0F8A4B" : "#991B1B",
+                border: `1px solid ${flash.tone === "success" ? "rgba(27,169,92,0.22)" : "rgba(185,28,28,0.18)"}`,
+              })}>
+                {flash.text}
+              </div>
+            )}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 18 }}>
               <section style={cardStyle({ padding: 24, display: "grid", gap: 14 })}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -186,13 +253,81 @@ export default function AutomationsPage() {
                   <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-mute)" }}>Templates</div>
                   <h3 style={{ margin: "6px 0 0", fontSize: 20 }}>Starter automations</h3>
                 </div>
-                <div style={{ fontSize: 13, color: "var(--fg-mute)" }}>These are the first flows we should turn into one-click Astra actions.</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 13, color: "var(--fg-mute)" }}>These are the first flows we should turn into one-click Astra actions.</div>
+                  <button
+                    onClick={installAll}
+                    disabled={busyKey === "install_all"}
+                    style={{
+                      borderRadius: 12,
+                      border: "1px solid rgba(0,26,255,0.16)",
+                      background: "#001AFF",
+                      color: "#fff",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      padding: "10px 14px",
+                      cursor: "pointer",
+                      opacity: busyKey === "install_all" ? 0.7 : 1,
+                    }}
+                  >
+                    {busyKey === "install_all" ? "Installing..." : "Install all"}
+                  </button>
+                </div>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
                 {overview.templates.map((template) => (
                   <div key={template.key} style={cardStyle({ padding: 18, background: "linear-gradient(180deg, #FFFFFF 0%, #F8FAFF 100%)", boxShadow: "none" })}>
-                    <div style={{ fontSize: 16, fontWeight: 700 }}>{template.title}</div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div style={{ fontSize: 16, fontWeight: 700 }}>{template.title}</div>
+                      <span style={{
+                        padding: "4px 8px",
+                        borderRadius: 999,
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: template.installed ? "#0F8A4B" : "var(--fg-mute)",
+                        background: template.installed ? "rgba(27,169,92,0.10)" : "rgba(148,163,184,0.12)",
+                        border: `1px solid ${template.installed ? "rgba(27,169,92,0.22)" : "rgba(148,163,184,0.18)"}`,
+                      }}>
+                        {template.installed ? "Installed" : "Template"}
+                      </span>
+                    </div>
                     <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6, color: "var(--fg-mute)" }}>{template.summary}</div>
+                    <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <button
+                        onClick={() => installTemplate(template.key)}
+                        disabled={busyKey === `install:${template.key}`}
+                        style={{
+                          borderRadius: 10,
+                          border: "1px solid rgba(15,23,42,0.10)",
+                          background: "#fff",
+                          color: "var(--fg)",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          padding: "9px 12px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {busyKey === `install:${template.key}` ? "Installing..." : (template.installed ? "Update flow" : "Install flow")}
+                      </button>
+                      {template.installed && (
+                        <button
+                          onClick={() => runTemplate(template.key)}
+                          disabled={busyKey === `run:${template.key}`}
+                          style={{
+                            borderRadius: 10,
+                            border: "1px solid rgba(0,26,255,0.16)",
+                            background: "rgba(0,26,255,0.08)",
+                            color: "#001AFF",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            padding: "9px 12px",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {busyKey === `run:${template.key}` ? "Running..." : "Run demo"}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -232,7 +367,27 @@ export default function AutomationsPage() {
                       }}>
                         {workflow.active ? "Active" : "Draft"}
                       </span>
-                      <span style={{ fontSize: 12, color: "var(--fg-mute)", fontFamily: "var(--font-code)" }}>{workflow.id}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ fontSize: 12, color: "var(--fg-mute)", fontFamily: "var(--font-code)" }}>{workflow.id}</span>
+                        {overview.templates.find((template) => template.path === workflow.id)?.installed && (
+                          <button
+                            onClick={() => runTemplate(overview.templates.find((template) => template.path === workflow.id)!.key)}
+                            disabled={busyKey === `run:${overview.templates.find((template) => template.path === workflow.id)!.key}`}
+                            style={{
+                              borderRadius: 10,
+                              border: "1px solid rgba(0,26,255,0.16)",
+                              background: "rgba(0,26,255,0.08)",
+                              color: "#001AFF",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              padding: "8px 10px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Run
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
