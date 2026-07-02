@@ -1180,7 +1180,7 @@ _SECRET_PATTERNS: list[tuple[re.Pattern, str]] = [
         r"\1 [REDACTED]",
     ),
     # Generic "<name containing key/token/secret/password>=<value>" or "...: <value>",
-    # covers env-var dumps like OPENROUTER_API_KEY=... or n8n_basic_auth_password: ...
+    # covers env-var dumps like OPENROUTER_API_KEY=... or AUTOMATION_TOKEN=...
     (
         re.compile(
             r"(?i)\b([a-z0-9_.\-]*(?:api[_-]?key|token|secret|password)[a-z0-9_.\-]*"

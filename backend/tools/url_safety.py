@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # the private-range check below — this is just defense in depth / a faster,
 # clearer rejection than waiting on DNS.
 _BLOCKED_HOSTNAMES = {
-    "redis", "backend", "n8n", "frontend", "nginx", "certbot",
+    "redis", "backend", "frontend", "nginx", "certbot", "windmill-server", "windmill-db",
     "localhost", "metadata", "metadata.google.internal",
 }
 

@@ -240,11 +240,11 @@ class Settings(BaseSettings):
     square_location_id: str = ""
     yelp_api_key: str = ""
 
-    # n8n workflow automation sidecar
-    n8n_base_url: str = "http://n8n:5678"
-    n8n_api_key: str = ""
-    n8n_basic_auth_user: str = "astra"
-    n8n_basic_auth_password: str = ""
+    # Automation runtime
+    automation_provider: str = "windmill"
+    automation_base_url: str = "http://windmill-server:8000/api"
+    automation_workspace: str = "admins"
+    automation_token: str = ""
 
     # Frontend env vars that may leak into .env — ignored by backend
     next_public_clerk_publishable_key: str = ""

@@ -51,124 +51,48 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
 
-  n8n:
-    image: n8nio/n8n:latest
+  windmill-db:
+    image: postgres:16
     restart: unless-stopped
+    shm_size: 1g
     environment:
-      - N8N_HOST=178.105.231.73.nip.io
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=https
-      - N8N_PATH=/n8n/
-      - WEBHOOK_URL=https://178.105.231.73.nip.io/n8n/
-      # Basic auth is mutually exclusive with n8n's own user management —
-      # disabled so each founder gets their own invited account instead of
-      # one shared login.
-      - N8N_SECURE_COOKIE=true
-      - N8N_EMAIL_MODE=smtp
-      - N8N_SMTP_HOST=smtp.resend.com
-      - N8N_SMTP_PORT=465
-      - N8N_SMTP_SSL=true
-      - N8N_SMTP_USER=resend
-      - N8N_SMTP_PASS=${RESEND_API_KEY}
-      - N8N_SMTP_SENDER=Astra <noreply@astracreates.com>
-      - DB_TYPE=sqlite
-      - N8N_USER_FOLDER=/home/node/.n8n
-      - EXECUTIONS_DATA_PRUNE=true
-      - EXECUTIONS_DATA_MAX_AGE=168
+      - POSTGRES_PASSWORD=${WM_DB_PASSWORD:-change-me-astra}
+      - POSTGRES_DB=windmill
     volumes:
-      - n8n_data:/home/node/.n8n
-    networks:
-      - default
+      - windmill_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # Automations builder (workflow automation, self-hosted). Runs the MIT-licensed
-  # core of Activepieces — NOT their proprietary embed-sdk (that's the one piece
-  # gated behind their Enterprise license; everything here is the plain core,
-  # self-hosted and iframed on our own subdomain, same pattern as n8n).
-  # Isolated on its own network (automations-net, not the shared "default"
-  # one) — Activepieces workflows can make arbitrary outbound HTTP requests
-  # (that's the product), so a compromised/malicious workflow must not be
-  # able to resolve or reach backend/redis/n8n by docker service name. Same
-  # reasoning in reverse: nothing on the main stack can reach these either.
-  automations-db:
-    image: pgvector/pgvector:0.8.0-pg14
-    restart: unless-stopped
-    environment:
-      - POSTGRES_DB=activepieces
-      - POSTGRES_USER=activepieces
-      - POSTGRES_PASSWORD=${AP_POSTGRES_PASSWORD:?AP_POSTGRES_PASSWORD must be set}
-    volumes:
-      - automations_db_data:/var/lib/postgresql/data
-    networks:
-      - automations-net
-
-  automations-redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command: redis-server --requirepass ${AP_REDIS_PASSWORD:?AP_REDIS_PASSWORD must be set}
-    volumes:
-      - automations_redis_data:/data
-    networks:
-      - automations-net
-
-  automations:
-    image: ghcr.io/activepieces/activepieces:0.86.0
+  windmill-server:
+    image: ${WM_IMAGE:-ghcr.io/windmill-labs/windmill:main}
     restart: unless-stopped
     depends_on:
-      - automations-db
-      - automations-redis
+      windmill-db:
+        condition: service_healthy
     environment:
-      - AP_CONTAINER_TYPE=APP
-      - AP_FRONTEND_URL=https://automations.178.105.231.73.nip.io
-      - AP_POSTGRES_HOST=automations-db
-      - AP_POSTGRES_PORT=5432
-      - AP_POSTGRES_DATABASE=activepieces
-      - AP_POSTGRES_USERNAME=activepieces
-      - AP_POSTGRES_PASSWORD=${AP_POSTGRES_PASSWORD}
-      - AP_REDIS_HOST=automations-redis
-      - AP_REDIS_PORT=6379
-      - AP_REDIS_PASSWORD=${AP_REDIS_PASSWORD}
-      - AP_ENCRYPTION_KEY=${AP_ENCRYPTION_KEY:?AP_ENCRYPTION_KEY must be set}
-      - AP_JWT_SECRET=${AP_JWT_SECRET:?AP_JWT_SECRET must be set}
-      # CE requires this to let signups join an existing platform by ID
-      # instead of needing a per-user invitation. Public signup is still
-      # blocked at the nginx edge (see location = /api/v1/authentication/
-      # sign-up above) — this only affects the internal call
-      # automations_bridge.py makes directly to this container.
-      - AP_ALLOW_OPEN_SIGN_UP=true
+      - DATABASE_URL=${WM_DATABASE_URL:-postgres://postgres:${WM_DB_PASSWORD:-change-me-astra}@windmill-db/windmill?sslmode=disable}
+      - MODE=server
     volumes:
-      - automations_cache:/usr/src/app/cache
-    networks:
-      - automations-net
-      # Backend needs to reach the app API directly (server-side account
-      # provisioning + sign-in for the SSO bridge, see automations_bridge.py)
-      # without going through the public nginx edge. Only the app itself is
-      # dual-homed — db/redis/worker stay automations-net-only.
-      - default
+      - windmill_worker_logs:/tmp/windmill/logs
 
-  # Single worker replica — resource-appropriate for current traffic. Their
-  # default compose runs 5; scale up only if execution throughput needs it.
-  automations-worker:
-    image: ghcr.io/activepieces/activepieces:0.86.0
+  windmill-worker:
+    image: ${WM_IMAGE:-ghcr.io/windmill-labs/windmill:main}
     restart: unless-stopped
+    privileged: true
     depends_on:
-      - automations
+      windmill-db:
+        condition: service_healthy
     environment:
-      - AP_CONTAINER_TYPE=WORKER
-      - AP_FRONTEND_URL=https://automations.178.105.231.73.nip.io
-      - AP_POSTGRES_HOST=automations-db
-      - AP_POSTGRES_PORT=5432
-      - AP_POSTGRES_DATABASE=activepieces
-      - AP_POSTGRES_USERNAME=activepieces
-      - AP_POSTGRES_PASSWORD=${AP_POSTGRES_PASSWORD}
-      - AP_REDIS_HOST=automations-redis
-      - AP_REDIS_PORT=6379
-      - AP_REDIS_PASSWORD=${AP_REDIS_PASSWORD}
-      - AP_ENCRYPTION_KEY=${AP_ENCRYPTION_KEY}
-      - AP_JWT_SECRET=${AP_JWT_SECRET}
+      - DATABASE_URL=${WM_DATABASE_URL:-postgres://postgres:${WM_DB_PASSWORD:-change-me-astra}@windmill-db/windmill?sslmode=disable}
+      - MODE=worker
+      - WORKER_GROUP=default
+      - FAVOR_UNSHARE_PID=true
     volumes:
-      - automations_cache:/usr/src/app/cache
-    networks:
-      - automations-net
+      - windmill_worker_cache:/tmp/windmill/cache
+      - windmill_worker_logs:/tmp/windmill/logs
 
   nginx:
     image: nginx:alpine
@@ -181,16 +105,12 @@ services:
     volumes:
       - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./deploy/nginx-app-locations.conf:/etc/nginx/app-locations.conf:ro
-      - ./deploy/automations-bridge.html:/etc/nginx/static/astra-bridge.html:ro
       - ./deploy/certs:/etc/nginx/certs:ro
       - ./deploy/certbot/www:/var/www/certbot:ro
       - ./deploy/certbot/conf:/etc/letsencrypt:ro
     depends_on:
       - backend
       - frontend
-    networks:
-      - default
-      - automations-net
 
   # Issues/renews the TLS cert for 178.105.231.73.nip.io (the only real
   # hostname pointing at this box — astracreates.com's DNS is on Vercel).
@@ -208,11 +128,6 @@ volumes:
   astra_docs_data:
   astra_workspaces_data:
   brain_data:
-  n8n_data:
-  automations_db_data:
-  automations_redis_data:
-  automations_cache:
-
-networks:
-  default:
-  automations-net:
+  windmill_db_data:
+  windmill_worker_cache:
+  windmill_worker_logs:

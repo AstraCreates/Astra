@@ -196,18 +196,9 @@ async def _require_session_access(request: Request, session_id: str, min_role: s
 
 @router.get("/automations/session")
 async def automations_session(founder_id: str, request: Request):
-    """Server-side SSO into the self-hosted automations builder — provisions
-    the founder's account on first call, signs in, returns a fresh token for
-    the frontend to inject into the embedded iframe (see automations_bridge.py
-    for why this exists instead of Activepieces' Enterprise-only embed-sdk)."""
+    """Legacy embedded-automations bridge endpoint."""
     require_founder_access(request, founder_id, min_role="viewer")
-    from backend.tools.automations_bridge import get_automations_session_token
-
-    try:
-        token = await asyncio.to_thread(get_automations_session_token, founder_id)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"automations session failed: {e}")
-    return {"token": token}
+    raise HTTPException(status_code=410, detail="Embedded automations session bridge has been retired.")
 
 
 @router.get("/automations/overview")
@@ -217,49 +208,44 @@ async def automations_overview(founder_id: str, request: Request):
     from backend.config import settings
 
     workflows: list[dict[str, object]] = []
-    workflow_source = "unavailable"
-    engine_status = "standby"
-    engine_detail = "Native Astra automations surface is live. Workflow engine wiring is still being finalized."
+    runtime_status = "standby"
+    runtime_detail = "Astra's native automations workspace is live. Runtime wiring is still being finalized."
 
-    if settings.n8n_api_key:
-        workflow_source = "n8n"
+    if settings.automation_token:
         try:
-            from backend.tools.n8n_tools import n8n_list_workflows
+            from backend.tools.automation_runtime import automation_list_flows
 
-            result = await n8n_list_workflows()
-            records = result.get("data") if isinstance(result, dict) else None
+            result = await automation_list_flows()
+            records = result.get("items") if isinstance(result, dict) else None
             if isinstance(records, list):
                 workflows = [
                     {
-                        "id": str(item.get("id") or ""),
-                        "name": str(item.get("name") or "Untitled workflow"),
-                        "active": bool(item.get("active")),
-                        "updated_at": item.get("updatedAt") or item.get("updated_at"),
+                        "id": str(item.get("path") or item.get("id") or ""),
+                        "name": str(item.get("summary") or item.get("path") or item.get("id") or "Untitled automation"),
+                        "active": not bool(item.get("archived", False)),
+                        "updated_at": item.get("edited_at") or item.get("updatedAt") or item.get("updated_at"),
                     }
                     for item in records[:8]
                     if isinstance(item, dict)
                 ]
-                engine_status = "connected"
-                engine_detail = f"Connected to n8n. Showing {len(workflows)} recent workflows."
+                runtime_status = "connected"
+                runtime_detail = f"Automation runtime connected. Showing {len(workflows)} flows."
             else:
-                engine_status = "degraded"
-                engine_detail = str(result.get("error") or "n8n returned an unexpected response")
+                runtime_status = "degraded"
+                runtime_detail = str(result.get("error") or "Automation runtime returned an unexpected response")
         except Exception as e:
-            engine_status = "degraded"
-            engine_detail = f"Could not load workflow list: {e}"
+            runtime_status = "degraded"
+            runtime_detail = f"Could not load automation flows: {e}"
     else:
-        workflow_source = "manual"
-        engine_status = "setup_needed"
-        engine_detail = "n8n is running, but its API key is not configured for native workflow listing yet."
+        runtime_status = "setup_needed"
+        runtime_detail = "Automation runtime is configured for Windmill, but its API token is not set yet."
 
     return {
         "provider": "astra",
         "native": True,
-        "engine": {
-            "name": "n8n",
-            "status": engine_status,
-            "detail": engine_detail,
-            "source": workflow_source,
+        "runtime": {
+            "status": runtime_status,
+            "detail": runtime_detail,
         },
         "workflows": workflows,
         "workflow_count": len(workflows),

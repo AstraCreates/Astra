@@ -11,11 +11,9 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 type Overview = {
   provider: string;
   native: boolean;
-  engine: {
-    name: string;
+  runtime: {
     status: string;
     detail: string;
-    source: string;
   };
   workflows: Array<{
     id: string;
@@ -93,11 +91,11 @@ export default function AutomationsPage() {
     return () => { cancelled = true; };
   }, [userId]);
 
-  const engineTone = useMemo(() => tone(overview?.engine.status || "standby"), [overview?.engine.status]);
+  const runtimeTone = useMemo(() => tone(overview?.runtime.status || "standby"), [overview?.runtime.status]);
   const stats = overview ? [
     { label: "Surface", value: overview.native ? "Astra-native" : "External" },
     { label: "Workflows", value: String(overview.workflow_count) },
-    { label: "Engine", value: engineTone.label },
+    { label: "Runtime", value: runtimeTone.label },
   ] : undefined;
 
   return (
@@ -135,17 +133,17 @@ export default function AutomationsPage() {
                   <span style={{
                     padding: "8px 12px",
                     borderRadius: 999,
-                    color: engineTone.color,
-                    background: engineTone.background,
-                    border: `1px solid ${engineTone.border}`,
+                    color: runtimeTone.color,
+                    background: runtimeTone.background,
+                    border: `1px solid ${runtimeTone.border}`,
                     fontSize: 12,
                     fontWeight: 700,
                   }}>
-                    {engineTone.label}
+                    {runtimeTone.label}
                   </span>
                 </div>
                 <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "var(--fg-mute)", maxWidth: 760 }}>
-                  {overview.engine.detail}
+                  {overview.runtime.detail}
                 </p>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
                   <div style={cardStyle({ padding: 16, background: "#F8FAFF", boxShadow: "none" })}>
@@ -159,9 +157,9 @@ export default function AutomationsPage() {
                     <div style={{ marginTop: 6, fontSize: 13, color: "var(--fg-mute)" }}>Stable UI inside Astra instead of an embedded app runtime.</div>
                   </div>
                   <div style={cardStyle({ padding: 16, background: "#F8FAFF", boxShadow: "none" })}>
-                    <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)" }}>Engine</div>
-                    <div style={{ marginTop: 6, fontSize: 18, fontWeight: 700 }}>{overview.engine.name}</div>
-                    <div style={{ marginTop: 6, fontSize: 13, color: "var(--fg-mute)" }}>{overview.engine.source === "n8n" ? "Using engine data directly." : "Engine integration is being phased in."}</div>
+                    <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--fg-mute)" }}>Runtime</div>
+                    <div style={{ marginTop: 6, fontSize: 18, fontWeight: 700 }}>Astra-managed</div>
+                    <div style={{ marginTop: 6, fontSize: 13, color: "var(--fg-mute)" }}>Execution runs behind Astra instead of exposing a separate vendor app.</div>
                   </div>
                 </div>
               </section>
@@ -202,8 +200,8 @@ export default function AutomationsPage() {
 
             <section style={cardStyle({ padding: 24, display: "grid", gap: 16 })}>
               <div>
-                <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-mute)" }}>Engine data</div>
-                <h3 style={{ margin: "6px 0 0", fontSize: 20 }}>Recent workflows</h3>
+                <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-mute)" }}>Automation data</div>
+                <h3 style={{ margin: "6px 0 0", fontSize: 20 }}>Recent flows</h3>
               </div>
 
               {overview.workflows.length > 0 ? (
@@ -246,7 +244,7 @@ export default function AutomationsPage() {
                   color: "var(--fg-mute)",
                   background: "rgba(248,250,252,0.7)",
                 }}>
-                  No workflows are being listed yet. The native Astra surface is live, and the engine connection will populate here once workflow listing is configured.
+                  No flows are being listed yet. The native Astra surface is live, and this panel will populate once the automation runtime is fully connected.
                 </div>
               )}
             </section>

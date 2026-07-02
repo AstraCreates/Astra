@@ -209,8 +209,8 @@ def get_orchestrator() -> Orchestrator:
             yelp_search_businesses, yelp_get_business,
             yelp_get_reviews, yelp_search_categories,
         )
-        from backend.tools.n8n_tools import (
-            n8n_trigger_workflow, n8n_list_workflows, n8n_get_execution,
+        from backend.tools.automation_runtime import (
+            automation_trigger_flow, automation_list_flows, automation_get_run,
         )
         _integration_agent_names = {
             "ops", "marketing", "marketing_content", "marketing_outreach",
@@ -251,10 +251,10 @@ def get_orchestrator() -> Orchestrator:
             agent.tools.setdefault("yelp_get_business", yelp_get_business)
             agent.tools.setdefault("yelp_get_reviews", yelp_get_reviews)
             agent.tools.setdefault("yelp_search_categories", yelp_search_categories)
-            # n8n / workflow automation
-            agent.tools.setdefault("n8n_trigger_workflow", n8n_trigger_workflow)
-            agent.tools.setdefault("n8n_list_workflows", n8n_list_workflows)
-            agent.tools.setdefault("n8n_get_execution", n8n_get_execution)
+            # Automation runtime
+            agent.tools.setdefault("automation_trigger_flow", automation_trigger_flow)
+            agent.tools.setdefault("automation_list_flows", automation_list_flows)
+            agent.tools.setdefault("automation_get_run", automation_get_run)
 
         # Examples library — inject into every agent so all specialists can search patterns
         from backend.tools.examples_library import search_examples, list_example_categories
