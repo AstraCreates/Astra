@@ -346,6 +346,18 @@ _STAGE_CONTEXT: dict[str, str] = {
 }
 
 # Tasks/outputs that claim real-world outcomes must carry verifiable evidence.
+# Document/plan tasks: agent must return actual content, not just a summary blurb.
+# Without this, agents can check off "Draft a hiring plan" by saying "I drafted a plan."
+_DOCUMENT_STEMS = (
+    "draft ", "write ", "create ", "generate ", "produce ", "build ",
+    "develop ", "prepare ", "design ", "outline ", "compose ",
+)
+_DOCUMENT_NOUNS = (
+    "plan", "doc", "document", "report", "proposal", "strategy",
+    "roadmap", "policy", "agreement", "template", "playbook",
+    "brief", "spec", "framework", "analysis", "assessment", "guide",
+)
+
 # Self-reported milestone completions are the primary hallucination vector.
 # Use word stems/prefixes so variants like "signups", "signed up", "users" all match.
 _MILESTONE_STEMS = (
@@ -367,6 +379,28 @@ def _task_requires_evidence(task_title: str) -> bool:
     """Tasks claiming real-world outcomes can't be self-reported — need URL/screenshot/payment."""
     t = (task_title or "").lower()
     return any(stem in t for stem in _MILESTONE_STEMS)
+
+
+def _task_requires_document(task_title: str) -> bool:
+    """Tasks that say 'draft/write/create a plan/doc' require actual content, not just a summary."""
+    t = (task_title or "").lower()
+    has_action = any(stem in t for stem in _DOCUMENT_STEMS)
+    has_noun = any(noun in t for noun in _DOCUMENT_NOUNS)
+    return has_action and has_noun
+
+
+def _max_content_length(output: dict) -> int:
+    """Longest text value in the output dict (excluding agent/status/session metadata)."""
+    _SKIP = {"status", "agent", "session_id", "task_id", "founder_id", "company_id"}
+    best = 0
+    for k, v in output.items():
+        if k in _SKIP:
+            continue
+        if isinstance(v, str):
+            best = max(best, len(v.strip()))
+        elif isinstance(v, (dict, list)):
+            best = max(best, len(str(v)))
+    return best
 
 
 def _infer_stage(goal: dict) -> str:
@@ -514,6 +548,19 @@ def _agent_delivered(output: Any, task: dict | None = None) -> bool:
         summary = str(output.get("summary") or "").lower()
         if summary and len(summary) < 12 and not (set(meaningful) - {"summary"}):
             return False
+        # Document tasks ("draft a plan", "write a report") require actual content in output,
+        # not just a short summary blurb. Without this gate, agents check off "Draft a hiring
+        # plan" by returning {"summary": "I created a hiring plan."} — no document anywhere.
+        requires_doc = _task_requires_document(task_title)
+        if requires_doc:
+            max_len = _max_content_length(output)
+            if max_len < 300:
+                logger.info(
+                    "goal_engine: task '%s' requires document content but longest field is only %d chars"
+                    " — NOT completing task",
+                    task_title, max_len,
+                )
+                return False
         return True
     return True
 

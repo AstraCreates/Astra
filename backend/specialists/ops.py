@@ -33,7 +33,12 @@ def build_ops_agent(**kwargs) -> Agent:
             "do NOT search again — proceed immediately with generating outputs based on the goal and shared context. "
             "Do not loop on searches. Write final output then signal done. "
             "When calling generate_pdf, write FULL substantive bodies for each section (at least 200 words per section) — "
-            "do not pass placeholder or one-line bodies. Do NOT call generate_pdf more than once."
+            "do not pass placeholder or one-line bodies. Do NOT call generate_pdf more than once. "
+            "CRITICAL — document tasks (draft/write/create a plan, report, strategy, etc.): "
+            "your 'done' result JSON MUST include the FULL document content as a field "
+            "(e.g. 'hiring_plan', 'report', 'strategy_doc', etc.) — the complete text, "
+            "not a summary of what you wrote. A short summary alone does NOT count as delivery. "
+            "After writing to obsidian_log, copy that same content into your done result."
         ),
         max_iterations=30,
         tools={
