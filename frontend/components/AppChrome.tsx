@@ -12,9 +12,13 @@ import WorkspaceTour from "@/components/WorkspaceTour";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { useDevUser } from "@/lib/use-dev-user";
 
-const BARE_PREFIXES = ["/sign-in", "/sign-up", "/onboarding", "/invite", "/cookies"];
+// Routes rendered without sidebar chrome. Distinct from which routes skip the
+// auth gate — /onboarding is bare-chrome but NOT public (see PUBLIC_PREFIXES):
+// it creates real backend goal/founder data, so it must require sign-in like
+// the rest of the app, it just doesn't show the sidebar while doing it.
+const BARE_CHROME_PREFIXES = ["/sign-in", "/sign-up", "/onboarding", "/invite", "/cookies"];
 // Public routes accessible without login (shareable session links)
-const PUBLIC_PREFIXES = [...BARE_PREFIXES, "/s/"];
+const PUBLIC_PREFIXES = ["/sign-in", "/sign-up", "/invite", "/cookies", "/s/"];
 // Exact routes that are public landing/marketing pages — no sidebar, no auth gate
 const BARE_EXACT = ["/"];
 
@@ -179,18 +183,22 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   // Never leave the drawer "open" lingering when switching to desktop.
   useEffect(() => { if (!isMobile) setDrawerOpen(false); }, [isMobile]);
 
-  if (BARE_PREFIXES.some((b) => pathname.startsWith(b)) || BARE_EXACT.includes(pathname)) {
-    return <main>{children}</main>;
-  }
+  const isBareChrome = BARE_CHROME_PREFIXES.some((b) => pathname.startsWith(b)) || BARE_EXACT.includes(pathname);
+  const isPublic = PUBLIC_PREFIXES.some((b) => pathname.startsWith(b)) || BARE_EXACT.includes(pathname);
 
-  // Auth gate — protect all non-public routes
-  if (!PUBLIC_PREFIXES.some((b) => pathname.startsWith(b))) {
+  // Auth gate — protect all non-public routes (checked before the bare-chrome
+  // early-return so /onboarding can't skip it just because it's sidebar-less).
+  if (!isPublic) {
     if (!qaBypass && (isLoading || (isSignedIn && !sessionChecked))) {
       return <div style={{ position: "fixed", inset: 0, background: "var(--bg, #F3F4F7)" }} />;
     }
     if (!isSignedIn && !qaBypass) {
       return <SignInScreen />;
     }
+  }
+
+  if (isBareChrome) {
+    return <main>{children}</main>;
   }
 
   const tour = showTour ? <WorkspaceTour onDone={() => { localStorage.removeItem("astra_show_tour"); setShowTour(false); }} /> : null;
