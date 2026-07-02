@@ -36,6 +36,7 @@ function TaskRow({ task, last }: { task: CompanyTask; last: boolean }) {
   const owners = task.owner_agents ?? [];
   const done = task.done_agents ?? [];
   const label = task.status === "awaiting_approval" ? "approval" : task.status.replace(/_/g, " ");
+  const isDone = task.status === "done";
   return (
     <div style={{
       display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 14px",
@@ -44,16 +45,28 @@ function TaskRow({ task, last }: { task: CompanyTask; last: boolean }) {
       <span style={{ marginTop: 5, width: 7, height: 7, borderRadius: "50%", flexShrink: 0, background: dot }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
-          fontSize: 12, color: task.status === "done" ? "var(--fd)" : "var(--fg)",
-          textDecoration: task.status === "done" ? "line-through" : "none", lineHeight: 1.4,
+          fontSize: 12, color: isDone ? "var(--fd)" : "var(--fg)",
+          textDecoration: isDone ? "line-through" : "none", lineHeight: 1.4,
         }}>
           {task.title}
         </div>
-        {owners.length > 0 && (
-          <div style={{ fontSize: 10, color: "var(--fm)", marginTop: 2, fontFamily: "var(--font-code)" }}>
-            {owners.map(o => (done.includes(o) ? `✓${AGENT_LABELS[o] ?? o}` : (AGENT_LABELS[o] ?? o))).join(" · ")}
-          </div>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2, flexWrap: "wrap" }}>
+          {owners.length > 0 && (
+            <span style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)" }}>
+              {owners.map(o => (done.includes(o) ? `✓${AGENT_LABELS[o] ?? o}` : (AGENT_LABELS[o] ?? o))).join(" · ")}
+            </span>
+          )}
+          {isDone && task.last_run_id && (
+            <a
+              href={`/s/${task.last_run_id}`}
+              style={{ fontSize: 10, color: "#001AFF", textDecoration: "none", fontWeight: 500, opacity: 0.75 }}
+              onMouseEnter={e => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.textDecoration = "underline"; }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = "0.75"; e.currentTarget.style.textDecoration = "none"; }}
+            >
+              View deliverable →
+            </a>
+          )}
+        </div>
       </div>
       <span style={{
         flexShrink: 0, fontSize: 9, color: dot, fontWeight: 700,

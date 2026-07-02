@@ -27,10 +27,10 @@ export const CHECKLIST_CATEGORIES: CLCategory[] = [
   {
     id: "legal", label: "Legal & Entity", icon: "⚖️",
     items: [
-      { id: "form_entity",       label: "Form LLC or Delaware C-Corp",          autoAgent: "legal_entity", detail: "C-Corp if you'll raise venture capital; LLC for bootstrapped." },
+      { id: "form_entity",       label: "Form LLC or Delaware C-Corp",          autoAgent: "legal_entity", owner: "assist", detail: "Astra drafts your articles & operating agreement — you file with the state." },
       { id: "founders_agmt",     label: "Draft founders' agreement",            autoAgent: "legal_entity", detail: "Equity split, roles, decision rights, and exit terms in writing." },
       { id: "vesting",           label: "Set founder vesting schedules (4yr/1yr)", autoAgent: "legal_entity", detail: "Protects the company if a co-founder leaves early." },
-      { id: "ip_assign",         label: "Assign all IP to the company",         autoAgent: "legal_docs", detail: "Every founder and contractor signs an IP assignment." },
+      { id: "ip_assign",         label: "Assign all IP to the company",         autoAgent: "legal_docs", owner: "assist", detail: "Astra drafts the IP assignment agreement — every founder & contractor must sign it." },
       { id: "ein",               label: "Get an EIN from the IRS", autoAgent: "legal_entity", owner: "assist", detail: "Astra preps the details — you submit the IRS form (founder identity required)." },
       { id: "83b",               label: "File 83(b) election within 30 days", detail: "Hard deadline — missing it creates a large future tax bill." },
       { id: "trademark",         label: "Research trademark clearance & prepare filing", autoAgent: "legal_ip", owner: "assist", detail: "Astra clears the name & preps the filing — you submit at USPTO." },

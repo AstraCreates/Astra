@@ -115,10 +115,11 @@ function OwnerBadge({ owner }: { owner: CLOwner }) {
 
 // ── Task row ─────────────────────────────────────────────────────────────────
 
-function TaskRow({ item, state }: { item: CLItem; state: RowState }) {
+function TaskRow({ item, state, task }: { item: CLItem; state: RowState; task?: CompanyTask | null }) {
   const owner = itemOwner(item);
   const meta = STATE_META[state];
   const settled = state === "done";
+  const runId = task?.last_run_id;
   return (
     <div style={{
       display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px",
@@ -138,6 +139,19 @@ function TaskRow({ item, state }: { item: CLItem; state: RowState }) {
           }}>
             {item.label}
           </span>
+          {settled && runId && (
+            <a
+              href={`/s/${runId}`}
+              style={{
+                fontSize: 10.5, color: "#001AFF", textDecoration: "none", fontWeight: 500,
+                opacity: 0.7, whiteSpace: "nowrap",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.textDecoration = "underline"; }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = "0.7"; e.currentTarget.style.textDecoration = "none"; }}
+            >
+              View deliverable →
+            </a>
+          )}
         </div>
         {item.detail && !settled && (
           <p style={{ fontSize: 11.5, color: "var(--fd)", margin: "3px 0 0", lineHeight: 1.5 }}>
@@ -238,16 +252,17 @@ export default function ChecklistPage() {
 
   // Bucket visible items by resolved state.
   const buckets = useMemo(() => {
-    const needsYou: { item: CLItem; state: RowState }[] = [];
-    const inProgress: { item: CLItem; state: RowState }[] = [];
-    const upNext: { item: CLItem; state: RowState }[] = [];
-    const done: { item: CLItem; state: RowState }[] = [];
+    const needsYou: { item: CLItem; state: RowState; task?: CompanyTask | null }[] = [];
+    const inProgress: { item: CLItem; state: RowState; task?: CompanyTask | null }[] = [];
+    const upNext: { item: CLItem; state: RowState; task?: CompanyTask | null }[] = [];
+    const done: { item: CLItem; state: RowState; task?: CompanyTask | null }[] = [];
     for (const item of visibleItems) {
+      const task = matchingTask(item, tasks);
       const state = getRowState(item, tasks);
-      if (NEEDS_YOU.includes(state)) needsYou.push({ item, state });
-      else if (IN_PROGRESS.includes(state)) inProgress.push({ item, state });
-      else if (SETTLED.includes(state)) done.push({ item, state });
-      else upNext.push({ item, state }); // pending + founder
+      if (NEEDS_YOU.includes(state)) needsYou.push({ item, state, task });
+      else if (IN_PROGRESS.includes(state)) inProgress.push({ item, state, task });
+      else if (SETTLED.includes(state)) done.push({ item, state, task });
+      else upNext.push({ item, state, task }); // pending + founder
     }
     return { needsYou, inProgress, upNext, done };
   }, [visibleItems, tasks]);
@@ -404,7 +419,7 @@ export default function ChecklistPage() {
                 </p>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  {buckets[tab].map(({ item, state }) => <TaskRow key={item.id} item={item} state={state} />)}
+                  {buckets[tab].map(({ item, state, task }) => <TaskRow key={item.id} item={item} state={state} task={task} />)}
                 </div>
               )}
             </>
