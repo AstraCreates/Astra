@@ -7,10 +7,13 @@ import DashboardView from "@/components/DashboardView";
 import NewGoalView from "@/components/NewGoalView";
 import WelcomeScreen from "@/components/WelcomeScreen";
 import PostOnboardingScreen from "@/components/PostOnboardingScreen";
+import { listSessions } from "@/lib/api";
+import { useDevUser } from "@/lib/use-dev-user";
 
 export default function AppHome() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { userId } = useDevUser();
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
   const [showWelcomeLS, setShowWelcomeLS] = useState(false);
 
@@ -26,14 +29,33 @@ export default function AppHome() {
   }, [sessionId, router]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setOnboarded(!!localStorage.getItem("astra_onboarding_done"));
-      if (localStorage.getItem("astra_show_welcome") === "1") {
-        localStorage.removeItem("astra_show_welcome");
-        setShowWelcomeLS(true);
-      }
+    if (typeof window === "undefined" || !userId) return;
+
+    if (localStorage.getItem("astra_show_welcome") === "1") {
+      localStorage.removeItem("astra_show_welcome");
+      setShowWelcomeLS(true);
     }
-  }, []);
+
+    // Fast path: localStorage already set
+    if (localStorage.getItem("astra_onboarding_done")) {
+      setOnboarded(true);
+      return;
+    }
+
+    // Slow path: localStorage missing (new device/browser). Check backend —
+    // if the user already has sessions, they've been onboarded before.
+    listSessions(userId, 1).then((sessions) => {
+      if (sessions.length > 0) {
+        localStorage.setItem("astra_onboarding_done", "1");
+        setOnboarded(true);
+      } else {
+        setOnboarded(false);
+      }
+    }).catch(() => {
+      // Network error — default to not onboarded
+      setOnboarded(false);
+    });
+  }, [userId]);
 
   // Still checking localStorage — transparent cover so body gradient shows (no flash)
   if (onboarded === null) return (
