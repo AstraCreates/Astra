@@ -210,6 +210,84 @@ async def automations_session(founder_id: str, request: Request):
     return {"token": token}
 
 
+@router.get("/automations/overview")
+async def automations_overview(founder_id: str, request: Request):
+    """Return Astra-native automations page data without embedding a third-party UI."""
+    require_founder_access(request, founder_id, min_role="viewer")
+    from backend.config import settings
+
+    workflows: list[dict[str, object]] = []
+    workflow_source = "unavailable"
+    engine_status = "standby"
+    engine_detail = "Native Astra automations surface is live. Workflow engine wiring is still being finalized."
+
+    if settings.n8n_api_key:
+        workflow_source = "n8n"
+        try:
+            from backend.tools.n8n_tools import n8n_list_workflows
+
+            result = await n8n_list_workflows()
+            records = result.get("data") if isinstance(result, dict) else None
+            if isinstance(records, list):
+                workflows = [
+                    {
+                        "id": str(item.get("id") or ""),
+                        "name": str(item.get("name") or "Untitled workflow"),
+                        "active": bool(item.get("active")),
+                        "updated_at": item.get("updatedAt") or item.get("updated_at"),
+                    }
+                    for item in records[:8]
+                    if isinstance(item, dict)
+                ]
+                engine_status = "connected"
+                engine_detail = f"Connected to n8n. Showing {len(workflows)} recent workflows."
+            else:
+                engine_status = "degraded"
+                engine_detail = str(result.get("error") or "n8n returned an unexpected response")
+        except Exception as e:
+            engine_status = "degraded"
+            engine_detail = f"Could not load workflow list: {e}"
+    else:
+        workflow_source = "manual"
+        engine_status = "setup_needed"
+        engine_detail = "n8n is running, but its API key is not configured for native workflow listing yet."
+
+    return {
+        "provider": "astra",
+        "native": True,
+        "engine": {
+            "name": "n8n",
+            "status": engine_status,
+            "detail": engine_detail,
+            "source": workflow_source,
+        },
+        "workflows": workflows,
+        "workflow_count": len(workflows),
+        "templates": [
+            {
+                "key": "lead_follow_up",
+                "title": "Lead follow-up",
+                "summary": "Send a fast reply, route the lead, and create the next task automatically.",
+            },
+            {
+                "key": "support_triage",
+                "title": "Support triage",
+                "summary": "Turn inbound issues into routed tickets with priority and owner rules.",
+            },
+            {
+                "key": "weekly_digest",
+                "title": "Weekly founder digest",
+                "summary": "Compile pipeline, blockers, and wins into one review-ready summary.",
+            },
+        ],
+        "next_steps": [
+            "Keep auth inside Astra only.",
+            "Use this page as the control center for templates, runs, and approvals.",
+            "Add builder actions behind Astra-native UI instead of embedding a separate app.",
+        ],
+    }
+
+
 @router.get("/stacks")
 async def stacks():
     from backend.stacks import list_stack_templates
