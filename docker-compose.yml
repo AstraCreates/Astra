@@ -60,10 +60,17 @@ services:
       - N8N_PROTOCOL=https
       - N8N_PATH=/n8n/
       - WEBHOOK_URL=https://178.105.231.73.nip.io/n8n/
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-astra}
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:?N8N_BASIC_AUTH_PASSWORD must be set}
+      # Basic auth is mutually exclusive with n8n's own user management —
+      # disabled so each founder gets their own invited account instead of
+      # one shared login.
       - N8N_SECURE_COOKIE=true
+      - N8N_EMAIL_MODE=smtp
+      - N8N_SMTP_HOST=smtp.resend.com
+      - N8N_SMTP_PORT=465
+      - N8N_SMTP_SSL=true
+      - N8N_SMTP_USER=resend
+      - N8N_SMTP_PASS=${RESEND_API_KEY}
+      - N8N_SMTP_SENDER=Astra <noreply@astracreates.com>
       - DB_TYPE=sqlite
       - N8N_USER_FOLDER=/home/node/.n8n
       - EXECUTIONS_DATA_PRUNE=true
