@@ -23,6 +23,18 @@ _BASE_URL = "http://automations:80"
 _TIMEOUT = 10.0
 
 
+def _extract_token(payload: object) -> str:
+    if isinstance(payload, dict):
+        for key in ("token", "access_token", "accessToken", "jwt"):
+            value = payload.get(key)
+            if isinstance(value, str) and value:
+                return value
+        nested = payload.get("data")
+        if nested is not payload:
+            return _extract_token(nested)
+    return ""
+
+
 def _founder_email(founder_id: str) -> str:
     local = re.sub(r"[^a-z0-9_.-]", "_", founder_id.lower())[:64] or "founder"
     return f"{local}@founders.astra.internal"
@@ -35,29 +47,26 @@ def ensure_automations_account(founder_id: str) -> dict:
     if creds and creds.get("email") and creds.get("password"):
         return creds
 
-    # CE's getPreferredPlatformId() always returns null for non-Cloud editions
-    # on sign-up, which otherwise leaves the account stuck on a perpetual
-    # ONBOARDING-type token that can't actually use the app. Passing platformId
-    # explicitly joins the one platform (created once, see deploy notes)
-    # directly instead — requires AP_ALLOW_OPEN_SIGN_UP=true on the automations
-    # container since there's no per-user invitation flow here.
     platform_id = os.environ.get("AP_PLATFORM_ID")
-    if not platform_id:
-        raise RuntimeError("AP_PLATFORM_ID is not set — run the one-time platform setup first")
 
     email = _founder_email(founder_id)
     password = secrets.token_urlsafe(24)
+    payload = {
+        "email": email,
+        "password": password,
+        "firstName": "Astra",
+        "lastName": "Founder",
+        "trackEvents": False,
+        "newsLetter": False,
+    }
+    # Prefer joining the existing platform directly when configured. Some CE
+    # deployments still work without an explicit platformId after a normal
+    # server-side sign-in, so don't hard-fail if the env is missing.
+    if platform_id:
+        payload["platformId"] = platform_id
     resp = requests.post(
         f"{_BASE_URL}/api/v1/authentication/sign-up",
-        json={
-            "email": email,
-            "password": password,
-            "firstName": "Astra",
-            "lastName": "Founder",
-            "trackEvents": False,
-            "newsLetter": False,
-            "platformId": platform_id,
-        },
+        json=payload,
         timeout=_TIMEOUT,
     )
     if resp.status_code >= 400:
@@ -78,7 +87,7 @@ def get_automations_session_token(founder_id: str) -> str:
         timeout=_TIMEOUT,
     )
     resp.raise_for_status()
-    token = resp.json().get("token")
+    token = _extract_token(resp.json())
     if not token:
         raise RuntimeError("automations sign-in returned no token")
     return token
