@@ -133,6 +133,11 @@ services:
       - automations_cache:/usr/src/app/cache
     networks:
       - automations-net
+      # Backend needs to reach the app API directly (server-side account
+      # provisioning + sign-in for the SSO bridge, see automations_bridge.py)
+      # without going through the public nginx edge. Only the app itself is
+      # dual-homed — db/redis/worker stay automations-net-only.
+      - default
 
   # Single worker replica — resource-appropriate for current traffic. Their
   # default compose runs 5; scale up only if execution throughput needs it.
@@ -170,6 +175,7 @@ services:
     volumes:
       - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./deploy/nginx-app-locations.conf:/etc/nginx/app-locations.conf:ro
+      - ./deploy/automations-bridge.html:/etc/nginx/static/astra-bridge.html:ro
       - ./deploy/certs:/etc/nginx/certs:ro
       - ./deploy/certbot/www:/var/www/certbot:ro
       - ./deploy/certbot/conf:/etc/letsencrypt:ro

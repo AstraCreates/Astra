@@ -194,6 +194,22 @@ async def _require_session_access(request: Request, session_id: str, min_role: s
     return actor_or_body(request)
 
 
+@router.get("/automations/session")
+async def automations_session(founder_id: str, request: Request):
+    """Server-side SSO into the self-hosted automations builder — provisions
+    the founder's account on first call, signs in, returns a fresh token for
+    the frontend to inject into the embedded iframe (see automations_bridge.py
+    for why this exists instead of Activepieces' Enterprise-only embed-sdk)."""
+    require_founder_access(request, founder_id, min_role="viewer")
+    from backend.tools.automations_bridge import get_automations_session_token
+
+    try:
+        token = await asyncio.to_thread(get_automations_session_token, founder_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"automations session failed: {e}")
+    return {"token": token}
+
+
 @router.get("/stacks")
 async def stacks():
     from backend.stacks import list_stack_templates
