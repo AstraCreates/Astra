@@ -84,9 +84,22 @@ services:
     volumes:
       - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./deploy/certs:/etc/nginx/certs:ro
+      - ./deploy/certbot/www:/var/www/certbot:ro
+      - ./deploy/certbot/conf:/etc/letsencrypt:ro
     depends_on:
       - backend
       - frontend
+
+  # Issues/renews the TLS cert for 178.105.231.73.nip.io (the only real
+  # hostname pointing at this box — astracreates.com's DNS is on Vercel).
+  # Not a long-running service: invoked manually via
+  # `docker compose run --rm certbot ...` for issuance, and by a host
+  # crontab entry for renewal.
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - ./deploy/certbot/conf:/etc/letsencrypt
+      - ./deploy/certbot/www:/var/www/certbot
 
 volumes:
   redis_data:
