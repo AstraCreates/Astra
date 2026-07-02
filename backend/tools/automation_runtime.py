@@ -12,7 +12,7 @@ _TIMEOUT = 30
 
 STARTER_AUTOMATIONS: dict[str, dict] = {
     "lead_follow_up": {
-        "path": "astra/lead_follow_up",
+        "path": "lead_follow_up",
         "title": "Lead follow-up",
         "summary": "Send a fast reply, route the lead, and create the next task automatically.",
         "description": "Astra-native starter automation for triaging inbound leads and suggesting the next action.",
@@ -61,7 +61,7 @@ STARTER_AUTOMATIONS: dict[str, dict] = {
         },
     },
     "support_triage": {
-        "path": "astra/support_triage",
+        "path": "support_triage",
         "title": "Support triage",
         "summary": "Turn inbound issues into routed tickets with priority and owner rules.",
         "description": "Astra-native starter automation for classifying inbound support requests.",
@@ -107,7 +107,7 @@ STARTER_AUTOMATIONS: dict[str, dict] = {
         },
     },
     "weekly_founder_digest": {
-        "path": "astra/weekly_founder_digest",
+        "path": "weekly_founder_digest",
         "title": "Weekly founder digest",
         "summary": "Compile pipeline, blockers, and wins into one review-ready summary.",
         "description": "Astra-native starter automation for packaging a founder weekly review.",
