@@ -477,13 +477,18 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
 
   useEffect(() => { if (founderId) loadFiles(); }, [founderId, loadFiles]);
 
-  // Auto-select the file matching ?session= URL param (only once per navigation)
+  // Auto-select the file matching ?session= URL param (only once per navigation).
+  // Falls back to the most recently created agent-generated file if no exact match
+  // (covers old deliverables that pre-date source_session_id tracking).
   useEffect(() => {
     if (!targetSession || didAutoSelect.current || files.length === 0) return;
-    const match = files.find((f) => f.source_session_id === targetSession);
-    if (match) {
+    const exact = files.find((f) => f.source_session_id === targetSession);
+    const fallback = exact ?? [...files]
+      .filter((f) => !!f.source_tag)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    if (fallback) {
       didAutoSelect.current = true;
-      setSelectedFile(match);
+      setSelectedFile(fallback);
       setShowNewForm(false);
     }
   }, [targetSession, files]);
