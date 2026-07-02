@@ -1,18 +1,65 @@
+"use client";
+
+import dynamic from "next/dynamic";
+
+const ShaderGradientCanvas = dynamic(
+  () => import("@shadergradient/react").then((m) => m.ShaderGradientCanvas),
+  { ssr: false, loading: () => null }
+);
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ShaderGradient = dynamic<any>(
+  () => import("@shadergradient/react").then((m) => m.ShaderGradient),
+  { ssr: false, loading: () => null }
+);
+
 export default function AstraGradient() {
   return (
-    <div
-      aria-hidden="true"
-      style={{
-        position: "absolute",
-        inset: 0,
-        pointerEvents: "none",
-        background: [
-          "radial-gradient(circle at 18% 22%, rgba(124,255,230,0.22), transparent 0 26%)",
-          "radial-gradient(circle at 78% 18%, rgba(255,255,255,0.18), transparent 0 22%)",
-          "radial-gradient(circle at 62% 82%, rgba(93,149,255,0.24), transparent 0 28%)",
-          "linear-gradient(135deg, #002eff 0%, #1847ff 34%, #4d79ff 58%, #c9fff4 100%)",
-        ].join(", "),
-      }}
-    />
+    <ShaderGradientCanvas
+      style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+      pointerEvents="none"
+    >
+      <ShaderGradient
+        animate="on"
+        axesHelper="off"
+        brightness={1.2}
+        cAzimuthAngle={180}
+        cDistance={3.6}
+        cPolarAngle={90}
+        cameraZoom={1}
+        color1="#002eff"
+        color2="#7cffe6"
+        color3="#fefff6"
+        destination="onCanvas"
+        embedMode="off"
+        envPreset="city"
+        format="gif"
+        fov={45}
+        frameRate={10}
+        gizmoHelper="hide"
+        grain="on"
+        lightType="3d"
+        pixelDensity={1}
+        positionX={-1.4}
+        positionY={0}
+        positionZ={0}
+        range="disabled"
+        rangeEnd={40}
+        rangeStart={0}
+        reflection={0.1}
+        rotationX={0}
+        rotationY={10}
+        rotationZ={50}
+        shader="defaults"
+        type="plane"
+        uAmplitude={1}
+        uDensity={1.3}
+        uFrequency={5.5}
+        uSpeed={0.4}
+        uStrength={4}
+        uTime={0}
+        wireframe={false}
+      />
+    </ShaderGradientCanvas>
   );
 }
