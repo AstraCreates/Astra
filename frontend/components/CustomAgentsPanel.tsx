@@ -224,7 +224,7 @@ function AgentModal({
         <div className="astra-modal-body">
           {/* Name */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5">Name</label>
+            <label className="f-label">Name</label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -235,7 +235,7 @@ function AgentModal({
 
           {/* Role / prompt */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5">What should it do?</label>
+            <label className="f-label">What should it do?</label>
             <textarea
               ref={roleRef}
               value={role}
@@ -252,29 +252,39 @@ function AgentModal({
 
           {/* Tools */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-2">Tools it can use</label>
-            <div className="space-y-3 max-h-64 overflow-y-auto border border-gray-100 rounded-lg p-3">
+            <label className="f-label">Tools it can use</label>
+            <div
+              className="max-h-64 overflow-y-auto"
+              style={{
+                border: "1px solid var(--bd)",
+                borderRadius: 10,
+                padding: "10px 12px",
+                background: "var(--bg-sunken)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
               {grouped.map(([cat, tools]) => (
                 <div key={cat}>
-                  <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+                  <div className="sec-label" style={{ marginBottom: 6 }}>
                     {CATEGORY_LABELS[cat] ?? cat}
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2" style={{ gap: 2 }}>
                     {tools.map((t) => (
-                      <label
-                        key={t.key}
-                        className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 rounded px-1.5 py-1"
-                      >
+                      <label key={t.key} className="f-tool-row">
                         <input
                           type="checkbox"
+                          className="f-cb"
                           checked={toolKeys.includes(t.key)}
                           onChange={() => toggleTool(t.key)}
-                          className="mt-0.5"
                         />
-                        <span>
+                        <span style={{ fontSize: 12.5, color: "var(--fd)", lineHeight: 1.45 }}>
                           {t.label}
                           {t.connector && (
-                            <span className="ml-1 text-[10px] text-amber-600">needs {connectorLabel(t.connector)}</span>
+                            <span style={{ marginLeft: 6, fontSize: 10, color: "var(--amber)", fontFamily: "var(--font-code)" }}>
+                              · needs {connectorLabel(t.connector)}
+                            </span>
                           )}
                         </span>
                       </label>
@@ -287,7 +297,12 @@ function AgentModal({
 
           {/* Connector warning */}
           {neededConnectors.length > 0 && (
-            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <div style={{
+              fontSize: 11.5, color: "var(--amber)",
+              background: "var(--adim)", border: "1px solid var(--ab)",
+              borderRadius: 9, padding: "10px 14px",
+              fontFamily: "var(--font-code)",
+            }}>
               This agent needs these connected to fully work:{" "}
               <strong>{neededConnectors.map(connectorLabel).join(", ")}</strong>. Connect them in Integrations — the
               agent will still run and ask for them when needed.
@@ -296,49 +311,69 @@ function AgentModal({
 
           {/* Model */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5">Model</label>
-            <select
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              className="f-input"
-            >
+            <label className="f-label">Model</label>
+            <div className="f-seg">
               {MODELS.map((m) => (
-                <option key={m.value} value={m.value}>
+                <button
+                  key={m.value}
+                  type="button"
+                  className={`f-seg-opt${model === m.value ? " active" : ""}`}
+                  onClick={() => setModel(m.value)}
+                >
                   {m.label}
-                </option>
+                </button>
               ))}
-            </select>
+            </div>
           </div>
 
           {/* Schedule */}
-          <div>
-            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-              <input type="checkbox" checked={scheduleOn} onChange={(e) => setScheduleOn(e.target.checked)} />
-              Run automatically on a schedule
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <label className="f-toggle">
+              <input
+                type="checkbox"
+                className="f-toggle-in"
+                checked={scheduleOn}
+                onChange={(e) => setScheduleOn(e.target.checked)}
+              />
+              <span className="f-toggle-track" />
+              <span style={{ fontSize: 13, color: "var(--fd)", fontWeight: 500 }}>
+                Run automatically on a schedule
+              </span>
             </label>
             {scheduleOn && (
-              <div className="flex items-center gap-2 mt-2 text-sm text-gray-700 flex-wrap">
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap",
+                fontSize: 12.5, color: "var(--fd)", paddingLeft: 46,
+              }}>
                 Every
                 <input
                   type="number"
                   min={1}
                   value={everyDays}
                   onChange={(e) => setEveryDays(parseInt(e.target.value || "1", 10))}
-                  className="w-16 px-2 py-1 border border-gray-200 rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="f-input"
+                  style={{ width: 64, padding: "5px 8px", textAlign: "center" }}
                 />
                 day(s) at
                 <input
                   type="time"
                   value={runAtTime}
                   onChange={(e) => setRunAtTime(e.target.value)}
-                  className="px-2 py-1 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="f-input"
+                  style={{ padding: "5px 8px", width: "auto" }}
                 />
-                <span className="text-[11px] text-gray-400">UTC{runAtTime ? "" : " · optional, defaults to whenever it ticks"}</span>
+                {!runAtTime && (
+                  <span style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)" }}>
+                    optional · defaults to whenever it ticks
+                  </span>
+                )}
               </div>
             )}
           </div>
 
-          {err && <div className="text-xs text-red-600">{err}</div>}
+          {err && (
+            <div style={{ fontSize: 11.5, color: "var(--red)", fontFamily: "var(--font-code)" }}>{err}</div>
+          )}
         </div>
 
         <div className="astra-modal-actions">

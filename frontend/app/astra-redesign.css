@@ -922,6 +922,94 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   .btn { min-height: 44px; }
 }
 
+/* ── Custom form controls ─────────────────────────────────────────────────── */
+
+/* Styled checkbox */
+.f-cb {
+  appearance: none; -webkit-appearance: none;
+  width: 15px; height: 15px; flex-shrink: 0;
+  border: 1.5px solid var(--bd2); border-radius: 4px;
+  background: var(--surface); cursor: pointer;
+  position: relative; vertical-align: middle;
+  transition: border-color .14s, background .14s, box-shadow .14s var(--ease-out-quint);
+}
+.f-cb:hover:not(:checked) { border-color: var(--bb); }
+.f-cb:checked {
+  background: var(--blue); border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--bdim);
+}
+.f-cb:checked::after {
+  content: '';
+  position: absolute; top: 1px; left: 4px;
+  width: 5px; height: 8px;
+  border: 1.5px solid #fff;
+  border-top: none; border-left: none;
+  transform: rotate(45deg);
+}
+.f-cb:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* Toggle switch */
+.f-toggle {
+  display: flex; align-items: center; gap: 10px; cursor: pointer;
+  position: relative;
+}
+.f-toggle-in {
+  position: absolute; width: 1px; height: 1px;
+  opacity: 0; overflow: hidden; margin: 0; padding: 0;
+  pointer-events: none;
+}
+.f-toggle-track {
+  display: inline-block; position: relative; flex-shrink: 0;
+  width: 36px; height: 20px;
+  background: var(--bd2); border-radius: 999px;
+  border: 1px solid var(--bd);
+  transition: background .18s, border-color .18s, box-shadow .18s;
+}
+.f-toggle-track::after {
+  content: '';
+  position: absolute; top: 3px; left: 3px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.15);
+  transition: transform .18s var(--ease-out-quint);
+}
+.f-toggle-in:checked + .f-toggle-track {
+  background: var(--blue); border-color: var(--blue);
+  box-shadow: 0 0 0 3px var(--bdim);
+}
+.f-toggle-in:checked + .f-toggle-track::after {
+  transform: translateX(16px);
+}
+
+/* Segmented control (binary / small option sets) */
+.f-seg {
+  display: flex; background: var(--bg-sunken);
+  border: 1px solid var(--bd); border-radius: 11px;
+  padding: 3px; gap: 2px;
+}
+.f-seg-opt {
+  flex: 1; padding: 7px 16px; border-radius: 8px;
+  font-size: 12.5px; font-weight: 500;
+  font-family: var(--font-instrument), sans-serif;
+  color: var(--fm); cursor: pointer; border: none; background: transparent;
+  transition: background .14s, color .14s, box-shadow .14s;
+  text-align: center; line-height: 1.2;
+}
+.f-seg-opt.active {
+  background: var(--surface); color: var(--fg); font-weight: 600;
+  box-shadow: 0 1px 4px rgba(17,16,24,.10), 0 0 0 1px var(--bd);
+}
+[data-theme="dark"] .f-seg-opt.active {
+  box-shadow: 0 1px 4px rgba(0,0,0,.30), 0 0 0 1px var(--bd2);
+}
+
+/* Tool row in checklist */
+.f-tool-row {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 5px 7px; border-radius: 7px; cursor: pointer;
+  transition: background .12s;
+}
+.f-tool-row:hover { background: var(--bdim); }
+
 /* Modal system */
 [data-theme="dark"] .astra-modal-shell {
   background: linear-gradient(180deg, rgba(23, 21, 31, 0.98), rgba(20, 19, 28, 0.98));
@@ -1046,7 +1134,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  padding-top: 14px;
+  padding: 14px 28px 24px;
   border-top: 1px solid color-mix(in srgb, var(--bd) 84%, white 16%);
 }
 .astra-modal-card {
