@@ -5,6 +5,7 @@ import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 
+const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const AUTOMATIONS_ORIGIN = "https://automations.178.105.231.73.nip.io";
 const BRIDGE_URL = `${AUTOMATIONS_ORIGIN}/astra-bridge.html`;
 
@@ -25,7 +26,7 @@ export default function AutomationsPage() {
   useEffect(() => {
     if (!userId || userId === "anon") return;
     let cancelled = false;
-    apiFetch(`/automations/session?founder_id=${encodeURIComponent(userId)}`)
+    apiFetch(`${BASE}/automations/session?founder_id=${encodeURIComponent(userId)}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data) => {
         if (!cancelled && data?.token) {
