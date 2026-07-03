@@ -1,14 +1,9 @@
-type DraftNodeType =
-  | "trigger"
-  | "prompt"
-  | "email"
-  | "gmail"
-  | "slack"
-  | "slack_bot"
-  | "linear_issue"
-  | "notion_page"
-  | "github_issue"
-  | "stripe_payment_link";
+// Client-side fallback for "Build with AI" when the backend draft route
+// (POST /automations/flows/draft, backend/tools/automation_drafts.py) is
+// unavailable. Mirrors that file's heuristics and node schema exactly —
+// service-specific actions go through the "integration" node type +
+// registry, same as flows built by hand on the canvas.
+type DraftNodeType = "trigger" | "prompt" | "integration";
 
 type DraftNode = {
   id: string;
@@ -51,71 +46,45 @@ export function draftAutomationLocally(prompt: string): AutomationDraft {
     edges.push({ source: previous, target: id });
     previous = id;
     x += 260;
+    return id;
   };
 
+  const addIntegration = (blockKey: string, params: Record<string, unknown>) =>
+    add("integration", { block_key: blockKey, params });
+
   if (/(summarize|triage|review|classify|analyze|digest|route)/i.test(text)) {
-    add("prompt", {
-      instruction: `${text}\n\nUse any upstream context to produce the next best action.`,
-    });
+    add("prompt", { instruction: `${text}\n\nUse any upstream context to produce the next best action.` });
   }
 
-  const promptOutput = nodes.some((node) => node.type === "prompt") ? "{{prompt_2.output}}" : text;
+  const hasPrompt = nodes.some((node) => node.type === "prompt");
+  const upstreamRef = hasPrompt ? "{{prompt_2.output}}" : text;
   const emailMatch = text.match(/\bemail\s+([^\s,;]+@[^\s,;]+)/i);
   const repoMatch = text.match(/\bgithub\b.*?\b(?:repo|repository)\s+([A-Za-z0-9_.-]+)/i);
 
   if (lowered.includes("gmail")) {
-    add("gmail", {
-      to: emailMatch?.[1] || "",
-      subject: "Astra automation update",
-      body: promptOutput,
-    });
+    addIntegration("gmail_send", { to: emailMatch?.[1] || "", subject: "Astra automation update", body: upstreamRef });
   } else if (lowered.includes("email")) {
-    add("email", {
-      to: emailMatch?.[1] || "",
-      subject: "Astra automation update",
-      body: promptOutput,
-    });
+    addIntegration("sendgrid_send", { to: emailMatch?.[1] || "", subject: "Astra automation update", body: upstreamRef });
   }
 
   if (lowered.includes("slack")) {
-    add("slack_bot", {
-      channel: "",
-      message: promptOutput,
-    });
+    addIntegration("slack_webhook_post", { webhook_url: "", message: upstreamRef });
   }
 
   if (lowered.includes("linear")) {
-    add("linear_issue", {
-      title: "Astra follow-up",
-      description: promptOutput,
-    });
+    addIntegration("linear_create_issue", { title: "Astra follow-up", description: upstreamRef });
   }
 
   if (lowered.includes("notion")) {
-    add("notion_page", {
-      title: "Astra automation note",
-      body: promptOutput,
-      parent_id: "",
-    });
+    addIntegration("notion_create_page", { title: "Astra automation note", body: upstreamRef, parent_id: "" });
   }
 
   if (lowered.includes("github")) {
-    add("github_issue", {
-      repo: repoMatch?.[1] || "",
-      owner: "",
-      title: "Astra automation follow-up",
-      body: promptOutput,
-    });
+    addIntegration("github_create_issue", { repo: repoMatch?.[1] || "", owner: "", title: "Astra automation follow-up", body: upstreamRef });
   }
 
   if (lowered.includes("stripe") || lowered.includes("payment link") || lowered.includes("checkout")) {
-    add("stripe_payment_link", {
-      title: "Astra offer",
-      description: promptOutput,
-      amount: 99,
-      currency: "usd",
-      interval: "one_time",
-    });
+    addIntegration("stripe_payment_link", { title: "Astra offer", description: upstreamRef, amount: "99", currency: "usd", interval: "one_time" });
   }
 
   if (nodes.length === 1) {

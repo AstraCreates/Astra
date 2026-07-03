@@ -24,6 +24,7 @@ import "@xyflow/react/dist/style.css";
 import { useDevUser } from "@/lib/use-dev-user";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { apiFetch, waitForAuthReady } from "@/lib/api";
+import { draftAutomationLocally } from "@/lib/automation-draft";
 import PageHeader, { HeaderPrimaryBtn, HeaderSecondaryBtn } from "@/components/PageHeader";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -213,6 +214,9 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteTab, setPaletteTab] = useState<"logic" | "integrations">("logic");
   const [paletteFilter, setPaletteFilter] = useState("");
+  const [draftPrompt, setDraftPrompt] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const [draftOpen, setDraftOpen] = useState(false);
   const pollRef = useRef<number | null>(null);
 
   const blockByKey = useMemo(() => Object.fromEntries(integrationCatalog.map((b) => [b.key, b])), [integrationCatalog]);
@@ -376,6 +380,45 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
     }
   }
 
+  async function buildFromPrompt() {
+    if (!userId || userId === "anon" || !draftPrompt.trim()) return;
+    setDrafting(true);
+    setRunError("");
+    const applyDraft = (draft: { name?: string; nodes: { id: string; type: NodeType; position?: { x: number; y: number }; config?: NodeConfig }[]; edges: { source: string; target: string }[] }) => {
+      setFlowName(draft.name || "Draft automation");
+      setSavedFlowId("");
+      setNodes(draft.nodes.map((n) => {
+        const config = n.config || {};
+        return { id: n.id, type: n.type, position: n.position || { x: 0, y: 0 }, data: { ...decorateNode(n.type, config, integrationCatalog), nodeType: n.type, config } };
+      }));
+      setEdges(draft.edges.map((e, i) => ({
+        id: `d${i}_${e.source}_${e.target}`, source: e.source, target: e.target,
+        type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed },
+      })));
+      setSelectedNodeId(null);
+      setDraftOpen(false);
+    };
+    try {
+      await waitForAuthReady();
+      const res = await apiFetch(`${BASE}/automations/flows/draft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ founder_id: userId, prompt: draftPrompt }),
+      });
+      if (!res.ok) {
+        applyDraft(draftAutomationLocally(draftPrompt) as unknown as { name?: string; nodes: { id: string; type: NodeType; config?: NodeConfig }[]; edges: { source: string; target: string }[] });
+        setRunError("Build with AI used a local fallback draft because the server draft route was unavailable.");
+      } else {
+        applyDraft(await res.json());
+      }
+    } catch {
+      applyDraft(draftAutomationLocally(draftPrompt) as unknown as { name?: string; nodes: { id: string; type: NodeType; config?: NodeConfig }[]; edges: { source: string; target: string }[] });
+      setRunError("Build with AI fell back to a local draft. You can still edit and save it normally.");
+    } finally {
+      setDrafting(false);
+    }
+  }
+
   function pollRun(runId: string) {
     if (pollRef.current) window.clearInterval(pollRef.current);
     pollRef.current = window.setInterval(async () => {
@@ -467,19 +510,19 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--fg)" }}>{selectedMeta.label}</div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <button onClick={deleteSelected} className="m-tap" style={{ fontSize: 11, color: "#DC2626", background: "none", border: "none", cursor: "pointer" }}>Delete</button>
-          {isMobile && <button onClick={() => setSelectedNodeId(null)} className="m-tap" style={{ fontSize: 11, color: "var(--fm)", background: "none", border: "none", cursor: "pointer" }}>Done</button>}
+          <button onClick={deleteSelected} className="btn danger sm">Delete</button>
+          {isMobile && <button onClick={() => setSelectedNodeId(null)} className="btn sm">Done</button>}
         </div>
       </div>
       <div style={{ fontSize: 11.5, color: "var(--fm)", lineHeight: 1.5, marginBottom: 16 }}>{selectedMeta.description}</div>
 
       {selectedNode.data.nodeType === "integration" && (
         <>
-          <label style={fieldLabelStyle}>Which {selectedBlock?.category || "service"} action</label>
+          <label className="f-label">Which {selectedBlock?.category || "service"} action</label>
           <select
             value={selectedNode.data.config.block_key || ""}
             onChange={(e) => updateSelectedConfig({ block_key: e.target.value, params: {} })}
-            style={fieldInputStyle}
+            className="f-input" style={{ marginBottom: 12 }}
           >
             <option value="">Select…</option>
             {Object.entries(integrationsByCategoryAll(integrationCatalog)).map(([cat, blocks]) => (
@@ -490,11 +533,11 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
           </select>
           {selectedBlock && selectedBlock.params.map((p) => (
             <div key={p.key} style={{ marginBottom: 10 }}>
-              <label style={fieldLabelStyle}>{p.label}</label>
+              <label className="f-label">{p.label}</label>
               {p.type === "textarea" ? (
-                <textarea rows={3} value={selectedNode.data.config.params?.[p.key] || ""} onChange={(e) => updateSelectedParam(p.key, e.target.value)} placeholder={p.placeholder} style={{ ...fieldInputStyle, resize: "vertical", fontFamily: "inherit" }} />
+                <textarea rows={3} value={selectedNode.data.config.params?.[p.key] || ""} onChange={(e) => updateSelectedParam(p.key, e.target.value)} placeholder={p.placeholder} className="f-ta" />
               ) : (
-                <input type={p.type === "number" ? "number" : "text"} value={selectedNode.data.config.params?.[p.key] || ""} onChange={(e) => updateSelectedParam(p.key, e.target.value)} placeholder={p.placeholder} style={fieldInputStyle} />
+                <input type={p.type === "number" ? "number" : "text"} value={selectedNode.data.config.params?.[p.key] || ""} onChange={(e) => updateSelectedParam(p.key, e.target.value)} placeholder={p.placeholder} className="f-input" />
               )}
             </div>
           ))}
@@ -504,8 +547,8 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {selectedNode.data.nodeType === "agent" && (
         <>
-          <label style={fieldLabelStyle}>Agent</label>
-          <select value={selectedNode.data.config.agent_name || ""} onChange={(e) => updateSelectedConfig({ agent_name: e.target.value })} style={{ ...fieldInputStyle, marginBottom: 4 }}>
+          <label className="f-label">Agent</label>
+          <select value={selectedNode.data.config.agent_name || ""} onChange={(e) => updateSelectedConfig({ agent_name: e.target.value })} className="f-input" style={{ marginBottom: 6 }}>
             {agentCatalog.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
           {agentCatalog.find((a) => a.id === selectedNode.data.config.agent_name) && (
@@ -516,63 +559,63 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {(selectedNode.data.nodeType === "agent" || selectedNode.data.nodeType === "prompt") && (
         <>
-          <label style={fieldLabelStyle}>Instruction</label>
-          <textarea value={selectedNode.data.config.instruction || ""} onChange={(e) => updateSelectedConfig({ instruction: e.target.value })} rows={6} style={{ ...fieldInputStyle, resize: "vertical", fontFamily: "inherit" }} placeholder="What should this node do?" />
+          <label className="f-label">Instruction</label>
+          <textarea value={selectedNode.data.config.instruction || ""} onChange={(e) => updateSelectedConfig({ instruction: e.target.value })} rows={6} className="f-ta" style={{ marginBottom: 10 }} placeholder="What should this node do?" />
           <UpstreamHint ids={upstreamOfSelected} />
         </>
       )}
 
       {selectedNode.data.nodeType === "action" && (
         <>
-          <label style={fieldLabelStyle}>Method</label>
-          <select value={selectedNode.data.config.method || "GET"} onChange={(e) => updateSelectedConfig({ method: e.target.value })} style={{ ...fieldInputStyle, marginBottom: 10 }}>
+          <label className="f-label">Method</label>
+          <select value={selectedNode.data.config.method || "GET"} onChange={(e) => updateSelectedConfig({ method: e.target.value })} className="f-input" style={{ marginBottom: 12 }}>
             {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
-          <label style={fieldLabelStyle}>URL</label>
-          <input value={selectedNode.data.config.url || ""} onChange={(e) => updateSelectedConfig({ url: e.target.value })} style={{ ...fieldInputStyle, fontFamily: "var(--font-code)" }} placeholder="https://api.example.com/..." />
+          <label className="f-label">URL</label>
+          <input value={selectedNode.data.config.url || ""} onChange={(e) => updateSelectedConfig({ url: e.target.value })} className="f-input" style={{ marginBottom: 14, fontFamily: "var(--font-code)" }} placeholder="https://api.example.com/..." />
           <UpstreamHint ids={upstreamOfSelected} note="in the URL or body" />
         </>
       )}
 
       {selectedNode.data.nodeType === "delay" && (
         <>
-          <label style={fieldLabelStyle}>Wait (seconds)</label>
-          <input type="number" min={0} max={3600} value={selectedNode.data.config.seconds ?? 5} onChange={(e) => updateSelectedConfig({ seconds: Number(e.target.value) })} style={fieldInputStyle} />
+          <label className="f-label">Wait (seconds)</label>
+          <input type="number" min={0} max={3600} value={selectedNode.data.config.seconds ?? 5} onChange={(e) => updateSelectedConfig({ seconds: Number(e.target.value) })} className="f-input" style={{ marginBottom: 14 }} />
         </>
       )}
 
       {selectedNode.data.nodeType === "condition" && (
         <>
-          <label style={fieldLabelStyle}>Continue only if upstream output contains</label>
-          <input value={selectedNode.data.config.contains || ""} onChange={(e) => updateSelectedConfig({ contains: e.target.value })} style={fieldInputStyle} placeholder="e.g. yes, approved, error" />
+          <label className="f-label">Continue only if upstream output contains</label>
+          <input value={selectedNode.data.config.contains || ""} onChange={(e) => updateSelectedConfig({ contains: e.target.value })} className="f-input" style={{ marginBottom: 14 }} placeholder="e.g. yes, approved, error" />
         </>
       )}
 
       {selectedNode.data.nodeType === "condition_equals" && (
         <>
-          <label style={fieldLabelStyle}>Continue only if upstream output exactly equals</label>
-          <input value={selectedNode.data.config.equals || ""} onChange={(e) => updateSelectedConfig({ equals: e.target.value })} style={fieldInputStyle} />
+          <label className="f-label">Continue only if upstream output exactly equals</label>
+          <input value={selectedNode.data.config.equals || ""} onChange={(e) => updateSelectedConfig({ equals: e.target.value })} className="f-input" style={{ marginBottom: 14 }} />
         </>
       )}
 
       {selectedNode.data.nodeType === "merge" && (
         <>
-          <label style={fieldLabelStyle}>Separator</label>
-          <input value={selectedNode.data.config.separator ?? "\n\n"} onChange={(e) => updateSelectedConfig({ separator: e.target.value })} style={fieldInputStyle} />
+          <label className="f-label">Separator</label>
+          <input value={selectedNode.data.config.separator ?? "\n\n"} onChange={(e) => updateSelectedConfig({ separator: e.target.value })} className="f-input" style={{ marginBottom: 14 }} />
         </>
       )}
 
       {selectedNode.data.nodeType === "json_extract" && (
         <>
-          <label style={fieldLabelStyle}>Field path</label>
-          <input value={selectedNode.data.config.path || ""} onChange={(e) => updateSelectedConfig({ path: e.target.value })} style={fieldInputStyle} placeholder="e.g. data.0.id" />
+          <label className="f-label">Field path</label>
+          <input value={selectedNode.data.config.path || ""} onChange={(e) => updateSelectedConfig({ path: e.target.value })} className="f-input" style={{ marginBottom: 14 }} placeholder="e.g. data.0.id" />
         </>
       )}
 
       {selectedNode.data.nodeType === "text_transform" && (
         <>
-          <label style={fieldLabelStyle}>Operation</label>
-          <select value={selectedNode.data.config.operation || "trim"} onChange={(e) => updateSelectedConfig({ operation: e.target.value })} style={fieldInputStyle}>
+          <label className="f-label">Operation</label>
+          <select value={selectedNode.data.config.operation || "trim"} onChange={(e) => updateSelectedConfig({ operation: e.target.value })} className="f-input" style={{ marginBottom: 14 }}>
             {["trim", "uppercase", "lowercase"].map((o) => <option key={o} value={o}>{o}</option>)}
           </select>
         </>
@@ -580,8 +623,8 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {selectedNode.data.nodeType === "set_text" && (
         <>
-          <label style={fieldLabelStyle}>Text</label>
-          <textarea rows={3} value={selectedNode.data.config.text || ""} onChange={(e) => updateSelectedConfig({ text: e.target.value })} style={{ ...fieldInputStyle, resize: "vertical", fontFamily: "inherit" }} />
+          <label className="f-label">Text</label>
+          <textarea rows={3} value={selectedNode.data.config.text || ""} onChange={(e) => updateSelectedConfig({ text: e.target.value })} className="f-ta" style={{ marginBottom: 10 }} />
         </>
       )}
 
@@ -609,21 +652,28 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
         @keyframes astra-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.3); opacity: 0.7; } }
         @keyframes astra-sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
         .astra-palette-btn:hover { filter: brightness(0.97); transform: translateY(-1px); }
+        .canvas-config .f-ta { min-height: 80px; }
+        .canvas-config .f-input, .canvas-config .f-ta { font-size: 12px; padding: 7px 10px; }
+        @media (prefers-reduced-motion: reduce) {
+          .astra-palette-btn { transition: none !important; }
+        }
       `}</style>
       <PageHeader
         title=""
         actions={
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            {runError && <span style={{ fontSize: 12, color: "#FF8080" }}>{runError}</span>}
-            {savedTick && <span style={{ fontSize: 12, color: "#7CFFC6" }}>✓ Saved</span>}
+            {runError && <span style={{ fontSize: 12, color: "var(--red)" }}>{runError}</span>}
+            {savedTick && <span style={{ fontSize: 12, color: "var(--green)" }}>✓ Saved</span>}
+            <HeaderSecondaryBtn label="Build with AI" onClick={() => setDraftOpen(true)} />
             <HeaderSecondaryBtn label={saving ? "Saving…" : "Save"} onClick={() => { void saveFlow(); }} disabled={saving} />
             <HeaderPrimaryBtn label={running ? "Running…" : "▶ Run"} onClick={() => { void runFlow(); }} disabled={running || nodes.length === 0} />
           </div>
         }
       />
-      <div style={{ padding: "10px 24px", borderBottom: "1px solid var(--bd)", display: "flex", alignItems: "center", gap: 10 }}>
-        <button onClick={() => router.push("/automations")} className="m-tap" style={{ fontSize: 12, color: "var(--fm)", background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>← Automations</button>
-        <input value={flowName} onChange={(e) => setFlowName(e.target.value)} style={{ fontSize: 15, fontWeight: 600, border: "none", outline: "none", background: "transparent", color: "var(--fg)", flex: 1, minWidth: 60 }} />
+      <div style={{ padding: "8px 20px", borderBottom: "1px solid var(--bd)", display: "flex", alignItems: "center", gap: 8, background: "var(--surface)" }}>
+        <button onClick={() => router.push("/automations")} className="btn sm" style={{ flexShrink: 0, color: "var(--fm)" }}>← Automations</button>
+        <span style={{ color: "var(--bd2)", fontSize: 14, flexShrink: 0 }}>/</span>
+        <input value={flowName} onChange={(e) => setFlowName(e.target.value)} placeholder="Untitled automation" style={{ fontSize: 13, fontWeight: 600, border: "none", outline: "none", background: "transparent", color: "var(--fg)", flex: 1, minWidth: 60 }} />
       </div>
       <div style={{ display: "flex", flex: 1, minHeight: 0, position: "relative" }}>
         {!isMobile && (
@@ -654,12 +704,12 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
         </div>
 
         {!isMobile && selectedNode && (
-          <div style={{ width: 320, borderLeft: "1px solid var(--bd)", padding: 18, overflowY: "auto", flexShrink: 0 }}>{configBody}</div>
+          <div className="canvas-config" style={{ width: 256, borderLeft: "1px solid var(--bd)", padding: "14px 16px", overflowY: "auto", flexShrink: 0, background: "var(--s2)" }}>{configBody}</div>
         )}
         {isMobile && selectedNode && (
           <div style={{ position: "fixed", inset: 0, zIndex: 30, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
             <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} onClick={() => setSelectedNodeId(null)} />
-            <div style={{ position: "relative", background: "var(--surface)", borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 18, paddingBottom: 28, maxHeight: "80vh", overflowY: "auto", animation: "astra-sheet-up 0.22s cubic-bezier(0.22,1,0.36,1)", boxShadow: "0 -4px 24px rgba(0,0,0,0.18)" }}>
+            <div className="canvas-config" style={{ position: "relative", background: "var(--surface)", borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 18, paddingBottom: 28, maxHeight: "80vh", overflowY: "auto", animation: "astra-sheet-up 0.22s cubic-bezier(0.22,1,0.36,1)", boxShadow: "0 -4px 24px rgba(0,0,0,0.18)" }}>
               <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--bd)", margin: "0 auto 14px" }} />
               {configBody}
             </div>
@@ -674,15 +724,38 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
             </div>
           </div>
         )}
+
+        {draftOpen && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 35, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} onClick={() => setDraftOpen(false)} />
+            <div style={{ position: "relative", width: "min(720px, 100%)", borderRadius: 18, background: "var(--surface)", border: "1px solid var(--bd)", boxShadow: "0 16px 48px rgba(0,0,0,0.18)", padding: 20, display: "grid", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--fm)" }}>Natural language builder</div>
+                <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: "var(--fg)" }}>Describe the automation you want</div>
+              </div>
+              <textarea
+                value={draftPrompt}
+                onChange={(e) => setDraftPrompt(e.target.value)}
+                rows={6}
+                placeholder="Example: When I summarize a new support complaint, post the summary in Slack, create a Linear issue, and email me the final triage."
+                className="f-ta"
+              />
+              <div style={{ fontSize: 12, color: "var(--fm)", lineHeight: 1.5 }}>
+                Astra will draft a native flow using the blocks already available in your workspace. You can edit everything before saving or running it.
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                <HeaderSecondaryBtn label="Cancel" onClick={() => setDraftOpen(false)} />
+                <HeaderPrimaryBtn label={drafting ? "Drafting…" : "Generate draft"} onClick={() => { void buildFromPrompt(); }} disabled={drafting || !draftPrompt.trim()} />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 const sectionLabelStyle: React.CSSProperties = { fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fm)", marginBottom: 4 };
-const fieldLabelStyle: React.CSSProperties = { fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 };
-const fieldInputStyle: React.CSSProperties = { width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 };
-
 function tabStyle(active: boolean): React.CSSProperties {
   return {
     flex: 1, padding: "6px 8px", fontSize: 11, fontWeight: 600, borderRadius: 7, cursor: "pointer",
