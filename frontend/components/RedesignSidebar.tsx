@@ -56,13 +56,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
     <nav onClick={(e) => { if (mobile && (e.target as HTMLElement).closest("a")) closeOnNav?.(); }} style={navStyle}>
       <div style={{ padding: "20px 16px 16px", borderBottom: "1px solid var(--bd)" }}>
         <Link href="/dashboard" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, textDecoration: "none" }}>
-          <img
-            src="/astra-logo.svg"
-            alt="Astra"
-            width={28}
-            height={28}
-            style={{ flexShrink: 0, filter: "invert(18%) sepia(98%) saturate(2300%) hue-rotate(218deg) brightness(96%) contrast(104%)" }}
-          />
+          <div style={{ width: 28, height: 28, background: "var(--blue)", flexShrink: 0, WebkitMask: "url('/logo.png') center/contain no-repeat", mask: "url('/logo.png') center/contain no-repeat" }} />
           <div>
             <div className="nav-wordmark">Astra</div>
             <div style={{ fontSize: 9, color: "var(--blue)", letterSpacing: ".06em", textTransform: "uppercase" }}>ready</div>

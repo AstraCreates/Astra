@@ -230,7 +230,7 @@ export default function AutomationsPage() {
         background: "var(--surface)",
         flexShrink: 0,
       }}>
-        {(["flows", "agents", "templates"] as Tab[]).map((t) => (
+        {(["flows", "templates", "agents"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
