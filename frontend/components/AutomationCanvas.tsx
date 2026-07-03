@@ -209,25 +209,25 @@ function CanvasNode({ data, selected }: NodeProps<AutomationNode>) {
   const dimmed = data.status === "skipped";
   return (
     <div style={{
-      minWidth: 210, maxWidth: 250, borderRadius: 14, padding: "12px 14px",
-      background: "#fff", border: `1.5px solid ${selected ? meta.color : meta.border}`,
+      minWidth: 155, maxWidth: 185, borderRadius: 10, padding: "8px 10px",
+      background: "var(--surface)", border: `1.5px solid ${selected ? meta.color : meta.border}`,
       boxShadow: selected ? `0 0 0 3px ${meta.bg}, 0 2px 8px rgba(0,0,0,0.06)` : "0 1px 4px rgba(0,0,0,0.07)",
       position: "relative", opacity: dimmed ? 0.5 : 1,
       transition: "box-shadow 0.15s ease, opacity 0.2s ease",
     }}>
-      <Handle type="target" position={Position.Left} style={{ background: meta.color, width: 9, height: 9, border: "2px solid #fff" }} />
-      <Handle type="source" position={Position.Right} style={{ background: meta.color, width: 9, height: 9, border: "2px solid #fff" }} />
+      <Handle type="target" position={Position.Left} style={{ background: meta.color, width: 7, height: 7, border: "2px solid var(--surface)" }} />
+      <Handle type="source" position={Position.Right} style={{ background: meta.color, width: 7, height: 7, border: "2px solid var(--surface)" }} />
       {statusColor && (
         <div style={{
-          position: "absolute", top: -7, right: -7, width: 15, height: 15, borderRadius: "50%",
-          background: statusColor, border: "2px solid #fff", boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
+          position: "absolute", top: -5, right: -5, width: 12, height: 12, borderRadius: "50%",
+          background: statusColor, border: "2px solid var(--surface)", boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
           animation: data.status === "running" ? "astra-pulse 1s ease-in-out infinite" : undefined,
         }} />
       )}
-      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
         <span style={{
-          width: 22, height: 22, borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 12, background: meta.bg, color: meta.color, flexShrink: 0,
+          width: 18, height: 18, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 11, background: meta.bg, color: meta.color, flexShrink: 0,
         }}>
           {meta.icon}
         </span>
@@ -237,15 +237,15 @@ function CanvasNode({ data, selected }: NodeProps<AutomationNode>) {
           {meta.short}
         </span>
       </div>
-      <div style={{ fontSize: 13, fontWeight: 600, color: "#111", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {data.label}
       </div>
       {data.output && (
         <div style={{
-          marginTop: 7, fontSize: 11, color: "#666", maxHeight: 44, overflow: "hidden",
-          borderTop: "1px solid #eee", paddingTop: 6, lineHeight: 1.4,
+          marginTop: 5, fontSize: 10, color: "var(--fm)", maxHeight: 36, overflow: "hidden",
+          borderTop: "1px solid var(--bd)", paddingTop: 5, lineHeight: 1.4,
         }}>
-          {data.output.slice(0, 140)}
+          {data.output.slice(0, 120)}
         </div>
       )}
     </div>
@@ -489,9 +489,9 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
   const paletteBody = (
     <>
-      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fm)", marginBottom: 4, marginTop: 6 }}>Logic</div>
+      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fm)", marginBottom: 4, marginTop: 4 }}>Logic</div>
       {NODE_ORDER.filter((t) => NODE_META[t].group === "logic").map((t) => <PaletteButton key={t} type={t} onClick={() => addNode(t)} />)}
-      <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fm)", marginBottom: 4, marginTop: 14 }}>Integrations</div>
+      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--fm)", marginBottom: 4, marginTop: 10 }}>Integrations</div>
       {NODE_ORDER.filter((t) => NODE_META[t].group === "integration").map((t) => <PaletteButton key={t} type={t} onClick={() => addNode(t)} />)}
     </>
   );
@@ -906,7 +906,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
       <div style={{ display: "flex", flex: 1, minHeight: 0, position: "relative" }}>
         {/* Node palette — persistent column on desktop, bottom sheet on mobile */}
         {!isMobile && (
-          <div style={{ width: 232, borderRight: "1px solid var(--bd)", padding: 14, overflowY: "auto", flexShrink: 0, background: "var(--s2)" }}>
+          <div style={{ width: 176, borderRight: "1px solid var(--bd)", padding: "10px 10px", overflowY: "auto", flexShrink: 0, background: "var(--s2)" }}>
             {paletteBody}
           </div>
         )}
@@ -961,7 +961,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
         {/* Config panel — persistent column on desktop, bottom sheet on mobile */}
         {!isMobile && selectedNode && (
-          <div style={{ width: 310, borderLeft: "1px solid var(--bd)", padding: 18, overflowY: "auto", flexShrink: 0 }}>
+          <div style={{ width: 256, borderLeft: "1px solid var(--bd)", padding: "14px 16px", overflowY: "auto", flexShrink: 0 }}>
             {configBody}
           </div>
         )}
@@ -1033,16 +1033,14 @@ function PaletteButton({ type, onClick }: { type: NodeType; onClick: () => void 
       onClick={onClick}
       className="m-tap astra-palette-btn"
       style={{
-        width: "100%", textAlign: "left", padding: "10px 12px", marginBottom: 8, borderRadius: 10,
+        width: "100%", textAlign: "left", padding: "6px 9px", marginBottom: 4, borderRadius: 8,
         border: `1px solid ${meta.border}`, background: meta.bg, cursor: "pointer",
         transition: "transform 0.12s ease, filter 0.12s ease",
+        display: "flex", alignItems: "center", gap: 7,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
-        <span style={{ fontSize: 13 }}>{meta.icon}</span>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: meta.color }}>{meta.label}</span>
-      </div>
-      <div style={{ fontSize: 10.5, color: "var(--fm)", lineHeight: 1.4 }}>{meta.description}</div>
+      <span style={{ fontSize: 12, color: meta.color, flexShrink: 0 }}>{meta.icon}</span>
+      <span style={{ fontSize: 11.5, fontWeight: 600, color: meta.color }}>{meta.label}</span>
     </button>
   );
 }
