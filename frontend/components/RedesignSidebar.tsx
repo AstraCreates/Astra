@@ -9,17 +9,31 @@ import { useDevUser } from "@/lib/use-dev-user";
 import CreditsDisplay from "@/components/CreditsDisplay";
 import NotificationBell from "@/components/NotificationBell";
 import { desktopDownloadHref } from "@/lib/desktop-download";
+import {
+  LayoutDashboard,
+  ListChecks,
+  Send,
+  Brain,
+  BookOpen,
+  Bot,
+  Plug,
+  Zap,
+  CreditCard,
+  Settings,
+  Download,
+  type LucideIcon,
+} from "lucide-react";
 
-const LINKS: { href: string; ic: string; label: string; match: (p: string) => boolean }[] = [
-  { href: "/dashboard", ic: "⬡", label: "Dashboard", match: (p) => p.startsWith("/dashboard") },
-  { href: "/goals", ic: "◎", label: "Checklist", match: (p) => p.startsWith("/goals") },
-  { href: "/outreach", ic: "✦", label: "Outreach", match: (p) => p.startsWith("/outreach") },
-  { href: "/brain", ic: "⌬", label: "Company Brain", match: (p) => p.startsWith("/brain") },
-  { href: "/library", ic: "▤", label: "Library", match: (p) => p.startsWith("/library") || p.startsWith("/funding") },
-  { href: "/agents", ic: "✺", label: "Custom Agents", match: (p) => p.startsWith("/agents") },
-  { href: "/integrations", ic: "⌘", label: "Integrations", match: (p) => p.startsWith("/integrations") },
-  { href: "/automations", ic: "⚡", label: "Automations", match: (p) => p.startsWith("/automations") },
-  { href: "/payments", ic: "$", label: "Payments", match: (p) => p.startsWith("/payments") },
+const LINKS: { href: string; Icon: LucideIcon; label: string; match: (p: string) => boolean }[] = [
+  { href: "/dashboard",    Icon: LayoutDashboard, label: "Dashboard",     match: (p) => p.startsWith("/dashboard") },
+  { href: "/goals",        Icon: ListChecks,       label: "Checklist",     match: (p) => p.startsWith("/goals") },
+  { href: "/outreach",     Icon: Send,             label: "Outreach",      match: (p) => p.startsWith("/outreach") },
+  { href: "/brain",        Icon: Brain,            label: "Company Brain", match: (p) => p.startsWith("/brain") },
+  { href: "/library",      Icon: BookOpen,         label: "Library",       match: (p) => p.startsWith("/library") || p.startsWith("/funding") },
+  { href: "/agents",       Icon: Bot,              label: "Custom Agents", match: (p) => p.startsWith("/agents") },
+  { href: "/integrations", Icon: Plug,             label: "Integrations",  match: (p) => p.startsWith("/integrations") },
+  { href: "/automations",  Icon: Zap,              label: "Automations",   match: (p) => p.startsWith("/automations") },
+  { href: "/payments",     Icon: CreditCard,       label: "Payments",      match: (p) => p.startsWith("/payments") },
 ];
 
 function initials(id: string) { return (id || "?").replace(/^(user_|google_)/, "").slice(0, 2).toUpperCase(); }
@@ -34,20 +48,23 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
     setHydrated(true);
   }, []);
 
-  // On mobile the sidebar is an off-canvas drawer (fixed, slides in over content);
-  // on desktop it's the usual sticky in-flow column.
   const navStyle: React.CSSProperties = mobile
     ? { width: 248, maxWidth: "82vw", display: "flex", flexDirection: "column", background: "var(--surface)", borderRight: "1px solid var(--bd)", height: "100dvh", boxShadow: "var(--shell-shadow)", backdropFilter: "var(--glass-blur)", position: "fixed", top: 0, left: 0, zIndex: 60, transform: open ? "translateX(0)" : "translateX(-104%)", transition: "transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)" }
     : { width: 218, flexShrink: 0, display: "flex", flexDirection: "column", background: "var(--surface)", borderRight: "1px solid var(--bd)", height: "100vh", boxShadow: "var(--shell-shadow)", backdropFilter: "var(--glass-blur)", position: "sticky", top: 0 };
 
-  // Close the drawer after any in-drawer navigation on mobile.
   const closeOnNav = mobile ? onClose : undefined;
 
   return (
     <nav onClick={(e) => { if (mobile && (e.target as HTMLElement).closest("a")) closeOnNav?.(); }} style={navStyle}>
       <div style={{ padding: "20px 16px 16px", borderBottom: "1px solid var(--bd)" }}>
         <Link href="/dashboard" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, textDecoration: "none" }}>
-          <div style={{ width: 28, height: 28, background: "var(--blue)", flexShrink: 0, WebkitMask: "url('/logo.png') center/contain no-repeat", mask: "url('/logo.png') center/contain no-repeat" }} />
+          <img
+            src="/astra-logo.svg"
+            alt="Astra"
+            width={28}
+            height={28}
+            style={{ flexShrink: 0, filter: "invert(18%) sepia(98%) saturate(2300%) hue-rotate(218deg) brightness(96%) contrast(104%)" }}
+          />
           <div>
             <div className="nav-wordmark">Astra</div>
             <div style={{ fontSize: 9, color: "var(--blue)", letterSpacing: ".06em", textTransform: "uppercase" }}>ready</div>
@@ -68,16 +85,20 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
       <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "10px 8px", flex: 1, overflowY: "hidden" }}>
         {LINKS.map((l) => (
           l.href === "/dashboard" ? (
-            // Dashboard: hard-navigate to the clean dashboard route so it ALWAYS
-            // resets there even from a query-heavy state.
             <Link key={l.href} href="/dashboard" prefetch={false} data-tour="nav-dashboard"
                onClick={(e) => { e.preventDefault(); window.location.assign("/dashboard"); }}
                className={`nl${l.match(pathname) ? " on" : ""}`} style={{ textDecoration: "none" }}>
-              <span style={{ width: 18, textAlign: "center" }}>{l.ic}</span>{l.label}
+              <span style={{ width: 18, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <l.Icon size={15} strokeWidth={1.75} />
+              </span>
+              {l.label}
             </Link>
           ) : (
             <Link key={l.href} href={l.href} prefetch={l.href === "/automations" ? false : undefined} data-tour={`nav-${l.label.toLowerCase().replace(/\s+/g, "-")}`} className={`nl${l.match(pathname) ? " on" : ""}`} style={{ textDecoration: "none" }}>
-              <span style={{ width: 18, textAlign: "center" }}>{l.ic}</span>{l.label}
+              <span style={{ width: 18, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <l.Icon size={15} strokeWidth={1.75} />
+              </span>
+              {l.label}
             </Link>
           )
         ))}
@@ -112,12 +133,18 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
           (e.currentTarget as HTMLElement).style.borderColor = "var(--bd2)";
           (e.currentTarget as HTMLElement).style.boxShadow = "var(--card-shadow)";
         }}>
-          🍎 Download macOS
+          <Download size={13} strokeWidth={2} />
+          Download macOS
         </a>
       </div>
       <div style={{ padding: "6px 12px 10px", display: "flex", justifyContent: "center" }}><CreditsDisplay /></div>
       <div style={{ padding: "0 8px 14px", display: "flex", flexDirection: "column", gap: 1 }}>
-        <Link href="/settings" className={`nl${pathname.startsWith("/settings") ? " on" : ""}`} style={{ textDecoration: "none" }}><span style={{ width: 18, textAlign: "center" }}>⚙</span>Settings</Link>
+        <Link href="/settings" className={`nl${pathname.startsWith("/settings") ? " on" : ""}`} style={{ textDecoration: "none" }}>
+          <span style={{ width: 18, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <Settings size={15} strokeWidth={1.75} />
+          </span>
+          Settings
+        </Link>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 10px" }}>
           <div style={{ width: 28, height: 28, borderRadius: "50%", background: hydrated && isSignedIn ? "var(--green)" : "var(--blue)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-chakra)", fontSize: 10, fontWeight: 700, color: "#fff", flexShrink: 0 }}>{hydrated ? initials(userId) : "AN"}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
