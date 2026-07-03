@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useDevUser } from "@/lib/use-dev-user";
-import { apiFetch, waitForAuthReady } from "@/lib/api";
+import { apiFetch, getSetupStatus, SetupStatus, waitForAuthReady } from "@/lib/api";
 import PageHeader, { HeaderPrimaryBtn, HeaderSecondaryBtn } from "@/components/PageHeader";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -27,6 +27,8 @@ type Overview = {
     key: string;
     path: string;
     title: string;
+    category: string;
+    integrations: string[];
     summary: string;
     installed: boolean;
   }>;
@@ -70,6 +72,7 @@ export default function AutomationsPage() {
   const { userId } = useDevUser();
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [busyKey, setBusyKey] = useState<string>("");
   const [flash, setFlash] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
@@ -80,6 +83,11 @@ export default function AutomationsPage() {
     const res = await apiFetch(`${BASE}/automations/overview?founder_id=${encodeURIComponent(userId)}`);
     if (!res.ok) throw new Error(String(res.status));
     setOverview(await res.json());
+    try {
+      setSetupStatus(await getSetupStatus(userId));
+    } catch {
+      setSetupStatus(null);
+    }
     setStatus("ready");
   }
 
@@ -152,6 +160,21 @@ export default function AutomationsPage() {
   }
 
   const runtimeTone = useMemo(() => tone(overview?.runtime.status || "standby"), [overview?.runtime.status]);
+  const connectorState = useMemo(() => {
+    const raw = setupStatus;
+    return {
+      github: Boolean(raw?.github),
+      gmail: Boolean(raw?.apps?.gmail || raw?.sendgrid),
+      slack: Boolean(raw?.apps?.slack),
+      notion: Boolean(raw?.notion),
+      linear: Boolean(raw?.linear),
+      stripe: Boolean(raw?.apps?.stripe),
+      hubspot: Boolean(raw?.apps?.hubspot),
+      apollo: Boolean(raw?.apps?.apollo),
+      google_calendar: Boolean(raw?.apps?.google_calendar),
+      klaviyo: Boolean(raw?.klaviyo),
+    } as Record<string, boolean>;
+  }, [setupStatus]);
   const stats = overview ? [
     { label: "Surface", value: overview.native ? "Astra-native" : "External" },
     { label: "Workflows", value: String(overview.workflow_count) },
@@ -285,7 +308,10 @@ export default function AutomationsPage() {
                 {overview.templates.map((template) => (
                   <div key={template.key} style={cardStyle({ padding: 18, background: "linear-gradient(180deg, #FFFFFF 0%, #F8FAFF 100%)", boxShadow: "none" })}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ fontSize: 16, fontWeight: 700 }}>{template.title}</div>
+                      <div>
+                        <div style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--fg-mute)", marginBottom: 5 }}>{template.category}</div>
+                        <div style={{ fontSize: 16, fontWeight: 700 }}>{template.title}</div>
+                      </div>
                       <span style={{
                         padding: "4px 8px",
                         borderRadius: 999,
@@ -299,6 +325,29 @@ export default function AutomationsPage() {
                       </span>
                     </div>
                     <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.6, color: "var(--fg-mute)" }}>{template.summary}</div>
+                    {template.integrations.length > 0 && (
+                      <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {template.integrations.map((integration) => {
+                          const connected = Boolean(connectorState[integration]);
+                          return (
+                            <span
+                              key={`${template.key}:${integration}`}
+                              style={{
+                                padding: "5px 8px",
+                                borderRadius: 999,
+                                fontSize: 10,
+                                fontWeight: 700,
+                                color: connected ? "#0F8A4B" : "#7C2D12",
+                                background: connected ? "rgba(27,169,92,0.10)" : "rgba(251,146,60,0.10)",
+                                border: `1px solid ${connected ? "rgba(27,169,92,0.22)" : "rgba(251,146,60,0.22)"}`,
+                              }}
+                            >
+                              {integration.replace(/_/g, " ")} {connected ? "connected" : "needed"}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                     <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
                       <button
                         onClick={() => installTemplate(template.key)}
@@ -332,6 +381,23 @@ export default function AutomationsPage() {
                           }}
                         >
                           {busyKey === `run:${template.key}` ? "Running..." : "Run demo"}
+                        </button>
+                      )}
+                      {template.integrations.some((integration) => !connectorState[integration]) && (
+                        <button
+                          onClick={() => router.push("/integrations")}
+                          style={{
+                            borderRadius: 10,
+                            border: "1px solid rgba(245,158,11,0.24)",
+                            background: "rgba(251,191,36,0.10)",
+                            color: "#92400E",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            padding: "9px 12px",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Connect integrations
                         </button>
                       )}
                     </div>

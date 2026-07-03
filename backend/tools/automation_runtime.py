@@ -14,6 +14,8 @@ STARTER_AUTOMATIONS: dict[str, dict] = {
     "lead_follow_up": {
         "path": "u/admin/lead-follow-up",
         "title": "Lead follow-up",
+        "category": "Sales",
+        "integrations": ["gmail", "hubspot", "apollo"],
         "summary": "Send a fast reply, route the lead, and create the next task automatically.",
         "description": "Astra-native starter automation for triaging inbound leads and suggesting the next action.",
         "default_payload": {
@@ -63,6 +65,8 @@ STARTER_AUTOMATIONS: dict[str, dict] = {
     "support_triage": {
         "path": "u/admin/support-triage",
         "title": "Support triage",
+        "category": "Support",
+        "integrations": ["gmail", "slack", "linear"],
         "summary": "Turn inbound issues into routed tickets with priority and owner rules.",
         "description": "Astra-native starter automation for classifying inbound support requests.",
         "default_payload": {
@@ -109,6 +113,8 @@ STARTER_AUTOMATIONS: dict[str, dict] = {
     "weekly_founder_digest": {
         "path": "u/admin/weekly-founder-digest",
         "title": "Weekly founder digest",
+        "category": "Ops",
+        "integrations": ["notion", "slack", "linear"],
         "summary": "Compile pipeline, blockers, and wins into one review-ready summary.",
         "description": "Astra-native starter automation for packaging a founder weekly review.",
         "default_payload": {
@@ -143,6 +149,240 @@ STARTER_AUTOMATIONS: dict[str, dict] = {
                                 "founder_id": {"type": "javascript", "expr": "flow_input.founder_id"},
                             },
                             "content": """export async function main({ wins = [], blockers = [], priorities = [], founder_id }) {\n  const bullet = (items) => (items.length ? items.map((x) => `- ${x}`).join(\"\\n\") : \"- None logged\");\n  return {\n    founder_id,\n    digest_markdown: `## Weekly founder digest\\n\\n### Wins\\n${bullet(wins)}\\n\\n### Blockers\\n${bullet(blockers)}\\n\\n### Next priorities\\n${bullet(priorities)}`,\n    counts: { wins: wins.length, blockers: blockers.length, priorities: priorities.length },\n    status: \"compiled\"\n  };\n}""",
+                        },
+                    }
+                ]
+            },
+        },
+    },
+    "github_pr_triage": {
+        "path": "u/admin/github-pr-triage",
+        "title": "GitHub PR triage",
+        "category": "Engineering",
+        "integrations": ["github", "linear", "slack"],
+        "summary": "Review new pull requests, assign the owner, and post the next action.",
+        "description": "Starter automation for routing code review work inside Astra.",
+        "default_payload": {
+            "repo": "AstraCreates/Astra",
+            "pr_number": 482,
+            "title": "Fix automations starter install flow",
+            "author": "contributor",
+            "labels": ["frontend", "automations"],
+        },
+        "flow": {
+            "summary": "GitHub PR triage",
+            "description": "Summarizes a pull request and proposes routing.",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "repo": {"type": "string"},
+                    "pr_number": {"type": "number"},
+                    "title": {"type": "string"},
+                    "author": {"type": "string"},
+                    "labels": {"type": "array", "items": {"type": "string"}},
+                    "founder_id": {"type": "string"},
+                },
+            },
+            "value": {
+                "modules": [
+                    {
+                        "id": "triage_pr",
+                        "summary": "Create PR routing guidance",
+                        "value": {
+                            "type": "rawscript",
+                            "language": "bun",
+                            "input_transforms": {
+                                "repo": {"type": "javascript", "expr": "flow_input.repo"},
+                                "pr_number": {"type": "javascript", "expr": "flow_input.pr_number"},
+                                "title": {"type": "javascript", "expr": "flow_input.title"},
+                                "author": {"type": "javascript", "expr": "flow_input.author"},
+                                "labels": {"type": "javascript", "expr": "flow_input.labels || []"},
+                                "founder_id": {"type": "javascript", "expr": "flow_input.founder_id"},
+                            },
+                            "content": """export async function main({ repo, pr_number, title, author, labels = [], founder_id }) {\n  const owner = labels.includes(\"frontend\") ? \"product-engineering\" : \"platform\";\n  return {\n    founder_id,\n    repo,\n    pr_number,\n    summary: `PR #${pr_number} in ${repo}: ${title}`,\n    routing: { owner, channel: \"engineering-review\", urgency: labels.includes(\"hotfix\") ? \"high\" : \"normal\" },\n    reviewer_note: `${author} opened a PR that likely needs ${owner} review next.`\n  };\n}""",
+                        },
+                    }
+                ]
+            },
+        },
+    },
+    "notion_meeting_sync": {
+        "path": "u/admin/notion-meeting-sync",
+        "title": "Notion meeting sync",
+        "category": "Workspace",
+        "integrations": ["notion", "gmail", "google_calendar"],
+        "summary": "Turn meeting notes into a Notion-ready brief with owners and follow-ups.",
+        "description": "Starter automation for packaging meeting notes into a structured update.",
+        "default_payload": {
+            "meeting_title": "Weekly product sync",
+            "notes": "Discussed onboarding friction, billing polish, and launch checklist.",
+            "actions": ["Review onboarding dropoff", "Finalize billing QA"],
+        },
+        "flow": {
+            "summary": "Notion meeting sync",
+            "description": "Formats notes into a Notion-friendly summary.",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "meeting_title": {"type": "string"},
+                    "notes": {"type": "string"},
+                    "actions": {"type": "array", "items": {"type": "string"}},
+                    "founder_id": {"type": "string"},
+                },
+            },
+            "value": {
+                "modules": [
+                    {
+                        "id": "shape_notes",
+                        "summary": "Shape meeting notes into a page outline",
+                        "value": {
+                            "type": "rawscript",
+                            "language": "bun",
+                            "input_transforms": {
+                                "meeting_title": {"type": "javascript", "expr": "flow_input.meeting_title"},
+                                "notes": {"type": "javascript", "expr": "flow_input.notes"},
+                                "actions": {"type": "javascript", "expr": "flow_input.actions || []"},
+                                "founder_id": {"type": "javascript", "expr": "flow_input.founder_id"},
+                            },
+                            "content": """export async function main({ meeting_title, notes, actions = [], founder_id }) {\n  return {\n    founder_id,\n    notion_title: meeting_title,\n    summary: notes,\n    action_items: actions,\n    page_markdown: `# ${meeting_title}\\n\\n## Summary\\n${notes}\\n\\n## Actions\\n${actions.map((x) => `- ${x}`).join(\"\\n\") || \"- None\"}`\n  };\n}""",
+                        },
+                    }
+                ]
+            },
+        },
+    },
+    "stripe_recovery_follow_up": {
+        "path": "u/admin/stripe-recovery-follow-up",
+        "title": "Stripe recovery follow-up",
+        "category": "Revenue",
+        "integrations": ["stripe", "gmail", "slack"],
+        "summary": "Package failed payment context and draft the recovery follow-up.",
+        "description": "Starter automation for failed-payment outreach and escalation.",
+        "default_payload": {
+            "customer_email": "buyer@example.com",
+            "invoice_id": "in_12345",
+            "amount": "$49",
+            "failure_reason": "card_declined",
+        },
+        "flow": {
+            "summary": "Stripe recovery follow-up",
+            "description": "Summarizes a failed payment and drafts the follow-up.",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "customer_email": {"type": "string"},
+                    "invoice_id": {"type": "string"},
+                    "amount": {"type": "string"},
+                    "failure_reason": {"type": "string"},
+                    "founder_id": {"type": "string"},
+                },
+            },
+            "value": {
+                "modules": [
+                    {
+                        "id": "draft_recovery",
+                        "summary": "Draft revenue recovery response",
+                        "value": {
+                            "type": "rawscript",
+                            "language": "bun",
+                            "input_transforms": {
+                                "customer_email": {"type": "javascript", "expr": "flow_input.customer_email"},
+                                "invoice_id": {"type": "javascript", "expr": "flow_input.invoice_id"},
+                                "amount": {"type": "javascript", "expr": "flow_input.amount"},
+                                "failure_reason": {"type": "javascript", "expr": "flow_input.failure_reason"},
+                                "founder_id": {"type": "javascript", "expr": "flow_input.founder_id"},
+                            },
+                            "content": """export async function main({ customer_email, invoice_id, amount, failure_reason, founder_id }) {\n  return {\n    founder_id,\n    customer_email,\n    invoice_id,\n    amount,\n    recovery_stage: failure_reason === \"card_declined\" ? \"retry-needed\" : \"manual-review\",\n    draft_email: `We noticed your payment for ${amount} did not go through (${failure_reason}). Here is a quick link to update billing and keep things moving.`,\n    internal_alert: `Check ${invoice_id} and decide whether to retry automatically or escalate.`\n  };\n}""",
+                        },
+                    }
+                ]
+            },
+        },
+    },
+    "slack_founder_alert": {
+        "path": "u/admin/slack-founder-alert",
+        "title": "Slack founder alert",
+        "category": "Ops",
+        "integrations": ["slack", "linear", "github"],
+        "summary": "Bundle a high-priority event into a founder-ready Slack escalation.",
+        "description": "Starter automation for alerting the founder with context and action items.",
+        "default_payload": {
+            "event": "Production deploy failed",
+            "impact": "Users cannot access the billing flow",
+            "owner": "engineering",
+        },
+        "flow": {
+            "summary": "Slack founder alert",
+            "description": "Shapes a critical event into an escalation packet.",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "event": {"type": "string"},
+                    "impact": {"type": "string"},
+                    "owner": {"type": "string"},
+                    "founder_id": {"type": "string"},
+                },
+            },
+            "value": {
+                "modules": [
+                    {
+                        "id": "compose_alert",
+                        "summary": "Compose founder alert packet",
+                        "value": {
+                            "type": "rawscript",
+                            "language": "bun",
+                            "input_transforms": {
+                                "event": {"type": "javascript", "expr": "flow_input.event"},
+                                "impact": {"type": "javascript", "expr": "flow_input.impact"},
+                                "owner": {"type": "javascript", "expr": "flow_input.owner"},
+                                "founder_id": {"type": "javascript", "expr": "flow_input.founder_id"},
+                            },
+                            "content": """export async function main({ event, impact, owner, founder_id }) {\n  return {\n    founder_id,\n    severity: \"high\",\n    slack_message: `Founder alert: ${event}. Impact: ${impact}. Owner: ${owner}.`,\n    next_action: `Ask ${owner} for ETA and post mitigation update.`\n  };\n}""",
+                        },
+                    }
+                ]
+            },
+        },
+    },
+    "klaviyo_winback_draft": {
+        "path": "u/admin/klaviyo-winback-draft",
+        "title": "Klaviyo win-back draft",
+        "category": "Marketing",
+        "integrations": ["klaviyo", "stripe", "gmail"],
+        "summary": "Draft a win-back campaign packet for churn-risk or lapsed buyers.",
+        "description": "Starter automation for retention campaign planning.",
+        "default_payload": {
+            "segment": "Trial expired without upgrade",
+            "offer": "20% off first paid month",
+            "goal": "Recover 15 dormant trials",
+        },
+        "flow": {
+            "summary": "Klaviyo win-back draft",
+            "description": "Creates a retention message packet for email automation.",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "segment": {"type": "string"},
+                    "offer": {"type": "string"},
+                    "goal": {"type": "string"},
+                    "founder_id": {"type": "string"},
+                },
+            },
+            "value": {
+                "modules": [
+                    {
+                        "id": "draft_campaign",
+                        "summary": "Draft a win-back campaign outline",
+                        "value": {
+                            "type": "rawscript",
+                            "language": "bun",
+                            "input_transforms": {
+                                "segment": {"type": "javascript", "expr": "flow_input.segment"},
+                                "offer": {"type": "javascript", "expr": "flow_input.offer"},
+                                "goal": {"type": "javascript", "expr": "flow_input.goal"},
+                                "founder_id": {"type": "javascript", "expr": "flow_input.founder_id"},
+                            },
+                            "content": """export async function main({ segment, offer, goal, founder_id }) {\n  return {\n    founder_id,\n    audience: segment,\n    offer,\n    goal,\n    subject_line: `A quick reason to come back`,\n    campaign_brief: `Target ${segment}. Offer ${offer}. Goal: ${goal}.`\n  };\n}""",
                         },
                     }
                 ]
@@ -310,6 +550,8 @@ def starter_automation_catalog() -> list[dict]:
             "key": key,
             "path": value["path"],
             "title": value["title"],
+            "category": value.get("category", "Automation"),
+            "integrations": list(value.get("integrations") or []),
             "summary": value["summary"],
             "description": value["description"],
         }
