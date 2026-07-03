@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { signIn, signOut } from "next-auth/react";
-import RedesignSidebar from "@/components/RedesignSidebar";
+import TopNav from "@/components/TopNav";
 import WorkspaceTour from "@/components/WorkspaceTour";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { useDevUser } from "@/lib/use-dev-user";
@@ -205,13 +205,13 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
 
   const isHome = pathname === "/";
 
-  // ── Mobile: full-width content, hamburger, off-canvas drawer ────────────────
+  // ── Mobile: top nav with slide-down drawer ──────────────────────────────────
   if (isMobile) {
     return (
       <div style={{ display: "flex", flexDirection: "column", minHeight: "100dvh", background: "var(--bg)" }}>
         {tour}
-        <RedesignSidebar mobile open={drawerOpen} onClose={() => setDrawerOpen(false)} />
-        {/* Backdrop */}
+        <TopNav mobile mobileOpen={drawerOpen} onMobileToggle={() => setDrawerOpen((v) => !v)} />
+        {/* Backdrop for mobile drawer */}
         <AnimatePresence>
           {drawerOpen && (
             <motion.div
@@ -221,24 +221,14 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
               onClick={() => setDrawerOpen(false)}
-              style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 55 }}
+              style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 98 }}
             />
           )}
         </AnimatePresence>
-        {/* Floating hamburger — always reachable */}
-        <button
-          aria-label="Open menu"
-          onClick={() => setDrawerOpen((v) => !v)}
-          style={{ position: "fixed", top: 8, left: 8, zIndex: 65, width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--surface)", border: "1px solid var(--bd)", color: "var(--fg)", fontSize: 17, lineHeight: 1, cursor: "pointer", boxShadow: "0 1px 6px rgba(0,0,0,.12)" }}
-        >
-          ☰
-        </button>
         {isHome ? (
-          <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zIndex: 100 }}>{children}</main>
+          <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative", zIndex: 1, paddingTop: 48 }}>{children}</main>
         ) : (
-          <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-            {/* Slim spacer so page content clears the floating hamburger */}
-            <div style={{ height: 46, flexShrink: 0 }} />
+          <main style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", paddingTop: 48 }}>
             <div key={pathname} className="page-fade" style={{ flex: 1, padding: 0 }}>{children}</div>
           </main>
         )}
@@ -246,15 +236,15 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
     );
   }
 
-  // ── Desktop: fixed sidebar + main ───────────────────────────────────────────
+  // ── Desktop: fixed top nav + main ───────────────────────────────────────────
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg)" }}>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "var(--bg)" }}>
       {tour}
-      <RedesignSidebar />
+      <TopNav />
       {isHome ? (
-        <main style={{ flex: 1, minWidth: 0, height: "100vh", overflow: "hidden", position: "relative", zIndex: 100 }}>{children}</main>
+        <main style={{ flex: 1, minWidth: 0, height: "calc(100vh - 48px)", marginTop: 48, overflow: "hidden", position: "relative", zIndex: 1 }}>{children}</main>
       ) : (
-        <main style={{ flex: 1, minWidth: 0, height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <main style={{ flex: 1, minWidth: 0, marginTop: 48, height: "calc(100vh - 48px)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div key={pathname} className="page-fade" style={{ flex: 1, overflowY: "auto", padding: 0 }}>{children}</div>
         </main>
       )}
