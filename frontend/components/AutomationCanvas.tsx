@@ -507,8 +507,8 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--fg)" }}>{NODE_META[selectedNode.data.nodeType].label}</div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <button onClick={deleteSelected} className="m-tap" style={{ fontSize: 11, color: "#DC2626", background: "none", border: "none", cursor: "pointer" }}>Delete</button>
-          {isMobile && <button onClick={() => setSelectedNodeId(null)} className="m-tap" style={{ fontSize: 11, color: "var(--fm)", background: "none", border: "none", cursor: "pointer" }}>Done</button>}
+          <button onClick={deleteSelected} className="btn danger sm">Delete</button>
+          {isMobile && <button onClick={() => setSelectedNodeId(null)} className="btn sm">Done</button>}
         </div>
       </div>
       <div style={{ fontSize: 11.5, color: "var(--fm)", lineHeight: 1.5, marginBottom: 16 }}>
@@ -517,11 +517,11 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {selectedNode.data.nodeType === "agent" && (
         <>
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Agent</label>
+          <label className="f-label">Agent</label>
           <select
             value={selectedNode.data.config.agent_name || ""}
             onChange={(e) => updateSelectedConfig({ agent_name: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 4 }}
+            className="f-input" style={{ marginBottom: 6 }}
           >
             {agentCatalog.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
@@ -535,12 +535,12 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {(selectedNode.data.nodeType === "agent" || selectedNode.data.nodeType === "prompt") && (
         <>
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Instruction</label>
+          <label className="f-label">Instruction</label>
           <textarea
             value={selectedNode.data.config.instruction || ""}
             onChange={(e) => updateSelectedConfig({ instruction: e.target.value })}
             rows={6}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 8, fontFamily: "inherit" }}
+            className="f-ta" style={{ marginBottom: 10 }}
             placeholder="What should this node do?"
           />
           <UpstreamHint ids={upstreamOfSelected} />
@@ -549,19 +549,19 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {selectedNode.data.nodeType === "action" && (
         <>
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Method</label>
+          <label className="f-label">Method</label>
           <select
             value={selectedNode.data.config.method || "GET"}
             onChange={(e) => updateSelectedConfig({ method: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
           >
             {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>URL</label>
+          <label className="f-label">URL</label>
           <input
             value={selectedNode.data.config.url || ""}
             onChange={(e) => updateSelectedConfig({ url: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 12, fontFamily: "var(--font-code)" }}
+            className="f-input" style={{ marginBottom: 14, fontFamily: "var(--font-code)" }}
             placeholder="https://api.example.com/..."
           />
           <UpstreamHint ids={upstreamOfSelected} note="in the URL or body" />
@@ -570,23 +570,23 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {selectedNode.data.nodeType === "delay" && (
         <>
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Wait (seconds)</label>
+          <label className="f-label">Wait (seconds)</label>
           <input
             type="number" min={0} max={3600}
             value={selectedNode.data.config.seconds ?? 5}
             onChange={(e) => updateSelectedConfig({ seconds: Number(e.target.value) })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 12 }}
+            className="f-input" style={{ marginBottom: 14 }}
           />
         </>
       )}
 
       {selectedNode.data.nodeType === "condition" && (
         <>
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Continue only if upstream output contains</label>
+          <label className="f-label">Continue only if upstream output contains</label>
           <input
             value={selectedNode.data.config.contains || ""}
             onChange={(e) => updateSelectedConfig({ contains: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 12 }}
+            className="f-input" style={{ marginBottom: 14 }}
             placeholder="e.g. yes, approved, error"
           />
         </>
@@ -594,19 +594,19 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {selectedNode.data.nodeType === "slack" && (
         <>
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Slack webhook URL</label>
+          <label className="f-label">Slack webhook URL</label>
           <input
             value={selectedNode.data.config.webhook_url || ""}
             onChange={(e) => updateSelectedConfig({ webhook_url: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10, fontFamily: "var(--font-code)" }}
+            className="f-input" style={{ marginBottom: 12, fontFamily: "var(--font-code)" }}
             placeholder="https://hooks.slack.com/services/..."
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Message</label>
+          <label className="f-label">Message</label>
           <textarea
             value={selectedNode.data.config.message || ""}
             onChange={(e) => updateSelectedConfig({ message: e.target.value })}
             rows={3}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 8, fontFamily: "inherit" }}
+            className="f-ta" style={{ marginBottom: 10 }}
           />
           <UpstreamHint ids={upstreamOfSelected} />
         </>
@@ -614,25 +614,25 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {selectedNode.data.nodeType === "email" && (
         <>
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>To</label>
+          <label className="f-label">To</label>
           <input
             value={selectedNode.data.config.to || ""}
             onChange={(e) => updateSelectedConfig({ to: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
             placeholder="someone@example.com"
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Subject</label>
+          <label className="f-label">Subject</label>
           <input
             value={selectedNode.data.config.subject || ""}
             onChange={(e) => updateSelectedConfig({ subject: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Body</label>
+          <label className="f-label">Body</label>
           <textarea
             value={typeof selectedNode.data.config.body === "string" ? selectedNode.data.config.body : ""}
             onChange={(e) => updateSelectedConfig({ body: e.target.value })}
             rows={4}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 8, fontFamily: "inherit" }}
+            className="f-ta" style={{ marginBottom: 10 }}
           />
           <UpstreamHint ids={upstreamOfSelected} />
         </>
@@ -640,25 +640,25 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {selectedNode.data.nodeType === "gmail" && (
         <>
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>To</label>
+          <label className="f-label">To</label>
           <input
             value={selectedNode.data.config.to || ""}
             onChange={(e) => updateSelectedConfig({ to: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
             placeholder="someone@example.com"
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Subject</label>
+          <label className="f-label">Subject</label>
           <input
             value={selectedNode.data.config.subject || ""}
             onChange={(e) => updateSelectedConfig({ subject: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Body</label>
+          <label className="f-label">Body</label>
           <textarea
             value={typeof selectedNode.data.config.body === "string" ? selectedNode.data.config.body : ""}
             onChange={(e) => updateSelectedConfig({ body: e.target.value })}
             rows={4}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 8, fontFamily: "inherit" }}
+            className="f-ta" style={{ marginBottom: 10 }}
           />
           <UpstreamHint ids={upstreamOfSelected} />
         </>
@@ -666,19 +666,19 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {selectedNode.data.nodeType === "slack_bot" && (
         <>
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Channel</label>
+          <label className="f-label">Channel</label>
           <input
             value={selectedNode.data.config.channel || ""}
             onChange={(e) => updateSelectedConfig({ channel: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
             placeholder="#ops or C12345678"
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Message</label>
+          <label className="f-label">Message</label>
           <textarea
             value={selectedNode.data.config.message || ""}
             onChange={(e) => updateSelectedConfig({ message: e.target.value })}
             rows={4}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 8, fontFamily: "inherit" }}
+            className="f-ta" style={{ marginBottom: 10 }}
           />
           <UpstreamHint ids={upstreamOfSelected} />
         </>
@@ -686,32 +686,32 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {selectedNode.data.nodeType === "github_issue" && (
         <>
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Repository</label>
+          <label className="f-label">Repository</label>
           <input
             value={selectedNode.data.config.repo || ""}
             onChange={(e) => updateSelectedConfig({ repo: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
             placeholder="Astra"
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Owner (optional)</label>
+          <label className="f-label">Owner (optional)</label>
           <input
             value={selectedNode.data.config.owner || ""}
             onChange={(e) => updateSelectedConfig({ owner: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
             placeholder="AstraCreates"
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Issue title</label>
+          <label className="f-label">Issue title</label>
           <input
             value={selectedNode.data.config.title || ""}
             onChange={(e) => updateSelectedConfig({ title: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Issue body</label>
+          <label className="f-label">Issue body</label>
           <textarea
             value={typeof selectedNode.data.config.body === "string" ? selectedNode.data.config.body : ""}
             onChange={(e) => updateSelectedConfig({ body: e.target.value })}
             rows={4}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 8, fontFamily: "inherit" }}
+            className="f-ta" style={{ marginBottom: 10 }}
           />
           <UpstreamHint ids={upstreamOfSelected} />
         </>
@@ -719,45 +719,45 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {selectedNode.data.nodeType === "github_pr" && (
         <>
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Repository</label>
+          <label className="f-label">Repository</label>
           <input
             value={selectedNode.data.config.repo || ""}
             onChange={(e) => updateSelectedConfig({ repo: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
             placeholder="Astra"
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Owner (optional)</label>
+          <label className="f-label">Owner (optional)</label>
           <input
             value={selectedNode.data.config.owner || ""}
             onChange={(e) => updateSelectedConfig({ owner: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
             placeholder="AstraCreates"
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>PR title</label>
+          <label className="f-label">PR title</label>
           <input
             value={selectedNode.data.config.title || ""}
             onChange={(e) => updateSelectedConfig({ title: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Head branch</label>
+          <label className="f-label">Head branch</label>
           <input
             value={selectedNode.data.config.head || ""}
             onChange={(e) => updateSelectedConfig({ head: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
             placeholder="feature/my-branch"
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Base branch</label>
+          <label className="f-label">Base branch</label>
           <input
             value={selectedNode.data.config.base || "main"}
             onChange={(e) => updateSelectedConfig({ base: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>PR body</label>
+          <label className="f-label">PR body</label>
           <textarea
             value={typeof selectedNode.data.config.body === "string" ? selectedNode.data.config.body : ""}
             onChange={(e) => updateSelectedConfig({ body: e.target.value })}
             rows={4}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 8, fontFamily: "inherit" }}
+            className="f-ta" style={{ marginBottom: 10 }}
           />
           <UpstreamHint ids={upstreamOfSelected} />
         </>
@@ -765,18 +765,18 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {selectedNode.data.nodeType === "linear_issue" && (
         <>
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Issue title</label>
+          <label className="f-label">Issue title</label>
           <input
             value={selectedNode.data.config.title || ""}
             onChange={(e) => updateSelectedConfig({ title: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Description</label>
+          <label className="f-label">Description</label>
           <textarea
             value={selectedNode.data.config.description || ""}
             onChange={(e) => updateSelectedConfig({ description: e.target.value })}
             rows={4}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 8, fontFamily: "inherit" }}
+            className="f-ta" style={{ marginBottom: 10 }}
           />
           <UpstreamHint ids={upstreamOfSelected} />
         </>
@@ -784,24 +784,24 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {selectedNode.data.nodeType === "notion_page" && (
         <>
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Page title</label>
+          <label className="f-label">Page title</label>
           <input
             value={selectedNode.data.config.title || ""}
             onChange={(e) => updateSelectedConfig({ title: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Parent page ID (optional)</label>
+          <label className="f-label">Parent page ID (optional)</label>
           <input
             value={selectedNode.data.config.parent_id || ""}
             onChange={(e) => updateSelectedConfig({ parent_id: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10, fontFamily: "var(--font-code)" }}
+            className="f-input" style={{ marginBottom: 12, fontFamily: "var(--font-code)" }}
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Notes</label>
+          <label className="f-label">Notes</label>
           <textarea
             value={typeof selectedNode.data.config.body === "string" ? selectedNode.data.config.body : ""}
             onChange={(e) => updateSelectedConfig({ body: e.target.value })}
             rows={4}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 8, fontFamily: "inherit" }}
+            className="f-ta" style={{ marginBottom: 10 }}
           />
           <UpstreamHint ids={upstreamOfSelected} />
         </>
@@ -809,34 +809,34 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
       {selectedNode.data.nodeType === "stripe_payment_link" && (
         <>
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Product name</label>
+          <label className="f-label">Product name</label>
           <input
             value={selectedNode.data.config.title || ""}
             onChange={(e) => updateSelectedConfig({ title: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Description</label>
+          <label className="f-label">Description</label>
           <textarea
             value={selectedNode.data.config.description || ""}
             onChange={(e) => updateSelectedConfig({ description: e.target.value })}
             rows={3}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 10, fontFamily: "inherit" }}
+            className="f-ta" style={{ marginBottom: 12 }}
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Amount</label>
+          <label className="f-label">Amount</label>
           <input
             type="number"
             min={1}
             value={selectedNode.data.config.amount ?? 99}
             onChange={(e) => updateSelectedConfig({ amount: Number(e.target.value) })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Currency</label>
+          <label className="f-label">Currency</label>
           <input
             value={selectedNode.data.config.currency || "usd"}
             onChange={(e) => updateSelectedConfig({ currency: e.target.value })}
-            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 12 }}
           />
-          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Billing</label>
+          <label className="f-label">Billing</label>
           <select
             value={selectedNode.data.config.interval || "one_time"}
             onChange={(e) => updateSelectedConfig({ interval: e.target.value })}
@@ -878,27 +878,34 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
         @keyframes astra-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.3); opacity: 0.7; } }
         @keyframes astra-sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
         .astra-palette-btn:hover { filter: brightness(0.97); transform: translateY(-1px); }
+        .canvas-config .f-ta { min-height: 80px; }
+        .canvas-config .f-input, .canvas-config .f-ta { font-size: 12px; padding: 7px 10px; }
+        @media (prefers-reduced-motion: reduce) {
+          .astra-palette-btn { transition: none !important; }
+        }
       `}</style>
       <PageHeader
         title=""
         actions={
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            {runError && <span style={{ fontSize: 12, color: "#FF8080" }}>{runError}</span>}
-            {savedTick && <span style={{ fontSize: 12, color: "#7CFFC6" }}>✓ Saved</span>}
+            {runError && <span style={{ fontSize: 12, color: "var(--red)" }}>{runError}</span>}
+            {savedTick && <span style={{ fontSize: 12, color: "var(--green)" }}>✓ Saved</span>}
             <HeaderSecondaryBtn label="Build with AI" onClick={() => setDraftOpen(true)} />
             <HeaderSecondaryBtn label={saving ? "Saving…" : "Save"} onClick={() => { void saveFlow(); }} disabled={saving} />
             <HeaderPrimaryBtn label={running ? "Running…" : "▶ Run"} onClick={() => { void runFlow(); }} disabled={running || nodes.length === 0} />
           </div>
         }
       />
-      <div style={{ padding: "10px 24px", borderBottom: "1px solid var(--bd)", display: "flex", alignItems: "center", gap: 10 }}>
-        <button onClick={() => router.push("/automations")} className="m-tap" style={{ fontSize: 12, color: "var(--fm)", background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
+      <div style={{ padding: "8px 20px", borderBottom: "1px solid var(--bd)", display: "flex", alignItems: "center", gap: 8, background: "var(--surface)" }}>
+        <button onClick={() => router.push("/automations")} className="btn sm" style={{ flexShrink: 0, color: "var(--fm)" }}>
           ← Automations
         </button>
+        <span style={{ color: "var(--bd2)", fontSize: 14, flexShrink: 0 }}>/</span>
         <input
           value={flowName}
           onChange={(e) => setFlowName(e.target.value)}
-          style={{ fontSize: 15, fontWeight: 600, border: "none", outline: "none", background: "transparent", color: "var(--fg)", flex: 1, minWidth: 60 }}
+          placeholder="Untitled automation"
+          style={{ fontSize: 13, fontWeight: 600, border: "none", outline: "none", background: "transparent", color: "var(--fg)", flex: 1, minWidth: 60 }}
         />
       </div>
       <div style={{ display: "flex", flex: 1, minHeight: 0, position: "relative" }}>
@@ -960,14 +967,14 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
         {/* Config panel — persistent column on desktop, bottom sheet on mobile */}
         {!isMobile && selectedNode && (
-          <div style={{ width: 256, borderLeft: "1px solid var(--bd)", padding: "14px 16px", overflowY: "auto", flexShrink: 0 }}>
+          <div className="canvas-config" style={{ width: 256, borderLeft: "1px solid var(--bd)", padding: "14px 16px", overflowY: "auto", flexShrink: 0, background: "var(--s2)" }}>
             {configBody}
           </div>
         )}
         {isMobile && selectedNode && (
           <div style={{ position: "fixed", inset: 0, zIndex: 30, display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
             <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} onClick={() => setSelectedNodeId(null)} />
-            <div style={{
+            <div className="canvas-config" style={{
               position: "relative", background: "var(--surface)", borderTopLeftRadius: 18, borderTopRightRadius: 18,
               padding: 18, paddingBottom: 28, maxHeight: "80vh", overflowY: "auto",
               animation: "astra-sheet-up 0.22s cubic-bezier(0.22,1,0.36,1)",

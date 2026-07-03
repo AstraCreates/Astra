@@ -351,14 +351,9 @@ export default function AutomationsPage() {
                     display: "flex", flexDirection: "column", gap: 10,
                   }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                      <div style={{ minWidth: 0 }}>
-                        {t.category && (
-                          <div style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)", marginBottom: 4 }}>{t.category}</div>
-                        )}
-                        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.3 }}>{t.title}</span>
-                      </div>
-                      <span className={`pill ${t.installed ? "green" : ""}`} style={{ flexShrink: 0 }}>
-                        {t.installed ? "Installed" : "Template"}
+                      <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3 }}>{t.title}</span>
+                      <span className={`pill ${t.installed ? "green" : "blue"}`} style={{ flexShrink: 0 }}>
+                        {t.installed ? "Installed" : t.category || "Template"}
                       </span>
                     </div>
                     <p style={{ margin: 0, fontSize: 13, color: "var(--fm)", lineHeight: 1.55, flex: 1 }}>{t.summary}</p>
@@ -368,7 +363,7 @@ export default function AutomationsPage() {
                           const connected = Boolean(connectorState[integration]);
                           return (
                             <span key={`${t.key}:${integration}`} className={`pill ${connected ? "green" : "amber"}`}>
-                              {integration.replace(/_/g, " ")} {connected ? "✓" : "needed"}
+                              {integration.replace(/_/g, " ")}
                             </span>
                           );
                         })}
