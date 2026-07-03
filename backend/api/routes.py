@@ -32,7 +32,7 @@ def _oauth_state_consume(nonce: str) -> str | None:
         return None
     return founder_id
 
-from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 
 logger = logging.getLogger(__name__)
 
@@ -431,10 +431,13 @@ async def agents_catalog():
 
 
 @router.get("/automations/integration-catalog")
-async def automations_integration_catalog():
-    """Return the full integration-block registry for the automations canvas palette."""
+async def automations_integration_catalog(response: Response):
+    """Return the full integration-block registry for the automations canvas palette.
+    Static per-deploy (the registry is a Python module, not per-founder data) — cache
+    it client-side so the canvas doesn't refetch the same ~38-block payload on every load."""
     from backend.tools.automation_blocks import catalog
 
+    response.headers["Cache-Control"] = "public, max-age=3600"
     return {"blocks": catalog()}
 
 

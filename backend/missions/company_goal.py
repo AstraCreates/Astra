@@ -13,7 +13,24 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_lock = threading.Lock()
+# Per-(founder, company) lock — was a single global lock serializing goal/task
+# writes for every founder on the platform at once. RLock because a few
+# entrypoints call another lock-guarded entrypoint for the same founder while
+# already holding it (e.g. handle_session_deleted -> delete_company_goal).
+_goal_locks: dict[str, threading.RLock] = {}
+_goal_locks_guard = threading.Lock()
+
+
+def _goal_lock(founder_id: str, company_id: str | None = None) -> threading.RLock:
+    key = f"{founder_id}::{company_id}" if company_id and company_id != founder_id else founder_id
+    lock = _goal_locks.get(key)
+    if lock is None:
+        with _goal_locks_guard:
+            lock = _goal_locks.get(key)
+            if lock is None:
+                lock = threading.RLock()
+                _goal_locks[key] = lock
+    return lock
 
 
 def _root() -> Path:
@@ -41,7 +58,7 @@ def _now_iso() -> str:
 
 
 def get_company_goal(founder_id: str, company_id: str | None = None) -> dict[str, Any] | None:
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         return _read(founder_id, company_id)
 
 
@@ -58,7 +75,7 @@ def upsert_company_goal(
     company_id: str | None = None,
 ) -> dict[str, Any]:
     resolved_company_id = company_id or founder_id
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         path = _goal_path(founder_id, resolved_company_id)
         current = _read(founder_id, resolved_company_id) or {
             "founder_id": founder_id,
@@ -120,7 +137,7 @@ def _read(founder_id: str, company_id: str | None = None) -> dict[str, Any] | No
 
 def set_root_session(founder_id: str, session_id: str, company_id: str | None = None) -> None:
     """Record the parent launch session every operating run continues from."""
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         goal = _read(founder_id, company_id)
         if goal is None:
             return
@@ -132,7 +149,7 @@ def set_root_session(founder_id: str, session_id: str, company_id: str | None = 
 
 def get_company_name(founder_id: str, company_id: str | None = None) -> str:
     """The company's pinned display name, or '' if none set yet."""
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         goal = _read(founder_id, company_id)
         return str((goal or {}).get("company_name") or "")
 
@@ -144,7 +161,7 @@ def set_company_name(founder_id: str, company_id: str | None = None, company_nam
     company_name = (company_name or "").strip()
     if not company_name:
         return
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         goal = _read(founder_id, company_id)
         if goal is None:
             return
@@ -155,7 +172,7 @@ def set_company_name(founder_id: str, company_id: str | None = None, company_nam
 
 def get_company_repo(founder_id: str, company_id: str | None = None) -> str:
     """The company's pinned product repo_url, or '' if none built yet."""
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         goal = _read(founder_id, company_id)
         return str((goal or {}).get("repo_url") or "")
 
@@ -169,7 +186,7 @@ def set_company_repo(founder_id: str, company_id: str | None = None, repo_url: s
     repo_url = (repo_url or "").strip()
     if not repo_url:
         return
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         goal = _read(founder_id, company_id)
         if goal is None:
             return
@@ -188,7 +205,7 @@ def add_operating_session(
     """Append a child operating-run record (traceable back to root_session_id).
     ``goal_id`` ties the run to the goal it was dispatched for so the UI can group
     every sub-run under its goal instead of showing a flat, confusing list."""
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         goal = _read(founder_id, company_id)
         if goal is None:
             return
@@ -210,7 +227,7 @@ def update_operating_session(
     company_id: str | None = None,
     **fields: Any,
 ) -> None:
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         goal = _read(founder_id, company_id)
         if goal is None:
             return
@@ -232,7 +249,7 @@ def reconcile_operating_sessions(founder_id: str, company_id: str | None = None)
     from backend.core.session_store import get_session_meta
     stale_seconds = int(_os.environ.get("ASTRA_RUN_STALE_SECONDS", "14400"))
     now = _time.time()
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         goal = _read(founder_id, company_id)
         if goal is None:
             return 0
@@ -296,7 +313,7 @@ def set_tasks(
     tasks: list[dict[str, Any]],
     company_id: str | None = None,
 ) -> list[dict[str, Any]]:
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         goal = _read(founder_id, company_id)
         if goal is None:
             return []
@@ -311,7 +328,7 @@ def upsert_tasks(
     company_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """Merge tasks by id (add new, update existing). Returns the full task list."""
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         goal = _read(founder_id, company_id)
         if goal is None:
             return []
@@ -331,7 +348,7 @@ def update_task(
     company_id: str | None = None,
     **fields: Any,
 ) -> dict[str, Any]:
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         goal = _read(founder_id, company_id)
         if goal is None:
             raise KeyError(f"No company goal for {founder_id}")
@@ -393,7 +410,7 @@ def reset_for_new_launch(
 ) -> dict[str, Any]:
     """A fresh launch run = a new company → wipe the prior goal/runs and start clean,
     so the /goals view tracks the LATEST session, not a stale earlier one."""
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         resolved_company_id = company_id or founder_id
         data = _read(founder_id, resolved_company_id) or {
             "founder_id": founder_id,
@@ -450,7 +467,7 @@ def start_goal(
     ``tasks`` items: {title, owner_agents:[...], notes}. ``status`` is "active" for the
     launch goal (runs immediately) or "proposed" for planner-chained goals (the founder
     must approve before the team works it — goals need human sign-off)."""
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         g = _read(founder_id, company_id)
         if g is None:
             return None
@@ -483,7 +500,7 @@ def start_goal(
 def approve_current_goal(founder_id: str, company_id: str | None = None) -> dict[str, Any] | None:
     """Founder sign-off on a proposed next goal → flip it active so it can be dispatched.
     Returns the now-active goal, or None if there's nothing proposed."""
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         g = _read(founder_id, company_id)
         if g is None:
             return None
@@ -499,7 +516,7 @@ def approve_current_goal(founder_id: str, company_id: str | None = None) -> dict
 def reject_current_goal(founder_id: str, company_id: str | None = None) -> bool:
     """Founder rejects the proposed next goal → drop it; the planner can propose another.
     Restores the most recent done goal as current so the view isn't empty."""
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         g = _read(founder_id, company_id)
         if g is None:
             return False
@@ -541,7 +558,7 @@ def complete_agent_workstream(
     """Mark ``agent`` as having delivered on the current goal's tasks it owns. A task
     is done once ALL its owner agents have delivered. Returns {changed, goal_complete}.
     ``task_ids``: if provided, only process these task IDs (for per-task evidence gating)."""
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         g = _read(founder_id, company_id)
         if g is None:
             return {"changed": False, "goal_complete": False}
@@ -582,7 +599,7 @@ def mark_workstream_running(
 ) -> bool:
     """An owner agent started → flip its current-goal task(s) pending → in_progress
     so the goal reads as 'running' the moment a run starts. Returns True if changed."""
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         g = _read(founder_id, company_id)
         if g is None:
             return False
@@ -608,7 +625,7 @@ def postpone_task(
     postponed: bool = True,
     company_id: str | None = None,
 ) -> dict[str, Any]:
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         g = _read(founder_id, company_id)
         if g is None:
             raise KeyError("no company goal")
@@ -634,7 +651,7 @@ def set_goal_task_status(
     status: str,
     company_id: str | None = None,
 ) -> dict[str, Any]:
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         g = _read(founder_id, company_id)
         if g is None:
             raise KeyError("no company goal")
@@ -656,7 +673,7 @@ def set_goal_task_status(
 
 
 def delete_company_goal(founder_id: str, company_id: str | None = None) -> bool:
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         path = _goal_path(founder_id, company_id)
         if path.exists():
             path.unlink()
@@ -689,7 +706,7 @@ def handle_session_deleted(session_id: str) -> dict[str, Any]:
         deleted_run = next((r for r in runs if r.get("session_id") == session_id), None)
         kept = [r for r in runs if r.get("session_id") != session_id]
         if len(kept) != len(runs):
-            with _lock:
+            with _goal_lock(founder_id, company_id):
                 g = _read(founder_id, company_id)
                 if g is not None:
                     g["operating_sessions"] = [r for r in (g.get("operating_sessions") or []) if r.get("session_id") != session_id]
@@ -753,7 +770,7 @@ def sweep_stale_tasks(founder_id: str, company_id: str | None = None) -> bool:
     if running_sids:
         return False  # active session running — don't touch tasks
     changed = False
-    with _lock:
+    with _goal_lock(founder_id, company_id):
         g2 = _read(founder_id, company_id)
         if g2 is None:
             return False

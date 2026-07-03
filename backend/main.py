@@ -3,6 +3,7 @@ import logging
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from backend.api.routes import router
 from backend.api.admin import router as admin_router
 from backend.api.workspace_routes import router as workspace_router
@@ -44,6 +45,11 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization", "Last-Event-ID", "x-astra-user-id", "x-user-id", "x-astra-email", "x-astra-session"],
     expose_headers=["Content-Type", "Cache-Control", "X-Accel-Buffering"],
 )
+# minimum_size=1024: session/goal SSE streams send frequent small text/event-stream
+# chunks — compressing those would buffer them and add latency for no bandwidth win.
+# The actual targets (session lists, brain records, flow/integration catalogs) are
+# multi-KB JSON payloads well above this floor.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 app.include_router(router)
 app.include_router(workspace_router)

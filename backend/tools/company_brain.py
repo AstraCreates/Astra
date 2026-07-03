@@ -10,12 +10,35 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 import time
 from collections import Counter
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 from typing import Any
+
+# Per-(founder, company) lock so concurrent writers (e.g. several specialist
+# agents in the same orchestrator run all calling add_company_brain_record)
+# can't interleave a load->mutate->save cycle and silently drop each other's
+# updates. Same double-checked-lock idiom as session_store.py's founder locks.
+# RLock (not Lock) because some entrypoints call other locking entrypoints on
+# the same founder from the same thread (run_company_brain_sync calls
+# sync_company_brain) — a plain Lock would self-deadlock on that reentry.
+_brain_locks: dict[str, threading.RLock] = {}
+_brain_locks_guard = threading.Lock()
+
+
+def _brain_lock(founder_id: str, company_id: str | None = None) -> threading.RLock:
+    key = _storage_key(founder_id, company_id)
+    lock = _brain_locks.get(key)
+    if lock is None:
+        with _brain_locks_guard:
+            lock = _brain_locks.get(key)
+            if lock is None:
+                lock = threading.RLock()
+                _brain_locks[key] = lock
+    return lock
 
 
 SOURCE_CATALOG: dict[str, dict[str, str]] = {
@@ -335,7 +358,8 @@ def reset_company_brain(founder_id: str, company_id: str | None = None) -> None:
     instead of inheriting the previous company's records (which otherwise re-mix
     in via the founder-wide graph sync). Child/operating runs never call this."""
     try:
-        _save(founder_id, _empty_brain(founder_id, company_id or founder_id), company_id)
+        with _brain_lock(founder_id, company_id):
+            _save(founder_id, _empty_brain(founder_id, company_id or founder_id), company_id)
     except Exception as exc:
         logger.warning("reset_company_brain failed for %s: %s", founder_id, exc)
     # Drop the GraphRAG index so the map rebuilds empty (and won't re-ingest the
@@ -362,7 +386,9 @@ def _save(
     data["company_id"] = resolved_company_id
     data["updated_at"] = _now()
     path = _brain_path(founder_id, resolved_company_id)
-    path.write_text(json.dumps(data, indent=2, sort_keys=True))
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
+    tmp.replace(path)  # atomic — a reader never sees a partially-written file
     try:
         from backend.storage_adapter import mirror_document
         mirror_document(
@@ -481,27 +507,28 @@ def configure_company_brain_access(
     company_id: str | None = None,
 ) -> dict[str, Any]:
     """Configure team roles and permissions for Company Brain."""
-    data = _load(founder_id, company_id)
-    access = data.setdefault(
-        "access_control",
-        _empty_brain(founder_id, company_id)["access_control"],
-    )
-    access["owner_id"] = access.get("owner_id") or founder_id
-    if roles:
-        allowed_roles = {"owner", "admin", "operator", "viewer"}
-        current = dict(access.get("roles") or {})
-        for member_id, role in roles.items():
-            if role in allowed_roles:
-                current[str(member_id)] = role
-        current[founder_id] = "owner"
-        access["roles"] = current
-    if role_permissions:
-        current_permissions = dict(access.get("role_permissions") or {})
-        for role, permissions in role_permissions.items():
-            current_permissions[str(role)] = sorted(set(str(item) for item in permissions))
-        access["role_permissions"] = current_permissions
-    data["access_control"] = access
-    _save(founder_id, data, company_id)
+    with _brain_lock(founder_id, company_id):
+        data = _load(founder_id, company_id)
+        access = data.setdefault(
+            "access_control",
+            _empty_brain(founder_id, company_id)["access_control"],
+        )
+        access["owner_id"] = access.get("owner_id") or founder_id
+        if roles:
+            allowed_roles = {"owner", "admin", "operator", "viewer"}
+            current = dict(access.get("roles") or {})
+            for member_id, role in roles.items():
+                if role in allowed_roles:
+                    current[str(member_id)] = role
+            current[founder_id] = "owner"
+            access["roles"] = current
+        if role_permissions:
+            current_permissions = dict(access.get("role_permissions") or {})
+            for role, permissions in role_permissions.items():
+                current_permissions[str(role)] = sorted(set(str(item) for item in permissions))
+            access["role_permissions"] = current_permissions
+        data["access_control"] = access
+        _save(founder_id, data, company_id)
     return {"ok": True, "access_control": access}
 
 
@@ -610,9 +637,10 @@ def rebuild_company_brain_graph(
 ) -> dict[str, Any]:
     """Recompute the lightweight relationship graph for one company."""
     resolved_company_id = company_id or founder_id
-    data = _load(founder_id, resolved_company_id)
-    _rebuild_relationships(data)
-    _save(founder_id, data, resolved_company_id)
+    with _brain_lock(founder_id, resolved_company_id):
+        data = _load(founder_id, resolved_company_id)
+        _rebuild_relationships(data)
+        _save(founder_id, data, resolved_company_id)
     graph = get_company_brain_graph(founder_id, resolved_company_id)
     return {
         "ok": True,
@@ -855,36 +883,37 @@ def sync_company_brain(
     """Sync source metadata plus local Astra vault notes into the company brain."""
     selected = sources or DEFAULT_SOURCES
     resolved_company_id = company_id or founder_id
-    data = _load(founder_id, resolved_company_id)
-    records = _connector_records(founder_id, selected)
-    if resolved_company_id == founder_id:
-        records += _vault_records(founder_id)
-    for record in records:
-        metadata = record.setdefault("metadata", {})
-        metadata["company_id"] = resolved_company_id
-        record["company_id"] = resolved_company_id
-    changed = _upsert_records(data, records)
-    for source in selected:
-        if source in data["sources"]:
-            status, note = _source_status(founder_id, source)
-            data["sources"][source]["status"] = status
-            data["sources"][source]["notes"] = note
-            data["sources"][source]["last_synced_at"] = _now()
-    if "astra_vault" not in data["sources"]:
-        data["sources"]["astra_vault"] = {
-            "key": "astra_vault",
-            "label": "Astra Vault",
-            "kind": "agent_memory",
-            "status": "connected",
-            "record_count": 0,
-            "last_synced_at": _now(),
-            "notes": "Prior agent runs and Obsidian notes.",
-        }
-    maintenance = _run_maintenance(data)
-    _merge_proposals(data, maintenance["proposals"])
-    _rebuild_relationships(data)
-    _refresh_counts(data)
-    _save(founder_id, data, resolved_company_id)
+    with _brain_lock(founder_id, resolved_company_id):
+        data = _load(founder_id, resolved_company_id)
+        records = _connector_records(founder_id, selected)
+        if resolved_company_id == founder_id:
+            records += _vault_records(founder_id)
+        for record in records:
+            metadata = record.setdefault("metadata", {})
+            metadata["company_id"] = resolved_company_id
+            record["company_id"] = resolved_company_id
+        changed = _upsert_records(data, records)
+        for source in selected:
+            if source in data["sources"]:
+                status, note = _source_status(founder_id, source)
+                data["sources"][source]["status"] = status
+                data["sources"][source]["notes"] = note
+                data["sources"][source]["last_synced_at"] = _now()
+        if "astra_vault" not in data["sources"]:
+            data["sources"]["astra_vault"] = {
+                "key": "astra_vault",
+                "label": "Astra Vault",
+                "kind": "agent_memory",
+                "status": "connected",
+                "record_count": 0,
+                "last_synced_at": _now(),
+                "notes": "Prior agent runs and Obsidian notes.",
+            }
+        maintenance = _run_maintenance(data)
+        _merge_proposals(data, maintenance["proposals"])
+        _rebuild_relationships(data)
+        _refresh_counts(data)
+        _save(founder_id, data, resolved_company_id)
     return {
         "ok": True,
         "founder_id": founder_id,
@@ -905,21 +934,22 @@ def configure_company_brain_sync(
     company_id: str | None = None,
 ) -> dict[str, Any]:
     """Persist continuous-sync settings for the company brain."""
-    data = _load(founder_id, company_id)
-    interval = max(5, min(int(interval_minutes or 60), 24 * 60))
-    selected = sources or data.get("sync", {}).get("sources") or DEFAULT_SOURCES
-    next_run = _iso_from_epoch(time.time() + interval * 60) if enabled else None
-    data["sync"] = {
-        **data.get("sync", {}),
-        "enabled": bool(enabled),
-        "interval_minutes": interval,
-        "sources": selected,
-        "next_run_at": next_run,
-        "last_status": data.get("sync", {}).get("last_status", "idle"),
-        "last_error": data.get("sync", {}).get("last_error", ""),
-        "history": data.get("sync", {}).get("history", [])[:25],
-    }
-    _save(founder_id, data, company_id)
+    with _brain_lock(founder_id, company_id):
+        data = _load(founder_id, company_id)
+        interval = max(5, min(int(interval_minutes or 60), 24 * 60))
+        selected = sources or data.get("sync", {}).get("sources") or DEFAULT_SOURCES
+        next_run = _iso_from_epoch(time.time() + interval * 60) if enabled else None
+        data["sync"] = {
+            **data.get("sync", {}),
+            "enabled": bool(enabled),
+            "interval_minutes": interval,
+            "sources": selected,
+            "next_run_at": next_run,
+            "last_status": data.get("sync", {}).get("last_status", "idle"),
+            "last_error": data.get("sync", {}).get("last_error", ""),
+            "history": data.get("sync", {}).get("history", [])[:25],
+        }
+        _save(founder_id, data, company_id)
     return {"ok": True, "sync": data["sync"]}
 
 
@@ -944,80 +974,81 @@ def run_company_brain_sync(
 ) -> dict[str, Any]:
     """Run provider import + vault sync if due or explicitly forced."""
     resolved_company_id = company_id or founder_id
-    data = _load(founder_id, resolved_company_id)
-    sync = data.get("sync", {})
-    now = time.time()
-    next_run_epoch = _epoch_from_iso(sync.get("next_run_at"))
-    if not force and (not sync.get("enabled") or (next_run_epoch and now < next_run_epoch)):
-        return {"ok": True, "skipped": True, "sync": sync}
+    with _brain_lock(founder_id, resolved_company_id):
+        data = _load(founder_id, resolved_company_id)
+        sync = data.get("sync", {})
+        now = time.time()
+        next_run_epoch = _epoch_from_iso(sync.get("next_run_at"))
+        if not force and (not sync.get("enabled") or (next_run_epoch and now < next_run_epoch)):
+            return {"ok": True, "skipped": True, "sync": sync}
 
-    sources = sync.get("sources") or DEFAULT_SOURCES
-    interval = max(5, min(int(sync.get("interval_minutes") or 60), 24 * 60))
-    started_at = _now()
-    sync["last_status"] = "running"
-    sync["last_error"] = ""
-    data["sync"] = sync
-    _save(founder_id, data, resolved_company_id)
+        sources = sync.get("sources") or DEFAULT_SOURCES
+        interval = max(5, min(int(sync.get("interval_minutes") or 60), 24 * 60))
+        started_at = _now()
+        sync["last_status"] = "running"
+        sync["last_error"] = ""
+        data["sync"] = sync
+        _save(founder_id, data, resolved_company_id)
 
-    try:
-        from backend.tools.company_brain_connectors import import_company_brain_sources
-        if resolved_company_id == founder_id:
-            import_result = import_company_brain_sources(
+        try:
+            from backend.tools.company_brain_connectors import import_company_brain_sources
+            if resolved_company_id == founder_id:
+                import_result = import_company_brain_sources(
+                    founder_id,
+                    sources,
+                    limit=20,
+                )
+            else:
+                import_result = import_company_brain_sources(
+                    founder_id,
+                    sources,
+                    limit=20,
+                    company_id=resolved_company_id,
+                )
+            metadata_result = sync_company_brain(
                 founder_id,
                 sources,
-                limit=20,
-            )
-        else:
-            import_result = import_company_brain_sources(
-                founder_id,
-                sources,
-                limit=20,
                 company_id=resolved_company_id,
             )
-        metadata_result = sync_company_brain(
-            founder_id,
-            sources,
-            company_id=resolved_company_id,
-        )
-        data = _load(founder_id, resolved_company_id)
-        sync = data.get("sync", {})
-        sync["enabled"] = bool(sync.get("enabled", True))
-        sync["sources"] = sources
-        sync["interval_minutes"] = interval
-        sync["last_run_at"] = started_at
-        sync["next_run_at"] = _iso_from_epoch(time.time() + interval * 60)
-        sync["last_status"] = "ok" if import_result.get("ok") or metadata_result.get("ok") else "partial"
-        sync["last_error"] = ""
-        _append_sync_history(data, {
-            "started_at": started_at,
-            "finished_at": _now(),
-            "status": sync["last_status"],
-            "sources": sources,
-            "imported_sources": import_result.get("imported_sources", []),
-            "failed_sources": import_result.get("failed_sources", []),
-            "record_count": metadata_result.get("record_count", len(data.get("records", []))),
-            "proposal_count": metadata_result.get("proposal_count", 0),
-        })
-        data["sync"] = sync
-        _save(founder_id, data, resolved_company_id)
-        return {"ok": True, "skipped": False, "sync": sync, "import": import_result, "metadata": metadata_result}
-    except Exception as exc:
-        data = _load(founder_id, resolved_company_id)
-        sync = data.get("sync", {})
-        sync["last_run_at"] = started_at
-        sync["next_run_at"] = _iso_from_epoch(time.time() + interval * 60)
-        sync["last_status"] = "error"
-        sync["last_error"] = str(exc)
-        _append_sync_history(data, {
-            "started_at": started_at,
-            "finished_at": _now(),
-            "status": "error",
-            "sources": sources,
-            "error": str(exc),
-        })
-        data["sync"] = sync
-        _save(founder_id, data, resolved_company_id)
-        return {"ok": False, "skipped": False, "sync": sync, "error": str(exc)}
+            data = _load(founder_id, resolved_company_id)
+            sync = data.get("sync", {})
+            sync["enabled"] = bool(sync.get("enabled", True))
+            sync["sources"] = sources
+            sync["interval_minutes"] = interval
+            sync["last_run_at"] = started_at
+            sync["next_run_at"] = _iso_from_epoch(time.time() + interval * 60)
+            sync["last_status"] = "ok" if import_result.get("ok") or metadata_result.get("ok") else "partial"
+            sync["last_error"] = ""
+            _append_sync_history(data, {
+                "started_at": started_at,
+                "finished_at": _now(),
+                "status": sync["last_status"],
+                "sources": sources,
+                "imported_sources": import_result.get("imported_sources", []),
+                "failed_sources": import_result.get("failed_sources", []),
+                "record_count": metadata_result.get("record_count", len(data.get("records", []))),
+                "proposal_count": metadata_result.get("proposal_count", 0),
+            })
+            data["sync"] = sync
+            _save(founder_id, data, resolved_company_id)
+            return {"ok": True, "skipped": False, "sync": sync, "import": import_result, "metadata": metadata_result}
+        except Exception as exc:
+            data = _load(founder_id, resolved_company_id)
+            sync = data.get("sync", {})
+            sync["last_run_at"] = started_at
+            sync["next_run_at"] = _iso_from_epoch(time.time() + interval * 60)
+            sync["last_status"] = "error"
+            sync["last_error"] = str(exc)
+            _append_sync_history(data, {
+                "started_at": started_at,
+                "finished_at": _now(),
+                "status": "error",
+                "sources": sources,
+                "error": str(exc),
+            })
+            data["sync"] = sync
+            _save(founder_id, data, resolved_company_id)
+            return {"ok": False, "skipped": False, "sync": sync, "error": str(exc)}
 
 
 def run_due_company_brain_syncs(limit: int = 25) -> dict[str, Any]:
@@ -1050,31 +1081,32 @@ def ingest_company_brain_records(
 ) -> dict[str, Any]:
     """Bulk-ingest normalized records from a connector, webhook, or importer."""
     resolved_company_id = company_id or founder_id
-    data = _load(founder_id, resolved_company_id)
-    normalized = [_normalize_source_record(source, raw) for raw in records]
-    for record in normalized:
-        metadata = record.setdefault("metadata", {})
-        metadata["company_id"] = resolved_company_id
-        record["company_id"] = metadata["company_id"]
-    changed = _upsert_records(data, normalized)
-    if source not in data["sources"]:
-        data["sources"][source] = {
-            "key": source,
-            "label": source.replace("_", " ").title(),
-            "kind": SOURCE_CATALOG.get(source, {}).get("kind", "records"),
-            "status": "connected",
-            "record_count": 0,
-            "last_synced_at": _now(),
-            "notes": "Ingested via company brain API.",
-        }
-    data["sources"][source]["status"] = "connected"
-    data["sources"][source]["last_synced_at"] = _now()
-    data["sources"][source]["notes"] = "Records ingested via company brain API."
-    maintenance = _run_maintenance(data)
-    _merge_proposals(data, maintenance["proposals"])
-    _rebuild_relationships(data)
-    _refresh_counts(data)
-    _save(founder_id, data, resolved_company_id)
+    with _brain_lock(founder_id, resolved_company_id):
+        data = _load(founder_id, resolved_company_id)
+        normalized = [_normalize_source_record(source, raw) for raw in records]
+        for record in normalized:
+            metadata = record.setdefault("metadata", {})
+            metadata["company_id"] = resolved_company_id
+            record["company_id"] = metadata["company_id"]
+        changed = _upsert_records(data, normalized)
+        if source not in data["sources"]:
+            data["sources"][source] = {
+                "key": source,
+                "label": source.replace("_", " ").title(),
+                "kind": SOURCE_CATALOG.get(source, {}).get("kind", "records"),
+                "status": "connected",
+                "record_count": 0,
+                "last_synced_at": _now(),
+                "notes": "Ingested via company brain API.",
+            }
+        data["sources"][source]["status"] = "connected"
+        data["sources"][source]["last_synced_at"] = _now()
+        data["sources"][source]["notes"] = "Records ingested via company brain API."
+        maintenance = _run_maintenance(data)
+        _merge_proposals(data, maintenance["proposals"])
+        _rebuild_relationships(data)
+        _refresh_counts(data)
+        _save(founder_id, data, resolved_company_id)
     return {
         "ok": True,
         "source": source,
@@ -1102,42 +1134,43 @@ def add_company_brain_record(
 ) -> dict[str, Any]:
     """Add a record to the company brain."""
     resolved_company_id = company_id or str((metadata or {}).get("company_id") or founder_id)
-    data = _load(founder_id, resolved_company_id)
-    meta = {
-        "manual": True,
-        "owner_id": owner_id or founder_id,
-        "company_id": resolved_company_id,
-        **(metadata or {}),
-    }
-    rec = _record(
-        source=source,
-        title=title,
-        content=content,
-        kind=kind,
-        url=url,
-        canonical=canonical,
-        stale_risk=stale_risk,
-        metadata=meta,
-        owner_id=owner_id or founder_id,
-        visibility=visibility,
-        allowed_roles=allowed_roles,
-    )
-    _upsert_records(data, [rec])
-    if source not in data["sources"]:
-        data["sources"][source] = {
-            "key": source,
-            "label": source.replace("_", " ").title(),
-            "kind": kind,
-            "status": "connected",
-            "record_count": 0,
-            "last_synced_at": _now(),
-            "notes": "Manually added source.",
+    with _brain_lock(founder_id, resolved_company_id):
+        data = _load(founder_id, resolved_company_id)
+        meta = {
+            "manual": True,
+            "owner_id": owner_id or founder_id,
+            "company_id": resolved_company_id,
+            **(metadata or {}),
         }
-    maintenance = _run_maintenance(data)
-    _merge_proposals(data, maintenance["proposals"])
-    _rebuild_relationships(data)
-    _refresh_counts(data)
-    _save(founder_id, data, resolved_company_id)
+        rec = _record(
+            source=source,
+            title=title,
+            content=content,
+            kind=kind,
+            url=url,
+            canonical=canonical,
+            stale_risk=stale_risk,
+            metadata=meta,
+            owner_id=owner_id or founder_id,
+            visibility=visibility,
+            allowed_roles=allowed_roles,
+        )
+        _upsert_records(data, [rec])
+        if source not in data["sources"]:
+            data["sources"][source] = {
+                "key": source,
+                "label": source.replace("_", " ").title(),
+                "kind": kind,
+                "status": "connected",
+                "record_count": 0,
+                "last_synced_at": _now(),
+                "notes": "Manually added source.",
+            }
+        maintenance = _run_maintenance(data)
+        _merge_proposals(data, maintenance["proposals"])
+        _rebuild_relationships(data)
+        _refresh_counts(data)
+        _save(founder_id, data, resolved_company_id)
     return {"ok": True, "record": rec}
 
 
@@ -1152,47 +1185,48 @@ def revise_company_brain_record(
     company_id: str | None = None,
 ) -> dict[str, Any]:
     """Create a new version of a brain record (deprecates prior version)."""
-    data = _load(founder_id, company_id)
-    role = _viewer_role(data, editor_id or founder_id)
-    if role != "owner" and "write" not in _role_permissions(data, role):
-        return {"ok": False, "error": "Editor does not have write permission."}
+    with _brain_lock(founder_id, company_id):
+        data = _load(founder_id, company_id)
+        role = _viewer_role(data, editor_id or founder_id)
+        if role != "owner" and "write" not in _role_permissions(data, role):
+            return {"ok": False, "error": "Editor does not have write permission."}
 
-    old = next((record for record in data.get("records", []) if record.get("id") == record_id or record.get("version_id") == record_id), None)
-    if not old:
-        return {"ok": False, "error": f"Unknown record {record_id}"}
+        old = next((record for record in data.get("records", []) if record.get("id") == record_id or record.get("version_id") == record_id), None)
+        if not old:
+            return {"ok": False, "error": f"Unknown record {record_id}"}
 
-    previous_version = old.get("version_id") or old.get("id")
-    old["status"] = "deprecated"
-    old.setdefault("metadata", {})["deprecated_by"] = editor_id or founder_id
-    old.setdefault("metadata", {})["deprecated_at"] = _now()
-    new_version = int(old.get("version") or 1) + 1
-    rec = _record(
-        source=old.get("source", "manual"),
-        title=title if title is not None else old.get("title", ""),
-        content=content if content is not None else old.get("content", ""),
-        kind=old.get("kind") or "note",
-        url=old.get("url") or "",
-        canonical=old.get("canonical") if canonical is None else canonical,
-        stale_risk=stale_risk or old.get("stale_risk") or "medium",
-        metadata={
-            **(old.get("metadata") or {}),
-            "revised_by": editor_id or founder_id,
-            "previous_record_id": old.get("id"),
-            "supersedes": [previous_version],
-        },
-        owner_id=old.get("owner_id") or founder_id,
-        visibility=old.get("visibility") or "team",
-        allowed_roles=list(old.get("allowed_roles") or ["owner", "admin", "operator", "viewer"]),
-        version=new_version,
-        previous_version_id=previous_version,
-    )
-    rec["supersedes"] = list(dict.fromkeys([*(old.get("supersedes") or []), previous_version]))
-    _upsert_records(data, [rec])
-    maintenance = _run_maintenance(data)
-    _merge_proposals(data, maintenance["proposals"])
-    _rebuild_relationships(data)
-    _refresh_counts(data)
-    _save(founder_id, data, company_id)
+        previous_version = old.get("version_id") or old.get("id")
+        old["status"] = "deprecated"
+        old.setdefault("metadata", {})["deprecated_by"] = editor_id or founder_id
+        old.setdefault("metadata", {})["deprecated_at"] = _now()
+        new_version = int(old.get("version") or 1) + 1
+        rec = _record(
+            source=old.get("source", "manual"),
+            title=title if title is not None else old.get("title", ""),
+            content=content if content is not None else old.get("content", ""),
+            kind=old.get("kind") or "note",
+            url=old.get("url") or "",
+            canonical=old.get("canonical") if canonical is None else canonical,
+            stale_risk=stale_risk or old.get("stale_risk") or "medium",
+            metadata={
+                **(old.get("metadata") or {}),
+                "revised_by": editor_id or founder_id,
+                "previous_record_id": old.get("id"),
+                "supersedes": [previous_version],
+            },
+            owner_id=old.get("owner_id") or founder_id,
+            visibility=old.get("visibility") or "team",
+            allowed_roles=list(old.get("allowed_roles") or ["owner", "admin", "operator", "viewer"]),
+            version=new_version,
+            previous_version_id=previous_version,
+        )
+        rec["supersedes"] = list(dict.fromkeys([*(old.get("supersedes") or []), previous_version]))
+        _upsert_records(data, [rec])
+        maintenance = _run_maintenance(data)
+        _merge_proposals(data, maintenance["proposals"])
+        _rebuild_relationships(data)
+        _refresh_counts(data)
+        _save(founder_id, data, company_id)
     return {"ok": True, "record": rec, "previous_record": old}
 
 
@@ -1276,12 +1310,13 @@ def maintain_company_brain(
     company_id: str | None = None,
 ) -> dict[str, Any]:
     """Detect stale records, canonical gaps, and cross-source contradictions."""
-    data = _load(founder_id, company_id)
-    result = _run_maintenance(data)
-    _merge_proposals(data, result["proposals"])
-    _rebuild_relationships(data)
-    _refresh_counts(data)
-    _save(founder_id, data, company_id)
+    with _brain_lock(founder_id, company_id):
+        data = _load(founder_id, company_id)
+        result = _run_maintenance(data)
+        _merge_proposals(data, result["proposals"])
+        _rebuild_relationships(data)
+        _refresh_counts(data)
+        _save(founder_id, data, company_id)
     return {
         "ok": True,
         "maintenance": data["maintenance"],
@@ -1296,15 +1331,16 @@ def resolve_company_brain_proposal(
     company_id: str | None = None,
 ) -> dict[str, Any]:
     """Mark a maintenance proposal resolved, dismissed, or open."""
-    data = _load(founder_id, company_id)
-    allowed = {"open", "resolved", "dismissed"}
-    next_status = status if status in allowed else "resolved"
-    for proposal in data.get("proposals", []):
-        if proposal.get("id") == proposal_id:
-            proposal["status"] = next_status
-            proposal["updated_at"] = _now()
-            _save(founder_id, data, company_id)
-            return {"ok": True, "proposal": proposal}
+    with _brain_lock(founder_id, company_id):
+        data = _load(founder_id, company_id)
+        allowed = {"open", "resolved", "dismissed"}
+        next_status = status if status in allowed else "resolved"
+        for proposal in data.get("proposals", []):
+            if proposal.get("id") == proposal_id:
+                proposal["status"] = next_status
+                proposal["updated_at"] = _now()
+                _save(founder_id, data, company_id)
+                return {"ok": True, "proposal": proposal}
     return {"ok": False, "error": f"Unknown proposal {proposal_id}"}
 
 
@@ -1467,15 +1503,16 @@ def purge_session_records(founder_id: str, session_id: str, company_id: str | No
     if not founder_id or not session_id:
         return 0
     try:
-        data = _load(founder_id, company_id)
-        before = len(data.get("records") or [])
-        data["records"] = [
-            r for r in (data.get("records") or [])
-            if (r.get("metadata") or {}).get("session_id") != session_id
-        ]
-        removed = before - len(data["records"])
-        if removed:
-            _save(founder_id, data, company_id)
+        with _brain_lock(founder_id, company_id):
+            data = _load(founder_id, company_id)
+            before = len(data.get("records") or [])
+            data["records"] = [
+                r for r in (data.get("records") or [])
+                if (r.get("metadata") or {}).get("session_id") != session_id
+            ]
+            removed = before - len(data["records"])
+            if removed:
+                _save(founder_id, data, company_id)
         return removed
     except Exception as exc:
         import logging

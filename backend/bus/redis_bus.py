@@ -12,7 +12,17 @@ class RedisBus:
 
     async def _get_redis(self):
         if self._redis is None:
-            self._redis = aioredis.from_url(settings.redis_url)
+            # Bounded pool (matches backend/core/events.py's sync client) — without
+            # max_connections this defaults to unbounded, so a burst of concurrent
+            # founders could open unlimited sockets against the single Redis
+            # instance. redis.asyncio checks out a connection per in-flight call
+            # (including brpop's blocking wait), so pooling also means push_task/
+            # poll_results aren't stuck behind a blocking pop on the same socket.
+            self._redis = aioredis.from_url(
+                settings.redis_url,
+                socket_connect_timeout=2, socket_timeout=30,
+                health_check_interval=30, max_connections=64,
+            )
         return self._redis
 
     def _task_queue_key(self, founder_id: str) -> str:

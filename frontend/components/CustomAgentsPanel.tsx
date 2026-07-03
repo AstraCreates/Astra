@@ -471,10 +471,12 @@ export default function CustomAgentsPanel({
 
   async function handleDelete(agent: CustomAgent) {
     if (!confirm(`Delete "${agent.name}"?`)) return;
+    const prevAgents = agents;
+    setAgents((prev) => prev.filter((a) => a.id !== agent.id));
     try {
       await deleteCustomAgent(founderId, agent.id);
-      setAgents((prev) => prev.filter((a) => a.id !== agent.id));
     } catch (e: unknown) {
+      setAgents(prevAgents);
       setError(e instanceof Error ? e.message : "Failed to delete agent");
     }
   }
