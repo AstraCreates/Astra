@@ -187,6 +187,61 @@ def _execute_condition_node(node: dict, upstream_text: str) -> dict:
     return {"summary": upstream_text, "passed": passed}
 
 
+def _execute_condition_equals_node(node: dict, upstream_text: str) -> dict:
+    cfg = node.get("config") or {}
+    expected = str(cfg.get("equals") or "")
+    passed = upstream_text.strip() == expected.strip()
+    return {"summary": upstream_text, "passed": passed}
+
+
+def _execute_merge_node(node: dict, upstream_text: str) -> dict:
+    cfg = node.get("config") or {}
+    sep = cfg.get("separator", "\n\n")
+    return {"summary": upstream_text or "", "separator": sep}
+
+
+def _execute_json_extract_node(node: dict, upstream_text: str) -> dict:
+    cfg = node.get("config") or {}
+    path = str(cfg.get("path") or "").strip()
+    try:
+        data = json.loads(upstream_text)
+    except Exception:
+        return {"error": f"Upstream output isn't valid JSON: {upstream_text[:200]}"}
+    current = data
+    for part in [p for p in path.split(".") if p]:
+        if isinstance(current, dict):
+            current = current.get(part)
+        elif isinstance(current, list) and part.isdigit():
+            idx = int(part)
+            current = current[idx] if 0 <= idx < len(current) else None
+        else:
+            current = None
+        if current is None:
+            break
+    return {"summary": current if isinstance(current, str) else json.dumps(current, default=str)}
+
+
+def _execute_text_transform_node(node: dict, upstream_text: str) -> dict:
+    cfg = node.get("config") or {}
+    op = str(cfg.get("operation") or "trim").lower()
+    if op == "uppercase":
+        out = upstream_text.upper()
+    elif op == "lowercase":
+        out = upstream_text.lower()
+    else:
+        out = upstream_text.strip()
+    return {"summary": out}
+
+
+def _execute_set_text_node(node: dict) -> dict:
+    cfg = node.get("config") or {}
+    return {"summary": cfg.get("text", "")}
+
+
+def _execute_current_time_node() -> dict:
+    return {"summary": automation_store.now()}
+
+
 async def _execute_slack_node(node: dict, rendered_config: dict) -> dict:
     """Posts to a Slack incoming webhook — no OAuth needed, the founder just
     pastes the webhook URL Slack gives them, same as n8n/Zapier's Slack block."""
@@ -362,6 +417,23 @@ async def _execute_stripe_payment_link_node(rendered_config: dict, founder_id: s
     )
 
 
+async def _execute_integration_node(rendered_config: dict, founder_id: str) -> dict:
+    """Dispatches to backend.tools.automation_blocks.INTEGRATION_BLOCKS — see
+    that module for the full registry (Slack/Gmail/GitHub/Stripe/Twilio/etc).
+    config: {block_key, params: {...}}."""
+    from backend.tools.automation_blocks import INTEGRATION_BLOCKS
+
+    block_key = rendered_config.get("block_key", "")
+    block = INTEGRATION_BLOCKS.get(block_key)
+    if block is None:
+        return {"error": f"Unknown integration block '{block_key}'"}
+    params = rendered_config.get("params") or {}
+    try:
+        return await asyncio.to_thread(block.run, params, founder_id)
+    except Exception as e:
+        return {"error": str(e)}
+
+
 async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dict:
     """Executes a saved flow end-to-end, persisting + streaming per-node status.
     `run_id` must already exist (see automation_store.create_run) — the caller
@@ -442,6 +514,21 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dic
                 elif node_type == "stripe_payment_link":
                     rendered_cfg = _render_any(cfg, merged_outputs)
                     result = await _execute_stripe_payment_link_node(rendered_cfg, founder_id)
+                elif node_type == "integration":
+                    rendered_cfg = _render_any(cfg, merged_outputs)
+                    result = await _execute_integration_node(rendered_cfg, founder_id)
+                elif node_type == "merge":
+                    result = _execute_merge_node(node, upstream_text)
+                elif node_type == "json_extract":
+                    result = _execute_json_extract_node(node, upstream_text)
+                elif node_type == "text_transform":
+                    result = _execute_text_transform_node(node, upstream_text)
+                elif node_type == "condition_equals":
+                    result = _execute_condition_equals_node(node, upstream_text)
+                elif node_type == "set_text":
+                    result = _execute_set_text_node(node)
+                elif node_type == "current_time":
+                    result = _execute_current_time_node()
                 elif node_type == "trigger":
                     result = {"summary": "trigger", "status": "ok"}
                 else:
@@ -450,7 +537,7 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dic
                 logger.exception("automation node %s failed", node_id)
                 result = {"error": str(e)}
 
-            if node_type == "condition" and result.get("passed") is False:
+            if node_type in ("condition", "condition_equals") and result.get("passed") is False:
                 skipped.add(node_id)
                 outputs[node_id] = result.get("summary", "")
                 automation_store.set_node_result(founder_id, run_id, node_id, {"status": "skipped", "output": result})

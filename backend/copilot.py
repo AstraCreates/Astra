@@ -1135,6 +1135,16 @@ async def _tool_read_vault(founder_id: str, session_id: str, args: dict) -> Any:
 # ── Automations canvas (native agent/prompt/action flow builder) ───────────────
 
 def _automation_node_schema_hint() -> str:
+    from backend.tools.automation_blocks import catalog as _integration_catalog
+
+    blocks = _integration_catalog()
+
+    def _describe(b: dict) -> str:
+        scope_label = "founder-connected" if b["scope"] == "founder" else "Astra's account"
+        params = ", ".join(p["key"] for p in b["params"])
+        return f"{b['key']} ({b['category']}, {scope_label}): {params}"
+
+    block_list = "; ".join(_describe(b) for b in blocks)
     return (
         "Node: {id, type, config}. type is one of: "
         "trigger (config: {}) — manual start; "
@@ -1147,12 +1157,21 @@ def _automation_node_schema_hint() -> str:
         "— HTTP request or an existing Windmill flow; "
         "delay (config: {seconds}) — pause before continuing; "
         "condition (config: {contains}) — only continues past this node if the "
-        "upstream output contains this text (case-insensitive); "
-        "slack (config: {webhook_url, message}) — post to a Slack incoming webhook, "
-        "no OAuth needed, the founder pastes the webhook URL Slack gives them; "
-        "email (config: {to, subject, body, from?}) — sends via the founder's own "
-        "connected SendGrid key (errors clearly if not connected — don't invent a key). "
-        "Any instruction/url/body/message field can reference an upstream node's result "
+        "upstream output contains this text (case-insensitive), skipping it and everything "
+        "downstream otherwise; "
+        "condition_equals (config: {equals}) — same but exact match instead of contains; "
+        "merge (config: {separator?}) — passes concatenated upstream output through unchanged, "
+        "useful as an explicit join point when a node has multiple incoming edges; "
+        "json_extract (config: {path}) — pulls a dot-path field out of upstream JSON output "
+        "(e.g. path 'data.0.id'); "
+        "text_transform (config: {operation}) — operation is uppercase|lowercase|trim, applied "
+        "to upstream output; "
+        "set_text (config: {text}) — a constant text value, useful as a flow's starting input; "
+        "current_time (config: {}) — outputs the current UTC timestamp; "
+        "integration (config: {block_key, params: {...}}) — calls one of the pre-built "
+        "integration blocks below. block_key and its param keys: "
+        f"{block_list}. "
+        "Any instruction/url/body/message/param field can reference an upstream node's result "
         "with {{node_id.output}}. Edge: {source, target} (node ids)."
     )
 

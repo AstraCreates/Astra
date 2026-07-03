@@ -404,6 +404,14 @@ async def agents_catalog():
     return {"agents": get_agent_catalog()}
 
 
+@router.get("/automations/integration-catalog")
+async def automations_integration_catalog():
+    """Return the full integration-block registry for the automations canvas palette."""
+    from backend.tools.automation_blocks import catalog
+
+    return {"blocks": catalog()}
+
+
 @router.post("/stacks/custom")
 async def custom_stack_route(body: CustomStackRequest, request: Request):
     """Build a deployable stack package for a hand-picked subset of agents."""
