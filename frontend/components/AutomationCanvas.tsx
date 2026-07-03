@@ -185,8 +185,6 @@ const NODE_ORDER: NodeType[] = [
   "action",
   "delay",
   "condition",
-  "slack",
-  "email",
   "gmail",
   "slack_bot",
   "github_issue",
@@ -906,7 +904,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
       <div style={{ display: "flex", flex: 1, minHeight: 0, position: "relative" }}>
         {/* Node palette — persistent column on desktop, bottom sheet on mobile */}
         {!isMobile && (
-          <div style={{ width: 176, borderRight: "1px solid var(--bd)", padding: "10px 10px", overflowY: "auto", flexShrink: 0, background: "var(--s2)" }}>
+          <div style={{ width: 232, borderRight: "1px solid var(--bd)", padding: 14, overflowY: "auto", flexShrink: 0, background: "var(--s2)" }}>
             {paletteBody}
           </div>
         )}
@@ -933,6 +931,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
             onPaneClick={() => setSelectedNodeId(null)}
             defaultEdgeOptions={{ type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed } }}
             fitView
+            fitViewOptions={{ maxZoom: 0.85, padding: 0.4 }}
             panOnScroll={isMobile}
             zoomOnPinch
           >
@@ -1033,14 +1032,16 @@ function PaletteButton({ type, onClick }: { type: NodeType; onClick: () => void 
       onClick={onClick}
       className="m-tap astra-palette-btn"
       style={{
-        width: "100%", textAlign: "left", padding: "6px 9px", marginBottom: 4, borderRadius: 8,
+        width: "100%", textAlign: "left", padding: "10px 12px", marginBottom: 8, borderRadius: 10,
         border: `1px solid ${meta.border}`, background: meta.bg, cursor: "pointer",
         transition: "transform 0.12s ease, filter 0.12s ease",
-        display: "flex", alignItems: "center", gap: 7,
       }}
     >
-      <span style={{ fontSize: 12, color: meta.color, flexShrink: 0 }}>{meta.icon}</span>
-      <span style={{ fontSize: 11.5, fontWeight: 600, color: meta.color }}>{meta.label}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 3 }}>
+        <span style={{ fontSize: 13 }}>{meta.icon}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: meta.color }}>{meta.label}</span>
+      </div>
+      <div style={{ fontSize: 10.5, color: "var(--fm)", lineHeight: 1.4 }}>{meta.description}</div>
     </button>
   );
 }
