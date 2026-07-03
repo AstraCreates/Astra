@@ -92,7 +92,7 @@ export default function AutomationsPage() {
     try {
       await waitForAuthReady();
       const res = await apiFetch(`${BASE}/automations/flows?founder_id=${encodeURIComponent(userId)}`);
-      if (res.ok) setFlows((await res.json()) || []);
+      if (res.ok) setFlows((await res.json())?.flows || []);
     } finally {
       setFlowsLoading(false);
     }

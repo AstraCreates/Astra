@@ -295,7 +295,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
           return { id: n.id, type: n.type, position: n.position || { x: 0, y: 0 }, data: { ...decorated, nodeType: n.type, config: n.config || {} } };
         }));
         setEdges((flow.edges || []).map((e: { source: string; target: string }, i: number) => ({
-          id: `e${i}_${e.source}_${e.target}`, source: e.source, target: e.target, type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed },
+          id: `e${i}_${e.source}_${e.target}`, source: e.source, target: e.target, type: "default", markerEnd: { type: MarkerType.ArrowClosed },
         })));
         setStatus("ready");
       })
@@ -307,7 +307,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
   const onNodesChange = useCallback((changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds) as AutomationNode[]), []);
   const onEdgesChange = useCallback((changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)), []);
-  const onConnect = useCallback((conn: Connection) => setEdges((eds) => addEdge({ ...conn, type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed } }, eds)), []);
+  const onConnect = useCallback((conn: Connection) => setEdges((eds) => addEdge({ ...conn, type: "default", markerEnd: { type: MarkerType.ArrowClosed } }, eds)), []);
 
   function addNode(nodeType: NodeType, blockKey?: string) {
     const id = genId();
@@ -374,7 +374,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
   async function runFlow() {
     if (!userId || userId === "anon") return;
     setRunError("");
-    const id = savedFlowId || await saveFlow();
+    const id = await saveFlow();
     if (!id) { setRunError("Could not save flow before running."); return; }
     setRunning(true);
     setOutputOpen(true);
@@ -403,7 +403,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
       }));
       setEdges(draft.edges.map((e, i) => ({
         id: `d${i}_${e.source}_${e.target}`, source: e.source, target: e.target,
-        type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed },
+        type: "default", markerEnd: { type: MarkerType.ArrowClosed },
       })));
       setSelectedNodeId(null);
       setDraftOpen(false);
@@ -703,7 +703,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
           <ReactFlow
             nodes={displayNodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect}
             nodeTypes={nodeTypes} onNodeClick={(_, n) => setSelectedNodeId(n.id)} onPaneClick={() => setSelectedNodeId(null)}
-            defaultEdgeOptions={{ type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed } }} fitView panOnScroll={isMobile} zoomOnPinch
+            defaultEdgeOptions={{ type: "default", markerEnd: { type: MarkerType.ArrowClosed } }} fitView panOnScroll={isMobile} zoomOnPinch
           >
             <Background gap={18} color="var(--bd)" />
             <Controls showInteractive={false} />
