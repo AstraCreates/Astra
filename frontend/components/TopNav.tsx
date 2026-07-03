@@ -75,21 +75,11 @@ export default function TopNav({
             textDecoration: "none", flexShrink: 0, marginRight: 24,
           }}
         >
-          <div style={{
-            width: 24, height: 24, flexShrink: 0,
-            background: activeColor,
-            WebkitMask: "url('/logo.png') center/contain no-repeat",
-            mask: "url('/logo.png') center/contain no-repeat",
-          }} />
-          <span style={{
-            fontFamily: "var(--font-instrument), 'Instrument Sans', sans-serif",
-            fontSize: 15, fontWeight: 700,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: fgColor,
-          }}>
-            ASTRA
-          </span>
+          <div style={{ width: 28, height: 28, background: "var(--blue)", flexShrink: 0, WebkitMask: "url('/logo.png') center/contain no-repeat", mask: "url('/logo.png') center/contain no-repeat" }} />
+          <div>
+            <div className="nav-wordmark">Astra</div>
+            <div style={{ fontSize: 9, color: "var(--blue)", letterSpacing: ".06em", textTransform: "uppercase" }}>ready</div>
+          </div>
         </Link>
 
         {/* Desktop nav items */}
