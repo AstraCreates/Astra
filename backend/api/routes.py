@@ -62,6 +62,7 @@ from backend.api.schemas import (
     AutomationTriggerRequest,
     AutomationFlowSaveRequest,
     AutomationFlowRunRequest,
+    AutomationDraftRequest,
     SessionAskRequest,
     StackApprovalDecisionRequest,
     StackPackageRequest,
@@ -338,6 +339,13 @@ async def automations_save_flow(body: AutomationFlowSaveRequest, request: Reques
     return automation_store.save_flow(
         body.founder_id, body.name, body.nodes, body.edges, flow_id=body.flow_id,
     )
+
+
+@router.post("/automations/flows/draft")
+async def automations_draft_flow(body: AutomationDraftRequest, request: Request):
+    require_founder_access(request, body.founder_id, min_role="editor")
+    from backend.tools.automation_drafts import draft_flow_from_prompt
+    return draft_flow_from_prompt(body.prompt)
 
 
 @router.delete("/automations/flows/{flow_id}")

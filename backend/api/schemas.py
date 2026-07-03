@@ -234,3 +234,8 @@ class AutomationFlowSaveRequest(BaseModel):
 
 class AutomationFlowRunRequest(BaseModel):
     founder_id: str
+
+
+class AutomationDraftRequest(BaseModel):
+    founder_id: str
+    prompt: str

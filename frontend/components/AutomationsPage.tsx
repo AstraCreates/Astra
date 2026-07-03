@@ -182,6 +182,8 @@ export default function AutomationsPage() {
     const raw = setupStatus;
     return {
       github: Boolean(raw?.github),
+      vercel: Boolean(raw?.vercel),
+      sendgrid: Boolean(raw?.sendgrid),
       gmail: Boolean(raw?.apps?.gmail || raw?.sendgrid),
       slack: Boolean(raw?.apps?.slack),
       notion: Boolean(raw?.notion),
@@ -191,6 +193,13 @@ export default function AutomationsPage() {
       apollo: Boolean(raw?.apps?.apollo),
       google_calendar: Boolean(raw?.apps?.google_calendar),
       klaviyo: Boolean(raw?.klaviyo),
+      printful: Boolean(raw?.printful),
+      lemonsqueezy: Boolean(raw?.lemonsqueezy),
+      square: Boolean(raw?.square),
+      yelp: Boolean(raw?.yelp),
+      instagram: Boolean(raw?.instagram),
+      tiktok: Boolean(raw?.tiktok),
+      meta_ads: Boolean(raw?.meta_ads),
     } as Record<string, boolean>;
   }, [setupStatus]);
 

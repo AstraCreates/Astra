@@ -28,7 +28,22 @@ import PageHeader, { HeaderPrimaryBtn, HeaderSecondaryBtn } from "@/components/P
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-type NodeType = "trigger" | "agent" | "prompt" | "action" | "delay" | "condition" | "slack" | "email";
+type NodeType =
+  | "trigger"
+  | "agent"
+  | "prompt"
+  | "action"
+  | "delay"
+  | "condition"
+  | "slack"
+  | "email"
+  | "gmail"
+  | "slack_bot"
+  | "github_issue"
+  | "github_pr"
+  | "linear_issue"
+  | "notion_page"
+  | "stripe_payment_link";
 
 type NodeConfig = {
   agent_name?: string;
@@ -47,6 +62,17 @@ type NodeConfig = {
   to?: string;
   subject?: string;
   from?: string;
+  repo?: string;
+  owner?: string;
+  title?: string;
+  description?: string;
+  channel?: string;
+  head?: string;
+  base?: string;
+  parent_id?: string;
+  amount?: number;
+  currency?: string;
+  interval?: string;
 };
 
 type NodeStatus = "idle" | "running" | "done" | "error" | "skipped";
@@ -115,9 +141,60 @@ const NODE_META: Record<NodeType, NodeMeta> = {
     description: "Sends via your own connected SendGrid account (Integrations page) — never a shared key.",
     color: "#1D4ED8", bg: "rgba(29,78,216,0.08)", border: "rgba(29,78,216,0.35)", group: "integration",
   },
+  gmail: {
+    icon: "✉", label: "Gmail send", short: "Gmail",
+    description: "Sends from the founder's connected Gmail account using Astra's native OAuth connection.",
+    color: "#EA4335", bg: "rgba(234,67,53,0.08)", border: "rgba(234,67,53,0.28)", group: "integration",
+  },
+  slack_bot: {
+    icon: "#", label: "Slack bot post", short: "Slack",
+    description: "Posts to a connected Slack workspace using Astra's stored bot token.",
+    color: "#611F69", bg: "rgba(97,31,105,0.08)", border: "rgba(97,31,105,0.35)", group: "integration",
+  },
+  github_issue: {
+    icon: "●", label: "GitHub issue", short: "GitHub",
+    description: "Creates a GitHub issue in a connected repository using the founder's GitHub token.",
+    color: "#111827", bg: "rgba(17,24,39,0.08)", border: "rgba(17,24,39,0.18)", group: "integration",
+  },
+  github_pr: {
+    icon: "⇄", label: "GitHub PR", short: "GitHub",
+    description: "Opens a pull request in a connected repository using the founder's GitHub token.",
+    color: "#111827", bg: "rgba(17,24,39,0.08)", border: "rgba(17,24,39,0.18)", group: "integration",
+  },
+  linear_issue: {
+    icon: "◈", label: "Linear issue", short: "Linear",
+    description: "Creates a Linear issue in the founder's connected workspace.",
+    color: "#5E6AD2", bg: "rgba(94,106,210,0.08)", border: "rgba(94,106,210,0.24)", group: "integration",
+  },
+  notion_page: {
+    icon: "▷", label: "Notion page", short: "Notion",
+    description: "Creates a Notion page in the connected workspace or logs the intent locally if Notion is not connected yet.",
+    color: "#111111", bg: "rgba(17,17,17,0.06)", border: "rgba(17,17,17,0.18)", group: "integration",
+  },
+  stripe_payment_link: {
+    icon: "$", label: "Stripe payment link", short: "Stripe",
+    description: "Creates a Stripe product, price, and payment link using the founder's connected Stripe account.",
+    color: "#635BFF", bg: "rgba(99,91,255,0.08)", border: "rgba(99,91,255,0.24)", group: "integration",
+  },
 };
 
-const NODE_ORDER: NodeType[] = ["trigger", "agent", "prompt", "action", "delay", "condition", "slack", "email"];
+const NODE_ORDER: NodeType[] = [
+  "trigger",
+  "agent",
+  "prompt",
+  "action",
+  "delay",
+  "condition",
+  "slack",
+  "email",
+  "gmail",
+  "slack_bot",
+  "github_issue",
+  "github_pr",
+  "linear_issue",
+  "notion_page",
+  "stripe_payment_link",
+];
 
 const STATUS_COLORS: Record<string, string> = {
   running: "#3B82F6",
@@ -190,6 +267,13 @@ function defaultConfigFor(nodeType: NodeType): NodeConfig {
     case "condition": return { contains: "" };
     case "slack": return { webhook_url: "", message: "" };
     case "email": return { to: "", subject: "", body: "" };
+    case "gmail": return { to: "", subject: "", body: "" };
+    case "slack_bot": return { channel: "", message: "" };
+    case "github_issue": return { repo: "", owner: "", title: "", body: "" };
+    case "github_pr": return { repo: "", owner: "", title: "", body: "", head: "", base: "main" };
+    case "linear_issue": return { title: "", description: "" };
+    case "notion_page": return { title: "", body: "", parent_id: "" };
+    case "stripe_payment_link": return { title: "", description: "", amount: 99, currency: "usd", interval: "one_time" };
   }
 }
 
@@ -211,6 +295,9 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string>("");
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [draftPrompt, setDraftPrompt] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const [draftOpen, setDraftOpen] = useState(false);
   const pollRef = useRef<number | null>(null);
 
   const selectedNode = useMemo(() => nodes.find((n) => n.id === selectedNodeId) || null, [nodes, selectedNodeId]);
@@ -334,6 +421,39 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
     } catch {
       setRunError("Failed to start run.");
       setRunning(false);
+    }
+  }
+
+  async function buildFromPrompt() {
+    if (!userId || userId === "anon" || !draftPrompt.trim()) return;
+    setDrafting(true);
+    setRunError("");
+    try {
+      const res = await apiFetch(`${BASE}/automations/flows/draft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ founder_id: userId, prompt: draftPrompt }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      const draft = await res.json();
+      setFlowName(draft.name || "Draft automation");
+      setSavedFlowId("");
+      setNodes((draft.nodes || []).map((n: { id: string; type: NodeType; position?: { x: number; y: number }; config?: NodeConfig }) => ({
+        id: n.id,
+        type: n.type,
+        position: n.position || { x: 0, y: 0 },
+        data: { label: labelFor(n.type, n.config || {}), nodeType: n.type, config: n.config || {} },
+      })));
+      setEdges((draft.edges || []).map((e: { source: string; target: string }, i: number) => ({
+        id: `d${i}_${e.source}_${e.target}`, source: e.source, target: e.target,
+        type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed },
+      })));
+      setSelectedNodeId(null);
+      setDraftOpen(false);
+    } catch {
+      setRunError("Could not draft automation from that description.");
+    } finally {
+      setDrafting(false);
     }
   }
 
@@ -520,6 +640,218 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
         </>
       )}
 
+      {selectedNode.data.nodeType === "gmail" && (
+        <>
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>To</label>
+          <input
+            value={selectedNode.data.config.to || ""}
+            onChange={(e) => updateSelectedConfig({ to: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            placeholder="someone@example.com"
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Subject</label>
+          <input
+            value={selectedNode.data.config.subject || ""}
+            onChange={(e) => updateSelectedConfig({ subject: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Body</label>
+          <textarea
+            value={typeof selectedNode.data.config.body === "string" ? selectedNode.data.config.body : ""}
+            onChange={(e) => updateSelectedConfig({ body: e.target.value })}
+            rows={4}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 8, fontFamily: "inherit" }}
+          />
+          <UpstreamHint ids={upstreamOfSelected} />
+        </>
+      )}
+
+      {selectedNode.data.nodeType === "slack_bot" && (
+        <>
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Channel</label>
+          <input
+            value={selectedNode.data.config.channel || ""}
+            onChange={(e) => updateSelectedConfig({ channel: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            placeholder="#ops or C12345678"
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Message</label>
+          <textarea
+            value={selectedNode.data.config.message || ""}
+            onChange={(e) => updateSelectedConfig({ message: e.target.value })}
+            rows={4}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 8, fontFamily: "inherit" }}
+          />
+          <UpstreamHint ids={upstreamOfSelected} />
+        </>
+      )}
+
+      {selectedNode.data.nodeType === "github_issue" && (
+        <>
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Repository</label>
+          <input
+            value={selectedNode.data.config.repo || ""}
+            onChange={(e) => updateSelectedConfig({ repo: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            placeholder="Astra"
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Owner (optional)</label>
+          <input
+            value={selectedNode.data.config.owner || ""}
+            onChange={(e) => updateSelectedConfig({ owner: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            placeholder="AstraCreates"
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Issue title</label>
+          <input
+            value={selectedNode.data.config.title || ""}
+            onChange={(e) => updateSelectedConfig({ title: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Issue body</label>
+          <textarea
+            value={typeof selectedNode.data.config.body === "string" ? selectedNode.data.config.body : ""}
+            onChange={(e) => updateSelectedConfig({ body: e.target.value })}
+            rows={4}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 8, fontFamily: "inherit" }}
+          />
+          <UpstreamHint ids={upstreamOfSelected} />
+        </>
+      )}
+
+      {selectedNode.data.nodeType === "github_pr" && (
+        <>
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Repository</label>
+          <input
+            value={selectedNode.data.config.repo || ""}
+            onChange={(e) => updateSelectedConfig({ repo: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            placeholder="Astra"
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Owner (optional)</label>
+          <input
+            value={selectedNode.data.config.owner || ""}
+            onChange={(e) => updateSelectedConfig({ owner: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            placeholder="AstraCreates"
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>PR title</label>
+          <input
+            value={selectedNode.data.config.title || ""}
+            onChange={(e) => updateSelectedConfig({ title: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Head branch</label>
+          <input
+            value={selectedNode.data.config.head || ""}
+            onChange={(e) => updateSelectedConfig({ head: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+            placeholder="feature/my-branch"
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Base branch</label>
+          <input
+            value={selectedNode.data.config.base || "main"}
+            onChange={(e) => updateSelectedConfig({ base: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>PR body</label>
+          <textarea
+            value={typeof selectedNode.data.config.body === "string" ? selectedNode.data.config.body : ""}
+            onChange={(e) => updateSelectedConfig({ body: e.target.value })}
+            rows={4}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 8, fontFamily: "inherit" }}
+          />
+          <UpstreamHint ids={upstreamOfSelected} />
+        </>
+      )}
+
+      {selectedNode.data.nodeType === "linear_issue" && (
+        <>
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Issue title</label>
+          <input
+            value={selectedNode.data.config.title || ""}
+            onChange={(e) => updateSelectedConfig({ title: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Description</label>
+          <textarea
+            value={selectedNode.data.config.description || ""}
+            onChange={(e) => updateSelectedConfig({ description: e.target.value })}
+            rows={4}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 8, fontFamily: "inherit" }}
+          />
+          <UpstreamHint ids={upstreamOfSelected} />
+        </>
+      )}
+
+      {selectedNode.data.nodeType === "notion_page" && (
+        <>
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Page title</label>
+          <input
+            value={selectedNode.data.config.title || ""}
+            onChange={(e) => updateSelectedConfig({ title: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Parent page ID (optional)</label>
+          <input
+            value={selectedNode.data.config.parent_id || ""}
+            onChange={(e) => updateSelectedConfig({ parent_id: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10, fontFamily: "var(--font-code)" }}
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Notes</label>
+          <textarea
+            value={typeof selectedNode.data.config.body === "string" ? selectedNode.data.config.body : ""}
+            onChange={(e) => updateSelectedConfig({ body: e.target.value })}
+            rows={4}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 8, fontFamily: "inherit" }}
+          />
+          <UpstreamHint ids={upstreamOfSelected} />
+        </>
+      )}
+
+      {selectedNode.data.nodeType === "stripe_payment_link" && (
+        <>
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Product name</label>
+          <input
+            value={selectedNode.data.config.title || ""}
+            onChange={(e) => updateSelectedConfig({ title: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Description</label>
+          <textarea
+            value={selectedNode.data.config.description || ""}
+            onChange={(e) => updateSelectedConfig({ description: e.target.value })}
+            rows={3}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", resize: "vertical", marginBottom: 10, fontFamily: "inherit" }}
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Amount</label>
+          <input
+            type="number"
+            min={1}
+            value={selectedNode.data.config.amount ?? 99}
+            onChange={(e) => updateSelectedConfig({ amount: Number(e.target.value) })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Currency</label>
+          <input
+            value={selectedNode.data.config.currency || "usd"}
+            onChange={(e) => updateSelectedConfig({ currency: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 10 }}
+          />
+          <label style={{ fontSize: 11, color: "var(--fm)", display: "block", marginBottom: 4 }}>Billing</label>
+          <select
+            value={selectedNode.data.config.interval || "one_time"}
+            onChange={(e) => updateSelectedConfig({ interval: e.target.value })}
+            style={{ width: "100%", padding: "7px 8px", fontSize: 12, borderRadius: 6, border: "1px solid var(--bd)", marginBottom: 8 }}
+          >
+            <option value="one_time">One-time</option>
+            <option value="month">Monthly</option>
+            <option value="year">Yearly</option>
+          </select>
+          <UpstreamHint ids={upstreamOfSelected} />
+        </>
+      )}
+
       {selectedNode.data.nodeType === "trigger" && (
         <div style={{ fontSize: 12, color: "var(--fm)" }}>No configuration needed — click Run above to start this flow.</div>
       )}
@@ -555,6 +887,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             {runError && <span style={{ fontSize: 12, color: "#FF8080" }}>{runError}</span>}
             {savedTick && <span style={{ fontSize: 12, color: "#7CFFC6" }}>✓ Saved</span>}
+            <HeaderSecondaryBtn label="Build with AI" onClick={() => setDraftOpen(true)} />
             <HeaderSecondaryBtn label={saving ? "Saving…" : "Save"} onClick={() => { void saveFlow(); }} disabled={saving} />
             <HeaderPrimaryBtn label={running ? "Running…" : "▶ Run"} onClick={() => { void runFlow(); }} disabled={running || nodes.length === 0} />
           </div>
@@ -662,6 +995,32 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
             </div>
           </div>
         )}
+
+        {draftOpen && (
+          <div style={{ position: "fixed", inset: 0, zIndex: 35, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} onClick={() => setDraftOpen(false)} />
+            <div style={{ position: "relative", width: "min(720px, 100%)", borderRadius: 18, background: "var(--surface)", border: "1px solid var(--bd)", boxShadow: "0 16px 48px rgba(0,0,0,0.18)", padding: 20, display: "grid", gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--fm)" }}>Natural language builder</div>
+                <div style={{ marginTop: 6, fontSize: 20, fontWeight: 700, color: "var(--fg)" }}>Describe the automation you want</div>
+              </div>
+              <textarea
+                value={draftPrompt}
+                onChange={(e) => setDraftPrompt(e.target.value)}
+                rows={6}
+                placeholder="Example: When I summarize a new support complaint, post the summary in Slack, create a Linear issue, and email me the final triage."
+                style={{ width: "100%", padding: "12px 14px", fontSize: 14, borderRadius: 12, border: "1px solid var(--bd)", resize: "vertical", fontFamily: "inherit", background: "#fff" }}
+              />
+              <div style={{ fontSize: 12, color: "var(--fm)", lineHeight: 1.5 }}>
+                Astra will draft a native flow using the blocks already available in your workspace. You can edit everything before saving or running it.
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                <HeaderSecondaryBtn label="Cancel" onClick={() => setDraftOpen(false)} />
+                <HeaderPrimaryBtn label={drafting ? "Drafting…" : "Generate draft"} onClick={() => { void buildFromPrompt(); }} disabled={drafting || !draftPrompt.trim()} />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -709,6 +1068,13 @@ function labelFor(nodeType: NodeType, config: NodeConfig): string {
   if (nodeType === "condition") return config.contains ? `If contains "${config.contains}"` : "Condition";
   if (nodeType === "slack") return "Post to Slack";
   if (nodeType === "email") return config.to ? `Email ${config.to}` : "Send email";
+  if (nodeType === "gmail") return config.to ? `Gmail ${config.to}` : "Gmail send";
+  if (nodeType === "slack_bot") return config.channel ? `Slack ${config.channel}` : "Slack bot post";
+  if (nodeType === "github_issue") return config.repo ? `Issue in ${config.repo}` : "GitHub issue";
+  if (nodeType === "github_pr") return config.repo ? `PR in ${config.repo}` : "GitHub PR";
+  if (nodeType === "linear_issue") return config.title ? `Linear: ${config.title}` : "Linear issue";
+  if (nodeType === "notion_page") return config.title ? `Notion: ${config.title}` : "Notion page";
+  if (nodeType === "stripe_payment_link") return config.title ? `Stripe: ${config.title}` : "Stripe payment link";
   if (nodeType === "action" && config.url) {
     try { return new URL(config.url).hostname; } catch { return NODE_META.action.label; }
   }

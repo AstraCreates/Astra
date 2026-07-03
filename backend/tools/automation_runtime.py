@@ -389,6 +389,291 @@ STARTER_AUTOMATIONS: dict[str, dict] = {
             },
         },
     },
+    "vercel_launch_readiness": {
+        "path": "u/admin/vercel-launch-readiness",
+        "title": "Vercel launch readiness",
+        "category": "Launch",
+        "integrations": ["vercel", "github", "slack"],
+        "summary": "Package deploy risk, launch notes, and the owner handoff before shipping.",
+        "description": "Starter automation for converting release context into a launch checklist.",
+        "default_payload": {
+            "project": "astra-app",
+            "environment": "production",
+            "recent_changes": ["Automations page refresh", "Windmill runtime hookup"],
+            "known_risks": ["Need one last mobile QA pass"],
+        },
+        "flow": {
+            "summary": "Vercel launch readiness",
+            "description": "Shapes deploy context into a founder-friendly launch brief.",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "project": {"type": "string"},
+                    "environment": {"type": "string"},
+                    "recent_changes": {"type": "array", "items": {"type": "string"}},
+                    "known_risks": {"type": "array", "items": {"type": "string"}},
+                    "founder_id": {"type": "string"},
+                },
+            },
+            "value": {
+                "modules": [
+                    {
+                        "id": "prepare_launch_packet",
+                        "summary": "Prepare a launch readiness packet",
+                        "value": {
+                            "type": "rawscript",
+                            "language": "bun",
+                            "input_transforms": {
+                                "project": {"type": "javascript", "expr": "flow_input.project"},
+                                "environment": {"type": "javascript", "expr": "flow_input.environment"},
+                                "recent_changes": {"type": "javascript", "expr": "flow_input.recent_changes || []"},
+                                "known_risks": {"type": "javascript", "expr": "flow_input.known_risks || []"},
+                                "founder_id": {"type": "javascript", "expr": "flow_input.founder_id"},
+                            },
+                            "content": """export async function main({ project, environment, recent_changes = [], known_risks = [], founder_id }) {\n  const bullet = (items) => items.length ? items.map((x) => `- ${x}`).join(\"\\n\") : \"- None\";\n  return {\n    founder_id,\n    project,\n    environment,\n    release_summary: `${project} is preparing for ${environment} launch readiness review.`,\n    launch_packet: `## Launch packet\\n\\n### Recent changes\\n${bullet(recent_changes)}\\n\\n### Known risks\\n${bullet(known_risks)}`,\n    recommendation: known_risks.length > 0 ? \"Hold until risks are closed or explicitly accepted.\" : \"Ready for deploy.\"\n  };\n}""",
+                        },
+                    }
+                ]
+            },
+        },
+    },
+    "sendgrid_campaign_qa": {
+        "path": "u/admin/sendgrid-campaign-qa",
+        "title": "SendGrid campaign QA",
+        "category": "Marketing",
+        "integrations": ["sendgrid", "gmail", "notion"],
+        "summary": "Review a campaign draft, catch risk points, and prep the launch checklist.",
+        "description": "Starter automation for email campaign quality review before send.",
+        "default_payload": {
+            "campaign_name": "Founder summer launch",
+            "audience": "Warm waitlist",
+            "subject_line": "Astra is ready for your team",
+            "body_summary": "Product launch email with founder note and invite link.",
+        },
+        "flow": {
+            "summary": "SendGrid campaign QA",
+            "description": "Creates a lightweight QA packet for outbound email campaigns.",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "campaign_name": {"type": "string"},
+                    "audience": {"type": "string"},
+                    "subject_line": {"type": "string"},
+                    "body_summary": {"type": "string"},
+                    "founder_id": {"type": "string"},
+                },
+            },
+            "value": {
+                "modules": [
+                    {
+                        "id": "qa_campaign",
+                        "summary": "QA outbound campaign",
+                        "value": {
+                            "type": "rawscript",
+                            "language": "bun",
+                            "input_transforms": {
+                                "campaign_name": {"type": "javascript", "expr": "flow_input.campaign_name"},
+                                "audience": {"type": "javascript", "expr": "flow_input.audience"},
+                                "subject_line": {"type": "javascript", "expr": "flow_input.subject_line"},
+                                "body_summary": {"type": "javascript", "expr": "flow_input.body_summary"},
+                                "founder_id": {"type": "javascript", "expr": "flow_input.founder_id"},
+                            },
+                            "content": """export async function main({ campaign_name, audience, subject_line, body_summary, founder_id }) {\n  const risky = /free|guarantee|urgent|act now/i.test(`${subject_line} ${body_summary}`);\n  return {\n    founder_id,\n    campaign_name,\n    audience,\n    qa_status: risky ? \"needs-review\" : \"ready\",\n    checklist: [\n      \"Confirm links and CTA destinations\",\n      \"Verify unsubscribe + footer copy\",\n      \"Send internal preview to founder\"\n    ],\n    reviewer_note: risky ? \"Tone may trigger deliverability or trust concerns.\" : \"No obvious copy risk detected.\"\n  };\n}""",
+                        },
+                    }
+                ]
+            },
+        },
+    },
+    "printful_order_watch": {
+        "path": "u/admin/printful-order-watch",
+        "title": "Printful order watch",
+        "category": "Operations",
+        "integrations": ["printful", "gmail", "slack"],
+        "summary": "Package delayed-fulfillment issues into a customer and team follow-up plan.",
+        "description": "Starter automation for fulfillment exception handling.",
+        "default_payload": {
+            "order_id": "PF-2048",
+            "customer_email": "buyer@example.com",
+            "status": "delayed",
+            "delay_reason": "Inventory transfer in progress",
+        },
+        "flow": {
+            "summary": "Printful order watch",
+            "description": "Summarizes order delay context and drafts next steps.",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "order_id": {"type": "string"},
+                    "customer_email": {"type": "string"},
+                    "status": {"type": "string"},
+                    "delay_reason": {"type": "string"},
+                    "founder_id": {"type": "string"},
+                },
+            },
+            "value": {
+                "modules": [
+                    {
+                        "id": "handle_order_delay",
+                        "summary": "Handle delayed fulfillment context",
+                        "value": {
+                            "type": "rawscript",
+                            "language": "bun",
+                            "input_transforms": {
+                                "order_id": {"type": "javascript", "expr": "flow_input.order_id"},
+                                "customer_email": {"type": "javascript", "expr": "flow_input.customer_email"},
+                                "status": {"type": "javascript", "expr": "flow_input.status"},
+                                "delay_reason": {"type": "javascript", "expr": "flow_input.delay_reason"},
+                                "founder_id": {"type": "javascript", "expr": "flow_input.founder_id"},
+                            },
+                            "content": """export async function main({ order_id, customer_email, status, delay_reason, founder_id }) {\n  return {\n    founder_id,\n    order_id,\n    status,\n    escalation: status === \"delayed\" ? \"ops-review\" : \"monitor\",\n    customer_draft: `We are tracking order ${order_id}. Current status: ${status}. Reason: ${delay_reason}. We will send the next update as soon as we have movement.`,\n    internal_note: `Post ${order_id} in ops channel and confirm replacement or expedite options.`\n  };\n}""",
+                        },
+                    }
+                ]
+            },
+        },
+    },
+    "square_daily_flash": {
+        "path": "u/admin/square-daily-flash",
+        "title": "Square daily flash",
+        "category": "Revenue",
+        "integrations": ["square", "gmail", "slack"],
+        "summary": "Turn daily POS activity into a founder-ready revenue snapshot and alert.",
+        "description": "Starter automation for daily sales pulse reporting.",
+        "default_payload": {
+            "date": "2026-07-03",
+            "gross_sales": "$1,840",
+            "orders": 29,
+            "top_service": "Consultation package",
+        },
+        "flow": {
+            "summary": "Square daily flash",
+            "description": "Packages sales totals into a founder flash update.",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string"},
+                    "gross_sales": {"type": "string"},
+                    "orders": {"type": "number"},
+                    "top_service": {"type": "string"},
+                    "founder_id": {"type": "string"},
+                },
+            },
+            "value": {
+                "modules": [
+                    {
+                        "id": "build_sales_flash",
+                        "summary": "Build daily sales flash",
+                        "value": {
+                            "type": "rawscript",
+                            "language": "bun",
+                            "input_transforms": {
+                                "date": {"type": "javascript", "expr": "flow_input.date"},
+                                "gross_sales": {"type": "javascript", "expr": "flow_input.gross_sales"},
+                                "orders": {"type": "javascript", "expr": "flow_input.orders"},
+                                "top_service": {"type": "javascript", "expr": "flow_input.top_service"},
+                                "founder_id": {"type": "javascript", "expr": "flow_input.founder_id"},
+                            },
+                            "content": """export async function main({ date, gross_sales, orders, top_service, founder_id }) {\n  return {\n    founder_id,\n    date,\n    flash_message: `Daily flash for ${date}: ${gross_sales} across ${orders} orders. Top service: ${top_service}.`,\n    insight: orders >= 20 ? \"Healthy sales day.\" : \"Watch volume and conversion tomorrow.\",\n    status: \"compiled\"\n  };\n}""",
+                        },
+                    }
+                ]
+            },
+        },
+    },
+    "yelp_review_rescue": {
+        "path": "u/admin/yelp-review-rescue",
+        "title": "Yelp review rescue",
+        "category": "Reputation",
+        "integrations": ["yelp", "gmail", "slack"],
+        "summary": "Triage a negative review and produce the response plus internal fix list.",
+        "description": "Starter automation for review-response and service-recovery handling.",
+        "default_payload": {
+            "reviewer_name": "Jordan",
+            "rating": 2,
+            "review_text": "Service was friendly but the wait was much longer than expected.",
+            "location": "Downtown",
+        },
+        "flow": {
+            "summary": "Yelp review rescue",
+            "description": "Converts a review into response guidance and action items.",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "reviewer_name": {"type": "string"},
+                    "rating": {"type": "number"},
+                    "review_text": {"type": "string"},
+                    "location": {"type": "string"},
+                    "founder_id": {"type": "string"},
+                },
+            },
+            "value": {
+                "modules": [
+                    {
+                        "id": "rescue_review",
+                        "summary": "Prepare review recovery response",
+                        "value": {
+                            "type": "rawscript",
+                            "language": "bun",
+                            "input_transforms": {
+                                "reviewer_name": {"type": "javascript", "expr": "flow_input.reviewer_name"},
+                                "rating": {"type": "javascript", "expr": "flow_input.rating"},
+                                "review_text": {"type": "javascript", "expr": "flow_input.review_text"},
+                                "location": {"type": "javascript", "expr": "flow_input.location"},
+                                "founder_id": {"type": "javascript", "expr": "flow_input.founder_id"},
+                            },
+                            "content": """export async function main({ reviewer_name, rating, review_text, location, founder_id }) {\n  const severity = rating <= 2 ? \"high\" : \"normal\";\n  return {\n    founder_id,\n    severity,\n    public_reply: `Hi ${reviewer_name}, thank you for the candid feedback about your ${location} experience. We are sorry the wait missed the mark and are reviewing this with the team.`,\n    internal_fix_list: [\n      \"Check staffing coverage for the reported time window\",\n      \"Review wait-time expectations in customer messaging\",\n      \"Follow up internally on service recovery options\"\n    ],\n    source_text: review_text\n  };\n}""",
+                        },
+                    }
+                ]
+            },
+        },
+    },
+    "social_content_burst": {
+        "path": "u/admin/social-content-burst",
+        "title": "Social content burst",
+        "category": "Content",
+        "integrations": ["instagram", "tiktok", "meta_ads"],
+        "summary": "Turn one campaign angle into channel-specific social and ad hooks.",
+        "description": "Starter automation for shaping one growth idea across social channels.",
+        "default_payload": {
+            "campaign_angle": "Astra as your founder operating system",
+            "audience": "Seed-stage founders",
+            "offer": "Book a walkthrough",
+        },
+        "flow": {
+            "summary": "Social content burst",
+            "description": "Generates a multi-channel content packet from one campaign angle.",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "campaign_angle": {"type": "string"},
+                    "audience": {"type": "string"},
+                    "offer": {"type": "string"},
+                    "founder_id": {"type": "string"},
+                },
+            },
+            "value": {
+                "modules": [
+                    {
+                        "id": "shape_social_campaign",
+                        "summary": "Shape campaign into social hooks",
+                        "value": {
+                            "type": "rawscript",
+                            "language": "bun",
+                            "input_transforms": {
+                                "campaign_angle": {"type": "javascript", "expr": "flow_input.campaign_angle"},
+                                "audience": {"type": "javascript", "expr": "flow_input.audience"},
+                                "offer": {"type": "javascript", "expr": "flow_input.offer"},
+                                "founder_id": {"type": "javascript", "expr": "flow_input.founder_id"},
+                            },
+                            "content": """export async function main({ campaign_angle, audience, offer, founder_id }) {\n  return {\n    founder_id,\n    instagram_hook: `${campaign_angle} for ${audience}`,\n    tiktok_hook: `If you are a ${audience}, here is the workflow change to steal`,\n    meta_ads_headline: `Run your company with less founder thrash`,\n    call_to_action: offer\n  };\n}""",
+                        },
+                    }
+                ]
+            },
+        },
+    },
 }
 
 

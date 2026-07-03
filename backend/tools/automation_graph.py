@@ -17,6 +17,13 @@ Node types:
   slack      — posts to a Slack incoming webhook URL. No OAuth needed.
   email      — sends via the founder's own connected SendGrid key (never a
                shared credential) — errors clearly if it isn't connected yet.
+  gmail      — sends through the founder's connected Gmail account.
+  slack_bot  — posts to Slack using the founder's connected bot token.
+  github_issue — creates a GitHub issue in a connected repo.
+  github_pr  — opens a GitHub pull request in a connected repo.
+  linear_issue — creates a Linear issue in the connected workspace.
+  notion_page — creates a Notion page in the connected workspace.
+  stripe_payment_link — creates a Stripe product + payment link.
 
 Execution is a topological walk — graphs are DAGs, condition nodes give one
 level of branch/skip but there's no loop support. Each node's textual output
@@ -233,6 +240,128 @@ async def _execute_email_node(node: dict, rendered_config: dict, founder_id: str
         return {"error": str(e)}
 
 
+async def _execute_gmail_node(rendered_config: dict, founder_id: str) -> dict:
+    from backend.tools.gmail_api import gmail_send_email
+
+    cfg = rendered_config
+    to = str(cfg.get("to") or "").strip()
+    subject = str(cfg.get("subject") or "").strip()
+    body = str(cfg.get("body") or "").strip()
+    if not to or not subject:
+        return {"error": "Gmail node requires both 'to' and 'subject'."}
+    return await asyncio.to_thread(gmail_send_email, founder_id, to, subject, body)
+
+
+async def _execute_slack_bot_node(rendered_config: dict, founder_id: str) -> dict:
+    import requests
+    from backend.provisioning.credentials_store import load_credentials
+
+    cfg = rendered_config
+    channel = str(cfg.get("channel") or "").strip()
+    message = str(cfg.get("message") or "").strip()
+    if not channel or not message:
+        return {"error": "Slack bot node requires both 'channel' and 'message'."}
+    creds = load_credentials(founder_id, "slack") or {}
+    token = str(creds.get("bot_token") or creds.get("token") or creds.get("access_token") or "").strip()
+    if not token:
+        return {"error": "Slack is not connected — connect it on the Integrations page first."}
+    try:
+        resp = await asyncio.to_thread(
+            requests.post,
+            "https://slack.com/api/chat.postMessage",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"},
+            json={"channel": channel, "text": message},
+            timeout=15.0,
+        )
+        data = resp.json()
+        if not data.get("ok"):
+            return {"error": str(data.get("error") or "Slack API request failed")}
+        return {"summary": f"Posted in Slack {channel}", "channel": channel, "ts": data.get("ts")}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def _execute_github_issue_node(rendered_config: dict, founder_id: str) -> dict:
+    from backend.tools.composio_tools import composio_github_create_issue
+
+    cfg = rendered_config
+    repo = str(cfg.get("repo") or "").strip()
+    title = str(cfg.get("title") or "").strip()
+    body = str(cfg.get("body") or "").strip()
+    owner = str(cfg.get("owner") or "").strip()
+    if not repo or not title:
+        return {"error": "GitHub issue node requires both 'repo' and 'title'."}
+    return await asyncio.to_thread(composio_github_create_issue, founder_id, repo, title, body, owner)
+
+
+async def _execute_github_pr_node(rendered_config: dict, founder_id: str) -> dict:
+    from backend.tools.composio_tools import composio_github_create_pr
+
+    cfg = rendered_config
+    repo = str(cfg.get("repo") or "").strip()
+    title = str(cfg.get("title") or "").strip()
+    body = str(cfg.get("body") or "").strip()
+    head = str(cfg.get("head") or "").strip()
+    base = str(cfg.get("base") or "main").strip() or "main"
+    owner = str(cfg.get("owner") or "").strip()
+    if not repo or not title or not head:
+        return {"error": "GitHub PR node requires 'repo', 'title', and 'head'."}
+    return await asyncio.to_thread(composio_github_create_pr, founder_id, repo, title, body, head, base, owner)
+
+
+async def _execute_linear_issue_node(rendered_config: dict, founder_id: str) -> dict:
+    from backend.tools.composio_tools import composio_linear_create_issue
+
+    cfg = rendered_config
+    title = str(cfg.get("title") or "").strip()
+    description = str(cfg.get("description") or cfg.get("body") or "").strip()
+    if not title:
+        return {"error": "Linear issue node requires a title."}
+    return await asyncio.to_thread(composio_linear_create_issue, founder_id, title, description)
+
+
+async def _execute_notion_page_node(rendered_config: dict, founder_id: str) -> dict:
+    from backend.tools.composio_tools import composio_notion_create_page
+
+    cfg = rendered_config
+    title = str(cfg.get("title") or "").strip()
+    parent_id = str(cfg.get("parent_id") or "").strip()
+    if not title:
+        return {"error": "Notion page node requires a title."}
+    result = await asyncio.to_thread(composio_notion_create_page, founder_id, title, parent_id)
+    body = str(cfg.get("body") or "").strip()
+    if body and not result.get("error"):
+        result["notes"] = body
+    return result
+
+
+async def _execute_stripe_payment_link_node(rendered_config: dict, founder_id: str) -> dict:
+    from backend.tools.stripe_tools import create_product_with_payment_link
+
+    cfg = rendered_config
+    name = str(cfg.get("title") or "").strip()
+    description = str(cfg.get("description") or "").strip()
+    currency = str(cfg.get("currency") or "usd").strip().lower() or "usd"
+    interval = str(cfg.get("interval") or "one_time").strip()
+    amount_raw = cfg.get("amount")
+    try:
+        amount = int(float(amount_raw))
+    except (TypeError, ValueError):
+        return {"error": "Stripe payment link node requires a numeric amount."}
+    if not name:
+        return {"error": "Stripe payment link node requires a product name."}
+    return await asyncio.to_thread(
+        create_product_with_payment_link,
+        name,
+        description,
+        amount,
+        founder_id,
+        "",
+        currency,
+        interval,
+    )
+
+
 async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dict:
     """Executes a saved flow end-to-end, persisting + streaming per-node status.
     `run_id` must already exist (see automation_store.create_run) — the caller
@@ -292,6 +421,27 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dic
                 elif node_type == "email":
                     rendered_cfg = _render_any(cfg, merged_outputs)
                     result = await _execute_email_node(node, rendered_cfg, founder_id)
+                elif node_type == "gmail":
+                    rendered_cfg = _render_any(cfg, merged_outputs)
+                    result = await _execute_gmail_node(rendered_cfg, founder_id)
+                elif node_type == "slack_bot":
+                    rendered_cfg = _render_any(cfg, merged_outputs)
+                    result = await _execute_slack_bot_node(rendered_cfg, founder_id)
+                elif node_type == "github_issue":
+                    rendered_cfg = _render_any(cfg, merged_outputs)
+                    result = await _execute_github_issue_node(rendered_cfg, founder_id)
+                elif node_type == "github_pr":
+                    rendered_cfg = _render_any(cfg, merged_outputs)
+                    result = await _execute_github_pr_node(rendered_cfg, founder_id)
+                elif node_type == "linear_issue":
+                    rendered_cfg = _render_any(cfg, merged_outputs)
+                    result = await _execute_linear_issue_node(rendered_cfg, founder_id)
+                elif node_type == "notion_page":
+                    rendered_cfg = _render_any(cfg, merged_outputs)
+                    result = await _execute_notion_page_node(rendered_cfg, founder_id)
+                elif node_type == "stripe_payment_link":
+                    rendered_cfg = _render_any(cfg, merged_outputs)
+                    result = await _execute_stripe_payment_link_node(rendered_cfg, founder_id)
                 elif node_type == "trigger":
                     result = {"summary": "trigger", "status": "ok"}
                 else:
