@@ -372,6 +372,32 @@ async def automations_run_flow(flow_id: str, body: AutomationFlowRunRequest, req
     return {"ok": True, "run_id": run["run_id"], "status": "running"}
 
 
+@router.post("/automations/hooks/{founder_id}/{flow_id}/{token}")
+async def automations_webhook_trigger(founder_id: str, flow_id: str, token: str, request: Request):
+    """Public trigger endpoint for external webhooks (Stripe, Typeform, a
+    cron pinger, etc). No founder auth — protected by the opaque per-flow
+    token instead, same shape as n8n/Zapier webhook URLs. Constant-time
+    compare so the token can't be brute-forced via response timing."""
+    import hmac
+
+    from backend.core import automation_store
+    flow = automation_store.get_flow(founder_id, flow_id)
+    if not flow or not flow.get("webhook_token") or not hmac.compare_digest(flow["webhook_token"], token):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    from backend.tools.automation_graph import run_automation_flow
+    import asyncio
+
+    run = automation_store.create_run(founder_id, flow_id)
+    asyncio.create_task(run_automation_flow(founder_id, flow_id, run["run_id"], trigger_payload=payload))
+    return {"ok": True, "run_id": run["run_id"], "status": "running"}
+
+
 @router.get("/automations/flows/{flow_id}/runs")
 async def automations_list_runs(flow_id: str, founder_id: str, request: Request, limit: int = 20):
     require_founder_access(request, founder_id, min_role="viewer")

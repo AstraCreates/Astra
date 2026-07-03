@@ -24,14 +24,28 @@ Node types:
   linear_issue — creates a Linear issue in the connected workspace.
   notion_page — creates a Notion page in the connected workspace.
   stripe_payment_link — creates a Stripe product + payment link.
+  switch     — routes to one of several named branches by matching a value
+               against a list of cases (n8n-style Switch/Router); non-matching
+               branches are marked "skipped", same as condition does for its
+               single branch.
+  code       — evaluates one restricted Python expression against `input`
+               (upstream output, JSON-parsed if possible). Not a general
+               script sandbox: single expression only (ast.parse mode="eval",
+               so no statements/imports/loops are even parseable), builtins
+               reduced to a small safe whitelist, and any dunder attribute
+               access (the standard eval-sandbox escape route via
+               __class__/__subclasses__/etc.) is rejected before compiling.
 
-Execution is a topological walk — graphs are DAGs, condition nodes give one
-level of branch/skip but there's no loop support. Each node's textual output
+Execution is a topological walk — graphs are DAGs, condition/switch nodes
+give branch/skip but there's no loop support. Each node's textual output
 is available to downstream nodes via {{node_id.output}} substitution in
-their config.
+their config. Agent/prompt nodes can also request structured JSON output via
+`output_schema` in their config — the executor appends a "respond with only
+this JSON shape" instruction and validates the result parses as JSON.
 """
 from __future__ import annotations
 
+import ast
 import asyncio
 import json
 import logging
@@ -80,8 +94,19 @@ def _topo_order(nodes: list[dict], edges: list[dict]) -> list[str]:
     return order
 
 
-def _upstream_ids(node_id: str, edges: list[dict]) -> list[str]:
-    return [e["source"] for e in edges if e.get("target") == node_id]
+def _edge_key(e: dict) -> tuple[str, str, str | None]:
+    return (e.get("source"), e.get("target"), e.get("source_handle"))
+
+
+def _node_is_dead(node_id: str, edges: list[dict], skipped: set[str], dead_edges: set[tuple[str, str, str | None]]) -> bool:
+    """A node is dead (should be skipped) once every incoming edge is either
+    from an already-skipped node, or was itself the untaken branch of a
+    switch/condition upstream — not just "any upstream skipped", since a
+    switch node's other live branches must still run."""
+    incoming = [e for e in edges if e.get("target") == node_id]
+    if not incoming:
+        return False
+    return all(e.get("source") in skipped or _edge_key(e) in dead_edges for e in incoming)
 
 
 def _extract_text(result: dict) -> str:
@@ -192,6 +217,99 @@ def _execute_condition_equals_node(node: dict, upstream_text: str) -> dict:
     expected = str(cfg.get("equals") or "")
     passed = upstream_text.strip() == expected.strip()
     return {"summary": upstream_text, "passed": passed}
+
+
+def _execute_switch_node(node: dict, upstream_text: str) -> dict:
+    cfg = node.get("config") or {}
+    value = str(cfg.get("value") or upstream_text).strip().lower()
+    cases = [str(c) for c in (cfg.get("cases") or [])]
+    matched_handle = "default"
+    for i, c in enumerate(cases):
+        if c.strip() and c.strip().lower() == value:
+            matched_handle = f"case_{i}"
+            break
+    return {"summary": upstream_text, "matched_handle": matched_handle}
+
+
+_JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL)
+
+
+def _coerce_json_summary(result: dict) -> dict:
+    """Post-processes an agent/prompt result when the node requested
+    structured output (config.output_schema) — validates the model actually
+    returned parseable JSON rather than trusting it blindly."""
+    if not isinstance(result, dict) or result.get("error"):
+        return result
+    text = str(result.get("summary", "")).strip()
+    fenced = _JSON_FENCE_RE.match(text)
+    if fenced:
+        text = fenced.group(1)
+    try:
+        parsed = json.loads(text)
+    except Exception:
+        result["json_error"] = "Model output was not valid JSON"
+        return result
+    result["summary"] = json.dumps(parsed)
+    return result
+
+
+class _UnsafeExpression(Exception):
+    pass
+
+
+_CODE_SAFE_CALLS = {
+    "len", "str", "int", "float", "bool", "sorted", "sum", "min", "max",
+    "round", "abs", "list", "dict", "set", "tuple", "json_dumps", "json_loads",
+}
+
+
+def _check_code_ast(tree: ast.AST) -> None:
+    for child in ast.walk(tree):
+        if isinstance(child, (ast.Import, ast.ImportFrom)):
+            raise _UnsafeExpression("imports not allowed")
+        if isinstance(child, ast.Attribute) and child.attr.startswith("__"):
+            raise _UnsafeExpression("dunder attribute access not allowed")
+        if isinstance(child, ast.Name) and child.id.startswith("__"):
+            raise _UnsafeExpression("dunder names not allowed")
+        if isinstance(child, ast.Call) and isinstance(child.func, ast.Name) and child.func.id not in _CODE_SAFE_CALLS:
+            raise _UnsafeExpression(f"call to '{child.func.id}' not allowed")
+
+
+def _execute_code_node(node: dict, upstream_text: str) -> dict:
+    """Evaluates one restricted Python expression — not a general script
+    sandbox. See module docstring for exactly what's blocked and why."""
+    cfg = node.get("config") or {}
+    expr = str(cfg.get("expression") or "").strip()
+    if not expr:
+        return {"error": "No expression configured"}
+    try:
+        parsed_input: object = json.loads(upstream_text)
+    except Exception:
+        parsed_input = upstream_text
+    try:
+        tree = ast.parse(expr, mode="eval")
+        _check_code_ast(tree)
+        code = compile(tree, "<code_node>", "eval")
+        safe_locals = {
+            "input": parsed_input,
+            "len": len, "str": str, "int": int, "float": float, "bool": bool,
+            "sorted": sorted, "sum": sum, "min": min, "max": max, "round": round,
+            "abs": abs, "list": list, "dict": dict, "set": set, "tuple": tuple,
+            "json_dumps": json.dumps, "json_loads": json.loads,
+        }
+        # eval() is normally unsafe on arbitrary input, but this call is deliberately
+        # hardened, not raw eval(user_string): (1) ast.parse(mode="eval") only accepts
+        # a single expression — no statements, imports, loops, or assignments are even
+        # parseable; (2) _check_code_ast rejects Import/ImportFrom, any dunder name or
+        # attribute (blocks the classic __class__/__bases__/__subclasses__ sandbox
+        # escape), and any call not in the small whitelist above; (3) __builtins__ is
+        # explicitly emptied so nothing outside safe_locals is reachable at all.
+        value = eval(code, {"__builtins__": {}}, safe_locals)
+    except _UnsafeExpression as e:
+        return {"error": f"Blocked: {e}"}
+    except Exception as e:
+        return {"error": f"Expression error: {e}"}
+    return {"summary": value if isinstance(value, str) else json.dumps(value, default=str)}
 
 
 def _execute_merge_node(node: dict, upstream_text: str) -> dict:
@@ -434,11 +552,13 @@ async def _execute_integration_node(rendered_config: dict, founder_id: str) -> d
         return {"error": str(e)}
 
 
-async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dict:
+async def run_automation_flow(founder_id: str, flow_id: str, run_id: str, trigger_payload: dict | None = None) -> dict:
     """Executes a saved flow end-to-end, persisting + streaming per-node status.
     `run_id` must already exist (see automation_store.create_run) — the caller
     creates it up front so it can return the id to the client immediately,
-    before this (usually backgrounded) execution starts."""
+    before this (usually backgrounded) execution starts. `trigger_payload` is
+    set when the run was started by a webhook call — the trigger node's
+    output becomes that JSON payload instead of the literal string "trigger"."""
     from backend.core.events import publish_sync
 
     flow = automation_store.get_flow(founder_id, flow_id)
@@ -449,6 +569,7 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dic
     edges = flow.get("edges", [])
     outputs: dict[str, str] = {}
     skipped: set[str] = set()
+    dead_edges: set[tuple[str, str, str | None]] = set()
 
     publish_sync(run_id, {"type": "automation_run_started", "run_id": run_id, "flow_id": flow_id})
 
@@ -459,8 +580,7 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dic
             if node is None:
                 continue
 
-            upstream = _upstream_ids(node_id, edges)
-            if upstream and skipped.issuperset(upstream):
+            if _node_is_dead(node_id, edges, skipped, dead_edges):
                 skipped.add(node_id)
                 automation_store.set_node_result(founder_id, run_id, node_id, {"status": "skipped", "output": {}})
                 publish_sync(run_id, {"type": "node_status", "node_id": node_id, "status": "skipped"})
@@ -468,7 +588,13 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dic
 
             publish_sync(run_id, {"type": "node_status", "node_id": node_id, "status": "running"})
 
-            upstream_text = "\n\n".join(f"[{uid}]: {outputs.get(uid, '')}" for uid in upstream if uid not in skipped)
+            # Only follow live edges — a switch node's non-matching branches stay out
+            # of upstream_text even though the switch node itself isn't "skipped".
+            live_upstream = [
+                e["source"] for e in edges
+                if e.get("target") == node_id and e.get("source") not in skipped and _edge_key(e) not in dead_edges
+            ]
+            upstream_text = "\n\n".join(f"[{uid}]: {outputs.get(uid, '')}" for uid in live_upstream)
             cfg = node.get("config") or {}
             merged_outputs = dict(outputs)
             node_type = node.get("type")
@@ -476,10 +602,20 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dic
             try:
                 if node_type == "agent":
                     instruction = _render(cfg.get("instruction", ""), merged_outputs) or upstream_text
+                    schema = cfg.get("output_schema")
+                    if schema:
+                        instruction = f"{instruction}\n\nRespond with ONLY valid JSON matching this shape (no prose, no code fences):\n{schema}"
                     result = await _execute_agent_node(node, instruction, founder_id, run_id)
+                    if schema:
+                        result = _coerce_json_summary(result)
                 elif node_type == "prompt":
                     instruction = _render(cfg.get("instruction", ""), merged_outputs) or upstream_text
+                    schema = cfg.get("output_schema")
+                    if schema:
+                        instruction = f"{instruction}\n\nRespond with ONLY valid JSON matching this shape (no prose, no code fences):\n{schema}"
                     result = await _execute_prompt_node(node, instruction, founder_id, run_id)
+                    if schema:
+                        result = _coerce_json_summary(result)
                 elif node_type == "action":
                     rendered_cfg = _render_any(cfg, merged_outputs)
                     result = await _execute_action_node(node, rendered_cfg, founder_id)
@@ -529,8 +665,13 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dic
                     result = _execute_set_text_node(node)
                 elif node_type == "current_time":
                     result = _execute_current_time_node()
+                elif node_type == "switch":
+                    rendered_cfg = _render_any(cfg, merged_outputs)
+                    result = _execute_switch_node({**node, "config": rendered_cfg}, upstream_text)
+                elif node_type == "code":
+                    result = _execute_code_node(node, upstream_text)
                 elif node_type == "trigger":
-                    result = {"summary": "trigger", "status": "ok"}
+                    result = {"summary": json.dumps(trigger_payload) if trigger_payload else "trigger", "status": "ok"}
                 else:
                     result = {"error": f"Unknown node type '{node_type}'"}
             except Exception as e:
@@ -543,6 +684,12 @@ async def run_automation_flow(founder_id: str, flow_id: str, run_id: str) -> dic
                 automation_store.set_node_result(founder_id, run_id, node_id, {"status": "skipped", "output": result})
                 publish_sync(run_id, {"type": "node_status", "node_id": node_id, "status": "skipped", "output": "condition not met"})
                 continue
+
+            if node_type == "switch":
+                matched_handle = result.get("matched_handle", "default")
+                for e in edges:
+                    if e.get("source") == node_id and e.get("source_handle") not in (None, matched_handle):
+                        dead_edges.add(_edge_key(e))
 
             text = _extract_text(result)
             outputs[node_id] = text

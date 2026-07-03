@@ -37,6 +37,7 @@ const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 type NodeType =
   | "trigger" | "agent" | "prompt" | "action" | "delay" | "condition"
   | "condition_equals" | "merge" | "json_extract" | "text_transform" | "set_text" | "current_time"
+  | "switch" | "code"
   | "integration";
 
 type ParamField = { key: string; label: string; type: string; placeholder?: string };
@@ -60,6 +61,10 @@ type NodeConfig = {
   text?: string;
   block_key?: string;
   params?: Record<string, string>;
+  output_schema?: string;
+  value?: string;
+  cases?: string[];
+  expression?: string;
 };
 
 type NodeStatus = "idle" | "running" | "done" | "error" | "skipped";
@@ -94,11 +99,13 @@ const CORE_META: Record<Exclude<NodeType, "integration">, NodeMeta> = {
   text_transform: { icon: "Aa", label: "Transform text", short: "Text", description: "Uppercase, lowercase, or trim the upstream output.", color: "#4B5563", bg: "rgba(75,85,99,0.08)", border: "rgba(75,85,99,0.25)", group: "utility" },
   set_text: { icon: "T", label: "Set text", short: "Text", description: "A constant text value — useful as a flow's starting input.", color: "#4B5563", bg: "rgba(75,85,99,0.08)", border: "rgba(75,85,99,0.25)", group: "utility" },
   current_time: { icon: "⏱", label: "Current time", short: "Time", description: "Outputs the current UTC timestamp.", color: "#4B5563", bg: "rgba(75,85,99,0.08)", border: "rgba(75,85,99,0.25)", group: "utility" },
+  switch: { icon: "⑂", label: "Switch / Router", short: "Switch", description: "Routes to a different branch by matching the upstream value against a list of cases — everything except the matching branch (and Default) is skipped.", color: "#0E7490", bg: "rgba(14,116,144,0.08)", border: "rgba(14,116,144,0.3)", group: "logic" },
+  code: { icon: "</>", label: "Code (expression)", short: "Code", description: "Evaluates one restricted Python expression against the upstream output (as `input`). No imports, no file/network access — a safe escape hatch, not a full script sandbox.", color: "#1E293B", bg: "rgba(30,41,59,0.06)", border: "rgba(30,41,59,0.2)", group: "utility" },
 };
 
 const CORE_ORDER: Exclude<NodeType, "integration">[] = [
   "trigger", "agent", "prompt", "action", "delay", "condition",
-  "condition_equals", "merge", "json_extract", "text_transform", "set_text", "current_time",
+  "condition_equals", "switch", "merge", "json_extract", "text_transform", "set_text", "current_time", "code",
 ];
 
 // Per-category color for integration blocks (fetched dynamically, so these are
@@ -146,7 +153,9 @@ function CanvasNode({ data, selected }: NodeProps<AutomationNode>) {
       position: "relative", opacity: dimmed ? 0.5 : 1, transition: "box-shadow 0.15s ease, opacity 0.2s ease",
     }}>
       <Handle type="target" position={Position.Left} style={{ background: meta.color, width: 9, height: 9, border: "2px solid #fff" }} />
-      <Handle type="source" position={Position.Right} style={{ background: meta.color, width: 9, height: 9, border: "2px solid #fff" }} />
+      {data.nodeType === "switch" ? null : (
+        <Handle type="source" position={Position.Right} style={{ background: meta.color, width: 9, height: 9, border: "2px solid #fff" }} />
+      )}
       {statusColor && (
         <div style={{
           position: "absolute", top: -7, right: -7, width: 15, height: 15, borderRadius: "50%",
@@ -161,6 +170,20 @@ function CanvasNode({ data, selected }: NodeProps<AutomationNode>) {
         <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: meta.color }}>{meta.short}</span>
       </div>
       <div style={{ fontSize: 13, fontWeight: 600, color: "#111", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{data.label}</div>
+      {data.nodeType === "switch" && (
+        <div style={{ marginTop: 6 }}>
+          {(data.config.cases || []).map((c, i) => (
+            <div key={i} style={{ position: "relative", fontSize: 10.5, color: "var(--fm, #666)", padding: "4px 10px 4px 0", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+              {c || `Case ${i + 1}`}
+              <Handle type="source" position={Position.Right} id={`case_${i}`} style={{ background: meta.color, width: 8, height: 8, border: "2px solid #fff", top: "50%" }} />
+            </div>
+          ))}
+          <div style={{ position: "relative", fontSize: 10.5, color: "var(--fm, #666)", padding: "4px 10px 4px 0", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+            Default
+            <Handle type="source" position={Position.Right} id="default" style={{ background: "#94A3B8", width: 8, height: 8, border: "2px solid #fff", top: "50%" }} />
+          </div>
+        </div>
+      )}
       {data.output && (
         <div style={{ marginTop: 7, fontSize: 11, color: "#666", maxHeight: 44, overflow: "hidden", borderTop: "1px solid #eee", paddingTop: 6, lineHeight: 1.4 }}>
           {data.output.slice(0, 140)}
@@ -170,7 +193,7 @@ function CanvasNode({ data, selected }: NodeProps<AutomationNode>) {
   );
 }
 
-const nodeTypes = { trigger: CanvasNode, agent: CanvasNode, prompt: CanvasNode, action: CanvasNode, delay: CanvasNode, condition: CanvasNode, condition_equals: CanvasNode, merge: CanvasNode, json_extract: CanvasNode, text_transform: CanvasNode, set_text: CanvasNode, current_time: CanvasNode, integration: CanvasNode };
+const nodeTypes = { trigger: CanvasNode, agent: CanvasNode, prompt: CanvasNode, action: CanvasNode, delay: CanvasNode, condition: CanvasNode, condition_equals: CanvasNode, merge: CanvasNode, json_extract: CanvasNode, text_transform: CanvasNode, set_text: CanvasNode, current_time: CanvasNode, switch: CanvasNode, code: CanvasNode, integration: CanvasNode };
 
 let nextId = 1;
 function genId() { return `node_${Date.now()}_${nextId++}`; }
@@ -189,6 +212,8 @@ function defaultConfigFor(nodeType: NodeType): NodeConfig {
     case "text_transform": return { operation: "trim" };
     case "set_text": return { text: "" };
     case "current_time": return {};
+    case "switch": return { value: "", cases: ["", ""] };
+    case "code": return { expression: "" };
     case "integration": return { block_key: "", params: {} };
   }
 }
@@ -201,6 +226,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
 
   const [flowName, setFlowName] = useState("Untitled automation");
   const [savedFlowId, setSavedFlowId] = useState<string>(isNew ? "" : flowId);
+  const [webhookToken, setWebhookToken] = useState("");
   const [nodes, setNodes] = useState<AutomationNode[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -274,6 +300,8 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
     if (nodeType === "json_extract") return { label: config.path ? `Extract ${config.path}` : "Extract JSON field" };
     if (nodeType === "text_transform") return { label: `Transform (${config.operation || "trim"})` };
     if (nodeType === "set_text") return { label: config.text ? `"${config.text.slice(0, 24)}"` : "Set text" };
+    if (nodeType === "switch") return { label: `Switch (${(config.cases || []).filter(Boolean).length} cases)` };
+    if (nodeType === "code") return { label: config.expression ? config.expression.slice(0, 28) : "Code (expression)" };
     if (nodeType === "action" && config.url) {
       try { return { label: new URL(config.url).hostname }; } catch { return { label: CORE_META.action.label }; }
     }
@@ -290,12 +318,13 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
         if (cancelled) return;
         setFlowName(flow.name || "Untitled automation");
         setSavedFlowId(flow.id);
+        setWebhookToken(flow.webhook_token || "");
         setNodes((flow.nodes || []).map((n: { id: string; type: NodeType; position?: { x: number; y: number }; config?: NodeConfig }) => {
           const decorated = decorateNode(n.type, n.config || {}, []);
           return { id: n.id, type: n.type, position: n.position || { x: 0, y: 0 }, data: { ...decorated, nodeType: n.type, config: n.config || {} } };
         }));
-        setEdges((flow.edges || []).map((e: { source: string; target: string }, i: number) => ({
-          id: `e${i}_${e.source}_${e.target}`, source: e.source, target: e.target, type: "default", markerEnd: { type: MarkerType.ArrowClosed },
+        setEdges((flow.edges || []).map((e: { source: string; target: string; source_handle?: string }, i: number) => ({
+          id: `e${i}_${e.source}_${e.target}`, source: e.source, target: e.target, sourceHandle: e.source_handle, type: "default", markerEnd: { type: MarkerType.ArrowClosed },
         })));
         setStatus("ready");
       })
@@ -354,12 +383,13 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
       const body = {
         founder_id: userId, name: flowName, flow_id: savedFlowId,
         nodes: nodes.map((n) => ({ id: n.id, type: n.data.nodeType, position: n.position, config: n.data.config })),
-        edges: edges.map((e) => ({ source: e.source, target: e.target })),
+        edges: edges.map((e) => ({ source: e.source, target: e.target, source_handle: e.sourceHandle || undefined })),
       };
       const res = await apiFetch(`${BASE}/automations/flows`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       if (!res.ok) throw new Error(String(res.status));
       const saved = await res.json();
       setSavedFlowId(saved.id);
+      setWebhookToken(saved.webhook_token || "");
       if (isNew) router.replace(`/automations/canvas/${saved.id}`);
       setSavedTick(true);
       window.setTimeout(() => setSavedTick(false), 1600);
@@ -572,6 +602,16 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
           <label className="f-label">Instruction</label>
           <textarea value={selectedNode.data.config.instruction || ""} onChange={(e) => updateSelectedConfig({ instruction: e.target.value })} rows={6} className="f-ta" style={{ marginBottom: 10 }} placeholder="What should this node do?" />
           <UpstreamHint ids={upstreamOfSelected} />
+          <label className="f-label">Structured output (optional)</label>
+          <textarea
+            value={selectedNode.data.config.output_schema || ""}
+            onChange={(e) => updateSelectedConfig({ output_schema: e.target.value })}
+            rows={2} className="f-ta" style={{ marginBottom: 6 }}
+            placeholder='e.g. {"category": "string", "priority": "low|medium|high"}'
+          />
+          <div style={{ fontSize: 10.5, color: "var(--fm)", marginBottom: 12, lineHeight: 1.4 }}>
+            If set, the model is asked to return only JSON matching this shape — pair with an Extract JSON field node downstream.
+          </div>
         </>
       )}
 
@@ -608,6 +648,59 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
         </>
       )}
 
+      {selectedNode.data.nodeType === "switch" && (
+        <>
+          <label className="f-label">Value to match (optional)</label>
+          <input
+            value={selectedNode.data.config.value || ""}
+            onChange={(e) => updateSelectedConfig({ value: e.target.value })}
+            className="f-input" style={{ marginBottom: 6, fontFamily: "var(--font-code)" }}
+            placeholder="Defaults to the upstream output — e.g. {{node_1.output}}"
+          />
+          <UpstreamHint ids={upstreamOfSelected} />
+          <label className="f-label" style={{ marginTop: 6 }}>Cases</label>
+          {(selectedNode.data.config.cases || []).map((c, i) => (
+            <div key={i} style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+              <input
+                value={c}
+                onChange={(e) => {
+                  const cases = [...(selectedNode.data.config.cases || [])];
+                  cases[i] = e.target.value;
+                  updateSelectedConfig({ cases });
+                }}
+                className="f-input" placeholder={`Case ${i + 1} value`}
+              />
+              <button
+                onClick={() => updateSelectedConfig({ cases: (selectedNode.data.config.cases || []).filter((_, j) => j !== i) })}
+                className="btn danger sm"
+              >×</button>
+            </div>
+          ))}
+          <button
+            onClick={() => updateSelectedConfig({ cases: [...(selectedNode.data.config.cases || []), ""] })}
+            className="btn sm" style={{ marginBottom: 12 }}
+          >+ Add case</button>
+          <div style={{ fontSize: 10.5, color: "var(--fm)", marginBottom: 12, lineHeight: 1.4 }}>
+            Anything that doesn&apos;t match a case follows the Default branch. Drag a connection from each row on the node to wire up its branch.
+          </div>
+        </>
+      )}
+
+      {selectedNode.data.nodeType === "code" && (
+        <>
+          <label className="f-label">Expression</label>
+          <textarea
+            value={selectedNode.data.config.expression || ""}
+            onChange={(e) => updateSelectedConfig({ expression: e.target.value })}
+            rows={4} className="f-ta" style={{ marginBottom: 6, fontFamily: "var(--font-code)" }}
+            placeholder='e.g. input["items"][0]["name"].upper()'
+          />
+          <div style={{ fontSize: 10.5, color: "var(--fm)", marginBottom: 12, lineHeight: 1.4 }}>
+            One expression only — `input` is the upstream output (JSON-parsed if possible). No imports, no file or network access.
+          </div>
+        </>
+      )}
+
       {selectedNode.data.nodeType === "merge" && (
         <>
           <label className="f-label">Separator</label>
@@ -638,8 +731,31 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
         </>
       )}
 
-      {(selectedNode.data.nodeType === "trigger" || selectedNode.data.nodeType === "current_time") && (
+      {selectedNode.data.nodeType === "current_time" && (
         <div style={{ fontSize: 12, color: "var(--fm)" }}>No configuration needed.</div>
+      )}
+
+      {selectedNode.data.nodeType === "trigger" && (
+        <>
+          <div style={{ fontSize: 12, color: "var(--fm)", marginBottom: 12 }}>Runs when you click Run above.</div>
+          <label className="f-label">Webhook URL</label>
+          {savedFlowId && webhookToken ? (
+            <>
+              <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                <input readOnly value={`${BASE}/automations/hooks/${userId}/${savedFlowId}/${webhookToken}`} className="f-input" style={{ fontFamily: "var(--font-code)", fontSize: 11 }} onFocus={(e) => e.currentTarget.select()} />
+                <button
+                  onClick={() => { void navigator.clipboard.writeText(`${BASE}/automations/hooks/${userId}/${savedFlowId}/${webhookToken}`); }}
+                  className="btn sm"
+                >Copy</button>
+              </div>
+              <div style={{ fontSize: 10.5, color: "var(--fm)", lineHeight: 1.4 }}>
+                POST any JSON here to start a run without opening the canvas. The payload is this trigger&apos;s output — read it downstream with {`{{${selectedNode.id}.output}}`}.
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 11.5, color: "var(--fm)" }}>Save the flow to get a webhook URL.</div>
+          )}
+        </>
       )}
 
       {selectedNode.data.status && (

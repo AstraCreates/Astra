@@ -104,6 +104,9 @@ def save_flow(
             "edges": edges,
             "created_at": (existing or {}).get("created_at") or _now(),
             "updated_at": _now(),
+            # Opaque per-flow secret for the public webhook trigger endpoint —
+            # generated once and kept stable across re-saves.
+            "webhook_token": (existing or {}).get("webhook_token") or uuid.uuid4().hex,
         }
         flows[flow_id] = flow
         _atomic_write(_flows_path(founder_id), flows)
