@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useDevUser } from "@/lib/use-dev-user";
-import { apiFetch, waitForAuthReady } from "@/lib/api";
+import { apiFetch, getSetupStatus, SetupStatus, waitForAuthReady } from "@/lib/api";
 import PageHeader, { HeaderPrimaryBtn, HeaderSecondaryBtn } from "@/components/PageHeader";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -26,6 +26,8 @@ type Overview = {
     key: string;
     path: string;
     title: string;
+    category: string;
+    integrations: string[];
     summary: string;
     installed: boolean;
   }>;
@@ -51,6 +53,7 @@ export default function AutomationsPage() {
   const { userId } = useDevUser();
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [busyKey, setBusyKey] = useState<string>("");
   const [flash, setFlash] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
@@ -61,6 +64,11 @@ export default function AutomationsPage() {
     const res = await apiFetch(`${BASE}/automations/overview?founder_id=${encodeURIComponent(userId)}`);
     if (!res.ok) throw new Error(String(res.status));
     setOverview(await res.json());
+    try {
+      setSetupStatus(await getSetupStatus(userId));
+    } catch {
+      setSetupStatus(null);
+    }
     setStatus("ready");
   }
 
@@ -121,6 +129,21 @@ export default function AutomationsPage() {
   }
 
   const rt = useMemo(() => statusTone(overview?.runtime.status || "standby"), [overview?.runtime.status]);
+  const connectorState = useMemo(() => {
+    const raw = setupStatus;
+    return {
+      github: Boolean(raw?.github),
+      gmail: Boolean(raw?.apps?.gmail || raw?.sendgrid),
+      slack: Boolean(raw?.apps?.slack),
+      notion: Boolean(raw?.notion),
+      linear: Boolean(raw?.linear),
+      stripe: Boolean(raw?.apps?.stripe),
+      hubspot: Boolean(raw?.apps?.hubspot),
+      apollo: Boolean(raw?.apps?.apollo),
+      google_calendar: Boolean(raw?.apps?.google_calendar),
+      klaviyo: Boolean(raw?.klaviyo),
+    } as Record<string, boolean>;
+  }, [setupStatus]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
@@ -203,34 +226,44 @@ export default function AutomationsPage() {
                     gap: 10,
                   }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.3 }}>{t.title}</span>
+                      <div style={{ minWidth: 0 }}>
+                        {t.category && (
+                          <div style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)", marginBottom: 4 }}>{t.category}</div>
+                        )}
+                        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.3 }}>{t.title}</span>
+                      </div>
                       <span className={`pill ${t.installed ? "green" : ""}`} style={{ flexShrink: 0 }}>
                         {t.installed ? "Installed" : "Template"}
                       </span>
                     </div>
                     <p style={{ margin: 0, fontSize: 13, color: "var(--fm)", lineHeight: 1.55, flex: 1 }}>{t.summary}</p>
+                    {t.integrations?.length > 0 && (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {t.integrations.map((integration) => {
+                          const connected = Boolean(connectorState[integration]);
+                          return (
+                            <span key={`${t.key}:${integration}`} className={`pill ${connected ? "green" : "amber"}`}>
+                              {integration.replace(/_/g, " ")} {connected ? "✓" : "needed"}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
                     <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        onClick={() => installTemplate(t.key)}
-                        disabled={!!busyKey}
-                        className="btn sm"
-                      >
+                      <button onClick={() => installTemplate(t.key)} disabled={!!busyKey} className="btn sm">
                         {busyKey === `install:${t.key}` ? "Installing…" : t.installed ? "Reinstall" : "Install"}
                       </button>
                       {t.installed && (
-                        <button
-                          onClick={() => runTemplate(t.key)}
-                          disabled={!!busyKey}
-                          className="btn pri sm"
-                        >
+                        <button onClick={() => runTemplate(t.key)} disabled={!!busyKey} className="btn pri sm">
                           {busyKey === `run:${t.key}` ? "Running…" : "Run"}
                         </button>
                       )}
+                      {t.integrations?.some((i) => !connectorState[i]) && (
+                        <button onClick={() => router.push("/integrations")} className="btn sm" style={{ color: "var(--amber)", borderColor: "var(--ab)" }}>
+                          Connect
+                        </button>
+                      )}
                     </div>
-                  </div>
-                ))}
-              </div>
-            </section>
 
             {/* Recent flows */}
             <section>
