@@ -24,6 +24,7 @@ import "@xyflow/react/dist/style.css";
 import { useDevUser } from "@/lib/use-dev-user";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { apiFetch, waitForAuthReady } from "@/lib/api";
+import { draftAutomationLocally } from "@/lib/automation-draft";
 import PageHeader, { HeaderPrimaryBtn, HeaderSecondaryBtn } from "@/components/PageHeader";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -427,13 +428,19 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
     setDrafting(true);
     setRunError("");
     try {
+      await waitForAuthReady();
       const res = await apiFetch(`${BASE}/automations/flows/draft`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ founder_id: userId, prompt: draftPrompt }),
       });
-      if (!res.ok) throw new Error(String(res.status));
-      const draft = await res.json();
+      let draft;
+      if (!res.ok) {
+        draft = draftAutomationLocally(draftPrompt);
+        setRunError("Build with AI used a local fallback draft because the server draft route was unavailable.");
+      } else {
+        draft = await res.json();
+      }
       setFlowName(draft.name || "Draft automation");
       setSavedFlowId("");
       setNodes((draft.nodes || []).map((n: { id: string; type: NodeType; position?: { x: number; y: number }; config?: NodeConfig }) => ({
@@ -449,7 +456,22 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
       setSelectedNodeId(null);
       setDraftOpen(false);
     } catch {
-      setRunError("Could not draft automation from that description.");
+      const draft = draftAutomationLocally(draftPrompt);
+      setFlowName(draft.name || "Draft automation");
+      setSavedFlowId("");
+      setNodes((draft.nodes || []).map((n) => ({
+        id: n.id,
+        type: n.type as NodeType,
+        position: n.position || { x: 0, y: 0 },
+        data: { label: labelFor(n.type as NodeType, n.config as NodeConfig), nodeType: n.type as NodeType, config: n.config as NodeConfig },
+      })));
+      setEdges((draft.edges || []).map((e, i) => ({
+        id: `d${i}_${e.source}_${e.target}`, source: e.source, target: e.target,
+        type: "smoothstep", markerEnd: { type: MarkerType.ArrowClosed },
+      })));
+      setSelectedNodeId(null);
+      setDraftOpen(false);
+      setRunError("Build with AI fell back to a local draft. You can still edit and save it normally.");
     } finally {
       setDrafting(false);
     }
