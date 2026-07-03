@@ -148,18 +148,18 @@ function CanvasNode({ data, selected }: NodeProps<AutomationNode>) {
   return (
     <div style={{
       minWidth: 210, maxWidth: 250, borderRadius: 14, padding: "12px 14px",
-      background: "#fff", border: `1.5px solid ${selected ? meta.color : meta.border}`,
+      background: "var(--surface)", border: `1.5px solid ${selected ? meta.color : meta.border}`,
       boxShadow: selected ? `0 0 0 3px ${meta.bg}, 0 2px 8px rgba(0,0,0,0.06)` : "0 1px 4px rgba(0,0,0,0.07)",
       position: "relative", opacity: dimmed ? 0.5 : 1, transition: "box-shadow 0.15s ease, opacity 0.2s ease",
     }}>
-      <Handle type="target" position={Position.Left} style={{ background: meta.color, width: 9, height: 9, border: "2px solid #fff" }} />
+      <Handle type="target" position={Position.Left} style={{ background: meta.color, width: 9, height: 9, border: "2px solid var(--surface)" }} />
       {data.nodeType === "switch" ? null : (
-        <Handle type="source" position={Position.Right} style={{ background: meta.color, width: 9, height: 9, border: "2px solid #fff" }} />
+        <Handle type="source" position={Position.Right} style={{ background: meta.color, width: 9, height: 9, border: "2px solid var(--surface)" }} />
       )}
       {statusColor && (
         <div style={{
           position: "absolute", top: -7, right: -7, width: 15, height: 15, borderRadius: "50%",
-          background: statusColor, border: "2px solid #fff", boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
+          background: statusColor, border: "2px solid var(--surface)", boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
           animation: data.status === "running" ? "astra-pulse 1s ease-in-out infinite" : undefined,
         }} />
       )}
@@ -169,23 +169,23 @@ function CanvasNode({ data, selected }: NodeProps<AutomationNode>) {
         </span>
         <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: meta.color }}>{meta.short}</span>
       </div>
-      <div style={{ fontSize: 13, fontWeight: 600, color: "#111", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{data.label}</div>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{data.label}</div>
       {data.nodeType === "switch" && (
         <div style={{ marginTop: 6 }}>
           {(data.config.cases || []).map((c, i) => (
-            <div key={i} style={{ position: "relative", fontSize: 10.5, color: "var(--fm, #666)", padding: "4px 10px 4px 0", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+            <div key={i} style={{ position: "relative", fontSize: 10.5, color: "var(--fm)", padding: "4px 10px 4px 0", borderTop: "1px solid var(--bd)" }}>
               {c || `Case ${i + 1}`}
-              <Handle type="source" position={Position.Right} id={`case_${i}`} style={{ background: meta.color, width: 8, height: 8, border: "2px solid #fff", top: "50%" }} />
+              <Handle type="source" position={Position.Right} id={`case_${i}`} style={{ background: meta.color, width: 8, height: 8, border: "2px solid var(--surface)", top: "50%" }} />
             </div>
           ))}
-          <div style={{ position: "relative", fontSize: 10.5, color: "var(--fm, #666)", padding: "4px 10px 4px 0", borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+          <div style={{ position: "relative", fontSize: 10.5, color: "var(--fm)", padding: "4px 10px 4px 0", borderTop: "1px solid var(--bd)" }}>
             Default
-            <Handle type="source" position={Position.Right} id="default" style={{ background: "#94A3B8", width: 8, height: 8, border: "2px solid #fff", top: "50%" }} />
+            <Handle type="source" position={Position.Right} id="default" style={{ background: "#94A3B8", width: 8, height: 8, border: "2px solid var(--surface)", top: "50%" }} />
           </div>
         </div>
       )}
       {data.output && (
-        <div style={{ marginTop: 7, fontSize: 11, color: "#666", maxHeight: 44, overflow: "hidden", borderTop: "1px solid #eee", paddingTop: 6, lineHeight: 1.4 }}>
+        <div style={{ marginTop: 7, fontSize: 11, color: "var(--fm)", maxHeight: 44, overflow: "hidden", borderTop: "1px solid var(--bd)", paddingTop: 6, lineHeight: 1.4 }}>
           {data.output.slice(0, 140)}
         </div>
       )}
@@ -509,7 +509,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
             value={paletteFilter}
             onChange={(e) => setPaletteFilter(e.target.value)}
             placeholder="Search integrations…"
-            style={{ width: "100%", padding: "7px 9px", fontSize: 12, borderRadius: 8, border: "1px solid var(--bd)", marginBottom: 10 }}
+            className="f-input" style={{ marginBottom: 10, fontSize: 12, padding: "7px 9px" }}
           />
           {Object.keys(integrationsByCategory).length === 0 && (
             <div style={{ fontSize: 11.5, color: "var(--fm)" }}>{integrationCatalog.length === 0 ? "Loading…" : "No matches."}</div>
@@ -826,7 +826,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
             {!isMobile && <MiniMap pannable zoomable style={{ background: "var(--s2)" }} nodeColor={(n) => metaFor((n.data as AutomationNodeData).nodeType, (n.data as AutomationNodeData).category).color} />}
           </ReactFlow>
           {isMobile && (
-            <button onClick={() => setPaletteOpen(true)} className="m-tap" style={{ position: "absolute", bottom: 20, right: 20, width: 52, height: 52, borderRadius: "50%", background: "#002EFF", color: "#fff", border: "none", fontSize: 24, lineHeight: 1, boxShadow: "0 4px 14px rgba(0,46,255,0.35)", cursor: "pointer", zIndex: 10 }}>+</button>
+            <button onClick={() => setPaletteOpen(true)} className="m-tap" style={{ position: "absolute", bottom: 20, right: 20, width: 52, height: 52, borderRadius: "50%", background: "var(--blue)", color: "#fff", border: "none", fontSize: 24, lineHeight: 1, boxShadow: "0 4px 14px rgba(0,46,255,0.35)", cursor: "pointer", zIndex: 10 }}>+</button>
           )}
           {outputOpen && (
             <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: "45%", background: "var(--surface)", borderTop: "1px solid var(--bd)", boxShadow: "0 -4px 16px rgba(0,0,0,0.08)", zIndex: 15, display: "flex", flexDirection: "column" }}>
