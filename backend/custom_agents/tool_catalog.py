@@ -91,6 +91,7 @@ CATALOG: list[ToolSpec] = [
     ToolSpec("research_papers", "Academic papers", "Search academic / research papers.", "research"),
     ToolSpec("patent_search", "Patent search", "Search patents and IP filings.", "research"),
     ToolSpec("youtube_research", "YouTube research", "Mine YouTube for market/product signals.", "research"),
+    ToolSpec("youtube_get_transcript", "YouTube transcript", "Get the full transcript of one specific YouTube video by URL.", "research"),
     ToolSpec("tiktok_research", "TikTok research", "Mine TikTok for trends and signals.", "research"),
     ToolSpec("run_research_pipeline", "Deep research pipeline", "Run a structured multi-step research sweep.", "research"),
 

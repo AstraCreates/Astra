@@ -1,9 +1,25 @@
 """YouTube and TikTok competitor content analysis via yt-dlp + youtube-transcript-api."""
+from __future__ import annotations
+
 import json
+import re
 import subprocess
 import sys
 import textwrap
 from typing import Any
+
+_VIDEO_ID_RE = re.compile(
+    r"(?:youtu\.be/|youtube\.com/(?:watch\?v=|shorts/|live/|embed/))([A-Za-z0-9_-]{11})"
+)
+_BARE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+
+def _extract_video_id(url_or_id: str) -> str | None:
+    url_or_id = (url_or_id or "").strip()
+    if _BARE_ID_RE.match(url_or_id):
+        return url_or_id
+    m = _VIDEO_ID_RE.search(url_or_id)
+    return m.group(1) if m else None
 
 
 def _yt_dlp(*args: str) -> dict[str, Any] | list[Any] | None:
@@ -17,13 +33,56 @@ def _yt_dlp(*args: str) -> dict[str, Any] | list[Any] | None:
         return None
 
 
-def _get_transcript(video_id: str) -> str:
+def _fetch_transcript(video_id: str, max_chars: int = 4000) -> str:
+    """youtube-transcript-api rewrote its API in v1.0 (static .get_transcript()
+    classmethod -> instance .fetch()) and requirements.txt pins an open-ended
+    >=0.6.2, so which shape is installed depends on when the image was last
+    built. Try the current API first, fall back to the pre-1.0 one."""
     try:
-        from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
-        segments = YouTubeTranscriptApi.get_transcript(video_id, languages=["en", "en-US"])
-        return " ".join(s["text"] for s in segments)[:4000]
+        from youtube_transcript_api import YouTubeTranscriptApi
+        try:
+            fetched = YouTubeTranscriptApi().fetch(video_id, languages=["en", "en-US"])
+            return " ".join(s.text for s in fetched)[:max_chars]
+        except AttributeError:
+            segments = YouTubeTranscriptApi.get_transcript(video_id, languages=["en", "en-US"])
+            return " ".join(s["text"] for s in segments)[:max_chars]
     except Exception:
         return ""
+
+
+def _get_transcript(video_id: str) -> str:
+    return _fetch_transcript(video_id, max_chars=4000)
+
+
+def youtube_get_transcript(url_or_video_id: str, max_chars: int = 20000) -> dict[str, Any]:
+    """Fetch one YouTube video's full transcript + basic metadata by URL or video ID.
+    Public videos only, no login/cookies — for "summarize this video" style requests
+    where youtube_research's search-and-summarize flow doesn't fit (you already have
+    the exact video)."""
+    video_id = _extract_video_id(url_or_video_id)
+    if not video_id:
+        return {"ok": False, "error": f"Could not parse a YouTube video ID from: {url_or_video_id}"}
+
+    transcript = _fetch_transcript(video_id, max_chars=max_chars)
+    if not transcript:
+        return {
+            "ok": False,
+            "video_id": video_id,
+            "url": f"https://youtu.be/{video_id}",
+            "error": "No transcript available for this video (captions may be disabled).",
+        }
+
+    meta = _yt_dlp(f"https://youtu.be/{video_id}", "--dump-json", "--no-playlist", "--skip-download") or {}
+    return {
+        "ok": True,
+        "video_id": video_id,
+        "url": f"https://youtu.be/{video_id}",
+        "title": meta.get("title", ""),
+        "channel": meta.get("uploader") or meta.get("channel", ""),
+        "duration": _format_duration(meta.get("duration")),
+        "transcript": transcript,
+        "truncated": len(transcript) >= max_chars,
+    }
 
 
 def _format_duration(seconds: int | None) -> str:

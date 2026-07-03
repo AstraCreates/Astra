@@ -13,7 +13,7 @@ from backend.tools.browser_research import (
 )
 from backend.tools.patent_search import patent_search
 from backend.tools.web_search import news_search
-from backend.tools.video_research import youtube_research, tiktok_research
+from backend.tools.video_research import youtube_research, tiktok_research, youtube_get_transcript
 
 
 def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_name: str = "research"):
@@ -193,6 +193,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     auto_patent = _make_auto_logging_tool(patent_search, "patent_search", ctx_holder, log_name)
     auto_youtube = _make_auto_logging_tool(youtube_research, "youtube_research", ctx_holder, log_name)
     auto_tiktok = _make_auto_logging_tool(tiktok_research, "tiktok_research", ctx_holder, log_name)
+    auto_youtube_transcript = _make_auto_logging_tool(youtube_get_transcript, "youtube_get_transcript", ctx_holder, log_name)
 
 
     from backend.config import research_default_is_local, settings
@@ -226,7 +227,8 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
             "- research_papers(query) — academic papers.\n"
             "- news_search(query) — recent news.\n"
             "- patent_search(query) — IP landscape.\n"
-            "- youtube_research(query) — YouTube video metadata + transcripts for competitor/creator analysis.\n"
+            "- youtube_research(query) — searches YouTube, returns metadata + transcript excerpts for the top results.\n"
+            "- youtube_get_transcript(url_or_video_id) — full transcript + metadata for ONE specific video you already have a URL/ID for (e.g. the founder pasted a link). Use this instead of youtube_research when you're not searching.\n"
             "- tiktok_research(query) — TikTok video metadata + captions for viral trend analysis.\n"
             "- obsidian_log — FINAL step only after ALL searches complete.\n\n"
             "RESEARCH QUALITY RULES:\n"
@@ -253,6 +255,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
             "news_search": auto_news,
             "patent_search": auto_patent,
             "youtube_research": auto_youtube,
+            "youtube_get_transcript": auto_youtube_transcript,
             "tiktok_research": auto_tiktok,
             "obsidian_log": obsidian_log,
             "obsidian_read": obsidian_read,
