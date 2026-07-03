@@ -217,6 +217,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
   const [draftPrompt, setDraftPrompt] = useState("");
   const [drafting, setDrafting] = useState(false);
   const [draftOpen, setDraftOpen] = useState(false);
+  const [outputOpen, setOutputOpen] = useState(false);
   const pollRef = useRef<number | null>(null);
 
   const blockByKey = useMemo(() => Object.fromEntries(integrationCatalog.map((b) => [b.key, b])), [integrationCatalog]);
@@ -230,6 +231,14 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
     const block = blockByKey[n.data.config.block_key || ""];
     return { ...n, data: { ...n.data, label: block?.label || "Integration", category: block?.category } };
   }), [nodes, blockByKey]);
+
+  // Terminal nodes — nothing downstream — are the flow's "final output".
+  const leafIds = useMemo(() => {
+    const sources = new Set(edges.map((e) => e.source));
+    return new Set(nodes.filter((n) => !sources.has(n.id)).map((n) => n.id));
+  }, [nodes, edges]);
+
+  const ranNodes = useMemo(() => displayNodes.filter((n) => n.data.status && n.data.status !== "idle"), [displayNodes]);
 
   const selectedNode = useMemo(() => displayNodes.find((n) => n.id === selectedNodeId) || null, [displayNodes, selectedNodeId]);
   const selectedBlock = selectedNode?.data.nodeType === "integration" ? blockByKey[selectedNode.data.config.block_key || ""] : undefined;
@@ -368,6 +377,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
     const id = savedFlowId || await saveFlow();
     if (!id) { setRunError("Could not save flow before running."); return; }
     setRunning(true);
+    setOutputOpen(true);
     setNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, status: "idle" as const, output: undefined } })));
     try {
       const res = await apiFetch(`${BASE}/automations/flows/${id}/run`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ founder_id: userId }) });
@@ -665,6 +675,7 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
             {runError && <span style={{ fontSize: 12, color: "var(--red)" }}>{runError}</span>}
             {savedTick && <span style={{ fontSize: 12, color: "var(--green)" }}>✓ Saved</span>}
             <HeaderSecondaryBtn label="Build with AI" onClick={() => setDraftOpen(true)} />
+            <HeaderSecondaryBtn label={outputOpen ? "Hide output" : "Output"} onClick={() => setOutputOpen((o) => !o)} disabled={ranNodes.length === 0} />
             <HeaderSecondaryBtn label={saving ? "Saving…" : "Save"} onClick={() => { void saveFlow(); }} disabled={saving} />
             <HeaderPrimaryBtn label={running ? "Running…" : "▶ Run"} onClick={() => { void runFlow(); }} disabled={running || nodes.length === 0} />
           </div>
@@ -700,6 +711,31 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
           </ReactFlow>
           {isMobile && (
             <button onClick={() => setPaletteOpen(true)} className="m-tap" style={{ position: "absolute", bottom: 20, right: 20, width: 52, height: 52, borderRadius: "50%", background: "#002EFF", color: "#fff", border: "none", fontSize: 24, lineHeight: 1, boxShadow: "0 4px 14px rgba(0,46,255,0.35)", cursor: "pointer", zIndex: 10 }}>+</button>
+          )}
+          {outputOpen && (
+            <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, maxHeight: "45%", background: "var(--surface)", borderTop: "1px solid var(--bd)", boxShadow: "0 -4px 16px rgba(0,0,0,0.08)", zIndex: 15, display: "flex", flexDirection: "column" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", borderBottom: "1px solid var(--bd)", flexShrink: 0 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--fm)" }}>Run output</span>
+                <button onClick={() => setOutputOpen(false)} className="btn sm">Close</button>
+              </div>
+              <div style={{ overflowY: "auto", padding: "10px 14px" }}>
+                {ranNodes.length === 0 && <div style={{ fontSize: 12, color: "var(--fm)" }}>Run the flow to see what each block produced.</div>}
+                {ranNodes.map((n) => (
+                  <div key={n.id} style={{ marginBottom: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: STATUS_COLORS[n.data.status || ""] || "var(--fm)", flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--fg)" }}>{n.data.label}</span>
+                      {leafIds.has(n.id) && <span className="pill blue">Final</span>}
+                    </div>
+                    {n.data.output ? (
+                      <div style={{ fontSize: 12, color: "var(--fg)", whiteSpace: "pre-wrap", background: "var(--s2)", borderRadius: 8, padding: 10, lineHeight: 1.5 }}>{n.data.output}</div>
+                    ) : (
+                      <div style={{ fontSize: 11.5, color: "var(--fm)" }}>{n.data.status === "running" ? "Running…" : "No output."}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
