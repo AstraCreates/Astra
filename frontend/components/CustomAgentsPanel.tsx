@@ -392,7 +392,13 @@ function AgentModal({
 // Main panel
 // ---------------------------------------------------------------------------
 
-export default function CustomAgentsPanel() {
+export default function CustomAgentsPanel({
+  embedded = false,
+  externalTriggerNew = 0,
+}: {
+  embedded?: boolean;
+  externalTriggerNew?: number;
+} = {}) {
   const { founderId, companyId } = useCompany();
   const router = useRouter();
   const [agents, setAgents] = useState<CustomAgent[]>([]);
@@ -447,6 +453,10 @@ export default function CustomAgentsPanel() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (externalTriggerNew) setModal({ open: true, agent: null });
+  }, [externalTriggerNew]);
+
   async function handleSave(input: CustomAgentInput & { clear_schedule?: boolean }) {
     if (modal.agent) {
       const updated = await updateCustomAgent(founderId, modal.agent.id, { ...input, company_id: companyId });
@@ -483,11 +493,13 @@ export default function CustomAgentsPanel() {
 
   return (
     <div className="h-full flex flex-col bg-white">
-      <PageHeader
-        title="Custom Agents"
-        subtitle="Build your own agents from a prompt. Pick their tools. Run them on demand or on a schedule."
-        actions={<HeaderPrimaryBtn label="+ New Agent" onClick={() => setModal({ open: true, agent: null })} />}
-      />
+      {!embedded && (
+        <PageHeader
+          title="Custom Agents"
+          subtitle="Build your own agents from a prompt. Pick their tools. Run them on demand or on a schedule."
+          actions={<HeaderPrimaryBtn label="+ New Agent" onClick={() => setModal({ open: true, agent: null })} />}
+        />
+      )}
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-6 py-4">

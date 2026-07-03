@@ -15,7 +15,6 @@ import {
   Send,
   Brain,
   BookOpen,
-  Bot,
   Plug,
   Zap,
   CreditCard,
@@ -30,9 +29,8 @@ const LINKS: { href: string; Icon: LucideIcon; label: string; match: (p: string)
   { href: "/outreach",     Icon: Send,             label: "Outreach",      match: (p) => p.startsWith("/outreach") },
   { href: "/brain",        Icon: Brain,            label: "Company Brain", match: (p) => p.startsWith("/brain") },
   { href: "/library",      Icon: BookOpen,         label: "Library",       match: (p) => p.startsWith("/library") || p.startsWith("/funding") },
-  { href: "/agents",       Icon: Bot,              label: "Custom Agents", match: (p) => p.startsWith("/agents") },
   { href: "/integrations", Icon: Plug,             label: "Integrations",  match: (p) => p.startsWith("/integrations") },
-  { href: "/automations",  Icon: Zap,              label: "Automations",   match: (p) => p.startsWith("/automations") },
+  { href: "/automations",  Icon: Zap,              label: "Automations",   match: (p) => p.startsWith("/automations") || p.startsWith("/agents") },
   { href: "/payments",     Icon: CreditCard,       label: "Payments",      match: (p) => p.startsWith("/payments") },
 ];
 
