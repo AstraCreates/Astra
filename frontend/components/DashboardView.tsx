@@ -2,10 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, listSessions, deleteSessionRemote, killSession, getSessionDigest, AGENT_LABELS, type SessionIndexEntry, type SessionDigest } from "@/lib/api";
+import { apiFetch, listSessions, deleteSessionRemote, killSession, getSessionDigest, type SessionIndexEntry, type SessionDigest } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
-import DashboardCanvas from "./DashboardCanvas";
 import LaunchCompleteScreen, { shouldShowLaunchComplete, markLaunchCompleteShown, consumePreviewSignal } from "./LaunchCompleteScreen";
 
 const GREETINGS = [
@@ -380,22 +379,40 @@ export default function DashboardView() {
           </div>
         )}
 
-        {/* ── Body: two-column layout ── */}
-        <div className="dv-body" style={{ display: "flex", gap: 16, padding: "18px 30px", alignItems: "flex-start" }}>
+        {/* ── Main content: flex column, gap:16 — mirrors HTML spec ── */}
+        <div style={{ padding: "18px 30px", display: "flex", flexDirection: "column", gap: 16 }}>
 
-          {/* ── Active Goal card (330px) ── */}
-          <div className="dv-goal-col" style={{ flex: "0 0 330px", minWidth: 0 }}>
-            <div style={{ background: "#0A0D17", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "16px" }}>
-              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".12em", color: "rgba(237,241,251,0.3)", textTransform: "uppercase", marginBottom: 14 }}>Active Goal</div>
+          {/* Today header + segment control */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ fontSize: 11, letterSpacing: ".08em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>Today</div>
+            <div style={{ display: "flex", gap: 3, padding: 3, background: "#0C0F1A", border: "1px solid rgba(255,255,255,.08)", borderRadius: 8 }}>
+              <button style={{ padding: "4px 12px", fontSize: 11, fontWeight: 600, color: regularSessions.length > 0 ? "#EDF1FB" : "#6f7b98", background: regularSessions.length > 0 ? "rgba(255,255,255,.08)" : "transparent", border: "none", borderRadius: 6, cursor: "pointer" }}>Populated</button>
+              <button onClick={() => router.push("/dashboard?new=1")} style={{ padding: "4px 12px", fontSize: 11, fontWeight: 600, color: regularSessions.length === 0 ? "#EDF1FB" : "#6f7b98", background: regularSessions.length === 0 ? "rgba(255,255,255,.08)" : "transparent", border: "none", borderRadius: 6, cursor: "pointer" }}>First run</button>
+            </div>
+          </div>
+
+          {/* Two columns */}
+          <div className="dv-body" style={{ display: "flex", gap: 18, alignItems: "stretch" }}>
+
+            {/* ── Active Goal card (330px) ── */}
+            <div className="dv-goal-col" style={{ width: 330, flex: "none", background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 11, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>Active goal</div>
 
               {(() => {
                 const active = regularSessions.find(s => s.status === "running" || s.status === "stalled") || regularSessions[0] || null;
+                const accentColor = "#7D8FFF";
+
                 if (!active) {
                   return (
-                    <div style={{ textAlign: "center", padding: "28px 0" }}>
-                      <div style={{ fontSize: 28, opacity: 0.1, marginBottom: 12 }}>◈</div>
-                      <div style={{ fontSize: 12, color: "rgba(237,241,251,0.3)", marginBottom: 14 }}>No active runs</div>
-                      <button onClick={() => router.push("/dashboard?new=1")} style={{ padding: "8px 18px", fontSize: 11, fontWeight: 600, color: "#fff", background: "#002EFF", border: "none", cursor: "pointer", borderRadius: 7 }}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "40px 20px", gap: 14, flex: 1 }}>
+                      <div style={{ width: 44, height: 44, border: "1px solid rgba(255,255,255,.16)", borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", transform: "rotate(45deg)" }}>
+                        <div style={{ width: 13, height: 13, background: accentColor, borderRadius: 3 }} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: 16, fontWeight: 700 }}>No active runs</div>
+                        <div style={{ fontSize: 12.5, color: "#6f7b98", marginTop: 5 }}>Start your first run and Astra will get to work.</div>
+                      </div>
+                      <button onClick={() => router.push("/dashboard?new=1")} style={{ background: "#002EFF", color: "#fff", border: "none", borderRadius: 8, padding: "11px 22px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
                         Start first run →
                       </button>
                     </div>
@@ -405,364 +422,278 @@ export default function DashboardView() {
                 const digest = digests.get(active.session_id);
                 const phasesDone = digest?.counts.phases_done ?? 0;
                 const phasesTotal = digest?.counts.phases_total ?? 0;
+                const phasesPending = digest?.counts.phases_pending ?? 0;
                 const progress = phasesTotal > 0 ? phasesDone / phasesTotal : 0;
                 const circumference = 157;
                 const dashOffset = circumference * (1 - progress);
                 const cleanTitle = extractGoalTitle(active.goal || "Untitled run");
-                const isRunning = active.status === "running";
                 const isStalled = active.status === "stalled";
                 const isDone = active.status === "done";
-                const currentAgents = (digest?.running_agents ?? []).map((a: string) => AGENT_LABELS[a as keyof typeof AGENT_LABELS] ?? a);
-                const accentColor = isStalled ? "#FFFFA6" : isDone ? "#7CFFC6" : "#7CFFC6";
+                const ringColor = isStalled ? "#FFFFA6" : accentColor;
 
                 return (
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-                      <div style={{ flex: 1, minWidth: 0, marginRight: 14 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: "#EDF1FB", lineHeight: 1.45, marginBottom: 6, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-                          {cleanTitle}
-                        </div>
-                        <div style={{ display: "flex", gap: 10, fontSize: 10, color: "rgba(237,241,251,0.4)" }}>
-                          {phasesDone > 0 && <span style={{ color: "#7CFFC6" }}>✓ {phasesDone} done</span>}
-                          {(digest?.counts.phases_pending ?? 0) > 0 && <span>{digest?.counts.phases_pending} queued</span>}
-                          {(digest?.counts.phases_total ?? 0) === 0 && isRunning && <span style={{ color: "#7D8FFF" }}>Initializing…</span>}
+                  <>
+                    {/* Title row + donut */}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
+                      <div>
+                        <div style={{ fontSize: 18, fontWeight: 700 }}>{cleanTitle}</div>
+                        <div style={{ fontSize: 12, color: "#6f7b98", marginTop: 4 }}>
+                          {phasesDone > 0 || phasesTotal > 0 ? `${phasesDone} of ${phasesTotal} tasks done` : isStalled ? "Needs attention" : "Running…"}
                         </div>
                       </div>
-                      {/* SVG donut ring — RIGHT side */}
-                      <div style={{ position: "relative", width: 58, height: 58, flexShrink: 0 }}>
+                      <div style={{ position: "relative", width: 58, height: 58, flex: "none" }}>
                         <svg width={58} height={58} viewBox="0 0 58 58">
-                          <circle cx={29} cy={29} r={25} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={5} />
-                          <circle cx={29} cy={29} r={25} fill="none"
-                            stroke={accentColor}
-                            strokeWidth={5}
-                            strokeLinecap="round"
-                            strokeDasharray={circumference}
-                            strokeDashoffset={phasesTotal > 0 ? dashOffset : circumference * 0.83}
-                            transform="rotate(-90 29 29)"
-                            style={{ transition: "stroke-dashoffset 0.8s ease" }}
-                          />
+                          <circle cx={29} cy={29} r={25} fill="none" stroke="rgba(255,255,255,.1)" strokeWidth={5} />
+                          <circle cx={29} cy={29} r={25} fill="none" stroke={ringColor} strokeWidth={5} strokeLinecap="round" strokeDasharray={157} strokeDashoffset={phasesTotal > 0 ? dashOffset : 130} transform="rotate(-90 29 29)" style={{ transition: "stroke-dashoffset 0.8s ease" }} />
                         </svg>
-                        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1.1 }}>
-                          <span style={{ fontSize: 15, fontWeight: 700, color: accentColor }}>
-                            {isDone ? "✓" : phasesTotal > 0 ? phasesDone : "…"}
-                          </span>
-                          {phasesTotal > 0 && <span style={{ fontSize: 9, color: "#6f7b98" }}>/ {phasesTotal}</span>}
+                        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1 }}>
+                          <span style={{ fontSize: 15, fontWeight: 700 }}>{isDone ? "✓" : phasesDone}</span>
+                          <span style={{ fontSize: 9, color: "#6f7b98" }}>/ {phasesTotal || "?"}</span>
                         </div>
                       </div>
                     </div>
 
-                    {isRunning && currentAgents.length > 0 && (
-                      <div style={{ fontSize: 10, color: "#7CFFC6", marginBottom: 12, display: "flex", alignItems: "center", gap: 5 }}>
-                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#7CFFC6", flexShrink: 0, animation: "sc-shimmer 1.5s ease-in-out infinite" }} />
-                        {currentAgents.join(" · ")}
-                      </div>
-                    )}
-                    {isStalled && (
-                      <div style={{ fontSize: 10, color: "#FFFFA6", marginBottom: 12 }}>⚠ Needs your attention — approval may be required.</div>
-                    )}
+                    {/* Done + queued counts */}
+                    <div style={{ display: "flex", gap: 16, marginTop: 16, fontSize: 12, color: "#8A93AD" }}>
+                      <span>✓ <b style={{ color: "#EDF1FB" }}>{phasesDone}</b> done</span>
+                      <span>○ <b style={{ color: "#EDF1FB" }}>{phasesPending}</b> queued</span>
+                    </div>
 
-                    <div style={{ display: "flex", gap: 7 }}>
+                    {/* Buttons */}
+                    <div style={{ display: "flex", gap: 9, marginTop: 18 }}>
                       <button
                         onClick={() => router.push(`/s/${active.session_id}`)}
-                        style={{ flex: 1, padding: "8px 0", fontSize: 11, fontWeight: 600, color: "#fff", background: "#002EFF", border: "none", cursor: "pointer", borderRadius: 7 }}
-                      >{isStalled ? "Review →" : "View run →"}</button>
+                        style={{ flex: 1, background: "#002EFF", color: "#fff", border: "none", borderRadius: 8, padding: 10, fontWeight: 600, fontSize: 13, cursor: "pointer" }}
+                      >▶ Run now</button>
                       <button
-                        onClick={() => router.push("/dashboard?new=1")}
-                        style={{ padding: "8px 12px", fontSize: 11, fontWeight: 500, color: "rgba(237,241,251,0.55)", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)", cursor: "pointer", borderRadius: 7 }}
-                      >+ New</button>
+                        style={{ background: "transparent", color: "#c3cbe0", border: "1px solid rgba(255,255,255,.14)", borderRadius: 8, padding: "10px 16px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
+                      >Pause</button>
                     </div>
-
-                    {phasesTotal > 0 && (
-                      <div style={{ marginTop: 12, height: 3, background: "rgba(255,255,255,0.06)", borderRadius: 3, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: "100%", background: accentColor, borderRadius: 3, transformOrigin: "left", transform: `scaleX(${progress})`, transition: "transform 0.8s ease" }} />
-                      </div>
-                    )}
-                  </div>
+                  </>
                 );
               })()}
             </div>
-          </div>
 
-          {/* ── Recent Runs (flex:1) ── */}
-          <div style={{ flex: 1, minWidth: 0 }}>
+            {/* ── Recent Runs card (flex:1) ── */}
+            <div style={{ flex: 1, minWidth: 0, background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)", borderRadius: 12, padding: 20, display: "flex", flexDirection: "column" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                <div style={{ fontSize: 11, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>Recent runs</div>
+                <button onClick={() => setShowCompleted(v => !v)} style={{ fontSize: 12, color: "#7d8fff", background: "none", border: "none", cursor: "pointer", fontWeight: 600, textDecoration: "none" }}>View all →</button>
+              </div>
 
-            {/* 4-stat grid */}
-            {sessions !== null && sessions.length > 0 && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
-                {[
-                  { label: "Active", value: running > 0 ? String(running) : "0", accent: running > 0 ? "#7CFFC6" : undefined },
-                  { label: "Done today", value: String((sessions || []).filter(s => s.status === "done" && s.created_at && (Date.now() - new Date(s.created_at).getTime()) < 86400000).length) },
-                  { label: "Total runs", value: String(sessions.length) },
-                  {
-                    label: "Success rate",
-                    value: (() => {
-                      const done = sessions.filter(s => s.status === "done").length;
-                      const failed = sessions.filter(s => s.status === "error" || s.status === "killed").length;
-                      const total = done + failed;
-                      return total > 0 ? `${Math.round((done / total) * 100)}%` : "—";
-                    })(),
-                  },
-                ].map(({ label, value, accent }) => (
-                  <div key={label} style={{ background: "#070911", border: "1px solid rgba(255,255,255,.06)", borderRadius: 9, padding: "12px" }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(237,241,251,0.3)", marginBottom: 5 }}>{label}</div>
-                    <div style={{ fontSize: 20, fontWeight: 700, color: accent || "#EDF1FB", lineHeight: 1 }}>{value}</div>
+              {sessions === null ? (
+                <div style={{ color: "#6f7b98", fontSize: 13 }}>Loading…</div>
+              ) : error ? (
+                <div style={{ textAlign: "center", padding: "20px 0" }}>
+                  <div style={{ fontSize: 12, color: "#6f7b98", marginBottom: 10 }}>{error}</div>
+                  <button style={{ padding: "8px 18px", fontSize: 12, fontWeight: 600, color: "#fff", background: "#002EFF", border: "none", cursor: "pointer", borderRadius: 8 }} onClick={load}>Try again</button>
+                </div>
+              ) : !regularSessions.length ? (
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "40px 20px", gap: 14 }}>
+                  <div style={{ width: 44, height: 44, border: "1px solid rgba(255,255,255,.16)", borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", transform: "rotate(45deg)" }}>
+                    <div style={{ width: 13, height: 13, background: "#7D8FFF", borderRadius: 3 }} />
                   </div>
-                ))}
-              </div>
-            )}
-
-            {/* Stalled banner */}
-            {stalled > 0 && (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", border: "1px solid rgba(255,255,166,0.2)", background: "rgba(255,255,166,0.04)", borderRadius: 8, marginBottom: 12, fontSize: 11, color: "#FFFFA6" }}>
-                <span>⚠</span>
-                <span style={{ flex: 1 }}>
-                  {stalled} run{stalled > 1 ? "s need" : " needs"} your attention.{" "}
-                  <button style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontWeight: 600, textDecoration: "underline", padding: 0, fontSize: 11 }}
-                    onClick={() => { const first = (sessions || []).find(s => s.status === "stalled"); if (first) router.push(`/s/${first.session_id}`); }}>
-                    Review →
-                  </button>
-                </span>
-              </div>
-            )}
-
-            {/* Run list header */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "rgba(237,241,251,0.3)" }}>Recent runs</div>
-              {regularSessions.length > 0 && <span style={{ fontSize: 9, color: "rgba(237,241,251,0.2)" }}>{regularSessions.length} total</span>}
-            </div>
-
-            {/* Run list */}
-            {sessions === null ? (
-              <div style={{ color: "rgba(237,241,251,0.3)", fontSize: 11, padding: "10px 0" }}>Loading…</div>
-            ) : error ? (
-              <div style={{ padding: "20px 0", textAlign: "center" }}>
-                <div style={{ fontSize: 11, color: "rgba(237,241,251,0.3)", marginBottom: 10 }}>{error}</div>
-                <button style={{ padding: "7px 14px", fontSize: 11, fontWeight: 600, color: "#fff", background: "#002EFF", border: "none", cursor: "pointer", borderRadius: 7 }} onClick={load}>Try again</button>
-              </div>
-            ) : !regularSessions.length ? (
-              <div style={{ padding: "28px 0", textAlign: "center" }}>
-                <div style={{ fontSize: 28, opacity: 0.08, marginBottom: 10 }}>◈</div>
-                <div style={{ fontSize: 12, color: "rgba(237,241,251,0.3)", marginBottom: 14 }}>No runs yet</div>
-                <button style={{ padding: "8px 18px", fontSize: 11, fontWeight: 600, color: "#fff", background: "#002EFF", border: "none", cursor: "pointer", borderRadius: 7 }} onClick={() => router.push("/dashboard?new=1")}>
-                  Start first run →
-                </button>
-              </div>
-            ) : (
-              <div data-tour="dash-sessions" style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                {(() => {
-                  const ids = new Set(regularSessions.map(x => x.session_id));
-                  const kids: Record<string, SessionIndexEntry[]> = {};
-                  const roots: SessionIndexEntry[] = [];
-                  for (const s of regularSessions) {
-                    const p = s.parent_session_id;
-                    if (p && ids.has(p)) (kids[p] ||= []).push(s);
-                    else roots.push(s);
-                  }
-                  const allRows: { s: SessionIndexEntry; child: boolean }[] = [];
-                  for (const r of roots) {
-                    allRows.push({ s: r, child: false });
-                    for (const k of kids[r.session_id] || []) allRows.push({ s: k, child: true });
-                  }
-
-                  const dotColor = (status: string) => {
-                    if (status === "running") return "#7CFFC6";
-                    if (status === "done") return "#8A93AD";
-                    if (status === "stalled") return "#FFFFA6";
-                    if (status === "error" || status === "killed") return "#FF6B6B";
-                    return "#8A93AD";
-                  };
-
-                  const chip = (status: string) => {
-                    const map: Record<string, { label: string; color: string; bg: string }> = {
-                      running: { label: "Running", color: "#7CFFC6", bg: "rgba(124,255,198,0.1)" },
-                      done: { label: "Done", color: "#8A93AD", bg: "rgba(138,147,173,0.07)" },
-                      stalled: { label: "Attention", color: "#FFFFA6", bg: "rgba(255,255,166,0.07)" },
-                      error: { label: "Error", color: "#FF6B6B", bg: "rgba(255,107,107,0.07)" },
-                      killed: { label: "Stopped", color: "#FF6B6B", bg: "rgba(255,107,107,0.07)" },
-                    };
-                    const c = map[status] || { label: status, color: "#8A93AD", bg: "rgba(138,147,173,0.07)" };
-                    return <span style={{ fontSize: 9, fontWeight: 600, color: c.color, background: c.bg, padding: "2px 7px", borderRadius: 20, letterSpacing: ".04em", flexShrink: 0 }}>{c.label}</span>;
-                  };
-
-                  const doneCount = allRows.filter(r => r.s.status === "done").length;
-                  const nonDone = allRows.filter(r => r.s.status !== "done");
-                  const doneRows = allRows.filter(r => r.s.status === "done");
-                  const visibleRows = showCompleted ? allRows : [...nonDone, ...doneRows.slice(0, 3)];
-                  const hiddenDone = !showCompleted && doneCount > 3;
-
-                  return (
-                    <>
-                      {visibleRows.map(({ s, child }) => (
-                        <div
-                          key={s.session_id}
-                          className="dv-run-row"
-                          style={{ marginLeft: child ? 12 : 0 }}
-                          onClick={() => router.push(`/s/${s.session_id}`)}
-                        >
-                          <span style={{ width: 7, height: 7, borderRadius: "50%", background: dotColor(s.status), flexShrink: 0, animation: s.status === "running" ? "sc-shimmer 1.5s ease-in-out infinite" : undefined }} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 13.5, fontWeight: 600, color: "#EDF1FB", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.3 }}>
-                              {child && <span style={{ fontSize: 9, color: "#7D8FFF", marginRight: 5, fontWeight: 700 }}>↳</span>}
-                              {extractGoalTitle(s.goal || "Untitled run")}
-                            </div>
-                            <div style={{ fontSize: 11, color: "#6f7b98", marginTop: 1 }}>{ago(s.created_at)}</div>
-                          </div>
-                          {chip(s.status)}
-                          <button
-                            title={pendingDel.has(s.session_id) ? "Click again to confirm" : "Delete"}
-                            disabled={deleting.has(s.session_id)}
-                            onClick={e => del(e, s)}
-                            onPointerDown={e => e.stopPropagation()}
-                            style={{
-                              width: pendingDel.has(s.session_id) ? "auto" : 20, height: 20,
-                              padding: pendingDel.has(s.session_id) ? "0 5px" : 0,
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                              background: pendingDel.has(s.session_id) ? "rgba(255,80,80,0.1)" : "transparent",
-                              border: pendingDel.has(s.session_id) ? "1px solid rgba(255,80,80,0.3)" : "none",
-                              color: pendingDel.has(s.session_id) ? "#ff6b6b" : "rgba(237,241,251,0.18)",
-                              cursor: "pointer", fontSize: pendingDel.has(s.session_id) ? 8 : 10, borderRadius: 5,
-                              opacity: deleting.has(s.session_id) ? 0.4 : 1, flexShrink: 0, fontWeight: 700, whiteSpace: "nowrap",
-                            }}
-                          >{deleting.has(s.session_id) ? "…" : pendingDel.has(s.session_id) ? "DEL?" : "✕"}</button>
-                        </div>
-                      ))}
-                      {hiddenDone && (
-                        <button
-                          onClick={() => setShowCompleted(true)}
-                          style={{ display: "flex", alignItems: "center", gap: 6, width: "100%", padding: "7px 10px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 6, cursor: "pointer", color: "rgba(237,241,251,0.35)", fontSize: 10, fontWeight: 600, marginTop: 4 }}
-                        >
-                          <span style={{ fontSize: 9 }}>▶</span> Show {doneCount} completed runs
-                        </button>
-                      )}
-                      {showCompleted && doneCount > 0 && (
-                        <button
-                          onClick={() => setShowCompleted(false)}
-                          style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 10px", background: "transparent", border: "none", cursor: "pointer", color: "rgba(237,241,251,0.25)", fontSize: 10, marginTop: 2 }}
-                        >
-                          Hide completed
-                        </button>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── Custom agent runs banner ── */}
-        <div style={{ padding: "0 30px 16px" }}>
-          <div style={{ background: "#0A0D17", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "12px 16px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: customSessions.length > 0 ? 10 : 0 }}>
-              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "rgba(237,241,251,0.3)" }}>
-                Custom agent runs{customSessions.length > 0 ? ` · ${customSessions.length}` : ""}
-              </div>
-              <button onClick={() => router.push("/automations")} style={{ fontSize: 11, color: "#002EFF", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>
-                Manage automations →
-              </button>
-            </div>
-
-            {customSessions.length === 0 ? (
-              <div style={{ fontSize: 11, color: "rgba(237,241,251,0.25)" }}>
-                No custom agent runs yet.{" "}
-                <button onClick={() => router.push("/automations")} style={{ background: "none", border: "none", color: "#002EFF", cursor: "pointer", padding: 0, fontWeight: 600, fontSize: 11 }}>
-                  Create one →
-                </button>
-              </div>
-            ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                {customSessions.slice(0, 8).map(s => {
-                  const title = s.company_name || extractGoalTitle(s.goal || "Custom agent run");
-                  return (
-                    <div key={s.session_id} className="dv-run-row" onClick={() => router.push(`/s/${s.session_id}`)}>
-                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: s.status === "running" ? "#7CFFC6" : s.status === "done" ? "#8A93AD" : "#FFFFA6", flexShrink: 0 }} />
-                      <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: "#EDF1FB", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
-                      <span style={{ fontSize: 10, color: "rgba(237,241,251,0.22)" }}>{ago(s.created_at)}</span>
-                      <button onClick={e => del(e, s)} onPointerDown={e => e.stopPropagation()} style={{ background: "transparent", border: "none", color: "rgba(237,241,251,0.18)", cursor: "pointer", fontSize: 10, padding: "0 2px" }}>✕</button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* DashboardCanvas */}
-        <div style={{ padding: "0 30px 24px" }}>
-          <DashboardCanvas founderId={userId} />
-        </div>
-
-        {/* ── Copilot ── */}
-        <div style={{ padding: "0 30px 32px" }}>
-          <div style={{ borderTop: "1px solid rgba(255,255,255,.06)", paddingTop: 16 }}>
-            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "rgba(237,241,251,0.3)", marginBottom: 10 }}>Copilot</div>
-            <div className="dash-copilot">
-              {copilotOpen && (
-                <div className="dash-copilot-thread">
-                  {copilot.length === 0 && (
-                    <div className="dash-copilot-bubble">
-                      {copilotSession
-                        ? `Ask Astra from the dashboard. Copilot is attached to "${copilotTitle}" and can inspect run state, approvals, deployment issues, company brain context, and steer the active agents from here.`
-                        : "Start a run to activate dashboard copilot context."}
-                    </div>
-                  )}
-                  {copilot.map((message, index) => (
-                    <div key={index} className={`dash-copilot-row ${message.role === "founder" ? "is-founder" : "is-astra"}`}>
-                      {message.role !== "founder" && <span className="dash-copilot-avatar">A</span>}
-                      <div className="dash-copilot-bubble">
-                        {message.content}
-                        {message.actions && message.actions.length > 0 && (
-                          <div className="dash-copilot-actions" aria-label="Copilot actions">
-                            {message.actions.map((action, actionIndex) => (
-                              <div key={`${action.tool}-${actionIndex}`} className={`dash-copilot-action is-${action.tone || "info"}`}>
-                                <div className="dash-copilot-action-label">{action.label}</div>
-                                {action.detail && <div className="dash-copilot-action-detail">{action.detail}</div>}
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 700 }}>No runs yet</div>
+                    <div style={{ fontSize: 12.5, color: "#6f7b98", marginTop: 5 }}>Start your first run and Astra will get to work.</div>
+                  </div>
+                  <button onClick={() => router.push("/dashboard?new=1")} style={{ background: "#002EFF", color: "#fff", border: "none", borderRadius: 8, padding: "11px 22px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Start first run →</button>
+                </div>
+              ) : (
+                <>
+                  {/* 4-stat grid */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10, marginBottom: 16 }}>
+                    {[
+                      { label: "Active", value: String(running) },
+                      { label: "Done today", value: String((sessions || []).filter(s => s.status === "done" && s.created_at && (Date.now() - new Date(s.created_at).getTime()) < 86400000).length) },
+                      { label: "Total runs", value: String(regularSessions.length) },
+                      {
+                        label: "Success",
+                        value: (() => {
+                          const done = sessions.filter(s => s.status === "done").length;
+                          const failed = sessions.filter(s => s.status === "error" || s.status === "killed").length;
+                          const total = done + failed;
+                          return total > 0 ? `${Math.round((done / total) * 100)}%` : "—";
+                        })(),
+                      },
+                    ].map(({ label, value }) => (
+                      <div key={label} style={{ background: "#070911", border: "1px solid rgba(255,255,255,.06)", borderRadius: 9, padding: 12 }}>
+                        <div style={{ fontSize: 10.5, color: "#6f7b98" }}>{label}</div>
+                        <div style={{ fontSize: 20, fontWeight: 700, marginTop: 5 }}>{value}</div>
                       </div>
-                    </div>
-                  ))}
-                  {copilotBusy && (
-                    <div className="dash-copilot-row is-astra">
-                      <span className="dash-copilot-avatar">A</span>
-                      <div className="dash-copilot-thinking"><span /><span /><span /></div>
-                    </div>
-                  )}
+                    ))}
+                  </div>
+
+                  {/* Run list */}
+                  <div data-tour="dash-sessions" style={{ display: "flex", flexDirection: "column" }}>
+                    {(() => {
+                      const ids = new Set(regularSessions.map(x => x.session_id));
+                      const kids: Record<string, SessionIndexEntry[]> = {};
+                      const roots: SessionIndexEntry[] = [];
+                      for (const s of regularSessions) {
+                        const p = s.parent_session_id;
+                        if (p && ids.has(p)) (kids[p] ||= []).push(s);
+                        else roots.push(s);
+                      }
+                      const allRows: { s: SessionIndexEntry; child: boolean }[] = [];
+                      for (const r of roots) {
+                        allRows.push({ s: r, child: false });
+                        for (const k of kids[r.session_id] || []) allRows.push({ s: k, child: true });
+                      }
+
+                      const dotStyle = (status: string): React.CSSProperties => {
+                        const colors: Record<string, string> = { running: "#7CFFC6", done: "#6f7b98", stalled: "#FFFFA6", error: "#FF6B6B", killed: "#FF6B6B" };
+                        return { width: 8, height: 8, borderRadius: "50%", background: colors[status] || "#6f7b98", flexShrink: 0, display: "inline-block" };
+                      };
+
+                      const chip = (status: string) => {
+                        const map: Record<string, { label: string; color: string; bg: string; border: string }> = {
+                          running: { label: "Running", color: "#7CFFC6", bg: "rgba(124,255,198,.08)", border: "rgba(124,255,198,.2)" },
+                          done: { label: "Done", color: "#8A93AD", bg: "transparent", border: "rgba(138,147,173,.2)" },
+                          stalled: { label: "Needs retry", color: "#FFFFA6", bg: "rgba(255,255,166,.06)", border: "rgba(255,255,166,.2)" },
+                          error: { label: "Error", color: "#FF6B6B", bg: "rgba(255,107,107,.06)", border: "rgba(255,107,107,.2)" },
+                          killed: { label: "Stopped", color: "#FF6B6B", bg: "rgba(255,107,107,.06)", border: "rgba(255,107,107,.2)" },
+                        };
+                        const c = map[status] || { label: status, color: "#8A93AD", bg: "transparent", border: "rgba(138,147,173,.2)" };
+                        return <span style={{ fontSize: 11, fontWeight: 600, color: c.color, background: c.bg, border: `1px solid ${c.border}`, padding: "3px 9px", borderRadius: 6, flexShrink: 0, whiteSpace: "nowrap" }}>{c.label}</span>;
+                      };
+
+                      const meta = (s: SessionIndexEntry) => {
+                        const t = ago(s.created_at);
+                        if (s.status === "running") return `Started ${t}`;
+                        if (s.status === "done") return `Completed ${t}`;
+                        if (s.status === "stalled" || s.status === "error") return `Failed ${t} · retry available`;
+                        return t;
+                      };
+
+                      const doneCount = allRows.filter(r => r.s.status === "done").length;
+                      const nonDone = allRows.filter(r => r.s.status !== "done");
+                      const doneRows = allRows.filter(r => r.s.status === "done");
+                      const visibleRows = showCompleted ? allRows : [...nonDone, ...doneRows.slice(0, 5)];
+                      const hiddenDone = !showCompleted && doneCount > 5;
+
+                      return (
+                        <>
+                          {visibleRows.map(({ s, child }, i) => (
+                            <div
+                              key={s.session_id}
+                              className="dv-run-row"
+                              style={{ marginLeft: child ? 12 : 0 }}
+                              onClick={() => router.push(`/s/${s.session_id}`)}
+                            >
+                              <span style={dotStyle(s.status)} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {child && <span style={{ fontSize: 9, color: "#7D8FFF", marginRight: 5 }}>↳</span>}
+                                  {extractGoalTitle(s.goal || "Untitled run")}
+                                </div>
+                                <div style={{ fontSize: 11, color: "#6f7b98", marginTop: 2 }}>{meta(s)}</div>
+                              </div>
+                              {chip(s.status)}
+                              <button
+                                title={pendingDel.has(s.session_id) ? "Click again to confirm" : "Delete"}
+                                disabled={deleting.has(s.session_id)}
+                                onClick={e => del(e, s)}
+                                onPointerDown={e => e.stopPropagation()}
+                                style={{ width: pendingDel.has(s.session_id) ? "auto" : 20, height: 20, padding: pendingDel.has(s.session_id) ? "0 5px" : 0, display: "flex", alignItems: "center", justifyContent: "center", background: pendingDel.has(s.session_id) ? "rgba(255,80,80,.1)" : "transparent", border: pendingDel.has(s.session_id) ? "1px solid rgba(255,80,80,.3)" : "none", color: pendingDel.has(s.session_id) ? "#ff6b6b" : "rgba(237,241,251,.18)", cursor: "pointer", fontSize: pendingDel.has(s.session_id) ? 8 : 10, borderRadius: 5, opacity: deleting.has(s.session_id) ? 0.4 : 1, flexShrink: 0, fontWeight: 700, whiteSpace: "nowrap" }}
+                              >{deleting.has(s.session_id) ? "…" : pendingDel.has(s.session_id) ? "DEL?" : "✕"}</button>
+                            </div>
+                          ))}
+                          {hiddenDone && (
+                            <button onClick={() => setShowCompleted(true)} style={{ padding: "7px 4px", background: "transparent", border: "none", cursor: "pointer", color: "#6f7b98", fontSize: 11, textAlign: "left", marginTop: 4 }}>
+                              Show {doneCount} completed runs
+                            </button>
+                          )}
+                          {showCompleted && doneCount > 0 && (
+                            <button onClick={() => setShowCompleted(false)} style={{ padding: "5px 4px", background: "transparent", border: "none", cursor: "pointer", color: "#6f7b98", fontSize: 11, textAlign: "left", marginTop: 2 }}>
+                              Hide completed
+                            </button>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* ── Automations banner ── */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 18px", background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)", borderRadius: 12 }}>
+            <div>
+              <div style={{ fontSize: 11, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>Automations</div>
+              <div style={{ fontSize: 13, color: "#c3cbe0", marginTop: 6 }}>
+                No automations yet.{" "}
+                <button onClick={() => router.push("/automations")} style={{ background: "none", border: "none", color: "#7d8fff", cursor: "pointer", padding: 0, fontWeight: 600, fontSize: 13 }}>Create one →</button>
+              </div>
+            </div>
+            <button onClick={() => router.push("/automations")} style={{ fontSize: 12.5, color: "#7d8fff", background: "none", border: "none", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}>Manage automations →</button>
+          </div>
+
+          {/* ── Copilot ── */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,.06)" }}>
+            <div style={{ fontSize: 11, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase", paddingLeft: 2 }}>Copilot</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 11, background: "#0A0D17", border: "1px solid rgba(255,255,255,.1)", borderRadius: 16, padding: "7px 7px 7px 16px", boxShadow: "0 10px 26px -16px rgba(0,0,0,.6)" }}>
+              <img src="/logo.png" alt="" style={{ width: 17, height: 17, objectFit: "contain", opacity: 0.75, flexShrink: 0, cursor: "pointer" } as React.CSSProperties} onClick={() => setCopilotOpen(v => !v)} />
+              {copilotOpen && copilot.length > 0 && (
+                <div className="dash-copilot-thread" style={{ position: "absolute", bottom: "100%", left: 0, right: 0, marginBottom: 8 }}>
+                  {/* thread is shown inline below */}
                 </div>
               )}
-              <div className="dash-copilot-bar">
-                <img
-                  src="/logo.png"
-                  style={{ width: 17, height: 17, opacity: 0.75, flexShrink: 0, cursor: "pointer" } as React.CSSProperties}
-                  onClick={() => setCopilotOpen(v => !v)}
-                  alt="Astra"
-                />
-                {copilotSession && <span className="dash-copilot-ctx">{copilotTitle}</span>}
-                <input
-                  ref={copilotInputRef}
-                  className="dash-copilot-input"
-                  placeholder={copilotSession ? 'Ask Astra — "what needs attention?"' : "Start a run to enable copilot"}
-                  disabled={!copilotSession || copilotBusy}
-                  onFocus={() => setCopilotOpen(true)}
-                  onKeyDown={event => {
-                    if (event.key === "Enter") { event.preventDefault(); void sendCopilot(); }
-                  }}
-                />
-                <button
-                  className="dash-copilot-btn primary"
-                  disabled={!copilotSession || copilotBusy}
-                  onClick={() => { setCopilotOpen(true); void sendCopilot(); }}
-                  title="Send"
-                >
-                  <svg width={13} height={13} viewBox="0 0 13 13" fill="none">
-                    <path d="M6.5 1.5L6.5 11.5M6.5 1.5L2.5 5.5M6.5 1.5L10.5 5.5" stroke="white" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              </div>
+              <input
+                ref={copilotInputRef}
+                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#EDF1FB", fontSize: 13.5, fontFamily: "'Hanken Grotesk', sans-serif" }}
+                placeholder="Ask Astra to start a run, draft copy, or find leads…"
+                disabled={copilotBusy}
+                onFocus={() => setCopilotOpen(true)}
+                onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void sendCopilot(); } }}
+              />
+              <button
+                disabled={copilotBusy}
+                onClick={() => { setCopilotOpen(true); void sendCopilot(); }}
+                style={{ width: 36, height: 36, borderRadius: 10, background: "#002EFF", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+              >
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 19V5M5 12l7-7 7 7" />
+                </svg>
+              </button>
             </div>
+            {/* Copilot thread (below bar when open) */}
+            {copilotOpen && (
+              <div className="dash-copilot-thread">
+                {copilot.length === 0 && (
+                  <div className="dash-copilot-bubble">
+                    {copilotSession ? `Copilot attached to "${copilotTitle}". Ask anything about run state, approvals, or next steps.` : "Start a run to enable copilot context."}
+                  </div>
+                )}
+                {copilot.map((message, index) => (
+                  <div key={index} className={`dash-copilot-row ${message.role === "founder" ? "is-founder" : "is-astra"}`}>
+                    {message.role !== "founder" && <span className="dash-copilot-avatar">A</span>}
+                    <div className="dash-copilot-bubble">
+                      {message.content}
+                      {message.actions && message.actions.length > 0 && (
+                        <div className="dash-copilot-actions">
+                          {message.actions.map((action, ai) => (
+                            <div key={`${action.tool}-${ai}`} className={`dash-copilot-action is-${action.tone || "info"}`}>
+                              <div className="dash-copilot-action-label">{action.label}</div>
+                              {action.detail && <div className="dash-copilot-action-detail">{action.detail}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {copilotBusy && (
+                  <div className="dash-copilot-row is-astra">
+                    <span className="dash-copilot-avatar">A</span>
+                    <div className="dash-copilot-thinking"><span /><span /><span /></div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+
         </div>
 
       </div>
