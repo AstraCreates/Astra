@@ -755,10 +755,10 @@ export default function OutreachPage() {
   }
 
   const CAMPAIGN_TYPES = [
-    { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={ACCENT_OR} strokeWidth="2"><path d="M22 2 11 13M22 2 15 22l-4-9-9-4 20-7Z"/></svg>, label: "Cold outbound", desc: "First touch to a new list" },
-    { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={ACCENT_OR} strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>, label: "Follow-up sequence", desc: "Nudge non-responders" },
-    { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={ACCENT_OR} strokeWidth="2"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>, label: "Re-engagement", desc: "Win back churned leads" },
-    { icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={ACCENT_OR} strokeWidth="2"><rect x="3" y="4.5" width="18" height="16" rx="2"/><path d="M16 2.5v4M8 2.5v4M3 10h18"/></svg>, label: "Event invite", desc: "Promote a webinar or launch" },
+    { icon: "📧", label: "Cold outbound", desc: "Reach new prospects with personalized cold emails" },
+    { icon: "🔄", label: "Follow-up sequence", desc: "Nurture leads who haven't responded yet" },
+    { icon: "💫", label: "Re-engagement", desc: "Win back dormant contacts and past customers" },
+    { icon: "🎪", label: "Event invite", desc: "Drive registrations to webinars and events" },
   ];
 
   if (view === "campaigns") return (
@@ -782,12 +782,12 @@ export default function OutreachPage() {
       <div style={{ flex: 1, padding: "24px 28px 48px", display: "flex", flexDirection: "column", gap: 28, overflowY: "auto" }}>
 
       {/* Campaign type cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
         {CAMPAIGN_TYPES.map(ct => (
-          <button key={ct.label} onClick={() => setShowNewCampaign(true)} style={{ padding: "16px", borderRadius: 12, cursor: "pointer", textAlign: "left", background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)", fontFamily: HG_OR, display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 8, background: "rgba(124,255,198,.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>{ct.icon}</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "#EDF1FB" }}>{ct.label}</div>
-            <div style={{ fontSize: 10.5, color: "#6f7b98", lineHeight: 1.5 }}>{ct.desc}</div>
+          <button key={ct.label} onClick={() => setShowNewCampaign(true)} style={{ padding: "18px 16px", borderRadius: 12, cursor: "pointer", textAlign: "left", background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.08)", fontFamily: HG_OR }}>
+            <div style={{ fontSize: 18, marginBottom: 8 }}>{ct.icon}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#EDF1FB", marginBottom: 4 }}>{ct.label}</div>
+            <div style={{ fontSize: 11, color: "#6f7b98", lineHeight: 1.5 }}>{ct.desc}</div>
           </button>
         ))}
       </div>

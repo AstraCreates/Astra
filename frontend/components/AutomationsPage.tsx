@@ -249,19 +249,15 @@ export default function AutomationsPage() {
 
         {/* CTA cards */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          <button onClick={() => setAgentNewTrigger(n => n + 1)} style={{ padding: "18px", borderRadius: 12, cursor: "pointer", textAlign: "left", background: "#0A0D17", border: `1.5px solid ${ACCENT}`, fontFamily: HG, display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(124,255,198,.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="1.6"><path d="M12 2.5l1.9 4.6 4.6 1.9-4.6 1.9-1.9 4.6-1.9-4.6-4.6-1.9 4.6-1.9L12 2.5Z"/><circle cx="19" cy="19" r="2.2"/></svg>
-            </div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#EDF1FB" }}>Create a custom agent</div>
-            <div style={{ fontSize: 11.5, color: "#6f7b98" }}>Give it a goal and let it own the job end-to-end.</div>
+          <button onClick={() => router.push("/automations/canvas/new")} style={{ padding: "20px 22px", borderRadius: 12, cursor: "pointer", textAlign: "left", background: "rgba(124,255,198,.04)", border: "1px solid rgba(124,255,198,.22)", fontFamily: HG }}>
+            <div style={{ fontSize: 20, marginBottom: 8 }}>⚡</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#EDF1FB", marginBottom: 4 }}>Create a workflow automation</div>
+            <div style={{ fontSize: 12, color: "#8A93AD" }}>Build a multi-step pipeline with the canvas editor</div>
           </button>
-          <button onClick={() => router.push("/automations/canvas/new")} style={{ padding: "18px", borderRadius: 12, cursor: "pointer", textAlign: "left", background: "#0A0D17", border: "1.5px solid rgba(255,255,255,.10)", fontFamily: HG, display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(125,143,255,.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7d8fff" strokeWidth="1.8"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
-            </div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#EDF1FB" }}>Create a workflow automation</div>
-            <div style={{ fontSize: 11.5, color: "#6f7b98" }}>One action, on a schedule or a trigger.</div>
+          <button onClick={() => setAgentNewTrigger(n => n + 1)} style={{ padding: "20px 22px", borderRadius: 12, cursor: "pointer", textAlign: "left", background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.08)", fontFamily: HG }}>
+            <div style={{ fontSize: 20, marginBottom: 8 }}>🤖</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#EDF1FB", marginBottom: 4 }}>Create a custom agent</div>
+            <div style={{ fontSize: 12, color: "#8A93AD" }}>Configure a specialized AI agent with custom instructions</div>
           </button>
         </div>
 

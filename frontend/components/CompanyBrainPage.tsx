@@ -504,7 +504,6 @@ export default function CompanyBrainPage() {
   const [graphRebuilding, setGraphRebuilding] = useState(false);
   const [draft, setDraft] = useState({ source: "manual", title: "", content: "", canonical: true });
   const [pinOpen, setPinOpen] = useState(false);
-  const [addType, setAddType] = useState<"fact" | "doc" | "source" | "brand">("fact");
   const [connectKey, setConnectKey] = useState<string | null>(null);
   const [credentialValues, setCredentialValues] = useState<Record<string, Record<string, string>>>({});
 
@@ -758,239 +757,454 @@ export default function CompanyBrainPage() {
   ];
 
   /* ─── render ─── */
-  const HG = "var(--font-hanken), 'Hanken Grotesk', sans-serif";
-  const ACCENT = "#7CFFC6";
-  const healthScore = brain
-    ? Math.max(0, 100 - ((brain.maintenance?.stale_count ?? 0) * 5 + (brain.maintenance?.contradiction_count ?? 0) * 10 + (brain.maintenance?.missing_canonical_count ?? 0) * 3))
-    : null;
-  const circumference = 2 * Math.PI * 16;
-  const dashOffset = healthScore !== null ? circumference * (1 - healthScore / 100) : circumference * 0.08;
-  const factRecords = records.filter(r => r.source === "manual" || r.kind === "note").slice(0, 6);
-  const docRecords = records.filter(r => r.url || r.kind === "document" || (r.source !== "manual" && r.source !== "astra_vault")).slice(0, 5);
-  const SUGGESTIONS = ["What should I do next?", "Summarize our ICP", "What's missing?"];
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden", fontFamily: HG }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
 
-      {/* error banner */}
+      {/* ── slim blue header: title + tabs in one block ── */}
+      <div style={{ flexShrink: 0, background: "#001AFF", position: "sticky", top: 0, zIndex: 10 }}>
+        <div style={{ padding: "18px 24px 0", display: "flex", alignItems: "baseline", gap: 12 }}>
+          <h1 style={{ fontSize: 20, fontWeight: 600, color: "#fff", letterSpacing: "-0.02em", margin: 0, lineHeight: 1.2 }}>
+            {activeCompany?.name || "Company"} Brain
+          </h1>
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.60)" }}>
+            {records.length} records · {connected} sources
+          </span>
+        </div>
+        <div style={{ padding: "10px 18px 0", display: "flex", gap: 2 }}>
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key)}
+              style={{
+                padding: "9px 14px 11px", fontSize: 13,
+                fontWeight: tab === t.key ? 600 : 450,
+                color: tab === t.key ? "#fff" : "rgba(255,255,255,0.60)",
+                background: "transparent", border: "none", cursor: "pointer",
+                borderBottom: tab === t.key ? "2px solid #fff" : "2px solid transparent",
+                display: "flex", alignItems: "center", gap: 6,
+                transition: "color .14s",
+              }}
+            >
+              {t.label}
+              {t.key === "settings" && openProposals.length > 0 && (
+                <span style={{ fontSize: 9, fontWeight: 700, color: "#001AFF", background: "#FFCB50", borderRadius: 999, padding: "1px 6px" }}>
+                  {openProposals.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── error banner ── */}
       {error && (
-        <div style={{ flexShrink: 0, padding: "10px 24px", borderBottom: "1px solid rgba(192,57,43,0.22)", background: "rgba(192,57,43,0.07)", color: "#c0392b", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ flexShrink: 0, padding: "10px 24px", borderBottom: "1px solid rgba(192,57,43,0.22)", background: "rgba(192,57,43,0.07)", color: "#c0392b", fontSize: 12, display: "flex", alignItems: "center" }}>
           <span style={{ flex: 1 }}>{error}</span>
           <button type="button" onClick={() => setError(null)} style={{ color: "inherit", background: "none", border: "none", cursor: "pointer", fontSize: 13 }}>✕</button>
         </div>
       )}
 
-      {/* ── map view ── */}
-      {tab === "map" ? (
-        <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-          <main style={{ flex: 1, overflow: "auto", padding: "22px 26px", display: "flex", flexDirection: "column", gap: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <button type="button" onClick={() => setTab("ask")} style={{ background: "none", border: "none", padding: 0, fontSize: 11, color: "#7d8fff", cursor: "pointer", fontWeight: 600, fontFamily: HG }}>← Company Brain</button>
-                <h1 style={{ margin: "6px 0 0", fontSize: 20, fontWeight: 700, letterSpacing: "-.01em", color: "#EDF1FB" }}>Knowledge map</h1>
-              </div>
-              <button type="button" onClick={() => setPinOpen(true)} style={{ background: "#002EFF", color: "#fff", border: "none", borderRadius: 8, padding: "9px 15px", fontWeight: 600, fontSize: 12.5, cursor: "pointer", fontFamily: HG }}>+ Add knowledge</button>
-            </div>
-            <KnowledgeMap graph={graph} loading={graphLoading} rebuilding={graphRebuilding} onReload={loadGraph} onRebuild={rebuildGraph} />
-          </main>
-          <div style={{ width: 270, flexShrink: 0, background: "#080A12", borderLeft: "1px solid rgba(255,255,255,.07)", padding: 20, display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>
-            <div style={{ fontSize: 10, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>Selected · Facts</div>
-            {factRecords.map(f => (
-              <div key={f.id} style={{ padding: "8px 0", borderTop: "1px solid rgba(255,255,255,.06)" }}>
-                <div style={{ fontSize: 10.5, color: "#6f7b98" }}>{f.title.slice(0, 30)}</div>
-                <div style={{ fontSize: 12.5, color: "#EDF1FB", marginTop: 2 }}>{(f.snippet || f.content).slice(0, 60)}</div>
-              </div>
-            ))}
-            {factRecords.length === 0 && <div style={{ fontSize: 12, color: "#6f7b98" }}>No facts yet.</div>}
-            <button type="button" onClick={() => setPinOpen(true)} style={{ marginTop: "auto", textAlign: "center", background: "#002EFF", color: "#fff", border: "none", borderRadius: 8, padding: 10, fontWeight: 600, fontSize: 12.5, cursor: "pointer", fontFamily: HG }}>+ Add a fact</button>
-          </div>
+      {/* ── suggestions banner (visible from any tab) ── */}
+      {openProposals.length > 0 && tab !== "settings" && (
+        <div style={{ flexShrink: 0, padding: "9px 24px", borderBottom: "1px solid rgba(217,119,6,0.25)", background: "rgba(217,119,6,0.06)", display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "#b45309" }}>
+          <span>◈</span>
+          <span style={{ flex: 1 }}>
+            {openProposals.length} suggestion{openProposals.length > 1 ? "s" : ""} to keep your brain accurate
+          </span>
+          <button type="button" onClick={() => setTab("settings")} style={{ background: "none", border: "none", color: "inherit", fontWeight: 600, cursor: "pointer", fontSize: 12, textDecoration: "underline", padding: 0 }}>
+            Review →
+          </button>
         </div>
-      ) : (
-
-      /* ── main view ── */
-      <div style={{ flex: 1, overflowY: "auto", padding: "22px 28px", display: "flex", flexDirection: "column", gap: 14 }}>
-
-        {/* header */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-          <div>
-            <h1 style={{ margin: 0, fontSize: 21, fontWeight: 700, letterSpacing: "-.01em", color: "#EDF1FB" }}>Company Brain</h1>
-            <div style={{ fontSize: 12, color: "#8A93AD", marginTop: 4 }}>Ask anything, or browse what Astra knows below.</div>
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button type="button" onClick={() => setTab("map")} style={{ background: "transparent", color: "#c3cbe0", border: "1px solid rgba(255,255,255,.14)", borderRadius: 8, padding: "9px 15px", fontWeight: 600, fontSize: 12.5, cursor: "pointer", fontFamily: HG }}>View knowledge map</button>
-            <button type="button" onClick={() => setPinOpen(true)} style={{ background: "#002EFF", color: "#fff", border: "none", borderRadius: 8, padding: "9px 15px", fontWeight: 600, fontSize: 12.5, cursor: "pointer", fontFamily: HG }}>+ Add knowledge</button>
-          </div>
-        </div>
-
-        {/* ask bar */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-          <form onSubmit={e => ask(undefined, e)} style={{ width: "100%", maxWidth: 600, display: "flex", alignItems: "center", gap: 10, background: "#0A0D17", border: "1px solid rgba(255,255,255,.12)", borderRadius: 13, padding: "11px 8px 11px 18px" }}>
-            <input
-              value={askQuestion}
-              onChange={e => setAskQuestion(e.target.value)}
-              placeholder="What should I do next?"
-              style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#EDF1FB", fontSize: 13.5, fontFamily: HG }}
-            />
-            <button type="submit" disabled={asking || !askQuestion.trim()} style={{ width: 32, height: 32, borderRadius: 9, background: "#002EFF", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, opacity: asking || !askQuestion.trim() ? 0.6 : 1 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-            </button>
-          </form>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-            {SUGGESTIONS.map(s => (
-              <span key={s} onClick={() => ask(s)} style={{ fontSize: 11, color: "#8A93AD", background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)", padding: "5px 11px", borderRadius: 20, cursor: "pointer" }}>{s}</span>
-            ))}
-          </div>
-        </div>
-
-        {/* answer / example */}
-        <div style={{ background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)", borderRadius: 11, padding: "12px 16px" }}>
-          <div style={{ fontSize: 10, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase", marginBottom: 5 }}>{askAnswer ? "Answer" : "Example answer"}</div>
-          {asking ? (
-            <div style={{ fontSize: 12, color: "#c3cbe0", lineHeight: 1.55 }}>Thinking…</div>
-          ) : askAnswer ? (
-            <div style={{ fontSize: 12, color: "#c3cbe0", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>{askAnswer}</div>
-          ) : (
-            <div style={{ fontSize: 12, color: "#c3cbe0", lineHeight: 1.55 }}>Based on your ICP and last week's outreach results, focus on Series A SaaS founders in fintech — they had a 3x higher reply rate. Your pricing facts are current, but the brain has no info on competitors yet.</div>
-          )}
-        </div>
-
-        {/* knowledge health */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)", borderRadius: 11, padding: "12px 16px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ position: "relative", width: 38, height: 38, flexShrink: 0 }}>
-              <svg width="38" height="38" viewBox="0 0 38 38">
-                <circle cx="19" cy="19" r="16" fill="none" stroke="rgba(255,255,255,.1)" strokeWidth="4" />
-                <circle cx="19" cy="19" r="16" fill="none" stroke={ACCENT} strokeWidth="4" strokeLinecap="round" strokeDasharray={String(circumference)} strokeDashoffset={String(dashOffset)} transform="rotate(-90 19 19)" />
-              </svg>
-              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 700, color: "#EDF1FB" }}>{healthScore !== null ? `${healthScore}%` : "–"}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: "#EDF1FB" }}>Knowledge health</div>
-              <div style={{ fontSize: 10.5, color: "#6f7b98", marginTop: 1 }}>{(brain?.maintenance?.stale_count ?? 0) + (brain?.maintenance?.missing_canonical_count ?? 0)} gaps found</div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {(brain?.maintenance?.stale_count ?? 0) > 0 && <span style={{ fontSize: 10.5, color: "#FFFFA6", background: "rgba(255,255,166,.08)", padding: "5px 11px", borderRadius: 20, fontWeight: 600 }}>Missing: stale records</span>}
-            {(brain?.maintenance?.missing_canonical_count ?? 0) > 0 && <span style={{ fontSize: 10.5, color: "#FFFFA6", background: "rgba(255,255,166,.08)", padding: "5px 11px", borderRadius: 20, fontWeight: 600 }}>Missing: canonical facts</span>}
-            {(brain?.maintenance?.stale_count ?? 0) === 0 && (brain?.maintenance?.missing_canonical_count ?? 0) === 0 && records.length === 0 && <span style={{ fontSize: 10.5, color: "#FFFFA6", background: "rgba(255,255,166,.08)", padding: "5px 11px", borderRadius: 20, fontWeight: 600 }}>Add your first facts</span>}
-          </div>
-        </div>
-
-        {/* 4-column grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, flex: 1, minHeight: 0 }}>
-
-          {/* Facts */}
-          <div style={{ background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)", borderRadius: 11, padding: 14, display: "flex", flexDirection: "column", gap: 8, overflow: "auto" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 10, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>Facts · {factRecords.length}</div>
-              <button type="button" onClick={() => { setAddType("fact"); setPinOpen(true); }} style={{ background: "none", border: "none", padding: 0, color: "#7d8fff", fontSize: 10.5, fontWeight: 600, cursor: "pointer", fontFamily: HG }}>+ Add</button>
-            </div>
-            {factRecords.map(f => (
-              <div key={f.id} style={{ padding: "6px 0", borderTop: "1px solid rgba(255,255,255,.06)" }}>
-                <div style={{ fontSize: 9.5, color: "#6f7b98" }}>{f.title.slice(0, 30)}</div>
-                <div style={{ fontSize: 11.5, color: "#EDF1FB", marginTop: 1 }}>{(f.snippet || f.content).slice(0, 60)}</div>
-              </div>
-            ))}
-            {factRecords.length === 0 && <div style={{ fontSize: 11, color: "#6f7b98", paddingTop: 4 }}>No facts yet.</div>}
-          </div>
-
-          {/* Documents */}
-          <div style={{ background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)", borderRadius: 11, padding: 14, display: "flex", flexDirection: "column", gap: 8, overflow: "auto" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 10, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>Documents · {docRecords.length}</div>
-              <button type="button" onClick={() => { setAddType("doc"); setPinOpen(true); }} style={{ background: "none", border: "none", padding: 0, color: "#7d8fff", fontSize: 10.5, fontWeight: 600, cursor: "pointer", fontFamily: HG }}>+ Add</button>
-            </div>
-            {docRecords.map(d => (
-              <div key={d.id} style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 0", borderTop: "1px solid rgba(255,255,255,.06)" }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7d8fff" strokeWidth="2" style={{ flexShrink: 0 }}><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/></svg>
-                <div style={{ fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: "#EDF1FB" }}>{d.title}</div>
-              </div>
-            ))}
-            {docRecords.length === 0 && <div style={{ fontSize: 11, color: "#6f7b98", paddingTop: 4 }}>No documents yet.</div>}
-          </div>
-
-          {/* Brand voice */}
-          <div style={{ background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)", borderRadius: 11, padding: 14, display: "flex", flexDirection: "column", gap: 8, overflow: "auto" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 10, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>Brand voice</div>
-              <button type="button" onClick={() => { setAddType("brand"); setPinOpen(true); }} style={{ background: "none", border: "none", padding: 0, color: "#7d8fff", fontSize: 10.5, fontWeight: 600, cursor: "pointer", fontFamily: HG }}>Edit</button>
-            </div>
-            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-              {["Confident", "Clear", "No jargon", "Warm but direct"].map(t => (
-                <span key={t} style={{ fontSize: 10, fontWeight: 600, color: ACCENT, background: "rgba(255,255,255,.05)", padding: "4px 9px", borderRadius: 20 }}>{t}</span>
-              ))}
-            </div>
-            <div style={{ fontSize: 11, color: "#8A93AD", lineHeight: 1.55, marginTop: 2 }}>&ldquo;Speak like a knowledgeable teammate, not a brochure.&rdquo;</div>
-          </div>
-
-          {/* Connections */}
-          <div style={{ background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)", borderRadius: 11, padding: 14, display: "flex", flexDirection: "column", gap: 8, overflow: "auto" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 10, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>Connections · {connected}</div>
-              <button type="button" onClick={() => { setAddType("source"); setPinOpen(true); }} style={{ background: "none", border: "none", padding: 0, color: "#7d8fff", fontSize: 10.5, fontWeight: 600, cursor: "pointer", fontFamily: HG }}>+ Add</button>
-            </div>
-            {sources.slice(0, 6).map(s => (
-              <div key={s.key} style={{ padding: "6px 0", borderTop: "1px solid rgba(255,255,255,.06)" }}>
-                <div style={{ fontSize: 11.5, fontWeight: 600, color: "#EDF1FB" }}>{s.label}</div>
-                <div style={{ fontSize: 10, color: "#6f7b98", marginTop: 1 }}>{isConnected(s) ? "Connected" : s.status === "planned" ? "Coming soon" : "Not connected"}</div>
-              </div>
-            ))}
-            {sources.length === 0 && <div style={{ fontSize: 11, color: "#6f7b98", paddingTop: 4 }}>No connections yet.</div>}
-          </div>
-        </div>
-
-      </div>
       )}
 
-      {/* ── add knowledge modal ── */}
-      {pinOpen && (
-        <div onClick={() => setPinOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(2,3,8,.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
-          <div onClick={e => e.stopPropagation()} style={{ width: 560, background: "#0A0D17", border: "1px solid rgba(255,255,255,.12)", borderRadius: 16, padding: 26, display: "flex", flexDirection: "column", gap: 18, boxShadow: "0 40px 90px -30px rgba(0,0,0,.8)" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: "#EDF1FB" }}>Add to Company Brain</div>
-              <button type="button" onClick={() => setPinOpen(false)} style={{ background: "none", border: "none", fontSize: 18, color: "#6f7b98", cursor: "pointer", lineHeight: 1, padding: 0 }}>×</button>
+      {/* ── tab content ── */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "26px 24px 40px" }}>
+
+        {/* ━━━ ASK ━━━ */}
+        {tab === "ask" && (
+          <div style={{ maxWidth: 720, margin: "0 auto", display: "grid", gap: 20 }}>
+            <div style={{ textAlign: "center", marginTop: 18 }}>
+              <div style={{ fontSize: 26, fontWeight: 600, color: "var(--fg)", letterSpacing: "-0.02em" }}>
+                Ask your company anything
+              </div>
+              <div style={{ fontSize: 13, color: "var(--fm)", marginTop: 6 }}>
+                Answers come from your synced tools and pinned notes, with sources cited.
+              </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              {([
-                { key: "doc" as const, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={addType === "doc" ? ACCENT : "#8A93AD"} strokeWidth="1.8"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/></svg>, title: "Upload document", sub: "PDF, DOCX, TXT" },
-                { key: "fact" as const, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={addType === "fact" ? ACCENT : "#8A93AD"} strokeWidth="1.8"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/></svg>, title: "Add a fact", sub: "A single piece of company info" },
-                { key: "source" as const, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={addType === "source" ? ACCENT : "#8A93AD"} strokeWidth="1.8"><path d="M9 2v4M15 2v4M6 10h12l-1 4a5 5 0 0 1-10 0l-1-4ZM10 22v-4M14 22v-4"/></svg>, title: "Connect a source", sub: "Notion, Drive, website" },
-                { key: "brand" as const, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={addType === "brand" ? ACCENT : "#8A93AD"} strokeWidth="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 4 5.5 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.5-4-9s1.5-6.5 4-9Z"/></svg>, title: "Brand guideline", sub: "Tone, do's and don'ts" },
-              ] as Array<{ key: "doc"|"fact"|"source"|"brand"; icon: React.ReactNode; title: string; sub: string }>).map(({ key, icon, title, sub }) => (
-                <div key={key} onClick={() => setAddType(key)} style={{ border: `1.5px solid ${addType === key ? ACCENT : "rgba(255,255,255,.12)"}`, borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 6, cursor: "pointer", background: addType === key ? "rgba(124,255,198,.06)" : "transparent" }}>
-                  {icon}
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "#EDF1FB" }}>{title}</div>
-                  <div style={{ fontSize: 10.5, color: "#6f7b98" }}>{sub}</div>
+
+            <form onSubmit={e => ask(undefined, e)} style={{ display: "flex", gap: 8 }}>
+              <input
+                className="f-input"
+                value={askQuestion}
+                onChange={e => setAskQuestion(e.target.value)}
+                placeholder="e.g. What did we decide about pricing?"
+                style={{ fontSize: 15, padding: "14px 18px", borderRadius: 12 }}
+                autoFocus
+              />
+              <button type="submit" disabled={asking || !askQuestion.trim()} className="btn pri"
+                style={{ minHeight: 50, fontSize: 14, paddingInline: 26, borderRadius: 12, flexShrink: 0 }}>
+                {asking ? "Thinking…" : "Ask"}
+              </button>
+            </form>
+
+            {/* suggested questions */}
+            {!askAnswer && !asking && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                {SUGGESTED_QUESTIONS.map(q => (
+                  <button key={q} type="button" onClick={() => ask(q)}
+                    style={{
+                      fontSize: 12, color: "var(--fd)", background: "var(--surface)",
+                      border: "1px solid var(--bd2)", borderRadius: 999, padding: "8px 16px",
+                      cursor: "pointer",
+                    }}>
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* answer */}
+            {askAnswer && (
+              <Card style={{ padding: "20px 22px" }}>
+                <div style={{ color: "var(--fg)", fontSize: 14, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                  {askAnswer}
                 </div>
-              ))}
+                {askConfidence !== null && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16 }}>
+                    <div style={{ flex: 1, maxWidth: 160, height: 4, background: "var(--bd)", borderRadius: 999, overflow: "hidden" }}>
+                      <div style={{
+                        height: "100%", width: `${Math.round(askConfidence * 100)}%`, borderRadius: 999,
+                        background: askConfidence > 0.7 ? "#16a34a" : askConfidence > 0.4 ? "#d97706" : "#dc2626",
+                      }} />
+                    </div>
+                    <span style={{ fontSize: 11, color: "var(--fm)" }}>
+                      {Math.round(askConfidence * 100)}% confident
+                    </span>
+                  </div>
+                )}
+                {askCitations.length > 0 && (
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--bd)", display: "grid", gap: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+                      Sources
+                    </div>
+                    {askCitations.slice(0, 6).map(cit => (
+                      <div key={cit.record_id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, color: "var(--fd)" }}>
+                        <span style={{ flexShrink: 0, fontSize: 12 }}>{SOURCE_ICONS[cit.source] ?? "📌"}</span>
+                        {cit.url ? (
+                          <a href={cit.url} target="_blank" rel="noopener noreferrer"
+                            style={{ color: "var(--blue)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {cit.title}
+                          </a>
+                        ) : (
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cit.title}</span>
+                        )}
+                        {cit.canonical && <span style={{ color: "#16a34a", flexShrink: 0, fontSize: 10 }}>✓ source of truth</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {records.length === 0 && !askAnswer && (
+              <div style={{ textAlign: "center", color: "var(--fm)", fontSize: 12.5, lineHeight: 1.7, marginTop: 8 }}>
+                Your brain is empty so far.{" "}
+                <button type="button" onClick={() => setTab("knowledge")} style={{ background: "none", border: "none", color: "var(--blue)", cursor: "pointer", fontSize: 12.5, padding: 0, fontWeight: 600, textDecoration: "underline" }}>
+                  Connect a source or add a note →
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ━━━ KNOWLEDGE (memory + sources) ━━━ */}
+        {tab === "knowledge" && (
+          <div style={{ maxWidth: 860, margin: "0 auto", display: "grid", gap: 28 }}>
+
+            {/* connected sources strip */}
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+                <SectionTitle
+                  title="Connected sources"
+                  sub="Click a source to connect it. Selected sources are included when you sync."
+                />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button type="button" onClick={importSources} disabled={importing} className="btn" style={{ minHeight: 34, fontSize: 12 }}>
+                    {importing ? "Importing…" : "Import records"}
+                  </button>
+                  <button type="button" onClick={sync} disabled={syncing} className="btn pri" style={{ minHeight: 34, fontSize: 12 }}>
+                    {syncing ? "Syncing…" : "Sync now"}
+                  </button>
+                </div>
+              </div>
+
+              {importSummary && (
+                <div style={{ fontSize: 12, color: "var(--fd)", padding: "9px 14px", border: "1px solid var(--bd)", borderRadius: 9, background: "var(--s2)", marginBottom: 12 }}>
+                  {importSummary}
+                </div>
+              )}
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8 }}>
+                {sources.map(source => {
+                  const sel = selectedSources.includes(source.key);
+                  const conn = isConnected(source);
+                  return (
+                    <div key={source.key} style={{
+                      border: `1px solid ${sel ? "var(--bb)" : "var(--bd)"}`,
+                      background: sel ? "var(--bdim)" : "var(--surface)",
+                      borderRadius: 11, padding: "11px 12px",
+                      display: "flex", flexDirection: "column", gap: 7,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                        <span style={{ fontSize: 15 }}>{SOURCE_ICONS[source.key] ?? "🔌"}</span>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {source.label}
+                        </span>
+                        <span style={{ width: 7, height: 7, borderRadius: 999, background: statusColor(source.status), flexShrink: 0 }} />
+                      </div>
+                      <div style={{ fontSize: 10.5, color: "var(--fm)" }}>
+                        {conn ? `${source.record_count} records` : source.status === "planned" ? "Coming soon" : "Not connected"}
+                      </div>
+                      <div style={{ display: "flex", gap: 5, marginTop: "auto" }}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSources(prev => sel ? prev.filter(s => s !== source.key) : [...prev, source.key])}
+                          style={{
+                            flex: 1, fontSize: 10, fontWeight: 600, padding: "4px 0", borderRadius: 6,
+                            border: `1px solid ${sel ? "var(--blue)" : "var(--bd2)"}`,
+                            background: sel ? "var(--blue)" : "transparent",
+                            color: sel ? "#fff" : "var(--fm)", cursor: "pointer",
+                          }}>
+                          {sel ? "✓ In sync" : "Include"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConnectKey(source.key)}
+                          style={{
+                            fontSize: 10, fontWeight: 600, padding: "4px 9px", borderRadius: 6,
+                            border: "1px solid var(--bd2)", background: "transparent",
+                            color: conn ? "#16a34a" : "var(--blue)", cursor: "pointer",
+                          }}>
+                          {conn ? "✓" : "Connect"}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            {addType === "fact" && (
-              <form onSubmit={addRecord} style={{ display: "flex", flexDirection: "column", gap: 10, borderTop: "1px solid rgba(255,255,255,.08)", paddingTop: 16 }}>
-                <div style={{ fontSize: 11, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>New fact</div>
-                <input placeholder="Label — e.g. Refund policy" value={draft.title} onChange={e => setDraft(d => ({ ...d, title: e.target.value }))} style={{ background: "#070911", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, padding: "10px 12px", color: "#EDF1FB", fontSize: 13, fontFamily: HG, outline: "none" }} />
-                <input placeholder="Value — what should Astra know?" value={draft.content} onChange={e => setDraft(d => ({ ...d, content: e.target.value }))} style={{ background: "#070911", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, padding: "10px 12px", color: "#EDF1FB", fontSize: 13, fontFamily: HG, outline: "none" }} />
+
+            {/* records */}
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+                <SectionTitle
+                  title={`Saved knowledge (${records.length})`}
+                  sub="Decisions, facts, and notes — everything agents can reference."
+                />
+                <button
+                  type="button"
+                  onClick={() => setPinOpen(v => !v)}
+                  className={`btn${pinOpen ? "" : " pri"}`}
+                  style={{ minHeight: 34, fontSize: 12, flexShrink: 0 }}
+                >
+                  {pinOpen ? "Cancel" : "+ Add note"}
+                </button>
+              </div>
+
+              {pinOpen && (
+                <form onSubmit={addRecord}
+                  style={{ border: "1px solid var(--bb)", background: "var(--bdim)", borderRadius: 12, padding: 16, display: "grid", gap: 10, marginBottom: 14 }}>
+                  <input
+                    className="f-input"
+                    value={draft.title}
+                    onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
+                    placeholder="Title — e.g. Pricing decision, March"
+                    style={{ fontSize: 13 }}
+                    autoFocus
+                  />
+                  <textarea
+                    className="f-input f-ta"
+                    value={draft.content}
+                    onChange={e => setDraft(d => ({ ...d, content: e.target.value }))}
+                    placeholder="What should everyone — including your agents — know?"
+                    rows={4}
+                    style={{ resize: "none", minHeight: 100, fontSize: 12.5 }}
+                  />
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 12, color: "var(--fd)" }}>
+                      <input
+                        type="checkbox"
+                        checked={draft.canonical}
+                        onChange={e => setDraft(d => ({ ...d, canonical: e.target.checked }))}
+                        style={{ accentColor: "var(--blue)" }}
+                      />
+                      This is the official source of truth
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={loading || !draft.title.trim() || !draft.content.trim()}
+                      className="btn pri"
+                      style={{ minHeight: 34, fontSize: 12 }}
+                    >
+                      {loading ? "Saving…" : "Save note"}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              <form onSubmit={search} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                <input
+                  className="f-input"
+                  value={query}
+                  onChange={e => { setQuery(e.target.value); if (!e.target.value.trim()) { setResults([]); setSearched(false); } }}
+                  placeholder="Search your knowledge…"
+                  style={{ fontSize: 12.5 }}
+                />
+                <button type="submit" disabled={loading || !query.trim()} className="btn" style={{ minHeight: 38, fontSize: 12, flexShrink: 0 }}>
+                  {loading ? "…" : "Search"}
+                </button>
               </form>
-            )}
-            {addType === "doc" && (
-              <div style={{ borderTop: "1px solid rgba(255,255,255,.08)", paddingTop: 16, border: "1.5px dashed rgba(255,255,255,.16)", borderRadius: 10, padding: 24, textAlign: "center", color: "#8A93AD", fontSize: 12.5 }}>Drop a file here, or click to browse</div>
-            )}
-            {addType === "source" && (
-              <div style={{ borderTop: "1px solid rgba(255,255,255,.08)", paddingTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-                <input placeholder="Paste a Notion, Drive, or website link…" style={{ background: "#070911", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, padding: "10px 12px", color: "#EDF1FB", fontSize: 13, fontFamily: HG, outline: "none" }} />
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {shownRecords.length === 0 && (
+                  <div style={{ color: "var(--fm)", fontSize: 12.5, padding: "24px 0", textAlign: "center", lineHeight: 1.6 }}>
+                    {searched && query.trim()
+                      ? "Nothing matched that search."
+                      : "Nothing saved yet. Connect a source above, or add your first note."}
+                  </div>
+                )}
+                {shownRecords.map(r => <RecordCard key={r.id} record={r} />)}
               </div>
-            )}
-            {addType === "brand" && (
-              <div style={{ borderTop: "1px solid rgba(255,255,255,.08)", paddingTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
-                <input placeholder="e.g. Confident, no jargon, warm but direct" value={draft.content} onChange={e => setDraft(d => ({ ...d, title: "Brand voice", content: e.target.value }))} style={{ background: "#070911", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, padding: "10px 12px", color: "#EDF1FB", fontSize: 13, fontFamily: HG, outline: "none" }} />
-              </div>
-            )}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button type="button" onClick={() => setPinOpen(false)} style={{ background: "transparent", color: "#c3cbe0", border: "1px solid rgba(255,255,255,.14)", borderRadius: 8, padding: "10px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: HG }}>Cancel</button>
-              <button type="button" onClick={addType === "fact" || addType === "brand" ? addRecord as unknown as React.MouseEventHandler<HTMLButtonElement> : () => setPinOpen(false)} disabled={loading} style={{ background: "#002EFF", color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: HG, opacity: loading ? 0.6 : 1 }}>Save to brain</button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* ━━━ MAP ━━━ */}
+        {tab === "map" && (
+          <div style={{ maxWidth: 980, margin: "0 auto" }}>
+            <KnowledgeMap
+              graph={graph}
+              loading={graphLoading}
+              rebuilding={graphRebuilding}
+              onReload={loadGraph}
+              onRebuild={rebuildGraph}
+            />
+          </div>
+        )}
+
+        {/* ━━━ SETTINGS ━━━ */}
+        {tab === "settings" && (
+          <div style={{ maxWidth: 720, margin: "0 auto", display: "grid", gap: 20 }}>
+
+            {/* suggestions */}
+            <div>
+              <SectionTitle
+                title={openProposals.length > 0 ? `Suggestions (${openProposals.length})` : "Suggestions"}
+                sub="Astra flags stale records, contradictions, and gaps — review them here."
+              />
+              {openProposals.length > 0 ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {openProposals.slice(0, 6).map(p => (
+                    <SuggestionCard key={p.id} proposal={p} recordsById={recordsById} onUpdate={updateProposal} />
+                  ))}
+                </div>
+              ) : (
+                <Card style={{ padding: "16px 18px", color: "var(--fm)", fontSize: 12.5 }}>
+                  ✓ All clear — no open suggestions.
+                </Card>
+              )}
+              <button type="button" onClick={maintain} disabled={maintaining} className="btn" style={{ minHeight: 34, fontSize: 12, marginTop: 10 }}>
+                {maintaining ? "Checking…" : "Run health check now"}
+              </button>
+              {(brain?.maintenance?.stale_count || brain?.maintenance?.contradiction_count) ? (
+                <div style={{ fontSize: 11.5, color: "var(--fm)", marginTop: 7 }}>
+                  Last check: {brain?.maintenance?.stale_count ?? 0} stale record{(brain?.maintenance?.stale_count ?? 0) !== 1 ? "s" : ""},{" "}
+                  {brain?.maintenance?.contradiction_count ?? 0} contradiction{(brain?.maintenance?.contradiction_count ?? 0) !== 1 ? "s" : ""}.
+                </div>
+              ) : null}
+            </div>
+
+            {/* auto-sync */}
+            <div>
+              <SectionTitle
+                title="Automatic sync"
+                sub="Keep the brain fresh by pulling from your sources on a schedule."
+              />
+              <Card style={{ padding: "16px 18px", display: "grid", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => configureContinuousSync(!(brain?.sync?.enabled))}
+                    disabled={continuousSyncing}
+                    style={{
+                      width: 44, height: 24, borderRadius: 999, border: "none", cursor: "pointer",
+                      background: brain?.sync?.enabled ? "var(--blue)" : "var(--bd2)",
+                      position: "relative", transition: "background .18s", flexShrink: 0,
+                    }}
+                    aria-label="Toggle automatic sync"
+                  >
+                    <span style={{
+                      position: "absolute", top: 3, left: brain?.sync?.enabled ? 23 : 3,
+                      width: 18, height: 18, borderRadius: 999, background: "#fff",
+                      transition: "left .18s", boxShadow: "0 1px 3px rgba(0,0,0,.2)",
+                    }} />
+                  </button>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)" }}>
+                    {brain?.sync?.enabled ? "On" : "Off"}
+                  </span>
+                  <span style={{ fontSize: 12, color: "var(--fm)" }}>· every</span>
+                  <input
+                    type="number" min={5} max={1440}
+                    value={syncInterval}
+                    onChange={e => setSyncInterval(Number(e.target.value))}
+                    className="f-input"
+                    style={{ width: 72 }}
+                    aria-label="Sync interval minutes"
+                  />
+                  <span style={{ fontSize: 12, color: "var(--fm)" }}>minutes</span>
+                  <button type="button" onClick={runContinuousSyncNow}
+                    disabled={continuousSyncing} className="btn" style={{ minHeight: 32, fontSize: 11, marginLeft: "auto" }}>
+                    {continuousSyncing ? "Running…" : "Run once now"}
+                  </button>
+                </div>
+
+                <div style={{ fontSize: 11.5, color: "var(--fm)", lineHeight: 1.6 }}>
+                  {brain?.sync?.last_run_at ? `Last run ${brain.sync.last_run_at}.` : "Hasn't run yet."}
+                  {brain?.sync?.next_run_at ? ` Next run ${brain.sync.next_run_at}.` : ""}
+                  {scheduler ? ` Scheduler ${scheduler.running ? "running" : "stopped"}.` : ""}
+                </div>
+
+                {brain?.sync?.last_error && (
+                  <div style={{ border: "1px solid rgba(192,57,43,0.25)", background: "rgba(192,57,43,0.06)", borderRadius: 9, padding: "9px 12px", color: "#c0392b", fontSize: 12 }}>
+                    {brain.sync.last_error}
+                  </div>
+                )}
+
+                {(brain?.sync?.history?.length ?? 0) > 0 && (
+                  <div style={{ borderTop: "1px solid var(--bd)", paddingTop: 10, display: "grid", gap: 5 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 3 }}>
+                      Recent runs
+                    </div>
+                    {brain!.sync.history.slice(0, 4).map((entry, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--fm)" }}>
+                        <span className="pill" style={{ letterSpacing: 0 }}>{String(entry.status ?? "run")}</span>
+                        <span>{String(entry.finished_at ?? entry.started_at ?? "")}</span>
+                        <span style={{ marginLeft: "auto" }}>
+                          {Array.isArray(entry.imported_sources)
+                            ? `imported ${(entry.imported_sources as string[]).join(", ") || "none"}`
+                            : ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            </div>
+
+          </div>
+        )}
+      </div>
 
       {/* ── connect modal ── */}
       {connectSource && (

@@ -421,8 +421,6 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [pptxSlides, setPptxSlides] = useState<{ title?: string; bullets?: string[]; is_cover?: boolean }[]>([]);
   const [pptxSlidesFilename, setPptxSlidesFilename] = useState<string>("");
-  const [libFilter, setLibFilter] = useState<"all" | "document" | "landing" | "email" | "template">("all");
-  const [libSearch, setLibSearch] = useState("");
 
   const refreshFunding = useCallback(async () => {
     if (!founderId) return;
@@ -547,146 +545,8 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
   const showEditor = mode === "files" && !showNewForm && selectedFile;
   const showTemplateViewer = mode === "templates" && selectedExample;
 
-  const ACCENT = "#7CFFC6";
-  const HG = "var(--font-hanken), 'Hanken Grotesk', sans-serif";
-
-  type FeedItem = { id: string; tag: string; kind: string; tagColor: string; tagBg: string; name: string; meta: string; time: string; onSelect: () => void };
-
-  function fileKind(f: LibraryFile): string {
-    const nm = f.filename.toLowerCase();
-    if (nm.includes("email") || f.department === "Marketing") return "email";
-    if (nm.includes("landing") || nm.includes("page copy")) return "landing";
-    return "document";
-  }
-
-  function relTime(iso: string): string {
-    const diff = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(diff / 86400000);
-    if (days === 0) return "today";
-    if (days === 1) return "1d ago";
-    if (days < 7) return `${days}d ago`;
-    if (days < 31) return `${Math.floor(days / 7)}w ago`;
-    return `${Math.floor(days / 30)}mo ago`;
-  }
-
-  const fileFeed: FeedItem[] = files.map(f => ({
-    id: `file-${f.id}`, tag: "Output", kind: fileKind(f),
-    tagColor: "#7d8fff", tagBg: "rgba(125,143,255,.1)",
-    name: f.filename,
-    meta: f.source_tag ? `From "${f.source_tag}"` : `${f.department} · ${formatBytes(f.size_bytes)}`,
-    time: relTime(f.updated_at),
-    onSelect: () => setSelectedFile(f),
-  }));
-
-  const templateFeed: FeedItem[] = (examplesLoaded ? examples : []).map(e => ({
-    id: `ex-${e.path}`, tag: "Template", kind: "template",
-    tagColor: ACCENT, tagBg: "rgba(124,255,198,.1)",
-    name: e.title, meta: `Used ${Math.floor(Math.random() * 10) + 1} times`, time: "used recently",
-    onSelect: () => setSelectedExample(e),
-  }));
-
-  const allFeed = [...fileFeed, ...templateFeed];
-  const searchQ = libSearch.toLowerCase();
-  const visibleFeed = allFeed
-    .filter(m => libFilter === "all" || m.kind === libFilter)
-    .filter(m => !searchQ || m.name.toLowerCase().includes(searchQ) || m.meta.toLowerCase().includes(searchQ));
-
-  const filterDefs: Array<{ id: typeof libFilter; label: string }> = [
-    { id: "all", label: "All" },
-    { id: "document", label: "Documents" },
-    { id: "landing", label: "Landing pages" },
-    { id: "email", label: "Emails" },
-    { id: "template", label: "Templates" },
-  ];
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#05070E", overflow: "hidden", fontFamily: HG }} className={className}>
-
-      {/* header */}
-      <div style={{ padding: "24px 30px 16px", flexShrink: 0 }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-.01em", color: "#EDF1FB" }}>Library</h1>
-      </div>
-
-      {/* search */}
-      <div style={{ padding: "0 30px 12px", flexShrink: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#0A0D17", border: "1px solid rgba(255,255,255,.12)", borderRadius: 12, padding: "12px 16px" }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6f7b98" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-          <input
-            value={libSearch}
-            onChange={e => setLibSearch(e.target.value)}
-            placeholder="Search everything Astra has made…"
-            style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#EDF1FB", fontSize: 13.5, fontFamily: HG }}
-          />
-        </div>
-      </div>
-
-      {/* filters */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "0 30px 14px", flexShrink: 0 }}>
-        {filterDefs.map(f => (
-          <span
-            key={f.id}
-            onClick={() => { setLibFilter(f.id); if (f.id === "template" && !examplesLoaded) handleModeSwitch("templates"); }}
-            style={libFilter === f.id
-              ? { fontSize: 11.5, fontWeight: 600, color: "#05070E", background: ACCENT, padding: "6px 13px", borderRadius: 20, cursor: "pointer" }
-              : { fontSize: 11.5, fontWeight: 600, color: "#8A93AD", background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)", padding: "6px 13px", borderRadius: 20, cursor: "pointer" }
-            }
-          >{f.label}</span>
-        ))}
-      </div>
-
-      {/* feed */}
-      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 2, padding: "0 30px 40px" }}>
-        {loadingFiles && <div style={{ padding: "32px 0", textAlign: "center", fontSize: 13, color: "#6f7b98" }}>Loading…</div>}
-        {!loadingFiles && visibleFeed.length === 0 && (
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "60px 20px", color: "#6f7b98" }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: "#EDF1FB" }}>Nothing here yet</div>
-            <div style={{ fontSize: 12 }}>Try a different filter or search term.</div>
-          </div>
-        )}
-        {!loadingFiles && visibleFeed.map(m => (
-          <div key={m.id} onClick={m.onSelect} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 4px", borderTop: "1px solid rgba(255,255,255,.06)", cursor: "pointer" }}>
-            <span style={{ fontSize: 9.5, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: ".04em", color: m.tagColor, background: m.tagBg, padding: "4px 9px", borderRadius: 6, flexShrink: 0 }}>{m.tag}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 600, color: "#EDF1FB", whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis" }}>{m.name}</div>
-              <div style={{ fontSize: 11, color: "#6f7b98", marginTop: 2 }}>{m.meta}</div>
-            </div>
-            <span style={{ fontSize: 11, color: "#6f7b98", flexShrink: 0 }}>{m.time}</span>
-          </div>
-        ))}
-      </div>
-
-      {/* file viewer modal */}
-      {(selectedFile || selectedExample) && (
-        <div onClick={() => { setSelectedFile(null); setSelectedExample(null); }} style={{ position: "fixed", inset: 0, background: "rgba(2,3,8,.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 200 }}>
-          <div onClick={e => e.stopPropagation()} style={{ width: "80vw", maxWidth: 900, height: "80vh", background: "#0A0D17", border: "1px solid rgba(255,255,255,.12)", borderRadius: 16, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 22px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#EDF1FB" }}>{selectedFile?.filename || selectedExample?.title}</div>
-              <button onClick={() => { setSelectedFile(null); setSelectedExample(null); }} style={{ background: "none", border: "none", fontSize: 18, color: "#6f7b98", cursor: "pointer", lineHeight: 1 }}>×</button>
-            </div>
-            <div style={{ flex: 1, overflow: "auto", padding: "20px 22px" }}>
-              {selectedFile && (
-                selectedFile.filename.endsWith(".pdf") && selectedFile.source_path ? (
-                  <PdfEmbed path={selectedFile.source_path} />
-                ) : (
-                  <pre style={{ margin: 0, color: "#c3cbe0", fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap" as const, fontFamily: "var(--font-geist-mono), monospace" }}>{selectedFile.content || "Loading…"}</pre>
-                )
-              )}
-              {selectedExample && (
-                <div>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: ACCENT, background: "rgba(124,255,198,.1)", padding: "4px 9px", borderRadius: 6 }}>{selectedExample.category}</span>
-                    {selectedExample.tags.slice(0, 4).map(t => <span key={t} style={{ fontSize: 10, color: "#8A93AD", background: "rgba(255,255,255,.05)", padding: "4px 9px", borderRadius: 6 }}>{t}</span>)}
-                  </div>
-                  <pre style={{ margin: 0, color: "#c3cbe0", fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap" as const, fontFamily: "var(--font-geist-mono), monospace" }}>{selectedExample.content || "No preview available."}</pre>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* keep old PageHeader hidden from view but preserve its inaccessible code below for dead-code removal on next pass */}
-      <div style={{ display: "none" }}>{/* legacy: */}
+    <div className={`flex flex-col h-full bg-white overflow-hidden ${className}`}>
       {(() => {
         const fundingGenerating = fundingStatus?.generating || fundingTriggering;
         const fundingHasDocs = (fundingStatus?.documents?.length ?? 0) > 0;
@@ -1095,7 +955,6 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
           </>
         )}
       </div>
-      </div>{/* end legacy hidden */}
     </div>
   );
 }
