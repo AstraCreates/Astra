@@ -7,8 +7,8 @@
    ibm vars everywhere. Redefining them here (class+type beats next/font's
    class selector) reskins ALL type app-wide without touching components. */
 html.antialiased {
-  --font-geist-sans: var(--font-instrument), "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-dm-sans: var(--font-instrument), "Instrument Sans", sans-serif;
+  --font-geist-sans: var(--font-hanken), "Hanken Grotesk", var(--font-instrument), "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-dm-sans: var(--font-hanken), "Hanken Grotesk", var(--font-instrument), "Instrument Sans", sans-serif;
   --font-jetbrains-mono: var(--font-geist-mono), ui-monospace, monospace;
   --font-ibm-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
@@ -75,44 +75,58 @@ html.antialiased {
 }
 
 [data-theme="dark"] {
-  --bg:        #0B1020;
-  --bg-surface:#111728;
-  --bg-sunken: #090D18;
-  --surface:   rgba(17, 23, 40, 0.82);
-  --s2:        rgba(22, 29, 48, 0.82);
-  --s3:        #1A2138;
-  --fg:        #F4F7FF;
-  --fd:        #C4CEE7;
-  --fm:        #8C97B3;
-  --bd:        rgba(195, 210, 244, 0.10);
-  --bd2:       rgba(226, 234, 255, 0.17);
-  --accent:    #5A7BFF;
-  --accent-hover: #7E9AFF;
-  --blue:      #5A7BFF;
-  --bdim:      rgba(90, 123, 255, 0.14);
-  --bb:        rgba(90, 123, 255, 0.38);
-  --bglow:     rgba(90, 123, 255, 0.30);
-  --mint:      #7CFFC6;
-  --mint-dim:  rgba(124, 255, 198, 0.10);
-  --mint-border: rgba(124, 255, 198, 0.28);
-  --lilac:     #EBA5FF;
-  --yellow:    #FFFF65;
-  --pink:      #FF29A7;
-  --astra-ink: #111018;
-  --astra-paper: #FEFFF6;
-  --green: #22c55e; --gdim: rgba(34,197,94,.09);  --gb: rgba(34,197,94,.28);
-  --amber: #f59e0b; --adim: rgba(245,158,11,.09); --ab: rgba(245,158,11,.28);
-  --red:   #ef4444; --rdim: rgba(239,68,68,.09);  --rb: rgba(239,68,68,.28);
-  --shell-shadow: 0 18px 50px rgba(0, 0, 0, 0.34);
-  --card-shadow: 0 14px 30px rgba(0, 0, 0, 0.24);
-  --card-shadow-hover: 0 22px 42px rgba(3, 8, 24, 0.42);
-  --glass-blur: blur(20px);
+  --bg:           #05070E;
+  --bg-surface:   #080A12;
+  --bg-sunken:    #070911;
+  --surface:      #080A12;
+  --s2:           #0A0D17;
+  --s3:           #070911;
+  --fg:           #EDF1FB;
+  --fd:           #8A93AD;
+  --fm:           #6f7b98;
+  --bd:           rgba(255,255,255,.08);
+  --bd2:          rgba(255,255,255,.12);
+  --accent:       #7CFFC6;
+  --accent-hover: #5DF0B2;
+  --blue:         #002EFF;
+  --bdim:         rgba(0,46,255,.10);
+  --bb:           rgba(0,46,255,.30);
+  --bglow:        rgba(0,46,255,.20);
+  --mint:         #7CFFC6;
+  --mint-dim:     rgba(124,255,198,.10);
+  --mint-border:  rgba(124,255,198,.28);
+  --green:        #7CFFC6;
+  --gdim:         rgba(124,255,198,.10);
+  --gb:           rgba(124,255,198,.28);
+  --amber:        #FFFFA6;
+  --adim:         rgba(255,255,166,.08);
+  --ab:           rgba(255,255,166,.25);
+  --red:          #ff6b6b;
+  --rdim:         rgba(255,107,107,.09);
+  --rb:           rgba(255,107,107,.28);
+  --lilac:        #EBA5FF;
+  --yellow:       #FFFFA6;
+  --pink:         #FF29A7;
+  --astra-ink:    #111018;
+  --astra-paper:  #FEFFF6;
+  --shell-shadow: 0 18px 50px rgba(0,0,0,.50);
+  --card-shadow:  0 14px 30px rgba(0,0,0,.30);
+  --card-shadow-hover: 0 22px 42px rgba(0,0,0,.50);
+  --glass-blur:   blur(20px);
+  --radius:       12px;
+  --radius-sm:    8px;
+  --radius-lg:    14px;
 }
 
 body {
-  font-family: var(--font-instrument), "Instrument Sans", sans-serif;
+  font-family: var(--font-hanken), "Hanken Grotesk", var(--font-instrument), "Instrument Sans", sans-serif;
   background-color: var(--bg);
   color: var(--fg);
+}
+
+[data-theme="dark"] body {
+  background-image: none !important;
+  background-color: #05070E;
 }
 
 @keyframes portraitShimmer {

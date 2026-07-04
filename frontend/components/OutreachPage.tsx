@@ -745,58 +745,87 @@ export default function OutreachPage() {
 
   // ── Campaign list ──────────────────────────────────────────────────────────
 
+  const ACCENT_OR = "#7CFFC6";
+  const HG_OR = "var(--font-hanken), 'Hanken Grotesk', sans-serif";
+
+  function campaignChip(status: string): React.CSSProperties {
+    if (status === "active")  return { padding: "3px 9px", borderRadius: 20, fontSize: 10.5, fontWeight: 600, background: "rgba(124,255,198,.12)", color: "#7CFFC6", border: "1px solid rgba(124,255,198,.25)" };
+    if (status === "paused")  return { padding: "3px 9px", borderRadius: 20, fontSize: 10.5, fontWeight: 600, background: "rgba(255,255,166,.08)", color: "#FFFFA6", border: "1px solid rgba(255,255,166,.20)" };
+    return { padding: "3px 9px", borderRadius: 20, fontSize: 10.5, fontWeight: 600, background: "rgba(255,255,255,.06)", color: "#8A93AD", border: "1px solid rgba(255,255,255,.10)" };
+  }
+
+  const CAMPAIGN_TYPES = [
+    { icon: "📧", label: "Cold outbound", desc: "Reach new prospects with personalized cold emails" },
+    { icon: "🔄", label: "Follow-up sequence", desc: "Nurture leads who haven't responded yet" },
+    { icon: "💫", label: "Re-engagement", desc: "Win back dormant contacts and past customers" },
+    { icon: "🎪", label: "Event invite", desc: "Drive registrations to webinars and events" },
+  ];
+
   if (view === "campaigns") return (
-    <div style={{ width: "100%", display: "flex", flexDirection: "column" }}>
+    <div style={{ width: "100%", display: "flex", flexDirection: "column", fontFamily: HG_OR }}>
       <style>{`@keyframes outreach-sweep{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
 
-      <PageHeader
-        title="Outreach"
-        subtitle={
-          campaigns.length > 0
-            ? `${campaigns.length} campaign${campaigns.length !== 1 ? "s" : ""} · Find contacts, send personalised emails`
-            : "Find contacts, send personalised emails"
-        }
-        actions={
-          <button
-            onClick={() => setShowNewCampaign(true)}
-            className="m-tap"
-            style={{
-              padding: "8px 18px", fontSize: 12, fontWeight: 600, color: "#002EFF",
-              background: "#fff", border: "none", cursor: "pointer",
-            }}
-          >
-            + New Campaign
-          </button>
-        }
-      />
+      {/* Header */}
+      <div style={{ padding: "28px 28px 20px", borderBottom: "1px solid rgba(255,255,255,.07)", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: "#EDF1FB", letterSpacing: "-0.02em" }}>Outreach</h1>
+          <p style={{ margin: "5px 0 0", fontSize: 13, color: "#8A93AD" }}>
+            {campaigns.length > 0 ? `${campaigns.length} campaign${campaigns.length !== 1 ? "s" : ""} · Find contacts, send personalised emails` : "Find contacts, send personalised emails"}
+          </p>
+        </div>
+        <button onClick={() => setShowNewCampaign(true)} style={{ padding: "9px 18px", fontSize: 13, fontWeight: 600, color: "#fff", background: "#002EFF", border: "none", borderRadius: 8, cursor: "pointer", fontFamily: HG_OR }}>
+          + New Campaign
+        </button>
+      </div>
 
       {/* Content area */}
-      <div style={{ flex: 1, padding: "20px 24px 48px", display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ flex: 1, padding: "24px 28px 48px", display: "flex", flexDirection: "column", gap: 28, overflowY: "auto" }}>
 
-      {campaignsLoading ? (
-        <div style={{ ...section() }}>
-          <ProgressBar label="Loading campaigns…" />
-        </div>
-      ) : campaigns.length === 0 ? (
-        <div style={{ ...card({ padding: "60px 24px", textAlign: "center" }) }}>
-          <div style={{ fontSize: 20, marginBottom: 12, fontFamily: "var(--font-code)", color: "var(--fm)", opacity: 0.4 }}>◎</div>
-          <p style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)", margin: "0 0 6px" }}>No campaigns yet</p>
-          <p style={{ fontSize: 13, color: "var(--fm)", margin: "0 0 20px" }}>
-            Create one to start finding contacts and sending emails
-          </p>
-          <button onClick={() => setShowNewCampaign(true)} className="btn pri">
-            Create first campaign
+      {/* Campaign type cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+        {CAMPAIGN_TYPES.map(ct => (
+          <button key={ct.label} onClick={() => setShowNewCampaign(true)} style={{ padding: "18px 16px", borderRadius: 12, cursor: "pointer", textAlign: "left", background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.08)", fontFamily: HG_OR }}>
+            <div style={{ fontSize: 18, marginBottom: 8 }}>{ct.icon}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#EDF1FB", marginBottom: 4 }}>{ct.label}</div>
+            <div style={{ fontSize: 11, color: "#6f7b98", lineHeight: 1.5 }}>{ct.desc}</div>
           </button>
-        </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 10 }}>
-          {campaigns.map(c => (
-            <CampaignCard key={c.id} campaign={c} stats={campaignStats[c.id]} onClick={() => enterCampaign(c)} onDelete={() => deleteCampaign(c.id, c.name)} />
-          ))}
-        </div>
-      )}
+        ))}
+      </div>
 
-      {/* ── New campaign modal ──────────────────────────────────────────────── */}
+      {/* Campaign list */}
+      <section>
+        <h2 style={{ margin: "0 0 14px", fontSize: 13, fontWeight: 700, color: "#6f7b98", letterSpacing: ".06em", textTransform: "uppercase" }}>Your campaigns</h2>
+        {campaignsLoading ? (
+          <div style={{ padding: "32px", display: "flex", justifyContent: "center" }}>
+            <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid rgba(255,255,255,.12)", borderTopColor: "#002EFF", animation: "outreach-sweep 1s linear infinite" }} />
+          </div>
+        ) : campaigns.length === 0 ? (
+          <div style={{ padding: "40px 24px", textAlign: "center", color: "#6f7b98", fontSize: 13, background: "#0A0D17", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12 }}>
+            No campaigns yet — create one above
+          </div>
+        ) : (
+          <div style={{ background: "#0A0D17", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, overflow: "hidden" }}>
+            {campaigns.map((c, i) => {
+              const s = campaignStats[c.id];
+              return (
+                <div key={c.id} onClick={() => enterCampaign(c)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", borderBottom: i < campaigns.length - 1 ? "1px solid rgba(255,255,255,.05)" : "none", cursor: "pointer" }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: c.status === "active" ? ACCENT_OR : c.status === "paused" ? "#FFFFA6" : "#6f7b98", flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#EDF1FB" }}>{c.name}</div>
+                    <div style={{ fontSize: 11, color: "#6f7b98", marginTop: 2 }}>
+                      {c.from_email || "no sender"}{s && s.sent > 0 ? ` · ${s.sent} sent · ${s.open_rate}% open` : ""}
+                    </div>
+                  </div>
+                  <span style={campaignChip(c.status)}>{c.status}</span>
+                  <button onClick={e => { e.stopPropagation(); deleteCampaign(c.id, c.name); }} style={{ padding: "4px 8px", fontSize: 11, fontWeight: 600, color: "#ff6b6b", background: "rgba(255,107,107,.09)", border: "1px solid rgba(255,107,107,.20)", borderRadius: 6, cursor: "pointer", fontFamily: HG_OR }}>Delete</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* ── New campaign modal ────────────────���─────────────────────────────── */}
       {showNewCampaign && (
         <div className="astra-modal-backdrop">
           <div className="astra-modal-shell" style={{ maxWidth: 620 }}>

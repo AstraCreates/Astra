@@ -212,226 +212,123 @@ export default function AutomationsPage() {
       <HeaderPrimaryBtn label="Install all" onClick={installAll} disabled={busyKey === "install_all"} />
     );
 
-  return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
-      <PageHeader
-        title="Automations"
-        badge={{ label: "beta", color: "blue" }}
-        actions={
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {overview && tab !== "agents" && (
-              <span style={{
-                padding: "4px 10px", fontSize: 11, fontWeight: 600,
-                color: rt.color, background: rt.bg, border: `1px solid ${rt.border}`,
-                borderRadius: 999,
-              }}>{rt.label}</span>
-            )}
-            <HeaderSecondaryBtn label="Refresh" onClick={() => { loadFlows(); loadOverview(); }} />
-            {headerAction}
-          </div>
-        }
-      />
+  const ACCENT = "#7CFFC6";
+  const HG = "var(--font-hanken), 'Hanken Grotesk', sans-serif";
 
-      {/* Tab bar */}
-      <div style={{
-        display: "flex", gap: 0, padding: "0 24px",
-        borderBottom: "1px solid var(--bd)",
-        background: "var(--surface)",
-        flexShrink: 0,
-      }}>
-        {(["flows", "templates", "agents"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            style={{
-              padding: "11px 16px",
-              fontSize: 13,
-              fontWeight: tab === t ? 600 : 400,
-              color: tab === t ? "var(--blue)" : "var(--fm)",
-              background: "none",
-              border: "none",
-              borderBottom: tab === t ? "2px solid var(--blue)" : "2px solid transparent",
-              marginBottom: -1,
-              cursor: "pointer",
-              transition: "color 0.15s, border-color 0.15s",
-            }}
-          >
-            {TAB_LABELS[t]}
+  function chipStyle(tone: "active" | "paused" | "draft"): React.CSSProperties {
+    if (tone === "active")  return { padding: "3px 9px", borderRadius: 20, fontSize: 10.5, fontWeight: 600, background: "rgba(124,255,198,.12)", color: "#7CFFC6", border: "1px solid rgba(124,255,198,.25)" };
+    if (tone === "paused")  return { padding: "3px 9px", borderRadius: 20, fontSize: 10.5, fontWeight: 600, background: "rgba(255,255,166,.08)", color: "#FFFFA6", border: "1px solid rgba(255,255,166,.20)" };
+    return { padding: "3px 9px", borderRadius: 20, fontSize: 10.5, fontWeight: 600, background: "rgba(255,255,255,.06)", color: "#8A93AD", border: "1px solid rgba(255,255,255,.10)" };
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", fontFamily: HG }}>
+
+      {/* Header */}
+      <div style={{ padding: "28px 28px 20px", borderBottom: "1px solid rgba(255,255,255,.07)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: "#EDF1FB", letterSpacing: "-0.02em" }}>Automations</h1>
+            <p style={{ margin: "5px 0 0", fontSize: 13, color: "#8A93AD" }}>Build and manage automated workflows and AI agents</p>
+          </div>
+          <button onClick={() => { loadFlows(); loadOverview(); }} style={{ padding: "7px 14px", fontSize: 12, fontWeight: 500, color: "#8A93AD", background: "rgba(255,255,255,.05)", border: "1px solid rgba(255,255,255,.10)", borderRadius: 7, cursor: "pointer", fontFamily: HG }}>
+            Refresh
           </button>
-        ))}
+        </div>
       </div>
 
       {/* Flash */}
       {flash && (
-        <div style={{
-          margin: "16px 24px 0",
-          padding: "12px 16px", borderRadius: 10, fontSize: 13,
-          color: flash.tone === "success" ? "var(--green)" : "var(--red)",
-          background: flash.tone === "success" ? "var(--gdim)" : "var(--rdim)",
-          border: `1px solid ${flash.tone === "success" ? "var(--gb)" : "var(--rb)"}`,
-        }}>
+        <div style={{ margin: "16px 28px 0", padding: "12px 16px", borderRadius: 10, fontSize: 13, color: flash.tone === "success" ? ACCENT : "#ff6b6b", background: flash.tone === "success" ? "rgba(124,255,198,.10)" : "rgba(255,107,107,.09)", border: `1px solid ${flash.tone === "success" ? "rgba(124,255,198,.25)" : "rgba(255,107,107,.28)"}` }}>
           {flash.text}
           <button onClick={() => setFlash(null)} style={{ marginLeft: 12, background: "none", border: "none", cursor: "pointer", color: "inherit", fontSize: 12, opacity: 0.7 }}>✕</button>
         </div>
       )}
 
-      {/* ── Flows tab ────────────────────────────────────────────── */}
-      {tab === "flows" && (
-        <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 12 }}>
-          {flowsLoading && (
-            <div style={{ padding: "48px 0", display: "flex", justifyContent: "center" }}>
-              <div style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid var(--bd2)", borderTopColor: "var(--blue)", animation: "spin 0.7s linear infinite" }} />
-            </div>
-          )}
-          {!flowsLoading && flows.length === 0 && (
-            <div className="empty" style={{ padding: "60px 20px", border: "1px dashed var(--bd2)", borderRadius: 12, background: "var(--surface)" }}>
-              <div className="empty-title">No canvas flows yet</div>
-              <div style={{ fontSize: 12, color: "var(--fm)", marginTop: 4 }}>Build a multi-step agent pipeline from scratch.</div>
-              <button onClick={() => router.push("/automations/canvas/new")} className="btn pri" style={{ marginTop: 14 }}>
-                + New flow
-              </button>
-            </div>
-          )}
-          {!flowsLoading && flows.length > 0 && flows.map((f, i) => (
-            <div key={f.id} className="sc-row" style={{
-              "--i": i,
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1fr) auto auto auto",
-              alignItems: "center",
-              gap: 12,
-              padding: "14px 16px",
-              background: "var(--surface)",
-              border: "1px solid var(--bd)",
-              borderRadius: 10,
-              backdropFilter: "var(--glass-blur)",
-            } as React.CSSProperties}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{f.name}</div>
-                <div style={{ marginTop: 2, fontSize: 11, color: "var(--fm)" }}>
-                  {f.nodes.length} node{f.nodes.length !== 1 ? "s" : ""}
-                  {formatDate(f.updated_at) ? ` · Updated ${formatDate(f.updated_at)}` : ""}
+      <div style={{ flex: 1, padding: "24px 28px 48px", display: "flex", flexDirection: "column", gap: 32, overflowY: "auto" }}>
+
+        {/* CTA cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <button onClick={() => router.push("/automations/canvas/new")} style={{ padding: "20px 22px", borderRadius: 12, cursor: "pointer", textAlign: "left", background: "rgba(124,255,198,.04)", border: "1px solid rgba(124,255,198,.22)", fontFamily: HG }}>
+            <div style={{ fontSize: 20, marginBottom: 8 }}>⚡</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#EDF1FB", marginBottom: 4 }}>Create a workflow automation</div>
+            <div style={{ fontSize: 12, color: "#8A93AD" }}>Build a multi-step pipeline with the canvas editor</div>
+          </button>
+          <button onClick={() => setAgentNewTrigger(n => n + 1)} style={{ padding: "20px 22px", borderRadius: 12, cursor: "pointer", textAlign: "left", background: "rgba(255,255,255,.02)", border: "1px solid rgba(255,255,255,.08)", fontFamily: HG }}>
+            <div style={{ fontSize: 20, marginBottom: 8 }}>🤖</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#EDF1FB", marginBottom: 4 }}>Create a custom agent</div>
+            <div style={{ fontSize: 12, color: "#8A93AD" }}>Configure a specialized AI agent with custom instructions</div>
+          </button>
+        </div>
+
+        {/* Custom agents */}
+        <section>
+          <h2 style={{ margin: "0 0 14px", fontSize: 13, fontWeight: 700, color: "#6f7b98", letterSpacing: ".06em", textTransform: "uppercase" }}>Custom agents</h2>
+          <CustomAgentsPanel embedded externalTriggerNew={agentNewTrigger} />
+        </section>
+
+        {/* Workflow automations */}
+        <section>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <h2 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#6f7b98", letterSpacing: ".06em", textTransform: "uppercase" }}>Workflow automations</h2>
+            <button onClick={() => router.push("/automations/canvas/new")} style={{ padding: "5px 14px", fontSize: 12, fontWeight: 600, color: "#fff", background: "#002EFF", border: "none", borderRadius: 7, cursor: "pointer", fontFamily: HG }}>+ New flow</button>
+          </div>
+          <div style={{ background: "#0A0D17", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, overflow: "hidden" }}>
+            {flowsLoading && (
+              <div style={{ padding: "32px", display: "flex", justifyContent: "center" }}>
+                <div style={{ width: 18, height: 18, borderRadius: "50%", border: "2px solid rgba(255,255,255,.12)", borderTopColor: "#002EFF", animation: "spin 0.7s linear infinite" }} />
+              </div>
+            )}
+            {!flowsLoading && flows.length === 0 && (
+              <div style={{ padding: "40px 24px", textAlign: "center", color: "#6f7b98", fontSize: 13 }}>No flows yet — create one above</div>
+            )}
+            {!flowsLoading && flows.map((f, i) => (
+              <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 18px", borderBottom: i < flows.length - 1 ? "1px solid rgba(255,255,255,.05)" : "none" }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: ACCENT, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "#EDF1FB" }}>{f.name}</div>
+                  <div style={{ fontSize: 11, color: "#6f7b98", marginTop: 2 }}>
+                    {f.nodes.length} node{f.nodes.length !== 1 ? "s" : ""}{formatDate(f.updated_at) ? ` · ${formatDate(f.updated_at)}` : ""}
+                  </div>
                 </div>
+                <span style={chipStyle("active")}>Active</span>
+                <button onClick={() => router.push(`/automations/canvas/${f.id}`)} style={{ padding: "5px 12px", fontSize: 11, fontWeight: 600, color: "#EDF1FB", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.10)", borderRadius: 6, cursor: "pointer", fontFamily: HG }}>Open</button>
+                <button onClick={() => runFlow(f.id)} disabled={flowRunning === f.id} style={{ padding: "5px 12px", fontSize: 11, fontWeight: 600, color: "#fff", background: "#002EFF", border: "none", borderRadius: 6, cursor: "pointer", fontFamily: HG, opacity: flowRunning === f.id ? 0.6 : 1 }}>
+                  {flowRunning === f.id ? "Running…" : "Run"}
+                </button>
               </div>
-              <span className="pill">{f.nodes.filter((n) => n.type === "agent").length} agents</span>
-              <button onClick={() => router.push(`/automations/canvas/${f.id}`)} className="btn sm">Open</button>
-              <button onClick={() => runFlow(f.id)} disabled={flowRunning === f.id} className="btn pri sm">
-                {flowRunning === f.id ? "Running…" : "Run"}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        </section>
 
-      {/* ── Agents tab ───────────────────────────────────────────── */}
-      {tab === "agents" && (
-        <CustomAgentsPanel embedded externalTriggerNew={agentNewTrigger} />
-      )}
-
-      {/* ── Templates tab ────────────────────────────────────────── */}
-      {tab === "templates" && (
-        <div style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
-          {overviewStatus === "loading" && (
-            <div style={{ padding: "48px 0", display: "flex", justifyContent: "center" }}>
-              <div style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid var(--bd2)", borderTopColor: "var(--blue)", animation: "spin 0.7s linear infinite" }} />
-            </div>
-          )}
-          {overviewStatus === "error" && (
-            <div className="err-banner" style={{ borderRadius: 10 }}>
-              Could not load templates. Refresh and try again.
-            </div>
-          )}
-          {overviewStatus === "ready" && overview && (
-            <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
-                {overview.templates.map((t) => (
-                  <div key={t.key} style={{
-                    background: "var(--surface)", border: "1px solid var(--bd)",
-                    borderRadius: 12, padding: "16px 18px",
-                    backdropFilter: "var(--glass-blur)",
-                    display: "flex", flexDirection: "column", gap: 10,
-                  }}>
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.3 }}>{t.title}</span>
-                      <span className={`pill ${t.installed ? "green" : "blue"}`} style={{ flexShrink: 0 }}>
-                        {t.installed ? "Installed" : t.category || "Template"}
-                      </span>
-                    </div>
-                    <p style={{ margin: 0, fontSize: 13, color: "var(--fm)", lineHeight: 1.55, flex: 1 }}>{t.summary}</p>
-                    {t.integrations?.length > 0 && (
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                        {t.integrations.map((integration) => {
-                          const connected = Boolean(connectorState[integration]);
-                          return (
-                            <span key={`${t.key}:${integration}`} className={`pill ${connected ? "green" : "amber"}`}>
-                              {integration.replace(/_/g, " ")}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    )}
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button onClick={() => installTemplate(t.key)} disabled={!!busyKey} className="btn sm">
-                        {busyKey === `install:${t.key}` ? "Installing…" : t.installed ? "Reinstall" : "Install"}
+        {/* Templates */}
+        {overviewStatus === "ready" && overview && overview.templates.length > 0 && (
+          <section>
+            <h2 style={{ margin: "0 0 14px", fontSize: 13, fontWeight: 700, color: "#6f7b98", letterSpacing: ".06em", textTransform: "uppercase" }}>Templates</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
+              {overview.templates.map((t) => (
+                <div key={t.key} style={{ background: "#0A0D17", border: "1px solid rgba(255,255,255,.07)", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#EDF1FB", lineHeight: 1.3 }}>{t.title}</span>
+                    <span style={chipStyle(t.installed ? "active" : "draft")}>{t.installed ? "Installed" : t.category || "Template"}</span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: 12, color: "#6f7b98", lineHeight: 1.55, flex: 1 }}>{t.summary}</p>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => installTemplate(t.key)} disabled={!!busyKey} style={{ padding: "5px 12px", fontSize: 11, fontWeight: 600, color: "#EDF1FB", background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.10)", borderRadius: 6, cursor: "pointer", fontFamily: HG, opacity: busyKey ? 0.6 : 1 }}>
+                      {busyKey === `install:${t.key}` ? "Installing…" : t.installed ? "Reinstall" : "Install"}
+                    </button>
+                    {t.installed && (
+                      <button onClick={() => runTemplate(t.key)} disabled={!!busyKey} style={{ padding: "5px 12px", fontSize: 11, fontWeight: 600, color: "#fff", background: "#002EFF", border: "none", borderRadius: 6, cursor: "pointer", fontFamily: HG, opacity: busyKey ? 0.6 : 1 }}>
+                        {busyKey === `run:${t.key}` ? "Running…" : "Run"}
                       </button>
-                      {t.installed && (
-                        <button onClick={() => runTemplate(t.key)} disabled={!!busyKey} className="btn pri sm">
-                          {busyKey === `run:${t.key}` ? "Running…" : "Run"}
-                        </button>
-                      )}
-                      {t.integrations?.some((i) => !connectorState[i]) && (
-                        <button onClick={() => router.push("/integrations")} className="btn sm" style={{ color: "var(--amber)", borderColor: "var(--ab)" }}>
-                          Connect
-                        </button>
-                      )}
-                    </div>
+                    )}
                   </div>
-                ))}
-              </div>
-
-              {/* Installed template flows */}
-              {overview.workflows.length > 0 && (
-                <section>
-                  <h2 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700 }}>Installed flows</h2>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {overview.workflows.map((w, i) => {
-                      const linked = overview.templates.find((t) => t.path === w.id);
-                      return (
-                        <div key={w.id} className="sc-row" style={{
-                          "--i": i,
-                          display: "grid",
-                          gridTemplateColumns: "minmax(0, 1fr) auto auto",
-                          alignItems: "center",
-                          gap: 12,
-                          padding: "12px 16px",
-                          background: "var(--surface)",
-                          border: "1px solid var(--bd)",
-                          borderRadius: 10,
-                          backdropFilter: "var(--glass-blur)",
-                        } as React.CSSProperties}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.name}</div>
-                            {formatDate(w.updated_at) && (
-                              <div style={{ marginTop: 2, fontSize: 11, color: "var(--fm)" }}>Updated {formatDate(w.updated_at)}</div>
-                            )}
-                          </div>
-                          <span className={`pill ${w.active ? "green" : ""}`}>{w.active ? "Active" : "Draft"}</span>
-                          <div style={{ display: "flex", gap: 8 }}>
-                            {linked?.installed && (
-                              <button onClick={() => runTemplate(linked.key)} disabled={!!busyKey} className="btn pri sm">
-                                {busyKey === `run:${linked.key}` ? "Running…" : "Run"}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
-              )}
-            </>
-          )}
-        </div>
-      )}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
