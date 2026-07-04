@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { getStacks, submitGoal, ingestAttachment, type AgentStackTemplate } from "@/lib/api";
 import { useDevUser } from "@/lib/use-dev-user";
 import BusinessQuizModal, { type QuizResult, STACK_MAP, BIZ_TYPES } from "@/components/BusinessQuizModal";
-import OrbitLayer from "@/components/OrbitLayer";
 
 export default function NewGoalView() {
   const router = useRouter();
@@ -115,7 +114,6 @@ export default function NewGoalView() {
     <div style={{ flex: 1, overflowY: "auto" }}>
       {showQuiz && <BusinessQuizModal onComplete={onQuizComplete} onSkip={onQuizSkip} />}
       <div className="new-wrap new-wrap-wide new-orbit-stage">
-        <OrbitLayer />
         {displayCompany && (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "4px 10px", borderRadius: 20, border: "1px solid var(--bd)", background: "var(--surface)", fontSize: 10.5, color: "var(--fd)", marginBottom: 16 }}>
             <div style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)" }} />
