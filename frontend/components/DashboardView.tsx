@@ -309,12 +309,13 @@ export default function DashboardView() {
         @keyframes dv-fade { from { opacity: 0; } to { opacity: 1; } }
         @keyframes sc-shimmer { 0%,100% { opacity: 1; } 50% { opacity: .6; } }
         @keyframes sc-indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
-        .dv-run-row { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; cursor: pointer; transition: background .12s; }
-        .dv-run-row:hover { background: rgba(255,255,255,0.04); }
+        .dv-run-row { display: flex; align-items: center; gap: 12px; padding: 8px 4px; border-top: 1px solid rgba(255,255,255,.06); cursor: pointer; transition: background .12s; }
+        .dv-run-row:first-child { border-top: none; }
+        .dv-run-row:hover { background: rgba(255,255,255,0.03); }
         .sc-progress-track { height: 3px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; margin-top: 6px; }
         .sc-progress-fill { height: 100%; width: 100%; border-radius: 3px; transform-origin: left; transition: transform 0.8s ease; }
         .sc-progress-indeterminate { height: 100%; width: 35%; border-radius: 3px; animation: sc-indeterminate 1.4s ease-in-out infinite; }
-        .dash-copilot { position: sticky; bottom: 18px; margin: 0 18px 18px; border: 1px solid rgba(255,255,255,0.08); background: rgba(10,13,23,0.96); backdrop-filter: blur(14px); box-shadow: 0 18px 48px rgba(0,0,0,.3); border-radius: 14px; z-index: 20; overflow: hidden; }
+        .dash-copilot { border: 1px solid rgba(255,255,255,.1); background: #0A0D17; border-radius: 16px; overflow: hidden; }
         .dash-copilot-thread { max-height: 240px; overflow-y: auto; padding: 12px 12px 0; display: flex; flex-direction: column; gap: 8px; }
         .dash-copilot-row { display: flex; gap: 8px; align-items: flex-start; }
         .dash-copilot-row.is-founder { justify-content: flex-end; }
@@ -331,30 +332,22 @@ export default function DashboardView() {
         .dash-copilot-thinking span { width: 5px; height: 5px; border-radius: 999px; background: #7CFFC6; opacity: .4; animation: sc-shimmer 1s ease-in-out infinite; }
         .dash-copilot-thinking span:nth-child(2) { animation-delay: .12s; }
         .dash-copilot-thinking span:nth-child(3) { animation-delay: .24s; }
-        .dash-copilot-bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px 12px; }
+        .dash-copilot-bar { display: flex; align-items: center; gap: 8px; padding: 7px 7px 7px 16px; }
         .dash-copilot-ctx { font-size: 10px; color: rgba(237,241,251,0.4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; flex-shrink: 1; }
-        .dash-copilot-input { flex: 1; min-width: 0; height: 34px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #EDF1FB; padding: 0 11px; font-size: 11px; outline: none; font-family: inherit; }
+        .dash-copilot-input { flex: 1; min-width: 0; background: transparent; border: none; color: #EDF1FB; padding: 0 8px; font-size: 13.5px; outline: none; font-family: inherit; }
         .dash-copilot-input::placeholder { color: rgba(237,241,251,0.3); }
-        .dash-copilot-input:focus { border-color: rgba(0,46,255,0.5); }
-        .dash-copilot-btn { height: 34px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #EDF1FB; padding: 0 11px; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap; font-family: inherit; }
-        .dash-copilot-btn.primary { background: #002EFF; border-color: #002EFF; width: 34px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .dash-copilot-btn { height: 36px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #EDF1FB; padding: 0 11px; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap; font-family: inherit; }
+        .dash-copilot-btn.primary { background: #002EFF; border-color: #002EFF; width: 36px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .dash-copilot-btn:disabled { opacity: 0.4; cursor: default; }
         @media (max-width: 700px) { .dv-body { flex-direction: column !important; } .dv-goal-col { flex: none !important; width: 100% !important; } }
       `}</style>
 
       <div style={{ flex: 1, overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
 
-        {/* ── Hero: gradient variant ── */}
-        <div style={{ position: "relative", height: 184, overflow: "hidden", background: "#0a17c9" }}>
-          {/* Iridescent sweep */}
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(118deg,transparent 26%,#1fd9cf 44%,#7CFFC6 51%,#dfffff 54%,#28c6e8 60%,transparent 76%)", opacity: 0.9, mixBlendMode: "screen" }} />
-          {/* Purple accent */}
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(118deg,transparent 62%,#7D8FFF 72%,transparent 84%)", opacity: 0.5, mixBlendMode: "screen" }} />
-          {/* Noise texture */}
-          <div style={{ position: "absolute", inset: 0, backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")", backgroundSize: "150px", opacity: 0.3, mixBlendMode: "overlay" }} />
-          {/* Left fade */}
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(5,7,14,.8) 0%,rgba(5,7,14,.4) 38%,transparent 66%)" }} />
-          {/* Content */}
+        {/* ── Hero: lineart variant ── */}
+        <div style={{ position: "relative", height: 224, overflow: "hidden", background: "#0a1b6b" }}>
+          <img src="/hero-lineart.png" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 25%" } as React.CSSProperties} />
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(5,7,14,.82) 0%,rgba(5,7,14,.44) 42%,transparent 72%)" }} />
           <div style={{ position: "relative", zIndex: 2, padding: "28px 32px", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
             <div>
               <div style={{ fontSize: 11, letterSpacing: ".1em", color: "rgba(255,255,255,.7)", fontWeight: 600, textTransform: "uppercase" }}>Dashboard</div>
@@ -388,7 +381,7 @@ export default function DashboardView() {
         )}
 
         {/* ── Body: two-column layout ── */}
-        <div className="dv-body" style={{ display: "flex", gap: 16, padding: "18px", alignItems: "flex-start" }}>
+        <div className="dv-body" style={{ display: "flex", gap: 16, padding: "18px 30px", alignItems: "flex-start" }}>
 
           {/* ── Active Goal card (330px) ── */}
           <div className="dv-goal-col" style={{ flex: "0 0 330px", minWidth: 0 }}>
@@ -424,25 +417,8 @@ export default function DashboardView() {
 
                 return (
                   <div>
-                    <div style={{ display: "flex", gap: 14, alignItems: "flex-start", marginBottom: 14 }}>
-                      {/* SVG donut ring */}
-                      <svg width={58} height={58} viewBox="0 0 58 58" style={{ flexShrink: 0 }}>
-                        <circle cx={29} cy={29} r={25} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={5} />
-                        <circle cx={29} cy={29} r={25} fill="none"
-                          stroke={accentColor}
-                          strokeWidth={5}
-                          strokeLinecap="round"
-                          strokeDasharray={circumference}
-                          strokeDashoffset={phasesTotal > 0 ? dashOffset : circumference * 0.83}
-                          transform="rotate(-90 29 29)"
-                          style={{ transition: "stroke-dashoffset 0.8s ease" }}
-                        />
-                        <text x={29} y={33} textAnchor="middle" fill={accentColor} fontSize={10} fontWeight={700} fontFamily="inherit">
-                          {isDone ? "✓" : phasesTotal > 0 ? `${Math.round(progress * 100)}%` : "…"}
-                        </text>
-                      </svg>
-
-                      <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+                      <div style={{ flex: 1, minWidth: 0, marginRight: 14 }}>
                         <div style={{ fontSize: 12, fontWeight: 600, color: "#EDF1FB", lineHeight: 1.45, marginBottom: 6, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                           {cleanTitle}
                         </div>
@@ -450,6 +426,27 @@ export default function DashboardView() {
                           {phasesDone > 0 && <span style={{ color: "#7CFFC6" }}>✓ {phasesDone} done</span>}
                           {(digest?.counts.phases_pending ?? 0) > 0 && <span>{digest?.counts.phases_pending} queued</span>}
                           {(digest?.counts.phases_total ?? 0) === 0 && isRunning && <span style={{ color: "#7D8FFF" }}>Initializing…</span>}
+                        </div>
+                      </div>
+                      {/* SVG donut ring — RIGHT side */}
+                      <div style={{ position: "relative", width: 58, height: 58, flexShrink: 0 }}>
+                        <svg width={58} height={58} viewBox="0 0 58 58">
+                          <circle cx={29} cy={29} r={25} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={5} />
+                          <circle cx={29} cy={29} r={25} fill="none"
+                            stroke={accentColor}
+                            strokeWidth={5}
+                            strokeLinecap="round"
+                            strokeDasharray={circumference}
+                            strokeDashoffset={phasesTotal > 0 ? dashOffset : circumference * 0.83}
+                            transform="rotate(-90 29 29)"
+                            style={{ transition: "stroke-dashoffset 0.8s ease" }}
+                          />
+                        </svg>
+                        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", lineHeight: 1.1 }}>
+                          <span style={{ fontSize: 15, fontWeight: 700, color: accentColor }}>
+                            {isDone ? "✓" : phasesTotal > 0 ? phasesDone : "…"}
+                          </span>
+                          {phasesTotal > 0 && <span style={{ fontSize: 9, color: "#6f7b98" }}>/ {phasesTotal}</span>}
                         </div>
                       </div>
                     </div>
@@ -506,7 +503,7 @@ export default function DashboardView() {
                     })(),
                   },
                 ].map(({ label, value, accent }) => (
-                  <div key={label} style={{ background: "#0A0D17", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8, padding: "11px 13px" }}>
+                  <div key={label} style={{ background: "#070911", border: "1px solid rgba(255,255,255,.06)", borderRadius: 9, padding: "12px" }}>
                     <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "rgba(237,241,251,0.3)", marginBottom: 5 }}>{label}</div>
                     <div style={{ fontSize: 20, fontWeight: 700, color: accent || "#EDF1FB", lineHeight: 1 }}>{value}</div>
                   </div>
@@ -603,12 +600,14 @@ export default function DashboardView() {
                           onClick={() => router.push(`/s/${s.session_id}`)}
                         >
                           <span style={{ width: 7, height: 7, borderRadius: "50%", background: dotColor(s.status), flexShrink: 0, animation: s.status === "running" ? "sc-shimmer 1.5s ease-in-out infinite" : undefined }} />
-                          <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: "#EDF1FB", fontWeight: s.status === "running" ? 600 : 400, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {child && <span style={{ fontSize: 9, color: "#7D8FFF", marginRight: 5, fontWeight: 700 }}>↳</span>}
-                            {extractGoalTitle(s.goal || "Untitled run")}
-                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13.5, fontWeight: 600, color: "#EDF1FB", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.3 }}>
+                              {child && <span style={{ fontSize: 9, color: "#7D8FFF", marginRight: 5, fontWeight: 700 }}>↳</span>}
+                              {extractGoalTitle(s.goal || "Untitled run")}
+                            </div>
+                            <div style={{ fontSize: 11, color: "#6f7b98", marginTop: 1 }}>{ago(s.created_at)}</div>
+                          </div>
                           {chip(s.status)}
-                          <span style={{ fontSize: 10, color: "rgba(237,241,251,0.22)", flexShrink: 0 }}>{ago(s.created_at)}</span>
                           <button
                             title={pendingDel.has(s.session_id) ? "Click again to confirm" : "Delete"}
                             disabled={deleting.has(s.session_id)}
@@ -652,21 +651,21 @@ export default function DashboardView() {
         </div>
 
         {/* ── Custom agent runs banner ── */}
-        <div style={{ padding: "0 18px 16px" }}>
+        <div style={{ padding: "0 30px 16px" }}>
           <div style={{ background: "#0A0D17", border: "1px solid rgba(255,255,255,0.07)", borderRadius: 10, padding: "12px 16px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: customSessions.length > 0 ? 10 : 0 }}>
               <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "rgba(237,241,251,0.3)" }}>
                 Custom agent runs{customSessions.length > 0 ? ` · ${customSessions.length}` : ""}
               </div>
-              <button onClick={() => router.push("/agents")} style={{ fontSize: 11, color: "#002EFF", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>
-                Manage agents →
+              <button onClick={() => router.push("/automations")} style={{ fontSize: 11, color: "#002EFF", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>
+                Manage automations →
               </button>
             </div>
 
             {customSessions.length === 0 ? (
               <div style={{ fontSize: 11, color: "rgba(237,241,251,0.25)" }}>
                 No custom agent runs yet.{" "}
-                <button onClick={() => router.push("/agents")} style={{ background: "none", border: "none", color: "#002EFF", cursor: "pointer", padding: 0, fontWeight: 600, fontSize: 11 }}>
+                <button onClick={() => router.push("/automations")} style={{ background: "none", border: "none", color: "#002EFF", cursor: "pointer", padding: 0, fontWeight: 600, fontSize: 11 }}>
                   Create one →
                 </button>
               </div>
@@ -689,73 +688,80 @@ export default function DashboardView() {
         </div>
 
         {/* DashboardCanvas */}
-        <div style={{ padding: "0 18px 40px" }}>
+        <div style={{ padding: "0 30px 24px" }}>
           <DashboardCanvas founderId={userId} />
         </div>
 
         {/* ── Copilot ── */}
-        <div className="dash-copilot">
-          {copilotOpen && (
-            <div className="dash-copilot-thread">
-              {copilot.length === 0 && (
-                <div className="dash-copilot-bubble">
-                  {copilotSession
-                    ? `Ask Astra from the dashboard. Copilot is attached to "${copilotTitle}" and can inspect run state, approvals, deployment issues, company brain context, and steer the active agents from here.`
-                    : "Start a run to activate dashboard copilot context."}
-                </div>
-              )}
-              {copilot.map((message, index) => (
-                <div key={index} className={`dash-copilot-row ${message.role === "founder" ? "is-founder" : "is-astra"}`}>
-                  {message.role !== "founder" && <span className="dash-copilot-avatar">A</span>}
-                  <div className="dash-copilot-bubble">
-                    {message.content}
-                    {message.actions && message.actions.length > 0 && (
-                      <div className="dash-copilot-actions" aria-label="Copilot actions">
-                        {message.actions.map((action, actionIndex) => (
-                          <div key={`${action.tool}-${actionIndex}`} className={`dash-copilot-action is-${action.tone || "info"}`}>
-                            <div className="dash-copilot-action-label">{action.label}</div>
-                            {action.detail && <div className="dash-copilot-action-detail">{action.detail}</div>}
+        <div style={{ padding: "0 30px 32px" }}>
+          <div style={{ borderTop: "1px solid rgba(255,255,255,.06)", paddingTop: 16 }}>
+            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "rgba(237,241,251,0.3)", marginBottom: 10 }}>Copilot</div>
+            <div className="dash-copilot">
+              {copilotOpen && (
+                <div className="dash-copilot-thread">
+                  {copilot.length === 0 && (
+                    <div className="dash-copilot-bubble">
+                      {copilotSession
+                        ? `Ask Astra from the dashboard. Copilot is attached to "${copilotTitle}" and can inspect run state, approvals, deployment issues, company brain context, and steer the active agents from here.`
+                        : "Start a run to activate dashboard copilot context."}
+                    </div>
+                  )}
+                  {copilot.map((message, index) => (
+                    <div key={index} className={`dash-copilot-row ${message.role === "founder" ? "is-founder" : "is-astra"}`}>
+                      {message.role !== "founder" && <span className="dash-copilot-avatar">A</span>}
+                      <div className="dash-copilot-bubble">
+                        {message.content}
+                        {message.actions && message.actions.length > 0 && (
+                          <div className="dash-copilot-actions" aria-label="Copilot actions">
+                            {message.actions.map((action, actionIndex) => (
+                              <div key={`${action.tool}-${actionIndex}`} className={`dash-copilot-action is-${action.tone || "info"}`}>
+                                <div className="dash-copilot-action-label">{action.label}</div>
+                                {action.detail && <div className="dash-copilot-action-detail">{action.detail}</div>}
+                              </div>
+                            ))}
                           </div>
-                        ))}
+                        )}
                       </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {copilotBusy && (
-                <div className="dash-copilot-row is-astra">
-                  <span className="dash-copilot-avatar">A</span>
-                  <div className="dash-copilot-thinking"><span /><span /><span /></div>
+                    </div>
+                  ))}
+                  {copilotBusy && (
+                    <div className="dash-copilot-row is-astra">
+                      <span className="dash-copilot-avatar">A</span>
+                      <div className="dash-copilot-thinking"><span /><span /><span /></div>
+                    </div>
+                  )}
                 </div>
               )}
+              <div className="dash-copilot-bar">
+                <img
+                  src="/logo.png"
+                  style={{ width: 17, height: 17, opacity: 0.75, flexShrink: 0, cursor: "pointer" } as React.CSSProperties}
+                  onClick={() => setCopilotOpen(v => !v)}
+                  alt="Astra"
+                />
+                {copilotSession && <span className="dash-copilot-ctx">{copilotTitle}</span>}
+                <input
+                  ref={copilotInputRef}
+                  className="dash-copilot-input"
+                  placeholder={copilotSession ? 'Ask Astra — "what needs attention?"' : "Start a run to enable copilot"}
+                  disabled={!copilotSession || copilotBusy}
+                  onFocus={() => setCopilotOpen(true)}
+                  onKeyDown={event => {
+                    if (event.key === "Enter") { event.preventDefault(); void sendCopilot(); }
+                  }}
+                />
+                <button
+                  className="dash-copilot-btn primary"
+                  disabled={!copilotSession || copilotBusy}
+                  onClick={() => { setCopilotOpen(true); void sendCopilot(); }}
+                  title="Send"
+                >
+                  <svg width={13} height={13} viewBox="0 0 13 13" fill="none">
+                    <path d="M6.5 1.5L6.5 11.5M6.5 1.5L2.5 5.5M6.5 1.5L10.5 5.5" stroke="white" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
             </div>
-          )}
-          <div className="dash-copilot-bar">
-            <div
-              style={{ width: 26, height: 26, borderRadius: "50%", background: "linear-gradient(135deg, #002EFF, #7CFFC6)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0, cursor: "pointer" }}
-              onClick={() => setCopilotOpen(v => !v)}
-            >A</div>
-            {copilotSession && <span className="dash-copilot-ctx">{copilotTitle}</span>}
-            <input
-              ref={copilotInputRef}
-              className="dash-copilot-input"
-              placeholder={copilotSession ? 'Ask Astra — "what needs attention?"' : "Start a run to enable copilot"}
-              disabled={!copilotSession || copilotBusy}
-              onFocus={() => setCopilotOpen(true)}
-              onKeyDown={event => {
-                if (event.key === "Enter") { event.preventDefault(); void sendCopilot(); }
-              }}
-            />
-            <button
-              className="dash-copilot-btn primary"
-              disabled={!copilotSession || copilotBusy}
-              onClick={() => { setCopilotOpen(true); void sendCopilot(); }}
-              title="Send"
-            >
-              <svg width={13} height={13} viewBox="0 0 13 13" fill="none">
-                <path d="M6.5 1.5L6.5 11.5M6.5 1.5L2.5 5.5M6.5 1.5L10.5 5.5" stroke="white" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
           </div>
         </div>
 
