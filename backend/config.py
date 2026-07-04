@@ -1,7 +1,27 @@
+import re
+
 from pydantic_settings import BaseSettings
+
+# Field-name substrings that mark a value as a credential. Used to redact
+# Settings' repr/str — this class holds ~30 live API keys/tokens/secrets as
+# plain strings, and pydantic's default repr prints every field verbatim.
+# That's exactly how a real OpenRouter/GitHub/Supabase/Gemini/Vercel/SendGrid/
+# Composio/Clerk key + a test-email IMAP password ended up in plaintext in an
+# AttributeError message during a test run. Redact by name pattern (not a
+# per-field allowlist) so a newly added secret field is covered automatically.
+_SECRET_FIELD_RE = re.compile(
+    r"key|secret|token|password|pass$|_sid$|card_number|card_expiry|card_name|billing_",
+    re.IGNORECASE,
+)
 
 
 class Settings(BaseSettings):
+    def __repr_args__(self):
+        return [
+            (name, "***REDACTED***" if value and _SECRET_FIELD_RE.search(name) else value)
+            for name, value in super().__repr_args__()
+        ]
+
     supabase_url: str = ""
     supabase_key: str = ""
     # Model that drives the coding agent (caveman) for technical-agent MVP builds.
