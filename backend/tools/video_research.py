@@ -33,7 +33,7 @@ def _yt_dlp(*args: str) -> dict[str, Any] | list[Any] | None:
         return None
 
 
-def _fetch_transcript(video_id: str, max_chars: int = 4000) -> str:
+def _fetch_transcript(video_id: str, max_chars: int | None = 4000) -> str:
     """youtube-transcript-api rewrote its API in v1.0 (static .get_transcript()
     classmethod -> instance .fetch()) and requirements.txt pins an open-ended
     >=0.6.2, so which shape is installed depends on when the image was last
@@ -54,17 +54,25 @@ def _get_transcript(video_id: str) -> str:
     return _fetch_transcript(video_id, max_chars=4000)
 
 
-def youtube_get_transcript(url_or_video_id: str, max_chars: int = 20000) -> dict[str, Any]:
+def youtube_get_transcript(url_or_video_id: str, max_chars: int = 30_000) -> dict[str, Any]:
     """Fetch one YouTube video's full transcript + basic metadata by URL or video ID.
     Public videos only, no login/cookies — for "summarize this video" style requests
     where youtube_research's search-and-summarize flow doesn't fit (you already have
-    the exact video)."""
+    the exact video).
+
+    max_chars defaults to 30,000 (~40-45 min of speech) — enough to cover most videos
+    in full without every call spending tokens on a worst-case multi-hour transcript by
+    default. If total_chars > max_chars, the response is marked truncated AND reports
+    the true total_chars — call again with a higher max_chars only if you actually need
+    the rest (e.g. the founder explicitly asked for the full transcript of a long video).
+    Don't default to a huge max_chars "just in case" — that trades a real cutoff risk
+    for wasting tokens on every short video too."""
     video_id = _extract_video_id(url_or_video_id)
     if not video_id:
         return {"ok": False, "error": f"Could not parse a YouTube video ID from: {url_or_video_id}"}
 
-    transcript = _fetch_transcript(video_id, max_chars=max_chars)
-    if not transcript:
+    full_transcript = _fetch_transcript(video_id, max_chars=None)
+    if not full_transcript:
         return {
             "ok": False,
             "video_id": video_id,
@@ -73,6 +81,7 @@ def youtube_get_transcript(url_or_video_id: str, max_chars: int = 20000) -> dict
         }
 
     meta = _yt_dlp(f"https://youtu.be/{video_id}", "--dump-json", "--no-playlist", "--skip-download") or {}
+    total_chars = len(full_transcript)
     return {
         "ok": True,
         "video_id": video_id,
@@ -80,8 +89,9 @@ def youtube_get_transcript(url_or_video_id: str, max_chars: int = 20000) -> dict
         "title": meta.get("title", ""),
         "channel": meta.get("uploader") or meta.get("channel", ""),
         "duration": _format_duration(meta.get("duration")),
-        "transcript": transcript,
-        "truncated": len(transcript) >= max_chars,
+        "transcript": full_transcript[:max_chars],
+        "total_chars": total_chars,
+        "truncated": total_chars > max_chars,
     }
 
 

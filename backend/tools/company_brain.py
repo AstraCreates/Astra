@@ -443,7 +443,12 @@ def _record(
         "kind": kind or SOURCE_CATALOG.get(source, {}).get("kind", "note"),
         "title": title.strip()[:180] or "Untitled",
         "url": url,
-        "content": content[:8000],
+        # Store-time safety ceiling only, not a token-budget lever — storing content
+        # costs disk, not LLM tokens. The actual cost control happens at retrieval
+        # (format_company_brain_context/company_brain_agent_context excerpt each
+        # record down to ~360-700 chars before it ever reaches a prompt); truncating
+        # here too just destroys data permanently for no token savings.
+        "content": content[:50_000],
         "canonical": canonical,
         "stale_risk": stale_risk,
         "status": status,
