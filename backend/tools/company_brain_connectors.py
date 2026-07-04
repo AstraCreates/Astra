@@ -117,15 +117,15 @@ def _github_repo_activity(headers: dict[str, str], owner: str, repo: str, full_n
                 raw = base64.b64decode(str(readme["content"]).replace("\n", "")).decode("utf-8", errors="replace")
                 records.append({
                     "title": f"README: {full_name}",
-                    "content": raw[:8000],
+                    "content": raw,
                     "url": readme.get("html_url") or "",
                     "kind": "readme",
                     "canonical": True,
                     "domain": "architecture",
                     "repo": full_name,
                 })
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("GitHub README import failed for %s: %s", full_name, exc)
 
     for endpoint, kind in (("issues", "issue"), ("pulls", "pull_request")):
         try:
@@ -161,7 +161,8 @@ def _connector_cursor(founder_id: str, source: str) -> str:
     try:
         from backend.connector_sync_ledger import get_connector_cursor
         return get_connector_cursor(founder_id, source)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Connector cursor lookup failed for %s/%s: %s", founder_id, source, exc)
         return ""
 
 
@@ -249,7 +250,8 @@ def _slack_thread_text(headers: dict[str, str], channel_id: str, thread_ts: str 
             headers,
             {"channel": channel_id, "ts": thread_ts, "limit": 20},
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning("Slack thread fetch failed for channel=%s thread=%s: %s", channel_id, thread_ts, exc)
         return "", cursor
     if not isinstance(replies, dict) or not replies.get("ok"):
         return "", cursor
@@ -420,7 +422,8 @@ def _notion_page_text(headers: dict[str, str], page_id: str | None) -> str:
         return ""
     try:
         data = _safe_get(f"https://api.notion.com/v1/blocks/{page_id}/children", headers, {"page_size": 50})
-    except Exception:
+    except Exception as exc:
+        logger.warning("Notion page text fetch failed for %s: %s", page_id, exc)
         return ""
     if not isinstance(data, dict):
         return ""
@@ -503,8 +506,9 @@ def _google_export_text(headers: dict[str, str], file_id: str | None, mime_type:
             timeout=DEFAULT_TIMEOUT,
         )
         resp.raise_for_status()
-        return resp.text[:8000]
-    except Exception:
+        return resp.text
+    except Exception as exc:
+        logger.warning("Google Drive export failed for %s (%s): %s", file_id, mime_type, exc)
         return ""
 
 
@@ -590,7 +594,7 @@ def import_obsidian(
                             frontmatter[key.strip()] = value.strip().strip('"')
             records.append({
                 "title": title,
-                "content": text[:8000],
+                "content": text,
                 "url": str(note_file),
                 "kind": frontmatter.get("kind") or "note",
                 "canonical": str(frontmatter.get("canonical", "")).lower() in {"true", "yes", "1"},

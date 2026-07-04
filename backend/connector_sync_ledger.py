@@ -9,9 +9,24 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any
+
+_ledger_locks: dict[str, threading.RLock] = {}
+_ledger_locks_guard = threading.Lock()
+
+
+def _ledger_lock(founder_id: str) -> threading.RLock:
+    lock = _ledger_locks.get(founder_id)
+    if lock is None:
+        with _ledger_locks_guard:
+            lock = _ledger_locks.get(founder_id)
+            if lock is None:
+                lock = threading.RLock()
+                _ledger_locks[founder_id] = lock
+    return lock
 
 
 def _root() -> Path:
@@ -67,52 +82,53 @@ def record_connector_sync(
     error: str = "",
     mode: str = "import",
 ) -> dict[str, Any]:
-    data = _load(founder_id)
-    sources = data.setdefault("sources", {})
-    current = sources.get(source) or {
-        "source": source,
-        "status": "idle",
-        "cursor": "",
-        "last_success_at": None,
-        "last_error_at": None,
-        "last_error": "",
-        "total_imported": 0,
-        "total_changed_records": 0,
-        "webhook_events": 0,
-        "history": [],
-    }
-    now = _now()
-    current["status"] = status
-    current["last_run_at"] = now
-    current["mode"] = mode
-    current["last_imported"] = int(imported or 0)
-    current["last_changed_records"] = int(changed_records or 0)
-    current["total_imported"] = int(current.get("total_imported") or 0) + max(0, int(imported or 0))
-    current["total_changed_records"] = int(current.get("total_changed_records") or 0) + max(0, int(changed_records or 0))
-    if cursor is not None:
-        current["cursor"] = cursor
-    if status == "ok":
-        current["last_success_at"] = now
-        current["last_error"] = ""
-    elif status == "error":
-        current["last_error_at"] = now
-        current["last_error"] = error
-    if mode == "webhook":
-        current["webhook_events"] = int(current.get("webhook_events") or 0) + 1
-    history = list(current.get("history") or [])
-    history.insert(0, {
-        "at": now,
-        "status": status,
-        "mode": mode,
-        "imported": imported,
-        "changed_records": changed_records,
-        "cursor": cursor if cursor is not None else current.get("cursor", ""),
-        "error": error,
-    })
-    current["history"] = history[:50]
-    sources[source] = current
-    _save(founder_id, data)
-    return current
+    with _ledger_lock(founder_id):
+        data = _load(founder_id)
+        sources = data.setdefault("sources", {})
+        current = sources.get(source) or {
+            "source": source,
+            "status": "idle",
+            "cursor": "",
+            "last_success_at": None,
+            "last_error_at": None,
+            "last_error": "",
+            "total_imported": 0,
+            "total_changed_records": 0,
+            "webhook_events": 0,
+            "history": [],
+        }
+        now = _now()
+        current["status"] = status
+        current["last_run_at"] = now
+        current["mode"] = mode
+        current["last_imported"] = int(imported or 0)
+        current["last_changed_records"] = int(changed_records or 0)
+        current["total_imported"] = int(current.get("total_imported") or 0) + max(0, int(imported or 0))
+        current["total_changed_records"] = int(current.get("total_changed_records") or 0) + max(0, int(changed_records or 0))
+        if cursor is not None:
+            current["cursor"] = cursor
+        if status == "ok":
+            current["last_success_at"] = now
+            current["last_error"] = ""
+        elif status == "error":
+            current["last_error_at"] = now
+            current["last_error"] = error
+        if mode == "webhook":
+            current["webhook_events"] = int(current.get("webhook_events") or 0) + 1
+        history = list(current.get("history") or [])
+        history.insert(0, {
+            "at": now,
+            "status": status,
+            "mode": mode,
+            "imported": imported,
+            "changed_records": changed_records,
+            "cursor": cursor if cursor is not None else current.get("cursor", ""),
+            "error": error,
+        })
+        current["history"] = history[:50]
+        sources[source] = current
+        _save(founder_id, data)
+        return current
 
 
 def record_connector_webhook(

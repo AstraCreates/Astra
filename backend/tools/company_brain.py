@@ -1367,8 +1367,8 @@ def search_company_brain(
             graph_result = graph_rag_search(founder_id, query, limit=limit)
             if graph_result.get("ok") and graph_result.get("count", 0) > 0:
                 return {**graph_result, "retrieval": "graph_rag_v2"}
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("graph_rag_v2 search failed for founder=%s query=%r: %s", founder_id, query, exc)
     data = _load(founder_id, company_id)
     terms = [t for t in re.findall(r"[a-zA-Z0-9_-]+", query.lower()) if len(t) > 2]
     scored: list[tuple[float, dict[str, Any]]] = []

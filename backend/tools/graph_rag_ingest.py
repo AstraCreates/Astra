@@ -4,12 +4,15 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import logging
 import re
 import time
 from collections import Counter, defaultdict
 from typing import Any
 
 from backend.tools.graph_rag_v2 import _connect, context_snapshot_path, init_graph_store
+
+logger = logging.getLogger(__name__)
 
 
 ENTITY_STOPWORDS = {
@@ -154,14 +157,17 @@ def _llm_extract_entities(title: str, combined: str, limit: int) -> list[dict[st
     )
     try:
         raw = generate(prompt, max_tokens=500, model="fast", temperature=0.2, json_mode=True)
-    except Exception:
+    except Exception as exc:
+        logger.warning("graph_rag entity extraction LLM call failed for %r: %s", title[:80], exc)
         return []
     m = re.search(r"\[.*\]", raw or "", re.DOTALL)
     if not m:
+        logger.warning("graph_rag entity extraction returned no JSON array for %r", title[:80])
         return []
     try:
         items = json.loads(m.group(0))
-    except Exception:
+    except Exception as exc:
+        logger.warning("graph_rag entity extraction JSON parse failed for %r: %s", title[:80], exc)
         return []
     out: list[dict[str, str]] = []
     seen: set[str] = set()

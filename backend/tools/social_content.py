@@ -317,7 +317,7 @@ BEST PRIMARY TEXT: <primary text>"""
         "ad_name": f"{company_name} -- {best_headline[:40]}",
         "headline": best_headline,
         "body": best_body,
-        "all_variations_raw": raw[:2000] if raw else "",
+        "all_variations_raw": raw or "",
         "call_to_action": cta,
         "targeting": {
             "description": target_audience_description,

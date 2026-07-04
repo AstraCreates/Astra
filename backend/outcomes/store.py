@@ -20,7 +20,21 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_lock = threading.Lock()
+_outcome_locks: dict[str, threading.RLock] = {}
+_outcome_locks_guard = threading.Lock()
+
+
+def _outcome_lock(founder_id: str, company_id: str | None = None) -> threading.RLock:
+    resolved_company = company_id or founder_id
+    key = f"{founder_id}::{resolved_company}" if resolved_company != founder_id else founder_id
+    lock = _outcome_locks.get(key)
+    if lock is None:
+        with _outcome_locks_guard:
+            lock = _outcome_locks.get(key)
+            if lock is None:
+                lock = threading.RLock()
+                _outcome_locks[key] = lock
+    return lock
 
 
 def _root() -> Path:
@@ -84,7 +98,7 @@ def add_outcome(
         "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 
-    with _lock:
+    with _outcome_lock(founder_id, resolved_company):
         path = _ledger_path(founder_id, resolved_company)
         content_hash = _content_hash(outcome)
 
@@ -119,7 +133,7 @@ def list_outcomes(
     resolved_company = company_id or founder_id
     results = []
 
-    with _lock:
+    with _outcome_lock(founder_id, resolved_company):
         path = _ledger_path(founder_id, resolved_company)
         if not path.exists():
             return []
@@ -154,7 +168,7 @@ def update_outcome_state(
     if new_state not in valid_states:
         return False
 
-    with _lock:
+    with _outcome_lock(founder_id, resolved_company):
         path = _ledger_path(founder_id, resolved_company)
         if not path.exists():
             return False

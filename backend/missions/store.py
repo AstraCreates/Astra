@@ -7,7 +7,8 @@ A global index is maintained at:
   /data/astra_docs/missions/index.json
 
 Missions survive backend restarts indefinitely (no TTL, no cap).
-All reads and writes are protected by a single module-level threading.Lock().
+All reads and writes are protected by per-founder RLocks instead of one global
+lock, so unrelated founders do not serialize through the same mutex.
 """
 from __future__ import annotations
 
@@ -22,7 +23,19 @@ from typing import Any, Literal
 
 logger = logging.getLogger(__name__)
 
-_lock = threading.Lock()
+_mission_locks: dict[str, threading.RLock] = {}
+_mission_locks_guard = threading.Lock()
+
+
+def _mission_lock(founder_id: str) -> threading.RLock:
+    lock = _mission_locks.get(founder_id)
+    if lock is None:
+        with _mission_locks_guard:
+            lock = _mission_locks.get(founder_id)
+            if lock is None:
+                lock = threading.RLock()
+                _mission_locks[founder_id] = lock
+    return lock
 
 DepartmentType = Literal["research", "marketing", "sales", "technical", "legal", "ops", "finance"]
 StatusType = Literal["active", "paused", "completed"]
@@ -90,6 +103,13 @@ def _index_entry(mission: dict) -> dict:
         "last_run_at": mission["last_run_at"],
         "run_count": mission["run_count"],
     }
+
+
+def _mission_founder_id(mission_id: str) -> str | None:
+    entry = _load_index().get(mission_id)
+    if not entry:
+        return None
+    return entry.get("founder_id")
 
 
 # ── Mission file helpers ───────────────────────────────────────────────────────
@@ -169,7 +189,7 @@ def create_mission(
         "notion_page_id": None,
         "notion_page_url": None,
     }
-    with _lock:
+    with _mission_lock(founder_id):
         _save_mission_file(mission)
         index = _load_index()
         index[mission["id"]] = _index_entry(mission)
@@ -189,7 +209,10 @@ def get_mission(mission_id: str) -> dict | None:
     Returns:
         The full mission dict, or ``None`` if not found.
     """
-    with _lock:
+    founder_id = _mission_founder_id(mission_id)
+    if not founder_id:
+        return None
+    with _mission_lock(founder_id):
         index = _load_index()
         entry = index.get(mission_id)
         if not entry:
@@ -206,7 +229,7 @@ def list_missions(founder_id: str, company_id: str | None = None) -> list[dict]:
     Returns:
         List of full mission dicts sorted by ``created_at`` descending.
     """
-    with _lock:
+    with _mission_lock(founder_id):
         index = _load_index()
         entries = [e for e in index.values() if e.get("founder_id") == founder_id]
 
@@ -254,7 +277,10 @@ def update_mission(mission_id: str, **fields: Any) -> dict:
         KeyError: If the mission is not found.
     """
     _PROTECTED = {"id", "founder_id", "created_at"}
-    with _lock:
+    founder_id = _mission_founder_id(mission_id)
+    if not founder_id:
+        raise KeyError(f"Mission not found: {mission_id}")
+    with _mission_lock(founder_id):
         index = _load_index()
         entry = index.get(mission_id)
         if not entry:
@@ -302,7 +328,10 @@ def list_tasks(mission_id: str) -> list[dict[str, Any]]:
 
 
 def bulk_upsert_tasks(mission_id: str, tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    with _lock:
+    founder_id = _mission_founder_id(mission_id)
+    if not founder_id:
+        raise KeyError(f"Mission not found: {mission_id}")
+    with _mission_lock(founder_id):
         index = _load_index()
         entry = index.get(mission_id)
         if not entry:
@@ -331,7 +360,10 @@ def add_task(mission_id: str, task: dict[str, Any]) -> dict[str, Any]:
 
 
 def update_task(mission_id: str, task_id: str, **fields: Any) -> dict[str, Any]:
-    with _lock:
+    founder_id = _mission_founder_id(mission_id)
+    if not founder_id:
+        raise KeyError(f"Mission not found: {mission_id}")
+    with _mission_lock(founder_id):
         index = _load_index()
         entry = index.get(mission_id)
         if not entry:
@@ -361,7 +393,10 @@ def delete_mission(mission_id: str) -> bool:
     Returns:
         ``True`` if the mission was deleted, ``False`` if it was not found.
     """
-    with _lock:
+    founder_id = _mission_founder_id(mission_id)
+    if not founder_id:
+        return False
+    with _mission_lock(founder_id):
         index = _load_index()
         entry = index.get(mission_id)
         if not entry:
@@ -386,7 +421,10 @@ def append_progress_note(mission_id: str, note: str, run_id: str) -> None:
     Raises:
         KeyError: If the mission is not found.
     """
-    with _lock:
+    founder_id = _mission_founder_id(mission_id)
+    if not founder_id:
+        raise KeyError(f"Mission not found: {mission_id}")
+    with _mission_lock(founder_id):
         index = _load_index()
         entry = index.get(mission_id)
         if not entry:
@@ -465,7 +503,10 @@ def update_mission_status(mission_id: str, status: StatusType) -> None:
     Raises:
         KeyError: If the mission is not found.
     """
-    with _lock:
+    founder_id = _mission_founder_id(mission_id)
+    if not founder_id:
+        raise KeyError(f"Mission not found: {mission_id}")
+    with _mission_lock(founder_id):
         index = _load_index()
         entry = index.get(mission_id)
         if not entry:
@@ -489,7 +530,10 @@ def increment_run_count(mission_id: str, cost_usd: float) -> None:
     Raises:
         KeyError: If the mission is not found.
     """
-    with _lock:
+    founder_id = _mission_founder_id(mission_id)
+    if not founder_id:
+        raise KeyError(f"Mission not found: {mission_id}")
+    with _mission_lock(founder_id):
         index = _load_index()
         entry = index.get(mission_id)
         if not entry:

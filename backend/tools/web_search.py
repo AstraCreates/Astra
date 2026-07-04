@@ -271,7 +271,8 @@ def _robust_text_search(query: str, max_results: int) -> list:
     import time as _t
     try:
         from ddgs import DDGS
-    except Exception:
+    except Exception as exc:
+        logger.warning("ddgs import failed for web search: %s", exc)
         return []
     for backend in ("auto", "bing"):
         for attempt in range(2):
@@ -279,8 +280,11 @@ def _robust_text_search(query: str, max_results: int) -> list:
                 r = list(DDGS(timeout=12).text(query, max_results=max_results, backend=backend))
                 if r:
                     return r
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "ddgs text search failed for query=%r backend=%s attempt=%s: %s",
+                    query, backend, attempt + 1, exc,
+                )
             _t.sleep(0.3 * (attempt + 1))
     return []
 

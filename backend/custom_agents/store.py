@@ -23,7 +23,7 @@ Storage layout (mirrors skills/store.py):
       }
     }
 
-Thread-safe via a single process-level Lock.
+Thread-safe via per-founder RLocks.
 """
 from __future__ import annotations
 
@@ -40,7 +40,19 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_lock = threading.Lock()
+_agent_locks: dict[str, threading.RLock] = {}
+_agent_locks_guard = threading.Lock()
+
+
+def _agent_lock(founder_id: str) -> threading.RLock:
+    lock = _agent_locks.get(founder_id)
+    if lock is None:
+        with _agent_locks_guard:
+            lock = _agent_locks.get(founder_id)
+            if lock is None:
+                lock = threading.RLock()
+                _agent_locks[founder_id] = lock
+    return lock
 
 
 # ── Paths ────────────────────────────────────────────────────────────────────
@@ -186,7 +198,7 @@ def create_agent(
         "created_at": _now(),
         "updated_at": _now(),
     }
-    with _lock:
+    with _agent_lock(founder_id):
         index = _load_index(founder_id)
         existing = index.get(agent_id)
         if existing and existing.get("name") != name:
@@ -204,12 +216,12 @@ def create_agent(
 
 
 def get_agent(founder_id: str, agent_id: str) -> dict[str, Any] | None:
-    with _lock:
+    with _agent_lock(founder_id):
         return _load_index(founder_id).get(agent_id)
 
 
 def list_agents(founder_id: str) -> list[dict[str, Any]]:
-    with _lock:
+    with _agent_lock(founder_id):
         index = _load_index(founder_id)
     agents = list(index.values())
     agents.sort(key=lambda a: a.get("created_at", ""), reverse=True)
@@ -229,7 +241,7 @@ def update_agent(
     _schedule_explicit: bool = False,
 ) -> dict[str, Any] | None:
     """Patch mutable fields. Pass _schedule_explicit=True to allow clearing schedule with None."""
-    with _lock:
+    with _agent_lock(founder_id):
         index = _load_index(founder_id)
         spec = index.get(agent_id)
         if spec is None:
@@ -254,7 +266,7 @@ def update_agent(
 
 
 def delete_agent(founder_id: str, agent_id: str) -> bool:
-    with _lock:
+    with _agent_lock(founder_id):
         index = _load_index(founder_id)
         if agent_id not in index:
             return False
@@ -266,7 +278,7 @@ def delete_agent(founder_id: str, agent_id: str) -> bool:
 
 def mark_ran(founder_id: str, agent_id: str) -> dict[str, Any] | None:
     """Stamp a scheduled agent as run now and roll next_run_at forward."""
-    with _lock:
+    with _agent_lock(founder_id):
         index = _load_index(founder_id)
         spec = index.get(agent_id)
         if spec is None:

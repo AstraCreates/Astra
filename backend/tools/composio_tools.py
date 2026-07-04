@@ -68,8 +68,8 @@ def _resolve_composio_key() -> str:
             key = creds["api_key"]
             settings.composio_api_key = key  # cache in-memory
             return key
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to load platform Composio key from credentials store: %s", exc)
     return ""
 
 
