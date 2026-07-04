@@ -344,38 +344,36 @@ export default function DashboardView() {
 
       <div style={{ flex: 1, overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
 
-        {/* ── Hero: lineart variant ── */}
-        <div style={{ position: "relative", height: 156, overflow: "hidden", background: "#0a1b6b" }}>
-          {/* Blueprint grid lines */}
-          <div style={{
-            position: "absolute", inset: 0,
-            backgroundImage: "linear-gradient(rgba(124,255,198,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(124,255,198,0.07) 1px, transparent 1px)",
-            backgroundSize: "32px 32px",
-            maskImage: "linear-gradient(90deg, transparent 25%, rgba(0,0,0,0.5) 55%, rgba(0,0,0,1) 100%)",
-            WebkitMaskImage: "linear-gradient(90deg, transparent 25%, rgba(0,0,0,0.5) 55%, rgba(0,0,0,1) 100%)",
-          }} />
+        {/* ── Hero: gradient variant ── */}
+        <div style={{ position: "relative", height: 184, overflow: "hidden", background: "#0a17c9" }}>
+          {/* Iridescent sweep */}
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(118deg,transparent 26%,#1fd9cf 44%,#7CFFC6 51%,#dfffff 54%,#28c6e8 60%,transparent 76%)", opacity: 0.9, mixBlendMode: "screen" }} />
+          {/* Purple accent */}
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(118deg,transparent 62%,#7D8FFF 72%,transparent 84%)", opacity: 0.5, mixBlendMode: "screen" }} />
+          {/* Noise texture */}
+          <div style={{ position: "absolute", inset: 0, backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.92' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")", backgroundSize: "150px", opacity: 0.3, mixBlendMode: "overlay" }} />
           {/* Left fade */}
-          <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: "60%", background: "linear-gradient(90deg, #0a1b6b 50%, transparent)", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(5,7,14,.8) 0%,rgba(5,7,14,.4) 38%,transparent 66%)" }} />
           {/* Content */}
-          <div style={{ position: "relative", zIndex: 2, padding: "22px 18px", height: "100%", display: "flex", flexDirection: "column", justifyContent: "center", gap: 5 }}>
-            <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: ".15em", color: "rgba(255,255,255,0.3)", textTransform: "uppercase" }}>Dashboard</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: "#fff", lineHeight: 1.1, letterSpacing: "-0.02em" }}>{headline || "Welcome back."}</div>
-            {sessions !== null && (
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                {running > 0 && <span style={{ fontSize: 11, color: "#7CFFC6", fontWeight: 600 }}>● {running} running</span>}
-                {stalled > 0 && <span style={{ fontSize: 11, color: "#FFFFA6", fontWeight: 600 }}>⚠ {stalled} stalled</span>}
-                {running === 0 && stalled === 0 && sessions.length > 0 && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{sessions.length} run{sessions.length !== 1 ? "s" : ""} total</span>}
+          <div style={{ position: "relative", zIndex: 2, padding: "28px 32px", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 11, letterSpacing: ".1em", color: "rgba(255,255,255,.7)", fontWeight: 600, textTransform: "uppercase" }}>Dashboard</div>
+              <h1 style={{ margin: "12px 0 4px", fontSize: 32, fontWeight: 700, letterSpacing: "-.02em", color: "#fff" }}>{headline || "Welcome back."}</h1>
+              <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.78)" }}>
+                {sessions !== null
+                  ? `${running > 0 ? `${running} run${running !== 1 ? "s" : ""} active` : "No active runs"} · ${(sessions || []).filter(s => s.status === "done" && s.created_at && (Date.now() - new Date(s.created_at).getTime()) < 86400000).length} completed today`
+                  : "Loading…"}
               </div>
-            )}
-            <div style={{ display: "flex", gap: 7, marginTop: 3 }}>
+            </div>
+            <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
               <button
                 data-tour="dash-new-run"
                 onClick={() => router.push("/dashboard?new=1")}
-                style={{ padding: "7px 16px", fontSize: 11, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", cursor: "pointer", borderRadius: 7 }}
+                style={{ background: "#fff", color: "#002EFF", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
               >+ New run</button>
               <button
                 onClick={load}
-                style={{ padding: "7px 14px", fontSize: 11, fontWeight: 500, color: "rgba(255,255,255,0.7)", background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.18)", cursor: "pointer", borderRadius: 7 }}
+                style={{ background: "rgba(255,255,255,.14)", color: "#fff", border: "1px solid rgba(255,255,255,.3)", borderRadius: 8, padding: "10px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
               >Refresh</button>
             </div>
           </div>
