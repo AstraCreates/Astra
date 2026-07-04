@@ -352,15 +352,20 @@ export default function DashboardView() {
 
       <div style={{ flex: 1, overflowY: "auto" }}>
         {/* Header hero */}
-        <div className="dv-hero" style={{ padding: "28px 24px 24px", borderBottom: "1px solid rgba(255,255,255,.06)", position: "relative", overflow: "hidden", background: "#0a17c9", minHeight: 140 }}>
-          {/* Mint swipe overlay */}
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(124,255,198,.08) 0%, transparent 55%)", pointerEvents: "none", zIndex: 1 }} />
-          {/* Left fade */}
-          <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: "40%", background: "linear-gradient(90deg, rgba(0,0,0,.22), transparent)", pointerEvents: "none", zIndex: 1 }} />
+        <div className="dv-hero" style={{ position: "relative", overflow: "hidden", background: "#0a17c9", minHeight: 184, padding: "28px 30px 24px", borderBottom: "1px solid rgba(255,255,255,.06)" }}>
+          {/* Layer 1: color sweep */}
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(118deg,transparent 26%,#1fd9cf 44%,#7CFFC6 51%,#dfffff 54%,#28c6e8 60%,transparent 76%)", opacity: .9, mixBlendMode: "screen", pointerEvents: "none" }} />
+          {/* Layer 2: secondary blue sweep */}
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(118deg,transparent 62%,#7D8FFF 72%,transparent 84%)", opacity: .5, pointerEvents: "none" }} />
+          {/* Layer 3: noise texture */}
+          <div style={{ position: "absolute", inset: 0, opacity: .3, mixBlendMode: "overlay", pointerEvents: "none", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")", backgroundSize: "200px 200px" }} />
+          {/* Layer 4: left fade */}
+          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(5,7,14,.8) 0%,rgba(5,7,14,.4) 38%,transparent 66%)", pointerEvents: "none" }} />
 
           <div style={{ position: "relative", zIndex: 2 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".12em", color: "rgba(255,255,255,.45)", textTransform: "uppercase", marginBottom: 8, fontFamily: "var(--font-hanken), 'Hanken Grotesk', sans-serif" }}>Dashboard</div>
             <div className="greeting-text" style={{
-              fontFamily: "var(--font-geist-sans), 'Geist', sans-serif",
+              fontFamily: "var(--font-hanken), 'Hanken Grotesk', sans-serif",
               fontSize: 26, fontWeight: 700,
               letterSpacing: "-0.02em",
               color: "#fff", marginBottom: 4,
@@ -369,19 +374,19 @@ export default function DashboardView() {
             </div>
 
             {/* Stats row */}
-            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
               {sessions !== null && (
                 <>
-                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.85)" }}>
+                  <span style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)", fontFamily: "var(--font-hanken), 'Hanken Grotesk', sans-serif" }}>
                     {sessions.length} run{sessions.length !== 1 ? "s" : ""}
                   </span>
                   {running > 0 && (
-                    <span style={{ fontSize: 11, color: "#7cffe6", fontWeight: 600 }}>
+                    <span style={{ fontSize: 11.5, color: "#7CFFC6", fontWeight: 600, fontFamily: "var(--font-hanken), 'Hanken Grotesk', sans-serif" }}>
                       ● {running} running
                     </span>
                   )}
                   {stalled > 0 && (
-                    <span style={{ fontSize: 11, color: "rgba(255,210,80,1)", fontWeight: 600 }}>
+                    <span style={{ fontSize: 11.5, color: "#FFFFA6", fontWeight: 600, fontFamily: "var(--font-hanken), 'Hanken Grotesk', sans-serif" }}>
                       ⚠ {stalled} need{stalled === 1 ? "s" : ""} attention
                     </span>
                   )}
@@ -393,11 +398,11 @@ export default function DashboardView() {
               <button
                 data-tour="dash-new-run"
                 onClick={() => router.push("/dashboard?new=1")}
-                style={{ padding: "9px 20px", fontSize: 12, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", cursor: "pointer", letterSpacing: "0.01em", borderRadius: 8, fontFamily: "var(--font-instrument), sans-serif" }}
+                style={{ padding: "9px 20px", fontSize: 12.5, fontWeight: 600, color: "#002EFF", background: "#fff", border: "none", cursor: "pointer", letterSpacing: "0.01em", borderRadius: 8, fontFamily: "var(--font-hanken), 'Hanken Grotesk', sans-serif" }}
               >+ New run</button>
               <button
                 onClick={load}
-                style={{ padding: "9px 16px", fontSize: 12, fontWeight: 500, color: "rgba(255,255,255,0.85)", background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)", cursor: "pointer", borderRadius: 8, fontFamily: "var(--font-instrument), sans-serif" }}
+                style={{ padding: "9px 16px", fontSize: 12.5, fontWeight: 500, color: "rgba(255,255,255,0.85)", background: "rgba(255,255,255,0.10)", border: "1px solid rgba(255,255,255,0.20)", cursor: "pointer", borderRadius: 8, fontFamily: "var(--font-hanken), 'Hanken Grotesk', sans-serif" }}
               >Refresh</button>
             </div>
           </div>
