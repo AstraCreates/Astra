@@ -208,12 +208,16 @@ def obsidian_log(
             # never reads, leaving the brain map empty. (One company per founder.)
             body = summary or ""
             if output_dict:
-                body += "\n\n" + json.dumps(output_dict, indent=2)[:6000]
+                # No local cap here — add_company_brain_record's underlying _record()
+                # owns the one safety ceiling (50k chars) for stored content. Capping
+                # again at this layer just destroys agent output for no reason before
+                # it ever gets there.
+                body += "\n\n" + json.dumps(output_dict, indent=2)
             add_company_brain_record(
                 founder_id,
                 source=f"agent:{agent}",
                 title=f"{agent} — {date} {time_str}",
-                content=body[:8000],
+                content=body,
                 kind="agent_output",
                 metadata={"session_id": session_id, "agent": agent},
             )

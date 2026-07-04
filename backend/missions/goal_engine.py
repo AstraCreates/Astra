@@ -136,7 +136,11 @@ def _seed_company_identity(founder_id: str, goal_text: str, company_id: str | No
         # Description = everything after the name line (the founder's own pitch).
         desc = re.sub(r"^[^\n]*[Cc]ompany(?:[ /](?:project|product))?\s+name[:\s][^\n]*\n+", "", text).strip() or text
         title = f"Company identity: {name}" if name else "Company identity"
-        content = (f"{name} — " if name else "") + desc[:1500]
+        # No local cap — this becomes the canonical (most-trusted) identity record
+        # every agent grounds against; _record()'s 50k ceiling is the only limit
+        # that should apply, not a second, tighter one truncating the founder's
+        # own pitch before it's even stored.
+        content = (f"{name} — " if name else "") + desc
         from backend.tools.company_brain import add_company_brain_record
         add_company_brain_record(
             founder_id, source="company_identity", title=title, content=content,
