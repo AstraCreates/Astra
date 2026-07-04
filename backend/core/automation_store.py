@@ -110,6 +110,7 @@ def save_flow(
         }
         flows[flow_id] = flow
         _atomic_write(_flows_path(founder_id), flows)
+        _index_webhook_token(flow["webhook_token"], founder_id, flow_id)
         return flow
 
 
@@ -118,9 +119,57 @@ def delete_flow(founder_id: str, flow_id: str) -> bool:
         flows = _load_flows(founder_id)
         if flow_id not in flows:
             return False
+        token = flows[flow_id].get("webhook_token")
         del flows[flow_id]
         _atomic_write(_flows_path(founder_id), flows)
+        if token:
+            _unindex_webhook_token(token)
         return True
+
+
+# ── Webhook token index ──────────────────────────────────────────────────────
+# The webhook trigger URL only exposes this opaque token (no founder_id/flow_id
+# path segments — founder_id is derived from a founder's email and has no
+# business appearing in a URL a founder pastes into a third-party service).
+
+_webhook_index_lock = threading.Lock()
+
+
+def _webhook_index_path() -> Path:
+    return _vault() / "automations" / "_webhook_index.json"
+
+
+def _load_webhook_index() -> dict[str, dict]:
+    p = _webhook_index_path()
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return {}
+
+
+def _index_webhook_token(token: str, founder_id: str, flow_id: str) -> None:
+    with _webhook_index_lock:
+        index = _load_webhook_index()
+        index[token] = {"founder_id": founder_id, "flow_id": flow_id}
+        _atomic_write(_webhook_index_path(), index)
+
+
+def _unindex_webhook_token(token: str) -> None:
+    with _webhook_index_lock:
+        index = _load_webhook_index()
+        if token in index:
+            del index[token]
+            _atomic_write(_webhook_index_path(), index)
+
+
+def resolve_webhook_token(token: str) -> tuple[str, str] | None:
+    """Returns (founder_id, flow_id) for a webhook token, or None if unknown."""
+    entry = _load_webhook_index().get(token)
+    if not entry:
+        return None
+    return entry["founder_id"], entry["flow_id"]
 
 
 # ── Runs ─────────────────────────────────────────────────────────────────────

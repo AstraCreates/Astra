@@ -372,17 +372,21 @@ async def automations_run_flow(flow_id: str, body: AutomationFlowRunRequest, req
     return {"ok": True, "run_id": run["run_id"], "status": "running"}
 
 
-@router.post("/automations/hooks/{founder_id}/{flow_id}/{token}")
-async def automations_webhook_trigger(founder_id: str, flow_id: str, token: str, request: Request):
+@router.post("/automations/hooks/{token}")
+async def automations_webhook_trigger(token: str, request: Request):
     """Public trigger endpoint for external webhooks (Stripe, Typeform, a
-    cron pinger, etc). No founder auth — protected by the opaque per-flow
-    token instead, same shape as n8n/Zapier webhook URLs. Constant-time
-    compare so the token can't be brute-forced via response timing."""
-    import hmac
-
+    cron pinger, etc). No founder auth — protected by the opaque token alone,
+    same shape as n8n/Zapier webhook URLs. Deliberately just the token in the
+    path: founder_id is derived from the founder's email (see
+    normalizeEmailToFounderId) and has no business appearing in a URL meant
+    to be pasted into a third-party service's webhook config."""
     from backend.core import automation_store
+    resolved = automation_store.resolve_webhook_token(token)
+    if not resolved:
+        raise HTTPException(status_code=404, detail="Not found")
+    founder_id, flow_id = resolved
     flow = automation_store.get_flow(founder_id, flow_id)
-    if not flow or not flow.get("webhook_token") or not hmac.compare_digest(flow["webhook_token"], token):
+    if not flow:
         raise HTTPException(status_code=404, detail="Not found")
 
     try:
@@ -4792,13 +4796,17 @@ _TRACKING_GIF = bytes.fromhex(
 )
 
 
-@router.get("/track/open/{founder_id}/{campaign_id}/{cc_id}/{step_index}")
-async def track_open(founder_id: str, campaign_id: str, cc_id: str, step_index: int):
-    """Record email open event. Returns 1x1 transparent GIF."""
+@router.get("/track/open/{campaign_id}/{cc_id}/{step_index}")
+async def track_open(campaign_id: str, cc_id: str, step_index: int):
+    """Record email open event. Returns 1x1 transparent GIF.
+    No founder_id in the path — this URL is embedded in emails sent to
+    external prospects, who could otherwise read the founder's email-derived
+    id straight out of the pixel's img src. Looked up from campaign_id instead."""
     from fastapi.responses import Response
     try:
         db = get_outreach_db()
-        # Get contact_id from campaign_contact
+        campaign = db.table("outreach_campaigns").select("founder_id").eq("id", campaign_id).execute()
+        founder_id = campaign.data[0]["founder_id"] if campaign.data else None
         cc = db.table("outreach_campaign_contacts").select("contact_id").eq("id", cc_id).execute()
         contact_id = cc.data[0]["contact_id"] if cc.data else None
         db.table("outreach_email_events").insert({
@@ -4817,13 +4825,16 @@ async def track_open(founder_id: str, campaign_id: str, cc_id: str, step_index: 
     })
 
 
-@router.get("/track/click/{founder_id}/{campaign_id}/{cc_id}/{step_index}")
-async def track_click(founder_id: str, campaign_id: str, cc_id: str, step_index: int, url: str = ""):
-    """Record click event and redirect to original URL."""
+@router.get("/track/click/{campaign_id}/{cc_id}/{step_index}")
+async def track_click(campaign_id: str, cc_id: str, step_index: int, url: str = ""):
+    """Record click event and redirect to original URL. Same founder_id-out-of-
+    the-path reasoning as track_open."""
     from fastapi.responses import RedirectResponse
     from urllib.parse import unquote
     try:
         db = get_outreach_db()
+        campaign = db.table("outreach_campaigns").select("founder_id").eq("id", campaign_id).execute()
+        founder_id = campaign.data[0]["founder_id"] if campaign.data else None
         cc = db.table("outreach_campaign_contacts").select("contact_id").eq("id", cc_id).execute()
         contact_id = cc.data[0]["contact_id"] if cc.data else None
         db.table("outreach_email_events").insert({

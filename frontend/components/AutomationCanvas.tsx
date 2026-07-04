@@ -742,9 +742,9 @@ export default function AutomationCanvas({ flowId }: { flowId: string }) {
           {savedFlowId && webhookToken ? (
             <>
               <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
-                <input readOnly value={`${BASE}/automations/hooks/${userId}/${savedFlowId}/${webhookToken}`} className="f-input" style={{ fontFamily: "var(--font-code)", fontSize: 11 }} onFocus={(e) => e.currentTarget.select()} />
+                <input readOnly value={`${BASE}/automations/hooks/${webhookToken}`} className="f-input" style={{ fontFamily: "var(--font-code)", fontSize: 11 }} onFocus={(e) => e.currentTarget.select()} />
                 <button
-                  onClick={() => { void navigator.clipboard.writeText(`${BASE}/automations/hooks/${userId}/${savedFlowId}/${webhookToken}`); }}
+                  onClick={() => { void navigator.clipboard.writeText(`${BASE}/automations/hooks/${webhookToken}`); }}
                   className="btn sm"
                 >Copy</button>
               </div>
