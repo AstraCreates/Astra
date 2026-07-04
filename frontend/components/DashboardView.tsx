@@ -352,11 +352,10 @@ export default function DashboardView() {
 
       <div style={{ flex: 1, overflowY: "auto" }}>
         {/* Header hero */}
-        <div className="dv-hero" style={{ padding: "28px 24px 24px", borderBottom: "1px solid rgba(255,255,255,.06)", position: "relative", overflow: "hidden", background: "#0a17c9", minHeight: 140 }}>
-          {/* Mint swipe overlay */}
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(135deg, rgba(124,255,198,.08) 0%, transparent 55%)", pointerEvents: "none", zIndex: 1 }} />
-          {/* Left fade */}
-          <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: "40%", background: "linear-gradient(90deg, rgba(0,0,0,.22), transparent)", pointerEvents: "none", zIndex: 1 }} />
+        <div className="dv-hero" style={{ padding: "28px 24px 24px", borderBottom: "1px solid var(--bd)", position: "relative", overflow: "hidden", background: "var(--blue)", minHeight: 140 }}>
+          <AstraGradient />
+          {/* Scrim so text stays readable over the animated gradient */}
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,10,60,0.18)", pointerEvents: "none", zIndex: 1 }} />
 
           <div style={{ position: "relative", zIndex: 2 }}>
             <div className="greeting-text" style={{
