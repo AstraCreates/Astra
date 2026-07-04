@@ -3,16 +3,39 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import secrets
 import subprocess
+import threading
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from backend.config import settings
 
+logger = logging.getLogger(__name__)
+
 _ENC_VERSION = 2
 _STORE_DIR: Path | None = None
+
+# Per-founder lock — store_credentials and load_all_credentials's plaintext->
+# encrypted migration path both do an unguarded read-modify-write; two
+# concurrent calls for the same founder (e.g. two integrations connecting at
+# once) could silently drop each other's writes. Same pattern as
+# company_brain.py/company_goal.py's already-fixed per-entity RLocks.
+_creds_locks: dict[str, threading.Lock] = {}
+_creds_locks_guard = threading.Lock()
+
+
+def _creds_lock(founder_id: str) -> threading.Lock:
+    lock = _creds_locks.get(founder_id)
+    if lock is None:
+        with _creds_locks_guard:
+            lock = _creds_locks.get(founder_id)
+            if lock is None:
+                lock = threading.Lock()
+                _creds_locks[founder_id] = lock
+    return lock
 
 
 class CredentialsUnreadable(RuntimeError):
@@ -68,8 +91,21 @@ def _ensure_creds_key() -> str:
     settings.astra_creds_key = key
     try:
         _persist_env_key("ASTRA_CREDS_KEY", key)
-    except Exception:
-        pass
+    except Exception as exc:
+        # If this key isn't persisted, whatever we're about to encrypt with it
+        # becomes permanently undecryptable the moment the process restarts and
+        # mints a DIFFERENT fresh key — silently, for every founder. Loud and
+        # failing now (before anything gets encrypted under a throwaway key) is
+        # far better than a confusing "credentials broken" report days later.
+        logger.error(
+            "Failed to persist ASTRA_CREDS_KEY to .env — refusing to encrypt "
+            "with a key that won't survive a restart: %s", exc,
+        )
+        raise RuntimeError(
+            "Could not persist the credentials encryption key (ASTRA_CREDS_KEY). "
+            "Refusing to proceed — encrypting now would make this data "
+            "unreadable after the next restart."
+        ) from exc
     return key
 
 
@@ -144,10 +180,11 @@ def _rewrite_encrypted(path: Path, data: dict) -> None:
 
 
 def store_credentials(founder_id: str, service: str, creds: dict) -> None:
-    path = _founder_path(founder_id)
-    data, _ = _read_file(path)
-    data[service] = creds
-    _rewrite_encrypted(path, data)
+    with _creds_lock(founder_id):
+        path = _founder_path(founder_id)
+        data, _ = _read_file(path)
+        data[service] = creds
+        _rewrite_encrypted(path, data)
 
 
 def load_credentials(founder_id: str, service: str) -> dict | None:
@@ -157,7 +194,8 @@ def load_credentials(founder_id: str, service: str) -> dict | None:
 
 def load_all_credentials(founder_id: str) -> dict:
     path = _founder_path(founder_id)
-    data, was_plaintext = _read_file(path)
-    if was_plaintext and data:
-        _rewrite_encrypted(path, data)
-    return data
+    with _creds_lock(founder_id):
+        data, was_plaintext = _read_file(path)
+        if was_plaintext and data:
+            _rewrite_encrypted(path, data)
+        return data

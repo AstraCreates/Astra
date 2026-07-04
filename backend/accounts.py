@@ -15,7 +15,25 @@ import time
 from pathlib import Path
 from typing import Any
 
-_write_lock = threading.Lock()
+# Per-org lock covering the FULL read-modify-write-audit-save cycle. Previously
+# a single global _write_lock only wrapped _save()'s final file write — the
+# _load() -> mutate step happened unlocked, so concurrent calls for the same
+# org (e.g. two usage-recording events, or a member upsert racing an invite
+# accept) could read the same stale state and the second write would clobber
+# the first's changes (lost usage counts, vanished members/invites).
+_org_locks: dict[str, threading.Lock] = {}
+_org_locks_guard = threading.Lock()
+
+
+def _org_lock(org_id: str) -> threading.Lock:
+    lock = _org_locks.get(org_id)
+    if lock is None:
+        with _org_locks_guard:
+            lock = _org_locks.get(org_id)
+            if lock is None:
+                lock = threading.Lock()
+                _org_locks[org_id] = lock
+    return lock
 
 
 PLANS: dict[str, dict[str, Any]] = {
@@ -124,9 +142,10 @@ def _load(org_id: str, founder_id: str | None = None) -> dict[str, Any]:
 
 
 def _save(data: dict[str, Any]) -> dict[str, Any]:
+    # No lock here — every caller now holds _org_lock(org_id) for its whole
+    # read-modify-write cycle, this is just the write step of that cycle.
     data["updated_at"] = _now()
-    with _write_lock:
-        _path(data["org_id"]).write_text(json.dumps(data, indent=2, sort_keys=True))
+    _path(data["org_id"]).write_text(json.dumps(data, indent=2, sort_keys=True))
     try:
         from backend.storage_adapter import mirror_document
         mirror_document("accounts", data["org_id"], data)
@@ -147,16 +166,19 @@ def _audit(data: dict[str, Any], actor_id: str, action: str, payload: dict[str, 
 
 
 def append_audit_event(org_id: str, *, actor_id: str, action: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-    data = _load(org_id)
-    _audit(data, actor_id, action, payload)
-    _save(data)
-    return with_entitlements(data)
+    with _org_lock(org_id):
+        data = _load(org_id)
+        _audit(data, actor_id, action, payload)
+        _save(data)
+        return with_entitlements(data)
 
 
 def get_or_create_org(founder_id: str, org_id: str | None = None) -> dict[str, Any]:
-    data = _load(org_id or founder_id, founder_id)
-    _save(data)
-    return with_entitlements(data)
+    resolved_org = org_id or founder_id
+    with _org_lock(resolved_org):
+        data = _load(resolved_org, founder_id)
+        _save(data)
+        return with_entitlements(data)
 
 
 def with_entitlements(data: dict[str, Any]) -> dict[str, Any]:
@@ -190,27 +212,28 @@ def create_org_invite(
     email: str = "",
     role: str = "viewer",
 ) -> dict[str, Any]:
-    data = _load(org_id)
-    members = data.get("members") or {}
-    actor = members.get(actor_id) or {}
-    if actor_id != data.get("owner_id") and actor.get("role") not in {"owner", "admin"}:
-        raise PermissionError("Only owners and admins can invite members.")
-    invite = {
-        "token": _invite_token(),
-        "org_id": org_id,
-        "kind": "org",
-        "invited_by": actor_id,
-        "email": email or "",
-        "role": role if role in {"owner", "admin", "operator", "viewer"} else "viewer",
-        "status": "pending",
-        "created_at": _now(),
-        "expires_at": _invite_expiry(),
-    }
-    invites = data.setdefault("invites", {})
-    invites[invite["token"]] = invite
-    _audit(data, actor_id, "invite.created", {"email": email, "role": invite["role"]})
-    _save(data)
-    return invite
+    with _org_lock(org_id):
+        data = _load(org_id)
+        members = data.get("members") or {}
+        actor = members.get(actor_id) or {}
+        if actor_id != data.get("owner_id") and actor.get("role") not in {"owner", "admin"}:
+            raise PermissionError("Only owners and admins can invite members.")
+        invite = {
+            "token": _invite_token(),
+            "org_id": org_id,
+            "kind": "org",
+            "invited_by": actor_id,
+            "email": email or "",
+            "role": role if role in {"owner", "admin", "operator", "viewer"} else "viewer",
+            "status": "pending",
+            "created_at": _now(),
+            "expires_at": _invite_expiry(),
+        }
+        invites = data.setdefault("invites", {})
+        invites[invite["token"]] = invite
+        _audit(data, actor_id, "invite.created", {"email": email, "role": invite["role"]})
+        _save(data)
+        return invite
 
 
 def get_org_invite(token: str) -> dict[str, Any] | None:
@@ -235,24 +258,31 @@ def accept_org_invite(token: str, *, user_id: str) -> dict[str, Any]:
         invite = invites.get(token)
         if not invite:
             continue
-        if invite.get("status") != "pending":
-            raise ValueError(f"Invite is {invite.get('status')}")
-        if invite.get("expires_at") and invite["expires_at"] < _now():
-            invite["status"] = "expired"
-            path.write_text(json.dumps(data, indent=2, sort_keys=True))
-            raise ValueError("Invite has expired")
-        members = data.setdefault("members", {})
-        members[user_id] = {
-            **members.get(user_id, {"user_id": user_id, "joined_at": _now()}),
-            "role": invite.get("role") or "viewer",
-            "status": "active",
-            "updated_at": _now(),
-        }
-        invite["status"] = "accepted"
-        invite["accepted_at"] = _now()
-        _audit(data, user_id, "invite.accepted", {"token": token, "role": invite.get("role")})
-        _save(data)
-        return with_entitlements(data)
+        org_id = str(data.get("org_id") or path.stem)
+        with _org_lock(org_id):
+            data = _load(org_id)
+            invites = data.get("invites") or {}
+            invite = invites.get(token)
+            if not invite:
+                continue
+            if invite.get("status") != "pending":
+                raise ValueError(f"Invite is {invite.get('status')}")
+            if invite.get("expires_at") and invite["expires_at"] < _now():
+                invite["status"] = "expired"
+                _save(data)
+                raise ValueError("Invite has expired")
+            members = data.setdefault("members", {})
+            members[user_id] = {
+                **members.get(user_id, {"user_id": user_id, "joined_at": _now()}),
+                "role": invite.get("role") or "viewer",
+                "status": "active",
+                "updated_at": _now(),
+            }
+            invite["status"] = "accepted"
+            invite["accepted_at"] = _now()
+            _audit(data, user_id, "invite.accepted", {"token": token, "role": invite.get("role")})
+            _save(data)
+            return with_entitlements(data)
     raise ValueError("Invite not found")
 
 
@@ -266,64 +296,68 @@ def update_subscription(
     stripe_subscription_id: str | None = None,
     current_period_end: str | None = None,
 ) -> dict[str, Any]:
-    data = _load(org_id)
-    subscription = data.setdefault("subscription", {})
-    if plan and plan in PLANS:
-        subscription["plan"] = plan
-    if status:
-        subscription["status"] = status
-    if stripe_customer_id is not None:
-        subscription["stripe_customer_id"] = stripe_customer_id
-    if stripe_subscription_id is not None:
-        subscription["stripe_subscription_id"] = stripe_subscription_id
-    if current_period_end is not None:
-        subscription["current_period_end"] = current_period_end
-    _audit(data, actor_id, "subscription.updated", {"subscription": subscription})
-    _save(data)
-    return with_entitlements(data)
+    with _org_lock(org_id):
+        data = _load(org_id)
+        subscription = data.setdefault("subscription", {})
+        if plan and plan in PLANS:
+            subscription["plan"] = plan
+        if status:
+            subscription["status"] = status
+        if stripe_customer_id is not None:
+            subscription["stripe_customer_id"] = stripe_customer_id
+        if stripe_subscription_id is not None:
+            subscription["stripe_subscription_id"] = stripe_subscription_id
+        if current_period_end is not None:
+            subscription["current_period_end"] = current_period_end
+        _audit(data, actor_id, "subscription.updated", {"subscription": subscription})
+        _save(data)
+        return with_entitlements(data)
 
 
 def upsert_member(org_id: str, *, actor_id: str, user_id: str, role: str = "viewer", status: str = "active") -> dict[str, Any]:
-    data = _load(org_id)
-    allowed = {"owner", "admin", "operator", "viewer"}
-    if role not in allowed:
-        role = "viewer"
-    members = data.setdefault("members", {})
-    members[user_id] = {
-        **members.get(user_id, {"user_id": user_id, "joined_at": _now()}),
-        "role": role,
-        "status": status,
-        "updated_at": _now(),
-    }
-    _audit(data, actor_id, "member.upserted", {"user_id": user_id, "role": role, "status": status})
-    _save(data)
-    return with_entitlements(data)
+    with _org_lock(org_id):
+        data = _load(org_id)
+        allowed = {"owner", "admin", "operator", "viewer"}
+        if role not in allowed:
+            role = "viewer"
+        members = data.setdefault("members", {})
+        members[user_id] = {
+            **members.get(user_id, {"user_id": user_id, "joined_at": _now()}),
+            "role": role,
+            "status": status,
+            "updated_at": _now(),
+        }
+        _audit(data, actor_id, "member.upserted", {"user_id": user_id, "role": role, "status": status})
+        _save(data)
+        return with_entitlements(data)
 
 
 def update_admin_controls(org_id: str, *, actor_id: str, controls: dict[str, Any]) -> dict[str, Any]:
-    data = _load(org_id)
-    current = data.setdefault("admin_controls", {})
-    allowed_keys = set(_default_org(data.get("owner_id") or org_id, org_id)["admin_controls"])
-    for key, value in controls.items():
-        if key in allowed_keys:
-            current[key] = value
-    _audit(data, actor_id, "admin_controls.updated", {"controls": current})
-    _save(data)
-    return with_entitlements(data)
+    with _org_lock(org_id):
+        data = _load(org_id)
+        current = data.setdefault("admin_controls", {})
+        allowed_keys = set(_default_org(data.get("owner_id") or org_id, org_id)["admin_controls"])
+        for key, value in controls.items():
+            if key in allowed_keys:
+                current[key] = value
+        _audit(data, actor_id, "admin_controls.updated", {"controls": current})
+        _save(data)
+        return with_entitlements(data)
 
 
 def record_usage(org_id: str, *, actor_id: str = "system", runs: int = 0, connector_syncs: int = 0, approval_decisions: int = 0) -> dict[str, Any]:
-    data = _load(org_id)
-    usage = data.setdefault("usage", {})
-    period = time.strftime("%Y-%m", time.gmtime())
-    if usage.get("period") != period:
-        data["usage"] = usage = {"period": period, "runs": 0, "connector_syncs": 0, "approval_decisions": 0}
-    usage["runs"] = int(usage.get("runs") or 0) + max(0, runs)
-    usage["connector_syncs"] = int(usage.get("connector_syncs") or 0) + max(0, connector_syncs)
-    usage["approval_decisions"] = int(usage.get("approval_decisions") or 0) + max(0, approval_decisions)
-    _audit(data, actor_id, "usage.recorded", {"runs": runs, "connector_syncs": connector_syncs, "approval_decisions": approval_decisions})
-    _save(data)
-    return with_entitlements(data)
+    with _org_lock(org_id):
+        data = _load(org_id)
+        usage = data.setdefault("usage", {})
+        period = time.strftime("%Y-%m", time.gmtime())
+        if usage.get("period") != period:
+            data["usage"] = usage = {"period": period, "runs": 0, "connector_syncs": 0, "approval_decisions": 0}
+        usage["runs"] = int(usage.get("runs") or 0) + max(0, runs)
+        usage["connector_syncs"] = int(usage.get("connector_syncs") or 0) + max(0, connector_syncs)
+        usage["approval_decisions"] = int(usage.get("approval_decisions") or 0) + max(0, approval_decisions)
+        _audit(data, actor_id, "usage.recorded", {"runs": runs, "connector_syncs": connector_syncs, "approval_decisions": approval_decisions})
+        _save(data)
+        return with_entitlements(data)
 
 
 def list_orgs() -> list[dict[str, Any]]:

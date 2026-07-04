@@ -21,7 +21,32 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_lock = threading.Lock()
+# Per-(founder, company) RLock — was a single global plain Lock, which caused a
+# real self-deadlock: set_fact/resolve_conflict acquire it then call get_genome()
+# internally, which re-acquired the same lock. RLock allows that reentry; keying
+# per-entity (matching company_brain.py/company_goal.py's already-fixed pattern)
+# also stops unrelated founders from serializing through one lock.
+_genome_locks: dict[str, threading.RLock] = {}
+_genome_locks_guard = threading.Lock()
+
+
+def _genome_lock(founder_id: str, company_id: str | None = None) -> threading.RLock:
+    resolved_company = company_id or founder_id
+    key = f"{founder_id}::{resolved_company}" if resolved_company != founder_id else founder_id
+    lock = _genome_locks.get(key)
+    if lock is None:
+        with _genome_locks_guard:
+            lock = _genome_locks.get(key)
+            if lock is None:
+                lock = threading.RLock()
+                _genome_locks[key] = lock
+    return lock
+
+
+def _atomic_write(path: Path, data: dict[str, Any]) -> None:
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True))
+    tmp.replace(path)
 
 
 def _root() -> Path:
@@ -50,7 +75,7 @@ def _now_iso() -> str:
 
 def get_genome(founder_id: str, company_id: str | None = None) -> dict[str, Any] | None:
     """Load company genome."""
-    with _lock:
+    with _genome_lock(founder_id, company_id):
         path = _genome_path(founder_id, company_id)
         if not path.exists():
             return None
@@ -104,7 +129,7 @@ def set_fact(
 ) -> dict[str, Any]:
     """Set a fact in a genome section. Tracks source + confidence. Flags conflicts."""
     resolved_company = company_id or founder_id
-    with _lock:
+    with _genome_lock(founder_id, resolved_company):
         path = _genome_path(founder_id, resolved_company)
         genome = get_genome(founder_id, resolved_company) or _empty_genome(founder_id, resolved_company)
 
@@ -149,7 +174,7 @@ def set_fact(
         })
 
         genome["updated_at"] = _now_iso()
-        path.write_text(json.dumps(genome, indent=2, sort_keys=True))
+        _atomic_write(path, genome)
         return genome
 
 
@@ -161,7 +186,7 @@ def resolve_conflict(
 ) -> bool:
     """Founder resolves a conflict by choosing the value to keep."""
     resolved_company = company_id or founder_id
-    with _lock:
+    with _genome_lock(founder_id, resolved_company):
         genome = get_genome(founder_id, resolved_company)
         if not genome or not conflict_id:
             return False
@@ -183,7 +208,7 @@ def resolve_conflict(
         genome["updated_at"] = _now_iso()
 
         path = _genome_path(founder_id, resolved_company)
-        path.write_text(json.dumps(genome, indent=2, sort_keys=True))
+        _atomic_write(path, genome)
         return True
 
 
