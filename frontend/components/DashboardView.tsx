@@ -409,12 +409,9 @@ export default function DashboardView() {
                         <div style={{ width: 13, height: 13, background: accentColor, borderRadius: 3 }} />
                       </div>
                       <div>
-                        <div style={{ fontSize: 16, fontWeight: 700 }}>No active runs</div>
-                        <div style={{ fontSize: 12.5, color: "#6f7b98", marginTop: 5 }}>Start your first run and Astra will get to work.</div>
+                        <div style={{ fontSize: 16, fontWeight: 700 }}>No active goals</div>
+                        <div style={{ fontSize: 12.5, color: "#6f7b98", marginTop: 5 }}>Start a run and Astra will get to work.</div>
                       </div>
-                      <button onClick={() => router.push("/dashboard?new=1")} style={{ background: "#002EFF", color: "#fff", border: "none", borderRadius: 8, padding: "11px 22px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
-                        Start first run →
-                      </button>
                     </div>
                   );
                 }
