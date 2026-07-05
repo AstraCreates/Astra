@@ -243,10 +243,12 @@ export default function AutomationsPage() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <button
           onClick={() => setShowNewAgent(true)}
+          onMouseEnter={e => (e.currentTarget.style.borderColor = "#7d8fff")}
+          onMouseLeave={e => (e.currentTarget.style.borderColor = "rgba(255,255,255,.1)")}
           style={{
-            background: "#0A0D17", border: "1.5px solid #7d8fff", borderRadius: 12,
+            background: "#0A0D17", border: "1.5px solid rgba(255,255,255,.1)", borderRadius: 12,
             padding: 18, display: "flex", flexDirection: "column", gap: 8,
-            cursor: "pointer", textAlign: "left", color: "inherit",
+            cursor: "pointer", textAlign: "left", color: "inherit", transition: "border-color .15s",
           }}
         >
           <div style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(125,143,255,.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -261,10 +263,12 @@ export default function AutomationsPage() {
 
         <button
           onClick={() => router.push("/automations/canvas/new")}
+          onMouseEnter={e => (e.currentTarget.style.borderColor = "#7d8fff")}
+          onMouseLeave={e => (e.currentTarget.style.borderColor = "rgba(255,255,255,.1)")}
           style={{
             background: "#0A0D17", border: "1.5px solid rgba(255,255,255,.1)", borderRadius: 12,
             padding: 18, display: "flex", flexDirection: "column", gap: 8,
-            cursor: "pointer", textAlign: "left", color: "inherit",
+            cursor: "pointer", textAlign: "left", color: "inherit", transition: "border-color .15s",
           }}
         >
           <div style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(125,143,255,.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
