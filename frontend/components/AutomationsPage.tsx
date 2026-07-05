@@ -11,6 +11,7 @@ import {
   waitForAuthReady,
   type CustomAgent,
 } from "@/lib/api";
+import PageHeader, { HeaderSecondaryBtn } from "@/components/PageHeader";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -230,12 +231,12 @@ export default function AutomationsPage() {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", padding: "24px 30px", gap: 20 }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-.01em" }}>Automations</h1>
-        <button className="btn" onClick={load} style={{ fontSize: 12.5 }}>Refresh</button>
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%" }}>
+      <PageHeader
+        title="Automations"
+        actions={<HeaderSecondaryBtn label="Refresh" onClick={load} />}
+      />
+      <div style={{ display: "flex", flexDirection: "column", padding: "24px 30px", gap: 20 }}>
 
       {flash && <Flash msg={flash} onClose={() => setFlash(null)} />}
 
@@ -398,6 +399,7 @@ export default function AutomationsPage() {
       )}
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
     </div>
   );
 }
