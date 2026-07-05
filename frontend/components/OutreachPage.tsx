@@ -87,6 +87,59 @@ interface CampaignStats {
   reply_rate: number;
 }
 
+// ── Quick-action campaign types ────────────────────────────────────────────────
+
+const CAMPAIGN_TYPES = [
+  {
+    key: "cold",
+    label: "Cold outbound",
+    sub: "First touch to a new list",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+      </svg>
+    ),
+    defaultName: "Cold outbound",
+    defaultValueProp: "Helps founders build startups 10x faster with AI",
+  },
+  {
+    key: "followup",
+    label: "Follow-up sequence",
+    sub: "Nudge non-responders",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+      </svg>
+    ),
+    defaultName: "Follow-up sequence",
+    defaultValueProp: "",
+  },
+  {
+    key: "reengagement",
+    label: "Re-engagement",
+    sub: "Win back churned leads",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 .49-4.95" />
+      </svg>
+    ),
+    defaultName: "Re-engagement",
+    defaultValueProp: "",
+  },
+  {
+    key: "event",
+    label: "Event invite",
+    sub: "Promote a webinar or launch",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" />
+      </svg>
+    ),
+    defaultName: "Event invite",
+    defaultValueProp: "",
+  },
+];
+
 // ── Design helpers ─────────────────────────────────────────────────────────────
 
 function card(extra?: React.CSSProperties): React.CSSProperties {
@@ -97,13 +150,31 @@ function section(extra?: React.CSSProperties): React.CSSProperties {
   return { background: "var(--s2)", border: "1px solid var(--bd)", ...extra };
 }
 
-// Status pill helper — returns className for <span className={statusPill(s)} />
-function statusPillClass(status: string): string {
+function statusDotColor(status: string): string {
   const map: Record<string, string> = {
-    active: "pill green", paused: "pill amber",
-    completed: "pill blue", active_contacted: "pill blue",
+    active: "var(--blue)",
+    paused: "var(--amber)",
+    draft: "var(--fm)",
+    completed: "var(--blue)",
+    active_contacted: "var(--blue)",
   };
-  return map[status] ?? "pill";
+  return map[status] ?? "var(--fm)";
+}
+
+function statusBadgeStyle(status: string): React.CSSProperties {
+  const map: Record<string, React.CSSProperties> = {
+    active:   { color: "var(--blue)",  background: "var(--bdim)", border: "1px solid var(--bb)" },
+    paused:   { color: "var(--amber)", background: "var(--adim)", border: "1px solid var(--ab)" },
+    completed:{ color: "var(--blue)",  background: "var(--bdim)", border: "1px solid var(--bb)" },
+    draft:    { color: "var(--fm)",    background: "var(--bd)",   border: "1px solid var(--bd2)" },
+    active_contacted: { color: "var(--blue)", background: "var(--bdim)", border: "1px solid var(--bb)" },
+  };
+  return {
+    padding: "2px 10px", fontSize: 10, fontWeight: 700,
+    letterSpacing: ".06em", textTransform: "uppercase" as const,
+    fontFamily: "var(--font-code)", whiteSpace: "nowrap" as const,
+    ...(map[status] ?? { color: "var(--fm)", background: "var(--bd)", border: "1px solid var(--bd2)" }),
+  };
 }
 
 // ── Filter options ─────────────────────────────────────────────────────────────
@@ -181,7 +252,7 @@ function ProgressBar({ label, stages }: { label: string; stages?: string[] }) {
       setStageIdx(i => Math.min(i + 1, stageList.length - 1));
     }, 2200);
     return () => clearInterval(interval);
-  }, [label]); // reset when a new search starts
+  }, [label]);
 
   const current = stageList[stageIdx];
   const pct = stageList.length > 1 ? Math.round(((stageIdx + 1) / stageList.length) * 100) : null;
@@ -223,59 +294,80 @@ function StatBadge({ label, value, color }: { label: string; value: string | num
   );
 }
 
-// ── Campaign card ──────────────────────────────────────────────────────────────
+// ── Campaign row (list view) ───────────────────────────────────────────────────
 
-function CampaignCard({ campaign, stats, onClick, onDelete }: {
-  campaign: Campaign; stats?: CampaignStats; onClick: () => void; onDelete: () => void;
+function CampaignRow({ campaign, stats, onClick, onDelete, isLast }: {
+  campaign: Campaign; stats?: CampaignStats; onClick: () => void; onDelete: () => void; isLast: boolean;
 }) {
   const [confirming, setConfirming] = React.useState(false);
-  const audience = campaign.target_audience;
-  const hasAudience = audience && (audience.titles || audience.industries || audience.locations);
+  const [hovered, setHovered] = React.useState(false);
+
+  const subParts: string[] = [];
+  if (stats && stats.sent > 0) {
+    subParts.push(`${stats.sent} sent`);
+    if (stats.replied > 0) subParts.push(`${stats.replied} replies`);
+    if (stats.reply_rate > 0) subParts.push(`${stats.reply_rate}% reply rate`);
+  } else if (campaign.status === "draft") {
+    subParts.push("Not yet launched");
+  } else if (campaign.status === "paused") {
+    subParts.push("Paused");
+  }
+
   return (
-    <div className="sc" style={{ cursor: "default", padding: 0 }}>
-      {/* Clickable body — delete button is never inside this */}
-      <div onClick={onClick} style={{ cursor: "pointer", padding: "14px 14px 10px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>{campaign.name}</div>
-            <div style={{ fontSize: 11, color: "var(--fm)", marginTop: 2 }}>{campaign.from_email || "no sender"}</div>
-          </div>
-          <span className={statusPillClass(campaign.status)} style={{ flexShrink: 0, marginLeft: 8 }}>{campaign.status}</span>
+    <div
+      style={{
+        display: "flex", alignItems: "center", gap: 12,
+        padding: "14px 18px",
+        borderBottom: isLast ? "none" : "1px solid var(--bd)",
+        background: hovered ? "var(--bdim)" : "transparent",
+        transition: "background 0.1s",
+        cursor: "pointer",
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={confirming ? undefined : onClick}
+    >
+      {/* Status dot */}
+      <div style={{
+        width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+        background: statusDotColor(campaign.status),
+        boxShadow: campaign.status === "active" ? `0 0 6px var(--blue)` : "none",
+      }} />
+
+      {/* Name + sub */}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)", marginBottom: 2 }}>
+          {campaign.name}
         </div>
-        {hasAudience && (
-          <div style={{ fontSize: 11, color: "var(--fm)", marginBottom: 8 }}>
-            {[audience!.titles, audience!.industries, audience!.locations].filter(Boolean).join(" · ")}
+        {subParts.length > 0 && (
+          <div style={{ fontSize: 12, color: "var(--fm)" }}>
+            {subParts.join(" · ")}
           </div>
         )}
-        {stats && stats.sent > 0 && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6, marginBottom: 8 }}>
-            <StatBadge label="Sent" value={stats.sent} />
-            <StatBadge label="Opens" value={`${stats.open_rate}%`} color="var(--blue)" />
-            <StatBadge label="Replies" value={`${stats.reply_rate}%`} color="var(--green)" />
-          </div>
-        )}
-        <div style={{ fontSize: 10, color: "var(--fm)", fontFamily: "var(--font-code)" }}>
-          {campaign.steps?.length || 0} email steps · {campaign.daily_limit}/day
-        </div>
       </div>
-      {/* Delete row — outside the clickable body */}
-      <div style={{ borderTop: "1px solid var(--bd)", padding: "6px 10px", display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
-        {confirming ? (
-          <>
-            <span style={{ fontSize: 11, color: "var(--fg)" }}>Delete this campaign?</span>
-            <button onClick={() => { setConfirming(false); onDelete(); }} style={{ background: "var(--rdim)", border: "1px solid var(--rb)", color: "var(--red)", cursor: "pointer", fontSize: 11, fontWeight: 600, padding: "2px 10px" }}>
-              Yes
-            </button>
-            <button onClick={() => setConfirming(false)} style={{ background: "none", border: "1px solid var(--bd2)", color: "var(--fm)", cursor: "pointer", fontSize: 11, padding: "2px 10px" }}>
-              Cancel
-            </button>
-          </>
-        ) : (
-          <button onClick={() => setConfirming(true)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--red)", fontWeight: 600, padding: "2px 6px" }}>
+
+      {/* Delete / confirm */}
+      {confirming ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }} onClick={e => e.stopPropagation()}>
+          <span style={{ fontSize: 11, color: "var(--fg)" }}>Delete?</span>
+          <button onClick={() => { setConfirming(false); onDelete(); }} style={{ background: "var(--rdim)", border: "1px solid var(--rb)", color: "var(--red)", cursor: "pointer", fontSize: 11, fontWeight: 600, padding: "2px 10px" }}>Yes</button>
+          <button onClick={() => setConfirming(false)} style={{ background: "none", border: "1px solid var(--bd2)", color: "var(--fm)", cursor: "pointer", fontSize: 11, padding: "2px 10px" }}>Cancel</button>
+        </div>
+      ) : (
+        hovered && (
+          <button
+            onClick={e => { e.stopPropagation(); setConfirming(true); }}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "var(--red)", fontWeight: 600, padding: "2px 6px", opacity: 0.7 }}
+          >
             Delete
           </button>
-        )}
-      </div>
+        )
+      )}
+
+      {/* Status badge */}
+      <span style={statusBadgeStyle(campaign.status)}>
+        {campaign.status}
+      </span>
     </div>
   );
 }
@@ -310,7 +402,6 @@ function ContactCard({ contact, selected, onToggle, disabled }: {
       </div>
       <div style={{ minWidth: 0, flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
         {contact.is_org ? (
-          /* ── Org card ── */
           <>
             <div style={{ fontSize: 13, fontWeight: 700, color: "var(--fg)", display: "flex", alignItems: "center", gap: 5 }}>
               <span style={{ fontSize: 10, opacity: 0.5 }}>🏢</span> {contact.first_name}
@@ -328,7 +419,6 @@ function ContactCard({ contact, selected, onToggle, disabled }: {
             )}
           </>
         ) : (
-          /* ── Person card ── */
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <span style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)" }}>
@@ -458,6 +548,19 @@ export default function OutreachPage() {
   const [sendingBatch, setSendingBatch] = useState(false);
   const [batchResult, setBatchResult] = useState<{ sent: number; failed: number } | null>(null);
 
+  // ── Aggregate stats ────────────────────────────────────────────────────────
+
+  const aggregateStats = React.useMemo(() => {
+    const statsArr = Object.values(campaignStats);
+    if (statsArr.length === 0) return null;
+    const withReplies = statsArr.filter(s => s.sent > 0);
+    const avgReplyRate = withReplies.length > 0
+      ? Math.round(withReplies.reduce((acc, s) => acc + s.reply_rate, 0) / withReplies.length * 10) / 10
+      : 0;
+    const awaitingReply = statsArr.reduce((acc, s) => acc + Math.max(0, s.sent - s.replied), 0);
+    return { avgReplyRate, awaitingReply };
+  }, [campaignStats]);
+
   // ── Load campaigns ─────────────────────────────────────────────────────────
 
   const loadCampaigns = useCallback(async () => {
@@ -518,7 +621,6 @@ export default function OutreachPage() {
       const res = await apiFetch(`${BASE}/outreach/search/people?${params}`);
       const data = await res.json();
       if (data.error) { setApolloError(JSON.stringify(data.error)); return; }
-      // Ensure every contact has a unique stable ID regardless of source
       const contacts = (data.contacts || []).map((c: ApolloContact, idx: number) => ({
         ...c,
         apollo_id: c.apollo_id || `_local_${idx}_${(c.first_name || "").replace(/\s/g, "")}_${(c.company_name || "").replace(/\s/g, "")}`,
@@ -639,9 +741,7 @@ export default function OutreachPage() {
           setParsingAudience(false);
         }
       } else {
-        audience = audienceMode === "simple"
-          ? defaultAudience()
-          : newAudience;
+        audience = audienceMode === "simple" ? defaultAudience() : newAudience;
       }
       const res = await apiFetch(`${BASE}/outreach/campaigns/${founderId}`, {
         method: "POST",
@@ -662,6 +762,15 @@ export default function OutreachPage() {
     } finally {
       setCreatingCampaign(false);
     }
+  };
+
+  const openNewCampaignWithType = (type: typeof CAMPAIGN_TYPES[0]) => {
+    setNewCampaign(p => ({
+      ...p,
+      name: type.defaultName,
+      value_prop: type.defaultValueProp,
+    }));
+    setShowNewCampaign(true);
   };
 
   // ── Email sequence ─────────────────────────────────────────────────────────
@@ -706,7 +815,7 @@ export default function OutreachPage() {
     finally { setSendingBatch(false); }
   };
 
-  const deleteCampaign = async (campaignId: string, campaignName: string) => {
+  const deleteCampaign = async (campaignId: string, _campaignName: string) => {
     try {
       await apiFetch(`${BASE}/outreach/campaigns/${founderId}/${campaignId}`, { method: "DELETE" });
       if (activeCampaign?.id === campaignId) {
@@ -751,147 +860,196 @@ export default function OutreachPage() {
 
       <PageHeader
         title="Outreach"
-        subtitle={
-          campaigns.length > 0
-            ? `${campaigns.length} campaign${campaigns.length !== 1 ? "s" : ""} · Find contacts, send personalised emails`
-            : "Find contacts, send personalised emails"
+        subtitle={aggregateStats && aggregateStats.avgReplyRate > 0
+          ? `${aggregateStats.avgReplyRate}% avg reply rate · ${aggregateStats.awaitingReply} awaiting reply`
+          : "Find contacts, send personalised emails"
         }
         actions={
           <button
             onClick={() => setShowNewCampaign(true)}
             className="m-tap"
             style={{
-              padding: "8px 18px", fontSize: 12, fontWeight: 600, color: "#002EFF",
-              background: "#fff", border: "none", cursor: "pointer",
+              padding: "8px 18px", fontSize: 12, fontWeight: 600, color: "#fff",
+              background: "var(--accent)", border: "none", cursor: "pointer",
             }}
           >
-            + New Campaign
+            + New run
           </button>
         }
       />
 
       {/* Content area */}
-      <div style={{ flex: 1, padding: "20px 24px 48px", display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ flex: 1, padding: "20px 24px 48px", display: "flex", flexDirection: "column", gap: 24 }}>
 
-      {campaignsLoading ? (
-        <div style={{ ...section() }}>
-          <ProgressBar label="Loading campaigns…" />
-        </div>
-      ) : campaigns.length === 0 ? (
-        <div style={{ ...card({ padding: "60px 24px", textAlign: "center" }) }}>
-          <div style={{ fontSize: 20, marginBottom: 12, fontFamily: "var(--font-code)", color: "var(--fm)", opacity: 0.4 }}>◎</div>
-          <p style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)", margin: "0 0 6px" }}>No campaigns yet</p>
-          <p style={{ fontSize: 13, color: "var(--fm)", margin: "0 0 20px" }}>
-            Create one to start finding contacts and sending emails
-          </p>
-          <button onClick={() => setShowNewCampaign(true)} className="btn pri">
-            Create first campaign
-          </button>
-        </div>
-      ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 10 }}>
-          {campaigns.map(c => (
-            <CampaignCard key={c.id} campaign={c} stats={campaignStats[c.id]} onClick={() => enterCampaign(c)} onDelete={() => deleteCampaign(c.id, c.name)} />
-          ))}
-        </div>
-      )}
-
-      {/* ── New campaign modal ──────────────────────────────────────────────── */}
-      {showNewCampaign && (
-        <div className="astra-modal-backdrop">
-          <div className="astra-modal-shell" style={{ maxWidth: 620 }}>
-            <div className="astra-modal-panel">
-            <div className="astra-modal-header">
-              <div className="astra-modal-header-row">
-                <div>
-                  <div className="astra-modal-eyebrow">outreach</div>
-                  <h2 className="astra-modal-title" style={{ fontSize: 24 }}>New campaign</h2>
-                  <p className="astra-modal-sub">Set the basics, define who you want to reach, and let Astra spin up the first audience-building pass.</p>
+        {/* ── Launch a new campaign ─────────────────────────────────────── */}
+        <div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fm)", marginBottom: 10 }}>
+            Launch a new campaign
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+            {CAMPAIGN_TYPES.map(type => (
+              <button
+                key={type.key}
+                onClick={() => openNewCampaignWithType(type)}
+                className="sc m-tap"
+                style={{
+                  background: "var(--surface)", border: "1px solid var(--bd2)",
+                  padding: "16px 18px", textAlign: "left", cursor: "pointer",
+                  display: "flex", flexDirection: "column", gap: 8,
+                  transition: "border-color .12s, box-shadow .12s",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--bb)"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--bd2)"; }}
+              >
+                <div style={{
+                  width: 34, height: 34, borderRadius: "50%",
+                  background: "var(--bdim)", border: "1px solid var(--bb)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "var(--blue)",
+                }}>
+                  {type.icon}
                 </div>
-                <button onClick={() => { setShowNewCampaign(false); setAudienceMode("simple"); setAudiencePrompt(""); setParsingAudience(false); }} className="astra-modal-close" aria-label="Close new campaign modal">×</button>
-              </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", marginBottom: 2 }}>{type.label}</div>
+                  <div style={{ fontSize: 11, color: "var(--fm)" }}>{type.sub}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Your campaigns ───────────────────────────────────────────── */}
+        {campaignsLoading ? (
+          <div style={{ ...section() }}>
+            <ProgressBar label="Loading campaigns…" />
+          </div>
+        ) : campaigns.length === 0 ? (
+          <div style={{ ...card({ padding: "60px 24px", textAlign: "center" }) }}>
+            <div style={{ fontSize: 20, marginBottom: 12, fontFamily: "var(--font-code)", color: "var(--fm)", opacity: 0.4 }}>◎</div>
+            <p style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)", margin: "0 0 6px" }}>No campaigns yet</p>
+            <p style={{ fontSize: 13, color: "var(--fm)", margin: "0 0 20px" }}>
+              Pick a type above or create a custom campaign
+            </p>
+            <button onClick={() => setShowNewCampaign(true)} className="btn pri">
+              Create first campaign
+            </button>
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fm)", marginBottom: 10 }}>
+              Your campaigns
             </div>
-            <div className="astra-modal-body">
-            <div className="astra-modal-card" style={{ padding: "22px 20px", maxHeight: "70vh", overflowY: "auto" }}>
-            <div className="sec-label" style={{ marginBottom: 10 }}>Campaign basics</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
-              {[
-                { label: "Campaign Name *", key: "name", placeholder: "Q1 SaaS Outreach" },
-                { label: "From Name", key: "from_name", placeholder: "Alex from Astra" },
-                { label: "From Email", key: "from_email", placeholder: "alex@yourcompany.com" },
-                { label: "Product Name", key: "product_name", placeholder: "Astra" },
-                { label: "Value Proposition", key: "value_prop", placeholder: "Helps founders build startups 10x faster" },
-              ].map(f => (
-                <Field key={f.key} label={f.label}>
-                  <input
-                    value={(newCampaign as Record<string, string | number>)[f.key] as string}
-                    onChange={e => setNewCampaign(p => ({ ...p, [f.key]: e.target.value }))}
-                    placeholder={f.placeholder}
-                    className="f-input"
-                  />
-                </Field>
+            <div style={{ ...card({ padding: 0 }), overflow: "hidden" }}>
+              {campaigns.map((c, i) => (
+                <CampaignRow
+                  key={c.id}
+                  campaign={c}
+                  stats={campaignStats[c.id]}
+                  onClick={() => enterCampaign(c)}
+                  onDelete={() => deleteCampaign(c.id, c.name)}
+                  isLast={i === campaigns.length - 1}
+                />
               ))}
             </div>
+          </div>
+        )}
 
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <span className="sec-label" style={{ margin: 0 }}>Target audience</span>
-              <button
-                type="button"
-                onClick={() => setAudienceMode(m => m === "simple" ? "advanced" : "simple")}
-                style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 11, color: "var(--blue)", fontWeight: 600 }}
-              >
-                {audienceMode === "simple" ? "Advanced filters ▼" : "Simple mode ▲"}
-              </button>
-            </div>
-
-            {audienceMode === "simple" ? (
-              <div style={{ marginBottom: 22 }}>
-                <Field label="Describe who you want to reach">
-                  <input
-                    value={audiencePrompt}
-                    onChange={e => setAudiencePrompt(e.target.value)}
-                    placeholder="e.g. restaurant owners in New York, SaaS founders in the US"
-                    className="f-input"
-                  />
-                </Field>
-                <p style={{ fontSize: 11, color: "var(--fm)", margin: "6px 0 0" }}>
-                  AI will convert this to search filters. Switch to manual for exact control.
-                </p>
+        {/* ── New campaign modal ──────────────────────────────────────────── */}
+        {showNewCampaign && (
+          <div className="astra-modal-backdrop">
+            <div className="astra-modal-shell" style={{ maxWidth: 620 }}>
+              <div className="astra-modal-panel">
+              <div className="astra-modal-header">
+                <div className="astra-modal-header-row">
+                  <div>
+                    <div className="astra-modal-eyebrow">outreach</div>
+                    <h2 className="astra-modal-title" style={{ fontSize: 24 }}>New campaign</h2>
+                    <p className="astra-modal-sub">Set the basics, define who you want to reach, and let Astra spin up the first audience-building pass.</p>
+                  </div>
+                  <button onClick={() => { setShowNewCampaign(false); setAudienceMode("simple"); setAudiencePrompt(""); setParsingAudience(false); }} className="astra-modal-close" aria-label="Close new campaign modal">×</button>
+                </div>
               </div>
-            ) : (
+              <div className="astra-modal-body">
+              <div className="astra-modal-card" style={{ padding: "22px 20px", maxHeight: "70vh", overflowY: "auto" }}>
+              <div className="sec-label" style={{ marginBottom: 10 }}>Campaign basics</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
                 {[
-                  { label: "Job Titles", key: "titles", placeholder: "Owner, Manager, Chef, Director" },
-                  { label: "Locations", key: "locations", placeholder: "New York, United States, California" },
-                  { label: "Industries", key: "industries", placeholder: "Restaurants, Food & Beverages, Retail" },
-                  { label: "Keywords", key: "keywords", placeholder: "catering, franchise, fine dining" },
+                  { label: "Campaign Name *", key: "name", placeholder: "Q1 SaaS Outreach" },
+                  { label: "From Name", key: "from_name", placeholder: "Alex from Astra" },
+                  { label: "From Email", key: "from_email", placeholder: "alex@yourcompany.com" },
+                  { label: "Product Name", key: "product_name", placeholder: "Astra" },
+                  { label: "Value Proposition", key: "value_prop", placeholder: "Helps founders build startups 10x faster" },
                 ].map(f => (
                   <Field key={f.key} label={f.label}>
                     <input
-                      value={(newAudience as unknown as Record<string, string>)[f.key] ?? ""}
-                      onChange={e => setNewAudience(a => ({ ...a, [f.key]: e.target.value }))}
+                      value={(newCampaign as Record<string, string | number>)[f.key] as string}
+                      onChange={e => setNewCampaign(p => ({ ...p, [f.key]: e.target.value }))}
                       placeholder={f.placeholder}
                       className="f-input"
                     />
                   </Field>
                 ))}
-                <CheckGroup label="Seniority" options={SENIORITY_OPTIONS} selected={newAudience.seniorities} onChange={v => setNewAudience(a => ({ ...a, seniorities: v }))} />
-                <CheckGroup label="Company Size" options={COMPANY_SIZE_OPTIONS} selected={newAudience.company_sizes} onChange={v => setNewAudience(a => ({ ...a, company_sizes: v }))} />
               </div>
-            )}
 
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", paddingTop: 8, borderTop: "1px solid var(--bd)" }}>
-              <button onClick={() => { setShowNewCampaign(false); setAudienceMode("simple"); setAudiencePrompt(""); setParsingAudience(false); }} className="btn">Cancel</button>
-              <button onClick={createCampaign} disabled={creatingCampaign || !newCampaign.name.trim()} className="btn pri">
-                {parsingAudience ? "Parsing audience…" : creatingCampaign ? "Creating…" : "Create & Find Contacts →"}
-              </button>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <span className="sec-label" style={{ margin: 0 }}>Target audience</span>
+                <button
+                  type="button"
+                  onClick={() => setAudienceMode(m => m === "simple" ? "advanced" : "simple")}
+                  style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 11, color: "var(--blue)", fontWeight: 600 }}
+                >
+                  {audienceMode === "simple" ? "Advanced filters ▼" : "Simple mode ▲"}
+                </button>
+              </div>
+
+              {audienceMode === "simple" ? (
+                <div style={{ marginBottom: 22 }}>
+                  <Field label="Describe who you want to reach">
+                    <input
+                      value={audiencePrompt}
+                      onChange={e => setAudiencePrompt(e.target.value)}
+                      placeholder="e.g. restaurant owners in New York, SaaS founders in the US"
+                      className="f-input"
+                    />
+                  </Field>
+                  <p style={{ fontSize: 11, color: "var(--fm)", margin: "6px 0 0" }}>
+                    AI will convert this to search filters. Switch to manual for exact control.
+                  </p>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
+                  {[
+                    { label: "Job Titles", key: "titles", placeholder: "Owner, Manager, Chef, Director" },
+                    { label: "Locations", key: "locations", placeholder: "New York, United States, California" },
+                    { label: "Industries", key: "industries", placeholder: "Restaurants, Food & Beverages, Retail" },
+                    { label: "Keywords", key: "keywords", placeholder: "catering, franchise, fine dining" },
+                  ].map(f => (
+                    <Field key={f.key} label={f.label}>
+                      <input
+                        value={(newAudience as unknown as Record<string, string>)[f.key] ?? ""}
+                        onChange={e => setNewAudience(a => ({ ...a, [f.key]: e.target.value }))}
+                        placeholder={f.placeholder}
+                        className="f-input"
+                      />
+                    </Field>
+                  ))}
+                  <CheckGroup label="Seniority" options={SENIORITY_OPTIONS} selected={newAudience.seniorities} onChange={v => setNewAudience(a => ({ ...a, seniorities: v }))} />
+                  <CheckGroup label="Company Size" options={COMPANY_SIZE_OPTIONS} selected={newAudience.company_sizes} onChange={v => setNewAudience(a => ({ ...a, company_sizes: v }))} />
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", paddingTop: 8, borderTop: "1px solid var(--bd)" }}>
+                <button onClick={() => { setShowNewCampaign(false); setAudienceMode("simple"); setAudiencePrompt(""); setParsingAudience(false); }} className="btn">Cancel</button>
+                <button onClick={createCampaign} disabled={creatingCampaign || !newCampaign.name.trim()} className="btn pri">
+                  {parsingAudience ? "Parsing audience…" : creatingCampaign ? "Creating…" : "Create & Find Contacts →"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-        </div>
-        </div>
-        </div>
-      )}
+          </div>
+          </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -910,8 +1068,8 @@ export default function OutreachPage() {
     <div style={{ width: "100%", display: "flex", flexDirection: "column" }}>
       <style>{`@keyframes outreach-sweep{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
 
-      {/* Detail blue hero header */}
-      <div style={{ background: "#001AFF", flexShrink: 0, borderBottom: "1px solid var(--bd)" }}>
+      {/* Detail header — accent blue */}
+      <div style={{ background: "var(--accent)", flexShrink: 0, borderBottom: "1px solid rgba(0,0,0,0.15)" }}>
         <div style={{ padding: "22px 24px 18px" }}>
           <button
             onClick={() => { setView("campaigns"); setActiveCampaign(null); setConfirmingDelete(false); loadCampaigns(); }}
@@ -1083,7 +1241,6 @@ export default function OutreachPage() {
                 ))}
               </div>
 
-              {/* Sticky enroll bar — visible whenever contacts are selected */}
               {selectedContacts.size > 0 && (
                 <div style={{
                   position: "sticky", bottom: 0,
@@ -1170,7 +1327,7 @@ export default function OutreachPage() {
                     <div style={{ fontSize: 11, color: "var(--fm)" }}>
                       Step {(cc.current_step || 0) + 1} of {activeCampaign.steps?.length || "?"}
                     </div>
-                    <span className={statusPillClass(cc.status)}>{cc.status}</span>
+                    <span style={statusBadgeStyle(cc.status)}>{cc.status}</span>
                     <div style={{ fontSize: 11, color: "var(--fm)", fontFamily: "var(--font-code)" }}>
                       {cc.next_send_at
                         ? `next ${new Date(cc.next_send_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
@@ -1187,7 +1344,6 @@ export default function OutreachPage() {
       {/* ── Emails tab ──────────────────────────────────────────────────── */}
       {detailTab === "emails" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Controls */}
           <div style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
             <div style={{ display: "flex", gap: 8 }}>
               <Btn variant="blue" disabled={generatingSteps} onClick={generateSteps}>
