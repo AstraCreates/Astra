@@ -382,14 +382,8 @@ export default function DashboardView() {
         {/* ── Main content: flex column, gap:16 — mirrors HTML spec ── */}
         <div style={{ padding: "18px 30px", display: "flex", flexDirection: "column", gap: 16 }}>
 
-          {/* Today header + segment control */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 11, letterSpacing: ".08em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>Today</div>
-            <div style={{ display: "flex", gap: 3, padding: 3, background: "#0C0F1A", border: "1px solid rgba(255,255,255,.08)", borderRadius: 8 }}>
-              <button style={{ padding: "4px 12px", fontSize: 11, fontWeight: 600, color: regularSessions.length > 0 ? "#EDF1FB" : "#6f7b98", background: regularSessions.length > 0 ? "rgba(255,255,255,.08)" : "transparent", border: "none", borderRadius: 6, cursor: "pointer" }}>Populated</button>
-              <button onClick={() => router.push("/dashboard?new=1")} style={{ padding: "4px 12px", fontSize: 11, fontWeight: 600, color: regularSessions.length === 0 ? "#EDF1FB" : "#6f7b98", background: regularSessions.length === 0 ? "rgba(255,255,255,.08)" : "transparent", border: "none", borderRadius: 6, cursor: "pointer" }}>First run</button>
-            </div>
-          </div>
+          {/* Today header */}
+          <div style={{ fontSize: 11, letterSpacing: ".08em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>Today</div>
 
           {/* Two columns */}
           <div className="dv-body" style={{ display: "flex", gap: 18, alignItems: "stretch" }}>

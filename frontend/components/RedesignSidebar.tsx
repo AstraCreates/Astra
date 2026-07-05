@@ -49,7 +49,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
   }, []);
 
   const displayName = hydrated ? (user?.fullName?.split(" ")[0] || initials(userId)) : "…";
-  const accentColor = "#7CFFC6";
+  const accentColor = "#7d8fff";
 
   const sidebarStyle: React.CSSProperties = mobile
     ? { width: 214, display: "flex", flexDirection: "column", background: "#080A12", borderRight: "1px solid rgba(255,255,255,.07)", height: "100dvh", position: "fixed", top: 0, left: 0, zIndex: 60, transform: open ? "translateX(0)" : "translateX(-104%)", transition: "transform 0.28s cubic-bezier(0.22,1,0.36,1)" }
