@@ -182,24 +182,11 @@ body::after {
 }
 
 body::before {
-  background:
-    radial-gradient(circle at 28% 18%, rgba(255,255,255,0.48) 0 1.2px, transparent 1.6px),
-    radial-gradient(circle at 72% 22%, rgba(11,49,255,0.9) 0 1.1px, transparent 1.5px),
-    radial-gradient(circle at 62% 76%, rgba(255,255,255,0.36) 0 1px, transparent 1.4px),
-    radial-gradient(circle at 20% 82%, rgba(11,49,255,0.72) 0 1px, transparent 1.4px);
-  background-size: 260px 260px, 340px 340px, 420px 420px, 380px 380px;
-  opacity: 0.5;
-  animation: starFieldDrift 28s linear infinite;
+  display: none;
 }
 
 body::after {
-  background:
-    radial-gradient(circle at 18% 22%, transparent 0 21vw, rgba(11,49,255,0.16) 21.1vw 21.3vw, transparent 21.4vw 48vw),
-    radial-gradient(circle at 76% 76%, transparent 0 16vw, rgba(255,255,255,0.14) 16.1vw 16.3vw, transparent 16.4vw 42vw),
-    radial-gradient(circle at 52% 44%, transparent 0 28vw, rgba(11,49,255,0.08) 28.1vw 28.35vw, transparent 28.45vw 52vw);
-  opacity: 0.28;
-  mix-blend-mode: screen;
-  animation: orbitDrift 34s ease-in-out infinite;
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

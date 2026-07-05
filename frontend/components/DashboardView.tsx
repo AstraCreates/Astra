@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, listSessions, deleteSessionRemote, killSession, getSessionDigest, type SessionIndexEntry, type SessionDigest } from "@/lib/api";
+import { apiFetch, listSessions, deleteSessionRemote, killSession, getSessionDigest, getCredits, type SessionIndexEntry, type SessionDigest } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import LaunchCompleteScreen, { shouldShowLaunchComplete, markLaunchCompleteShown, consumePreviewSignal } from "./LaunchCompleteScreen";
@@ -105,6 +105,12 @@ export default function DashboardView() {
   const copilotLoadedSession = useRef<string | null>(null);
   const copilotInputRef = useRef<HTMLInputElement>(null);
   const [launchComplete, setLaunchComplete] = useState<{ companyName: string; founderName: string; agentsRan: number; artifactsCreated: number; stackName?: string } | null>(null);
+  const [credits, setCredits] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!userId) return;
+    getCredits(userId).then(b => setCredits(b.balance)).catch(() => {});
+  }, [userId]);
 
   // Settings preview: fire immediately on mount without needing session data.
   useEffect(() => {
@@ -500,7 +506,7 @@ export default function DashboardView() {
                     {[
                       { label: "Active", value: String(running) },
                       { label: "Done today", value: String((sessions || []).filter(s => s.status === "done" && s.created_at && (Date.now() - new Date(s.created_at).getTime()) < 86400000).length) },
-                      { label: "Total runs", value: String(regularSessions.length) },
+                      { label: "Credits", value: credits !== null ? credits.toLocaleString() : "—" },
                       {
                         label: "Success",
                         value: (() => {
