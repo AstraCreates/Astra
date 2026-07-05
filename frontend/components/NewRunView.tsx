@@ -95,7 +95,7 @@ export default function NewRunView({ workspaceId }: { workspaceId: string }) {
       {showQuiz && (
         <BusinessQuizModal onComplete={onQuizComplete} onSkip={onQuizSkip} />
       )}
-      <div className="new-wrap new-wrap-wide new-orbit-stage">
+      <div className="new-wrap new-wrap-wide">
         {/* Company context chip */}
         {workspace && (
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 12px", border: "1px solid var(--bd)", background: "var(--surface)", marginBottom: 20, fontSize: 11, color: "var(--fd)" }}>

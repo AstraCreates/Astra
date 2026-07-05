@@ -75,23 +75,23 @@ html.antialiased {
 }
 
 [data-theme="dark"] {
-  --bg:        #0B1020;
-  --bg-surface:#111728;
-  --bg-sunken: #090D18;
-  --surface:   rgba(17, 23, 40, 0.82);
-  --s2:        rgba(22, 29, 48, 0.82);
-  --s3:        #1A2138;
-  --fg:        #F4F7FF;
-  --fd:        #C4CEE7;
-  --fm:        #8C97B3;
-  --bd:        rgba(195, 210, 244, 0.10);
-  --bd2:       rgba(226, 234, 255, 0.17);
-  --accent:    #5A7BFF;
-  --accent-hover: #7E9AFF;
-  --blue:      #5A7BFF;
-  --bdim:      rgba(90, 123, 255, 0.14);
-  --bb:        rgba(90, 123, 255, 0.38);
-  --bglow:     rgba(90, 123, 255, 0.30);
+  --bg:        #05070E;
+  --bg-surface:#0A0D17;
+  --bg-sunken: #070911;
+  --surface:   #0A0D17;
+  --s2:        #0C0F1A;
+  --s3:        #111520;
+  --fg:        #EDF1FB;
+  --fd:        #c3cbe0;
+  --fm:        #6f7b98;
+  --bd:        rgba(255, 255, 255, 0.08);
+  --bd2:       rgba(255, 255, 255, 0.12);
+  --accent:    #002EFF;
+  --accent-hover: #1a44ff;
+  --blue:      #7d8fff;
+  --bdim:      rgba(125, 143, 255, 0.12);
+  --bb:        rgba(125, 143, 255, 0.32);
+  --bglow:     rgba(125, 143, 255, 0.20);
   --mint:      #7CFFC6;
   --mint-dim:  rgba(124, 255, 198, 0.10);
   --mint-border: rgba(124, 255, 198, 0.28);
