@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geist.variable} ${geistMono.variable} ${dmSans.variable} ${ibmPlexMono.variable} ${jetbrainsMono.variable} ${pixelifySans.variable} ${instrumentSans.variable} antialiased`} data-theme="light" suppressHydrationWarning>
+    <html lang="en" className={`${geist.variable} ${geistMono.variable} ${dmSans.variable} ${ibmPlexMono.variable} ${jetbrainsMono.variable} ${pixelifySans.variable} ${instrumentSans.variable} antialiased`} data-theme="dark" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <SessionWrapper>
           <ApiAuthBridge />
