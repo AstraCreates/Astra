@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch } from "@/lib/api";
-import PageHeader from "@/components/PageHeader";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 const MAX_CONFIRM = 10;
@@ -101,6 +100,8 @@ const CAMPAIGN_TYPES = [
     ),
     defaultName: "Cold outbound",
     defaultValueProp: "Helps founders build startups 10x faster with AI",
+    defaultAudiencePrompt: "",
+    defaultDailyLimit: 50,
   },
   {
     key: "followup",
@@ -113,6 +114,8 @@ const CAMPAIGN_TYPES = [
     ),
     defaultName: "Follow-up sequence",
     defaultValueProp: "",
+    defaultAudiencePrompt: "contacts who haven't replied to initial outreach in the last 14 days",
+    defaultDailyLimit: 30,
   },
   {
     key: "reengagement",
@@ -124,7 +127,9 @@ const CAMPAIGN_TYPES = [
       </svg>
     ),
     defaultName: "Re-engagement",
-    defaultValueProp: "",
+    defaultValueProp: "We've improved since you last checked — worth a second look",
+    defaultAudiencePrompt: "former customers or leads who went cold in the last 90 days",
+    defaultDailyLimit: 20,
   },
   {
     key: "event",
@@ -136,7 +141,9 @@ const CAMPAIGN_TYPES = [
       </svg>
     ),
     defaultName: "Event invite",
-    defaultValueProp: "",
+    defaultValueProp: "Join our upcoming webinar — live demo and Q&A with the founders",
+    defaultAudiencePrompt: "startup founders and operators interested in AI tools and productivity",
+    defaultDailyLimit: 100,
   },
 ];
 
@@ -769,7 +776,10 @@ export default function OutreachPage() {
       ...p,
       name: type.defaultName,
       value_prop: type.defaultValueProp,
+      daily_limit: type.defaultDailyLimit,
     }));
+    setAudiencePrompt(type.defaultAudiencePrompt);
+    setAudienceMode("simple");
     setShowNewCampaign(true);
   };
 
@@ -855,63 +865,63 @@ export default function OutreachPage() {
   // ── Campaign list ──────────────────────────────────────────────────────────
 
   if (view === "campaigns") return (
-    <div style={{ width: "100%", display: "flex", flexDirection: "column" }}>
+    <div style={{ width: "100%", display: "flex", flexDirection: "column", padding: "24px 30px", gap: 20 }}>
       <style>{`@keyframes outreach-sweep{0%{background-position:200% 0}100%{background-position:-200% 0}}`}</style>
 
-      <PageHeader
-        title="Outreach"
-        subtitle={aggregateStats && aggregateStats.avgReplyRate > 0
-          ? `${aggregateStats.avgReplyRate}% avg reply rate · ${aggregateStats.awaitingReply} awaiting reply`
-          : "Find contacts, send personalised emails"
-        }
-        actions={
-          <button
-            onClick={() => setShowNewCampaign(true)}
-            className="m-tap"
-            style={{
-              padding: "8px 18px", fontSize: 12, fontWeight: 600, color: "#fff",
-              background: "var(--accent)", border: "none", cursor: "pointer",
-            }}
-          >
-            + New run
-          </button>
-        }
-      />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-.01em" }}>Outreach</h1>
+          {aggregateStats && aggregateStats.avgReplyRate > 0 && (
+            <div style={{ fontSize: 12, color: "var(--fm)", marginTop: 3 }}>
+              {aggregateStats.avgReplyRate}% avg reply rate · {aggregateStats.awaitingReply} awaiting reply
+            </div>
+          )}
+        </div>
+        <button
+          onClick={() => setShowNewCampaign(true)}
+          className="btn"
+          style={{ fontSize: 12.5 }}
+        >
+          + New campaign
+        </button>
+      </div>
 
       {/* Content area */}
-      <div style={{ flex: 1, padding: "20px 24px 48px", display: "flex", flexDirection: "column", gap: 24 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
         {/* ── Launch a new campaign ─────────────────────────────────────── */}
         <div>
           <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase", color: "var(--fm)", marginBottom: 10 }}>
             Launch a new campaign
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             {CAMPAIGN_TYPES.map(type => (
               <button
                 key={type.key}
                 onClick={() => openNewCampaignWithType(type)}
                 className="sc m-tap"
                 style={{
-                  background: "var(--surface)", border: "1px solid var(--bd2)",
-                  padding: "16px 18px", textAlign: "left", cursor: "pointer",
-                  display: "flex", flexDirection: "column", gap: 8,
-                  transition: "border-color .12s, box-shadow .12s",
+                  background: "#0A0D17", border: "1.5px solid rgba(255,255,255,.1)",
+                  borderRadius: 12,
+                  padding: "22px 22px", textAlign: "left", cursor: "pointer",
+                  display: "flex", flexDirection: "column", gap: 12,
+                  transition: "border-color .15s",
+                  minHeight: 140,
                 }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--bb)"; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--bd2)"; }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#7d8fff"; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,.1)"; }}
               >
                 <div style={{
-                  width: 34, height: 34, borderRadius: "50%",
-                  background: "var(--bdim)", border: "1px solid var(--bb)",
+                  width: 36, height: 36, borderRadius: 9,
+                  background: "rgba(125,143,255,.12)",
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  color: "var(--blue)",
+                  color: "#7d8fff",
                 }}>
                   {type.icon}
                 </div>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", marginBottom: 2 }}>{type.label}</div>
-                  <div style={{ fontSize: 11, color: "var(--fm)" }}>{type.sub}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "var(--fg)", marginBottom: 4 }}>{type.label}</div>
+                  <div style={{ fontSize: 11.5, color: "#6f7b98" }}>{type.sub}</div>
                 </div>
               </button>
             ))}

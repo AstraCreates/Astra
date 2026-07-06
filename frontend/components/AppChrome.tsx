@@ -67,7 +67,7 @@ function SignInScreen() {
         <h1 style={{ fontSize: 26, fontWeight: 700, margin: "0 0 10px", color: "var(--fg)", letterSpacing: "-0.02em", lineHeight: 1.2 }}>
           Your AI founding team
         </h1>
-        <p style={{ fontSize: 13.5, color: "var(--fm)", margin: "0 0 28px", lineHeight: 1.65, maxWidth: 290 }}>
+        <p style={{ fontSize: 13.5, color: "rgba(255,255,255,0.82)", margin: "0 0 28px", lineHeight: 1.65, maxWidth: 290 }}>
           A team of specialized agents working in parallel — research, strategy, engineering, and marketing.
         </p>
 
