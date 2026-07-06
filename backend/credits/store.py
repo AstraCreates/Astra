@@ -201,11 +201,9 @@ def deduct_credits(
         data = _load(founder_id)
         data = _init_if_new(founder_id, data)
         if data["balance"] < amount:
-            # Auto-refill: users have unlimited credits (top up by 10x the required amount)
-            refill = max(amount * 10, _INITIAL_CREDITS)
-            data["balance"] += refill
-            data["total_granted"] += refill
-            data["transactions"].append(_make_tx("grant", refill, "Auto-refill — unlimited credits", session_id))
+            raise ValueError(
+                f"insufficient credits: balance={data['balance']}, required={amount}"
+            )
         data["balance"] -= amount
         data["total_used"] += amount
         data["transactions"].append(_make_tx("usage", amount, description, session_id))

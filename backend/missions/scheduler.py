@@ -124,10 +124,39 @@ async def _scheduler_tick() -> int:
                 except Exception as exc:
                     logger.error("missions_scheduler: next-goal proposal recovery failed founder=%s: %s", founder_id, exc, exc_info=True)
             continue
-        # Stalled-goal auto-redispatch is disabled. Runs only start when the founder
-        # explicitly submits a goal — the scheduler no longer restarts them automatically.
-        # (This prevents unexpected "Launch the company" sessions appearing without user action.)
-        continue
+        if not cg or cg.get("status") != "active":
+            continue
+        open_tasks = [
+            t for t in (cg.get("tasks") or [])
+            if not t.get("postponed") and t.get("status") != "done"
+        ]
+        if not open_tasks:
+            continue
+        attempts = sum(
+            1 for rec in (goal.get("operating_sessions") or [])
+            if rec.get("goal_id") == cg.get("id")
+        )
+        if attempts >= max_goal_attempts:
+            logger.warning(
+                "missions_scheduler: stalled goal reached max attempts founder=%s goal=%s attempts=%s",
+                founder_id, cg.get("id"), attempts,
+            )
+            continue
+        backoff_seconds = safety_interval * max(1, attempts + 1)
+        if not is_due(goal, backoff_seconds):
+            continue
+        if not budget_allows(goal):
+            continue
+        try:
+            result = await dispatch_current_goal(founder_id, company_id)
+            if result.get("ok") and not result.get("skipped"):
+                dispatched += 1
+                logger.info(
+                    "missions_scheduler: redispatched stalled goal founder=%s goal=%s attempt=%s",
+                    founder_id, cg.get("id"), attempts + 1,
+                )
+        except Exception as exc:
+            logger.error("missions_scheduler: stalled-goal redispatch failed founder=%s: %s", founder_id, exc, exc_info=True)
 
     return dispatched
 

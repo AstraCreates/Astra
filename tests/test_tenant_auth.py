@@ -6,12 +6,18 @@ from starlette.requests import Request
 from backend.accounts import get_or_create_org, upsert_member
 from backend.billing import fake_signed_payload, verify_stripe_signature
 from backend.config import settings
-from backend.tenant_auth import actor_or_body, require_founder_access, require_org_access, require_platform_admin
+from backend.tenant_auth import (
+    actor_or_body,
+    require_current_founder,
+    require_founder_access,
+    require_org_access,
+    require_platform_admin,
+)
 
 
 def _request(headers: dict[str, str] | None = None) -> Request:
     raw_headers = [(key.lower().encode(), value.encode()) for key, value in (headers or {}).items()]
-    return Request({"type": "http", "headers": raw_headers})
+    return Request({"type": "http", "headers": raw_headers, "query_string": b""})
 
 
 def test_tenant_auth_allows_owner_and_rejects_missing_auth_in_strict_mode(monkeypatch):
@@ -22,6 +28,16 @@ def test_tenant_auth_allows_owner_and_rejects_missing_auth_in_strict_mode(monkey
     with pytest.raises(HTTPException) as exc:
         actor_or_body(_request())
     assert exc.value.status_code == 401
+
+
+def test_current_founder_preserves_local_dev_missing_auth(monkeypatch):
+    monkeypatch.setattr(settings, "astra_require_auth", False)
+
+    actor = require_current_founder(_request(), "founder_1", "admin")
+
+    assert actor.actor_id == "founder_1"
+    assert actor.founder_id == "founder_1"
+    assert actor.min_role == "admin"
 
 
 def test_tenant_auth_enforces_org_role_rank(tmp_path, monkeypatch):

@@ -152,13 +152,15 @@ class Settings(BaseSettings):
     # whose field is NOT declared here can never turn on, even with ASTRA_<FEATURE>=true
     # in .env (extra="ignore" drops it). context_compression_v2 was off for exactly this
     # reason — agent conversations grew unbounded (marketing hit 212k tokens/call).
-    astra_context_compression_v2: bool = False
+    astra_context_compression_v2: bool = True
+    astra_context_compression_v2_rollout_percent: int = 100
     # Same declare-or-silently-off rule as compression. native_tool_calls switches
     # agents from JSON-in-prompt to provider-native function-calling (all our agent
     # models support it); delegation_v2 + skill_review change sub-agent / review paths.
     # (specialist_manifests + shadow_runtime have no code readers — intentionally not
     # declared; declaring them would do nothing.)
-    astra_native_tool_calls: bool = False
+    astra_native_tool_calls: bool = True
+    astra_native_tool_calls_rollout_percent: int = 100
     astra_delegation_v2: bool = False
     astra_skill_review: bool = False
     astra_fallback_model: str = "moonshotai/kimi-k2.5"

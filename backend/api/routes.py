@@ -195,7 +195,7 @@ async def _require_session_access(request: Request, session_id: str, min_role: s
     founder_id = await _session_founder_id(session_id)
     if founder_id:
         return require_founder_access(request, founder_id, min_role=min_role)
-    return actor_or_body(request)
+    raise HTTPException(status_code=404, detail="Session owner could not be resolved")
 
 
 @router.get("/automations/session")
@@ -1829,18 +1829,25 @@ async def setup_accounts(body: SetupRequest, request: Request):
 async def save_service_credential(body: SaveCredentialRequest, request: Request):
     """Save a manually entered credential (GitHub PAT, SendGrid key, Vercel token)."""
     require_founder_access(request, body.founder_id, min_role="admin")
+    from backend.connectors.contracts import normalize_connector_service, prepare_connector_credentials_for_save
+    from backend.provisioning.credentials_store import load_credentials
     from backend.tools.composio_tools import _reset_toolset
-    store_credentials(body.founder_id, body.service, body.credentials)
-    if body.service == "composio" and body.credentials.get("api_key"):
-        store_credentials("__platform__", "composio", body.credentials)
-        api_key = body.credentials["api_key"]
+    existing = load_credentials(body.founder_id, normalize_connector_service(body.service)) or {}
+    try:
+        service, prepared = prepare_connector_credentials_for_save(body.service, body.credentials, existing=existing)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    store_credentials(body.founder_id, service, prepared)
+    if service == "composio" and prepared.get("api_key"):
+        store_credentials("__platform__", "composio", prepared)
+        api_key = prepared["api_key"]
         # Persist to .env so it survives server restarts
         _write_env_key("COMPOSIO_API_KEY", api_key)
         from backend.config import settings
         from backend.tools.composio_tools import _reset_toolset
         settings.composio_api_key = api_key
         _reset_toolset()
-    return {"saved": True, "service": body.service, "founder_id": body.founder_id}
+    return {"saved": True, "service": service, "founder_id": body.founder_id}
 
 
 @router.get("/brain/{founder_id}")
@@ -2944,12 +2951,16 @@ async def email_deliverable(founder_id: str, request: Request):
 
 
 @router.get("/status/{goal_id}")
-async def get_status(goal_id: str):
+async def get_status(goal_id: str, request: Request):
     db = get_supabase()
     goals = db.table("goals").select("*").eq("id", goal_id).execute().data
     if not goals:
         raise HTTPException(status_code=404, detail="Goal not found")
     goal = goals[0]
+    founder_id = str(goal.get("founder_id") or goal.get("user_id") or "")
+    if not founder_id:
+        raise HTTPException(status_code=404, detail="Goal owner could not be resolved")
+    require_founder_access(request, founder_id, min_role="viewer")
     tasks = db.table("tasks").select("*").eq("goal_id", goal_id).execute().data
     return {"goal": goal, "tasks": tasks}
 

@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from backend.tenant_auth import require_founder_access
+from backend.connectors.contracts import connector_field_specs
 from backend.custom_agents import store
 from backend.custom_agents.tool_catalog import (
     CONNECTOR_BY_KEY,
@@ -92,7 +93,13 @@ async def connect_agent_connector(founder_id: str, connector_key: str, request: 
         return {"kind": "composio", "connector": connector_key, "label": meta.label, "oauth_url": url}
 
     # key-based connector — the founder saves a credential (token) for this service
-    return {"kind": "key", "connector": connector_key, "label": meta.label, "field": "token"}
+    return {
+        "kind": "key",
+        "connector": connector_key,
+        "label": meta.label,
+        "field": "token",
+        "fields": connector_field_specs(connector_key),
+    }
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────

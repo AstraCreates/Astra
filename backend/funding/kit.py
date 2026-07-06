@@ -80,7 +80,10 @@ def mark_stale(founder_id: str) -> None:
 # ── LLM helper ─────────────────────────────────────────────────────────────────
 
 def _call_llm(prompt: str) -> str:
+    from backend.config import settings
+    from backend.core.key_rotator import get_openrouter_key
     from backend.core.llm_client import get_or_client
+
     client = get_or_client(settings.openrouter_base_url, get_openrouter_key() or settings.agent_model_api_key)
     resp = client.chat.completions.create(
         model=settings.highoutput_model_name,

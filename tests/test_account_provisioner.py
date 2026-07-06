@@ -105,6 +105,10 @@ def test_get_founder_setup_status_surfaces_saved_and_live_composio_apps(monkeypa
         lambda founder_id: {
             "composio": {"api_key": "cmp_live"},
             "notion": {"connected": True, "connected_via": "composio_oauth", "composio_app": "notion"},
+            "supabase": {"url": "https://db.example", "service_role_key": "srk"},
+            "resend": {"api_key": "re_live"},
+            "hubspot": {"access_token": "hub_live"},
+            "zendesk": {"subdomain": "acme", "email": "ops@example.com", "token": "zd_live"},
         },
     )
     monkeypatch.setattr(
@@ -121,6 +125,10 @@ def test_get_founder_setup_status_surfaces_saved_and_live_composio_apps(monkeypa
     assert status["apps"]["google_calendar"] is True
     assert status["apps"]["google_drive"] is True
     assert status["apps"]["google_sheets"] is True
+    assert status["supabase"] is True
+    assert status["resend"] is True
+    assert status["hubspot"] is True
+    assert status["zendesk"] is True
 
 
 def test_zero_touch_readiness_reports_missing_antibot_and_bad_imap(monkeypatch):

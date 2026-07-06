@@ -43,12 +43,8 @@ If the deployed frontend URL changes, update `FRONTEND_URL` in your environment 
 
 Public macOS downloads must be Apple-signed and notarized. A plain ad-hoc DMG may download successfully but can still be rejected by Gatekeeper as damaged or unsafe.
 
-Release guide:
+Public release policy:
 
 - [Desktop Signing And Release](/Users/ishaangubbala/Documents/Astra/docs/Desktop_Release_Signing.md)
 
-GitHub Actions workflow:
-
-- [release-desktop-signed.yml](/Users/ishaangubbala/Documents/Astra/.github/workflows/release-desktop-signed.yml)
-
-The workflow is intended for the DMG that backs the public desktop download link. It validates signing inputs, builds the desktop app, verifies the resulting `.app` is not ad-hoc signed, verifies notarization, and uploads the DMG plus checksum to the chosen GitHub release.
+Detailed signing identities, CI secret names, and release-host configuration are intentionally kept out of tracked docs. Use the signed release workflow and local private operator notes when preparing a public build.

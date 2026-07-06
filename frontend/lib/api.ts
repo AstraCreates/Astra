@@ -243,6 +243,9 @@ export interface ConnectorSetupPlan {
     setup_status: string;
     connect_endpoint: string;
     import_endpoint: string;
+    setup_url: string;
+    setup_hint: string;
+    importer: boolean;
   }>;
 }
 
@@ -544,12 +547,27 @@ export interface SetupStatus {
   vercel: boolean;
   sendgrid: boolean;
   supabase: boolean;
+  stripe?: boolean;
+  resend?: boolean;
   instagram: boolean;
   tiktok: boolean;
   meta_ads: boolean;
   linkedin?: boolean;
   notion?: boolean;
   linear?: boolean;
+  slack?: boolean;
+  discord?: boolean;
+  google_drive?: boolean;
+  google_docs?: boolean;
+  google_calendar?: boolean;
+  hubspot?: boolean;
+  mailchimp?: boolean;
+  airtable?: boolean;
+  dropbox?: boolean;
+  figma?: boolean;
+  obsidian?: boolean;
+  zendesk?: boolean;
+  confluence?: boolean;
   klaviyo?: boolean;
   printful?: boolean;
   yelp?: boolean;
@@ -2870,6 +2888,14 @@ export interface CustomAgentSchedule {
 export interface ConnectorStatus {
   required: string[];
   missing: string[];
+  missing_details?: Array<{
+    key: string;
+    label: string;
+    kind: "composio" | "key" | string;
+    fields?: Array<{ key: string; label: string; secret: boolean; required: boolean }>;
+    missing_fields?: string[];
+    setup_hint?: string;
+  }>;
   ready: boolean;
 }
 
@@ -2918,7 +2944,7 @@ export async function getCustomAgentToolCatalog(): Promise<{
 export async function startConnectorConnect(
   founderId: string,
   connectorKey: string,
-): Promise<{ kind: "composio" | "key"; connector: string; label: string; oauth_url?: string; field?: string }> {
+): Promise<{ kind: "composio" | "key"; connector: string; label: string; oauth_url?: string; field?: string; fields?: Array<{ key: string; label: string; secret: boolean; required: boolean }> }> {
   const res = await apiFetch(
     `${BASE}/custom-agents/${encodeURIComponent(founderId)}/connect/${encodeURIComponent(connectorKey)}`,
   );

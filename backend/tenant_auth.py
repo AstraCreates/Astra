@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Query, Request
 import jwt
 from jwt import PyJWKClient
 
@@ -16,6 +17,18 @@ ROLE_RANK = {
     "admin": 3,
     "owner": 4,
 }
+
+
+@dataclass(frozen=True)
+class Actor:
+    user_id: str
+
+
+@dataclass(frozen=True)
+class FounderActor:
+    actor_id: str
+    founder_id: str
+    min_role: str
 
 
 def request_user_id(request: Request) -> str | None:
@@ -137,6 +150,11 @@ def actor_or_body(request: Request, fallback: str | None = None) -> str:
     return require_authenticated_user(request)
 
 
+def current_actor(request: Request) -> Actor:
+    """Return the authenticated actor while preserving local-dev fallback behavior."""
+    return Actor(user_id=actor_or_body(request))
+
+
 def require_founder_access(request: Request, founder_id: str, min_role: str = "viewer") -> str:
     """Require caller to be the founder or an authorized member of that founder workspace."""
     user_id = request_user_id(request)
@@ -152,6 +170,27 @@ def require_founder_access(request: Request, founder_id: str, min_role: str = "v
     if _missing_user_allowed():
         return user_id
     return require_org_access(request, founder_id, min_role=min_role)
+
+
+def require_current_founder(request: Request, founder_id: str, min_role: str = "viewer") -> FounderActor:
+    """Authorize a founder-scoped request and return the actor/founder pair."""
+    founder_id = str(founder_id or "").strip()
+    if not founder_id:
+        raise HTTPException(status_code=400, detail="founder_id is required")
+    actor_id = require_founder_access(request, founder_id, min_role=min_role)
+    return FounderActor(actor_id=actor_id, founder_id=founder_id, min_role=min_role)
+
+
+def current_founder_from_query(min_role: str = "viewer"):
+    """Build a dependency for routes scoped by the standard founder_id query param."""
+
+    async def dependency(
+        request: Request,
+        founder_id: str = Query(..., description="Founder ID"),
+    ) -> FounderActor:
+        return require_current_founder(request, founder_id, min_role=min_role)
+
+    return dependency
 
 
 def require_org_access(request: Request, org_id: str, min_role: str = "viewer") -> str:

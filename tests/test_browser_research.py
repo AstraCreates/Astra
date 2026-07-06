@@ -26,6 +26,34 @@ def test_batch_search_aggregates_unique_sources(monkeypatch):
     ]
 
 
+def test_batch_search_dedupes_repeated_queries_and_normalizes_source_urls(monkeypatch):
+    calls = []
+
+    def fake_search_and_fetch(query, max_results):
+        calls.append((query, max_results))
+        return {
+            "query": query,
+            "total": 1,
+            "formatted": f"formatted {query}",
+            "sources": [
+                {"title": "Shared", "url": "https://example.com/report/?utm_source=newsletter"},
+                {"title": query, "url": f"https://example.com/{query}?fbclid=123"},
+            ],
+        }
+
+    monkeypatch.setattr(browser_research, "search_and_fetch", fake_search_and_fetch)
+
+    result = browser_research.batch_search([" Market  ", "market", "pricing", "pricing  "], max_results_each=4)
+
+    assert calls == [("Market", 4), ("pricing", 4)]
+    assert list(result["results_by_query"]) == ["Market", "pricing"]
+    assert [source["url"] for source in result["sources"]] == [
+        "https://example.com/report",
+        "https://example.com/Market",
+        "https://example.com/pricing",
+    ]
+
+
 def test_normalize_url_strips_tracking_params():
     assert (
         browser_research._normalize_url("https://example.com/page?utm_source=x&keep=1&fbclid=abc#section")

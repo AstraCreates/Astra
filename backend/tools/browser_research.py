@@ -303,6 +303,25 @@ def _extract_links(html: str, base_domain: str = "") -> list[str]:
     return urls
 
 
+def _canonicalize_search_query(query: object) -> str:
+    return re.sub(r"\s+", " ", str(query or "")).strip()
+
+
+def _dedupe_search_queries(queries: list[object], limit: int = 12) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for raw in queries:
+        normalized = _canonicalize_search_query(raw)
+        key = normalized.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(normalized)
+        if len(unique) >= limit:
+            break
+    return unique
+
+
 def fetch_and_read(url: str = "") -> dict:
     """Fetch a URL, return clean text. Blocked/paywalled domains auto-skipped."""
     if not url:
@@ -515,11 +534,13 @@ def sonar_research(queries=None) -> dict:
     }
 
 
-def batch_search(queries: list | None = None, max_results_each: int = 8) -> dict:
+def batch_search(queries=None, max_results_each: int = 8) -> dict:
     """Run search queries in parallel and return combined results."""
     if not queries:
         return {"error": "queries is required — pass a list of search strings, e.g. [\"competitor A pricing\", \"competitor B features\"]"}
-    queries = list(queries)[:12]  # cap to prevent abuse
+    queries = _dedupe_search_queries(list(queries), limit=12)
+    if not queries:
+        return {"error": "queries is required — pass a list of search strings, e.g. [\"competitor A pricing\", \"competitor B features\"]"}
     results_by_query: dict = {}
 
     with ThreadPoolExecutor(max_workers=min(len(queries), 8)) as ex:
@@ -554,10 +575,10 @@ def batch_search(queries: list | None = None, max_results_each: int = 8) -> dict
     for q, r in results_by_query.items():
         combined.append(f"\n\n## QUERY: {q}\n{r.get('formatted', '')[:3000]}")
         for source in r.get("sources", []):
-            url = source.get("url", "")
+            url = _normalize_url(source.get("url", ""))
             if url and url not in seen_sources:
                 seen_sources.add(url)
-                all_sources.append(source)
+                all_sources.append({**source, "url": url})
 
     return {
         "queries_run": len(queries),
@@ -627,7 +648,7 @@ def run_research_pipeline(topic: str, focus: str = "market", max_results_each: i
             "combined_formatted": "",
             "coverage": {"ready": False, "gaps": ["topic is required"], "source_count": 0, "domain_count": 0},
         }
-    search = sonar_research(queries)
+    search = batch_search(queries, max_results_each=max_results_each)
     coverage = _research_coverage(plan["focus"], queries, search)
     return {
         "topic": plan["topic"],

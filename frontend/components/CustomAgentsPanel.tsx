@@ -105,6 +105,12 @@ interface ModalState {
   agent: CustomAgent | null;
 }
 
+interface ConnectorEntryState {
+  connector: string;
+  label: string;
+  fields: Array<{ key: string; label: string; secret: boolean; required: boolean }>;
+}
+
 function AgentModal({
   catalog,
   agent,
@@ -409,6 +415,8 @@ export default function CustomAgentsPanel({
   const [modal, setModal] = useState<ModalState>({ open: false, agent: null });
   const [runningId, setRunningId] = useState("");
   const [connecting, setConnecting] = useState("");
+  const [connectorEntry, setConnectorEntry] = useState<ConnectorEntryState | null>(null);
+  const [connectorValues, setConnectorValues] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     if (!founderId) return;
@@ -436,11 +444,12 @@ export default function CustomAgentsPanel({
         // Give the founder time to authorize, then refresh status.
         setTimeout(load, 4000);
       } else if (res.kind === "key") {
-        const token = prompt(`Paste your ${res.label} API key / token:`);
-        if (token && token.trim()) {
-          await saveServiceCredential(founderId, res.connector, { token: token.trim() });
-          await load();
-        }
+        setConnectorEntry({
+          connector: res.connector,
+          label: res.label,
+          fields: res.fields?.length ? res.fields : [{ key: "token", label: "Token", secret: true, required: true }],
+        });
+        setConnectorValues({});
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to start connect");
@@ -493,6 +502,31 @@ export default function CustomAgentsPanel({
     }
   }
 
+  async function saveConnectorEntry() {
+    if (!connectorEntry) return;
+    const payload = Object.fromEntries(
+      connectorEntry.fields
+        .map((field) => [field.key, (connectorValues[field.key] ?? "").trim()])
+        .filter(([_, value]) => value),
+    );
+    if (!Object.keys(payload).length) {
+      setError(`Enter at least one ${connectorEntry.label} credential value.`);
+      return;
+    }
+    setConnecting(connectorEntry.connector);
+    setError("");
+    try {
+      await saveServiceCredential(founderId, connectorEntry.connector, payload);
+      setConnectorEntry(null);
+      setConnectorValues({});
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to save credentials");
+    } finally {
+      setConnecting("");
+    }
+  }
+
   return (
     <div className="h-full flex flex-col bg-white">
       {!embedded && (
@@ -506,6 +540,47 @@ export default function CustomAgentsPanel({
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
         {error && <div className="text-sm text-red-600 mb-3">{error}</div>}
+        {connectorEntry && (
+          <div className="mb-4 border border-blue-200 rounded-xl p-4 bg-blue-50">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-gray-900">Connect {connectorEntry.label}</div>
+                <p className="text-xs text-gray-600 mt-1">Save the required credentials for this custom-agent connector.</p>
+              </div>
+              <button
+                onClick={() => { setConnectorEntry(null); setConnectorValues({}); }}
+                className="text-xs px-2 py-1 border border-gray-300 rounded-lg bg-white text-gray-600"
+              >
+                Close
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+              {connectorEntry.fields.map((field) => (
+                <label key={field.key} className="flex flex-col gap-1">
+                  <span className="text-[11px] font-medium text-gray-600">
+                    {field.label}{field.required ? " *" : ""}
+                  </span>
+                  <input
+                    type={field.secret ? "password" : "text"}
+                    value={connectorValues[field.key] ?? ""}
+                    onChange={(e) => setConnectorValues((current) => ({ ...current, [field.key]: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-sm"
+                    placeholder={field.label}
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                onClick={() => void saveConnectorEntry()}
+                disabled={connecting === connectorEntry.connector}
+                className="btn pri sm"
+              >
+                {connecting === connectorEntry.connector ? "Saving…" : "Save credentials"}
+              </button>
+            </div>
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center h-32">
             <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -519,6 +594,7 @@ export default function CustomAgentsPanel({
           <div className="space-y-3">
             {agents.map((agent) => {
               const missing = agent.connector_status?.missing ?? [];
+              const missingDetails = agent.connector_status?.missing_details ?? [];
               return (
                 <div key={agent.id} className="border border-gray-200 rounded-xl p-4 hover:border-gray-300 transition-colors">
                   <div className="flex items-start justify-between gap-3">
@@ -549,21 +625,34 @@ export default function CustomAgentsPanel({
                         )}
                       </div>
                       {missing.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                          <span className="text-[11px] text-amber-700">⚠ Needs:</span>
-                          {missing.map((m) => {
-                            const meta = connectorsMeta.find((c) => c.key === m);
-                            return (
-                              <button
-                                key={m}
-                                onClick={() => handleConnect(m)}
-                                disabled={connecting === m}
-                                className="text-[11px] px-2 py-0.5 border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-full disabled:opacity-50"
-                              >
-                                {connecting === m ? "Connecting…" : `Connect ${meta?.label ?? connectorLabel(m)}`}
-                              </button>
-                            );
-                          })}
+                        <div className="flex flex-col gap-2 mt-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] text-amber-700">⚠ Needs:</span>
+                            {missing.map((m) => {
+                              const meta = connectorsMeta.find((c) => c.key === m);
+                              const detail = missingDetails.find((item) => item.key === m);
+                              const missingFieldText = detail?.missing_fields?.length ? ` (${detail.missing_fields.join(", ")})` : "";
+                              return (
+                                <button
+                                  key={m}
+                                  onClick={() => handleConnect(m)}
+                                  disabled={connecting === m}
+                                  className="text-[11px] px-2 py-0.5 border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-full disabled:opacity-50"
+                                >
+                                  {connecting === m ? "Connecting…" : `Connect ${meta?.label ?? connectorLabel(m)}${missingFieldText}`}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {missingDetails.length > 0 && (
+                            <div className="flex flex-col gap-1">
+                              {missingDetails.map((detail) => (
+                                <div key={detail.key} className="text-[11px] text-gray-500">
+                                  <span className="font-medium text-gray-700">{detail.label}:</span> {detail.setup_hint ?? "Connection required."}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

@@ -329,16 +329,25 @@ async def mcp_http(request: Request):
             from backend.astra_mcp import TOOLS
             result = {"tools": TOOLS}
         elif method == "tools/call":
-            # Require authenticated identity for all tool calls
-            if _cfg.astra_require_auth and not _caller_id:
+            name = params.get("name", "")
+            args = params.get("arguments") or {}
+            mutating_tools = {
+                "astra_submit_goal",
+                "astra_steer",
+                "astra_message_agent",
+                "astra_stop_agent",
+                "astra_approve",
+                "astra_approve_next_goal",
+                "astra_run_cycle",
+            }
+            # Require authenticated identity for configured auth, and always for mutations.
+            if (_cfg.astra_require_auth or name in mutating_tools) and not _caller_id:
                 return Response(
                     content=_json.dumps({"jsonrpc": "2.0", "id": request_id, "error": {"code": -32001, "message": "Unauthorized"}}),
                     media_type="application/json", status_code=401,
                 )
-            name = params.get("name", "")
-            args = params.get("arguments") or {}
             # founder_id ALWAYS comes from auth context — never from caller-supplied args
-            founder_id = _caller_id or "founder_001"
+            founder_id = _caller_id or ""
             # Reject if caller tries to impersonate another founder
             if args.get("founder_id") and args["founder_id"] != founder_id:
                 return Response(

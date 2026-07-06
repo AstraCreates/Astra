@@ -25,6 +25,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from backend.tenant_auth import require_authenticated_user, require_founder_access, request_user_id
+
 logger = logging.getLogger(__name__)
 
 teams_router = APIRouter()
@@ -97,6 +99,13 @@ def _is_member(team: dict, user_id: str) -> bool:
     return False
 
 
+def _caller_id(request: Request) -> str:
+    user_id = request_user_id(request)
+    if user_id:
+        return user_id
+    return require_authenticated_user(request)
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -106,6 +115,7 @@ async def create_team(body: CreateTeamRequest, request: Request):
     """Create a new team with the creator as owner."""
     if not body.name or not body.founder_id:
         raise HTTPException(status_code=400, detail="name and founder_id are required")
+    require_founder_access(request, body.founder_id, min_role="admin")
 
     store = _load_store()
     team_id = uuid.uuid4().hex[:16]
@@ -133,6 +143,7 @@ async def my_teams(request: Request, founder_id: str = ""):
     """List all teams the user belongs to."""
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id query param required")
+    require_founder_access(request, founder_id, min_role="viewer")
 
     store = _load_store()
     my = [t for t in store["teams"].values() if _is_member(t, founder_id)]
@@ -142,22 +153,28 @@ async def my_teams(request: Request, founder_id: str = ""):
 @teams_router.get("/teams/{team_id}")
 async def get_team(team_id: str, request: Request):
     """Return team info + members."""
+    actor_id = _caller_id(request)
     store = _load_store()
     team = store["teams"].get(team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
+    if not _is_member(team, actor_id):
+        raise HTTPException(status_code=403, detail="Team membership required")
     return {"team": team}
 
 
 @teams_router.post("/teams/{team_id}/invites")
 async def create_invite(team_id: str, body: CreateInviteRequest, request: Request):
     """Create an invite token (72h), optionally email it, return token + invite_url."""
+    if not body.founder_id:
+        raise HTTPException(status_code=400, detail="founder_id required")
+    actor_id = require_founder_access(request, body.founder_id, min_role="owner")
     store = _load_store()
     team = store["teams"].get(team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
 
-    if not _is_owner(team, body.founder_id):
+    if not _is_owner(team, actor_id):
         raise HTTPException(status_code=403, detail="Only team owners can invite members")
 
     token = uuid.uuid4().hex
@@ -168,7 +185,7 @@ async def create_invite(team_id: str, body: CreateInviteRequest, request: Reques
     invite: dict[str, Any] = {
         "token": token,
         "team_id": team_id,
-        "invited_by": body.founder_id,
+        "invited_by": actor_id,
         "email": body.email or "",
         "expires_at": expires_at,
         "status": "pending",
@@ -183,7 +200,7 @@ async def create_invite(team_id: str, body: CreateInviteRequest, request: Reques
     if body.email:
         try:
             from backend.tools.resend_tools import resend_send_email
-            inviter = body.founder_id
+            inviter = actor_id
             team_name = team["name"]
             html = (
                 f"<div style='font-family:sans-serif;max-width:580px;margin:auto;padding:40px 24px'>"
@@ -226,9 +243,6 @@ async def get_invite(token: str):
         raise HTTPException(status_code=410, detail=f"Invite is {invite['status']}")
 
     if time.strptime(invite["expires_at"], "%Y-%m-%dT%H:%M:%SZ") < time.gmtime():
-        # Mark expired
-        invite["status"] = "expired"
-        _save_store(store)
         raise HTTPException(status_code=410, detail="Invite has expired")
 
     team = store["teams"].get(invite["team_id"], {})
@@ -247,6 +261,7 @@ async def accept_invite(token: str, body: AcceptInviteRequest, request: Request)
     """Accept a team invite — add user to team as member."""
     if not body.founder_id:
         raise HTTPException(status_code=400, detail="founder_id required")
+    require_founder_access(request, body.founder_id, min_role="viewer")
 
     store = _load_store()
     invite = store["invites"].get(token)
@@ -290,13 +305,14 @@ async def remove_member(team_id: str, user_id: str, request: Request, founder_id
     """Remove a member from a team. Only owners can remove members."""
     if not founder_id:
         raise HTTPException(status_code=400, detail="founder_id query param required")
+    actor_id = require_founder_access(request, founder_id, min_role="owner")
 
     store = _load_store()
     team = store["teams"].get(team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
 
-    if not _is_owner(team, founder_id):
+    if not _is_owner(team, actor_id):
         raise HTTPException(status_code=403, detail="Only team owners can remove members")
 
     if user_id == team["owner_id"]:
@@ -308,5 +324,5 @@ async def remove_member(team_id: str, user_id: str, request: Request, founder_id
         raise HTTPException(status_code=404, detail="User is not a member of this team")
 
     _save_store(store)
-    logger.info("Member %s removed from team %s by %s", user_id, team_id, founder_id)
+    logger.info("Member %s removed from team %s by %s", user_id, team_id, actor_id)
     return {"ok": True, "team_id": team_id, "removed_user_id": user_id}

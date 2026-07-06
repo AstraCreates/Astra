@@ -24,7 +24,7 @@ STRIPE_API = "https://api.stripe.com/v1"
 def verify_stripe_signature(body: bytes, signature_header: str, secret: str, tolerance_seconds: int = 300) -> bool:
     """Verify Stripe webhook signature using the v1 HMAC scheme."""
     if not secret:
-        return True
+        return False
     parts: dict[str, list[str]] = {}
     for item in signature_header.split(","):
         if "=" not in item:

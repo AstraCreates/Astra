@@ -28,7 +28,6 @@ Thread-safe via per-founder RLocks.
 from __future__ import annotations
 
 import calendar
-import json
 import logging
 import os
 import re
@@ -37,6 +36,8 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+
+from backend.core.json_store import read_json, update_json, write_json_atomic
 
 logger = logging.getLogger(__name__)
 
@@ -74,17 +75,12 @@ def _index_path(founder_id: str) -> Path:
 
 
 def _load_index(founder_id: str) -> dict[str, Any]:
-    p = _index_path(founder_id)
-    if not p.exists():
-        return {}
-    try:
-        return json.loads(p.read_text())
-    except Exception:
-        return {}
+    data = read_json(_index_path(founder_id), {})
+    return data if isinstance(data, dict) else {}
 
 
 def _save_index(founder_id: str, index: dict[str, Any]) -> None:
-    _index_path(founder_id).write_text(json.dumps(index, indent=2, sort_keys=True))
+    write_json_atomic(_index_path(founder_id), index, sort_keys=True)
 
 
 def _now() -> str:
@@ -199,8 +195,7 @@ def create_agent(
         "updated_at": _now(),
     }
     with _agent_lock(founder_id):
-        index = _load_index(founder_id)
-        existing = index.get(agent_id)
+        existing = _load_index(founder_id).get(agent_id)
         if existing and existing.get("name") != name:
             # ID collision with a differently-named (renamed) agent — use a unique suffix
             # to avoid silently destroying the renamed agent's data.
@@ -209,8 +204,13 @@ def create_agent(
         elif existing:
             # True same-name re-creation: preserve the original created_at.
             spec["created_at"] = existing.get("created_at", spec["created_at"])
-        index[agent_id] = spec
-        _save_index(founder_id, index)
+
+        def apply(index: object) -> dict[str, Any]:
+            updated = index if isinstance(index, dict) else {}
+            updated[agent_id] = spec
+            return updated
+
+        update_json(_index_path(founder_id), {}, apply, sort_keys=True)
     logger.info("custom_agent created: %s (founder=%s)", agent_id, founder_id)
     return spec
 
@@ -241,62 +241,83 @@ def update_agent(
     _schedule_explicit: bool = False,
 ) -> dict[str, Any] | None:
     """Patch mutable fields. Pass _schedule_explicit=True to allow clearing schedule with None."""
+    updated_spec: dict[str, Any] | None = None
+
     with _agent_lock(founder_id):
-        index = _load_index(founder_id)
-        spec = index.get(agent_id)
-        if spec is None:
-            return None
-        if name is not None:
-            spec["name"] = name
-            spec["slug"] = _slugify(name)
-        if role is not None:
-            spec["role"] = role
-        if tool_keys is not None:
-            spec["tool_keys"] = list(tool_keys)
-        if model is not None:
-            spec["model"] = model
-        if use_computer is not None:
-            spec["use_computer"] = bool(use_computer)
-        if schedule is not None or _schedule_explicit:
-            spec["schedule"] = _normalize_schedule(schedule)
-        spec["updated_at"] = _now()
-        index[agent_id] = spec
-        _save_index(founder_id, index)
-    return spec
+        def apply(index: object) -> dict[str, Any]:
+            nonlocal updated_spec
+            updated = index if isinstance(index, dict) else {}
+            spec = updated.get(agent_id)
+            if spec is None:
+                return updated
+            if name is not None:
+                spec["name"] = name
+                spec["slug"] = _slugify(name)
+            if role is not None:
+                spec["role"] = role
+            if tool_keys is not None:
+                spec["tool_keys"] = list(tool_keys)
+            if model is not None:
+                spec["model"] = model
+            if use_computer is not None:
+                spec["use_computer"] = bool(use_computer)
+            if schedule is not None or _schedule_explicit:
+                spec["schedule"] = _normalize_schedule(schedule)
+            spec["updated_at"] = _now()
+            updated[agent_id] = spec
+            updated_spec = spec
+            return updated
+
+        update_json(_index_path(founder_id), {}, apply, sort_keys=True)
+    return updated_spec
 
 
 def delete_agent(founder_id: str, agent_id: str) -> bool:
+    deleted = False
+
     with _agent_lock(founder_id):
-        index = _load_index(founder_id)
-        if agent_id not in index:
-            return False
-        del index[agent_id]
-        _save_index(founder_id, index)
-    logger.info("custom_agent deleted: %s (founder=%s)", agent_id, founder_id)
-    return True
+        def apply(index: object) -> dict[str, Any]:
+            nonlocal deleted
+            updated = index if isinstance(index, dict) else {}
+            deleted = agent_id in updated
+            if deleted:
+                del updated[agent_id]
+            return updated
+
+        update_json(_index_path(founder_id), {}, apply, sort_keys=True)
+    if deleted:
+        logger.info("custom_agent deleted: %s (founder=%s)", agent_id, founder_id)
+    return deleted
 
 
 def mark_ran(founder_id: str, agent_id: str) -> dict[str, Any] | None:
     """Stamp a scheduled agent as run now and roll next_run_at forward."""
+    updated_spec: dict[str, Any] | None = None
+
     with _agent_lock(founder_id):
-        index = _load_index(founder_id)
-        spec = index.get(agent_id)
-        if spec is None:
-            return None
-        sched = spec.get("schedule")
-        if sched:
-            sched["last_run_at"] = _now()
-            sched["next_run_at"] = _next_run_at(
-                time.time(),
-                int(sched.get("every_days") or 1),
-                sched.get("run_at_hour"),
-                sched.get("run_at_minute"),
-            )
-            spec["schedule"] = sched
-            spec["updated_at"] = _now()
-            index[agent_id] = spec
-            _save_index(founder_id, index)
-    return spec
+        def apply(index: object) -> dict[str, Any]:
+            nonlocal updated_spec
+            updated = index if isinstance(index, dict) else {}
+            spec = updated.get(agent_id)
+            if spec is None:
+                return updated
+            sched = spec.get("schedule")
+            if sched:
+                sched["last_run_at"] = _now()
+                sched["next_run_at"] = _next_run_at(
+                    time.time(),
+                    int(sched.get("every_days") or 1),
+                    sched.get("run_at_hour"),
+                    sched.get("run_at_minute"),
+                )
+                spec["schedule"] = sched
+                spec["updated_at"] = _now()
+                updated[agent_id] = spec
+            updated_spec = spec
+            return updated
+
+        update_json(_index_path(founder_id), {}, apply, sort_keys=True)
+    return updated_spec
 
 
 # ── Cross-founder index (for the scheduler) ───────────────────────────────────

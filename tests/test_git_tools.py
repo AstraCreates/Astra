@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+from types import SimpleNamespace
+
 from backend.tools import git_tools
 
 
@@ -58,3 +61,95 @@ def test_stream_build_events_returns_and_publishes_stderr(monkeypatch):
     assert "Node.js >=22.0.0" in result
     assert any(event.get("kind") == "error" and "Node.js >=22.0.0" in str(event.get("text", "")) for event in published)
     assert any(event.get("kind") == "done" and "Node.js >=22.0.0" in str(event.get("error", "")) for event in published)
+
+
+def test_run_claude_sudo_command_does_not_put_secret_in_argv(monkeypatch, tmp_path):
+    secret = "sk-openai-secret-value"
+    seen: dict[str, object] = {}
+    fake_bin = tmp_path / "openclaude"
+    fake_bin.write_text("#!/bin/sh\n")
+    fake_bin.chmod(0o755)
+
+    monkeypatch.setattr(git_tools.settings, "code_agent", "openclaude", raising=False)
+    monkeypatch.setattr(git_tools, "OPENCLAUDE_BIN", str(fake_bin))
+    monkeypatch.setattr(git_tools.os, "getuid", lambda: 0)
+    monkeypatch.setattr(
+        git_tools,
+        "_make_env",
+        lambda: {
+            "OPENAI_API_KEY": secret,
+            "OPENAI_BASE_URL": "https://openrouter.example/api",
+            "OPENAI_MODEL": "test/model",
+            "npm_config_cache": "/tmp/npm-cache",
+        },
+    )
+    monkeypatch.setattr(
+        git_tools.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    def fake_stream(cmd, *_args, **_kwargs):
+        seen["cmd"] = cmd
+        env_file = cmd[cmd.index("astra-env") + 1]
+        seen["env_file"] = env_file
+        seen["env_mode"] = os.stat(env_file).st_mode & 0o777
+        seen["env_text"] = open(env_file).read()
+        return "ok"
+
+    monkeypatch.setattr(git_tools, "_stream_build_events", fake_stream)
+
+    assert git_tools._run_claude(str(tmp_path), "build it", app_session_id="app_session") == "ok"
+
+    cmd = seen["cmd"]
+    assert isinstance(cmd, list)
+    assert all(secret not in arg for arg in cmd)
+    assert "OPENAI_API_KEY=" not in " ".join(cmd)
+    assert seen["env_mode"] == 0o600
+    assert f"OPENAI_API_KEY={secret}" in seen["env_text"]
+    assert not os.path.exists(str(seen["env_file"]))
+
+
+def test_run_caveman_sudo_command_does_not_put_secret_in_argv(monkeypatch, tmp_path):
+    secret = "sk-openrouter-secret-value"
+    seen: dict[str, object] = {}
+    fake_bin = tmp_path / "caveman"
+    fake_bin.write_text("#!/bin/sh\n")
+    fake_bin.chmod(0o755)
+
+    monkeypatch.setattr(git_tools, "OPENCLAUDE_BIN", str(fake_bin))
+    monkeypatch.setattr(git_tools.os, "getuid", lambda: 0)
+    monkeypatch.setattr(
+        git_tools,
+        "_make_env",
+        lambda: {
+            "OPENROUTER_API_KEY": secret,
+            "OPENAI_MODEL": "test/model",
+            "npm_config_cache": "/tmp/npm-cache",
+        },
+    )
+    monkeypatch.setattr(
+        git_tools.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    def fake_stream(cmd, *_args, **_kwargs):
+        seen["cmd"] = cmd
+        env_file = cmd[cmd.index("astra-env") + 1]
+        seen["env_file"] = env_file
+        seen["env_mode"] = os.stat(env_file).st_mode & 0o777
+        seen["env_text"] = open(env_file).read()
+        return "ok"
+
+    monkeypatch.setattr(git_tools, "_stream_caveman_events", fake_stream)
+
+    assert git_tools._run_caveman(str(tmp_path), "build it") == "ok"
+
+    cmd = seen["cmd"]
+    assert isinstance(cmd, list)
+    assert all(secret not in arg for arg in cmd)
+    assert "OPENROUTER_API_KEY=" not in " ".join(cmd)
+    assert seen["env_mode"] == 0o600
+    assert f"OPENROUTER_API_KEY={secret}" in seen["env_text"]
+    assert not os.path.exists(str(seen["env_file"]))

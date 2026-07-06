@@ -364,6 +364,7 @@ async def get_founder_setup_status(founder_id: str) -> dict:
     if live_apps.get("google_drive"):
         apps["google_drive"] = True
         apps["google_sheets"] = True
+        apps["google_docs"] = True
     if live_apps.get("googlecalendar"):
         apps["google_calendar"] = True
 
@@ -371,6 +372,9 @@ async def get_founder_setup_status(founder_id: str) -> dict:
     linkedin_creds = creds.get("linkedin") or {}
     notion_creds = creds.get("notion") or {}
     linear_creds = creds.get("linear") or {}
+    google_drive_creds = creds.get("google_drive") or creds.get("google") or {}
+    google_docs_creds = creds.get("google_docs") or creds.get("googledocs") or {}
+    google_calendar_creds = creds.get("google_calendar") or {}
     if linkedin_creds.get("access_token"):
         apps["linkedin"] = True
     if notion_creds.get("token"):
@@ -378,18 +382,41 @@ async def get_founder_setup_status(founder_id: str) -> dict:
     if linear_creds.get("api_key"):
         apps["linear"] = True
         apps["product_tracker"] = True
+    if google_drive_creds.get("access_token"):
+        apps["google_drive"] = True
+        apps["google_sheets"] = True
+    if google_docs_creds.get("access_token"):
+        apps["google_docs"] = True
+    if google_calendar_creds.get("access_token"):
+        apps["google_calendar"] = True
 
     return {
+        "composio": bool(creds.get("composio", {}).get("api_key")),
         "github": bool(creds.get("github", {}).get("token")),
         "vercel": bool(creds.get("vercel", {}).get("token")),
         "sendgrid": bool(creds.get("sendgrid", {}).get("api_key")),
-        "supabase": bool(creds.get("supabase", {}).get("anon_key")),
+        "supabase": bool(creds.get("supabase", {}).get("url") and (creds.get("supabase", {}).get("service_role_key") or creds.get("supabase", {}).get("service_key"))),
+        "stripe": bool(creds.get("stripe", {}).get("access_token")),
+        "resend": bool(creds.get("resend", {}).get("api_key")),
         "instagram": bool(creds.get("instagram", {}).get("access_token")),
         "tiktok": bool(creds.get("tiktok", {}).get("access_token")),
         "meta_ads": bool(creds.get("meta_ads", {}).get("access_token")),
         "linkedin": bool(linkedin_creds.get("access_token")),
         "notion": bool(notion_creds.get("token")),
         "linear": bool(linear_creds.get("api_key")),
+        "slack": bool(creds.get("slack", {}).get("bot_token")),
+        "discord": bool(creds.get("discord", {}).get("bot_token")),
+        "google_drive": bool(google_drive_creds.get("access_token")),
+        "google_docs": bool(google_docs_creds.get("access_token")),
+        "google_calendar": bool(google_calendar_creds.get("access_token")),
+        "hubspot": bool(creds.get("hubspot", {}).get("access_token")),
+        "mailchimp": bool(creds.get("mailchimp", {}).get("api_key")),
+        "airtable": bool(creds.get("airtable", {}).get("access_token")),
+        "dropbox": bool(creds.get("dropbox", {}).get("access_token")),
+        "figma": bool(creds.get("figma", {}).get("token")),
+        "obsidian": bool(creds.get("obsidian", {}).get("vault_path")),
+        "zendesk": bool(creds.get("zendesk", {}).get("subdomain") and creds.get("zendesk", {}).get("email") and creds.get("zendesk", {}).get("token")),
+        "confluence": bool(creds.get("confluence", {}).get("base_url") and creds.get("confluence", {}).get("email") and creds.get("confluence", {}).get("token")),
         # Ecomm / local-service integrations
         "klaviyo": bool(creds.get("klaviyo", {}).get("api_key")),
         "printful": bool(creds.get("printful", {}).get("api_key")),
@@ -416,6 +443,7 @@ def _connected_composio_services(creds: dict[str, Any]) -> dict[str, bool]:
         if app == "google_drive":
             apps["google_drive"] = True
             apps["google_sheets"] = True
+            apps["google_docs"] = True
         elif app == "googlecalendar":
             apps["google_calendar"] = True
         elif app == "linear":

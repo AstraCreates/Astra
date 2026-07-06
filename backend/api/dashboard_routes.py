@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from typing import Any, Optional
 
-from backend.tenant_auth import require_founder_access
+from backend.tenant_auth import require_current_founder
 from backend.tools.dashboard_tools import (
     dashboard_add_element,
     dashboard_clear,
@@ -31,15 +31,15 @@ class AddElementBody(BaseModel):
 
 @router.get("/dashboard/{founder_id}")
 async def get_dashboard(founder_id: str, request: Request) -> dict:
-    require_founder_access(request, founder_id, min_role="viewer")
-    return dashboard_get(founder_id)
+    actor = require_current_founder(request, founder_id, min_role="viewer")
+    return dashboard_get(actor.founder_id)
 
 
 @router.post("/dashboard/{founder_id}/elements")
 async def add_element(founder_id: str, body: AddElementBody, request: Request) -> dict:
-    require_founder_access(request, founder_id, min_role="operator")
+    actor = require_current_founder(request, founder_id, min_role="operator")
     return dashboard_add_element(
-        founder_id=founder_id,
+        founder_id=actor.founder_id,
         title=body.title,
         type=body.type,
         size=body.size,
@@ -55,14 +55,14 @@ async def add_element(founder_id: str, body: AddElementBody, request: Request) -
 
 @router.delete("/dashboard/{founder_id}/elements/{element_id}")
 async def remove_element(founder_id: str, element_id: str, request: Request) -> dict:
-    require_founder_access(request, founder_id, min_role="operator")
-    return dashboard_remove_element(founder_id, element_id)
+    actor = require_current_founder(request, founder_id, min_role="operator")
+    return dashboard_remove_element(actor.founder_id, element_id)
 
 
 @router.delete("/dashboard/{founder_id}/elements")
 async def clear_elements(founder_id: str, request: Request, section: str = "") -> dict:
-    require_founder_access(request, founder_id, min_role="operator")
-    return dashboard_clear(founder_id, section)
+    actor = require_current_founder(request, founder_id, min_role="operator")
+    return dashboard_clear(actor.founder_id, section)
 
 
 # Explicit allowlist of read-only tools permitted in the refresh endpoint.
@@ -118,7 +118,8 @@ async def refresh_element(founder_id: str, element_id: str, request: Request) ->
     executes a tool on behalf of the caller.  Only explicitly allowlisted
     read-only tools are callable — arbitrary tool names are rejected.
     """
-    require_founder_access(request, founder_id, min_role="operator")
+    actor = require_current_founder(request, founder_id, min_role="operator")
+    founder_id = actor.founder_id
 
     result = dashboard_get(founder_id)
     elements = result.get("elements", [])

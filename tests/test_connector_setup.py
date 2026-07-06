@@ -1,5 +1,6 @@
 from backend.config import settings
 from backend.connector_setup import build_connector_setup_plan, seed_stack_connector_credentials_from_env
+from backend.connectors.contracts import normalize_connector_service, prepare_connector_credentials_for_save
 from backend.tools.company_brain import ingest_company_brain_records
 from backend.provisioning.credentials_store import load_all_credentials, store_credentials
 
@@ -88,3 +89,24 @@ def test_seed_stack_connector_credentials_from_env_dry_run_does_not_write(tmp_pa
     assert result["dry_run"] is True
     assert result["seeded_count"] >= 2
     assert saved == {}
+
+
+def test_prepare_connector_credentials_for_save_merges_existing_and_normalizes_alias():
+    service, creds = prepare_connector_credentials_for_save(
+        "googledocs",
+        {"access_token": " new-token ", "ignored": "x"},
+        existing={"refresh_token": "keep-me"},
+    )
+
+    assert service == "google_docs"
+    assert creds == {"refresh_token": "keep-me", "access_token": "new-token"}
+    assert normalize_connector_service("googlecalendar") == "google_calendar"
+
+
+def test_prepare_connector_credentials_for_save_rejects_empty_payload():
+    try:
+        prepare_connector_credentials_for_save("resend", {"api_key": "   "})
+    except ValueError as exc:
+        assert "supported credential field" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for empty credential payload")

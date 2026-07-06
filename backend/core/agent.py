@@ -72,6 +72,7 @@ _MIN_CALLS_BY_AGENT: dict[str, int] = {
 # overflows the model window (observed: 489385 tokens vs 262144 limit).
 # Tunable: raise ASTRA_TOOL_RESULT_CAP if agents lose needed detail.
 _TOOL_RESULT_CHAR_CAP = int(os.environ.get("ASTRA_TOOL_RESULT_CAP", "40000"))
+_BASE64_CONTEXT_CHAR_THRESHOLD = int(os.environ.get("ASTRA_BASE64_CONTEXT_THRESHOLD", "4000"))
 
 
 # Cumulative conversation budget per agent loop. Must stay under the model window
@@ -202,8 +203,75 @@ def fuzzy_resolve_tool(name: str, tool_names) -> str | None:
     return low[m[0]] if m else None
 
 
-def _format_tool_result(tool_name: str, result: Any) -> str:
-    text = _format_tool_result_raw(tool_name, result)
+def _looks_like_base64_blob(value: str) -> bool:
+    if len(value) < _BASE64_CONTEXT_CHAR_THRESHOLD:
+        return False
+    head = value[:160].strip()
+    if head.startswith("data:") and "base64" in head:
+        return True
+    sample = value[:500].replace("\n", "").replace("\r", "")
+    return bool(re.fullmatch(r"[A-Za-z0-9+/=]+", sample))
+
+
+def _strip_large_context_blobs(value: Any) -> Any:
+    """Return a model-context-safe copy of a tool result.
+
+    Tool return values stay untouched for Python/UI consumers; this only affects the
+    observation text replayed into the LLM on later turns.
+    """
+    if isinstance(value, str):
+        if _looks_like_base64_blob(value):
+            return f"[base64 omitted from agent context: {len(value):,} chars]"
+        return value
+    if isinstance(value, list):
+        return [_strip_large_context_blobs(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _strip_large_context_blobs(nested) for key, nested in value.items()}
+    return value
+
+
+def _format_search_fetch_for_context(result: dict[str, Any], seen_urls: set[str]) -> str:
+    query = result.get("query", "")
+    lines = [f"Query: {query}\n"]
+    for item in result.get("results") or []:
+        if not isinstance(item, dict):
+            continue
+        title = item.get("title") or item.get("url") or "Untitled source"
+        url = item.get("url") or ""
+        lines.append(f"\n### {title}")
+        if url:
+            lines.append(f"URL: {url}")
+        if url and url in seen_urls:
+            snippet = item.get("snippet") or ""
+            if snippet:
+                lines.append(f"[duplicate source omitted; seen earlier] Snippet: {snippet[:600]}")
+            else:
+                lines.append("[duplicate source omitted; seen earlier]")
+            continue
+        if url:
+            seen_urls.add(url)
+        content = item.get("content") or ""
+        snippet = item.get("snippet") or ""
+        if content:
+            lines.append(content[:8000])
+        elif snippet:
+            lines.append(f"[snippet only] {snippet}")
+    if result.get("sources"):
+        lines.append("\nSources:")
+        for source in result.get("sources") or []:
+            if isinstance(source, dict) and source.get("url"):
+                title = source.get("title") or source.get("url")
+                lines.append(f"- {title}: {source.get('url')}")
+    return "\n".join(lines)
+
+
+def _format_tool_result(tool_name: str, result: Any, seen_context: dict[str, Any] | None = None) -> str:
+    safe_result = _strip_large_context_blobs(result)
+    if tool_name == "search_and_fetch" and isinstance(safe_result, dict):
+        seen_urls = seen_context.setdefault("search_urls", set()) if seen_context is not None else set()
+        text = _format_search_fetch_for_context(safe_result, seen_urls)
+    else:
+        text = _format_tool_result_raw(tool_name, safe_result)
     if isinstance(text, str) and len(text) > _TOOL_RESULT_CHAR_CAP:
         return text[:_TOOL_RESULT_CHAR_CAP] + f"\n... (truncated, {len(text):,} chars total)"
     return text
@@ -933,6 +1001,7 @@ class Agent:
         _attempted_tools: set[str] = set()  # includes failed attempts
         _tool_attempt_counts: dict[str, int] = {}  # total attempts per tool (success + failure)
         _tool_results: list[tuple[str, dict[str, Any]]] = []
+        _tool_context_seen: dict[str, Any] = {}
         _consecutive_unknown = 0  # consecutive "unknown action" responses
 
         while i < MAX_ITERATIONS:
@@ -1139,7 +1208,7 @@ class Agent:
                 messages.append({
                     "role": "user",
                     "content": "\n\n".join(
-                        f"Tool result ({name}):\n{_format_tool_result(name, result)}"
+                        f"Tool result ({name}):\n{_format_tool_result(name, result, _tool_context_seen)}"
                         for name, result in batch_results
                     ),
                 })
@@ -1213,7 +1282,7 @@ class Agent:
                     _tool_fail_counts[tool_name] = 0  # reset on success
                     if tool_name in _ONE_SHOT_TOOLS:
                         _one_shot_done.add(tool_name)
-                    content = f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result)}"
+                    content = f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result, _tool_context_seen)}"
                     if i >= MAX_ITERATIONS - 5:
                         content += f"\n\n[Iteration {i}/{MAX_ITERATIONS}] You are near the iteration limit. Wrap up: call obsidian_log then done unless one more tool call is critical."
                     if tool_name in _ONE_SHOT_TOOLS:
@@ -1324,7 +1393,7 @@ class Agent:
                             messages.append({"role": "user", "content": f"TOOL FAILED: {json.dumps(result)}"})
                     else:
                         _tool_fail_counts[tool_name] = 0
-                        messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result)}"})
+                        messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result, _tool_context_seen)}"})
                 else:
                     messages.append({"role": "user", "content": f"Unknown tool '{tool_name}'. Use: tool, delegate, computer_use, or done."})
 
@@ -1375,7 +1444,7 @@ class Agent:
                         messages.append({"role": "user", "content": f"TOOL FAILED: {json.dumps(result)}"})
                 else:
                     _tool_fail_counts[tool_name] = 0
-                    messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result)}"})
+                    messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result, _tool_context_seen)}"})
 
             else:
                 logger.warning("[%s] iter=%d unknown action=%r parsed_keys=%s raw=%r", self.name, i, action, list(parsed.keys()), raw[:200])
@@ -1396,8 +1465,9 @@ class Agent:
         logger.warning("%s hit MAX_ITERATIONS (%d) — forcing synthesis from gathered data", self.name, MAX_ITERATIONS)
         # Force one final synthesis call using everything gathered so far
         try:
+            synthesis_seen: dict[str, Any] = {}
             gathered = "\n\n".join(
-                f"[{name}]: {json.dumps(res)}" for name, res in _tool_results
+                f"[{name}]: {_format_tool_result(name, res, synthesis_seen)}" for name, res in _tool_results
             ) or "No tool results gathered."
             # Send ONLY system prompt + gathered data — NOT full history (avoids token explosion)
             synthesis_messages = [

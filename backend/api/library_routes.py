@@ -12,10 +12,10 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 
-from backend.tenant_auth import require_founder_access
+from backend.tenant_auth import FounderActor, current_founder_from_query, require_current_founder
 from backend.library.store import (
     create_file,
     delete_file,
@@ -47,16 +47,27 @@ class UpdateFileRequest(BaseModel):
     is_canonical: Optional[bool] = None
 
 
+def require_create_file_actor(body: CreateFileRequest, request: Request) -> FounderActor:
+    return require_current_founder(request, body.founder_id, min_role="operator")
+
+
+def require_update_file_actor(body: UpdateFileRequest, request: Request) -> FounderActor:
+    return require_current_founder(request, body.founder_id, min_role="operator")
+
+
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @library_router.post("/library")
-async def api_create_file(body: CreateFileRequest, request: Request):
+async def api_create_file(
+    body: CreateFileRequest,
+    actor: FounderActor = Depends(require_create_file_actor),
+):
     """Create a new library file for a founder."""
-    if not body.founder_id or not body.filename or not body.department:
+    if not body.filename or not body.department:
         raise HTTPException(status_code=400, detail="founder_id, filename, and department are required")
-    require_founder_access(request, body.founder_id, min_role="operator")
+    founder_id = actor.founder_id
     record = create_file(
-        founder_id=body.founder_id,
+        founder_id=founder_id,
         department=body.department,
         filename=body.filename,
         content=body.content,
@@ -67,14 +78,11 @@ async def api_create_file(body: CreateFileRequest, request: Request):
 
 @library_router.get("/library")
 async def api_list_files(
-    request: Request,
-    founder_id: str = Query(..., description="Founder ID to list files for"),
+    actor: FounderActor = Depends(current_founder_from_query(min_role="viewer")),
     department: Optional[str] = Query(None, description="Optional department filter"),
 ):
     """List library file metadata for a founder (no content included)."""
-    if not founder_id:
-        raise HTTPException(status_code=400, detail="founder_id is required")
-    require_founder_access(request, founder_id, min_role="viewer")
+    founder_id = actor.founder_id
     files = list_files(founder_id=founder_id, department=department or None)
     return {"ok": True, "files": files, "count": len(files)}
 
@@ -91,13 +99,10 @@ async def api_list_examples():
 @library_router.get("/library/{file_id}")
 async def api_get_file(
     file_id: str,
-    request: Request,
-    founder_id: str = Query(..., description="Founder ID who owns the file"),
+    actor: FounderActor = Depends(current_founder_from_query(min_role="viewer")),
 ):
     """Get a single library file including its content."""
-    if not founder_id:
-        raise HTTPException(status_code=400, detail="founder_id is required")
-    require_founder_access(request, founder_id, min_role="viewer")
+    founder_id = actor.founder_id
     record = get_file(founder_id=founder_id, file_id=file_id)
     if record is None:
         raise HTTPException(status_code=404, detail="File not found")
@@ -105,13 +110,15 @@ async def api_get_file(
 
 
 @library_router.patch("/library/{file_id}")
-async def api_update_file(file_id: str, body: UpdateFileRequest, request: Request):
+async def api_update_file(
+    file_id: str,
+    body: UpdateFileRequest,
+    actor: FounderActor = Depends(require_update_file_actor),
+):
     """Update file content or metadata."""
-    if not body.founder_id:
-        raise HTTPException(status_code=400, detail="founder_id is required")
-    require_founder_access(request, body.founder_id, min_role="operator")
+    founder_id = actor.founder_id
     record = update_file(
-        founder_id=body.founder_id,
+        founder_id=founder_id,
         file_id=file_id,
         content=body.content,
         filename=body.filename,
@@ -126,13 +133,10 @@ async def api_update_file(file_id: str, body: UpdateFileRequest, request: Reques
 @library_router.delete("/library/{file_id}")
 async def api_delete_file(
     file_id: str,
-    request: Request,
-    founder_id: str = Query(..., description="Founder ID who owns the file"),
+    actor: FounderActor = Depends(current_founder_from_query(min_role="operator")),
 ):
     """Delete a library file."""
-    if not founder_id:
-        raise HTTPException(status_code=400, detail="founder_id is required")
-    require_founder_access(request, founder_id, min_role="operator")
+    founder_id = actor.founder_id
     deleted = delete_file(founder_id=founder_id, file_id=file_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="File not found")

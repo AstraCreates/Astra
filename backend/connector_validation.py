@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 import requests
 
+from backend.connectors.contracts import connector_field_specs, normalize_connector_service
 from backend.provisioning.credentials_store import load_all_credentials
 from backend.stacks.readiness import _CONNECTOR_SERVICE_ALIASES
 from backend.stacks.templates import get_stack_template
@@ -20,44 +21,12 @@ from backend.tools.integration_connect import get_composio_app_status
 
 DEFAULT_TIMEOUT = 8
 
-_FIELD_SPECS: dict[str, list[dict[str, Any]]] = {
-    "github": [{"key": "token", "required": True}],
-    "vercel": [{"key": "token", "required": True}],
-    "supabase": [{"key": "url", "required": True}, {"key": "service_role_key", "required": True}],
-    "clerk": [{"key": "secret_key", "required": True}],
-    "gmail": [{"key": "access_token", "required": True}],
-    "google_drive": [{"key": "access_token", "required": True}],
-    "google_sheets": [{"key": "access_token", "required": True}],
-    "google_calendar": [{"key": "access_token", "required": True}],
-    "slack": [{"key": "bot_token", "required": True}, {"key": "webhook_secret", "required": False}],
-    "discord": [{"key": "bot_token", "required": True}, {"key": "webhook_secret", "required": False}],
-    "notion": [{"key": "token", "required": True}, {"key": "webhook_secret", "required": False}],
-    "linear": [{"key": "api_key", "required": True}],
-    "crm": [{"key": "access_token", "required": True}],
-    "linkedin": [{"key": "access_token", "required": True}],
-    "meta_ads": [{"key": "access_token", "required": True}],
-    "analytics": [{"key": "api_key", "required": True}],
-    "website_cms": [{"key": "access_token", "required": True}],
-    "helpdesk": [{"key": "token", "required": True}],
-    "product_tracker": [{"key": "api_key", "required": True}],
-    "figma": [{"key": "token", "required": True}],
-    "sendgrid": [{"key": "api_key", "required": True}],
-    "obsidian": [{"key": "vault_path", "required": True}],
-    # Ecommerce
-    "klaviyo": [{"key": "api_key", "required": True}],
-    "printful": [{"key": "api_key", "required": True}],
-    "lemonsqueezy": [{"key": "api_key", "required": True}],
-    # Local service
-    "twilio": [{"key": "account_sid", "required": True}, {"key": "auth_token", "required": True}],
-    "square": [{"key": "access_token", "required": True}, {"key": "location_id", "required": False}],
-    "yelp": [{"key": "api_key", "required": True}],
-}
-
 _WEBHOOK_CAPABLE = {"github", "slack", "discord", "notion", "google_drive", "linear", "crm", "helpdesk", "product_tracker"}
 _COMPOSIO_CONNECTOR_APPS = {
     "gmail": "gmail",
     "google_drive": "google_drive",
     "google_sheets": "google_drive",
+    "google_docs": "google_drive",
     "google_calendar": "googlecalendar",
     "notion": "notion",
     "linear": "linear",
@@ -108,11 +77,12 @@ def validate_connector(
     required: bool = False,
     live: bool = False,
 ) -> dict[str, Any]:
+    connector_key = normalize_connector_service(connector_key)
     credentials = credentials if credentials is not None else load_all_credentials(founder_id)
     aliases = _CONNECTOR_SERVICE_ALIASES.get(connector_key, (connector_key,))
     connected_alias = next((alias for alias in aliases if isinstance(credentials.get(alias), dict) and credentials.get(alias)), None)
     saved = credentials.get(connected_alias or connector_key) or {}
-    fields = _FIELD_SPECS.get(connector_key, [{"key": "token", "required": True}])
+    fields = connector_field_specs(connector_key)
     composio_app = _COMPOSIO_CONNECTOR_APPS.get(connector_key, "")
     composio_marker = bool(saved.get("connected_via") == "composio_oauth" and composio_app)
     missing_fields = [

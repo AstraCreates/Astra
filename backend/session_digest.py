@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.session_event_reducer import clip_text, event_dicts_from, fold_session_events
+
 
 _TEAM_AGENT_ALIASES: dict[str, set[str]] = {
     "engineering": {"technical", "web", "design"},
@@ -21,8 +23,7 @@ _TEAM_AGENT_ALIASES: dict[str, set[str]] = {
 
 
 def _clip(value: Any, limit: int = 180) -> str:
-    text = str(value or "").replace("\n", " ").strip()
-    return text[:limit]
+    return clip_text(value, limit)
 
 
 def _team_agents(team: str) -> set[str]:
@@ -31,56 +32,21 @@ def _team_agents(team: str) -> set[str]:
 
 
 def build_session_digest(session_id: str, events: list[tuple[int, dict]]) -> dict[str, Any]:
-    event_dicts = [event for _, event in events]
-    stack = next((event.get("stack") for event in event_dicts if event.get("type") == "stack_selected"), None) or {}
-    genome = next((event.get("genome") for event in event_dicts if event.get("type") == "company_genome"), None) or {}
-    plan_events = [event for event in event_dicts if event.get("type") == "plan_done"]
-    latest_plan = plan_events[-1].get("tasks", []) if plan_events else []
-    agent_state: dict[str, dict[str, Any]] = {}
-    artifacts: list[dict[str, Any]] = []
-    outcomes: list[dict[str, Any]] = []
-    approvals: dict[str, dict[str, Any]] = {}
-    saferun: list[dict[str, Any]] = []
-    errors: list[str] = []
-
-    for event in event_dicts:
-        event_type = event.get("type")
-        agent = event.get("agent")
-        if event_type == "agent_start" and agent:
-            agent_state.setdefault(agent, {})["status"] = "running"
-            agent_state[agent]["instruction"] = event.get("instruction", "")
-        elif event_type == "agent_done" and agent:
-            agent_state.setdefault(agent, {})["status"] = "done"
-            result = event.get("result") or event.get("output") or {}
-            agent_state[agent]["summary"] = (
-                result.get("summary") if isinstance(result, dict) else _clip(result)
-            )
-        elif event_type == "agent_error" and agent:
-            agent_state.setdefault(agent, {})["status"] = "error"
-            agent_state[agent]["summary"] = event.get("error", "")
-            errors.append(f"{agent}: {_clip(event.get('error'))}")
-        elif event_type == "stack_artifact" and event.get("artifact"):
-            artifacts.append(event["artifact"])
-        elif event_type == "outcome_recorded" and event.get("outcome"):
-            outcomes.append(event["outcome"])
-        elif event_type == "stack_approval_queue":
-            for item in event.get("approval_queue", []):
-                approvals[item.get("key", "")] = item
-        elif event_type == "approval_request":
-            req = event.get("request") or {}
-            key = req.get("gate_key", "")
-            if key:
-                approvals[key] = {**req, "status": req.get("status", "armed")}
-        elif event_type == "stack_approval_decision":
-            key = event.get("gate_key", "")
-            if key in approvals:
-                approvals[key] = {**approvals[key], "status": event.get("decision", approvals[key].get("status")), "note": event.get("note")}
-        elif event_type == "saferun_action" and event.get("action"):
-            action = event["action"]
-            saferun.append(action)
-            gate = action.get("approval_gate")
-            if gate in approvals and approvals[gate].get("status") not in {"approved", "skipped"}:
-                approvals[gate] = {**approvals[gate], "status": "triggered", "triggered_by": action.get("id")}
+    folded = fold_session_events(
+        events,
+        include_approval_requests=True,
+        decision_creates_approval=False,
+        trigger_missing_approval=False,
+    )
+    stack = folded.stack
+    genome = folded.genome
+    latest_plan = folded.latest_plan
+    agent_state = folded.agent_state
+    artifacts = folded.artifacts
+    outcomes = folded.outcomes
+    approvals = folded.approvals_by_gate
+    saferun = folded.saferun_actions
+    errors = folded.errors
 
     planned_agents = [task.get("agent") for task in latest_plan if task.get("agent")]
     done_agents = [agent for agent, state in agent_state.items() if state.get("status") == "done"]
@@ -146,44 +112,37 @@ def build_session_digest(session_id: str, events: list[tuple[int, dict]]) -> dic
 def build_subteam_report(session_id: str, events: list[tuple[int, dict]], team: str = "engineering") -> dict[str, Any]:
     """Answer the operator question: what did this subteam do and what is next?"""
     agents = _team_agents(team)
-    event_dicts = [event for _, event in events]
-    stack = next((event.get("stack") for event in event_dicts if event.get("type") == "stack_selected"), None) or {}
-    plan_events = [event for event in event_dicts if event.get("type") == "plan_done"]
-    latest_plan = plan_events[-1].get("tasks", []) if plan_events else []
+    folded = fold_session_events(
+        events,
+        include_approval_requests=False,
+        decision_creates_approval=False,
+        trigger_missing_approval=False,
+    )
+    stack = folded.stack
+    latest_plan = folded.latest_plan
     relevant_tasks = [task for task in latest_plan if task.get("agent") in agents]
-    state: dict[str, dict[str, Any]] = {}
-    artifacts: list[dict[str, Any]] = []
-    outcomes: list[dict[str, Any]] = []
-    blockers: list[str] = []
-    approvals: list[dict[str, Any]] = []
-
-    for event in event_dicts:
-        agent = event.get("agent")
-        event_type = event.get("type")
-        if event_type == "agent_start" and agent in agents:
-            state.setdefault(agent, {})["status"] = "running"
-            state[agent]["instruction"] = event.get("instruction", "")
-        elif event_type == "agent_done" and agent in agents:
-            result = event.get("result") or event.get("output") or {}
-            state.setdefault(agent, {})["status"] = "done"
-            state[agent]["summary"] = result.get("summary") if isinstance(result, dict) else _clip(result)
-        elif event_type == "agent_error" and agent in agents:
-            state.setdefault(agent, {})["status"] = "error"
-            state[agent]["summary"] = event.get("error", "")
-            blockers.append(f"{agent}: {_clip(event.get('error'))}")
-        elif event_type == "stack_artifact" and event.get("artifact"):
-            artifact = event["artifact"]
-            if artifact.get("owner_agent") in agents:
-                artifacts.append(artifact)
-        elif event_type == "outcome_recorded" and event.get("outcome"):
-            outcome = event["outcome"]
-            if outcome.get("agent") in agents:
-                outcomes.append(outcome)
-        elif event_type == "saferun_action" and event.get("action"):
-            action = event["action"]
-            if action.get("agent") in agents and action.get("approval_required"):
-                approvals.append(action)
-                blockers.append(f"Approval needed for {action.get('approval_gate')}: {action.get('reason')}")
+    state = {agent: data for agent, data in folded.agent_state.items() if agent in agents}
+    artifacts = [
+        artifact
+        for agent in sorted(agents)
+        for artifact in folded.artifacts_by_agent.get(agent, [])
+    ]
+    outcomes = [
+        outcome
+        for agent in sorted(agents)
+        for outcome in folded.outcomes_by_agent.get(agent, [])
+    ]
+    blockers = [error for error in folded.errors if error.split(":", 1)[0] in agents]
+    approvals = [
+        action
+        for agent in sorted(agents)
+        for action in folded.saferun_by_agent.get(agent, [])
+        if action.get("approval_required")
+    ]
+    blockers.extend(
+        f"Approval needed for {action.get('approval_gate')}: {action.get('reason')}"
+        for action in approvals
+    )
 
     completed = [
         {"agent": agent, "summary": _clip(data.get("summary") or "Completed assigned lane.")}
@@ -233,7 +192,7 @@ def build_subteam_report(session_id: str, events: list[tuple[int, dict]], team: 
 def answer_session_question(session_id: str, events: list[tuple[int, dict]], question: str) -> dict[str, Any]:
     """Route a run question to the best deterministic operating report."""
     q = question.lower().strip()
-    event_dicts = [event for _, event in events]
+    event_dicts = event_dicts_from(events)
     manifest = next(
         (event.get("manifest") for event in reversed(event_dicts) if event.get("type") == "stack_manifest"),
         None,

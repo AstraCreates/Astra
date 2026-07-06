@@ -10,19 +10,24 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from backend.readiness.checks import make_check, registered_check, run_registered_checks
+
+
+_OBJECTIVE_READINESS_CHECK_ORDER = [
+    "promised_stack_catalog",
+    "stack_execution_depth",
+    "business_outcome_routing",
+    "company_brain_execution_layer",
+    "connector_ingestion_and_validation",
+    "durable_approval_workflows",
+    "business_control_plane",
+    "production_proof_surface",
+]
+
 
 def build_objective_readiness() -> dict[str, Any]:
     """Return evidence that the current codebase satisfies the platform shape."""
-    checks = [
-        _check_promised_stacks(),
-        _check_stack_depth(),
-        _check_outcome_routing(),
-        _check_company_brain_execution_layer(),
-        _check_connector_ingestion_surface(),
-        _check_approval_workflows(),
-        _check_business_control_plane(),
-        _check_production_proof_surface(),
-    ]
+    checks = run_registered_checks(_OBJECTIVE_READINESS_CHECK_ORDER)
     failed = [check for check in checks if not check["ok"]]
     return {
         "ok": not failed,
@@ -176,6 +181,7 @@ def build_objective_evidence_matrix(
     }
 
 
+@registered_check("promised_stack_catalog")
 def _check_promised_stacks() -> dict[str, Any]:
     from backend.stacks.templates import PROMISED_AGENT_STACK_IDS, STACK_TEMPLATES
 
@@ -190,6 +196,7 @@ def _check_promised_stacks() -> dict[str, Any]:
     )
 
 
+@registered_check("stack_execution_depth")
 def _check_stack_depth() -> dict[str, Any]:
     from backend.stack_catalog_proof import build_stack_catalog_proof
 
@@ -208,6 +215,7 @@ def _check_stack_depth() -> dict[str, Any]:
     )
 
 
+@registered_check("business_outcome_routing")
 def _check_outcome_routing() -> dict[str, Any]:
     from backend.stacks.compiler import recommend_stack
     from backend.stacks.package import build_goal_stack_package
@@ -248,6 +256,7 @@ def _check_outcome_routing() -> dict[str, Any]:
     )
 
 
+@registered_check("company_brain_execution_layer")
 def _check_company_brain_execution_layer() -> dict[str, Any]:
     from backend.company_reports import build_company_subteam_report, persist_company_subteam_report
     from backend.connector_coverage import build_connector_coverage
@@ -283,6 +292,7 @@ def _check_company_brain_execution_layer() -> dict[str, Any]:
     )
 
 
+@registered_check("connector_ingestion_and_validation")
 def _check_connector_ingestion_surface() -> dict[str, Any]:
     from backend.connector_validation import _LIVE_CHECKS
     from backend.tools.company_brain import CONNECTOR_REQUIREMENTS
@@ -305,6 +315,7 @@ def _check_connector_ingestion_surface() -> dict[str, Any]:
     )
 
 
+@registered_check("durable_approval_workflows")
 def _check_approval_workflows() -> dict[str, Any]:
     from backend.approval_workflows import create_approval_request, decide_approval_request, expire_approval_requests, get_approval_workflow
 
@@ -323,6 +334,7 @@ def _check_approval_workflows() -> dict[str, Any]:
     )
 
 
+@registered_check("business_control_plane")
 def _check_business_control_plane() -> dict[str, Any]:
     from backend.accounts import PLANS, get_or_create_org, record_usage, update_admin_controls, upsert_member
     from backend.billing import apply_platform_billing_event, create_checkout_session, create_customer_portal_session
@@ -347,6 +359,7 @@ def _check_business_control_plane() -> dict[str, Any]:
     )
 
 
+@registered_check("production_proof_surface")
 def _check_production_proof_surface() -> dict[str, Any]:
     from backend.alerts import run_alert_check
     from backend.deploy_evidence import build_deploy_evidence
@@ -380,7 +393,7 @@ def _check_production_proof_surface() -> dict[str, Any]:
 
 
 def _check(key: str, ok: bool, message: str, details: dict[str, Any]) -> dict[str, Any]:
-    return {"key": key, "ok": bool(ok), "message": message, "details": details}
+    return make_check(key, ok, message, details)
 
 
 def _requirement(

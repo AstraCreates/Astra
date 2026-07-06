@@ -9,12 +9,11 @@ Endpoints:
 """
 from __future__ import annotations
 
-import json
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-from backend.tenant_auth import require_founder_access, actor_or_body
+from backend.tenant_auth import FounderActor, current_founder_from_query, require_current_founder
 
 logger = logging.getLogger(__name__)
 
@@ -49,14 +48,24 @@ class CheckoutRequest(BaseModel):
     pack: str  # "starter" | "pro" | "scale"
 
 
+def require_deduct_actor(body: DeductRequest, request: Request) -> FounderActor:
+    return require_current_founder(request, body.founder_id, min_role="operator")
+
+
+def require_add_actor(body: AddRequest, request: Request) -> FounderActor:
+    return require_current_founder(request, body.founder_id, min_role="admin")
+
+
+def require_checkout_actor(body: CheckoutRequest, request: Request) -> FounderActor:
+    return require_current_founder(request, body.founder_id, min_role="viewer")
+
+
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @credits_router.get("/credits")
-async def get_credits_route(request: Request, founder_id: str = ""):
+async def get_credits_route(actor: FounderActor = Depends(current_founder_from_query(min_role="viewer"))):
     """Return the founder's credit balance and last 20 transactions."""
-    if not founder_id:
-        raise HTTPException(status_code=400, detail="founder_id query param required")
-    require_founder_access(request, founder_id, min_role="viewer")
+    founder_id = actor.founder_id
 
     from backend.credits.store import get_credits
     from backend.credits.gold_price import get_gold_price
@@ -76,18 +85,19 @@ async def get_credits_route(request: Request, founder_id: str = ""):
 
 
 @credits_router.post("/credits/deduct")
-async def deduct_credits_route(body: DeductRequest, request: Request):
+async def deduct_credits_route(
+    body: DeductRequest,
+    actor: FounderActor = Depends(require_deduct_actor),
+):
     """Deduct credits from a founder's balance. Returns 402 if insufficient."""
-    if not body.founder_id:
-        raise HTTPException(status_code=400, detail="founder_id is required")
-    require_founder_access(request, body.founder_id, min_role="operator")
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="amount must be a positive integer")
 
     from backend.credits.store import deduct_credits
+    founder_id = actor.founder_id
     try:
         data = deduct_credits(
-            body.founder_id,
+            founder_id,
             body.amount,
             body.description,
             session_id=body.session_id or None,
@@ -99,20 +109,21 @@ async def deduct_credits_route(body: DeductRequest, request: Request):
 
 
 @credits_router.post("/credits/add")
-async def add_credits_route(body: AddRequest, request: Request):
+async def add_credits_route(
+    body: AddRequest,
+    actor: FounderActor = Depends(require_add_actor),
+):
     """Add credits to a founder's balance (admin grant or Stripe purchase)."""
-    if not body.founder_id:
-        raise HTTPException(status_code=400, detail="founder_id is required")
-    require_founder_access(request, body.founder_id, min_role="admin")
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="amount must be a positive integer")
     if body.type not in ("grant", "purchase", "refund"):
         raise HTTPException(status_code=400, detail="type must be 'grant', 'purchase', or 'refund'")
 
     from backend.credits.store import add_credits
+    founder_id = actor.founder_id
     try:
         data = add_credits(
-            body.founder_id,
+            founder_id,
             body.amount,
             body.type,
             body.description,
@@ -124,7 +135,10 @@ async def add_credits_route(body: AddRequest, request: Request):
 
 
 @credits_router.post("/credits/checkout")
-async def credits_checkout(body: CheckoutRequest, request: Request):
+async def credits_checkout(
+    body: CheckoutRequest,
+    actor: FounderActor = Depends(require_checkout_actor),
+):
     """Create a Stripe Checkout session for a credit pack purchase.
 
     Packs:
@@ -132,9 +146,6 @@ async def credits_checkout(body: CheckoutRequest, request: Request):
       pro      — 200 credits / $14.99
       scale    — 1000 credits / $49.99
     """
-    if not body.founder_id:
-        raise HTTPException(status_code=400, detail="founder_id is required")
-
     pack = _PACKS.get(body.pack)
     if not pack:
         raise HTTPException(
@@ -152,6 +163,7 @@ async def credits_checkout(body: CheckoutRequest, request: Request):
     frontend_base = settings.frontend_url.rstrip("/")
     success_url = f"{frontend_base}/credits?purchased=1&pack={body.pack}"
     cancel_url = f"{frontend_base}/credits?cancelled=1"
+    founder_id = actor.founder_id
 
     try:
         session = stripe.checkout.Session.create(
@@ -173,7 +185,7 @@ async def credits_checkout(body: CheckoutRequest, request: Request):
             success_url=success_url,
             cancel_url=cancel_url,
             metadata={
-                "founder_id": body.founder_id,
+                "founder_id": founder_id,
                 "pack": body.pack,
                 "credits": str(pack["credits"]),
             },
@@ -189,27 +201,23 @@ async def credits_checkout(body: CheckoutRequest, request: Request):
 async def credits_stripe_webhook(request: Request):
     """Stripe webhook endpoint — handles checkout.session.completed to grant purchased credits."""
     from backend.config import settings
-    import stripe  # type: ignore
-
-    stripe.api_key = settings.stripe_secret_key
 
     body = await request.body()
     sig = request.headers.get("stripe-signature", "")
 
     webhook_secret = settings.stripe_webhook_secret
-    if webhook_secret:
-        try:
-            event = stripe.Webhook.construct_event(body, sig, webhook_secret)
-        except stripe.error.SignatureVerificationError:  # type: ignore[attr-defined]
-            raise HTTPException(status_code=400, detail="Invalid Stripe webhook signature")
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Webhook parse error: {exc}")
-    else:
-        # No secret configured — accept without verification (dev/test only)
-        try:
-            event = json.loads(body)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid JSON payload")
+    if not webhook_secret:
+        raise HTTPException(status_code=400, detail="Stripe webhook secret is not configured")
+
+    import stripe  # type: ignore
+
+    stripe.api_key = settings.stripe_secret_key
+    try:
+        event = stripe.Webhook.construct_event(body, sig, webhook_secret)
+    except stripe.error.SignatureVerificationError:  # type: ignore[attr-defined]
+        raise HTTPException(status_code=400, detail="Invalid Stripe webhook signature")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Webhook parse error: {exc}")
 
     event_type = event.get("type") if isinstance(event, dict) else event["type"]
 

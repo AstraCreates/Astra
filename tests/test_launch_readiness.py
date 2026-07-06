@@ -37,6 +37,8 @@ def test_launch_readiness_reports_missing_external_proof(tmp_path, monkeypatch):
     assert "latest_report_found" in failed_keys
     assert "objective_code_contract" not in failed_keys
     assert "production_requirements" not in failed_keys
+    assert {"key", "ok", "message", "details"} <= set(audit["checks"][0])
+    assert "missing" not in audit["checks"][0]
 
 
 def test_launch_readiness_passes_with_saved_live_verification(tmp_path, monkeypatch):

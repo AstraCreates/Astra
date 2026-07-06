@@ -3,6 +3,7 @@ from httpx import AsyncClient, ASGITransport
 from unittest.mock import AsyncMock, MagicMock, patch
 from backend.main import app
 from backend.api import routes
+from backend.config import settings
 from fastapi.testclient import TestClient
 
 
@@ -25,20 +26,22 @@ async def test_goal_endpoint_returns_session_id(mocker):
 
 
 @pytest.mark.asyncio
-async def test_status_endpoint_returns_goal_info(mocker):
+async def test_status_endpoint_returns_goal_info(mocker, monkeypatch):
+    monkeypatch.setattr(settings, "astra_require_auth", True)
+    monkeypatch.setattr(settings, "astra_trust_auth_headers", True)
     mocker.patch(
         "backend.api.routes.get_supabase",
         return_value=_mock_supabase_with_goal(),
     )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/status/g_abc123")
+        response = await client.get("/status/g_abc123", headers={"x-astra-user-id": "f_001"})
     assert response.status_code == 200
 
 
 def _mock_supabase_with_goal():
     mock = MagicMock()
     mock.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
-        {"id": "g_abc123", "status": "in_progress", "instruction": "draft NDA"}
+        {"id": "g_abc123", "status": "in_progress", "instruction": "draft NDA", "founder_id": "f_001"}
     ]
     return mock
 
@@ -311,3 +314,40 @@ def test_web_task_websocket_reports_invalid_resume(monkeypatch):
         second = websocket.receive_json()
         assert second["type"] == "error"
         assert "not currently waiting" in second["message"]
+
+
+@pytest.mark.asyncio
+async def test_setup_service_normalizes_alias_and_merges_existing_credentials(monkeypatch):
+    stored = {}
+    monkeypatch.setattr(routes, "require_founder_access", lambda request, founder_id, min_role="viewer": founder_id)
+    monkeypatch.setattr("backend.provisioning.credentials_store.load_credentials", lambda founder_id, service: {"refresh_token": "keep-me"})
+    monkeypatch.setattr(routes, "store_credentials", lambda founder_id, service, creds: stored.update({"founder_id": founder_id, "service": service, "creds": creds}))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/setup/service",
+            json={"founder_id": "founder-1", "service": "googledocs", "credentials": {"access_token": "  token-1  ", "ignored": "x"}},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["service"] == "google_docs"
+    assert stored == {
+        "founder_id": "founder-1",
+        "service": "google_docs",
+        "creds": {"refresh_token": "keep-me", "access_token": "token-1"},
+    }
+
+
+@pytest.mark.asyncio
+async def test_setup_service_rejects_empty_supported_credentials(monkeypatch):
+    monkeypatch.setattr(routes, "require_founder_access", lambda request, founder_id, min_role="viewer": founder_id)
+    monkeypatch.setattr("backend.provisioning.credentials_store.load_credentials", lambda founder_id, service: {})
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/setup/service",
+            json={"founder_id": "founder-1", "service": "resend", "credentials": {"api_key": "   "}},
+        )
+
+    assert response.status_code == 400
+    assert "supported credential field" in response.json()["detail"]

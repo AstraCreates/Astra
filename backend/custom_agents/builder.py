@@ -12,6 +12,7 @@ import logging
 from typing import Any
 
 from backend.config import settings
+from backend.connectors.contracts import connector_field_specs
 from backend.core.agent import Agent
 from backend.custom_agents.tool_catalog import (
     CONNECTOR_BY_KEY,
@@ -115,7 +116,7 @@ def connector_readiness(founder_id: str, tool_keys: list[str], company_id: str |
     """
     required = connectors_for_tool_keys(tool_keys)
     if not required:
-        return {"required": [], "missing": [], "ready": True}
+        return {"required": [], "missing": [], "missing_details": [], "ready": True}
 
     # Composio app connection status (one lookup, reused for every composio connector).
     composio_status: dict[str, bool] = {}
@@ -129,6 +130,7 @@ def connector_readiness(founder_id: str, tool_keys: list[str], company_id: str |
     # A key connector is ready when its credentials are present + shape-valid.
     _READY = {"validated", "locally_valid"}
     missing: list[str] = []
+    missing_details: list[dict[str, Any]] = []
     for key in required:
         meta = CONNECTOR_BY_KEY.get(key)
         # Gmail: check direct OAuth credentials first (bypasses broken Composio)
@@ -141,11 +143,25 @@ def connector_readiness(founder_id: str, tool_keys: list[str], company_id: str |
             except Exception:
                 pass
             missing.append(key)
+            missing_details.append({
+                "key": key,
+                "label": meta.label if meta else key,
+                "kind": meta.kind if meta else "composio",
+                "fields": [],
+                "setup_hint": "Connect Gmail so this agent can send or read mail as intended.",
+            })
             continue
         if meta and meta.kind == "composio":
             slug = meta.composio_slug or key
             if not composio_status.get(slug):
                 missing.append(key)
+                missing_details.append({
+                    "key": key,
+                    "label": meta.label,
+                    "kind": meta.kind,
+                    "fields": [],
+                    "setup_hint": f"Authorize {meta.label} via OAuth for this custom agent.",
+                })
             continue
         # key-based connector
         try:
@@ -153,8 +169,23 @@ def connector_readiness(founder_id: str, tool_keys: list[str], company_id: str |
             result = validate_connector(founder_id, key)
             if result.get("status") not in _READY:
                 missing.append(key)
+                missing_details.append({
+                    "key": key,
+                    "label": meta.label if meta else key,
+                    "kind": meta.kind if meta else "key",
+                    "fields": connector_field_specs(key),
+                    "missing_fields": result.get("missing_fields", []),
+                    "setup_hint": f"Save the required credentials for {meta.label if meta else key}.",
+                })
         except Exception as exc:
             logger.warning("connector validate failed for %s: %s", key, exc)
             missing.append(key)
+            missing_details.append({
+                "key": key,
+                "label": meta.label if meta else key,
+                "kind": meta.kind if meta else "key",
+                "fields": connector_field_specs(key),
+                "setup_hint": f"Save credentials for {meta.label if meta else key}; validation could not confirm readiness.",
+            })
 
-    return {"required": required, "missing": missing, "ready": not missing}
+    return {"required": required, "missing": missing, "missing_details": missing_details, "ready": not missing}

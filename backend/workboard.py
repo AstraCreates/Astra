@@ -8,27 +8,24 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.session_event_reducer import clip_text, fold_session_events
+
 
 def _clip(value: Any, limit: int = 220) -> str:
-    text = str(value or "").replace("\n", " ").strip()
-    return text[:limit]
+    return clip_text(value, limit)
 
 
 def build_session_workboard(session_id: str, events: list[tuple[int, dict]]) -> dict[str, Any]:
-    event_dicts = [event for _, event in events]
-    operating_plan = next(
-        (event.get("operating_plan") for event in reversed(event_dicts) if event.get("type") == "stack_operating_plan"),
-        None,
-    ) or {}
-    execution_blueprint = next(
-        (event.get("execution_blueprint") for event in reversed(event_dicts) if event.get("type") == "stack_execution_blueprint"),
-        None,
-    ) or (operating_plan.get("execution_blueprint") or {})
-    stack = next((event.get("stack") for event in event_dicts if event.get("type") == "stack_selected"), None) or {}
-    latest_plan = next(
-        (event.get("tasks") for event in reversed(event_dicts) if event.get("type") == "plan_done"),
-        [],
+    folded = fold_session_events(
+        events,
+        clip_limit=220,
+        decision_creates_approval=True,
+        trigger_missing_approval=True,
     )
+    operating_plan = folded.operating_plan
+    execution_blueprint = folded.execution_blueprint
+    stack = folded.stack
+    latest_plan = folded.latest_plan
 
     lane_by_agent: dict[str, dict[str, Any]] = {
         lane.get("agent", ""): lane
@@ -49,61 +46,13 @@ def build_session_workboard(session_id: str, events: list[tuple[int, dict]]) -> 
     }
     all_agents = list(dict.fromkeys([*lane_by_agent.keys(), *task_by_agent.keys()]))
 
-    state: dict[str, dict[str, Any]] = {}
-    artifacts_by_agent: dict[str, list[dict[str, Any]]] = {}
-    outcomes_by_agent: dict[str, list[dict[str, Any]]] = {}
-    approvals_by_gate: dict[str, dict[str, Any]] = {}
-    saferun_by_agent: dict[str, list[dict[str, Any]]] = {}
-    lane_status_by_agent: dict[str, dict[str, Any]] = {}
-    verification_by_agent: dict[str, dict[str, Any]] = {}
-
-    for event in event_dicts:
-        event_type = event.get("type")
-        agent = event.get("agent")
-        if event_type == "agent_start" and agent:
-            state.setdefault(agent, {})["status"] = "running"
-            state[agent]["instruction"] = event.get("instruction", "")
-        elif event_type == "agent_done" and agent:
-            result = event.get("result") or event.get("output") or {}
-            state.setdefault(agent, {})["status"] = "done"
-            state[agent]["summary"] = result.get("summary") if isinstance(result, dict) else _clip(result)
-        elif event_type == "agent_error" and agent:
-            state.setdefault(agent, {})["status"] = "error"
-            state[agent]["summary"] = event.get("error", "")
-        elif event_type == "stack_artifact" and event.get("artifact"):
-            artifact = event["artifact"]
-            artifacts_by_agent.setdefault(artifact.get("owner_agent", ""), []).append(artifact)
-        elif event_type == "stack_artifact_verification" and event.get("verification"):
-            verification = event["verification"]
-            if verification.get("agent"):
-                verification_by_agent[verification["agent"]] = verification
-        elif event_type == "outcome_recorded" and event.get("outcome"):
-            outcome = event["outcome"]
-            outcomes_by_agent.setdefault(outcome.get("agent", ""), []).append(outcome)
-        elif event_type == "stack_approval_queue":
-            for approval in event.get("approval_queue", []):
-                approvals_by_gate[approval.get("key", "")] = approval
-        elif event_type == "stack_approval_decision":
-            key = event.get("gate_key", "")
-            if key:
-                approvals_by_gate[key] = {
-                    **approvals_by_gate.get(key, {}),
-                    "key": key,
-                    "status": event.get("decision"),
-                    "note": event.get("note"),
-                }
-        elif event_type == "saferun_action" and event.get("action"):
-            action = event["action"]
-            saferun_by_agent.setdefault(action.get("agent", ""), []).append(action)
-            gate = action.get("approval_gate")
-            if gate:
-                approvals_by_gate[gate] = {
-                    **approvals_by_gate.get(gate, {"key": gate}),
-                    "status": "triggered",
-                    "triggered_by": action.get("id"),
-                }
-        elif event_type == "stack_lane_status" and agent:
-            lane_status_by_agent[agent] = {**lane_status_by_agent.get(agent, {}), **event}
+    state = folded.agent_state
+    artifacts_by_agent = folded.artifacts_by_agent
+    outcomes_by_agent = folded.outcomes_by_agent
+    approvals_by_gate = folded.approvals_by_gate
+    saferun_by_agent = folded.saferun_by_agent
+    lane_status_by_agent = folded.lane_status_by_agent
+    verification_by_agent = folded.verification_by_agent
 
     items: list[dict[str, Any]] = []
     for agent in all_agents:

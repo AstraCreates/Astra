@@ -10,9 +10,12 @@ import json
 import logging
 import os
 import re
+import shlex
 import subprocess
+import tempfile
 import threading
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 from backend.config import settings
@@ -845,6 +848,39 @@ def _apply_npm_cache_env(env: dict) -> dict:
     return env
 
 
+def _env_file_line(key: str, value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+        raise ValueError(f"Invalid environment variable name: {key}")
+    return f"{key}={shlex.quote(str(value or ''))}"
+
+
+@contextmanager
+def _sudo_env_command(env_vars: dict[str, str], args: list[str]):
+    """Run a command as astra without exposing secret env values in argv."""
+    fd, path = tempfile.mkstemp(prefix="astra-agent-env-", text=True)
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write("\n".join(_env_file_line(k, v) for k, v in env_vars.items()))
+            fh.write("\n")
+        os.chmod(path, 0o600)
+        try:
+            import pwd
+            astra = pwd.getpwnam("astra")
+            os.chown(path, astra.pw_uid, astra.pw_gid)
+        except Exception:
+            pass
+        yield [
+            "sudo", "-u", "astra", "sh", "-c",
+            'set -a; . "$1"; shift; exec "$@"',
+            "astra-env", path,
+        ] + args
+    finally:
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+
+
 def _record_build_usage(result_obj: dict, founder_id: str = "", session_id: str = "") -> None:
     """Bill an openclaude build as separate, higher-rate 'MVP credits'.
 
@@ -1199,16 +1235,17 @@ def _run_caveman(local: str, prompt: str, session_id: str = None, timeout: int =
             subprocess.run(["chmod", "-R", "u+rwX", local], capture_output=True, timeout=120)
         except Exception:
             pass
-        cmd = [
-            "sudo", "-u", "astra", "env",
-            f"OPENROUTER_API_KEY={or_key}",
-            "HOME=/home/astra",
-            "CAVE_CACHE_RETENTION=long",
-            f"npm_config_cache={env.get('npm_config_cache', _NPM_CACHE_DIR)}",
-            "npm_config_prefer_offline=true",
-            "npm_config_audit=false",
-            "npm_config_fund=false",
-        ] + cave_args + [full_prompt]
+        sudo_env = {
+            "OPENROUTER_API_KEY": or_key,
+            "HOME": "/home/astra",
+            "CAVE_CACHE_RETENTION": "long",
+            "npm_config_cache": env.get("npm_config_cache", _NPM_CACHE_DIR),
+            "npm_config_prefer_offline": "true",
+            "npm_config_audit": "false",
+            "npm_config_fund": "false",
+        }
+        with _sudo_env_command(sudo_env, cave_args + [full_prompt]) as cmd:
+            return _stream_caveman_events(cmd, local, timeout, env, founder_id, app_session_id, agent)
     else:
         cmd = cave_args + [full_prompt]
 
@@ -1274,26 +1311,31 @@ def _run_claude(local: str, prompt: str, session_id: str = None, timeout: int = 
             subprocess.run(["chmod", "-R", "u+rwX", local], capture_output=True, timeout=120)
         except Exception:
             pass
-        cmd = [
-            "sudo", "-u", "astra", "env",
-            f"OPENAI_API_KEY={openai_key}",
-            f"OPENAI_BASE_URL={openai_base}",
-            f"OPENAI_MODEL={openai_model}",
-            "HOME=/home/astra",
+        sudo_env = {
+            "OPENAI_API_KEY": openai_key,
+            "OPENAI_BASE_URL": openai_base,
+            "OPENAI_MODEL": openai_model,
+            "HOME": "/home/astra",
             # Persistent shared npm cache (sudo's env reset drops these unless listed).
-            f"npm_config_cache={env.get('npm_config_cache', _NPM_CACHE_DIR)}",
-            "npm_config_prefer_offline=true",
-            "npm_config_audit=false",
-            "npm_config_fund=false",
-        ] + oc_args + [full_prompt]
+            "npm_config_cache": env.get("npm_config_cache", _NPM_CACHE_DIR),
+            "npm_config_prefer_offline": "true",
+            "npm_config_audit": "false",
+            "npm_config_fund": "false",
+        }
+        with _sudo_env_command(sudo_env, oc_args + [full_prompt]) as cmd:
+            if stream:
+                return _stream_build_events(cmd, local, timeout, env, founder_id, app_session_id, session_id, agent)
+
+            with _build_semaphore:
+                r = subprocess.run(cmd, cwd=local, capture_output=True, text=True, timeout=timeout, env=env)
     else:
         cmd = oc_args + [full_prompt]
 
-    if stream:
-        return _stream_build_events(cmd, local, timeout, env, founder_id, app_session_id, session_id, agent)
+        if stream:
+            return _stream_build_events(cmd, local, timeout, env, founder_id, app_session_id, session_id, agent)
 
-    with _build_semaphore:
-        r = subprocess.run(cmd, cwd=local, capture_output=True, text=True, timeout=timeout, env=env)
+        with _build_semaphore:
+            r = subprocess.run(cmd, cwd=local, capture_output=True, text=True, timeout=timeout, env=env)
     if r.returncode not in (0, 1):
         logger.warning("openclaude exited %d: %s", r.returncode, r.stderr[:200])
     out = (r.stdout or "").strip()

@@ -21,12 +21,33 @@ Workstreams (one major task each, when the run includes its agents):
 from __future__ import annotations
 
 import asyncio
+import calendar
 import json
 import logging
+import os
 import re
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _running_session_is_fresh(session_id: str, fallback_started_at: str = "") -> bool:
+    """True when session metadata says a run is active inside the stale window."""
+    if not session_id:
+        return False
+    from backend.core.session_store import get_session_meta
+
+    meta = get_session_meta(session_id) or {}
+    if meta.get("status") != "running":
+        return False
+    ts = meta.get("created_at") or fallback_started_at or ""
+    try:
+        epoch = calendar.timegm(time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ"))
+    except Exception:
+        return True
+    stale_seconds = int(os.environ.get("ASTRA_RUN_STALE_SECONDS", "14400"))
+    return (time.time() - epoch) < stale_seconds
 
 # Workstream key → (task title, default specialist agents to dispatch for it).
 # Default (SaaS/idea-to-revenue).
@@ -267,8 +288,8 @@ def ensure_launch_goal(founder_id: str, session_id: str, agents: list[str], goal
         )
         # Persist business type so planner can use it for all future goals.
         try:
-            from backend.missions.company_goal import get_company_goal, _lock, _read, _save
-            with _lock:
+            from backend.missions.company_goal import get_company_goal, _goal_lock, _read, _save
+            with _goal_lock(founder_id, company_id):
                 g = _read(founder_id, company_id)
                 if g is not None:
                     g["business_type"] = biz_type
@@ -852,50 +873,55 @@ async def dispatch_current_goal(
     that own its open tasks, in a child session linked to the launch session."""
     from backend.core.session_ids import new_session_id
     from backend.missions.company_goal import (
-        current_goal, get_company_goal, add_operating_session, update_operating_session, budget_allows,
+        _goal_lock, _read, _save, current_goal, get_company_goal, update_operating_session, budget_allows,
     )
 
     goal = get_company_goal(founder_id, company_id)
     company_id = str((goal or {}).get("company_id") or company_id or founder_id)
-    cg = current_goal(founder_id, company_id)
-    if not goal or not cg:
-        return {"ok": False, "reason": "no current goal"}
-    # A proposed (not-yet-approved) goal must NOT run — the founder approves it first.
-    if cg.get("status") != "active":
-        return {"ok": True, "skipped": f"goal status {cg.get('status')!r} — needs approval"}
-    if not budget_allows(goal):
-        return {"ok": False, "reason": "operating budget exhausted"}
-    all_tasks = [t for t in cg.get("tasks") or [] if not t.get("postponed")]
-    open_tasks = [t for t in all_tasks if t.get("status") != "done"]
-    if not open_tasks:
-        return {"ok": True, "skipped": "no open tasks"}
-
-    # Guard against duplicate dispatch: if a session for this goal is already running,
-    # don't create a second identical child session.
-    current_goal_id = cg.get("id", "")
+    session_id = _pre_session_id or new_session_id()
     try:
-        from backend.core.session_store import get_session_meta
-        # Also block if the ROOT/launch session is still in-flight — a follow-up
-        # dispatched while the launch run is still completing its agents would
-        # re-run agents the launch hasn't finished yet, causing duplicate builds.
-        root_sid = str(goal.get("root_session_id") or goal.get("source_session_id") or "")
-        if root_sid:
-            root_meta = get_session_meta(root_sid) or {}
-            if root_meta.get("status") == "running":
+        with _goal_lock(founder_id, company_id):
+            goal = _read(founder_id, company_id)
+            cg = current_goal(founder_id, company_id)
+            if not goal or not cg:
+                return {"ok": False, "reason": "no current goal"}
+            if cg.get("status") != "active":
+                return {"ok": True, "skipped": f"goal status {cg.get('status')!r} — needs approval"}
+            if not budget_allows(goal):
+                return {"ok": False, "reason": "operating budget exhausted"}
+            all_tasks = [t for t in cg.get("tasks") or [] if not t.get("postponed")]
+            open_tasks = [t for t in all_tasks if t.get("status") != "done"]
+            if not open_tasks:
+                return {"ok": True, "skipped": "no open tasks"}
+
+            current_goal_id = cg.get("id", "")
+            root_sid = str(goal.get("root_session_id") or goal.get("source_session_id") or "")
+            if root_sid and _running_session_is_fresh(root_sid):
                 logger.info("dispatch_current_goal: root session %s still running — skipping dispatch to avoid duplicate agent runs", root_sid)
                 return {"ok": True, "skipped": "root_session_running", "session_id": root_sid}
-        for rec in (goal.get("operating_sessions") or []):
-            if rec.get("goal_id") != current_goal_id:
-                continue
-            if rec.get("status") != "running":
-                continue
-            existing_sid = rec.get("session_id", "")
-            existing_meta = get_session_meta(existing_sid) or {}
-            if existing_meta.get("status") == "running":
-                logger.info("dispatch_current_goal: session %s already running for goal %s — skipping duplicate", existing_sid, current_goal_id)
-                return {"ok": True, "skipped": "already_running", "session_id": existing_sid}
+
+            for rec in (goal.get("operating_sessions") or []):
+                if rec.get("goal_id") != current_goal_id or rec.get("status") != "running":
+                    continue
+                existing_sid = rec.get("session_id", "")
+                if _running_session_is_fresh(existing_sid, str(rec.get("started_at") or "")):
+                    logger.info("dispatch_current_goal: session %s already running for goal %s — skipping duplicate", existing_sid, current_goal_id)
+                    return {"ok": True, "skipped": "already_running", "session_id": existing_sid}
+
+            run_summary_seed = f"{len(open_tasks)} task(s): {cg.get('title', '')}"
+            runs = goal.setdefault("operating_sessions", [])
+            runs.append({
+                "session_id": session_id,
+                "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "status": "running",
+                "summary": run_summary_seed,
+                "goal_id": current_goal_id,
+            })
+            goal["operating_sessions"] = runs[-50:]
+            _save(goal)
     except Exception as exc:
         logger.warning("dispatch_current_goal duplicate-check failed: %s", exc)
+        return {"ok": False, "reason": "dispatch reservation failed", "error": str(exc)}
 
     # A follow-up run = some of this goal's tasks are already done, so this dispatch is
     # finishing only the LEFTOVERS an earlier run didn't complete (e.g. an agent that
@@ -905,7 +931,6 @@ async def dispatch_current_goal(
     title = cg.get("title", "")
     owners = sorted({a for t in open_tasks for a in (t.get("owner_agents") or [])})
     root = goal.get("root_session_id") or goal.get("source_session_id") or ""
-    session_id = _pre_session_id or new_session_id()
     # Use the most recent completed sub-run as prior context so agents see intermediate
     # progress, not just the original launch session (which has no follow-up outputs).
     done_ops = [
@@ -954,13 +979,7 @@ async def dispatch_current_goal(
                              parent_session_id=root, kind="operating")
     except Exception:
         pass
-    add_operating_session(
-        founder_id,
-        session_id,
-        summary=run_summary,
-        goal_id=cg.get("id", ""),
-        company_id=company_id,
-    )
+    update_operating_session(founder_id, session_id, company_id=company_id, summary=run_summary)
 
     try:
         from backend.core.factory import get_orchestrator
@@ -1022,8 +1041,8 @@ async def after_run(founder_id: str, session_id: str, state: dict[str, Any]) -> 
         if company and goal is not None:
             cg = current_goal(founder_id, company_id)
             if cg and cg.get("kind") == "launch" and "company" in (cg.get("title", "").lower()):
-                from backend.missions.company_goal import _lock, _read, _save
-                with _lock:
+                from backend.missions.company_goal import _goal_lock, _read, _save
+                with _goal_lock(founder_id, company_id):
                     g = _read(founder_id, company_id)
                     for go in g.get("goals") or []:
                         if go.get("id") == cg.get("id"):

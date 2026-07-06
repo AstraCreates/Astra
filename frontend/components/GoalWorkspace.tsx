@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useDevUser } from "@/lib/use-dev-user";
 import ServiceLogo from "@/components/ServiceLogo";
-import { apiFetch, streamGoal, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, getCompanyGoal, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote, killSession, ingestAttachment, emailDeliverable, getSessionBenchmark } from "@/lib/api";
+import { apiFetch, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, getCompanyGoal, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote, killSession, ingestAttachment, emailDeliverable, getSessionBenchmark } from "@/lib/api";
 import type { DeploymentRecord } from "@/lib/api";
 import type { AgentCatalogEntry } from "@/lib/api";
 import type { AgentDepartmentManifest, AgentStackTemplate, CompanyGoal, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionBenchmark, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
@@ -21,6 +21,7 @@ import LiquidGlass from "@/components/LiquidGlass";
 import CompanyChat from "@/components/CompanyChat";
 import ThemeToggle from "@/components/ThemeToggle";
 import WorkspaceTour from "@/components/WorkspaceTour";
+import { useSessionEventStream, type SessionEvent } from "@/lib/session-events";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -458,7 +459,7 @@ function WebPreview({ state, sessionId, founderId }: { state: AgentState; sessio
           </div>
         </div>
         {sessionId && founderId && (
-          <DeploymentCard sessionId={sessionId} founderId={founderId} />
+          <DeploymentCard sessionId={sessionId} founderId={founderId} streaming={state.status === "running" || state.status === "waiting"} />
         )}
       </div>
     );
@@ -1519,7 +1520,7 @@ function ResultDump({ result }: { result: Record<string, unknown> | null }) {
 
 // ── DeploymentCard ─────────────────────────────────────────────────────────────
 
-function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId: string }) {
+function DeploymentCard({ sessionId, founderId, streaming }: { sessionId: string; founderId: string; streaming: boolean }) {
   const [deployment, setDeployment] = useState<DeploymentRecord | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
@@ -1535,10 +1536,27 @@ function DeploymentCard({ sessionId, founderId }: { sessionId: string; founderId
 
   useEffect(() => {
     reload();
-    // Poll every 10s while running (agent may deploy during a session)
-    const interval = setInterval(reload, 10_000);
-    return () => clearInterval(interval);
+    const timeout = window.setTimeout(reload, 1000);
+    return () => window.clearTimeout(timeout);
   }, [reload]);
+
+  useSessionEventStream(sessionId, {
+    onEvent: (event) => {
+      const result = (event.result && typeof event.result === "object") ? event.result as Record<string, unknown> : {};
+      const hasDeployUrl = Boolean(
+        event.type === "agent_build" && event.kind === "deploy" ||
+        result.deploy_url || result.deployment_url || result.project_url || result.url
+      );
+      if (
+        hasDeployUrl ||
+        event.type === "deployment_recorded" ||
+        event.type === "deployment_published" ||
+        event.type === "goal_done"
+      ) {
+        reload();
+      }
+    },
+  }, { enabled: Boolean(sessionId && streaming) });
 
   const handlePublish = async () => {
     if (!tokenInput.trim()) return;
@@ -4922,6 +4940,9 @@ export function GoalWorkspace({
   const notified = useRef(false);
   const agentNotified = useRef<Set<string>>(new Set());
   const errorCount = useRef(0);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const snapshotRefreshTimer = useRef<number | null>(null);
+  const snapshotSessionRef = useRef<string | null>(sessionId ?? null);
 
   const notifyAgentPopup = useCallback((title: string, body: string, dedupeKey: string) => {
     if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
@@ -4968,71 +4989,89 @@ export function GoalWorkspace({
     return () => { cancelled = true; };
   }, [autoCompanyName, company, founderId, instruction, selectedStack?.stack_id, stackOperatingPlan]);
 
-  useEffect(() => {
+  const refreshSessionSnapshots = useCallback(async () => {
     if (!sessionId || sessionId === "undefined") return;
-    let cancelled = false;
-    const loadDigest = () => {
-      Promise.allSettled([getSessionDigest(sessionId), getSubteamReport(sessionId, selectedSubteam), getSessionWorkboard(sessionId), getSessionState(sessionId)])
-        .then(([digestResult, reportResult, workboardResult, stateResult]) => {
-          if (cancelled) return;
-          if (digestResult.status === "fulfilled") setSessionDigest(digestResult.value);
-          if (reportResult.status === "fulfilled") setSubteamReport(reportResult.value);
-          if (workboardResult.status === "fulfilled") setSessionWorkboard(workboardResult.value);
-          if (stateResult.status === "fulfilled") {
-            setSessionState(stateResult.value);
-            if (stateResult.value.agents && typeof stateResult.value.agents === "object") {
-              setAgents(prev => {
-                const next = { ...prev };
-                for (const [agentName, snapshot] of Object.entries(stateResult.value.agents ?? {})) {
-                  if (!snapshot || typeof snapshot !== "object") continue;
-                  const restored = agentStateFromSnapshot(agentName, snapshot as Record<string, unknown>, next[agentName]);
-                  const existing = next[agentName];
-                  next[agentName] = existing?.result && !restored.result
-                    ? { ...restored, result: existing.result }
-                    : restored;
-                }
-                return next;
-              });
-            }
-            if (stateResult.value.status === "done") {
-              setDone(true);
-              updateSession(sessionId, { status: "done" });
-            } else if (stateResult.value.status === "error" || stateResult.value.status === "stalled") {
-              setError(stateResult.value.status === "stalled" ? "Run stalled before completion. Some lanes may need a rerun." : "Run ended with an error.");
-              updateSession(sessionId, { status: "error" });
-              setAgents(prev => {
-                const next = { ...prev };
-                for (const [agentName, state] of Object.entries(next)) {
-                  if (state.status === "running") {
-                    next[agentName] = {
-                      ...state,
-                      status: "error",
-                      currentAction: null,
-                      currentTool: null,
-                      log: [...state.log, { ts: Date.now(), type: "error", text: "Run stopped before this lane emitted a final output." }],
-                    };
-                  }
-                }
-                return next;
-              });
-            }
-            if (digestResult.status !== "fulfilled" && stateResult.value.digest) setSessionDigest(stateResult.value.digest);
-            if (workboardResult.status !== "fulfilled" && stateResult.value.workboard) setSessionWorkboard(stateResult.value.workboard);
-            if (!selectedStack && stateResult.value.stack) setSelectedStack(stateResult.value.stack);
-            if (!stackOperatingPlan && stateResult.value.operating_plan) setStackOperatingPlan(stateResult.value.operating_plan);
-            if (!stackManifest && stateResult.value.manifest) setStackManifest(stateResult.value.manifest);
-            if (stateResult.value.approvals?.length) setApprovalQueue(stateResult.value.approvals as unknown as ApprovalQueueItemState[]);
-            if (stateResult.value.company_goal) setCompanyGoal(stateResult.value.company_goal);
+    const targetSessionId = sessionId;
+    const [digestResult, reportResult, workboardResult, stateResult] = await Promise.allSettled([
+      getSessionDigest(targetSessionId),
+      getSubteamReport(targetSessionId, selectedSubteam),
+      getSessionWorkboard(targetSessionId),
+      getSessionState(targetSessionId),
+    ]);
+    if (snapshotSessionRef.current !== targetSessionId) return;
+    if (digestResult.status === "fulfilled") setSessionDigest(digestResult.value);
+    if (reportResult.status === "fulfilled") setSubteamReport(reportResult.value);
+    if (workboardResult.status === "fulfilled") setSessionWorkboard(workboardResult.value);
+    if (stateResult.status === "fulfilled") {
+      setSessionState(stateResult.value);
+      if (stateResult.value.agents && typeof stateResult.value.agents === "object") {
+        setAgents(prev => {
+          const next = { ...prev };
+          for (const [agentName, snapshot] of Object.entries(stateResult.value.agents ?? {})) {
+            if (!snapshot || typeof snapshot !== "object") continue;
+            const restored = agentStateFromSnapshot(agentName, snapshot as Record<string, unknown>, next[agentName]);
+            const existing = next[agentName];
+            next[agentName] = existing?.result && !restored.result
+              ? { ...restored, result: existing.result }
+              : restored;
           }
+          return next;
         });
-    };
-    loadDigest();
-    const timer = window.setInterval(loadDigest, done ? 30000 : 8000);
+      }
+      if (stateResult.value.status === "done") {
+        setDone(true);
+        updateSession(targetSessionId, { status: "done" });
+      } else if (stateResult.value.status === "error" || stateResult.value.status === "stalled") {
+        setError(stateResult.value.status === "stalled" ? "Run stalled before completion. Some lanes may need a rerun." : "Run ended with an error.");
+        updateSession(targetSessionId, { status: "error" });
+        setAgents(prev => {
+          const next = { ...prev };
+          for (const [agentName, state] of Object.entries(next)) {
+            if (state.status === "running") {
+              next[agentName] = {
+                ...state,
+                status: "error",
+                currentAction: null,
+                currentTool: null,
+                log: [...state.log, { ts: Date.now(), type: "error", text: "Run stopped before this lane emitted a final output." }],
+              };
+            }
+          }
+          return next;
+        });
+      }
+      if (digestResult.status !== "fulfilled" && stateResult.value.digest) setSessionDigest(stateResult.value.digest);
+      if (workboardResult.status !== "fulfilled" && stateResult.value.workboard) setSessionWorkboard(stateResult.value.workboard);
+      if (!selectedStack && stateResult.value.stack) setSelectedStack(stateResult.value.stack);
+      if (!stackOperatingPlan && stateResult.value.operating_plan) setStackOperatingPlan(stateResult.value.operating_plan);
+      if (!stackManifest && stateResult.value.manifest) setStackManifest(stateResult.value.manifest);
+      if (stateResult.value.approvals?.length) setApprovalQueue(stateResult.value.approvals as unknown as ApprovalQueueItemState[]);
+      if (stateResult.value.company_goal) setCompanyGoal(stateResult.value.company_goal);
+    }
+  }, [selectedStack, selectedSubteam, sessionId, stackManifest, stackOperatingPlan]);
+
+  const scheduleSessionSnapshotRefresh = useCallback((delayMs = 250) => {
+    if (!sessionId || sessionId === "undefined") return;
+    if (snapshotRefreshTimer.current) window.clearTimeout(snapshotRefreshTimer.current);
+    snapshotRefreshTimer.current = window.setTimeout(() => {
+      snapshotRefreshTimer.current = null;
+      void refreshSessionSnapshots();
+    }, delayMs);
+  }, [refreshSessionSnapshots, sessionId]);
+
+  useEffect(() => {
+    snapshotSessionRef.current = sessionId ?? null;
     return () => {
-      cancelled = true;
-      window.clearInterval(timer);
+      if (snapshotRefreshTimer.current) {
+        window.clearTimeout(snapshotRefreshTimer.current);
+        snapshotRefreshTimer.current = null;
+      }
     };
-  }, [done, selectedStack, selectedSubteam, sessionId, stackManifest, stackOperatingPlan]);
+  }, [sessionId]);
+
+  useEffect(() => {
+    scheduleSessionSnapshotRefresh(0);
+  }, [scheduleSessionSnapshotRefresh]);
 
   useEffect(() => {
     if (!founderId) return;
@@ -5050,31 +5089,30 @@ export function GoalWorkspace({
     };
   }, [founderId, refreshCompanyGoal]);
 
-  useEffect(() => {
-    if (!sessionId || sessionId === "undefined" || done) return;
-    const es = streamGoal(sessionId);
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-    es.onopen = () => {
-      setConnected(true); setReconnecting(false); errorCount.current = 0; everConnected.current = true;
-      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-    };
-    es.onerror = () => {
-      setConnected(false);
-      if (done) { es.close(); return; }
-      errorCount.current += 1;
-      if (errorCount.current >= 10) {
-        setError(everConnected.current ? "Connection lost — refresh to reconnect." : "Could not connect. Is the backend running?");
-      } else {
-        // Debounce: only show "reconnecting" after 3s of sustained errors
-        if (!reconnectTimer) {
-          reconnectTimer = setTimeout(() => { setReconnecting(true); reconnectTimer = null; }, 3000);
-        }
+  const handleSessionEvent = useCallback((event: SessionEvent) => {
+      const shouldRefreshDerivedState = new Set([
+        "plan_done",
+        "agent_start",
+        "agent_done",
+        "agent_error",
+        "goal_done",
+        "goal_error",
+        "stack_selected",
+        "stack_operating_plan",
+        "stack_manifest",
+        "stack_approval_queue",
+        "stack_approval_decision",
+        "stack_artifact",
+        "saferun_action",
+        "saferun_result",
+        "outcome_recorded",
+        "company_operating",
+        "session_expired",
+      ]);
+      if (event.type && shouldRefreshDerivedState.has(event.type)) {
+        scheduleSessionSnapshotRefresh(event.type === "goal_done" || event.type === "goal_error" ? 0 : 250);
       }
-    };
-
-    es.onmessage = (e) => {
-      const event = JSON.parse(e.data);
-      if (event.type === "ping" || event.type === "founder_steer") return;
+      if (event.type === "founder_steer") return;
       if (event.type === "agent_input_request") {
         setInputRequest({ request_id: event.request_id, title: event.title, fields: event.fields });
         return;
@@ -5149,7 +5187,7 @@ export function GoalWorkspace({
         setOutcomes(prev => [...prev.filter(o => o.id !== event.outcome.id), event.outcome as OutcomeLedgerEvent].slice(-30));
         return;
       }
-      if (event.type === "session_expired") { setDone(true); es.close(); return; }
+      if (event.type === "session_expired") { setDone(true); return; }
 
       // Live MVP build stream — accumulate onto the technical agent's state.
       if (event.type === "agent_build") {
@@ -5444,9 +5482,27 @@ export function GoalWorkspace({
 
         return next;
       });
-    };
-    return () => es.close();
-  }, [activeAgent, done, notifyAgentPopup, refreshCompanyGoal, sessionId]);
+  }, [activeAgent, notifyAgentPopup, refreshCompanyGoal, scheduleSessionSnapshotRefresh, sessionId]);
+
+  useSessionEventStream(sessionId, {
+    onOpen: () => {
+      setConnected(true); setReconnecting(false); errorCount.current = 0; everConnected.current = true;
+      if (reconnectTimer.current) { clearTimeout(reconnectTimer.current); reconnectTimer.current = null; }
+      scheduleSessionSnapshotRefresh(0);
+    },
+    onError: () => {
+      setConnected(false);
+      if (done) return;
+      errorCount.current += 1;
+      if (errorCount.current >= 10) {
+        setError(everConnected.current ? "Connection lost — refresh to reconnect." : "Could not connect. Is the backend running?");
+      } else if (!reconnectTimer.current) {
+        // Debounce: only show "reconnecting" after 3s of sustained errors
+        reconnectTimer.current = setTimeout(() => { setReconnecting(true); reconnectTimer.current = null; }, 3000);
+      }
+    },
+    onEvent: handleSessionEvent,
+  }, { enabled: Boolean(sessionId && sessionId !== "undefined" && !done) });
 
   useEffect(() => {
     if (!done || notified.current) return;

@@ -580,17 +580,18 @@ def get_missions_due_for_run() -> list[dict]:
         except Exception:
             return 0.0
 
-    with _lock:
-        index = _load_index()
-        candidates = [
-            e for e in index.values()
-            if e.get("status") == "active"
-            and _parse_epoch(e.get("last_run_at")) <= cutoff_epoch
-        ]
+    index = _load_index()
+    candidates = [
+        e for e in index.values()
+        if e.get("status") == "active"
+        and _parse_epoch(e.get("last_run_at")) <= cutoff_epoch
+    ]
 
     due: list[dict] = []
     for entry in candidates:
-        m = _load_mission_file(entry["founder_id"], entry["id"])
+        founder_id = entry["founder_id"]
+        with _mission_lock(founder_id):
+            m = _load_mission_file(founder_id, entry["id"])
         if m is not None and m.get("status") == "active":
             due.append(m)
 

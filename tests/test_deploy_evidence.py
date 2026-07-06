@@ -40,6 +40,7 @@ def test_deploy_evidence_names_missing_production_proof(tmp_path, monkeypatch):
     assert "STRIPE_SECRET_KEY" in evidence["missing"]
     assert "ASTRA_ALERT_WEBHOOK_URL" in evidence["missing"]
     assert "founder_id for connector validation" in evidence["missing"]
+    assert all({"key", "ok", "message", "details", "missing"} <= set(check) for check in evidence["checks"])
 
 
 def test_deploy_evidence_passes_with_mocked_live_connector_proof(tmp_path, monkeypatch):
@@ -66,6 +67,7 @@ def test_deploy_evidence_passes_with_mocked_live_connector_proof(tmp_path, monke
 
     assert evidence["ok"] is True
     assert evidence["missing"] == []
+    assert all("missing" in check for check in evidence["checks"])
 
 
 def test_strict_smoke_includes_deploy_evidence_gate(tmp_path, monkeypatch):

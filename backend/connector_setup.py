@@ -10,49 +10,18 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.connectors.contracts import (
+    CONNECTOR_FIELD_SPECS as _CONNECTOR_FIELD_SPECS,
+    connector_field_specs,
+    normalize_connector_service,
+    prepare_connector_credentials_for_save,
+)
 from backend.config import settings
 from backend.connector_coverage import build_connector_coverage
 from backend.connector_validation import validate_connector
 from backend.provisioning.credentials_store import load_all_credentials, store_credentials
 from backend.stacks.readiness import _CONNECTOR_SERVICE_ALIASES
 from backend.stacks.templates import get_stack_template
-
-
-_CONNECTOR_FIELD_SPECS: dict[str, list[dict[str, Any]]] = {
-    "github": [{"key": "token", "label": "GitHub token", "secret": True, "required": True}],
-    "vercel": [{"key": "token", "label": "Vercel token", "secret": True, "required": True}],
-    "supabase": [
-        {"key": "url", "label": "Supabase URL", "secret": False, "required": True},
-        {"key": "service_role_key", "label": "Service role key", "secret": True, "required": True},
-    ],
-    "clerk": [{"key": "secret_key", "label": "Clerk secret key", "secret": True, "required": True}],
-    "gmail": [{"key": "access_token", "label": "Google OAuth access token", "secret": True, "required": True}],
-    "google_drive": [{"key": "access_token", "label": "Google OAuth access token", "secret": True, "required": True}],
-    "google_sheets": [{"key": "access_token", "label": "Google OAuth access token", "secret": True, "required": True}],
-    "google_calendar": [{"key": "access_token", "label": "Google OAuth access token", "secret": True, "required": True}],
-    "slack": [
-        {"key": "bot_token", "label": "Slack bot token", "secret": True, "required": True},
-        {"key": "webhook_secret", "label": "Slack signing secret", "secret": True, "required": False},
-    ],
-    "discord": [
-        {"key": "bot_token", "label": "Discord bot token", "secret": True, "required": True},
-        {"key": "webhook_secret", "label": "Webhook shared secret", "secret": True, "required": False},
-    ],
-    "notion": [
-        {"key": "token", "label": "Notion integration token", "secret": True, "required": True},
-        {"key": "webhook_secret", "label": "Webhook shared secret", "secret": True, "required": False},
-    ],
-    "linear": [{"key": "api_key", "label": "Linear API key", "secret": True, "required": True}],
-    "crm": [{"key": "access_token", "label": "CRM access token", "secret": True, "required": True}],
-    "linkedin": [{"key": "access_token", "label": "LinkedIn access token", "secret": True, "required": True}],
-    "meta_ads": [{"key": "access_token", "label": "Meta access token", "secret": True, "required": True}],
-    "analytics": [{"key": "api_key", "label": "Analytics API key", "secret": True, "required": True}],
-    "website_cms": [{"key": "access_token", "label": "CMS access token", "secret": True, "required": True}],
-    "helpdesk": [{"key": "token", "label": "Helpdesk API token", "secret": True, "required": True}],
-    "product_tracker": [{"key": "api_key", "label": "Tracker API key", "secret": True, "required": True}],
-    "figma": [{"key": "token", "label": "Figma token", "secret": True, "required": True}],
-    "obsidian": [{"key": "vault_path", "label": "Vault path", "secret": False, "required": True}],
-}
 
 _WEBHOOK_CAPABLE = {"github", "slack", "discord", "notion", "google_drive", "linear", "crm", "helpdesk", "product_tracker"}
 
@@ -61,9 +30,11 @@ _ENV_CREDENTIAL_SOURCES: dict[str, list[tuple[str, str]]] = {
     "vercel": [("token", "vercel_token")],
     "supabase": [("url", "supabase_url"), ("service_role_key", "supabase_key")],
     "clerk": [("secret_key", "clerk_secret_key")],
+    "resend": [("api_key", "resend_api_key")],
     "gmail": [("access_token", "composio_api_key")],
     "google_drive": [("access_token", "composio_api_key")],
     "google_sheets": [("access_token", "composio_api_key")],
+    "google_docs": [("access_token", "composio_api_key")],
     "google_calendar": [("access_token", "composio_api_key")],
     "notion": [("token", "notion_token")],
     "sendgrid": [("api_key", "sendgrid_api_key")],
@@ -172,11 +143,14 @@ def seed_stack_connector_credentials_from_env(
 
 
 def _connector_setup_item(founder_id: str, coverage_item: dict[str, Any], credentials: dict[str, Any]) -> dict[str, Any]:
+    from backend.tools.company_brain import CONNECTOR_REQUIREMENTS
+
     key = coverage_item["key"]
     aliases = _CONNECTOR_SERVICE_ALIASES.get(key, (key,))
     connected_alias = next((alias for alias in aliases if isinstance(credentials.get(alias), dict) and credentials.get(alias)), None)
     fields = _CONNECTOR_FIELD_SPECS.get(key, [{"key": "token", "label": f"{coverage_item['label']} token", "secret": True, "required": True}])
     saved = credentials.get(connected_alias or key) or {}
+    brain_requirement = CONNECTOR_REQUIREMENTS.get(key) or {}
     missing_fields = [
         field["key"] for field in fields
         if field.get("required") and not _field_present(saved, field["key"])
@@ -218,6 +192,9 @@ def _connector_setup_item(founder_id: str, coverage_item: dict[str, Any], creden
         "setup_status": setup_status,
         "connect_endpoint": "/setup/service",
         "import_endpoint": f"/brain/{founder_id}/import",
+        "setup_url": str(brain_requirement.get("setup_url") or ""),
+        "setup_hint": str(brain_requirement.get("setup_hint") or ""),
+        "importer": bool(brain_requirement.get("importer", False)),
     }
 
 

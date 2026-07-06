@@ -9,6 +9,8 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import urlparse
 
+from backend.readiness.checks import make_check
+
 
 def build_deploy_evidence(
     *,
@@ -199,10 +201,4 @@ def _missing_billing(settings: Any, billing: dict[str, Any]) -> list[str]:
 
 
 def _check(key: str, ok: bool, message: str, details: dict[str, Any], *, missing: list[str] | None = None) -> dict[str, Any]:
-    return {
-        "key": key,
-        "ok": bool(ok),
-        "message": message,
-        "details": details,
-        "missing": missing or [],
-    }
+    return make_check(key, ok, message, details, missing=missing, include_empty_missing=True)

@@ -163,3 +163,12 @@ def test_rollout_circuit_breaker(monkeypatch):
     disable("native_tool_calls", "test invariant")
     assert not enabled("native_tool_calls", "f1")
     enable("native_tool_calls")
+
+
+def test_cost_saving_runtime_features_default_on():
+    from backend.config import settings
+
+    assert settings.astra_context_compression_v2 is True
+    assert settings.astra_native_tool_calls is True
+    assert enabled("context_compression_v2", "founder_cost")
+    assert enabled("native_tool_calls", "founder_cost")

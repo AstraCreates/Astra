@@ -13,8 +13,32 @@ import re
 import time
 from pathlib import Path
 from typing import Any
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
-import requests
+try:
+    import requests
+except ModuleNotFoundError:  # pragma: no cover - exercised in lean local test envs
+    class _CompatResponse:
+        def __init__(self, status_code: int, text: str) -> None:
+            self.status_code = status_code
+            self.text = text
+
+    class _RequestsCompat:
+        @staticmethod
+        def get(url: str, timeout: int = 10) -> _CompatResponse:
+            req = urllib_request.Request(url, method="GET")
+            try:
+                with urllib_request.urlopen(req, timeout=timeout) as response:
+                    body = response.read().decode("utf-8", errors="replace")
+                    return _CompatResponse(response.getcode(), body)
+            except urllib_error.HTTPError as exc:
+                body = exc.read().decode("utf-8", errors="replace")
+                return _CompatResponse(exc.code, body)
+
+    requests = _RequestsCompat()
+
+from backend.readiness.checks import make_check
 
 
 def run_production_smoke(
@@ -221,7 +245,9 @@ def _http_checks(base_url: str) -> list[dict[str, Any]]:
 
 
 def _check(key: str, ok: bool, message: str, details: dict[str, Any] | None = None) -> dict[str, Any]:
-    return {"key": key, "ok": bool(ok), "message": message, "details": details or {}, "required": True}
+    payload = make_check(key, ok, message, details or {})
+    payload["required"] = True
+    return payload
 
 
 def _compact(value: dict[str, Any], limit: int = 12) -> dict[str, Any]:

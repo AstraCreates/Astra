@@ -139,8 +139,6 @@ def _reconcile_tasks(mission: dict, result: Any, session_id: str) -> list[dict[s
 
     if not isinstance(new_tasks, list):
         new_tasks = []
-    if not new_tasks and summary:
-        new_tasks = [{"title": f"Follow up on latest run: {summary[:120]}", "notes": summary, "status": "pending"}]
 
     for idx, task in enumerate(new_tasks[:5]):
         if not isinstance(task, dict):

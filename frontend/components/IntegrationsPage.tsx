@@ -5,7 +5,19 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import ServiceLogo from "@/components/ServiceLogo";
 import { useDevUser } from "@/lib/use-dev-user";
 import Link from "next/link";
-import { apiFetch, saveServiceCredential, getSetupStatus, SetupStatus } from "@/lib/api";
+import {
+  apiFetch,
+  saveServiceCredential,
+  getSetupStatus,
+  getConnectorCoverage,
+  getConnectorSetup,
+  getConnectorValidation,
+  importCompanyBrainSources,
+  SetupStatus,
+  ConnectorCoverage,
+  ConnectorSetupPlan,
+  ConnectorValidationReport,
+} from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -152,6 +164,99 @@ const WORKSPACE_SERVICES = [
   },
 ] as const;
 
+const ADDITIONAL_SERVICES = [
+  {
+    key: "resend",
+    credKey: "api_key",
+    label: "Resend",
+    icon: "◻",
+    desc: "Transactional email and founder deliverables",
+    placeholder: "re_xxxxxxxxxxxxxxxx",
+    createUrl: "https://resend.com/api-keys",
+    createLabel: "resend.com/api-keys",
+    steps: 2,
+  },
+  {
+    key: "hubspot",
+    credKey: "access_token",
+    label: "HubSpot",
+    icon: "◔",
+    desc: "CRM sync and contact creation",
+    placeholder: "pat-xxxxxxxxxxxxxxxx",
+    createUrl: "https://app.hubspot.com/private-apps",
+    createLabel: "app.hubspot.com/private-apps",
+    steps: 3,
+  },
+  {
+    key: "mailchimp",
+    credKey: "api_key",
+    label: "Mailchimp",
+    icon: "◌",
+    desc: "Audience sync and lifecycle campaigns",
+    placeholder: "xxxxxxxxxxxxxxxx-us1",
+    createUrl: "https://admin.mailchimp.com/account/api/",
+    createLabel: "mailchimp.com/account/api",
+    steps: 2,
+  },
+  {
+    key: "airtable",
+    credKey: "access_token",
+    label: "Airtable",
+    icon: "▦",
+    desc: "Structured records and lightweight ops data",
+    placeholder: "patxxxxxxxxxxxxxxxx",
+    createUrl: "https://airtable.com/create/tokens",
+    createLabel: "airtable.com/create/tokens",
+    steps: 2,
+  },
+  {
+    key: "dropbox",
+    credKey: "access_token",
+    label: "Dropbox",
+    icon: "◫",
+    desc: "File drop-offs and artifact handoff",
+    placeholder: "sl.xxxxxxxxxxxxxxxx",
+    createUrl: "https://www.dropbox.com/developers/apps",
+    createLabel: "dropbox.com/developers/apps",
+    steps: 2,
+  },
+  {
+    key: "figma",
+    credKey: "token",
+    label: "Figma",
+    icon: "◉",
+    desc: "Design context, files, and asset inspection",
+    placeholder: "figd_xxxxxxxxxxxxxxxx",
+    createUrl: "https://www.figma.com/developers/api#access-tokens",
+    createLabel: "figma.com/developers/api",
+    steps: 2,
+  },
+] as const;
+
+const STACK_OPTIONS = [
+  { key: "idea_to_revenue", label: "Idea to Revenue" },
+  { key: "sales", label: "Sales" },
+  { key: "marketing", label: "Marketing" },
+  { key: "founder_ops", label: "Founder Ops" },
+  { key: "support", label: "Support" },
+  { key: "product", label: "Product" },
+  { key: "ecomm", label: "Ecommerce / Medusa" },
+  { key: "local_service", label: "Local Service" },
+] as const;
+
+const IMPORTABLE_SOURCES = new Set([
+  "github",
+  "slack",
+  "discord",
+  "notion",
+  "google_drive",
+  "gmail",
+  "linear",
+  "obsidian",
+  "zendesk",
+  "confluence",
+]);
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface FilingField {
@@ -165,6 +270,74 @@ interface FilingField {
 }
 
 type ModalPhase = "connecting" | "running" | "user_control" | "interaction_needed" | "bot_filling" | "done" | "error";
+
+interface StackJourneyDefinition {
+  id: string;
+  title: string;
+  description: string;
+  connectors: string[];
+}
+
+interface StackJourneyConnectorState {
+  connector: ConnectorSetupPlan["connectors"][number];
+  coverage?: ConnectorCoverage["connectors"][number];
+  status: ReturnType<typeof connectorJourneyStatus>;
+}
+
+type JourneyTone = "ready" | "needs_sync" | "connected" | "missing" | "optional";
+
+interface StackJourneyState {
+  id: string;
+  title: string;
+  description: string;
+  connectors: StackJourneyConnectorState[];
+  tone: JourneyTone;
+  summary: string;
+  nextStep: string;
+}
+
+const STACK_JOURNEYS: Partial<Record<(typeof STACK_OPTIONS)[number]["key"], StackJourneyDefinition[]>> = {
+  ecomm: [
+    {
+      id: "storefront",
+      title: "Store launch surface",
+      description: "Get code, deploys, and the customer-facing storefront moving together.",
+      connectors: ["github", "vercel"],
+    },
+    {
+      id: "revenue_ops",
+      title: "Checkout and fulfillment",
+      description: "Make it possible to take payment, sell digital offers, and hand orders off cleanly.",
+      connectors: ["stripe", "lemonsqueezy", "printful"],
+    },
+    {
+      id: "lifecycle",
+      title: "Lifecycle retention",
+      description: "Cover transactional email, campaigns, and the post-purchase loop.",
+      connectors: ["gmail", "resend", "klaviyo", "mailchimp"],
+    },
+  ],
+  local_service: [
+    {
+      id: "lead_capture",
+      title: "Lead capture and intake",
+      description: "Keep inbound demand, contact capture, and CRM sync in one motion.",
+      connectors: ["github", "vercel", "hubspot", "yelp"],
+    },
+    {
+      id: "booking_ops",
+      title: "Booking and reminders",
+      description: "Handle appointments, payments, and reminder workflows without gaps.",
+      connectors: ["square", "google_calendar", "twilio"],
+    },
+    {
+      id: "follow_up",
+      title: "Follow-up and repeat business",
+      description: "Close the loop with email follow-up, nurture, and simple audience ops.",
+      connectors: ["gmail", "resend", "mailchimp", "hubspot"],
+    },
+  ],
+};
 
 // ── Shared card style helper ───────────────────────────────────────────────
 
@@ -493,7 +666,11 @@ function IntegrationModal({
 
 // ── ServiceCard ────────────────────────────────────────────────────────────
 
-type AnyService = typeof SERVICES[number] | typeof ECOMM_SERVICES[number] | typeof WORKSPACE_SERVICES[number];
+type AnyService =
+  | typeof SERVICES[number]
+  | typeof ECOMM_SERVICES[number]
+  | typeof WORKSPACE_SERVICES[number]
+  | typeof ADDITIONAL_SERVICES[number];
 
 function ServiceCard({
   svc, connected, founderId, onSaved,
@@ -890,6 +1067,69 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+function fieldPlaceholder(label: string, key: string) {
+  const lower = key.toLowerCase();
+  if (lower.includes("token")) return "Paste token";
+  if (lower.includes("api_key") || lower === "api_key") return "Paste API key";
+  if (lower.includes("access_token")) return "Paste access token";
+  if (lower.includes("email")) return "name@company.com";
+  if (lower.includes("url")) return "https://...";
+  if (lower.includes("subdomain")) return "company";
+  if (lower.includes("location_id")) return "Optional location ID";
+  if (lower.includes("vault_path")) return "/Users/you/Obsidian/Vault";
+  return label;
+}
+
+function stackImportSources(
+  connector: ConnectorSetupPlan["connectors"][number],
+  coverageConnector?: ConnectorCoverage["connectors"][number],
+): string[] {
+  const matched = (coverageConnector?.brain_sources ?? [])
+    .map((source) => source.key)
+    .filter((key) => IMPORTABLE_SOURCES.has(key));
+  if (matched.length) return Array.from(new Set(matched));
+
+  if (IMPORTABLE_SOURCES.has(connector.key)) return [connector.key];
+  if (connector.key === "google_sheets" || connector.key === "google_docs") return ["google_drive"];
+  if (connector.key === "email_marketing") return ["gmail"];
+  return [];
+}
+
+function connectorJourneyStatus(
+  connector: ConnectorSetupPlan["connectors"][number],
+  coverageConnector?: ConnectorCoverage["connectors"][number],
+) {
+  const coverageStatus = coverageConnector?.coverage_status ?? connector.sync.coverage_status;
+  if (connector.setup_status === "ready" || coverageStatus === "ready") {
+    return { tone: "ready" as const, label: "Ready" };
+  }
+  if (connector.setup_status === "connected_needs_sync" || coverageStatus === "connected_no_memory") {
+    return { tone: "needs_sync" as const, label: "Needs sync" };
+  }
+  if (connector.connected) {
+    return { tone: "connected" as const, label: "Connected" };
+  }
+  if (connector.required) {
+    return { tone: "missing" as const, label: "Needs connection" };
+  }
+  return { tone: "optional" as const, label: "Optional" };
+}
+
+function journeyToneStyles(tone: JourneyTone) {
+  switch (tone) {
+    case "ready":
+      return { color: c.green, background: c.greenTint, border: c.greenBorder };
+    case "needs_sync":
+      return { color: c.amber, background: "#FFF7ED", border: "#FED7AA" };
+    case "connected":
+      return { color: c.blue, background: c.blueTint, border: c.blueBorder };
+    case "missing":
+      return { color: c.red, background: c.redTint, border: c.redBorder };
+    default:
+      return { color: c.textMuted, background: c.surface, border: c.border };
+  }
+}
+
 // ── TwilioGuideCard ────────────────────────────────────────────────────────
 
 function TwilioGuideCard({ connected, founderId, onSaved }: { connected: boolean; founderId: string; onSaved: () => void }) {
@@ -1005,6 +1245,19 @@ export default function SetupPage() {
   const [autoPassword, setAutoPassword] = useState("");
   const [autoResult, setAutoResult] = useState<string[] | null>(null);
   const [showAutoProvision, setShowAutoProvision] = useState(false);
+  const [selectedStackId, setSelectedStackId] = useState<string>("ecomm");
+  const [stackSetup, setStackSetup] = useState<ConnectorSetupPlan | null>(null);
+  const [stackCoverage, setStackCoverage] = useState<ConnectorCoverage | null>(null);
+  const [stackLoading, setStackLoading] = useState(false);
+  const [stackError, setStackError] = useState<string | null>(null);
+  const [importingKey, setImportingKey] = useState<string | null>(null);
+  const [editingConnectorKey, setEditingConnectorKey] = useState<string | null>(null);
+  const [connectorDrafts, setConnectorDrafts] = useState<Record<string, Record<string, string>>>({});
+  const [connectorSavingKey, setConnectorSavingKey] = useState<string | null>(null);
+  const [connectorSaveError, setConnectorSaveError] = useState<string | null>(null);
+  const [validationReport, setValidationReport] = useState<ConnectorValidationReport | null>(null);
+  const [validatingKey, setValidatingKey] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const coreConnected: Partial<Record<(typeof SERVICES)[number]["key"], boolean>> = {
     github: !!status?.github,
     vercel: !!status?.vercel,
@@ -1021,6 +1274,14 @@ export default function SetupPage() {
     notion: !!status?.notion,
     linear: !!status?.linear,
   };
+  const additionalConnected: Partial<Record<(typeof ADDITIONAL_SERVICES)[number]["key"], boolean>> = {
+    resend: !!status?.resend,
+    hubspot: !!status?.hubspot,
+    mailchimp: !!status?.mailchimp,
+    airtable: !!status?.airtable,
+    dropbox: !!status?.dropbox,
+    figma: !!status?.figma,
+  };
 
   const loadStatus = useCallback(async () => {
     try {
@@ -1029,10 +1290,34 @@ export default function SetupPage() {
     } catch { /* no creds yet */ }
   }, [founderId]);
 
+  const loadStackData = useCallback(async () => {
+    if (!founderId || !selectedStackId) return;
+    setStackLoading(true);
+    setStackError(null);
+    try {
+      const [setup, coverage] = await Promise.all([
+        getConnectorSetup(founderId, selectedStackId),
+        getConnectorCoverage(founderId, selectedStackId),
+      ]);
+      setStackSetup(setup);
+      setStackCoverage(coverage);
+      setValidationReport(null);
+    } catch (e) {
+      setStackError(e instanceof Error ? e.message : "Failed to load stack connector data");
+    } finally {
+      setStackLoading(false);
+    }
+  }, [founderId, selectedStackId]);
+
   useEffect(() => {
     if (!founderId) return;
     queueMicrotask(() => { loadStatus(); });
   }, [founderId, loadStatus]);
+
+  useEffect(() => {
+    if (!founderId) return;
+    queueMicrotask(() => { loadStackData(); });
+  }, [founderId, loadStackData]);
 
   async function runAutoProvision() {
     if (!autoEmail.trim() || !autoPassword.trim()) return;
@@ -1054,14 +1339,128 @@ export default function SetupPage() {
     }
   }
 
+  async function importConnectorContext(connector: ConnectorSetupPlan["connectors"][number]) {
+    const coverageConnector = stackCoverage?.connectors.find((item) => item.key === connector.key);
+    const sources = stackImportSources(connector, coverageConnector);
+    if (!sources.length) return;
+    setImportingKey(connector.key);
+    try {
+      await importCompanyBrainSources(founderId, sources, 20);
+      await loadStackData();
+    } finally {
+      setImportingKey(null);
+    }
+  }
+
+  async function validateConnectorLive(connectorKey?: string) {
+    if (!founderId || !selectedStackId) return;
+    setValidatingKey(connectorKey || "__all__");
+    setValidationError(null);
+    try {
+      const report = await getConnectorValidation(founderId, selectedStackId, true);
+      setValidationReport(report);
+    } catch (e) {
+      setValidationError(e instanceof Error ? e.message : "Failed to validate connector");
+    } finally {
+      setValidatingKey(null);
+    }
+  }
+
+  async function saveStackConnector(connector: ConnectorSetupPlan["connectors"][number]) {
+    const draft = connectorDrafts[connector.key] || {};
+    const payload = Object.fromEntries(
+      connector.fields
+        .map((field) => [field.key, (draft[field.key] ?? "").trim()])
+        .filter(([_, value]) => value),
+    );
+    if (!Object.keys(payload).length) {
+      setConnectorSaveError("Enter at least one credential value.");
+      return;
+    }
+    setConnectorSavingKey(connector.key);
+    setConnectorSaveError(null);
+    try {
+      await saveServiceCredential(founderId, connector.credential_service, payload);
+      setEditingConnectorKey(null);
+      setConnectorDrafts((current) => ({ ...current, [connector.key]: {} }));
+      await Promise.all([loadStatus(), loadStackData()]);
+    } catch (e) {
+      setConnectorSaveError(e instanceof Error ? e.message : "Failed to save credentials");
+    } finally {
+      setConnectorSavingKey(null);
+    }
+  }
+
   const SERVICE_KEYS: (keyof SetupStatus)[] = [
     "github", "vercel", "sendgrid", "supabase",
+    "stripe", "resend",
     "instagram", "tiktok", "meta_ads",
-    "linkedin", "notion", "linear",
+    "linkedin", "notion", "linear", "slack", "discord",
+    "google_drive", "google_docs", "google_calendar",
+    "hubspot", "mailchimp", "airtable", "dropbox", "figma", "obsidian", "zendesk", "confluence",
     "klaviyo", "printful", "lemonsqueezy", "square", "yelp", "twilio",
   ];
   const connectedCount = status ? SERVICE_KEYS.filter(k => status[k]).length : 0;
   const totalServices = SERVICE_KEYS.length;
+  const connectorSetupMap = new Map(stackSetup?.connectors.map((connector) => [connector.key, connector]) ?? []);
+  const connectorCoverageMap = new Map(stackCoverage?.connectors.map((connector) => [connector.key, connector]) ?? []);
+  const selectedStackJourneyDefs = STACK_JOURNEYS[selectedStackId as keyof typeof STACK_JOURNEYS] ?? [];
+  const stackJourneys: StackJourneyState[] = selectedStackJourneyDefs
+    .map((journey: StackJourneyDefinition) => {
+      const connectors = journey.connectors
+        .map((key: string): StackJourneyConnectorState | null => {
+          const connector = connectorSetupMap.get(key);
+          if (!connector) return null;
+          return {
+            connector,
+            coverage: connectorCoverageMap.get(key),
+            status: connectorJourneyStatus(connector, connectorCoverageMap.get(key)),
+          };
+        })
+        .filter((item: StackJourneyConnectorState | null): item is StackJourneyConnectorState => !!item);
+
+      if (!connectors.length) return null;
+
+      const readyCount = connectors.filter((item: StackJourneyConnectorState) => item.status.tone === "ready").length;
+      const needsSyncCount = connectors.filter((item: StackJourneyConnectorState) => item.status.tone === "needs_sync").length;
+      const missingCount = connectors.filter((item: StackJourneyConnectorState) => item.status.tone === "missing").length;
+      const connectedCountForJourney = connectors.filter((item: StackJourneyConnectorState) => item.status.tone === "connected").length;
+      const tone: JourneyTone =
+        missingCount > 0 ? "missing" :
+        needsSyncCount > 0 ? "needs_sync" :
+        readyCount === connectors.length ? "ready" :
+        connectedCountForJourney > 0 ? "connected" :
+        "optional";
+
+      const nextConnector =
+        connectors.find((item: StackJourneyConnectorState) => item.status.tone === "missing") ??
+        connectors.find((item: StackJourneyConnectorState) => item.status.tone === "needs_sync") ??
+        connectors.find((item: StackJourneyConnectorState) => item.status.tone === "connected");
+
+      const summary =
+        missingCount > 0
+          ? `${missingCount} connector${missingCount === 1 ? "" : "s"} still need setup`
+          : needsSyncCount > 0
+            ? `${needsSyncCount} connector${needsSyncCount === 1 ? "" : "s"} still need Company Brain sync`
+            : readyCount === connectors.length
+              ? "This bundle is covered"
+              : `${connectedCountForJourney} connector${connectedCountForJourney === 1 ? "" : "s"} connected and waiting for the rest`;
+
+      return {
+        ...journey,
+        connectors,
+        tone,
+        summary,
+        nextStep: nextConnector
+          ? nextConnector.status.tone === "missing"
+            ? `Connect ${nextConnector.connector.label} next.`
+            : nextConnector.status.tone === "needs_sync"
+              ? `Import ${nextConnector.connector.label} into Company Brain next.`
+              : `Validate ${nextConnector.connector.label} once the rest are in place.`
+          : "No action needed.",
+      };
+    })
+    .filter((journey: StackJourneyState | null): journey is StackJourneyState => !!journey);
 
   return (
     <>
@@ -1071,6 +1470,354 @@ export default function SetupPage() {
         stats={status ? [{ label: "Connected", value: `${connectedCount} / ${totalServices}` }] : undefined}
       />
       <div style={{ width: "100%", maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32, padding: "24px 22px 48px", fontFamily: "var(--font-geist-sans)" }}>
+
+      <div>
+        <SectionLabel>Stack-aware setup</SectionLabel>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, border: `1px solid ${c.border}`, borderRadius: 12, background: c.bg, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", padding: 18 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {STACK_OPTIONS.map((stack) => {
+              const active = stack.key === selectedStackId;
+              return (
+                <button
+                  key={stack.key}
+                  onClick={() => setSelectedStackId(stack.key)}
+                  style={{
+                    padding: "7px 12px",
+                    borderRadius: 999,
+                    border: `1px solid ${active ? c.blueBorder : c.border}`,
+                    background: active ? c.blueTint : c.surface,
+                    color: active ? c.blue : c.textSecondary,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {stack.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {stackError ? (
+            <p style={{ margin: 0, fontSize: 12, color: c.red }}>{stackError}</p>
+          ) : stackLoading || !stackSetup || !stackCoverage ? (
+            <p style={{ margin: 0, fontSize: 12, color: c.textMuted }}>Loading stack connector guidance…</p>
+          ) : (
+            <>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+                {[
+                  { label: "Stack", value: stackSetup.stack_name },
+                  { label: "Required ready", value: `${stackCoverage.ready_required}/${stackCoverage.required_total}` },
+                  { label: "Need connection", value: `${stackSetup.missing_required}` },
+                  { label: "Need memory sync", value: `${stackSetup.connected_needs_sync}` },
+                ].map((item) => (
+                  <div key={item.label} style={{ padding: "12px 14px", borderRadius: 10, background: c.surface, border: `1px solid ${c.border}` }}>
+                    <div style={{ fontSize: 11, color: c.textMuted, textTransform: "uppercase" }}>{item.label}</div>
+                    <div style={{ marginTop: 4, fontSize: 14, color: c.text, fontWeight: 600 }}>{item.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <p style={{ margin: 0, fontSize: 12, color: c.textSecondary, lineHeight: 1.6 }}>{stackCoverage.summary}</p>
+              {stackJourneys.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ fontSize: 11, color: c.textMuted, textTransform: "uppercase", fontWeight: 600 }}>
+                    Guided bundles
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+                    {stackJourneys.map((journey) => {
+                      const tone = journeyToneStyles(journey.tone);
+                      return (
+                        <div
+                          key={journey.id}
+                          style={{
+                            padding: 14,
+                            borderRadius: 10,
+                            background: c.surface,
+                            border: `1px solid ${tone.border}`,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 10,
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: c.text }}>{journey.title}</div>
+                              <p style={{ margin: "5px 0 0", fontSize: 12, color: c.textSecondary, lineHeight: 1.5 }}>{journey.description}</p>
+                            </div>
+                            <span style={{
+                              padding: "4px 8px",
+                              borderRadius: 999,
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: tone.color,
+                              background: tone.background,
+                              border: `1px solid ${tone.border}`,
+                              whiteSpace: "nowrap",
+                            }}>
+                              {journey.summary}
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                            {journey.connectors.map(({ connector, status }) => {
+                              const connectorTone = journeyToneStyles(status.tone);
+                              return (
+                                <div
+                                  key={connector.key}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                    padding: "6px 8px",
+                                    borderRadius: 8,
+                                    border: `1px solid ${connectorTone.border}`,
+                                    background: connectorTone.background,
+                                    color: connectorTone.color,
+                                  }}
+                                >
+                                  <ServiceLogo serviceKey={connector.key} label={connector.label} size={14} />
+                                  <span style={{ fontSize: 11, fontWeight: 600 }}>{connector.label}</span>
+                                  <span style={{ fontSize: 10 }}>{status.label}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <p style={{ margin: 0, fontSize: 11, color: c.textMuted, lineHeight: 1.5 }}>{journey.nextStep}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <button
+                  onClick={() => void validateConnectorLive()}
+                  disabled={validatingKey === "__all__"}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: `1px solid ${c.border}`,
+                    background: c.bg,
+                    color: c.textSecondary,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: validatingKey === "__all__" ? "wait" : "pointer",
+                  }}
+                >
+                  {validatingKey === "__all__" ? "Running live checks…" : "Run live validation"}
+                </button>
+                {validationReport && (
+                  <span style={{ fontSize: 12, color: validationReport.ready ? c.green : c.amber }}>
+                    {validationReport.summary}
+                  </span>
+                )}
+                {validationError && (
+                  <span style={{ fontSize: 12, color: c.red }}>{validationError}</span>
+                )}
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {stackSetup.connectors.map((connector) => {
+                  const coverageConnector = stackCoverage.connectors.find((item) => item.key === connector.key);
+                  const liveValidation = validationReport?.connectors.find((item) => item.key === connector.key);
+                  const importSources = stackImportSources(connector, coverageConnector);
+                  const coverageStatus = coverageConnector?.coverage_status ?? connector.sync.coverage_status;
+                  const needsSync = connector.setup_status === "connected_needs_sync" || coverageStatus === "connected_no_memory";
+                  const isEditing = editingConnectorKey === connector.key;
+                  const validation = liveValidation || connector.validation;
+                  return (
+                    <div key={connector.key} style={{ border: `1px solid ${c.border}`, borderRadius: 10, padding: 14, background: c.surface }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <ServiceLogo serviceKey={connector.key} label={connector.label} size={18} />
+                            <span style={{ fontSize: 14, color: c.text, fontWeight: 600 }}>{connector.label}</span>
+                            {connector.required && <span style={{ fontSize: 11, color: c.red, fontWeight: 600 }}>Required</span>}
+                            <span style={{ fontSize: 11, color: needsSync ? c.amber : connector.connected ? c.green : c.textMuted }}>
+                              {needsSync ? "Needs sync" : connector.connected ? "Connected" : "Not connected"}
+                            </span>
+                          </div>
+                          <p style={{ margin: "6px 0 0", fontSize: 12, color: c.textSecondary, lineHeight: 1.5 }}>{connector.purpose}</p>
+                          <p style={{ margin: "6px 0 0", fontSize: 11, color: c.textMuted }}>
+                            {connector.missing_fields.length
+                              ? `Missing fields: ${connector.missing_fields.join(", ")}`
+                              : `Credential service: ${connector.credential_service}`}
+                            {connector.sync.brain_record_count ? ` · Brain records: ${connector.sync.brain_record_count}` : ""}
+                          </p>
+                          {connector.setup_hint && (
+                            <p style={{ margin: "6px 0 0", fontSize: 11, color: c.textMuted, lineHeight: 1.5 }}>
+                              {connector.setup_hint}
+                            </p>
+                          )}
+                          {validation?.provider?.status === "error" && validation.provider.detail && (
+                            <p style={{ margin: "6px 0 0", fontSize: 11, color: c.red, lineHeight: 1.5 }}>
+                              Validation issue: {validation.provider.detail}
+                            </p>
+                          )}
+                          {validation?.provider?.status === "ok" && (
+                            <p style={{ margin: "6px 0 0", fontSize: 11, color: c.green, lineHeight: 1.5 }}>
+                              Live validation passed{validation.provider.http_status ? ` (HTTP ${validation.provider.http_status})` : ""}.
+                            </p>
+                          )}
+                          {validation?.provider?.status === "not_checked" && (
+                            <p style={{ margin: "6px 0 0", fontSize: 11, color: c.amber, lineHeight: 1.5 }}>
+                              Live validation has not run yet for this connector.
+                            </p>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                          {(connector.missing_fields.length > 0 || connector.setup_status === "missing_credentials") && (
+                            <button
+                              onClick={() => {
+                                setEditingConnectorKey((current) => current === connector.key ? null : connector.key);
+                                setConnectorSaveError(null);
+                              }}
+                              style={{
+                                padding: "7px 12px",
+                                borderRadius: 8,
+                                border: `1px solid ${c.border}`,
+                                background: c.bg,
+                                color: c.textSecondary,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {isEditing ? "Close form" : "Add credentials"}
+                            </button>
+                          )}
+                          {connector.setup_url && (
+                            <a
+                              href={connector.setup_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                padding: "7px 12px",
+                                borderRadius: 8,
+                                border: `1px solid ${c.border}`,
+                                background: c.bg,
+                                color: c.textSecondary,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                textDecoration: "none",
+                              }}
+                            >
+                              Open setup
+                            </a>
+                          )}
+                          {importSources.length > 0 && (
+                            <button
+                              onClick={() => void importConnectorContext(connector)}
+                              disabled={importingKey === connector.key}
+                              style={{
+                                padding: "7px 12px",
+                                borderRadius: 8,
+                                border: `1px solid ${c.border}`,
+                                background: c.bg,
+                                color: c.textSecondary,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: importingKey === connector.key ? "wait" : "pointer",
+                              }}
+                            >
+                              {importingKey === connector.key ? "Importing…" : "Import context"}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => void validateConnectorLive(connector.key)}
+                            disabled={!!validatingKey}
+                            style={{
+                              padding: "7px 12px",
+                              borderRadius: 8,
+                              border: `1px solid ${c.border}`,
+                              background: c.bg,
+                              color: c.textSecondary,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: validatingKey ? "wait" : "pointer",
+                            }}
+                          >
+                            {validatingKey === connector.key ? "Checking…" : "Validate"}
+                          </button>
+                          <Link href="/company-brain" style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${c.border}`, background: c.bg, color: c.textSecondary, fontSize: 12, fontWeight: 600, textDecoration: "none" }}>
+                            Open memory
+                          </Link>
+                        </div>
+                      </div>
+                      {isEditing && (
+                        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${c.border}` }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
+                            {connector.fields.map((field) => (
+                              <div key={field.key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                <label style={{ fontSize: 11, color: c.textMuted, fontWeight: 600 }}>
+                                  {field.label}{field.required ? " *" : ""}
+                                </label>
+                                <input
+                                  type={field.secret ? "password" : "text"}
+                                  value={connectorDrafts[connector.key]?.[field.key] ?? ""}
+                                  placeholder={fieldPlaceholder(field.label, field.key)}
+                                  onChange={(event) => setConnectorDrafts((current) => ({
+                                    ...current,
+                                    [connector.key]: {
+                                      ...(current[connector.key] || {}),
+                                      [field.key]: event.target.value,
+                                    },
+                                  }))}
+                                  style={{
+                                    padding: "8px 12px",
+                                    fontSize: 13,
+                                    borderRadius: 8,
+                                    border: `1px solid ${c.border}`,
+                                    background: c.bg,
+                                    color: c.text,
+                                    outline: "none",
+                                  }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
+                            <button
+                              onClick={() => void saveStackConnector(connector)}
+                              disabled={connectorSavingKey === connector.key}
+                              style={{
+                                padding: "8px 14px",
+                                borderRadius: 8,
+                                border: "none",
+                                background: c.blue,
+                                color: "#fff",
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: connectorSavingKey === connector.key ? "wait" : "pointer",
+                              }}
+                            >
+                              {connectorSavingKey === connector.key ? "Saving…" : "Save credentials"}
+                            </button>
+                            <span style={{ fontSize: 11, color: c.textMuted }}>
+                              Saved to `"{connector.credential_service}"` for this founder.
+                            </span>
+                          </div>
+                          {connectorSaveError && (
+                            <p style={{ margin: "8px 0 0", fontSize: 11, color: c.red }}>{connectorSaveError}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {stackSetup.next_actions.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {stackSetup.next_actions.slice(0, 4).map((action) => (
+                    <div key={action} style={{ fontSize: 12, color: c.textSecondary }}>{action}</div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
 
       {/* Core services */}
       <div>
@@ -1110,6 +1857,21 @@ export default function SetupPage() {
               key={svc.key}
               svc={svc}
               connected={workspaceConnected[svc.key] ?? false}
+              founderId={founderId}
+              onSaved={loadStatus}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <SectionLabel>Additional tools</SectionLabel>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {ADDITIONAL_SERVICES.map(svc => (
+            <ServiceCard
+              key={svc.key}
+              svc={svc}
+              connected={additionalConnected[svc.key] ?? false}
               founderId={founderId}
               onSaved={loadStatus}
             />
@@ -1157,6 +1919,38 @@ export default function SetupPage() {
               <StatusDot connected={!!svc.connected} />
               <span style={{ fontSize: 11, color: c.textMuted }}>
                 {svc.connected ? "Connected" : "Requires phone verify"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <SectionLabel>Ops, docs & support visibility</SectionLabel>
+        <div style={{
+          borderRadius: 12, border: `1px solid ${c.border}`,
+          background: c.bg, boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+          padding: "14px 18px", display: "flex", gap: 10, flexWrap: "wrap",
+        }}>
+          {[
+            { key: "slack", label: "Slack", connected: status?.slack },
+            { key: "discord", label: "Discord", connected: status?.discord },
+            { key: "google_drive", label: "Google Drive", connected: status?.google_drive || status?.apps?.["google_drive"] },
+            { key: "google_docs", label: "Google Docs", connected: status?.google_docs || status?.apps?.["google_docs"] },
+            { key: "google_calendar", label: "Google Calendar", connected: status?.google_calendar || status?.apps?.["google_calendar"] },
+            { key: "obsidian", label: "Obsidian", connected: status?.obsidian },
+            { key: "zendesk", label: "Zendesk", connected: status?.zendesk },
+            { key: "confluence", label: "Confluence", connected: status?.confluence },
+          ].map(svc => (
+            <div key={svc.key} style={{
+              display: "flex", alignItems: "center", gap: 8, padding: "8px 14px",
+              borderRadius: 8, background: c.surface, border: `1px solid ${c.border}`,
+            }}>
+              <ServiceLogo serviceKey={svc.key} label={svc.label} size={18} />
+              <span style={{ fontSize: 13, color: c.text, fontWeight: 500 }}>{svc.label}</span>
+              <StatusDot connected={!!svc.connected} />
+              <span style={{ fontSize: 11, color: c.textMuted }}>
+                {svc.connected ? "Connected" : "Not connected"}
               </span>
             </div>
           ))}

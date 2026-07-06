@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import calendar
 import threading
 import time
 import uuid
@@ -828,11 +829,67 @@ def _runs_today(goal: dict[str, Any]) -> int:
     return sum(1 for r in goal.get("operating_sessions") or [] if str(r.get("started_at", "")).startswith(today))
 
 
+def _parse_iso_epoch(value: str | None) -> float | None:
+    if not value:
+        return None
+    try:
+        return float(calendar.timegm(time.strptime(str(value), "%Y-%m-%dT%H:%M:%SZ")))
+    except Exception:
+        return None
+
+
+def _current_root_window_start(goal: dict[str, Any]) -> float | None:
+    root_sid = str(goal.get("root_session_id") or goal.get("source_session_id") or "")
+    if root_sid:
+        try:
+            from backend.core.session_store import get_session_meta
+            root_meta = get_session_meta(root_sid) or {}
+            parsed = _parse_iso_epoch(root_meta.get("created_at"))
+            if parsed is not None:
+                return parsed
+        except Exception:
+            pass
+    launch_times = [
+        parsed for parsed in (
+            _parse_iso_epoch(g.get("created_at"))
+            for g in (goal.get("goals") or [])
+            if g.get("kind") == "launch"
+        )
+        if parsed is not None
+    ]
+    if launch_times:
+        return max(launch_times)
+    return _parse_iso_epoch(goal.get("created_at"))
+
+
+def _runs_in_current_root_window(goal: dict[str, Any]) -> int:
+    """Count retained operating runs that belong to the current launch/root window.
+
+    Older records can survive migrations or partial resets. They should not wedge a
+    fresh company forever, but malformed timestamps are counted conservatively.
+    """
+    runs = goal.get("operating_sessions") or []
+    window_start = _current_root_window_start(goal)
+    if window_start is None:
+        return len(runs)
+    scoped = 0
+    for rec in runs:
+        started = _parse_iso_epoch(rec.get("started_at"))
+        if started is None or started >= window_start:
+            scoped += 1
+    return scoped
+
+
 def budget_allows(goal: dict[str, Any]) -> bool:
     budget = goal.get("budget") or {}
     max_runs_raw = budget["max_runs_per_day"] if "max_runs_per_day" in budget else 12
     max_runs = max(0, int(max_runs_raw))
-    return _runs_today(goal) < max_runs
+    if _runs_today(goal) >= max_runs:
+        return False
+    root_cap_raw = budget.get("max_chained_runs_per_root_session")
+    if root_cap_raw is not None and _runs_in_current_root_window(goal) >= max(0, int(root_cap_raw)):
+        return False
+    return True
 
 
 def chained_goals_today(goal: dict[str, Any]) -> int:
@@ -851,7 +908,7 @@ def chain_allowed(goal: dict[str, Any]) -> bool:
     estimated_cost = float(budget.get("estimated_next_run_cost_usd") or 0.0)
     if chained_goals_today(goal) >= daily_cap:
         return False
-    if len(goal.get("operating_sessions") or []) >= root_cap:
+    if _runs_in_current_root_window(goal) >= root_cap:
         return False
     if estimated_cost and estimated_cost > cost_cap:
         return False

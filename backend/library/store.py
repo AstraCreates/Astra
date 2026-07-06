@@ -9,7 +9,6 @@ Canonical files (is_canonical=True) are auto-injected into agent system prompts.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import threading
@@ -18,9 +17,11 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from backend.core.json_store import read_json, write_json_atomic
+
 logger = logging.getLogger(__name__)
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
@@ -48,18 +49,17 @@ def _file_path(founder_id: str, file_id: str) -> Path:
 # ── Index helpers ──────────────────────────────────────────────────────────────
 
 def _load_index(founder_id: str) -> list[dict[str, Any]]:
-    p = _index_path(founder_id)
-    if not p.exists():
-        return []
-    try:
-        data = json.loads(p.read_text())
-        return data if isinstance(data, list) else []
-    except Exception:
-        return []
+    data = read_json(_index_path(founder_id), [])
+    return data if isinstance(data, list) else []
 
 
 def _save_index(founder_id: str, index: list[dict[str, Any]]) -> None:
-    _index_path(founder_id).write_text(json.dumps(index, indent=2, sort_keys=True))
+    write_json_atomic(_index_path(founder_id), index, sort_keys=True)
+
+
+def _load_record(founder_id: str, file_id: str) -> dict[str, Any] | None:
+    data = read_json(_file_path(founder_id, file_id), None)
+    return data if isinstance(data, dict) else None
 
 
 def _now() -> str:
@@ -107,7 +107,7 @@ def create_file(
         record["source_session_id"] = source_session_id
     meta = {k: v for k, v in record.items() if k != "content"}
     with _lock:
-        _file_path(founder_id, file_id).write_text(json.dumps(record, indent=2))
+        write_json_atomic(_file_path(founder_id, file_id), record)
         index = _load_index(founder_id)
         index.append(meta)
         _save_index(founder_id, index)
@@ -117,13 +117,7 @@ def create_file(
 
 def get_file(founder_id: str, file_id: str) -> dict[str, Any] | None:
     """Return full file record (including content) or None."""
-    p = _file_path(founder_id, file_id)
-    if not p.exists():
-        return None
-    try:
-        return json.loads(p.read_text())
-    except Exception:
-        return None
+    return _load_record(founder_id, file_id)
 
 
 def list_files(founder_id: str, department: str | None = None) -> list[dict[str, Any]]:
@@ -150,9 +144,8 @@ def update_file(
     if not p.exists():
         return None
     with _lock:
-        try:
-            record = json.loads(p.read_text())
-        except Exception:
+        record = _load_record(founder_id, file_id)
+        if record is None:
             return None
         if content is not None:
             record["content"] = content
@@ -164,7 +157,7 @@ def update_file(
         if is_canonical is not None:
             record["is_canonical"] = is_canonical
         record["updated_at"] = _now()
-        p.write_text(json.dumps(record, indent=2))
+        write_json_atomic(p, record)
         # Update index entry
         index = _load_index(founder_id)
         meta = {k: v for k, v in record.items() if k != "content"}

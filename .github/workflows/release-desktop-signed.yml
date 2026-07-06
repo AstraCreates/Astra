@@ -1,0 +1,164 @@
+name: Release Desktop Signed
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "GitHub release tag to publish/update"
+        required: true
+        default: "v0.1.0-desktop"
+      release_name:
+        description: "GitHub release name"
+        required: true
+        default: "Astra Desktop 0.1.0"
+      frontend_url:
+        description: "Hosted Astra frontend URL embedded into the desktop build"
+        required: true
+        default: "http://178.105.231.73.nip.io"
+
+permissions:
+  contents: write
+
+jobs:
+  build-signed-macos:
+    runs-on: macos-latest
+    env:
+      FRONTEND_URL: ${{ inputs.frontend_url }}
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate signing inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${APPLE_CERTIFICATE:-}" || -z "${APPLE_CERTIFICATE_PASSWORD:-}" ]]; then
+            echo "APPLE_CERTIFICATE and APPLE_CERTIFICATE_PASSWORD are required for macOS signing." >&2
+            exit 1
+          fi
+
+          has_apple_id=false
+          has_api_key=false
+          if [[ -n "${APPLE_ID:-}" || -n "${APPLE_PASSWORD:-}" || -n "${APPLE_TEAM_ID:-}" ]]; then
+            has_apple_id=true
+          fi
+          if [[ -n "${APPLE_API_KEY:-}" || -n "${APPLE_API_ISSUER:-}" || -n "${APPLE_API_KEY_P8:-}" ]]; then
+            has_api_key=true
+          fi
+
+          if [[ "${has_apple_id}" == "true" ]]; then
+            if [[ -z "${APPLE_ID:-}" || -z "${APPLE_PASSWORD:-}" || -z "${APPLE_TEAM_ID:-}" ]]; then
+              echo "APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID must all be set together." >&2
+              exit 1
+            fi
+          elif [[ "${has_api_key}" == "true" ]]; then
+            if [[ -z "${APPLE_API_KEY:-}" || -z "${APPLE_API_ISSUER:-}" || -z "${APPLE_API_KEY_P8:-}" ]]; then
+              echo "APPLE_API_KEY, APPLE_API_ISSUER, and APPLE_API_KEY_P8 must all be set together." >&2
+              exit 1
+            fi
+          else
+            echo "Notarization credentials are missing. Configure either APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID or APPLE_API_KEY/APPLE_API_ISSUER/APPLE_API_KEY_P8." >&2
+            exit 1
+          fi
+
+      - name: Materialize App Store Connect API key
+        if: ${{ secrets.APPLE_API_KEY != '' && secrets.APPLE_API_KEY_P8 != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY_DIR="$RUNNER_TEMP/private_keys"
+          mkdir -p "$KEY_DIR"
+          KEY_PATH="$KEY_DIR/AuthKey_${APPLE_API_KEY}.p8"
+          printf "%s" "$APPLE_API_KEY_P8" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./desktop/src-tauri -> target"
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build signed and notarized desktop bundle
+        working-directory: desktop
+        env:
+          APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
+        run: npm run build
+
+      - name: Verify signature and notarization
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="desktop/src-tauri/target/release/bundle/macos/Astra Desktop.app"
+          codesign -dv --verbose=4 "$APP_PATH" 2>&1 | tee /tmp/astra-codesign.txt
+          if grep -q 'Signature=adhoc' /tmp/astra-codesign.txt; then
+            echo "Build is still ad-hoc signed." >&2
+            exit 1
+          fi
+          if grep -q 'TeamIdentifier=not set' /tmp/astra-codesign.txt; then
+            echo "Build is missing an Apple TeamIdentifier." >&2
+            exit 1
+          fi
+          spctl -a -vv "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
+
+      - name: Compute release artifact names
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./desktop/src-tauri/tauri.conf.json').version")"
+          DMG_PATH="$(find desktop/src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' | head -n 1)"
+          if [[ -z "$DMG_PATH" ]]; then
+            echo "No DMG found after build." >&2
+            exit 1
+          fi
+          SHA_PATH="$RUNNER_TEMP/Astra.Desktop_${VERSION}_aarch64.dmg.sha256.txt"
+          shasum -a 256 "$DMG_PATH" > "$SHA_PATH"
+          echo "DMG_PATH=$DMG_PATH" >> "$GITHUB_ENV"
+          echo "SHA_PATH=$SHA_PATH" >> "$GITHUB_ENV"
+          echo "RELEASE_DMG_NAME=Astra.Desktop_${VERSION}_aarch64.dmg" >> "$GITHUB_ENV"
+          echo "RELEASE_SHA_NAME=Astra.Desktop_${VERSION}_aarch64.dmg.sha256.txt" >> "$GITHUB_ENV"
+
+      - name: Ensure GitHub release exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view "${{ inputs.release_tag }}" -R "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "${{ inputs.release_tag }}" \
+              -R "${{ github.repository }}" \
+              --title "${{ inputs.release_name }}" \
+              --notes "Signed and notarized Astra Desktop release."
+          fi
+
+      - name: Upload release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "${{ inputs.release_tag }}" \
+            "${DMG_PATH}#${RELEASE_DMG_NAME}" \
+            "${SHA_PATH}#${RELEASE_SHA_NAME}" \
+            --clobber \
+            -R "${{ github.repository }}"

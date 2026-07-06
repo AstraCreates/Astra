@@ -1,5 +1,5 @@
 from backend.accounts import get_or_create_org, update_subscription
-from backend.billing import billing_config_status, create_checkout_session, create_customer_portal_session
+from backend.billing import billing_config_status, create_checkout_session, create_customer_portal_session, verify_stripe_signature
 from backend.config import settings
 
 
@@ -24,6 +24,10 @@ def test_billing_config_reports_missing_stripe_setup(monkeypatch):
     assert status["stripe_configured"] is False
     assert status["checkout_available"] is False
     assert set(status["missing_price_ids"]) == {"starter", "team", "scale"}
+
+
+def test_stripe_signature_verifier_rejects_missing_secret():
+    assert verify_stripe_signature(b'{"id":"evt_1"}', "t=1,v1=abc", "") is False
 
 
 def test_checkout_session_creates_customer_session_and_audit(tmp_path, monkeypatch):

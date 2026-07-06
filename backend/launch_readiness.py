@@ -6,6 +6,8 @@ import argparse
 import json
 from typing import Any
 
+from backend.readiness.checks import make_check
+
 
 def build_launch_readiness(
     *,
@@ -90,12 +92,7 @@ def build_launch_readiness(
 
 
 def _check(key: str, ok: bool, message: str, details: dict[str, Any] | None = None) -> dict[str, Any]:
-    return {
-        "key": key,
-        "ok": bool(ok),
-        "message": message,
-        "details": details or {},
-    }
+    return make_check(key, ok, message, details)
 
 
 def main() -> int:

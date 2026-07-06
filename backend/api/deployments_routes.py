@@ -11,7 +11,7 @@ import logging
 import re
 
 import requests
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from backend.deployments.store import (
@@ -19,6 +19,7 @@ from backend.deployments.store import (
     list_deployments,
     publish_deployment,
 )
+from backend.tenant_auth import FounderActor, current_founder_from_query, require_current_founder
 
 logger = logging.getLogger(__name__)
 
@@ -43,22 +44,27 @@ class PublishResponse(BaseModel):
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @deployments_router.get("/deployments")
-async def api_list_deployments(founder_id: str = Query(..., description="Founder ID")):
+async def api_list_deployments(actor: FounderActor = Depends(current_founder_from_query(min_role="viewer"))):
     """List all deployments for a founder, newest first."""
+    founder_id = actor.founder_id
     return {"deployments": list_deployments(founder_id)}
 
 
 @deployments_router.get("/deployments/{session_id}")
-async def api_get_deployment(session_id: str):
+async def api_get_deployment(session_id: str, request: Request):
     """Get the deployment record for a session."""
     record = get_deployment(session_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"No deployment found for session {session_id}")
+    founder_id = str(record.get("founder_id") or "")
+    if not founder_id:
+        raise HTTPException(status_code=404, detail=f"No deployment found for session {session_id}")
+    require_current_founder(request, founder_id, min_role="viewer")
     return record
 
 
 @deployments_router.post("/deployments/{session_id}/publish", response_model=PublishResponse)
-async def api_publish_deployment(session_id: str, body: PublishRequest):
+async def api_publish_deployment(session_id: str, body: PublishRequest, request: Request):
     """Promote staging deployment to production.
 
     Uses Vercel's alias API to point a custom domain (or the default .vercel.app
@@ -73,6 +79,10 @@ async def api_publish_deployment(session_id: str, body: PublishRequest):
     record = get_deployment(session_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"No deployment found for session {session_id}")
+    founder_id = str(record.get("founder_id") or "")
+    if not founder_id:
+        raise HTTPException(status_code=404, detail=f"No deployment found for session {session_id}")
+    require_current_founder(request, founder_id, min_role="admin")
 
     staging_url: str = record.get("staging_url", "")
     if not staging_url:

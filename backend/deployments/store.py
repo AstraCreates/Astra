@@ -18,7 +18,6 @@ Each deployment record:
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import threading
@@ -26,18 +25,18 @@ import time
 from pathlib import Path
 from typing import Any
 
+from backend.core.json_store import read_json, write_json_atomic
+
 logger = logging.getLogger(__name__)
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 
 
 # ── Storage paths ──────────────────────────────────────────────────────────────
 
 def _deployments_dir() -> Path:
     base = Path(os.environ.get("OBSIDIAN_VAULT", "/tmp/astra_docs"))
-    d = base / "deployments"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    return base / "deployments"
 
 
 def _index_path() -> Path:
@@ -51,17 +50,12 @@ def _record_path(session_id: str) -> Path:
 # ── Index helpers ──────────────────────────────────────────────────────────────
 
 def _load_index() -> dict[str, Any]:
-    p = _index_path()
-    if not p.exists():
-        return {}
-    try:
-        return json.loads(p.read_text())
-    except Exception:
-        return {}
+    data = read_json(_index_path(), {})
+    return data if isinstance(data, dict) else {}
 
 
 def _save_index(index: dict[str, Any]) -> None:
-    _index_path().write_text(json.dumps(index, indent=2, sort_keys=True))
+    write_json_atomic(_index_path(), index, sort_keys=True)
 
 
 # ── Public API ─────────────────────────────────────────────────────────────────
@@ -90,7 +84,7 @@ def record_deployment(session_id: str, founder_id: str, staging_url: str) -> dic
             record["published_at"] = existing.get("published_at")
             record["status"] = existing.get("status", "staged")
 
-        _record_path(session_id).write_text(json.dumps(record, indent=2))
+        write_json_atomic(_record_path(session_id), record)
         index = _load_index()
         index[session_id] = record
         _save_index(index)
@@ -116,7 +110,7 @@ def publish_deployment(session_id: str, prod_url: str) -> dict | None:
         record["published_at"] = now
         record["status"] = "published"
 
-        _record_path(session_id).write_text(json.dumps(record, indent=2))
+        write_json_atomic(_record_path(session_id), record)
         index = _load_index()
         index[session_id] = record
         _save_index(index)
@@ -146,10 +140,9 @@ def _load_single(session_id: str) -> dict | None:
     """Load a single record. Tries per-session file first, falls back to index."""
     p = _record_path(session_id)
     if p.exists():
-        try:
-            return json.loads(p.read_text())
-        except Exception:
-            pass
+        record = read_json(p, None)
+        if isinstance(record, dict):
+            return record
     # Fallback: check index
     index = _load_index()
     return index.get(session_id)

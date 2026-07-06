@@ -8,9 +8,8 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from backend.model_settings.store import (
@@ -18,6 +17,7 @@ from backend.model_settings.store import (
     get_all_overrides,
     set_model_override,
 )
+from backend.tenant_auth import FounderActor, current_founder_from_query, require_current_founder
 
 logger = logging.getLogger(__name__)
 
@@ -74,11 +74,14 @@ class SetOverrideRequest(BaseModel):
     model: str
 
 
+def require_model_settings_admin_actor(body: SetOverrideRequest, request: Request) -> FounderActor:
+    return require_current_founder(request, body.founder_id, min_role="admin")
+
+
 @model_settings_router.get("/model-settings")
-async def get_model_settings(founder_id: str = Query(..., description="Founder ID")):
+async def get_model_settings(actor: FounderActor = Depends(current_founder_from_query(min_role="viewer"))):
     """Return all overrides for a founder plus the list of available models."""
-    if not founder_id:
-        raise HTTPException(status_code=400, detail="founder_id is required")
+    founder_id = actor.founder_id
     overrides = get_all_overrides(founder_id)
     return {
         "founder_id": founder_id,
@@ -89,10 +92,12 @@ async def get_model_settings(founder_id: str = Query(..., description="Founder I
 
 
 @model_settings_router.post("/model-settings")
-async def set_model_settings(body: SetOverrideRequest):
+async def set_model_settings(
+    body: SetOverrideRequest,
+    actor: FounderActor = Depends(require_model_settings_admin_actor),
+):
     """Set or update a model override for a single agent."""
-    if not body.founder_id:
-        raise HTTPException(status_code=400, detail="founder_id is required")
+    founder_id = actor.founder_id
     if not body.agent_key:
         raise HTTPException(status_code=400, detail="agent_key is required")
     if body.agent_key not in ALL_AGENT_KEYS:
@@ -100,7 +105,7 @@ async def set_model_settings(body: SetOverrideRequest):
     if body.model not in AVAILABLE_MODELS:
         raise HTTPException(status_code=400, detail=f"Unknown model: {body.model}. Available: {AVAILABLE_MODELS}")
 
-    set_model_override(body.founder_id, body.agent_key, body.model)
+    set_model_override(founder_id, body.agent_key, body.model)
 
     # Invalidate the orchestrator singleton so the new model is picked up next run
     try:
@@ -111,17 +116,19 @@ async def set_model_settings(body: SetOverrideRequest):
 
     return {
         "ok": True,
-        "founder_id": body.founder_id,
+        "founder_id": founder_id,
         "agent_key": body.agent_key,
         "model": body.model,
     }
 
 
 @model_settings_router.delete("/model-settings/{agent_key}")
-async def delete_model_setting(agent_key: str, founder_id: str = Query(..., description="Founder ID")):
+async def delete_model_setting(
+    agent_key: str,
+    actor: FounderActor = Depends(current_founder_from_query(min_role="admin")),
+):
     """Clear a model override for a single agent, reverting to the default."""
-    if not founder_id:
-        raise HTTPException(status_code=400, detail="founder_id is required")
+    founder_id = actor.founder_id
     if agent_key not in ALL_AGENT_KEYS:
         raise HTTPException(status_code=400, detail=f"Unknown agent_key: {agent_key}")
 

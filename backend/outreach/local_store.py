@@ -17,13 +17,14 @@ matching the Supabase client's result shape.
 """
 from __future__ import annotations
 
-import json
 import os
 import threading
 import time
 import uuid
 from pathlib import Path
 from typing import Any
+
+from backend.core.json_store import read_json, write_json_atomic
 
 _lock = threading.RLock()
 
@@ -36,19 +37,14 @@ def _store_path() -> Path:
 
 
 def _load() -> dict[str, list[dict]]:
-    p = _store_path()
-    if not p.exists():
+    data = read_json(_store_path(), {})
+    if not isinstance(data, dict):
         return {}
-    try:
-        return json.loads(p.read_text())
-    except Exception:
-        return {}
+    return {k: v for k, v in data.items() if isinstance(k, str) and isinstance(v, list)}
 
 
 def _save(data: dict[str, list[dict]]) -> None:
-    tmp = _store_path().with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, separators=(",", ":")))
-    tmp.replace(_store_path())
+    write_json_atomic(_store_path(), data, indent=None, separators=(",", ":"))
 
 
 def _now() -> str:
