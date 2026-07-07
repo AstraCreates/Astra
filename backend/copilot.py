@@ -772,6 +772,28 @@ async def _tool_session_status(founder_id: str, session_id: str, args: dict) -> 
             "credits_used": meta.get("credits_used", 0), "kind": meta.get("kind")}
 
 
+def _make_block_tool(block: dict[str, Any]):
+    async def _fn(founder_id: str, session_id: str, args: dict) -> Any:
+        import asyncio
+        from backend.tools import automation_blocks
+
+        catalog = {item["key"]: item for item in automation_blocks.catalog()}
+        item = catalog.get(block["key"])
+        if not item:
+            return {"ok": False, "error": f"Unknown automation block: {block['key']}"}
+        return await asyncio.to_thread(item["run"], dict(args or {}), founder_id)
+
+    return _fn
+
+
+def _make_direct_tool(fn):
+    async def _fn(founder_id: str, session_id: str, args: dict) -> Any:
+        import asyncio
+        return await asyncio.to_thread(fn, **dict(args or {}))
+
+    return _fn
+
+
 # ── MCP parity: expose the rest of the astra MCP surface in-process ──────────────
 # Reuses the exact MCP handlers (run AS this session's founder), so the copilot has
 # the same toolset as the MCP without reimplementing anything. Session-scoped tools
@@ -790,6 +812,72 @@ _MCP_TOOLS = {
     "credits":          ("astra_credits", "credit balance + usage. args: {}"),
     "mcp_message_agent": ("astra_message_agent", "send a directive to ONE specific agent by name. args: {agent, message, session_id?}"),
     "mcp_stop_agent": ("astra_stop_agent", "INSTANTLY stop ONE running agent by name (halts at next step) without killing the run. args: {agent, session_id?}"),
+}
+
+_AUTOMATION_BLOCK_TOOLS: list[tuple[str, str, str]] = []
+try:
+    from backend.tools.automation_blocks import catalog as _automation_catalog
+
+    for _item in _automation_catalog():
+        _AUTOMATION_BLOCK_TOOLS.append((
+            f"automation_{_item['key']}",
+            _item["label"],
+            _item["key"],
+        ))
+except Exception:
+    _AUTOMATION_BLOCK_TOOLS = []
+
+_DIRECT_TOOL_SPECS: dict[str, tuple[str, str, str]] = {
+    "research_fetch_and_read": (
+        "fetch a URL and extract readable text. args: {url}",
+        "backend.tools.browser_research",
+        "fetch_and_read",
+    ),
+    "research_search_and_fetch": (
+        "search the web and fetch top results. args: {query, max_results?}",
+        "backend.tools.browser_research",
+        "search_and_fetch",
+    ),
+    "research_build_queries": (
+        "build a structured research query set. args: {topic, focus?, limit?}",
+        "backend.tools.browser_research",
+        "build_research_queries",
+    ),
+    "research_run_pipeline": (
+        "run a full research pipeline. args: {topic, focus?, max_results_each?}",
+        "backend.tools.browser_research",
+        "run_research_pipeline",
+    ),
+    "research_delegate_task": (
+        "delegate a research task. args: {query, focus?, session_id?}",
+        "backend.tools.research_delegate",
+        "delegate_research_task",
+    ),
+    "design_generate_wireframe": (
+        "generate a product wireframe. args: {page_type, sections?, style?, audience?}",
+        "backend.tools.design_tools",
+        "generate_wireframe",
+    ),
+    "design_generate_color_palette": (
+        "generate a color palette. args: {brand_vibe?, brand_name?, industry?}",
+        "backend.tools.design_tools",
+        "generate_color_palette",
+    ),
+    "design_generate_design_spec": (
+        "generate a design spec. args: {brand_name, product_type?, brand_vibe?, audience?, industry?}",
+        "backend.tools.design_tools",
+        "generate_design_spec",
+    ),
+    "design_generate_logo_brief": (
+        "generate a logo brief. args: {brand_name, brand_vibe?, industry?}",
+        "backend.tools.design_tools",
+        "generate_logo_brief",
+    ),
+    "automation_draft_flow": (
+        "draft an automation flow from a prompt. args: {prompt}",
+        "backend.tools.automation_drafts",
+        "draft_flow_from_prompt",
+    ),
 }
 
 
@@ -1357,6 +1445,15 @@ _TOOLS = {
     "run_automation": ("run an automation flow now (async — returns a run_id, doesn't wait). args: {flow_id}", _tool_run_automation),
     "get_automation_run": ("read an automation run's status and per-node results. args: {run_id}", _tool_get_automation_run),
 }
+
+for _tool_name, _label, _block_key in _AUTOMATION_BLOCK_TOOLS:
+    _TOOLS.setdefault(_tool_name, (f"{_label}. args: {{...}}", _make_block_tool({"key": _block_key})))
+
+for _tool_name, (_doc, _module_name, _fn_name) in _DIRECT_TOOL_SPECS.items():
+    if _tool_name in _TOOLS:
+        continue
+    _module = __import__(_module_name, fromlist=[_fn_name])
+    _TOOLS[_tool_name] = (_doc, _make_direct_tool(getattr(_module, _fn_name)))
 
 # Fold in the MCP parity tools (in-process proxies).
 for _cp_name, (_mcp_name, _doc) in _MCP_TOOLS.items():
