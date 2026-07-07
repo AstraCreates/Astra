@@ -6,6 +6,12 @@ services:
       - redis_data:/data
     command: redis-server --appendonly yes
 
+  headroom:
+    build:
+      context: .
+      dockerfile: Dockerfile.headroom
+    restart: unless-stopped
+
   backend:
     build:
       context: .
@@ -16,8 +22,16 @@ services:
       - REDIS_URL=redis://redis:6379
       - OBSIDIAN_VAULT=/data/astra_docs
       - ASTRA_WORKSPACE=/data/astra-workspaces
+      - AGENT_MODEL_BASE_URL=http://headroom:8787/v1
+      - OPENROUTER_BASE_URL=http://headroom:8787/v1
+      - TOOLUSE_MODEL_BASE_URL=http://headroom:8787/v1
+      - PLANNER_MODEL_BASE_URL=http://headroom:8787/v1
+      - CHAT_MODEL_BASE_URL=http://headroom:8787/v1
+      - LIGHT_MODEL_BASE_URL=http://headroom:8787/v1
+      - HIGHOUTPUT_MODEL_BASE_URL=http://headroom:8787/v1
     depends_on:
       - redis
+      - headroom
     ports:
       - "127.0.0.1:8000:8000"
       - "4000-4009:4000-4009"  # local MVP preview servers (Vercel fallback) — intentionally public, see deploy/nginx.conf
