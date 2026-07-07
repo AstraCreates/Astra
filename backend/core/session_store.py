@@ -117,6 +117,7 @@ def register_session(
     chapter_id: str | None = None,
     parent_session_id: str = "",
     kind: str = "",
+    research_depth: str = "",
 ) -> None:
     resolved_company_id = company_id or workspace_id or founder_id
     meta = {
@@ -138,6 +139,7 @@ def register_session(
         "parent_session_id": parent_session_id or "",
         "kind": kind or "",
         "credits_used": 0,
+        "research_depth": research_depth or "",
     }
     with _session_lock(session_id):
         meta_path(session_id).write_text(json.dumps(meta, indent=2))

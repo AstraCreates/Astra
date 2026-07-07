@@ -1147,6 +1147,7 @@ class Orchestrator:
             "constraints": constraints or {},
             "creative_brief": creative_brief,
             "company_id": company_id,
+            "research_depth": (constraints or {}).get("research_depth") or "",
         }
         context_policy = RunContextPolicy(session_id=session_id, founder_id=founder_id, constraints=constraints or {})
 

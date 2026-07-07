@@ -149,6 +149,20 @@ from backend.tenant_auth import actor_or_body, require_founder_access, require_o
 router = APIRouter()
 
 
+def _normalize_research_depth(value: object) -> str:
+    depth = str(value or "").strip().lower()
+    aliases = {
+        "fast": "quick",
+        "standard": "normal",
+        "default": "normal",
+        "deep": "max",
+        "super": "max",
+        "super_deep": "max",
+    }
+    depth = aliases.get(depth, depth)
+    return depth if depth in {"quick", "normal", "max"} else ""
+
+
 def _require_company_scope(
     request: Request,
     founder_id: str,
@@ -598,6 +612,9 @@ async def submit_goal(body: GoalRequest, request: Request):
     if not _unlimited and get_balance(body.founder_id) < 1:
         raise HTTPException(status_code=402, detail="Insufficient credits. Purchase more to continue.")
     constraints = dict(body.constraints or {})
+    _research_depth = _normalize_research_depth(constraints.get("research_depth"))
+    if _research_depth:
+        constraints["research_depth"] = _research_depth
     _inferred_stack, _business_profile = _analyze_goal(body.instruction)
     _effective_stack = body.stack_id or _inferred_stack or ""
     if _effective_stack:
@@ -665,6 +682,7 @@ async def submit_goal(body: GoalRequest, request: Request):
             workspace_id=_workspace_id,
             company_id=_workspace_id or body.founder_id,
             chapter_id=_chapter_id,
+            research_depth=str(constraints.get("research_depth") or ""),
         )
     except Exception as _se:
         logger.warning("session_store.register_session failed: %s", _se)

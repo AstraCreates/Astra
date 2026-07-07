@@ -176,6 +176,21 @@ _FOCUS_ROLES = {
 
 
 _MAX_RESEARCH_PLANS = {"scale", "beta"}
+_RESEARCH_DEPTHS = {"quick", "normal", "max"}
+
+
+def _normalize_research_depth(value: object) -> str:
+    depth = str(value or "").strip().lower()
+    aliases = {
+        "fast": "quick",
+        "standard": "normal",
+        "default": "normal",
+        "deep": "max",
+        "super": "max",
+        "super_deep": "max",
+    }
+    depth = aliases.get(depth, depth)
+    return depth if depth in _RESEARCH_DEPTHS else ""
 
 
 def _research_plan_for_founder(founder_id: str) -> str:
@@ -194,8 +209,16 @@ def _is_max_research_plan(plan: str) -> bool:
     return (plan or "").lower() in _MAX_RESEARCH_PLANS
 
 
-def _research_depth_guidance(plan: str) -> str:
-    if _is_max_research_plan(plan):
+def _effective_research_depth(plan: str, requested_depth: object = "") -> str:
+    requested = _normalize_research_depth(requested_depth)
+    if requested:
+        return requested
+    return "max" if _is_max_research_plan(plan) else "normal"
+
+
+def _research_depth_guidance(plan: str, requested_depth: object = "") -> str:
+    depth = _effective_research_depth(plan, requested_depth)
+    if depth == "max":
         return (
             "SUPER DEEP RESEARCH MODE (Max workspace):\n"
             "- Be THOROUGH: visit many sources across the web. Run multiple search rounds and read "
@@ -203,8 +226,15 @@ def _research_depth_guidance(plan: str) -> str:
             "- Search broadly: run run_research_pipeline, THEN 2-4 sonar_research calls to fill gaps and "
             "go deeper on specifics. Aim for 15+ distinct cited sources before you finish.\n"
         )
+    if depth == "quick":
+        return (
+            "QUICK RESEARCH MODE:\n"
+            "- Optimize for speed. Run one narrow run_research_pipeline pass and synthesize immediately.\n"
+            "- Aim for 3-5 distinct cited sources. Mark uncertainty instead of chasing every gap.\n"
+            "- Do not run video, patent, academic, news, or extra fetches unless the founder explicitly asks.\n"
+        )
     return (
-        "FAST RESEARCH MODE:\n"
+        "NORMAL RESEARCH MODE:\n"
         "- Optimize for speed and decision quality. Do one focused run_research_pipeline pass, then at most "
         "one targeted sonar_research call only if a critical gap remains.\n"
         "- Read only the highest-signal pages sonar missed. Aim for 5-8 distinct cited sources, then synthesize.\n"
@@ -212,19 +242,24 @@ def _research_depth_guidance(plan: str) -> str:
     )
 
 
-def _research_max_iterations(plan: str, requested: int | None = None) -> int:
+def _research_max_iterations(plan: str, requested: int | None = None, requested_depth: object = "") -> int:
     if requested is not None:
         return requested
-    return 40 if _is_max_research_plan(plan) else 22
+    depth = _effective_research_depth(plan, requested_depth)
+    if depth == "quick":
+        return 14
+    if depth == "max":
+        return 40
+    return 22
 
 
-def _build_research_role(agent_name: str, focus_searches: str, plan: str) -> str:
+def _build_research_role(agent_name: str, focus_searches: str, plan: str, requested_depth: object = "") -> str:
     return (
         "You are an elite research specialist. Your ONLY domain is MARKET OPPORTUNITY — "
         "TAM/SAM/SOM, market growth trends, timing thesis, and investment narrative. "
         "NOT competitor profiling (research_competitors), NOT financial benchmarks (research_financial), "
         "NOT regulatory risk (research_regulatory), NOT customer personas (customer_discovery).\n\n"
-        + _research_depth_guidance(plan)
+        + _research_depth_guidance(plan, requested_depth)
         + "\nTOOLS:\n"
         "- run_research_pipeline(topic, focus) — first-pass: builds query plan + runs sonar_research in parallel. Use this first.\n"
         "- sonar_research(queries) — PRIMARY tool. Pass a list of research questions; each returns a synthesized cited answer. Replaces batch_search + fetch_and_read loops.\n"
@@ -315,8 +350,10 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     async def _patched_run(ctx: AgentContext):
         ctx_holder[0] = ctx
         plan = _research_plan_for_founder(ctx.founder_id)
-        agent.role = _build_research_role(agent_name, focus_searches, plan)
-        agent.max_iterations = _research_max_iterations(plan, requested_max_iterations)
+        constraints = (ctx.shared or {}).get("constraints") or {}
+        requested_depth = constraints.get("research_depth") or (ctx.shared or {}).get("research_depth")
+        agent.role = _build_research_role(agent_name, focus_searches, plan, requested_depth)
+        agent.max_iterations = _research_max_iterations(plan, requested_max_iterations, requested_depth)
         return await _original_run(ctx)
 
     agent.run = _patched_run

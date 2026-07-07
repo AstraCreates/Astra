@@ -208,6 +208,13 @@ const STARTER_PROMPTS = [
   },
 ];
 
+const RESEARCH_DEPTH_OPTIONS = [
+  { id: "quick", label: "Quick", detail: "Fast scan" },
+  { id: "normal", label: "Normal", detail: "Balanced" },
+  { id: "max", label: "Max", detail: "Deep sweep" },
+] as const;
+type ResearchDepth = typeof RESEARCH_DEPTH_OPTIONS[number]["id"];
+
 const SUBTEAM_OPTIONS = ["engineering", "growth", "sales", "marketing", "product", "support", "ops", "legal"];
 
 function pct(state: AgentState): number {
@@ -3531,6 +3538,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
   const [domain, setDomain] = useState("");
   const [instruction, setInstruction] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [researchDepth, setResearchDepth] = useState<ResearchDepth>("normal");
   const [showStack, setShowStack] = useState(false);
   const [techStack, setTechStack] = useState({ frontend: "Next.js", backend: "FastAPI", database: "Supabase (Postgres)", auth: "Clerk" });
   const [stackTemplates, setStackTemplates] = useState<AgentStackTemplate[]>([]);
@@ -3619,6 +3627,7 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
     const founderId = devUserId === "anon" ? "founder_001" : devUserId;
     try {
       const constraints: Record<string, unknown> = selectedStackId === "custom" ? { agents: customAgents } : {};
+      constraints.research_depth = researchDepth;
       const result = await submitGoal(founderId, full, constraints, selectedStackId);
       saveSession({
         sessionId: result.session_id,
@@ -3905,6 +3914,40 @@ function NewGoalOverlay({ open, onClose }: { open: boolean; onClose: () => void 
             />
             <div style={{ marginTop: 8 }}>
               <AttachBar attachments={attachments} setAttachments={setAttachments} disabled={loading} founderId={devUserId === "anon" ? "founder_001" : devUserId} />
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gap: 8, border: "1px solid var(--line)", borderRadius: 24, padding: "10px 12px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <span className="site-label">Research depth</span>
+              <span style={{ fontSize: 11, color: "var(--fg-mute)" }}>Quick saves time; Max goes deep.</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+              {RESEARCH_DEPTH_OPTIONS.map(option => {
+                const active = researchDepth === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setResearchDepth(option.id)}
+                    disabled={loading}
+                    style={{
+                      display: "grid",
+                      gap: 3,
+                      textAlign: "left",
+                      borderRadius: 16,
+                      border: `1px solid ${active ? "rgba(61,158,95,0.38)" : "var(--line)"}`,
+                      background: active ? "rgba(61,158,95,0.10)" : "rgba(255,255,255,0.025)",
+                      color: "var(--fg)",
+                      padding: "9px 10px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span style={{ fontSize: 12, fontWeight: 650 }}>{option.label}</span>
+                    <span style={{ fontSize: 10, color: active ? "#3D9E5F" : "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{option.detail}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

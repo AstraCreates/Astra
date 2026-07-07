@@ -6,6 +6,13 @@ import { getStacks, submitGoal, ingestAttachment, type AgentStackTemplate } from
 import { useDevUser } from "@/lib/use-dev-user";
 import BusinessQuizModal, { type QuizResult, STACK_MAP, BIZ_TYPES } from "@/components/BusinessQuizModal";
 
+const RESEARCH_DEPTH_OPTIONS = [
+  { id: "quick", label: "Quick", detail: "Fast scan" },
+  { id: "normal", label: "Normal", detail: "Balanced" },
+  { id: "max", label: "Max", detail: "Deep sweep" },
+] as const;
+type ResearchDepth = typeof RESEARCH_DEPTH_OPTIONS[number]["id"];
+
 export default function NewGoalView() {
   const router = useRouter();
   const { userId } = useDevUser();
@@ -18,6 +25,7 @@ export default function NewGoalView() {
   const [attachments, setAttachments] = useState<{ name: string; content: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [company, setCompany] = useState("");
+  const [researchDepth, setResearchDepth] = useState<ResearchDepth>("normal");
   const [showQuiz, setShowQuiz] = useState(false);
   const [quizResult, setQuizResult] = useState<QuizResult | null>(null);
   // Existing business context
@@ -91,7 +99,7 @@ export default function NewGoalView() {
         instruction += "\n\nAttached context:\n" + attachments.map((a) => `--- ${a.name} ---\n${a.content.slice(0, 8000)}`).join("\n\n");
       }
       const stackId = selStack || (quiz?.businessType ? STACK_MAP[quiz.businessType] : "") || "idea_to_revenue";
-      const data = await submitGoal(userId, instruction, {}, stackId);
+      const data = await submitGoal(userId, instruction, { research_depth: researchDepth }, stackId);
       if (!data.session_id) throw new Error("No session_id returned");
       window.location.assign(`/s/${data.session_id}`);
     } catch (e) {
@@ -262,6 +270,25 @@ export default function NewGoalView() {
             </div>
           )}
           <div className="f-hint">PDFs, docs, or images — Astra reads them as extra context for this run.</div>
+        </div>
+
+        <div className="f-field" style={{ marginBottom: 18 }}>
+          <label className="f-label">Research depth</label>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+            {RESEARCH_DEPTH_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={`sk${researchDepth === option.id ? " sel" : ""}`}
+                onClick={() => setResearchDepth(option.id)}
+                style={{ textAlign: "left", padding: "10px 12px" }}
+              >
+                <div className="sk-name">{option.label}</div>
+                <div className="sk-desc">{option.detail}</div>
+              </button>
+            ))}
+          </div>
+          <div className="f-hint">Quick is cheapest and fastest. Max runs the super-deep research pass.</div>
         </div>
 
         {err && <div className="err-banner" style={{ marginBottom: 14 }}>{err}</div>}
