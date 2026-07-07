@@ -52,6 +52,59 @@ I can see the preview is missing, so I’m checking the current run first.
 
 
 @pytest.mark.asyncio
+async def test_run_copilot_normalizes_bare_tool_name_action(monkeypatch):
+    """Reproduces a real observed failure: the model emits {"action":"<tool_name>",
+    ...} instead of {"action":"tool","tool":"<tool_name>",...}. Before the fix this
+    silently fell through to the reply branch and dumped the raw JSON to the founder
+    without ever calling the tool -- confirmed against real copilot history where
+    stop_agent/session_status/run_cycle calls were shown verbatim as replies."""
+    outputs = iter([
+        '{"action":"stop_agent","agent":"research","session_id":"sess_123"}',
+        '{"action":"reply","text":"Stopped the research agents."}',
+    ])
+    monkeypatch.setattr(copilot, "_copilot_generate", AsyncMock(side_effect=lambda *a, **k: next(outputs)))
+    monkeypatch.setattr(copilot, "get_history", lambda session_id: [])
+    monkeypatch.setattr(copilot, "_save_history", lambda session_id, history: None)
+    monkeypatch.setattr(copilot, "_load_live_context", AsyncMock(return_value={"running_agents": ["research"]}))
+
+    called = {}
+
+    async def fake_stop_agent(founder_id, session_id, args):
+        called.update(args)
+        return {"ok": True, "stopped": ["research"]}
+
+    monkeypatch.setitem(copilot._TOOLS, "stop_agent", ("doc", fake_stop_agent))
+
+    result = await copilot.run_copilot("founder_123", "sess_123", "tell research to finish")
+
+    assert called == {"agent": "research", "session_id": "sess_123"}
+    assert result["actions"] and result["actions"][0]["tool"] == "stop_agent"
+    assert result["reply"] == "Stopped the research agents."
+    assert "action" not in result["reply"]  # never the raw JSON blob
+
+
+@pytest.mark.asyncio
+async def test_run_copilot_unknown_tool_name_retries_instead_of_dumping_json(monkeypatch):
+    """A hallucinated/misspelled tool name must feed back an error and let the
+    model retry within its step budget, not dump raw JSON as the final reply."""
+    outputs = iter([
+        '{"action":"tool","tool":"kill_agent","args":{"agent":"research"}}',
+        '{"action":"tool","tool":"stop_agent","args":{"agent":"research"}}',
+        '{"action":"reply","text":"Done."}',
+    ])
+    monkeypatch.setattr(copilot, "_copilot_generate", AsyncMock(side_effect=lambda *a, **k: next(outputs)))
+    monkeypatch.setattr(copilot, "get_history", lambda session_id: [])
+    monkeypatch.setattr(copilot, "_save_history", lambda session_id, history: None)
+    monkeypatch.setattr(copilot, "_load_live_context", AsyncMock(return_value={"running_agents": ["research"]}))
+    monkeypatch.setitem(copilot._TOOLS, "stop_agent", ("doc", AsyncMock(return_value={"ok": True})))
+
+    result = await copilot.run_copilot("founder_123", "sess_123", "kill research")
+
+    assert result["reply"] == "Done."
+    assert result["actions"] and result["actions"][0]["tool"] == "stop_agent"
+
+
+@pytest.mark.asyncio
 async def test_run_copilot_auto_routes_named_agent_directive(monkeypatch):
     monkeypatch.setattr("backend.tools._llm.generate", lambda *args, **kwargs: '{"action":"reply","text":"I am on it."}')
     monkeypatch.setattr(copilot, "_copilot_generate", AsyncMock(return_value='{"action":"reply","text":"I am on it."}'))

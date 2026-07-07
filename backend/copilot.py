@@ -1709,6 +1709,20 @@ async def run_copilot(
             reply = f"(copilot error: {exc})"
             break
         act = _parse_action(raw)
+        # The model frequently emits {"action":"<tool_name>", ...} (tool name
+        # directly as the action) instead of the documented {"action":"tool",
+        # "tool":"<tool_name>","args":{...}} shape. Unnormalized, this silently
+        # fell through to the reply branch below and dumped the raw JSON to the
+        # founder as if it were a final answer -- the tool call never ran at all
+        # (confirmed against real copilot history: stop_agent/session_status/
+        # run_cycle calls shown verbatim as replies, never executed). Normalize
+        # before the tool-dispatch check so either shape works.
+        if act.get("action") not in ("tool", "reply") and act.get("action") in _TOOLS:
+            _tool_name = act["action"]
+            _args = act.get("args") if isinstance(act.get("args"), dict) else {
+                k: v for k, v in act.items() if k not in ("action", "preface", "args")
+            }
+            act = {"action": "tool", "tool": _tool_name, "args": _args, "preface": act.get("preface", "")}
         if act.get("action") == "tool" and act.get("tool") in _TOOLS:
             name = act["tool"]
             preface = str(act.get("preface") or "").strip()
@@ -1724,6 +1738,15 @@ async def run_copilot(
                 convo.append(f"tool[{name}] -> {json.dumps(result)[:1200]}")
             if preface:
                 convo.append(f"assistant_note: {preface}")
+            continue
+        if act.get("action") == "tool" and act.get("tool") and act.get("tool") not in _TOOLS:
+            # Hallucinated/misspelled tool name -- previously fell straight through
+            # to dumping the raw JSON as the reply and killing the loop. Feed back
+            # the valid tool list and let the model retry within its step budget.
+            convo.append(
+                f"tool[{act.get('tool')}] -> {{\"ok\": false, \"error\": \"no such tool\", "
+                f"\"valid_tools\": {json.dumps(sorted(_TOOLS.keys()))}}}"
+            )
             continue
         reply = str(act.get("text") or raw).strip()
         break
