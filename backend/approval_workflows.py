@@ -70,11 +70,14 @@ def create_approval_request(
     risk_level: str = "medium",
     required_role: str = "owner",
     expires_at: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create or refresh a pending approval request."""
     data = _load(session_id)
     request_id = f"{gate_key}:{action_id or tool or agent or 'request'}"
     existing = next((item for item in data["requests"] if item.get("id") == request_id), None)
+    metadata = dict(metadata or {})
+    existing_metadata = dict(existing.get("metadata") or {}) if existing else {}
     payload = {
         "id": request_id,
         "session_id": session_id,
@@ -91,7 +94,11 @@ def create_approval_request(
         "created_at": existing.get("created_at") if existing else _now(),
         "updated_at": _now(),
         "history": list(existing.get("history", [])) if existing else [],
+        **existing_metadata,
+        **metadata,
     }
+    if metadata:
+        payload["metadata"] = metadata
     if existing:
         data["requests"] = [payload if item.get("id") == request_id else item for item in data["requests"]]
     else:

@@ -559,4 +559,8 @@ def _approval_request_state(request: dict[str, Any]) -> dict[str, Any]:
         "decided_by": request.get("decided_by"),
         "decided_at": request.get("decided_at"),
         "history": request.get("history") or [],
+        "is_phase_gate": bool(request.get("is_phase_gate")),
+        "phase": request.get("phase") or "",
+        "next_phase": request.get("next_phase") or "",
+        "artifacts": request.get("artifacts") or [],
     }

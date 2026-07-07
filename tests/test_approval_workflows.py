@@ -95,3 +95,28 @@ def test_approval_workflow_rejects_invalid_decision(tmp_path, monkeypatch):
 
     assert decision["ok"] is False
     assert "decision must be one of" in decision["error"]
+
+
+def test_approval_workflow_persists_phase_gate_metadata(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    create_approval_request(
+        "session_phase",
+        "phase_gate_design",
+        title="Design Phase Complete",
+        agent="orchestrator",
+        metadata={
+            "is_phase_gate": True,
+            "phase": "design",
+            "next_phase": "deploy",
+            "artifacts": [{"key": "brand_direction", "title": "Brand direction"}],
+        },
+    )
+
+    workflow = get_approval_workflow("session_phase")
+    req = workflow["requests"][0]
+
+    assert req["is_phase_gate"] is True
+    assert req["phase"] == "design"
+    assert req["next_phase"] == "deploy"
+    assert req["artifacts"][0]["key"] == "brand_direction"

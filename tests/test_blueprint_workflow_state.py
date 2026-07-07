@@ -202,3 +202,33 @@ def test_workflow_state_merges_durable_approval_workflow(tmp_path, monkeypatch):
     assert approval["triggered_by"] == "action_1"
     assert approval["required_role"] == "owner"
     assert approval["history"][-1]["event"] == "approved"
+
+
+def test_workflow_state_preserves_phase_gate_metadata_from_durable_workflow(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    from backend.approval_workflows import create_approval_request
+
+    create_approval_request(
+        "session_phase_gate",
+        "phase_gate_design",
+        title="Design Phase Complete",
+        reason="Review deliverables before deploy begins.",
+        agent="orchestrator",
+        metadata={
+            "is_phase_gate": True,
+            "phase": "design",
+            "next_phase": "deploy",
+            "artifacts": [{"key": "brand_direction", "title": "Brand direction", "agent": "design"}],
+        },
+    )
+    events = [
+        (1, {"type": "goal_start", "goal": "Build outbound pipeline", "founder_id": "founder_1"}),
+    ]
+
+    state = build_session_state("session_phase_gate", events)
+
+    approval = next(item for item in state["approvals"] if item["key"] == "phase_gate_design")
+    assert approval["is_phase_gate"] is True
+    assert approval["phase"] == "design"
+    assert approval["next_phase"] == "deploy"
+    assert approval["artifacts"][0]["key"] == "brand_direction"

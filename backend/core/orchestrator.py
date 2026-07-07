@@ -1028,7 +1028,11 @@ class Orchestrator:
                     "owner_agent": artifact.owner_agent,
                     "description": artifact.description,
                     "required": artifact.required,
-                    "status": "ready",
+                    "status": {
+                        "passed": "ready",
+                        "needs_review": "needs_review",
+                        "blocked": "blocked",
+                    }.get((verdict or {}).get("status", "passed"), "ready"),
                     "task_id": task.get("id", ""),
                     "preview": _preview,
                     "verification": _receipt,
@@ -2127,10 +2131,24 @@ class Orchestrator:
             _approval_decisions.get(session_id, {}).pop(gate_key, None)
 
             gate_artifacts: list[dict] = []
+            gate_blockers: list[tuple[dict, str]] = []
+            seen_previews: dict[str, str] = {}
             for _gt in phase_task_list:
                 _lane = stack_lane_by_agent.get(_gt["agent"], {})
                 _task_result = completed.get(_gt["id"])
                 _task_result_dict: dict = _task_result if isinstance(_task_result, dict) else {}
+                _verification = task_verifications.get(_gt["id"], {}) or {}
+                if _verification.get("status") in {"blocked", "needs_review"}:
+                    gate_blockers.append((_gt, str(_verification.get("summary") or "Artifact verification did not pass.")))
+                if isinstance(_task_result_dict, dict) and _task_result_dict.get("status") == "suspect":
+                    _qf = _task_result_dict.get("quality_flags") or {}
+                    _miss = []
+                    if isinstance(_qf, dict):
+                        _miss = list(_qf.get("missing_tools") or []) + list(_qf.get("missing_output") or [])
+                    _reason = "Forced synthesis produced suspect output."
+                    if _miss:
+                        _reason += f" Missing: {', '.join(dict.fromkeys(str(x) for x in _miss if x))}."
+                    gate_blockers.append((_gt, _reason))
                 for _art in (_lane.get("deliverables") or []):
                     _art_key = _art.get("artifact_key") or _art.get("key", "")
                     _art_preview = ""
@@ -2140,13 +2158,54 @@ class Orchestrator:
                         if _cv and isinstance(_cv, str) and len(_cv) > 20:
                             _art_preview = _cv[:600]
                             break
+                    _normalized_preview = " ".join(str(_art_preview).lower().split())
+                    if _art_key and _normalized_preview and len(_normalized_preview) >= 120:
+                        _prior = seen_previews.get(_normalized_preview)
+                        if _prior and _prior != _art_key:
+                            gate_blockers.append((_gt, f"Deliverables '{_prior}' and '{_art_key}' have duplicated content and need distinct output."))
+                        else:
+                            seen_previews[_normalized_preview] = _art_key
                     gate_artifacts.append({
                         "key": _art_key,
                         "title": _art.get("title") or _art.get("artifact_key", _gt["agent"]),
                         "agent": _gt["agent"],
-                        "status": "ready",
+                        "status": {
+                            "passed": "ready",
+                            "needs_review": "needs_review",
+                            "blocked": "blocked",
+                        }.get(_verification.get("status", "passed"), "ready"),
                         "preview": _art_preview,
                     })
+
+            if gate_blockers:
+                _notes_by_task: dict[str, list[str]] = {}
+                for _task_ref, _reason in gate_blockers:
+                    _notes_by_task.setdefault(_task_ref["id"], []).append(_reason)
+                logger.warning("Phase gate blocked before founder review: %s → %s blockers=%s", phase_name, next_phase, _notes_by_task)
+                for _rt in phase_task_list:
+                    _notes = _notes_by_task.get(_rt["id"])
+                    if not _notes:
+                        continue
+                    completed.pop(_rt["id"], None)
+                    _rt["instruction"] = (_rt.get("instruction") or "") + (
+                        "\n\n[Automatic revision request before founder approval]: "
+                        + " ".join(dict.fromkeys(_notes))
+                    )
+                    remaining.append(_rt)
+                    await publish(session_id, {
+                        "type": "stack_lane_status",
+                        "lane_id": _rt["id"],
+                        "agent": _rt["agent"],
+                        "task_id": _rt["id"],
+                        "status": "blocked",
+                        "phase": stack_lane_by_agent.get(_rt["agent"], {}).get("phase"),
+                        "title": stack_lane_by_agent.get(_rt["agent"], {}).get("title") or _rt.get("stack_task_title") or _rt["agent"],
+                        "summary": "Astra blocked phase approval because verification or output quality was incomplete.",
+                        "ready_artifacts": _rt.get("expected_artifacts", []),
+                        "next_actor": "agent_revision",
+                        "blockers": list(dict.fromkeys(_notes)),
+                    })
+                return False
 
             try:
                 from backend.approval_workflows import create_approval_request
@@ -2156,6 +2215,12 @@ class Orchestrator:
                     title=f"{phase_name.title()} Phase Complete",
                     reason=f"Review deliverables before {next_phase} begins.",
                     agent="orchestrator",
+                    metadata={
+                        "is_phase_gate": True,
+                        "phase": phase_name,
+                        "next_phase": next_phase,
+                        "artifacts": gate_artifacts,
+                    },
                 )
             except Exception:
                 pass

@@ -164,6 +164,24 @@ const DEPTS: Record<string, { n: string; ic: string; ags: string[] }> = {
 // moment the run starts — showing it as an approval card means "approve nothing".
 const PENDING = new Set(["pending", "triggered", "waiting_approval"]);
 
+function normalizeApprovals(items: any[]): Approval[] {
+  const out = items
+    .filter((a: any) => PENDING.has(a.status) && (a.gate_key || a.key))
+    .map((a: any) => ({
+      ...a,
+      gate_key: a.gate_key || a.key,
+      is_phase_gate: Boolean(a.is_phase_gate),
+      phase: String(a.phase || ""),
+      next_phase: String(a.next_phase || ""),
+      artifacts: Array.isArray(a.artifacts) ? a.artifacts : [],
+      ts: typeof a.ts === "number" ? a.ts : Date.now(),
+    })) as Approval[];
+  return out.sort((a, b) => {
+    if (a.is_phase_gate !== b.is_phase_gate) return a.is_phase_gate ? -1 : 1;
+    return a.gate_key.localeCompare(b.gate_key);
+  });
+}
+
 function ago(ts: number | string | undefined): string {
   if (!ts) return "";
   const diff = Date.now() - (typeof ts === "number" ? ts : new Date(ts).getTime());
@@ -355,9 +373,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     if (Array.isArray(d.artifacts) && d.artifacts.length) st.artifacts = d.artifacts;
     else if (!fromCache) st.artifacts = [];
     if (Array.isArray(d.approvals)) {
-      st.approvals = d.approvals
-        .filter((a: any) => PENDING.has(a.status) && (a.gate_key || a.key))
-        .map((a: any) => ({ ...a, gate_key: a.gate_key || a.key }));
+      st.approvals = normalizeApprovals(d.approvals);
     }
     if (d.pending_agent_question && typeof d.pending_agent_question === "object") {
       setAgentQuestion({
@@ -547,6 +563,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         const existIdx = st.approvals.findIndex((a) => a.gate_key === apv.gate_key);
         if (existIdx >= 0) st.approvals[existIdx] = apv;
         else st.approvals.push(apv);
+        st.approvals = normalizeApprovals(st.approvals);
         break;
       }
       case "stack_approval_decision":
@@ -1181,6 +1198,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       {/* urgent banner */}
       {st.approvals.length > 0 && (() => {
         const first = st.approvals[0];
+        if (first?.is_phase_gate) return null;
         const isPhaseGate = first.is_phase_gate;
         const bg = isPhaseGate ? "var(--blue)" : "var(--red)";
         const headline = isPhaseGate

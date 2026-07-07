@@ -43,6 +43,18 @@ def test_verify_task_artifacts_flags_generic_placeholder_output():
     assert verification["required_weak"] == ["crm_pipeline"]
 
 
+def test_verify_task_artifacts_blocks_empty_design_deliverable():
+    stack = get_stack_template("idea_to_revenue")
+    blueprint = build_stack_execution_blueprint(stack, "Build a creator SaaS", "Astra")
+    task = {"id": "t_design", "agent": "design", "expected_artifacts": ["brand_direction"]}
+    result = {}
+
+    verification = verify_task_artifacts(task, result, blueprint)
+
+    assert verification["status"] == "blocked"
+    assert verification["required_missing"] == ["brand_direction"]
+
+
 def test_workflow_state_and_workboard_surface_artifact_verification():
     stack = get_stack_template("sales")
     blueprint = build_stack_execution_blueprint(stack, "Build outbound pipeline", "Astra")
