@@ -923,6 +923,19 @@ async def dispatch_current_goal(
         logger.warning("dispatch_current_goal duplicate-check failed: %s", exc)
         return {"ok": False, "reason": "dispatch reservation failed", "error": str(exc)}
 
+    # Register this dispatch's own task so /sessions/{id}/kill can actually stop it.
+    # Callers fire this via asyncio.create_task(dispatch_current_goal(...)) with no
+    # registration afterward, so auto-chained continue_run dispatches were previously
+    # unkillable through the exposed kill switch (cancellation._tasks had no entry for
+    # them). asyncio.current_task() from inside the coroutine is that task.
+    try:
+        _current_task = asyncio.current_task()
+        if _current_task:
+            from backend.core import cancellation
+            cancellation.register_task(session_id, _current_task)
+    except Exception:
+        pass
+
     # A follow-up run = some of this goal's tasks are already done, so this dispatch is
     # finishing only the LEFTOVERS an earlier run didn't complete (e.g. an agent that
     # didn't deliver). Label it so the sub-run isn't mistaken for a duplicate of the goal.
@@ -1009,6 +1022,12 @@ async def dispatch_current_goal(
             summary=str(e)[:200],
         )
         return {"ok": False, "session_id": session_id, "error": str(e)}
+    finally:
+        try:
+            from backend.core import cancellation
+            cancellation.clear(session_id)
+        except Exception:
+            pass
 
 
 # ── End of a run: finalize + auto-chain to the next goal ─────────────────────────
