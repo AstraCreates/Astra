@@ -29,6 +29,7 @@ services:
       - CHAT_MODEL_BASE_URL=http://headroom:8787/v1
       - LIGHT_MODEL_BASE_URL=http://headroom:8787/v1
       - HIGHOUTPUT_MODEL_BASE_URL=http://headroom:8787/v1
+      - ASTRA_COMPRESSION_THRESHOLD=${ASTRA_COMPRESSION_THRESHOLD:-64000}
     depends_on:
       - redis
       - headroom
