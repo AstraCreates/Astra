@@ -976,7 +976,7 @@ async def dispatch_current_goal(
             register_session(session_id=session_id, founder_id=founder_id, goal=instruction,
                              workspace_id=str(root_meta.get("workspace_id") or ""),
                              company_id=str(root_meta.get("company_id") or company_id),
-                             parent_session_id=root, kind="operating")
+                             parent_session_id=root, kind="scheduled")
     except Exception:
         pass
     update_operating_session(founder_id, session_id, company_id=company_id, summary=run_summary)

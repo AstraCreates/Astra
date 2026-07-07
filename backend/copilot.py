@@ -713,7 +713,7 @@ async def _tool_dispatch_agents(founder_id: str, session_id: str, args: dict) ->
     child = new_session_id()
     try:
         register_session(session_id=child, founder_id=founder_id, goal=instruction,
-                         company_id=company_id, parent_session_id=root, kind="operating")
+                         company_id=company_id, parent_session_id=root, kind="user")
     except Exception:
         pass
 
@@ -755,7 +755,7 @@ async def _tool_set_goal(founder_id: str, session_id: str, args: dict) -> Any:
         tasks.append({"title": str(t.get("title") or ws or "task"), "owner_agents": owners})
     if not tasks:
         tasks = [{"title": title, "owner_agents": []}]
-    goal = start_goal(founder_id, title=title, tasks=tasks, kind="operating", company_id=company_id)
+    goal = start_goal(founder_id, title=title, tasks=tasks, kind="user", company_id=company_id)
     if bool(args.get("dispatch", True)):
         asyncio.create_task(dispatch_current_goal(founder_id, company_id))
     return {"ok": True, "goal": title, "tasks": [t["title"] for t in tasks], "dispatched": bool(args.get("dispatch", True))}
@@ -915,7 +915,7 @@ async def _tool_rerun_agent(founder_id: str, session_id: str, args: dict) -> Any
         child = new_session_id()
         company_id = src_meta.get("company_id") or founder_id
         register_session(session_id=child, founder_id=founder_id, goal=instruction,
-                         company_id=company_id, parent_session_id=target_sid, kind="operating")
+                         company_id=company_id, parent_session_id=target_sid, kind="user")
         orch = get_orchestrator()
         async def _go():
             await orch.continue_run(instruction=instruction, founder_id=founder_id,

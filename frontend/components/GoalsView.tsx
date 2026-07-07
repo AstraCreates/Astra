@@ -59,7 +59,7 @@ function KindBadge({ kind }: { kind?: string }) {
   if (kind === "user") return (
     <span style={{ fontSize: 8, fontFamily: "var(--font-code)", fontWeight: 700, color: "var(--blue)", background: "var(--bdim)", border: "1px solid var(--bb)", padding: "1px 5px", letterSpacing: ".06em", textTransform: "uppercase", flexShrink: 0 }}>User</span>
   );
-  if (kind === "operating" || kind === "scheduled") return (
+  if (kind === "scheduled") return (
     <span style={{ fontSize: 8, fontFamily: "var(--font-code)", fontWeight: 700, color: "var(--amber)", background: "var(--adim)", border: "1px solid var(--ab)", padding: "1px 5px", letterSpacing: ".06em", textTransform: "uppercase", flexShrink: 0 }}>Auto</span>
   );
   return null;

@@ -211,7 +211,7 @@ async def _resume_interrupted_sessions() -> None:
                 try:
                     _reg_sess(session_id=child_sid, founder_id=founder_id,
                               goal=goal, parent_session_id=session_id,
-                              kind="operating")
+                              kind="scheduled")
                 except Exception:
                     pass
                 _reg_parent(child_sid, session_id)
