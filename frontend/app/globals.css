@@ -81,9 +81,9 @@
 
 /* ── Dark ────────────────────────────────────────────────────── */
 [data-theme="dark"] {
-  --bg:           #05070D;
-  --bg-surface:   #0D111C;
-  --bg-sunken:    #151B2A;
+  --bg:           #05070E;
+  --bg-surface:   #0A0D17;
+  --bg-sunken:    #0F1524;
   --bg-ink:       #02040A;
   --bg-blue:      #1234FF;
 

@@ -1120,7 +1120,7 @@ function journeyToneStyles(tone: JourneyTone) {
     case "ready":
       return { color: c.green, background: c.greenTint, border: c.greenBorder };
     case "needs_sync":
-      return { color: c.amber, background: "#FFF7ED", border: "#FED7AA" };
+      return { color: c.amber, background: "rgba(217,119,6,0.10)", border: "rgba(217,119,6,0.30)" };
     case "connected":
       return { color: c.blue, background: c.blueTint, border: c.blueBorder };
     case "missing":
@@ -1528,7 +1528,7 @@ export default function SetupPage() {
                   <div style={{ fontSize: 11, color: c.textMuted, textTransform: "uppercase", fontWeight: 600 }}>
                     Guided bundles
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10, width: "100%" }}>
                     {stackJourneys.map((journey) => {
                       const tone = journeyToneStyles(journey.tone);
                       return (
@@ -1545,9 +1545,9 @@ export default function SetupPage() {
                           }}
                         >
                           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: c.text }}>{journey.title}</div>
-                              <p style={{ margin: "5px 0 0", fontSize: 12, color: c.textSecondary, lineHeight: 1.5 }}>{journey.description}</p>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: c.text, overflowWrap: "break-word" }}>{journey.title}</div>
+                              <p style={{ margin: "5px 0 0", fontSize: 12, color: c.textSecondary, lineHeight: 1.5, overflowWrap: "break-word" }}>{journey.description}</p>
                             </div>
                             <span style={{
                               padding: "4px 8px",
