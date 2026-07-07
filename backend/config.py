@@ -29,9 +29,9 @@ class Settings(BaseSettings):
     # was 46% of prod spend, and native function-calls in caveman. NOT qwen3-coder-FLASH:
     # it emits XML-text tool calls (<function=write>...) caveman can't parse → 0 tools run.
     mvp_build_model: str = "deepseek/deepseek-v4-pro"
-    # Web-search/research model. perplexity/sonar ($1/$1), NOT sonar-pro ($3/$15) — the
-    # pro tier's $15/M output made it 36% of prod spend for marginal research-depth gain.
-    research_model: str = "perplexity/sonar"
+    # Legacy research-model slot; the stack now uses cheaper local search +
+    # synthesis, so this stays as a lightweight default instead of a premium web model.
+    research_model: str = "deepseek/deepseek-v4-flash"
     # Which coding-agent CLI drives MVP builds: "caveman" (@juliusbrussee/caveman-code,
     # ~2x fewer tokens, native openrouter provider) or "openclaude" (legacy fallback).
     code_agent: str = "caveman"

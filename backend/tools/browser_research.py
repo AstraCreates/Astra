@@ -469,37 +469,50 @@ def research_papers(query: str, max_results: int = 5) -> dict:
 
 
 def sonar_research(queries=None) -> dict:
-    """Run queries via Perplexity sonar-pro; each returns synthesized answer with citations."""
+    """Run queries via cheaper local search + synthesis; each returns cited answers."""
     if not queries:
         return {"error": "queries required — pass a list of research question strings"}
     queries = list(queries)[:12]
-
-    import httpx as _httpx
     from backend.config import settings as _settings
-    from backend.core.key_rotator import get_openrouter_key as _get_key
-
-    _key = _get_key() or _settings.agent_model_api_key
 
     def _call(query: str) -> dict:
         try:
-            r = _httpx.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {_key}", "Content-Type": "application/json"},
-                json={
-                    "model": getattr(_settings, "research_model", "") or "perplexity/sonar",
-                    "messages": [{"role": "user", "content": query}],
-                    "provider": {"allow_fallbacks": False},
-                    "usage": {"include": True},
-                },
-                timeout=90,
-            )
-            d = r.json()
-            if "error" in d:
-                return {"query": query, "answer": "", "citations": [], "error": str(d["error"])[:200]}
-            msg = ((d.get("choices") or [{}])[0]).get("message") or {}
-            anns = msg.get("annotations") or []
-            citations = [a.get("url_citation", {}).get("url", "") for a in anns if isinstance(a, dict)]
-            return {"query": query, "answer": msg.get("content") or "", "citations": [c for c in citations if c]}
+            fetched = search_and_read(query=query, max_results=4, max_chars_per_page=2500)
+            results = fetched.get("results", [])
+            sources = []
+            seen = set()
+            chunks = []
+            for r in results:
+                url = r.get("url", "")
+                if url and url not in seen:
+                    seen.add(url)
+                    sources.append(url)
+                text = r.get("page_content") or r.get("snippet") or ""
+                title = r.get("title") or url
+                if text:
+                    chunks.append(f"[{title}] {text[:1200]}")
+            combined = "\n\n".join(chunks)[:9000]
+            if not combined.strip():
+                return {"query": query, "answer": "", "citations": sources, "error": "no readable results"}
+
+            try:
+                from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
+                from backend.core.llm_client import get_or_client
+                client = get_or_client(_settings.planner_model_base_url, _settings.planner_model_api_key or _settings.agent_model_api_key)
+                resp = client.chat.completions.create(
+                    model=_settings.planner_model_name,
+                    messages=cacheable_messages([
+                        {"role": "system", "content": "You are a research analyst. Use the provided search evidence to write a concise answer with concrete citations and no fluff."},
+                        {"role": "user", "content": f"Question: {query}\n\nEvidence:\n{combined}"},
+                    ], breakpoints=(0,)),
+                    temperature=0.2,
+                    max_tokens=900,
+                    extra_body=openrouter_extra_body(_settings.planner_model_name),
+                )
+                answer = (resp.choices[0].message.content if getattr(resp, "choices", None) else "") or combined[:3000]
+            except Exception:
+                answer = combined[:3000]
+            return {"query": query, "answer": answer, "citations": sources}
         except Exception as exc:
             return {"query": query, "answer": "", "citations": [], "error": str(exc)}
 
@@ -531,6 +544,7 @@ def sonar_research(queries=None) -> dict:
         },
         "combined_formatted": "\n\n".join(combined),
         "sources": all_sources,
+        "model": f"cheap_search+{_settings.planner_model_name}",
     }
 
 
