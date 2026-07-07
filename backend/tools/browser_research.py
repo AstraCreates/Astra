@@ -626,7 +626,13 @@ def _crw_search_and_fetch(query: str, max_results: int = 8) -> dict:
     if not data.get("success"):
         return {"query": query, "results": [], "formatted": "", "total": 0, "sources": [], "error": "crw_search_failed"}
 
-    items = data.get("data") or []
+    payload = data.get("data") or []
+    if isinstance(payload, dict):
+        items = payload.get("results") or payload.get("items") or []
+    elif isinstance(payload, list):
+        items = payload
+    else:
+        items = []
     results, sources, blocks = [], [], []
     for item in items:
         url = _normalize_url(item.get("url", ""))

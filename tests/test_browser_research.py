@@ -1,4 +1,6 @@
 from backend.tools import browser_research
+import types
+import sys
 
 
 def test_batch_search_aggregates_unique_sources(monkeypatch):
@@ -209,7 +211,7 @@ def test_crw_search_and_fetch_parses_response(monkeypatch):
                 ],
             }
 
-    monkeypatch.setattr("httpx.post", lambda url, json, timeout: FakeResponse())
+    monkeypatch.setitem(sys.modules, "httpx", types.SimpleNamespace(post=lambda url, json, timeout: FakeResponse()))
 
     result = browser_research._crw_search_and_fetch("test query", max_results=5)
 
@@ -221,11 +223,37 @@ def test_crw_search_and_fetch_parses_response(monkeypatch):
     assert "[snippet only] Just a blurb." in result["formatted"]
 
 
+def test_crw_search_and_fetch_parses_nested_results_response(monkeypatch):
+    class FakeResponse:
+        def json(self):
+            return {
+                "success": True,
+                "data": {
+                    "results": [
+                        {
+                            "url": "https://example.com/nested",
+                            "title": "Nested Example",
+                            "markdown": "Nested markdown body",
+                            "snippet": "Nested snippet",
+                        }
+                    ]
+                },
+            }
+
+    monkeypatch.setitem(sys.modules, "httpx", types.SimpleNamespace(post=lambda url, json, timeout: FakeResponse()))
+
+    result = browser_research._crw_search_and_fetch("nested query", max_results=5)
+
+    assert result["total"] == 1
+    assert result["results"][0]["url"] == "https://example.com/nested"
+    assert result["sources"] == [{"title": "Nested Example", "url": "https://example.com/nested"}]
+
+
 def test_crw_search_and_fetch_handles_request_failure(monkeypatch):
     def raise_error(*args, **kwargs):
         raise ConnectionError("crw unreachable")
 
-    monkeypatch.setattr("httpx.post", raise_error)
+    monkeypatch.setitem(sys.modules, "httpx", types.SimpleNamespace(post=raise_error))
 
     result = browser_research._crw_search_and_fetch("test query")
 
