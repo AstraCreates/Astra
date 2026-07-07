@@ -27,7 +27,7 @@ export default function Home() {
   };
 
   return (
-    <AuroraBackground className="bg-zinc-50">
+    <AuroraBackground className="bg-zinc-50" data-theme="light">
       <div className="sp-content">
         <div className="sp-mark">
           <div className="sp-logo-img" role="img" aria-label="Astra logo" />
