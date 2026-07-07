@@ -1544,23 +1544,24 @@ export default function SetupPage() {
                             gap: 10,
                           }}
                         >
-                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: 13, fontWeight: 600, color: c.text, overflowWrap: "break-word" }}>{journey.title}</div>
-                              <p style={{ margin: "5px 0 0", fontSize: 12, color: c.textSecondary, lineHeight: 1.5, overflowWrap: "break-word" }}>{journey.description}</p>
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: c.text }}>{journey.title}</span>
+                              <span style={{
+                                padding: "3px 8px",
+                                borderRadius: 999,
+                                fontSize: 10,
+                                fontWeight: 600,
+                                color: tone.color,
+                                background: tone.background,
+                                border: `1px solid ${tone.border}`,
+                                whiteSpace: "nowrap",
+                                flexShrink: 0,
+                              }}>
+                                {journey.summary}
+                              </span>
                             </div>
-                            <span style={{
-                              padding: "4px 8px",
-                              borderRadius: 999,
-                              fontSize: 11,
-                              fontWeight: 600,
-                              color: tone.color,
-                              background: tone.background,
-                              border: `1px solid ${tone.border}`,
-                              whiteSpace: "nowrap",
-                            }}>
-                              {journey.summary}
-                            </span>
+                            <p style={{ margin: 0, fontSize: 12, color: c.textSecondary, lineHeight: 1.5 }}>{journey.description}</p>
                           </div>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                             {journey.connectors.map(({ connector, status }) => {

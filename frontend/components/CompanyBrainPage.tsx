@@ -48,7 +48,7 @@ const SUGGESTED_QUESTIONS = [
   "Where is the product roadmap headed?",
 ];
 
-type Tab = "ask" | "knowledge" | "map" | "settings";
+type BrainView = "main" | "map" | "settings";
 
 function statusColor(status: string): string {
   if (status === "connected" || status === "oauth_ready") return "#16a34a";
@@ -478,7 +478,7 @@ export default function CompanyBrainPage() {
   const { founderId, companyId, activeCompany } = useCompany();
 
   /* ── state (all original features preserved) ── */
-  const [tab, setTab] = useState<Tab>("ask");
+  const [view, setView] = useState<BrainView>("main");
   const [brain, setBrain] = useState<CompanyBrain | null>(null);
   const [selectedSources, setSelectedSources] = useState<string[]>(["github", "notion", "linear", "gmail", "google_drive", "slack", "discord"]);
   const [query, setQuery] = useState("");
@@ -749,77 +749,58 @@ export default function CompanyBrainPage() {
     }
   }
 
-  const TABS: { key: Tab; label: string }[] = [
-    { key: "ask", label: "Ask" },
-    { key: "knowledge", label: "Knowledge" },
-    { key: "map", label: "Map" },
-    { key: "settings", label: "Settings" },
-  ];
+  /* ─── record categories ─── */
+  const factRecords = useMemo(() => records.filter(r => r.kind === "fact"), [records]);
+  const docRecords = useMemo(() => records.filter(r => r.kind === "document" || r.kind === "file"), [records]);
+  const voiceRecords = useMemo(() => records.filter(r => r.kind === "brand_voice" || r.kind === "voice"), [records]);
+  const connectedSources = useMemo(() => sources.filter(isConnected), [sources]);
+
+  /* ─── knowledge health ─── */
+  const healthPct = useMemo(() => {
+    if (sources.length === 0) return 0;
+    return Math.round((connectedSources.length / sources.length) * 100);
+  }, [sources, connectedSources]);
 
   /* ─── render ─── */
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
 
-      {/* ── header: title + subtitle + actions + tabs ── */}
-      <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, zIndex: 10, background: "var(--bg)" }}>
-        <div style={{ padding: "20px 24px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+      {/* ── header: title + subtitle + actions ── */}
+      <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border)", background: "var(--bg)" }}>
+        <div style={{ padding: "20px 24px 16px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
           <div>
+            {view !== "main" && (
+              <button type="button" onClick={() => setView("main")} style={{ background: "none", border: "none", color: "var(--text-3)", fontSize: 12, cursor: "pointer", padding: "0 0 6px", display: "flex", alignItems: "center", gap: 4 }}>
+                ← Company Brain
+              </button>
+            )}
             <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.01em", margin: 0, lineHeight: 1.2 }}>
-              Company Brain
+              {view === "map" ? "Knowledge Map" : view === "settings" ? "Settings" : "Company Brain"}
             </h1>
-            <p style={{ margin: "3px 0 0", fontSize: 13, color: "var(--text-3)" }}>
-              Ask anything, or browse what Astra knows below.
-            </p>
+            {view === "main" && (
+              <p style={{ margin: "3px 0 0", fontSize: 13, color: "var(--text-3)" }}>
+                Ask anything, or browse what Astra knows below.
+              </p>
+            )}
           </div>
           <div style={{ display: "flex", gap: 8, flexShrink: 0, paddingTop: 2 }}>
-            <button
-              type="button"
-              onClick={() => setTab("map")}
-              style={{
-                fontSize: 12, fontWeight: 500, padding: "7px 14px",
-                border: "1px solid var(--border)", background: "transparent",
-                color: "var(--text-2)", borderRadius: 8, cursor: "pointer",
-              }}
-            >
-              View knowledge map
-            </button>
-            <button
-              type="button"
-              onClick={() => { setTab("knowledge"); setPinOpen(true); }}
-              style={{
-                fontSize: 12, fontWeight: 600, padding: "7px 14px",
-                border: "none", background: "#002EFF",
-                color: "#fff", borderRadius: 8, cursor: "pointer",
-              }}
-            >
-              + Add knowledge
-            </button>
+            {view === "main" && (
+              <>
+                <button type="button" onClick={() => setView("map")}
+                  style={{ fontSize: 12, fontWeight: 500, padding: "7px 14px", border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)", borderRadius: 8, cursor: "pointer" }}>
+                  View knowledge map
+                </button>
+                <button type="button" onClick={() => setPinOpen(true)}
+                  style={{ fontSize: 12, fontWeight: 600, padding: "7px 14px", border: "none", background: "#002EFF", color: "#fff", borderRadius: 8, cursor: "pointer" }}>
+                  + Add knowledge
+                </button>
+                <button type="button" onClick={() => setView("settings")}
+                  style={{ fontSize: 12, fontWeight: 500, padding: "7px 14px", border: "1px solid var(--border)", background: "transparent", color: "var(--text-2)", borderRadius: 8, cursor: "pointer", position: "relative" }}>
+                  ⚙{openProposals.length > 0 && <span style={{ position: "absolute", top: -4, right: -4, width: 8, height: 8, borderRadius: 999, background: "#d97706" }} />}
+                </button>
+              </>
+            )}
           </div>
-        </div>
-        <div style={{ padding: "8px 18px 0", display: "flex", gap: 2 }}>
-          {TABS.map(t => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              style={{
-                padding: "8px 14px 10px", fontSize: 13,
-                fontWeight: tab === t.key ? 600 : 450,
-                color: tab === t.key ? "var(--text)" : "var(--text-3)",
-                background: "transparent", border: "none", cursor: "pointer",
-                borderBottom: tab === t.key ? "2px solid var(--accent)" : "2px solid transparent",
-                display: "flex", alignItems: "center", gap: 6,
-                transition: "color .14s",
-              }}
-            >
-              {t.label}
-              {t.key === "settings" && openProposals.length > 0 && (
-                <span style={{ fontSize: 9, fontWeight: 700, color: "#fff", background: "#d97706", borderRadius: 999, padding: "1px 6px" }}>
-                  {openProposals.length}
-                </span>
-              )}
-            </button>
-          ))}
         </div>
       </div>
 
@@ -831,413 +812,319 @@ export default function CompanyBrainPage() {
         </div>
       )}
 
-      {/* ── suggestions banner (visible from any tab) ── */}
-      {openProposals.length > 0 && tab !== "settings" && (
+      {/* ── suggestions banner ── */}
+      {openProposals.length > 0 && view !== "settings" && (
         <div style={{ flexShrink: 0, padding: "9px 24px", borderBottom: "1px solid rgba(217,119,6,0.25)", background: "rgba(217,119,6,0.06)", display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "#b45309" }}>
           <span>◈</span>
           <span style={{ flex: 1 }}>
             {openProposals.length} suggestion{openProposals.length > 1 ? "s" : ""} to keep your brain accurate
           </span>
-          <button type="button" onClick={() => setTab("settings")} style={{ background: "none", border: "none", color: "inherit", fontWeight: 600, cursor: "pointer", fontSize: 12, textDecoration: "underline", padding: 0 }}>
+          <button type="button" onClick={() => setView("settings")} style={{ background: "none", border: "none", color: "inherit", fontWeight: 600, cursor: "pointer", fontSize: 12, textDecoration: "underline", padding: 0 }}>
             Review →
           </button>
         </div>
       )}
 
-      {/* ── tab content ── */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "26px 24px 40px" }}>
+      {/* ── content ── */}
+      <div style={{ flex: 1, overflowY: "auto" }}>
 
-        {/* ━━━ ASK ━━━ */}
-        {tab === "ask" && (
-          <div style={{ maxWidth: 720, margin: "0 auto", display: "grid", gap: 20 }}>
-            <div style={{ marginTop: 28 }}>
-              <form onSubmit={e => ask(undefined, e)} style={{ position: "relative" }}>
-                <input
-                  className="f-input"
-                  value={askQuestion}
-                  onChange={e => setAskQuestion(e.target.value)}
-                  placeholder="What should I do next?"
-                  style={{
-                    fontSize: 15, padding: "16px 56px 16px 20px",
-                    borderRadius: 14, width: "100%", boxSizing: "border-box",
-                    border: "1px solid var(--border)",
-                  }}
-                  autoFocus
-                />
-                <button
-                  type="submit"
-                  disabled={asking || !askQuestion.trim()}
-                  style={{
-                    position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
-                    width: 34, height: 34, borderRadius: "50%",
-                    background: askQuestion.trim() ? "#002EFF" : "var(--bg-sunken)",
-                    border: "none", cursor: askQuestion.trim() ? "pointer" : "default",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    transition: "background .15s",
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                    <path d="M7 12V2M2 7l5-5 5 5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-              </form>
-            </div>
-
-            {/* suggested questions */}
-            {!askAnswer && !asking && (
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
-                {SUGGESTED_QUESTIONS.map(q => (
-                  <button key={q} type="button" onClick={() => ask(q)}
-                    style={{
-                      fontSize: 12, color: "var(--text-3)", background: "transparent",
-                      border: "1px solid var(--border)", borderRadius: 999, padding: "7px 16px",
-                      cursor: "pointer",
-                    }}>
-                    {q}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* answer */}
-            {askAnswer && (
-              <Card style={{ padding: "20px 22px" }}>
-                <div style={{ color: "var(--fg)", fontSize: 14, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
-                  {askAnswer}
-                </div>
-                {askConfidence !== null && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16 }}>
-                    <div style={{ flex: 1, maxWidth: 160, height: 4, background: "var(--bd)", borderRadius: 999, overflow: "hidden" }}>
-                      <div style={{
-                        height: "100%", width: `${Math.round(askConfidence * 100)}%`, borderRadius: 999,
-                        background: askConfidence > 0.7 ? "#16a34a" : askConfidence > 0.4 ? "#d97706" : "#dc2626",
-                      }} />
-                    </div>
-                    <span style={{ fontSize: 11, color: "var(--fm)" }}>
-                      {Math.round(askConfidence * 100)}% confident
-                    </span>
-                  </div>
-                )}
-                {askCitations.length > 0 && (
-                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--bd)", display: "grid", gap: 6 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".06em" }}>
-                      Sources
-                    </div>
-                    {askCitations.slice(0, 6).map(cit => (
-                      <div key={cit.record_id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, color: "var(--fd)" }}>
-                        <span style={{ flexShrink: 0, fontSize: 12 }}>{SOURCE_ICONS[cit.source] ?? "📌"}</span>
-                        {cit.url ? (
-                          <a href={cit.url} target="_blank" rel="noopener noreferrer"
-                            style={{ color: "var(--blue)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {cit.title}
-                          </a>
-                        ) : (
-                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cit.title}</span>
-                        )}
-                        {cit.canonical && <span style={{ color: "#16a34a", flexShrink: 0, fontSize: 10 }}>✓ source of truth</span>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Card>
-            )}
-
-            {records.length === 0 && !askAnswer && (
-              <div style={{ textAlign: "center", color: "var(--fm)", fontSize: 12.5, lineHeight: 1.7, marginTop: 8 }}>
-                Your brain is empty so far.{" "}
-                <button type="button" onClick={() => setTab("knowledge")} style={{ background: "none", border: "none", color: "var(--blue)", cursor: "pointer", fontSize: 12.5, padding: 0, fontWeight: 600, textDecoration: "underline" }}>
-                  Connect a source or add a note →
-                </button>
-              </div>
-            )}
+        {/* ━━━ MAP VIEW ━━━ */}
+        {view === "map" && (
+          <div style={{ padding: "24px", maxWidth: 980, margin: "0 auto" }}>
+            <KnowledgeMap graph={graph} loading={graphLoading} rebuilding={graphRebuilding} onReload={loadGraph} onRebuild={rebuildGraph} />
           </div>
         )}
 
-        {/* ━━━ KNOWLEDGE (memory + sources) ━━━ */}
-        {tab === "knowledge" && (
-          <div style={{ maxWidth: 860, margin: "0 auto", display: "grid", gap: 28 }}>
-
-            {/* connected sources strip */}
+        {/* ━━━ SETTINGS VIEW ━━━ */}
+        {view === "settings" && (
+          <div style={{ padding: "24px", maxWidth: 720, margin: "0 auto", display: "grid", gap: 20 }}>
             <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-                <SectionTitle
-                  title="Connected sources"
-                  sub="Click a source to connect it. Selected sources are included when you sync."
-                />
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button type="button" onClick={importSources} disabled={importing} className="btn" style={{ minHeight: 34, fontSize: 12 }}>
-                    {importing ? "Importing…" : "Import records"}
-                  </button>
-                  <button type="button" onClick={sync} disabled={syncing} className="btn pri" style={{ minHeight: 34, fontSize: 12 }}>
-                    {syncing ? "Syncing…" : "Sync now"}
-                  </button>
-                </div>
-              </div>
-
-              {importSummary && (
-                <div style={{ fontSize: 12, color: "var(--fd)", padding: "9px 14px", border: "1px solid var(--bd)", borderRadius: 9, background: "var(--s2)", marginBottom: 12 }}>
-                  {importSummary}
-                </div>
-              )}
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8 }}>
-                {sources.map(source => {
-                  const sel = selectedSources.includes(source.key);
-                  const conn = isConnected(source);
-                  return (
-                    <div key={source.key} style={{
-                      border: `1px solid ${sel ? "var(--bb)" : "var(--bd)"}`,
-                      background: sel ? "var(--bdim)" : "var(--surface)",
-                      borderRadius: 11, padding: "11px 12px",
-                      display: "flex", flexDirection: "column", gap: 7,
-                    }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                        <span style={{ fontSize: 15 }}>{SOURCE_ICONS[source.key] ?? "🔌"}</span>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--fg)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {source.label}
-                        </span>
-                        <span style={{ width: 7, height: 7, borderRadius: 999, background: statusColor(source.status), flexShrink: 0 }} />
-                      </div>
-                      <div style={{ fontSize: 10.5, color: "var(--fm)" }}>
-                        {conn ? `${source.record_count} records` : source.status === "planned" ? "Coming soon" : "Not connected"}
-                      </div>
-                      <div style={{ display: "flex", gap: 5, marginTop: "auto" }}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedSources(prev => sel ? prev.filter(s => s !== source.key) : [...prev, source.key])}
-                          style={{
-                            flex: 1, fontSize: 10, fontWeight: 600, padding: "4px 0", borderRadius: 6,
-                            border: `1px solid ${sel ? "var(--blue)" : "var(--bd2)"}`,
-                            background: sel ? "var(--blue)" : "transparent",
-                            color: sel ? "#fff" : "var(--fm)", cursor: "pointer",
-                          }}>
-                          {sel ? "✓ In sync" : "Include"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConnectKey(source.key)}
-                          style={{
-                            fontSize: 10, fontWeight: 600, padding: "4px 9px", borderRadius: 6,
-                            border: "1px solid var(--bd2)", background: "transparent",
-                            color: conn ? "#16a34a" : "var(--blue)", cursor: "pointer",
-                          }}>
-                          {conn ? "✓" : "Connect"}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* records */}
-            <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-                <SectionTitle
-                  title={`Saved knowledge (${records.length})`}
-                  sub="Decisions, facts, and notes — everything agents can reference."
-                />
-                <button
-                  type="button"
-                  onClick={() => setPinOpen(v => !v)}
-                  className={`btn${pinOpen ? "" : " pri"}`}
-                  style={{ minHeight: 34, fontSize: 12, flexShrink: 0 }}
-                >
-                  {pinOpen ? "Cancel" : "+ Add note"}
-                </button>
-              </div>
-
-              {pinOpen && (
-                <form onSubmit={addRecord}
-                  style={{ border: "1px solid var(--bb)", background: "var(--bdim)", borderRadius: 12, padding: 16, display: "grid", gap: 10, marginBottom: 14 }}>
-                  <input
-                    className="f-input"
-                    value={draft.title}
-                    onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
-                    placeholder="Title — e.g. Pricing decision, March"
-                    style={{ fontSize: 13 }}
-                    autoFocus
-                  />
-                  <textarea
-                    className="f-input f-ta"
-                    value={draft.content}
-                    onChange={e => setDraft(d => ({ ...d, content: e.target.value }))}
-                    placeholder="What should everyone — including your agents — know?"
-                    rows={4}
-                    style={{ resize: "none", minHeight: 100, fontSize: 12.5 }}
-                  />
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 12, color: "var(--fd)" }}>
-                      <input
-                        type="checkbox"
-                        checked={draft.canonical}
-                        onChange={e => setDraft(d => ({ ...d, canonical: e.target.checked }))}
-                        style={{ accentColor: "var(--blue)" }}
-                      />
-                      This is the official source of truth
-                    </label>
-                    <button
-                      type="submit"
-                      disabled={loading || !draft.title.trim() || !draft.content.trim()}
-                      className="btn pri"
-                      style={{ minHeight: 34, fontSize: 12 }}
-                    >
-                      {loading ? "Saving…" : "Save note"}
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              <form onSubmit={search} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                <input
-                  className="f-input"
-                  value={query}
-                  onChange={e => { setQuery(e.target.value); if (!e.target.value.trim()) { setResults([]); setSearched(false); } }}
-                  placeholder="Search your knowledge…"
-                  style={{ fontSize: 12.5 }}
-                />
-                <button type="submit" disabled={loading || !query.trim()} className="btn" style={{ minHeight: 38, fontSize: 12, flexShrink: 0 }}>
-                  {loading ? "…" : "Search"}
-                </button>
-              </form>
-
-              <div style={{ display: "grid", gap: 8 }}>
-                {shownRecords.length === 0 && (
-                  <div style={{ color: "var(--fm)", fontSize: 12.5, padding: "24px 0", textAlign: "center", lineHeight: 1.6 }}>
-                    {searched && query.trim()
-                      ? "Nothing matched that search."
-                      : "Nothing saved yet. Connect a source above, or add your first note."}
-                  </div>
-                )}
-                {shownRecords.map(r => <RecordCard key={r.id} record={r} />)}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ━━━ MAP ━━━ */}
-        {tab === "map" && (
-          <div style={{ maxWidth: 980, margin: "0 auto" }}>
-            <KnowledgeMap
-              graph={graph}
-              loading={graphLoading}
-              rebuilding={graphRebuilding}
-              onReload={loadGraph}
-              onRebuild={rebuildGraph}
-            />
-          </div>
-        )}
-
-        {/* ━━━ SETTINGS ━━━ */}
-        {tab === "settings" && (
-          <div style={{ maxWidth: 720, margin: "0 auto", display: "grid", gap: 20 }}>
-
-            {/* suggestions */}
-            <div>
-              <SectionTitle
-                title={openProposals.length > 0 ? `Suggestions (${openProposals.length})` : "Suggestions"}
-                sub="Astra flags stale records, contradictions, and gaps — review them here."
-              />
+              <SectionTitle title={openProposals.length > 0 ? `Suggestions (${openProposals.length})` : "Suggestions"} sub="Astra flags stale records, contradictions, and gaps." />
               {openProposals.length > 0 ? (
                 <div style={{ display: "grid", gap: 10 }}>
-                  {openProposals.slice(0, 6).map(p => (
-                    <SuggestionCard key={p.id} proposal={p} recordsById={recordsById} onUpdate={updateProposal} />
-                  ))}
+                  {openProposals.slice(0, 6).map(p => <SuggestionCard key={p.id} proposal={p} recordsById={recordsById} onUpdate={updateProposal} />)}
                 </div>
               ) : (
-                <Card style={{ padding: "16px 18px", color: "var(--fm)", fontSize: 12.5 }}>
-                  ✓ All clear — no open suggestions.
-                </Card>
+                <Card style={{ padding: "16px 18px", color: "var(--fm)", fontSize: 12.5 }}>✓ All clear — no open suggestions.</Card>
               )}
               <button type="button" onClick={maintain} disabled={maintaining} className="btn" style={{ minHeight: 34, fontSize: 12, marginTop: 10 }}>
                 {maintaining ? "Checking…" : "Run health check now"}
               </button>
               {(brain?.maintenance?.stale_count || brain?.maintenance?.contradiction_count) ? (
                 <div style={{ fontSize: 11.5, color: "var(--fm)", marginTop: 7 }}>
-                  Last check: {brain?.maintenance?.stale_count ?? 0} stale record{(brain?.maintenance?.stale_count ?? 0) !== 1 ? "s" : ""},{" "}
-                  {brain?.maintenance?.contradiction_count ?? 0} contradiction{(brain?.maintenance?.contradiction_count ?? 0) !== 1 ? "s" : ""}.
+                  Last check: {brain?.maintenance?.stale_count ?? 0} stale, {brain?.maintenance?.contradiction_count ?? 0} contradictions.
                 </div>
               ) : null}
             </div>
-
-            {/* auto-sync */}
             <div>
-              <SectionTitle
-                title="Automatic sync"
-                sub="Keep the brain fresh by pulling from your sources on a schedule."
-              />
+              <SectionTitle title="Automatic sync" sub="Keep the brain fresh on a schedule." />
               <Card style={{ padding: "16px 18px", display: "grid", gap: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    onClick={() => configureContinuousSync(!(brain?.sync?.enabled))}
-                    disabled={continuousSyncing}
-                    style={{
-                      width: 44, height: 24, borderRadius: 999, border: "none", cursor: "pointer",
-                      background: brain?.sync?.enabled ? "var(--blue)" : "var(--bd2)",
-                      position: "relative", transition: "background .18s", flexShrink: 0,
-                    }}
-                    aria-label="Toggle automatic sync"
-                  >
-                    <span style={{
-                      position: "absolute", top: 3, left: brain?.sync?.enabled ? 23 : 3,
-                      width: 18, height: 18, borderRadius: 999, background: "#fff",
-                      transition: "left .18s", boxShadow: "0 1px 3px rgba(0,0,0,.2)",
-                    }} />
+                  <button type="button" onClick={() => configureContinuousSync(!(brain?.sync?.enabled))} disabled={continuousSyncing}
+                    style={{ width: 44, height: 24, borderRadius: 999, border: "none", cursor: "pointer", background: brain?.sync?.enabled ? "var(--blue)" : "var(--bd2)", position: "relative", transition: "background .18s", flexShrink: 0 }}
+                    aria-label="Toggle automatic sync">
+                    <span style={{ position: "absolute", top: 3, left: brain?.sync?.enabled ? 23 : 3, width: 18, height: 18, borderRadius: 999, background: "#fff", transition: "left .18s", boxShadow: "0 1px 3px rgba(0,0,0,.2)" }} />
                   </button>
-                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)" }}>
-                    {brain?.sync?.enabled ? "On" : "Off"}
-                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: "var(--fg)" }}>{brain?.sync?.enabled ? "On" : "Off"}</span>
                   <span style={{ fontSize: 12, color: "var(--fm)" }}>· every</span>
-                  <input
-                    type="number" min={5} max={1440}
-                    value={syncInterval}
-                    onChange={e => setSyncInterval(Number(e.target.value))}
-                    className="f-input"
-                    style={{ width: 72 }}
-                    aria-label="Sync interval minutes"
-                  />
+                  <input type="number" min={5} max={1440} value={syncInterval} onChange={e => setSyncInterval(Number(e.target.value))} className="f-input" style={{ width: 72 }} aria-label="Sync interval minutes" />
                   <span style={{ fontSize: 12, color: "var(--fm)" }}>minutes</span>
-                  <button type="button" onClick={runContinuousSyncNow}
-                    disabled={continuousSyncing} className="btn" style={{ minHeight: 32, fontSize: 11, marginLeft: "auto" }}>
+                  <button type="button" onClick={runContinuousSyncNow} disabled={continuousSyncing} className="btn" style={{ minHeight: 32, fontSize: 11, marginLeft: "auto" }}>
                     {continuousSyncing ? "Running…" : "Run once now"}
                   </button>
                 </div>
-
                 <div style={{ fontSize: 11.5, color: "var(--fm)", lineHeight: 1.6 }}>
                   {brain?.sync?.last_run_at ? `Last run ${brain.sync.last_run_at}.` : "Hasn't run yet."}
                   {brain?.sync?.next_run_at ? ` Next run ${brain.sync.next_run_at}.` : ""}
-                  {scheduler ? ` Scheduler ${scheduler.running ? "running" : "stopped"}.` : ""}
                 </div>
-
                 {brain?.sync?.last_error && (
-                  <div style={{ border: "1px solid rgba(192,57,43,0.25)", background: "rgba(192,57,43,0.06)", borderRadius: 9, padding: "9px 12px", color: "#c0392b", fontSize: 12 }}>
-                    {brain.sync.last_error}
+                  <div style={{ border: "1px solid rgba(192,57,43,0.25)", background: "rgba(192,57,43,0.06)", borderRadius: 9, padding: "9px 12px", color: "#c0392b", fontSize: 12 }}>{brain.sync.last_error}</div>
+                )}
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {/* ━━━ MAIN VIEW ━━━ */}
+        {view === "main" && (
+          <>
+            {/* search + ask */}
+            <div style={{ padding: "32px 24px 28px", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ maxWidth: 680, margin: "0 auto" }}>
+                <form onSubmit={e => ask(undefined, e)} style={{ position: "relative" }}>
+                  <input className="f-input" value={askQuestion} onChange={e => setAskQuestion(e.target.value)}
+                    placeholder="What should I do next?" autoFocus
+                    style={{ fontSize: 15, padding: "16px 56px 16px 20px", borderRadius: 14, width: "100%", boxSizing: "border-box", border: "1px solid var(--border)" }} />
+                  <button type="submit" disabled={asking || !askQuestion.trim()}
+                    style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", width: 34, height: 34, borderRadius: "50%", background: askQuestion.trim() ? "#002EFF" : "var(--bg-sunken)", border: "none", cursor: askQuestion.trim() ? "pointer" : "default", display: "flex", alignItems: "center", justifyContent: "center", transition: "background .15s" }}>
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M7 12V2M2 7l5-5 5 5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </form>
+                {!askAnswer && !asking && (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center", marginTop: 14 }}>
+                    {SUGGESTED_QUESTIONS.map(q => (
+                      <button key={q} type="button" onClick={() => ask(q)}
+                        style={{ fontSize: 12, color: "var(--text-3)", background: "transparent", border: "1px solid var(--border)", borderRadius: 999, padding: "7px 16px", cursor: "pointer" }}>
+                        {q}
+                      </button>
+                    ))}
                   </div>
                 )}
+                {asking && <div style={{ textAlign: "center", color: "var(--text-3)", fontSize: 13, marginTop: 20 }}>Thinking…</div>}
+                {askAnswer && (
+                  <Card style={{ padding: "20px 22px", marginTop: 20 }}>
+                    <div style={{ color: "var(--fg)", fontSize: 14, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{askAnswer}</div>
+                    {askConfidence !== null && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 16 }}>
+                        <div style={{ flex: 1, maxWidth: 160, height: 4, background: "var(--bd)", borderRadius: 999, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${Math.round(askConfidence * 100)}%`, borderRadius: 999, background: askConfidence > 0.7 ? "#16a34a" : askConfidence > 0.4 ? "#d97706" : "#dc2626" }} />
+                        </div>
+                        <span style={{ fontSize: 11, color: "var(--fm)" }}>{Math.round(askConfidence * 100)}% confident</span>
+                      </div>
+                    )}
+                    {askCitations.length > 0 && (
+                      <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--bd)", display: "grid", gap: 6 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".06em" }}>Sources</div>
+                        {askCitations.slice(0, 6).map(cit => (
+                          <div key={cit.record_id} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, color: "var(--fd)" }}>
+                            <span style={{ flexShrink: 0 }}>{SOURCE_ICONS[cit.source] ?? "📌"}</span>
+                            {cit.url ? <a href={cit.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--blue)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cit.title}</a>
+                              : <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cit.title}</span>}
+                            {cit.canonical && <span style={{ color: "#16a34a", flexShrink: 0, fontSize: 10 }}>✓ source of truth</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+                )}
+              </div>
+            </div>
 
-                {(brain?.sync?.history?.length ?? 0) > 0 && (
-                  <div style={{ borderTop: "1px solid var(--bd)", paddingTop: 10, display: "grid", gap: 5 }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 3 }}>
-                      Recent runs
+            {/* knowledge health */}
+            <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 16 }}>
+              <svg width={44} height={44} viewBox="0 0 44 44" style={{ flexShrink: 0 }}>
+                <circle cx={22} cy={22} r={17} fill="none" stroke="rgba(202,210,228,0.12)" strokeWidth={5} />
+                <circle cx={22} cy={22} r={17} fill="none" stroke="#2F55FF" strokeWidth={5}
+                  strokeDasharray={`${(healthPct / 100) * 2 * Math.PI * 17} ${2 * Math.PI * 17}`}
+                  strokeLinecap="round" transform="rotate(-90 22 22)" />
+                <text x={22} y={27} textAnchor="middle" fontSize={11} fontWeight={700} fill="var(--text)">{healthPct}%</text>
+              </svg>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Knowledge health</div>
+                <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 1 }}>
+                  {connectedSources.length} of {sources.length} sources connected · {records.length} records
+                </div>
+              </div>
+              {openProposals.length > 0 && (
+                <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                  {openProposals.slice(0, 2).map(p => (
+                    <button key={p.id} type="button" onClick={() => setView("settings")}
+                      style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(217,119,6,0.4)", background: "rgba(217,119,6,0.1)", color: "#d97706", cursor: "pointer" }}>
+                      {p.title?.slice(0, 28) ?? "Suggestion"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* add note form */}
+            {pinOpen && (
+              <div style={{ padding: "16px 24px", borderBottom: "1px solid var(--border)", background: "var(--bg-sunken)" }}>
+                <form onSubmit={addRecord} style={{ maxWidth: 680, margin: "0 auto", display: "grid", gap: 10 }}>
+                  <input className="f-input" value={draft.title} onChange={e => setDraft(d => ({ ...d, title: e.target.value }))} placeholder="Title — e.g. Pricing decision, March" style={{ fontSize: 13 }} autoFocus />
+                  <textarea className="f-input f-ta" value={draft.content} onChange={e => setDraft(d => ({ ...d, content: e.target.value }))} placeholder="What should everyone — including your agents — know?" rows={3} style={{ resize: "none", fontSize: 12.5 }} />
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 7, cursor: "pointer", fontSize: 12, color: "var(--text-2)" }}>
+                      <input type="checkbox" checked={draft.canonical} onChange={e => setDraft(d => ({ ...d, canonical: e.target.checked }))} style={{ accentColor: "var(--accent)" }} />
+                      Source of truth
+                    </label>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button type="button" onClick={() => setPinOpen(false)} className="btn" style={{ minHeight: 32, fontSize: 12 }}>Cancel</button>
+                      <button type="submit" disabled={loading || !draft.title.trim() || !draft.content.trim()} className="btn pri" style={{ minHeight: 32, fontSize: 12 }}>
+                        {loading ? "Saving…" : "Save"}
+                      </button>
                     </div>
-                    {brain!.sync.history.slice(0, 4).map((entry, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "var(--fm)" }}>
-                        <span className="pill" style={{ letterSpacing: 0 }}>{String(entry.status ?? "run")}</span>
-                        <span>{String(entry.finished_at ?? entry.started_at ?? "")}</span>
-                        <span style={{ marginLeft: "auto" }}>
-                          {Array.isArray(entry.imported_sources)
-                            ? `imported ${(entry.imported_sources as string[]).join(", ") || "none"}`
-                            : ""}
-                        </span>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* 4-column knowledge grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", minHeight: 400 }}>
+
+              {/* ── FACTS ── */}
+              <div style={{ borderRight: "1px solid var(--border)", padding: "20px 20px 32px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+                    Facts {factRecords.length > 0 && `· ${factRecords.length}`}
+                  </span>
+                  <button type="button" onClick={() => setPinOpen(true)}
+                    style={{ fontSize: 11, color: "var(--text-3)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>+ Add</button>
+                </div>
+                {factRecords.length === 0 && records.length > 0 && (
+                  <div style={{ display: "grid", gap: 0 }}>
+                    {records.slice(0, 6).map((r, i) => (
+                      <div key={r.id} style={{ padding: "10px 0", borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
+                        <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 2 }}>{r.source}</div>
+                        <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 500 }}>{r.title}</div>
                       </div>
                     ))}
                   </div>
                 )}
-              </Card>
-            </div>
+                {factRecords.length > 0 && (
+                  <div style={{ display: "grid", gap: 0 }}>
+                    {factRecords.slice(0, 8).map((r, i) => (
+                      <div key={r.id} style={{ padding: "10px 0", borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
+                        <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 2 }}>{r.source}</div>
+                        <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 500 }}>{r.title}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {records.length === 0 && (
+                  <div style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.6 }}>No facts yet. Add your company's key facts like ICP, pricing, and mission.</div>
+                )}
+              </div>
 
-          </div>
+              {/* ── DOCUMENTS ── */}
+              <div style={{ borderRight: "1px solid var(--border)", padding: "20px 20px 32px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+                    Documents {docRecords.length > 0 && `· ${docRecords.length}`}
+                  </span>
+                  <button type="button" onClick={() => setPinOpen(true)}
+                    style={{ fontSize: 11, color: "var(--text-3)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>+ Add</button>
+                </div>
+                {docRecords.length > 0 ? (
+                  <div style={{ display: "grid", gap: 0 }}>
+                    {docRecords.slice(0, 8).map((r, i) => (
+                      <div key={r.id} style={{ padding: "10px 0", borderTop: i > 0 ? "1px solid var(--border)" : "none", display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 13, color: "var(--text-3)", flexShrink: 0 }}>□</span>
+                        <div style={{ overflow: "hidden" }}>
+                          {r.url ? <a href={r.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13, color: "var(--text)", fontWeight: 500, textDecoration: "none", display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.title}</a>
+                            : <span style={{ fontSize: 13, color: "var(--text)", fontWeight: 500 }}>{r.title}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.6 }}>No documents yet. Connect Google Drive, Notion, or add files manually.</div>
+                )}
+              </div>
+
+              {/* ── BRAND VOICE ── */}
+              <div style={{ borderRight: "1px solid var(--border)", padding: "20px 20px 32px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>Brand Voice</span>
+                  <button type="button" onClick={() => setPinOpen(true)}
+                    style={{ fontSize: 11, color: "var(--text-3)", background: "none", border: "none", cursor: "pointer", padding: 0 }}>Edit</button>
+                </div>
+                {voiceRecords.length > 0 ? (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {voiceRecords.slice(0, 5).map(r => (
+                        <span key={r.id} style={{ fontSize: 11, padding: "4px 10px", borderRadius: 6, border: "1px solid var(--border)", color: "var(--text-2)", background: "var(--bg-sunken)" }}>{r.title}</span>
+                      ))}
+                    </div>
+                    {voiceRecords[0]?.snippet && <p style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.6, margin: 0, fontStyle: "italic" }}>"{voiceRecords[0].snippet}"</p>}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.6 }}>No brand voice defined yet. Add tone guidelines so agents write consistently.</div>
+                )}
+              </div>
+
+              {/* ── CONNECTIONS ── */}
+              <div style={{ padding: "20px 20px 32px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>
+                    Connections {connectedSources.length > 0 && `· ${connectedSources.length}`}
+                  </span>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button type="button" onClick={sync} disabled={syncing}
+                      style={{ fontSize: 11, color: "var(--text-3)", background: "none", border: "none", cursor: syncing ? "default" : "pointer", padding: 0 }}>
+                      {syncing ? "Syncing…" : "Sync"}
+                    </button>
+                  </div>
+                </div>
+                <div style={{ display: "grid", gap: 0 }}>
+                  {connectedSources.length === 0 && (
+                    <div style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.6 }}>No sources connected. Connect Notion, GitHub, or Google Drive to start syncing.</div>
+                  )}
+                  {connectedSources.slice(0, 8).map((s, i) => (
+                    <div key={s.key} style={{ padding: "10px 0", borderTop: i > 0 ? "1px solid var(--border)" : "none", display: "flex", alignItems: "center", gap: 10 }}>
+                      <ServiceLogo serviceKey={s.key} label={s.label} size={14} />
+                      <div style={{ flex: 1, overflow: "hidden" }}>
+                        <div style={{ fontSize: 13, color: "var(--text)", fontWeight: 500 }}>{s.label}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                          {s.last_synced_at ? `Synced ${s.last_synced_at}` : `${s.record_count} records`}
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => setConnectKey(s.key)}
+                        style={{ fontSize: 10, padding: "3px 8px", borderRadius: 5, border: "1px solid var(--border)", background: "none", color: "var(--text-3)", cursor: "pointer" }}>
+                        Edit
+                      </button>
+                    </div>
+                  ))}
+                  {sources.filter(s => !isConnected(s) && s.status !== "planned").slice(0, 3).map((s, i) => (
+                    <div key={s.key} style={{ padding: "10px 0", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10 }}>
+                      <ServiceLogo serviceKey={s.key} label={s.label} size={14} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, color: "var(--text-3)" }}>{s.label}</div>
+                        <div style={{ fontSize: 11, color: "var(--text-3)", opacity: 0.6 }}>Not connected</div>
+                      </div>
+                      <button type="button" onClick={() => setConnectKey(s.key)}
+                        style={{ fontSize: 10, padding: "3px 8px", borderRadius: 5, border: "1px solid rgba(47,85,255,0.35)", background: "rgba(47,85,255,0.08)", color: "#7d8fff", cursor: "pointer" }}>
+                        Connect
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          </>
         )}
       </div>
 
