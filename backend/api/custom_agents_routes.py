@@ -202,5 +202,6 @@ async def run_custom_agent(founder_id: str, agent_id: str, body: RunAgentRequest
         spec=spec,
         goal=(body.goal or "").strip() or None,
         company_id=body.company_id or spec.get("company_id"),
+        kind="user",
     )
     return {"session_id": session_id, "status": "running", "agent_id": agent_id}

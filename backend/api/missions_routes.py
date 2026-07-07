@@ -354,7 +354,7 @@ async def run_company_cycle(
             workspace_id=str((root_meta or {}).get("workspace_id") or ""),
             company_id=str((root_meta or {}).get("company_id") or resolved_company_id),
             parent_session_id=root,
-            kind="operating",
+            kind="user",
         )
     except Exception:
         pass
@@ -419,7 +419,7 @@ async def approve_next_goal(
                 workspace_id=str((root_meta or {}).get("workspace_id") or ""),
                 company_id=str((root_meta or {}).get("company_id") or company_id),
                 parent_session_id=root,
-                kind="operating",
+                kind="user",
             )
         except Exception:
             pass

@@ -665,6 +665,7 @@ async def submit_goal(body: GoalRequest, request: Request):
             workspace_id=_workspace_id,
             company_id=_workspace_id or body.founder_id,
             chapter_id=_chapter_id,
+            kind="user",
         )
     except Exception as _se:
         logger.warning("session_store.register_session failed: %s", _se)
