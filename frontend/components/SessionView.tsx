@@ -14,6 +14,7 @@ import dynamic from "next/dynamic";
 import SessionTour from "@/components/SessionTour";
 import AgentSwarm, { type SwarmAgent } from "@/components/AgentSwarm";
 import { ReceiptTrail, type ArtifactReceipt } from "@/components/PhaseWorkboard";
+import CopilotDock from "@/components/CopilotDock";
 
 // xterm touches `window`; load the takeover terminal client-only.
 const TerminalPane = dynamic(() => import("@/components/TerminalPane"), { ssr: false });
@@ -1906,81 +1907,24 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         </div>
       </div>
 
-      {/* copilot chat bar */}
-      <div data-tour="session-steerbar" className={`steerbar copilot-dock ${copilotOpen ? "is-open" : ""}`}>
-        {copilotOpen && (
-          <div className="copilot-thread">
-            {copilot.length === 0 && (
-              <div className="copilot-empty">
-                Ask or direct Astra. The copilot can read the company brain, inspect completion audits, approve milestones and gates, answer blocked agent questions, pause or resume runs, restart previews, steer live agents, and dispatch new work. Try “what completion issues are blocking this run?”, “approve the next goal”, or “tell the web agent to fix the deploy”.
-              </div>
-            )}
-            {copilot.map((m, i) => (
-              <div key={i} className={`copilot-row ${m.role === "founder" ? "is-founder" : "is-astra"}`}>
-                {m.role !== "founder" && <span className="copilot-avatar">A</span>}
-                <div className="copilot-bubble">
-                  {m.content}
-                  {m.actions && m.actions.length > 0 && (
-                    <div className="copilot-actions" aria-label="Copilot actions">
-                      {m.actions.map((action, actionIndex) => (
-                        <div key={`${action.tool}-${actionIndex}`} className={`copilot-action-card is-${action.tone || "info"}`}>
-                          <div className="copilot-action-label">{action.label}</div>
-                          {action.detail && <div className="copilot-action-detail">{action.detail}</div>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-            {copilotBusy && (
-              <div className="copilot-row is-astra">
-                <span className="copilot-avatar">A</span>
-                <div className="copilot-thinking"><span /><span /><span /></div>
-              </div>
-            )}
-          </div>
-        )}
-        <div className="steer-wrap">
-          <button className="steer-send copilot-toggle" aria-label="Toggle copilot" title="Copilot chat" onClick={() => setCopilotOpen((v) => !v)}>{copilotOpen ? "▾" : "✦"}</button>
-          <button
-            className="steer-send copilot-attach"
-            aria-label="Attach file"
-            title="Attach file"
-            disabled={copilotUploading || copilotBusy}
-            onClick={() => { setCopilotOpen(true); copilotFileRef.current?.click(); }}
-          >
-            {copilotUploading ? "…" : "+"}
-          </button>
-          <input
-            ref={copilotFileRef}
-            type="file"
-            multiple
-            hidden
-            onChange={(e) => uploadCopilotFiles(e.target.files)}
-          />
-          <input ref={steerRef} className="steer-inp" aria-label="Ask or direct Astra"
-            placeholder='Ask or direct Astra — "what completion issues are left?" · "focus on pricing" · "approve next goal"'
-            onFocus={() => setCopilotOpen(true)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); setCopilotOpen(true); sendCopilot(); } }} />
-          <button className="steer-send copilot-submit" aria-label="Send" onClick={() => { setCopilotOpen(true); sendCopilot(); }}>↑</button>
-        </div>
-        {copilotAttachments.length > 0 && (
-          <div className="copilot-attachment-tray" aria-label="Attached files">
-            {copilotAttachments.map((file, index) => (
-              <button
-                key={`${file.filename}-${index}`}
-                className="copilot-attachment-chip"
-                title={file.summary || file.filename}
-                onClick={() => setCopilotAttachments((current) => current.filter((_, i) => i !== index))}
-              >
-                <span>{file.filename}</span>
-                <small>{file.kind}{file.truncated ? " · clipped" : ""}</small>
-                <b>×</b>
-              </button>
-            ))}
-          </div>
-        )}
+      <div data-tour="session-steerbar" className="steerbar">
+        <CopilotDock
+          open={copilotOpen}
+          busy={copilotBusy}
+          messages={copilot}
+          attachments={copilotAttachments}
+          uploading={copilotUploading}
+          inputRef={steerRef}
+          fileInputRef={copilotFileRef}
+          placeholder={'Ask or direct Astra — "what completion issues are left?" · "focus on pricing" · "approve next goal"'}
+          emptyText='Ask or direct Astra. The copilot can read the company brain, inspect completion audits, approve milestones and gates, answer blocked agent questions, pause or resume runs, restart previews, steer live agents, and dispatch new work. Try "what completion issues are blocking this run?", "approve the next goal", or "tell the web agent to fix the deploy".'
+          onToggle={() => setCopilotOpen((v) => !v)}
+          onFocus={() => setCopilotOpen(true)}
+          onSend={() => { setCopilotOpen(true); void sendCopilot(); }}
+          onAttachClick={() => { setCopilotOpen(true); copilotFileRef.current?.click(); }}
+          onFileChange={uploadCopilotFiles}
+          onRemoveAttachment={(index) => setCopilotAttachments((current) => current.filter((_, i) => i !== index))}
+        />
       </div>
 
       {showSessionTour && (

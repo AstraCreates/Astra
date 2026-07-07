@@ -14,10 +14,10 @@ interface PageHeaderProps {
 }
 
 const BADGE_STYLE: Record<string, { border: string; bg: string; color: string }> = {
-  green: { border: "rgba(124,255,198,0.5)", bg: "rgba(124,255,198,0.14)", color: "#7CFFC6" },
-  blue:  { border: "rgba(150,190,255,0.5)", bg: "rgba(150,190,255,0.14)", color: "#A8C8FF" },
-  amber: { border: "rgba(255,180,50,0.5)",  bg: "rgba(255,180,50,0.14)",  color: "#FFCB50" },
-  red:   { border: "rgba(255,80,80,0.5)",   bg: "rgba(255,80,80,0.14)",   color: "#FF8080" },
+  green: { border: "color-mix(in srgb, var(--green) 30%, transparent)", bg: "color-mix(in srgb, var(--green) 12%, transparent)", color: "var(--green)" },
+  blue:  { border: "color-mix(in srgb, var(--accent) 30%, transparent)", bg: "color-mix(in srgb, var(--accent) 12%, transparent)", color: "var(--accent)" },
+  amber: { border: "color-mix(in srgb, var(--amber) 30%, transparent)", bg: "color-mix(in srgb, var(--amber) 12%, transparent)", color: "var(--amber)" },
+  red:   { border: "color-mix(in srgb, var(--red) 30%, transparent)", bg: "color-mix(in srgb, var(--red) 12%, transparent)", color: "var(--red)" },
 };
 
 export default function PageHeader({ title, subtitle, badge, stats, actions }: PageHeaderProps) {
@@ -25,8 +25,8 @@ export default function PageHeader({ title, subtitle, badge, stats, actions }: P
 
   return (
     <div style={{
-      background: "#001AFF",
-      borderBottom: "1px solid rgba(255,255,255,0.10)",
+      background: "var(--bg-surface)",
+      borderBottom: "1px solid var(--border)",
       padding: "22px 24px 18px",
       flexShrink: 0,
       display: "flex",
@@ -41,7 +41,7 @@ export default function PageHeader({ title, subtitle, badge, stats, actions }: P
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Title row */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: stats?.length ? 10 : subtitle ? 5 : 0, flexWrap: "wrap" }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: "#fff", letterSpacing: "-0.02em", margin: 0, lineHeight: 1.15 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text)", letterSpacing: "-0.02em", margin: 0, lineHeight: 1.15 }}>
             {title}
           </h1>
           {badge && bs && (
@@ -59,7 +59,7 @@ export default function PageHeader({ title, subtitle, badge, stats, actions }: P
 
         {/* Subtitle */}
         {subtitle && !stats?.length && (
-          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.65)", lineHeight: 1.5, maxWidth: 520 }}>
+          <div style={{ fontSize: 12, color: "var(--text-3)", lineHeight: 1.5, maxWidth: 520 }}>
             {subtitle}
           </div>
         )}
@@ -69,10 +69,10 @@ export default function PageHeader({ title, subtitle, badge, stats, actions }: P
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
             {stats.map(s => (
               <div key={s.label} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                <span style={{ fontSize: 16, fontWeight: 700, color: "#fff", fontFamily: "var(--font-code)", lineHeight: 1 }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", fontFamily: "var(--font-code)", lineHeight: 1 }}>
                   {s.value}
                 </span>
-                <span style={{ fontSize: 9, color: "rgba(255,255,255,0.55)", textTransform: "uppercase", letterSpacing: ".08em" }}>
+                <span style={{ fontSize: 9, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".08em" }}>
                   {s.label}
                 </span>
               </div>
@@ -97,7 +97,7 @@ export function HeaderPrimaryBtn({ label, onClick, disabled }: { label: string; 
   return (
     <button onClick={onClick} disabled={disabled} className="m-tap" style={{
       padding: "8px 18px", fontSize: 12, fontWeight: 600,
-      color: "#002EFF", background: "#fff", border: "none",
+      color: "white", background: "var(--accent)", border: "none",
       cursor: disabled ? "not-allowed" : "pointer",
       opacity: disabled ? 0.5 : 1,
     }}>
@@ -110,9 +110,9 @@ export function HeaderSecondaryBtn({ label, onClick, disabled }: { label: string
   return (
     <button onClick={onClick} disabled={disabled} className="m-tap" style={{
       padding: "8px 14px", fontSize: 12,
-      color: "rgba(255,255,255,0.88)",
-      background: "rgba(255,255,255,0.13)",
-      border: "1px solid rgba(255,255,255,0.28)",
+      color: "var(--text-2)",
+      background: "var(--bg-sunken)",
+      border: "1px solid var(--border)",
       cursor: disabled ? "not-allowed" : "pointer",
       opacity: disabled ? 0.5 : 1,
     }}>

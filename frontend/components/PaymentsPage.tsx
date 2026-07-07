@@ -10,6 +10,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from "recharts";
+import PageHeader, { HeaderSecondaryBtn } from "@/components/PageHeader";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -601,42 +602,12 @@ export default function PaymentsPage() {
 
   return (
     <>
-      <div style={{ padding: "22px 24px 16px", flexShrink: 0, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-0.01em" }}>Payments</h1>
-            {status?.connected && (
-              <span style={{
-                padding: "2px 8px", fontSize: 10, fontWeight: 600, letterSpacing: ".06em",
-                textTransform: "uppercase", borderRadius: 4,
-                border: status.livemode ? "1px solid rgba(22,163,74,0.4)" : "1px solid rgba(217,119,6,0.4)",
-                background: status.livemode ? "rgba(22,163,74,0.10)" : "rgba(217,119,6,0.10)",
-                color: status.livemode ? "#16a34a" : "#d97706",
-              }}>
-                {status.livemode ? "Live" : "Test"}
-              </span>
-            )}
-          </div>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-3)" }}>Revenue, balance, and transactions</p>
-        </div>
-        {status?.connected && (
-          <button
-            onClick={fetchData}
-            disabled={loadingData}
-            style={{
-              fontSize: 12, padding: "7px 14px",
-              color: "var(--text-2)",
-              background: "var(--bg-surface)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              cursor: loadingData ? "not-allowed" : "pointer",
-              opacity: loadingData ? 0.5 : 1,
-            }}
-          >
-            {loadingData ? "Loading…" : "Refresh"}
-          </button>
-        )}
-      </div>
+      <PageHeader
+        title="Payments"
+        subtitle="Revenue, balance, and transactions"
+        badge={status?.connected ? { label: status.livemode ? "Live" : "Test", color: status.livemode ? "green" : "amber" } : undefined}
+        actions={status?.connected ? <HeaderSecondaryBtn label={loadingData ? "Loading…" : "Refresh"} onClick={() => { void fetchData(); }} disabled={loadingData} /> : undefined}
+      />
       <div style={{ width: "100%", maxWidth: 1020, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24, padding: "24px 22px 48px", fontFamily: "var(--font-geist-sans)" }}>
 
       {connectError && (
@@ -835,4 +806,3 @@ export default function PaymentsPage() {
     </>
   );
 }
-

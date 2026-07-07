@@ -49,27 +49,27 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
   }, []);
 
   const displayName = hydrated ? (user?.fullName?.split(" ")[0] || initials(userId)) : "…";
-  const accentColor = "#7d8fff";
+  const accentColor = "var(--accent)";
 
   const sidebarStyle: React.CSSProperties = mobile
-    ? { width: 214, display: "flex", flexDirection: "column", background: "#080A12", borderRight: "1px solid rgba(255,255,255,.07)", height: "100dvh", position: "fixed", top: 0, left: 0, zIndex: 60, transform: open ? "translateX(0)" : "translateX(-104%)", transition: "transform 0.28s cubic-bezier(0.22,1,0.36,1)" }
-    : { width: 214, flexShrink: 0, display: "flex", flexDirection: "column", background: "#080A12", borderRight: "1px solid rgba(255,255,255,.07)", height: "100vh", position: "sticky", top: 0 };
+    ? { width: 214, display: "flex", flexDirection: "column", background: "var(--bg-surface)", borderRight: "1px solid var(--border)", height: "100dvh", position: "fixed", top: 0, left: 0, zIndex: 60, transform: open ? "translateX(0)" : "translateX(-104%)", transition: "transform 0.28s cubic-bezier(0.22,1,0.36,1)" }
+    : { width: 214, flexShrink: 0, display: "flex", flexDirection: "column", background: "var(--bg-surface)", borderRight: "1px solid var(--border)", height: "100vh", position: "sticky", top: 0 };
 
   return (
     <nav onClick={e => { if (mobile && (e.target as HTMLElement).closest("a")) onClose?.(); }} style={sidebarStyle}>
       <style>{`
         @keyframes pulseDot { 0%,100%{opacity:1} 50%{opacity:.35} }
-        .sb-link { display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:7px;text-decoration:none;font:500 13px 'Hanken Grotesk',system-ui,sans-serif;color:#8A93AD;border-left:2px solid transparent;transition:background .12s,color .12s; }
-        .sb-link:hover { background:rgba(255,255,255,.04);color:#EDF1FB; }
-        .sb-link.active { font-weight:600;color:#fff;background:rgba(255,255,255,.06);border-left-color:${accentColor}; }
+        .sb-link { display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:7px;text-decoration:none;font:500 13px var(--font-sans);color:var(--text-3);border-left:2px solid transparent;transition:background .12s,color .12s; }
+        .sb-link:hover { background:var(--bg-sunken);color:var(--text); }
+        .sb-link.active { font-weight:600;color:var(--text);background:color-mix(in srgb, var(--accent) 8%, transparent);border-left-color:${accentColor}; }
       `}</style>
 
       {/* Logo */}
       <div style={{ padding: "20px 16px", display: "flex", alignItems: "center", gap: 9 }}>
         <div style={{ width: 24, height: 24, background: accentColor, flexShrink: 0, WebkitMask: "url('/logo.png') center/contain no-repeat", mask: "url('/logo.png') center/contain no-repeat" }} />
         <div style={{ display: "flex", flexDirection: "column", lineHeight: 1 }}>
-          <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: ".1em", color: "#EDF1FB" }}>ASTRA</span>
-          <span style={{ fontSize: 10, letterSpacing: ".08em", color: "#8A93AD", marginTop: 5, display: "flex", alignItems: "center", gap: 5, fontWeight: 600 }}>
+          <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: ".1em", color: "var(--text)" }}>ASTRA</span>
+          <span style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--text-3)", marginTop: 5, display: "flex", alignItems: "center", gap: 5, fontWeight: 600 }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: accentColor, animation: "pulseDot 2.6s infinite" }} />
             Ready
           </span>
@@ -79,7 +79,7 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
       {/* New run */}
       <div style={{ padding: "0 16px 16px" }}>
         <Link data-tour="new-goal-btn" href="/dashboard?new=1"
-          style={{ display: "block", width: "100%", background: "#002EFF", color: "#fff", border: "none", borderRadius: 8, padding: 11, fontFamily: "'Hanken Grotesk',system-ui,sans-serif", fontWeight: 600, fontSize: 13, cursor: "pointer", textAlign: "center", textDecoration: "none" }}>
+          style={{ display: "block", width: "100%", background: "var(--accent)", color: "#fff", border: "none", borderRadius: 8, padding: 11, fontFamily: "var(--font-sans)", fontWeight: 600, fontSize: 13, cursor: "pointer", textAlign: "center", textDecoration: "none" }}>
           + New run
         </Link>
       </div>
@@ -108,25 +108,25 @@ export default function RedesignSidebar({ mobile = false, open = false, onClose 
       <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "16px 16px 20px", marginTop: "auto" }}>
         {/* Download macOS */}
         <a href={desktopDownloadHref} target="_blank" rel="noopener noreferrer"
-          style={{ width: "100%", background: "transparent", color: "#c3cbe0", border: "1px solid rgba(255,255,255,.13)", borderRadius: 8, padding: 10, fontFamily: "'Hanken Grotesk',system-ui,sans-serif", fontWeight: 500, fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, textDecoration: "none" }}>
+          style={{ width: "100%", background: "transparent", color: "var(--text-2)", border: "1px solid var(--border)", borderRadius: 8, padding: 10, fontFamily: "var(--font-sans)", fontWeight: 500, fontSize: 12.5, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, textDecoration: "none" }}>
           <svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14" /></svg>
           Download macOS
         </a>
 
         {/* Credits */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", border: "1px solid rgba(255,255,255,.1)", borderRadius: 8, background: "rgba(255,255,255,.03)" }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#EDF1FB" }}>{credits !== null ? credits.toLocaleString() : "—"}</span>
-          <span style={{ fontSize: 10, letterSpacing: ".04em", color: "#6f7b98" }}>credits</span>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", border: "1px solid var(--border)", borderRadius: 8, background: "var(--bg-sunken)" }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{credits !== null ? credits.toLocaleString() : "—"}</span>
+          <span style={{ fontSize: 10, letterSpacing: ".04em", color: "var(--text-3)" }}>credits</span>
         </div>
 
         {/* User row */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,.07)" }}>
-          <div style={{ width: 28, height: 28, borderRadius: "50%", background: "#1c2536", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#EDF1FB", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 6, borderTop: "1px solid var(--border)" }}>
+          <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--bg-sunken)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "var(--text)", flexShrink: 0 }}>
             {hydrated ? initials(userId) : "…"}
           </div>
           <div style={{ lineHeight: 1.2, flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, color: "#EDF1FB", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</div>
-            <div style={{ fontSize: 10, color: "#6f7b98", display: "flex", gap: 6 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{displayName}</div>
+            <div style={{ fontSize: 10, color: "var(--text-3)", display: "flex", gap: 6 }}>
               <Link href="/settings" style={{ color: "inherit", textDecoration: "none" }}>Settings</Link>
               <span>·</span>
               {hydrated && isSignedIn

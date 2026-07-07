@@ -5,6 +5,12 @@ import { useRouter } from "next/navigation";
 import { apiFetch, listSessions, deleteSessionRemote, killSession, getSessionDigest, getCredits, type SessionIndexEntry, type SessionDigest } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
+import EmptyState from "@/components/EmptyState";
+import CopilotDock from "@/components/CopilotDock";
+import PageHeader, { HeaderPrimaryBtn, HeaderSecondaryBtn } from "@/components/PageHeader";
+import StatusChip from "@/components/StatusChip";
+import { extractGoalTitle, relativeTime } from "@/lib/format";
+import Skeleton from "@/components/Skeleton";
 import LaunchCompleteScreen, { shouldShowLaunchComplete, markLaunchCompleteShown, consumePreviewSignal } from "./LaunchCompleteScreen";
 
 const GREETINGS = [
@@ -14,26 +20,6 @@ const GREETINGS = [
   "Good to see you",
   "Let's keep building",
 ];
-
-function extractGoalTitle(raw: string): string {
-  return raw
-    .replace(/^FOLLOW-UP RUN for GOAL:\s*/i, "")
-    .replace(/^GOAL:\s*/i, "")
-    .replace(/\s*An earlier run already completed[\s\S]*$/i, "")
-    .replace(/\s*Work together to complete these major tasks[\s\S]*$/i, "")
-    .replace(/\s*Each agent: deliver[\s\S]*$/i, "")
-    .replace(/\s*Finish ONLY the \d+[\s\S]*$/i, "")
-    .trim() || raw;
-}
-
-function ago(ts: string | undefined): string {
-  if (!ts) return "";
-  const diff = Date.now() - new Date(ts).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return "just now"; if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
-}
 
 type CopilotAction = { tool: string; label: string; detail?: string; tone?: "info" | "success" | "warn" };
 
@@ -72,15 +58,6 @@ function pickCopilotSession(sessions: SessionIndexEntry[]): SessionIndexEntry | 
     sessions[0] ||
     null
   );
-}
-
-function StatusPill({ status }: { status: string }) {
-  if (status === "running") return <span className="pill blue">● Running</span>;
-  if (status === "done") return <span className="pill green">✓ Done</span>;
-  if (status === "error") return <span className="pill red">✗ Error</span>;
-  if (status === "killed") return <span className="pill red">✗ Stopped</span>;
-  if (status === "stalled") return <span className="pill amber">⚠ Needs attention</span>;
-  return <span className="pill">{status}</span>;
 }
 
 export default function DashboardView() {
@@ -312,7 +289,6 @@ export default function DashboardView() {
     <>
       <style>{`
         @keyframes dv-fade { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes sc-shimmer { 0%,100% { opacity: 1; } 50% { opacity: .6; } }
         @keyframes sc-indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
         .dv-run-row { display: flex; align-items: center; gap: 12px; padding: 8px 4px; border-top: 1px solid rgba(255,255,255,.06); cursor: pointer; transition: background .12s; }
         .dv-run-row:first-child { border-top: none; }
@@ -320,62 +296,28 @@ export default function DashboardView() {
         .sc-progress-track { height: 3px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; margin-top: 6px; }
         .sc-progress-fill { height: 100%; width: 100%; border-radius: 3px; transform-origin: left; transition: transform 0.8s ease; }
         .sc-progress-indeterminate { height: 100%; width: 35%; border-radius: 3px; animation: sc-indeterminate 1.4s ease-in-out infinite; }
-        .dash-copilot { border: 1px solid rgba(255,255,255,.1); background: #0A0D17; border-radius: 16px; overflow: hidden; }
-        .dash-copilot-thread { max-height: 240px; overflow-y: auto; padding: 12px 12px 0; display: flex; flex-direction: column; gap: 8px; }
-        .dash-copilot-row { display: flex; gap: 8px; align-items: flex-start; }
-        .dash-copilot-row.is-founder { justify-content: flex-end; }
-        .dash-copilot-avatar { width: 22px; height: 22px; border-radius: 999px; background: linear-gradient(135deg, #002EFF, #7CFFC6); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
-        .dash-copilot-bubble { max-width: min(600px,100%); padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,0.06); color: #EDF1FB; font-size: 11px; line-height: 1.6; white-space: pre-wrap; }
-        .dash-copilot-row.is-founder .dash-copilot-bubble { background: #002EFF; }
-        .dash-copilot-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-        .dash-copilot-action { padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.04); }
-        .dash-copilot-action.is-success { border-color: rgba(16,185,129,.3); }
-        .dash-copilot-action.is-warn { border-color: rgba(245,158,11,.3); }
-        .dash-copilot-action-label { font-size: 10px; font-weight: 600; color: #EDF1FB; }
-        .dash-copilot-action-detail { font-size: 9px; color: rgba(237,241,251,0.5); margin-top: 2px; line-height: 1.5; }
-        .dash-copilot-thinking { display: inline-flex; gap: 4px; align-items: center; padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,0.06); }
-        .dash-copilot-thinking span { width: 5px; height: 5px; border-radius: 999px; background: #7CFFC6; opacity: .4; animation: sc-shimmer 1s ease-in-out infinite; }
-        .dash-copilot-thinking span:nth-child(2) { animation-delay: .12s; }
-        .dash-copilot-thinking span:nth-child(3) { animation-delay: .24s; }
-        .dash-copilot-bar { display: flex; align-items: center; gap: 8px; padding: 7px 7px 7px 16px; }
-        .dash-copilot-ctx { font-size: 10px; color: rgba(237,241,251,0.4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; flex-shrink: 1; }
-        .dash-copilot-input { flex: 1; min-width: 0; background: transparent; border: none; color: #EDF1FB; padding: 0 8px; font-size: 13.5px; outline: none; font-family: inherit; }
-        .dash-copilot-input::placeholder { color: rgba(237,241,251,0.3); }
-        .dash-copilot-btn { height: 36px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); color: #EDF1FB; padding: 0 11px; cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap; font-family: inherit; }
-        .dash-copilot-btn.primary { background: #002EFF; border-color: #002EFF; width: 36px; padding: 0; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .dash-copilot-btn:disabled { opacity: 0.4; cursor: default; }
         @media (max-width: 700px) { .dv-body { flex-direction: column !important; } .dv-goal-col { flex: none !important; width: 100% !important; } }
       `}</style>
 
-      <div style={{ flex: 1, overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
-
-        {/* ── Hero: lineart variant ── */}
-        <div style={{ position: "relative", height: 224, overflow: "hidden", background: "#0a1b6b" }}>
-          <img src="/hero-lineart.png" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 25%" } as React.CSSProperties} />
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(5,7,14,.82) 0%,rgba(5,7,14,.44) 42%,transparent 72%)" }} />
-          <div style={{ position: "relative", zIndex: 2, padding: "28px 32px", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-            <div>
-              <div style={{ fontSize: 11, letterSpacing: ".1em", color: "rgba(255,255,255,.7)", fontWeight: 600, textTransform: "uppercase" }}>Dashboard</div>
-              <h1 style={{ margin: "12px 0 4px", fontSize: 32, fontWeight: 700, letterSpacing: "-.02em", color: "#fff" }}>{headline || "Welcome back."}</h1>
-              <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.78)" }}>
-                {sessions !== null
-                  ? `${running > 0 ? `${running} run${running !== 1 ? "s" : ""} active` : "No active runs"} · ${(sessions || []).filter(s => s.status === "done" && s.created_at && (Date.now() - new Date(s.created_at).getTime()) < 86400000).length} completed today`
-                  : "Loading…"}
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
-              <button
-                data-tour="dash-new-run"
-                onClick={() => router.push("/dashboard?new=1")}
-                style={{ background: "#fff", color: "#002EFF", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
-              >+ New run</button>
-              <button
-                onClick={load}
-                style={{ background: "rgba(255,255,255,.14)", color: "#fff", border: "1px solid rgba(255,255,255,.3)", borderRadius: 8, padding: "10px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
-              >Refresh</button>
-            </div>
-          </div>
-        </div>
+      <div style={{ flex: 1, overflowY: "auto", background: "var(--bg)", fontFamily: "var(--font-sans)" }}>
+        <PageHeader
+          title={headline || "Welcome back."}
+          subtitle={sessions !== null
+            ? `${running > 0 ? `${running} run${running !== 1 ? "s" : ""} active` : "No active runs"} · ${(sessions || []).filter(s => s.status === "done" && s.created_at && (Date.now() - new Date(s.created_at).getTime()) < 86400000).length} completed today`
+            : "Loading…"}
+          badge={stalled > 0 ? { label: `${stalled} stalled`, color: "amber" } : undefined}
+          stats={[
+            { label: "Active", value: String(running) },
+            { label: "Done today", value: String((sessions || []).filter(s => s.status === "done" && s.created_at && (Date.now() - new Date(s.created_at).getTime()) < 86400000).length) },
+            { label: "Credits", value: credits !== null ? credits.toLocaleString() : "—" },
+          ]}
+          actions={
+            <>
+              <HeaderPrimaryBtn label="+ New run" onClick={() => router.push("/dashboard?new=1")} />
+              <HeaderSecondaryBtn label="Refresh" onClick={() => { void load(); }} />
+            </>
+          }
+        />
 
         {toastErr && (
           <div style={{ background: "rgba(255,80,80,0.08)", borderBottom: "1px solid rgba(255,80,80,0.18)", padding: "6px 18px", display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "#ff6b6b" }}>
@@ -400,18 +342,10 @@ export default function DashboardView() {
 
               {(() => {
                 const active = regularSessions.find(s => s.status === "running" || s.status === "stalled") || regularSessions[0] || null;
-                const accentColor = "#7D8FFF";
-
                 if (!active) {
                   return (
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "40px 20px", gap: 14, flex: 1 }}>
-                      <div style={{ width: 44, height: 44, border: "1px solid rgba(255,255,255,.16)", borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", transform: "rotate(45deg)" }}>
-                        <div style={{ width: 13, height: 13, background: accentColor, borderRadius: 3 }} />
-                      </div>
-                      <div>
-                        <div style={{ fontSize: 16, fontWeight: 700 }}>No active goals</div>
-                        <div style={{ fontSize: 12.5, color: "#6f7b98", marginTop: 5 }}>Start a run and Astra will get to work.</div>
-                      </div>
+                      <EmptyState title="No active goals" hint="Start a run and Astra will get to work." />
                     </div>
                   );
                 }
@@ -426,7 +360,7 @@ export default function DashboardView() {
                 const cleanTitle = extractGoalTitle(active.goal || "Untitled run");
                 const isStalled = active.status === "stalled";
                 const isDone = active.status === "done";
-                const ringColor = isStalled ? "#FFFFA6" : accentColor;
+                const ringColor = isStalled ? "#FFFFA6" : "var(--accent)";
 
                 return (
                   <>
@@ -479,23 +413,18 @@ export default function DashboardView() {
               </div>
 
               {sessions === null ? (
-                <div style={{ color: "#6f7b98", fontSize: 13 }}>Loading…</div>
+                <div style={{ display: "grid", gap: 10 }}>
+                  <Skeleton height={16} width="30%" />
+                  <Skeleton height={48} />
+                  <Skeleton height={48} />
+                </div>
               ) : error ? (
                 <div style={{ textAlign: "center", padding: "20px 0" }}>
                   <div style={{ fontSize: 12, color: "#6f7b98", marginBottom: 10 }}>{error}</div>
                   <button style={{ padding: "8px 18px", fontSize: 12, fontWeight: 600, color: "#fff", background: "#002EFF", border: "none", cursor: "pointer", borderRadius: 8 }} onClick={load}>Try again</button>
                 </div>
               ) : !regularSessions.length ? (
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "40px 20px", gap: 14 }}>
-                  <div style={{ width: 44, height: 44, border: "1px solid rgba(255,255,255,.16)", borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", transform: "rotate(45deg)" }}>
-                    <div style={{ width: 13, height: 13, background: "#7D8FFF", borderRadius: 3 }} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 16, fontWeight: 700 }}>No runs yet</div>
-                    <div style={{ fontSize: 12.5, color: "#6f7b98", marginTop: 5 }}>Start your first run and Astra will get to work.</div>
-                  </div>
-                  <button onClick={() => router.push("/dashboard?new=1")} style={{ background: "#002EFF", color: "#fff", border: "none", borderRadius: 8, padding: "11px 22px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>Start first run →</button>
-                </div>
+                <EmptyState title="No runs yet" hint="Start your first run and Astra will get to work." cta={<button onClick={() => router.push("/dashboard?new=1")} className="btn pri">Start first run →</button>} />
               ) : (
                 <>
                   {/* 4-stat grid */}
@@ -543,20 +472,8 @@ export default function DashboardView() {
                         return { width: 8, height: 8, borderRadius: "50%", background: colors[status] || "#6f7b98", flexShrink: 0, display: "inline-block" };
                       };
 
-                      const chip = (status: string) => {
-                        const map: Record<string, { label: string; color: string; bg: string; border: string }> = {
-                          running: { label: "Running", color: "#7CFFC6", bg: "rgba(124,255,198,.08)", border: "rgba(124,255,198,.2)" },
-                          done: { label: "Done", color: "#8A93AD", bg: "transparent", border: "rgba(138,147,173,.2)" },
-                          stalled: { label: "Needs retry", color: "#FFFFA6", bg: "rgba(255,255,166,.06)", border: "rgba(255,255,166,.2)" },
-                          error: { label: "Error", color: "#FF6B6B", bg: "rgba(255,107,107,.06)", border: "rgba(255,107,107,.2)" },
-                          killed: { label: "Stopped", color: "#FF6B6B", bg: "rgba(255,107,107,.06)", border: "rgba(255,107,107,.2)" },
-                        };
-                        const c = map[status] || { label: status, color: "#8A93AD", bg: "transparent", border: "rgba(138,147,173,.2)" };
-                        return <span style={{ fontSize: 11, fontWeight: 600, color: c.color, background: c.bg, border: `1px solid ${c.border}`, padding: "3px 9px", borderRadius: 6, flexShrink: 0, whiteSpace: "nowrap" }}>{c.label}</span>;
-                      };
-
                       const meta = (s: SessionIndexEntry) => {
-                        const t = ago(s.created_at);
+                        const t = relativeTime(s.created_at);
                         if (s.status === "running") return `Started ${t}`;
                         if (s.status === "done") return `Completed ${t}`;
                         if (s.status === "stalled" || s.status === "error") return `Failed ${t} · retry available`;
@@ -592,7 +509,7 @@ export default function DashboardView() {
                               {s.kind === "scheduled" && (
                                 <span style={{ fontSize: 8, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.28)", padding: "2px 6px", letterSpacing: ".06em", textTransform: "uppercase", borderRadius: 4, flexShrink: 0, whiteSpace: "nowrap" }}>Auto</span>
                               )}
-                              {chip(s.status)}
+                              <StatusChip tone={s.status === "killed" ? "error" : (s.status as "running" | "done" | "error" | "stalled")} label={s.status === "killed" ? "Stopped" : undefined} />
                               <button
                                 title={pendingDel.has(s.session_id) ? "Click again to confirm" : "Delete"}
                                 disabled={deleting.has(s.session_id)}
@@ -636,65 +553,17 @@ export default function DashboardView() {
           {/* ── Copilot ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,.06)" }}>
             <div style={{ fontSize: 11, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase", paddingLeft: 2 }}>Copilot</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 11, background: "#0A0D17", border: "1px solid rgba(255,255,255,.1)", borderRadius: 16, padding: "7px 7px 7px 16px", boxShadow: "0 10px 26px -16px rgba(0,0,0,.6)" }}>
-              <img src="/logo.png" alt="" style={{ width: 17, height: 17, objectFit: "contain", opacity: 0.75, flexShrink: 0, cursor: "pointer" } as React.CSSProperties} onClick={() => setCopilotOpen(v => !v)} />
-              {copilotOpen && copilot.length > 0 && (
-                <div className="dash-copilot-thread" style={{ position: "absolute", bottom: "100%", left: 0, right: 0, marginBottom: 8 }}>
-                  {/* thread is shown inline below */}
-                </div>
-              )}
-              <input
-                ref={copilotInputRef}
-                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#EDF1FB", fontSize: 13.5, fontFamily: "var(--font-instrument), sans-serif" }}
-                placeholder="Ask Astra to start a run, draft copy, or find leads…"
-                disabled={copilotBusy}
-                onFocus={() => setCopilotOpen(true)}
-                onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void sendCopilot(); } }}
-              />
-              <button
-                disabled={copilotBusy}
-                onClick={() => { setCopilotOpen(true); void sendCopilot(); }}
-                style={{ width: 36, height: 36, borderRadius: 10, background: "#002EFF", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-              >
-                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 19V5M5 12l7-7 7 7" />
-                </svg>
-              </button>
-            </div>
-            {/* Copilot thread (below bar when open) */}
-            {copilotOpen && (
-              <div className="dash-copilot-thread">
-                {copilot.length === 0 && (
-                  <div className="dash-copilot-bubble">
-                    {copilotSession ? `Copilot attached to "${copilotTitle}". Ask anything about run state, approvals, or next steps.` : "Start a run to enable copilot context."}
-                  </div>
-                )}
-                {copilot.map((message, index) => (
-                  <div key={index} className={`dash-copilot-row ${message.role === "founder" ? "is-founder" : "is-astra"}`}>
-                    {message.role !== "founder" && <span className="dash-copilot-avatar">A</span>}
-                    <div className="dash-copilot-bubble">
-                      {message.content}
-                      {message.actions && message.actions.length > 0 && (
-                        <div className="dash-copilot-actions">
-                          {message.actions.map((action, ai) => (
-                            <div key={`${action.tool}-${ai}`} className={`dash-copilot-action is-${action.tone || "info"}`}>
-                              <div className="dash-copilot-action-label">{action.label}</div>
-                              {action.detail && <div className="dash-copilot-action-detail">{action.detail}</div>}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {copilotBusy && (
-                  <div className="dash-copilot-row is-astra">
-                    <span className="dash-copilot-avatar">A</span>
-                    <div className="dash-copilot-thinking"><span /><span /><span /></div>
-                  </div>
-                )}
-              </div>
-            )}
+            <CopilotDock
+              open={copilotOpen}
+              busy={copilotBusy}
+              messages={copilot}
+              inputRef={copilotInputRef}
+              placeholder="Ask Astra to start a run, draft copy, or find leads…"
+              emptyText={copilotSession ? `Copilot attached to "${copilotTitle}". Ask anything about run state, approvals, or next steps.` : "Start a run to enable copilot context."}
+              onToggle={() => setCopilotOpen((v) => !v)}
+              onFocus={() => setCopilotOpen(true)}
+              onSend={() => { setCopilotOpen(true); void sendCopilot(); }}
+            />
           </div>
 
         </div>

@@ -14,6 +14,9 @@ import {
 } from "@/lib/api";
 import { PdfEmbed } from "@/components/GoalWorkspace";
 import { useCompany } from "@/lib/company-context";
+import EmptyState from "@/components/EmptyState";
+import PageHeader from "@/components/PageHeader";
+import { formatDate, relativeTime } from "@/lib/format";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -36,20 +39,6 @@ type UnifiedItem =
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  const hrs = Math.floor(mins / 60);
-  const days = Math.floor(hrs / 24);
-  const weeks = Math.floor(days / 7);
-  if (mins < 2) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  if (hrs < 24) return `${hrs}h ago`;
-  if (days < 7) return `${days}d ago`;
-  if (weeks < 5) return `${weeks}w ago`;
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
 function getFileTab(file: LibraryFile): Exclude<TabKey, "all" | "templates"> {
   const name = file.filename.toLowerCase();
   const tag = (file.source_tag || "").toLowerCase();
@@ -62,14 +51,6 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  } catch {
-    return iso;
-  }
 }
 
 // ── Badges ─────────────────────────────────────────────────────────────────────
@@ -487,17 +468,24 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
         borderRight: hasDetail ? "1px solid rgba(255,255,255,.08)" : "none",
         height: "100%", overflow: "hidden",
       }}>
-        {/* Header */}
-        <div style={{ padding: "24px 30px 0", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-.01em", color: "var(--fg)" }}>Library</h1>
-          <button
-            className="btn"
-            style={{ fontSize: 12.5 }}
-            onClick={() => { setShowNewForm(true); setSelectedFile(null); setSelectedExample(null); }}
-          >
-            + New File
-          </button>
-        </div>
+        <PageHeader
+          title="Library"
+          subtitle="Context files, generated outputs, and reusable templates"
+          stats={[
+            { label: "Context", value: String(files.filter(f => !f.source_tag).length) },
+            { label: "Outputs", value: String(files.filter(f => f.source_tag).length) },
+            { label: "Canonical", value: String(files.filter(f => f.is_canonical).length) },
+          ]}
+          actions={
+            <button
+              className="btn"
+              style={{ fontSize: 12.5 }}
+              onClick={() => { setShowNewForm(true); setSelectedFile(null); setSelectedExample(null); }}
+            >
+              + New File
+            </button>
+          }
+        />
 
         {/* Search */}
         <div style={{ padding: "16px 30px 0", flexShrink: 0 }}>
@@ -553,19 +541,10 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
             <div style={{ fontSize: 12, color: "#f87171", textAlign: "center", paddingTop: 32, paddingInline: 30 }}>{filesError}</div>
           )}
           {!loadingFiles && !loadingExamples && !filesError && filteredItems.length === 0 && (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", padding: "48px 30px", gap: 10 }}>
-              <div style={{ fontSize: 32, marginBottom: 4 }}>◈</div>
-              <p style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)", margin: 0 }}>
-                {search ? "No results" : "Nothing here yet"}
-              </p>
-              <p style={{ fontSize: 13, color: "var(--fd)", margin: 0, maxWidth: 260, lineHeight: 1.6 }}>
-                {search
-                  ? `No items match "${search}"`
-                  : activeTab === "all"
-                    ? "Upload files or run a goal — everything Astra generates lands here."
-                    : `No ${activeTab.replace("-", " ")} yet.`}
-              </p>
-            </div>
+            <EmptyState
+              title={search ? "No results" : "Nothing here yet"}
+              hint={search ? `No items match "${search}"` : activeTab === "all" ? "Upload files or run a goal — everything Astra generates lands here." : `No ${activeTab.replace("-", " ")} yet.`}
+            />
           )}
           {filteredItems.map(item => {
             const isSelected = item.kind === "file"

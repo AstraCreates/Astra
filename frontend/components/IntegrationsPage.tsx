@@ -18,6 +18,7 @@ import {
   ConnectorSetupPlan,
   ConnectorValidationReport,
 } from "@/lib/api";
+import PageHeader from "@/components/PageHeader";
 
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -1464,15 +1465,11 @@ export default function SetupPage() {
 
   return (
     <>
-      <div style={{ padding: "22px 24px 16px", flexShrink: 0, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-0.01em" }}>Integrations</h1>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-3)" }}>Connect services once — agents use them everywhere</p>
-        </div>
-        {status && (
-          <span style={{ fontSize: 12, color: "var(--text-3)", alignSelf: "center" }}>{connectedCount} / {totalServices} connected</span>
-        )}
-      </div>
+      <PageHeader
+        title="Integrations"
+        subtitle="Connect services once — agents use them everywhere"
+        stats={status ? [{ label: "Connected", value: `${connectedCount}/${totalServices}` }] : undefined}
+      />
       <div style={{ width: "100%", maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32, padding: "24px 22px 48px", fontFamily: "var(--font-geist-sans)" }}>
 
       <div>

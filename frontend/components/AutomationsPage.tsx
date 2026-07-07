@@ -11,6 +11,11 @@ import {
   waitForAuthReady,
   type CustomAgent,
 } from "@/lib/api";
+import EmptyState from "@/components/EmptyState";
+import PageHeader, { HeaderPrimaryBtn, HeaderSecondaryBtn } from "@/components/PageHeader";
+import Skeleton from "@/components/Skeleton";
+import StatusChip from "@/components/StatusChip";
+import { formatDate } from "@/lib/format";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -30,20 +35,6 @@ type OverviewWorkflow = {
 
 // ── Status chip ───────────────────────────────────────────────────────────────
 type ChipTone = "active" | "paused" | "draft";
-function Chip({ tone }: { tone: ChipTone }) {
-  const styles: Record<ChipTone, { fg: string; bg: string; label: string }> = {
-    active: { fg: "#7d8fff", bg: "rgba(125,143,255,.12)", label: "Active" },
-    paused: { fg: "#FFFFA6", bg: "rgba(255,255,166,.08)", label: "Paused" },
-    draft:  { fg: "#c3cbe0", bg: "rgba(255,255,255,.06)", label: "Draft" },
-  };
-  const s = styles[tone];
-  return (
-    <span style={{
-      padding: "3px 9px", borderRadius: 20, fontSize: 10.5, fontWeight: 600,
-      background: s.bg, color: s.fg, whiteSpace: "nowrap", flexShrink: 0,
-    }}>{s.label}</span>
-  );
-}
 
 function agentTone(a: CustomAgent): ChipTone {
   if (!a.schedule) return "draft";
@@ -58,13 +49,6 @@ function agentMeta(a: CustomAgent): string {
     parts.push(`Runs every ${days === 1 ? "day" : `${days} days`}`);
   }
   return parts.join(" · ");
-}
-
-function formatDate(v?: string | null): string {
-  if (!v) return "";
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return "";
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(d);
 }
 
 // ── Flash ─────────────────────────────────────────────────────────────────────
@@ -230,11 +214,22 @@ export default function AutomationsPage() {
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", padding: "24px 30px", gap: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-.01em" }}>Automations</h1>
-        <button className="btn" onClick={load} style={{ fontSize: 12.5 }}>Refresh</button>
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", minHeight: "100%", gap: 20 }}>
+      <PageHeader
+        title="Automations"
+        subtitle="Custom agents and reusable workflows"
+        stats={[
+          { label: "Agents", value: String(agents.length) },
+          { label: "Workflows", value: String(allFlows.length) },
+        ]}
+        actions={
+          <>
+            <HeaderPrimaryBtn label="+ New agent" onClick={() => setShowNewAgent(true)} />
+            <HeaderSecondaryBtn label="Refresh" onClick={() => { void load(); }} />
+          </>
+        }
+      />
+      <div style={{ padding: "0 30px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
 
       {flash && <Flash msg={flash} onClose={() => setFlash(null)} />}
 
@@ -250,14 +245,14 @@ export default function AutomationsPage() {
             cursor: "pointer", textAlign: "left", color: "inherit", transition: "border-color .15s",
           }}
         >
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(125,143,255,.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7d8fff" strokeWidth="1.6">
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: "color-mix(in srgb, var(--accent) 12%, transparent)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.6">
               <path d="M12 2.5l1.9 4.6 4.6 1.9-4.6 1.9-1.9 4.6-1.9-4.6-4.6-1.9 4.6-1.9L12 2.5Z" />
               <circle cx="19" cy="19" r="2.2" />
             </svg>
           </div>
           <div style={{ fontSize: 14, fontWeight: 700 }}>Create a custom agent</div>
-          <div style={{ fontSize: 11.5, color: "#6f7b98" }}>Give it a goal and let it own the job end-to-end.</div>
+          <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>Give it a goal and let it own the job end-to-end.</div>
         </button>
 
         <button
@@ -270,19 +265,21 @@ export default function AutomationsPage() {
             cursor: "pointer", textAlign: "left", color: "inherit", transition: "border-color .15s",
           }}
         >
-          <div style={{ width: 32, height: 32, borderRadius: 9, background: "rgba(125,143,255,.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7d8fff" strokeWidth="1.8">
+          <div style={{ width: 32, height: 32, borderRadius: 9, background: "color-mix(in srgb, var(--accent) 12%, transparent)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8">
               <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />
             </svg>
           </div>
           <div style={{ fontSize: 14, fontWeight: 700 }}>Create a workflow automation</div>
-          <div style={{ fontSize: 11.5, color: "#6f7b98" }}>One action, on a schedule or a trigger.</div>
+          <div style={{ fontSize: 11.5, color: "var(--text-3)" }}>One action, on a schedule or a trigger.</div>
         </button>
       </div>
 
       {loading && (
-        <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
-          <div style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid rgba(255,255,255,.1)", borderTopColor: "#7d8fff", animation: "spin 0.7s linear infinite" }} />
+        <div style={{ display: "grid", gap: 10 }}>
+          <Skeleton height={64} />
+          <Skeleton height={64} />
+          <Skeleton height={64} />
         </div>
       )}
 
@@ -295,11 +292,7 @@ export default function AutomationsPage() {
             </div>
 
             {agents.length === 0 ? (
-              <div style={{ padding: "32px 20px", border: "1px dashed rgba(255,255,255,.1)", borderRadius: 12, background: "#0A0D17", textAlign: "center" }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 5 }}>No custom agents yet</div>
-                <div style={{ fontSize: 12, color: "#6f7b98", marginBottom: 14 }}>Build an agent that works continuously on a goal.</div>
-                <button className="btn pri" onClick={() => setShowNewAgent(true)}>+ New agent</button>
-              </div>
+              <EmptyState title="No custom agents yet" hint="Build an agent that works continuously on a goal." cta={<button className="btn pri" onClick={() => setShowNewAgent(true)}>+ New agent</button>} />
             ) : (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
                 {agents.map(a => (
@@ -309,7 +302,7 @@ export default function AutomationsPage() {
                   }}>
                     <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                       <span style={{ fontSize: 12.5, fontWeight: 600, lineHeight: 1.3 }}>{a.name}</span>
-                      <Chip tone={agentTone(a)} />
+                      <StatusChip tone={agentTone(a)} />
                     </div>
                     <div style={{ fontSize: 10.5, color: "#6f7b98", flex: 1 }}>{agentMeta(a)}</div>
                     <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
@@ -352,11 +345,7 @@ export default function AutomationsPage() {
             </div>
 
             {allFlows.length === 0 ? (
-              <div style={{ padding: "32px 20px", border: "1px dashed rgba(255,255,255,.1)", borderRadius: 12, background: "#0A0D17", textAlign: "center" }}>
-                <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 5 }}>No workflows yet</div>
-                <div style={{ fontSize: 12, color: "#6f7b98", marginBottom: 14 }}>Scheduled actions and event-triggered flows live here.</div>
-                <button className="btn pri" onClick={() => router.push("/automations/canvas/new")}>+ New workflow</button>
-              </div>
+              <EmptyState title="No workflows yet" hint="Scheduled actions and event-triggered flows live here." cta={<button className="btn pri" onClick={() => router.push("/automations/canvas/new")}>+ New workflow</button>} />
             ) : (
               <div style={{ background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)", borderRadius: 11, padding: "6px 14px" }}>
                 {allFlows.map((f, i) => (
@@ -368,7 +357,7 @@ export default function AutomationsPage() {
                       <div style={{ fontSize: 12.5, fontWeight: 600 }}>{f.name}</div>
                       {f.meta && <div style={{ fontSize: 10.5, color: "#6f7b98", marginTop: 1 }}>{f.meta}</div>}
                     </div>
-                    <Chip tone={f.tone} />
+                    <StatusChip tone={f.tone} />
                     {f.isCanvas && (
                       <button className="btn sm" onClick={() => router.push(`/automations/canvas/${f.id}`)} style={{ fontSize: 11 }}>Open</button>
                     )}
@@ -396,7 +385,7 @@ export default function AutomationsPage() {
         />
       )}
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
     </div>
   );
 }
