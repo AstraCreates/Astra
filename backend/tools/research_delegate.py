@@ -1,4 +1,4 @@
-"""delegate_research_task — deep research for technical agents via perplexity/sonar-pro."""
+"""delegate_research_task — technical research via ling-backed synthesis."""
 from __future__ import annotations
 
 from typing import Any
@@ -12,16 +12,16 @@ async def delegate_research_task(
 ) -> dict[str, Any]:
     """Spawn a deep-research call to look up technical information for a build.
 
-    Uses perplexity/sonar-pro (built-in web search) — no manual
-    search/fetch orchestration needed. Returns findings with source citations.
+    Uses the shared lightweight ling research model for synthesis and returns
+    findings in the same contract technical agents already consume.
 
     Args:
         target:    Topic to research, e.g. "Supabase RLS with Next.js App Router"
         questions: Specific questions, e.g. ["correct SSR cookie pattern", "middleware example"]
         session_id/founder_id: auto-injected by agent runtime — do not pass.
     """
-    import httpx
-    from backend.core.key_rotator import get_openrouter_key
+    from backend.core.llm_cache import openrouter_extra_body
+    from backend.core.llm_client import get_async_or_client
     from backend.config import settings
 
     prompt = (
@@ -31,25 +31,18 @@ async def delegate_research_task(
         + "\n".join(f"- {q}" for q in questions)
     )
 
-    key = get_openrouter_key() or settings.agent_model_api_key
-    async with httpx.AsyncClient(timeout=300) as client:
-        r = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-            json={
-                "model": getattr(settings, "research_model", "") or "perplexity/sonar",
-                "messages": [{"role": "user", "content": prompt}],
-                "provider": {"allow_fallbacks": False},
-                "usage": {"include": True},
-            },
-        )
-    data = r.json()
-    if "error" in data:
-        return {"error": data["error"], "target": target}
-    msg = ((data.get("choices") or [{}])[0]).get("message") or {}
+    model = getattr(settings, "or_light_model", "") or "inclusionai/ling-2.6-flash"
+    client = get_async_or_client(settings.openrouter_base_url, timeout=300.0)
+    resp = await client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        extra_body=openrouter_extra_body(model),
+        timeout=300.0,
+    )
+    msg = ((getattr(resp, "choices", None) or [{}])[0]).message if getattr(resp, "choices", None) else None
     return {
         "target": target,
-        "findings": msg.get("content") or "",
-        "annotations": msg.get("annotations") or [],
-        "usage": data.get("usage") or {},
+        "findings": getattr(msg, "content", "") or "",
+        "annotations": getattr(msg, "annotations", None) or [],
+        "usage": getattr(resp, "usage", None) or {},
     }

@@ -135,3 +135,119 @@ def test_run_research_pipeline_reports_coverage_gaps(monkeypatch):
     assert "domain_diversity_below_4" in result["coverage"]["gaps"]
     assert "query_coverage_below_5" in result["coverage"]["gaps"]
     assert "Evidence is thin" in result["next_step"]
+
+
+def test_sonar_research_preserves_contract_with_recursive_synthesis(monkeypatch):
+    calls = []
+
+    def fake_batch_search(queries, max_results_each):
+        calls.append(list(queries))
+        return {
+            "queries_run": len(queries),
+            "results_by_query": {
+                query: {
+                    "total": 1,
+                    "formatted": f"Query: {query}\n### Source\nURL: https://example.com/{query.replace(' ', '-')}\nFact for {query}",
+                    "sources": [{"title": f"Source for {query}", "url": f"https://example.com/{query.replace(' ', '-')}"}],
+                }
+                for query in queries
+            },
+            "sources": [
+                {"title": f"Source {index}", "url": f"https://example.com/{query.replace(' ', '-')}"}
+                for index, query in enumerate(queries, start=1)
+            ],
+            "combined_formatted": "\n".join(queries),
+        }
+
+    synth_outputs = iter([
+        {
+            "learnings": ["Market is growing 18% CAGR", "Competitor pricing starts at $99/mo"],
+            "directions": ["Need better evidence on enterprise pricing", "Find category leader market share"],
+            "summary": "Round one findings",
+        },
+        {"queries": ["enterprise pricing custom quote SaaS", "category leader market share 2025"]},
+        {
+            "learnings": ["Enterprise plans are custom quote", "Leader has 12% market share"],
+            "directions": [],
+            "summary": "Round two findings",
+        },
+        {"answer": "Answer one", "support": ["a"]},
+        {"answer": "Answer two", "support": ["b"]},
+    ])
+
+    def fake_research_llm_json(prompt, max_tokens=900):
+        return next(synth_outputs)
+
+    monkeypatch.setattr(browser_research, "_crw_batch_search", fake_batch_search)
+    monkeypatch.setattr(browser_research, "_research_llm_json", fake_research_llm_json)
+
+    result = browser_research.sonar_research(["AI sales copilot market size", "AI sales copilot competitor pricing"])
+
+    assert len(calls) == 2
+    assert result["queries_run"] == 2
+    assert set(result["results_by_query"]) == {
+        "AI sales copilot market size",
+        "AI sales copilot competitor pricing",
+    }
+    for value in result["results_by_query"].values():
+        assert set(value) == {"answer", "citations", "total"}
+        assert isinstance(value["answer"], str)
+        assert isinstance(value["citations"], list)
+        assert isinstance(value["total"], int)
+    assert result["combined_formatted"].count("## ") == 2
+    assert result["sources"]
+
+
+def test_crw_search_and_fetch_parses_response(monkeypatch):
+    class FakeResponse:
+        def json(self):
+            return {
+                "success": True,
+                "data": [
+                    {"url": "https://example.com/report?utm_source=x", "title": "Report", "snippet": "A report.", "markdown": "# Report\nReal content here."},
+                    {"url": "https://example.com/no-content", "title": "No Content", "snippet": "Just a blurb."},
+                ],
+            }
+
+    monkeypatch.setattr("httpx.post", lambda url, json, timeout: FakeResponse())
+
+    result = browser_research._crw_search_and_fetch("test query", max_results=5)
+
+    assert result["query"] == "test query"
+    assert result["total"] == 2
+    # tracking params stripped by _normalize_url
+    assert result["sources"][0]["url"] == "https://example.com/report"
+    assert "Real content here" in result["formatted"]
+    assert "[snippet only] Just a blurb." in result["formatted"]
+
+
+def test_crw_search_and_fetch_handles_request_failure(monkeypatch):
+    def raise_error(*args, **kwargs):
+        raise ConnectionError("crw unreachable")
+
+    monkeypatch.setattr("httpx.post", raise_error)
+
+    result = browser_research._crw_search_and_fetch("test query")
+
+    assert result["total"] == 0
+    assert result["results"] == []
+    assert "error" in result
+
+
+def test_crw_batch_search_aggregates_across_queries(monkeypatch):
+    def fake_crw_search(query, max_results):
+        return {
+            "query": query,
+            "results": [],
+            "formatted": f"formatted {query}",
+            "total": 1,
+            "sources": [{"title": query, "url": f"https://example.com/{query.replace(' ', '-')}"}],
+        }
+
+    monkeypatch.setattr(browser_research, "_crw_search_and_fetch", fake_crw_search)
+
+    result = browser_research._crw_batch_search(["alpha", "beta"], max_results_each=5)
+
+    assert result["queries_run"] == 2
+    assert set(result["results_by_query"]) == {"alpha", "beta"}
+    assert len(result["sources"]) == 2

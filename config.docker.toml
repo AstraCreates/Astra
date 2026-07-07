@@ -1,0 +1,50 @@
+# crw docker config — layered on top of its built-in config.default.toml.
+# Copied from the upstream reference (us/crw) docker-compose.yml, trimmed.
+# Renderer failover order: HTTP -> LightPanda -> Chrome (chrome not deployed
+# here — text-research use case doesn't need the heavy SPA/anti-bot tier).
+
+[request]
+deadline_ms_default = 15000
+
+[server]
+rate_limit_rps = 0
+
+[renderer]
+http_timeout_ms = 4000
+lightpanda_timeout_ms = 2500
+chrome_timeout_ms = 30000
+chrome_intercept_resources = true
+chrome_nav_budget_ms = 12000
+chrome_backend = "vanilla"
+chrome_context_pool_enabled = true
+
+[renderer.lightpanda]
+ws_url = "ws://lightpanda:9222/"
+
+[renderer.chrome]
+ws_url = "ws://chrome:9222/"
+
+[renderer.chrome_pool]
+size = 4
+
+# /v1/search backed by the SearXNG sidecar, reachable as searxng:8080 on the
+# default bridge network.
+[search]
+searxng_url = "http://searxng:8080"
+# Proven quality wins from upstream's own benchmarks — see their
+# config.docker.toml for the underlying eval numbers.
+query_expand = true
+query_expand_variants = 3
+answer_calibrated = true
+
+[document]
+enabled = true
+max_pages = 0
+attempt_scanned = false
+max_upload_bytes = 52428800
+upload_concurrency = 2
+max_concurrent_parses = 2
+parse_timeout_ms = 30000
+max_decompressed_bytes = 104857600
+sandbox = true
+sandbox_memory_bytes = 536870912

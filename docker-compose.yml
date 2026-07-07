@@ -12,6 +12,75 @@ services:
       dockerfile: Dockerfile.headroom
     restart: unless-stopped
 
+  # Self-hosted Firecrawl-alternative search+scrape (crw) backing the
+  # recursive research replacement for Perplexity Sonar. Published image,
+  # not built locally — single static binary, ~50MB idle.
+  crw:
+    image: ghcr.io/us/crw:latest
+    restart: unless-stopped
+    depends_on:
+      searxng:
+        condition: service_healthy
+      lightpanda:
+        condition: service_started
+    environment:
+      - RUST_LOG=info
+      - CRW_CONFIG=config.docker
+    volumes:
+      - ./config.docker.toml:/app/config.docker.toml:ro
+    mem_limit: 2g
+    memswap_limit: 2g
+    pids_limit: 512
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # Meta-search backend for crw's /v1/search. Not published to the host —
+  # only crw talks to it, over the compose bridge network.
+  searxng:
+    image: searxng/searxng:2026.5.9-0cba32c15
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    memswap_limit: 512m
+    pids_limit: 256
+    environment:
+      - SEARXNG_BASE_URL=http://searxng:8080/
+      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY:-change-me-with-openssl-rand-hex-32-please}
+    volumes:
+      - ./config/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    tmpfs:
+      - /tmp:size=64m
+      - /var/cache/searxng:size=128m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # Lightweight JS renderer for crw (~64MB) — handles most static-JS sites
+  # without needing full Chromium.
+  lightpanda:
+    image: lightpanda/browser:latest
+    restart: unless-stopped
+    mem_limit: 1g
+    memswap_limit: 1g
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9222"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
   backend:
     build:
       context: .
@@ -28,11 +97,13 @@ services:
       - PLANNER_MODEL_BASE_URL=http://headroom:8787/v1
       - CHAT_MODEL_BASE_URL=http://headroom:8787/v1
       - LIGHT_MODEL_BASE_URL=http://headroom:8787/v1
+      - CRW_BASE_URL=http://crw:3000
       - HIGHOUTPUT_MODEL_BASE_URL=http://headroom:8787/v1
       - ASTRA_COMPRESSION_THRESHOLD=${ASTRA_COMPRESSION_THRESHOLD:-64000}
     depends_on:
       - redis
       - headroom
+      - crw
     ports:
       - "127.0.0.1:8000:8000"
       - "4000-4009:4000-4009"  # local MVP preview servers (Vercel fallback) — intentionally public, see deploy/nginx.conf

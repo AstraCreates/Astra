@@ -6,7 +6,9 @@ No hardcoded sources: agent discovers URLs via search then reads them directly.
 import logging
 import re
 import sys
+import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from backend.tools.url_safety import validate_url
@@ -43,6 +45,9 @@ _SEARCH_CACHE_MAX = 256
 _FETCH_CACHE: dict[str, tuple[float, dict]] = {}
 _FETCH_CACHE_TTL = 600.0  # 10 min
 _FETCH_CACHE_MAX = 512
+
+_RECURSIVE_RESEARCH_ROUNDS = 2
+_RECURSIVE_RESEARCH_MAX_FOLLOWUPS = 4
 
 
 def _robust_search(query: str, max_results: int = 12) -> list[dict]:
@@ -468,12 +473,224 @@ def research_papers(query: str, max_results: int = 5) -> dict:
     return search_and_fetch(paper_query, max_results=max_results)
 
 
-def sonar_research(queries=None) -> dict:
-    """Run queries via Perplexity sonar-pro; each returns synthesized answer with citations."""
-    if not queries:
-        return {"error": "queries required — pass a list of research question strings"}
-    queries = list(queries)[:12]
+def _parse_json_object(text: str) -> dict:
+    text = (text or "").strip()
+    if not text:
+        return {}
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except Exception:
+            return {}
+    return {}
 
+
+def _research_llm_json(prompt: str, max_tokens: int = 900) -> dict:
+    from backend.config import settings
+    from backend.core.llm_cache import openrouter_extra_body
+    from backend.core.llm_client import get_or_client
+
+    model = getattr(settings, "or_light_model", "") or "inclusionai/ling-2.6-flash"
+    client = get_or_client(settings.openrouter_base_url, timeout=120.0)
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt + "\n\nRespond with ONLY a single valid JSON object. No prose, no markdown fences."}],
+        max_tokens=max_tokens,
+        temperature=0.2,
+        extra_body=openrouter_extra_body(model),
+        timeout=120.0,
+    )
+    content = ((resp.choices[0].message.content if getattr(resp, "choices", None) else "") or "").strip()
+    return _parse_json_object(content)
+
+
+def _format_batch_answer(search_result: dict, query: str) -> str:
+    formatted = (search_result.get("formatted") or "").strip()
+    if formatted:
+        return formatted[:4000]
+    snippets = []
+    for source in (search_result.get("sources") or [])[:6]:
+        title = source.get("title") or source.get("url") or ""
+        url = source.get("url") or ""
+        snippets.append(f"- {title} | {url}")
+    return f"Query: {query}\n" + "\n".join(snippets)
+
+
+def _synthesize_research_round(queries: list[str], batch_result: dict, prior_learnings: Optional[list[str]] = None) -> dict:
+    evidence_blocks = []
+    for query in queries:
+        result = (batch_result.get("results_by_query") or {}).get(query) or {}
+        evidence_blocks.append(f"## QUERY: {query}\n{_format_batch_answer(result, query)}")
+    prompt = (
+        "You are synthesizing web research results.\n"
+        "Extract concrete learnings and identify the highest-value follow-up research directions.\n"
+        "Use only what is supported by the evidence blocks.\n\n"
+        f"Prior learnings:\n{chr(10).join(f'- {item}' for item in (prior_learnings or [])) or '- none'}\n\n"
+        "Evidence blocks:\n"
+        + "\n\n".join(evidence_blocks)
+        + "\n\nReturn JSON with this shape:\n"
+        '{"learnings":["fact with number/company/date"],"directions":["specific unresolved question"],"summary":"short synthesis"}'
+    )
+    parsed = _research_llm_json(prompt, max_tokens=1100)
+    learnings = [str(item).strip() for item in (parsed.get("learnings") or []) if str(item).strip()]
+    directions = [str(item).strip() for item in (parsed.get("directions") or []) if str(item).strip()]
+    return {
+        "learnings": learnings[:12],
+        "directions": directions[:_RECURSIVE_RESEARCH_MAX_FOLLOWUPS],
+        "summary": str(parsed.get("summary") or "").strip(),
+    }
+
+
+def _build_followup_queries(directions: list[str], original_queries: list[str]) -> list[str]:
+    if not directions:
+        return []
+    prompt = (
+        "Turn research gaps into targeted web search queries.\n"
+        f"Original queries:\n{chr(10).join(f'- {q}' for q in original_queries)}\n\n"
+        f"Directions:\n{chr(10).join(f'- {d}' for d in directions)}\n\n"
+        "Return JSON as {\"queries\": [\"...\"]}. Make the queries specific and source-seeking."
+    )
+    parsed = _research_llm_json(prompt, max_tokens=700)
+    return _dedupe_search_queries(parsed.get("queries") or [], limit=_RECURSIVE_RESEARCH_MAX_FOLLOWUPS)
+
+
+def _finalize_recursive_research(original_queries: list[str], aggregated_results: dict, learnings: list[str]) -> dict:
+    results_by_query = {}
+    combined = []
+    all_sources = []
+    seen_sources = set()
+
+    for query in original_queries:
+        result = aggregated_results.get(query) or {"query": query, "results": [], "formatted": "", "total": 0, "sources": []}
+        answer_prompt = (
+            "Answer the research question using only the provided evidence.\n"
+            f"Question: {query}\n\n"
+            f"Shared learnings:\n{chr(10).join(f'- {item}' for item in learnings) or '- none'}\n\n"
+            f"Evidence:\n{_format_batch_answer(result, query)}\n\n"
+            'Return JSON as {"answer":"concise synthesized answer","support":["key support point"]}.'
+        )
+        parsed = _research_llm_json(answer_prompt, max_tokens=900)
+        answer = str(parsed.get("answer") or "").strip()
+        citations = []
+        for source in result.get("sources") or []:
+            url = _normalize_url(source.get("url", ""))
+            if url and url not in citations:
+                citations.append(url)
+            if url and url not in seen_sources:
+                seen_sources.add(url)
+                all_sources.append({"title": source.get("title", ""), "url": url})
+        results_by_query[query] = {
+            "answer": answer,
+            "citations": citations,
+            "total": len(citations),
+        }
+        combined.append(f"## {query}\n{answer}")
+
+    return {
+        "queries_run": len(original_queries),
+        "results_by_query": results_by_query,
+        "combined_formatted": "\n\n".join(combined),
+        "sources": all_sources,
+    }
+
+
+def _crw_search_and_fetch(query: str, max_results: int = 8) -> dict:
+    """Search + scrape one query via the self-hosted crw instance (single call —
+    scrapeOptions does search and scrape together, no separate fetch round-trip).
+    Returns the same {query, results, formatted, total, sources} shape
+    search_and_fetch already uses, so callers don't need to branch on backend."""
+    import httpx as _httpx
+    from backend.config import settings as _settings
+
+    base_url = (getattr(_settings, "crw_base_url", "") or "http://crw:3000").rstrip("/")
+    try:
+        r = _httpx.post(
+            f"{base_url}/v1/search",
+            json={
+                "query": query,
+                "limit": max(1, min(max_results, 20)),
+                "scrapeOptions": {"formats": ["markdown"], "onlyMainContent": True},
+            },
+            timeout=30,
+        )
+        data = r.json()
+    except Exception as exc:
+        return {"query": query, "results": [], "formatted": "", "total": 0, "sources": [], "error": str(exc)}
+
+    if not data.get("success"):
+        return {"query": query, "results": [], "formatted": "", "total": 0, "sources": [], "error": "crw_search_failed"}
+
+    items = data.get("data") or []
+    results, sources, blocks = [], [], []
+    for item in items:
+        url = _normalize_url(item.get("url", ""))
+        title = item.get("title") or url
+        content = (item.get("markdown") or "").strip()
+        snippet = item.get("snippet") or item.get("description") or ""
+        results.append({"url": url, "title": title, "snippet": snippet, "content": content})
+        if url:
+            sources.append({"title": title, "url": url})
+        block = f"### {title}\nURL: {url}\n"
+        block += content[:8000] if content else f"[snippet only] {snippet}"
+        blocks.append(block)
+
+    return {
+        "query": query,
+        "results": results,
+        "formatted": f"Query: {query}\n" + "\n\n".join(blocks),
+        "total": len(results),
+        "sources": sources,
+    }
+
+
+def _crw_batch_search(queries=None, max_results_each: int = 8) -> dict:
+    """Run search+scrape for several queries against crw in parallel — the
+    same output contract as batch_search (DDGS-backed), so the recursive
+    sonar_research loop can call either interchangeably."""
+    if not queries:
+        return {"queries_run": 0, "results_by_query": {}, "combined_formatted": "", "sources": []}
+    queries = _dedupe_search_queries(list(queries), limit=12)
+
+    results_by_query: dict = {}
+    with ThreadPoolExecutor(max_workers=min(len(queries), 6)) as ex:
+        futures = {ex.submit(_crw_search_and_fetch, q, max_results_each): q for q in queries}
+        try:
+            for fut in as_completed(futures, timeout=60):
+                q = futures[fut]
+                try:
+                    results_by_query[q] = fut.result()
+                except Exception as e:
+                    results_by_query[q] = {"query": q, "results": [], "formatted": "", "total": 0, "sources": [], "error": str(e)}
+        except TimeoutError:
+            for fut, q in futures.items():
+                if q not in results_by_query:
+                    fut.cancel()
+                    results_by_query[q] = {"query": q, "results": [], "formatted": "", "total": 0, "sources": [], "error": "crw_search_timeout"}
+
+    combined, all_sources, seen = [], [], set()
+    for q, r in results_by_query.items():
+        combined.append(f"\n\n## QUERY: {q}\n{r.get('formatted', '')[:8000]}")
+        for source in r.get("sources", []):
+            url = _normalize_url(source.get("url", ""))
+            if url and url not in seen:
+                seen.add(url)
+                all_sources.append({**source, "url": url})
+
+    return {
+        "queries_run": len(queries),
+        "results_by_query": {q: {"total": r.get("total", 0), "formatted": r.get("formatted", "")[:8000], "sources": r.get("sources", [])} for q, r in results_by_query.items()},
+        "combined_formatted": "\n".join(combined),
+        "sources": all_sources[:50],
+    }
+
+
+def _legacy_sonar_research(queries: list[str]) -> dict:
     import httpx as _httpx
     from backend.config import settings as _settings
     from backend.core.key_rotator import get_openrouter_key as _get_key
@@ -534,6 +751,58 @@ def sonar_research(queries=None) -> dict:
     }
 
 
+def sonar_research(queries=None) -> dict:
+    """Run recursive crw (self-hosted search+scrape) + ling web research, preserving the existing output contract."""
+    if not queries:
+        return {"error": "queries required — pass a list of research question strings"}
+    queries = _dedupe_search_queries(list(queries), limit=12)
+    if not queries:
+        return {"error": "queries required — pass a list of research question strings"}
+
+    import os
+
+    if os.environ.get("ASTRA_RESEARCH_USE_LEGACY_SONAR", "").lower() in {"1", "true", "yes"}:
+        return _legacy_sonar_research(queries)
+
+    aggregated_results: dict[str, dict] = {}
+    learnings: list[str] = []
+    round_queries = list(queries)
+
+    for round_index in range(_RECURSIVE_RESEARCH_ROUNDS):
+        if not round_queries:
+            break
+        search = _crw_batch_search(round_queries, max_results_each=8)
+        batch_results = search.get("results_by_query") or {}
+        for query, result in batch_results.items():
+            existing = aggregated_results.get(query)
+            if not existing:
+                aggregated_results[query] = {
+                    "query": query,
+                    "formatted": result.get("formatted", ""),
+                    "total": result.get("total", 0),
+                    "sources": [],
+                }
+            merged = aggregated_results[query]
+            merged["formatted"] = (merged.get("formatted") or "") + ("\n\n" if merged.get("formatted") else "") + (result.get("formatted") or "")
+            merged["total"] = max(int(merged.get("total") or 0), int(result.get("total") or 0))
+        for query, result in batch_results.items():
+            bucket = aggregated_results.setdefault(query, {"query": query, "formatted": "", "total": 0, "sources": []})
+            for source in result.get("sources") or []:
+                url = _normalize_url(source.get("url", ""))
+                if url and not any(_normalize_url(item.get("url", "")) == url for item in bucket["sources"]):
+                    bucket["sources"].append({**source, "url": url})
+
+        synthesis = _synthesize_research_round(round_queries, search, prior_learnings=learnings)
+        for item in synthesis.get("learnings", []):
+            if item not in learnings:
+                learnings.append(item)
+        if round_index >= _RECURSIVE_RESEARCH_ROUNDS - 1:
+            break
+        round_queries = _build_followup_queries(synthesis.get("directions", []), queries)
+
+    return _finalize_recursive_research(queries, aggregated_results, learnings)
+
+
 def batch_search(queries=None, max_results_each: int = 8) -> dict:
     """Run search queries in parallel and return combined results."""
     if not queries:
@@ -572,17 +841,26 @@ def batch_search(queries=None, max_results_each: int = 8) -> dict:
     combined = []
     all_sources = []
     seen_sources = set()
+    compact_results = {}
     for q, r in results_by_query.items():
         combined.append(f"\n\n## QUERY: {q}\n{r.get('formatted', '')[:3000]}")
+        per_query_sources = []
         for source in r.get("sources", []):
             url = _normalize_url(source.get("url", ""))
+            if url:
+                per_query_sources.append({**source, "url": url})
             if url and url not in seen_sources:
                 seen_sources.add(url)
                 all_sources.append({**source, "url": url})
+        compact_results[q] = {
+            "total": r.get("total", 0),
+            "formatted": r.get("formatted", "")[:8000],
+            "sources": per_query_sources,
+        }
 
     return {
         "queries_run": len(queries),
-        "results_by_query": {q: {"total": r.get("total", 0), "formatted": r.get("formatted", "")[:8000]} for q, r in results_by_query.items()},
+        "results_by_query": compact_results,
         "combined_formatted": "\n".join(combined),
         "sources": all_sources[:50],
     }

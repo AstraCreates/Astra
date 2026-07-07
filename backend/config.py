@@ -98,6 +98,10 @@ class Settings(BaseSettings):
     # High-output model — DeepSeek Flash (65k max output vs qwen3-235b's 16k ceiling)
     highoutput_model_base_url: str = "https://openrouter.ai/api/v1"
     highoutput_model_name: str = "deepseek/deepseek-v4-flash"
+    # Self-hosted crw (Firecrawl-alternative search+scrape) backing the
+    # recursive research replacement for Perplexity Sonar. Single call does
+    # search + scrape via scrapeOptions — see backend/tools/browser_research.py.
+    crw_base_url: str = "http://crw:3000"
     vertex_project: str = ""
     vertex_location: str = "us-central1"
 

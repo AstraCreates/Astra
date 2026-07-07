@@ -1,0 +1,30 @@
+use_default_settings: true
+
+general:
+  instance_name: "crw-search"
+  privacypolicy_url: false
+  contact_url: false
+  donation_url: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "auto"
+  # JSON format must be explicitly enabled — SearXNG returns 403 on
+  # ?format=json otherwise. html kept so /search stays usable for debugging.
+  formats:
+    - html
+    - json
+
+server:
+  # Overridden at container startup by the SEARXNG_SECRET_KEY env var
+  # (upstream image templates it in) — this literal is only a dev fallback.
+  secret_key: "change-me-with-openssl-rand-hex-32-please"
+  bind_address: "0.0.0.0"
+  port: 8080
+  # Rate limiting handled by crw's own middleware — SearXNG's limiter
+  # needs Valkey/Redis, so it stays off to drop that dependency.
+  limiter: false
+  public_instance: false
+  image_proxy: false
+  method: "GET"
