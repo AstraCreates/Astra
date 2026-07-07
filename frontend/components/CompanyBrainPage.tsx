@@ -760,35 +760,61 @@ export default function CompanyBrainPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
 
-      {/* ── slim blue header: title + tabs in one block ── */}
-      <div style={{ flexShrink: 0, background: "#001AFF", position: "sticky", top: 0, zIndex: 10 }}>
-        <div style={{ padding: "18px 24px 0", display: "flex", alignItems: "baseline", gap: 12 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 600, color: "#fff", letterSpacing: "-0.02em", margin: 0, lineHeight: 1.2 }}>
-            {activeCompany?.name || "Company"} Brain
-          </h1>
-          <span style={{ fontSize: 12, color: "rgba(255,255,255,0.60)" }}>
-            {records.length} records · {connected} sources
-          </span>
+      {/* ── header: title + subtitle + actions + tabs ── */}
+      <div style={{ flexShrink: 0, borderBottom: "1px solid var(--border)", position: "sticky", top: 0, zIndex: 10, background: "var(--bg)" }}>
+        <div style={{ padding: "20px 24px 0", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.01em", margin: 0, lineHeight: 1.2 }}>
+              Company Brain
+            </h1>
+            <p style={{ margin: "3px 0 0", fontSize: 13, color: "var(--text-3)" }}>
+              Ask anything, or browse what Astra knows below.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexShrink: 0, paddingTop: 2 }}>
+            <button
+              type="button"
+              onClick={() => setTab("map")}
+              style={{
+                fontSize: 12, fontWeight: 500, padding: "7px 14px",
+                border: "1px solid var(--border)", background: "transparent",
+                color: "var(--text-2)", borderRadius: 8, cursor: "pointer",
+              }}
+            >
+              View knowledge map
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTab("knowledge"); setPinOpen(true); }}
+              style={{
+                fontSize: 12, fontWeight: 600, padding: "7px 14px",
+                border: "none", background: "#002EFF",
+                color: "#fff", borderRadius: 8, cursor: "pointer",
+              }}
+            >
+              + Add knowledge
+            </button>
+          </div>
         </div>
-        <div style={{ padding: "10px 18px 0", display: "flex", gap: 2 }}>
+        <div style={{ padding: "8px 18px 0", display: "flex", gap: 2 }}>
           {TABS.map(t => (
             <button
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
               style={{
-                padding: "9px 14px 11px", fontSize: 13,
+                padding: "8px 14px 10px", fontSize: 13,
                 fontWeight: tab === t.key ? 600 : 450,
-                color: tab === t.key ? "#fff" : "rgba(255,255,255,0.60)",
+                color: tab === t.key ? "var(--text)" : "var(--text-3)",
                 background: "transparent", border: "none", cursor: "pointer",
-                borderBottom: tab === t.key ? "2px solid #fff" : "2px solid transparent",
+                borderBottom: tab === t.key ? "2px solid var(--accent)" : "2px solid transparent",
                 display: "flex", alignItems: "center", gap: 6,
                 transition: "color .14s",
               }}
             >
               {t.label}
               {t.key === "settings" && openProposals.length > 0 && (
-                <span style={{ fontSize: 9, fontWeight: 700, color: "#001AFF", background: "#FFCB50", borderRadius: 999, padding: "1px 6px" }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: "#fff", background: "#d97706", borderRadius: 999, padding: "1px 6px" }}>
                   {openProposals.length}
                 </span>
               )}
@@ -824,29 +850,38 @@ export default function CompanyBrainPage() {
         {/* ━━━ ASK ━━━ */}
         {tab === "ask" && (
           <div style={{ maxWidth: 720, margin: "0 auto", display: "grid", gap: 20 }}>
-            <div style={{ textAlign: "center", marginTop: 18 }}>
-              <div style={{ fontSize: 26, fontWeight: 600, color: "var(--fg)", letterSpacing: "-0.02em" }}>
-                Ask your company anything
-              </div>
-              <div style={{ fontSize: 13, color: "var(--fm)", marginTop: 6 }}>
-                Answers come from your synced tools and pinned notes, with sources cited.
-              </div>
+            <div style={{ marginTop: 28 }}>
+              <form onSubmit={e => ask(undefined, e)} style={{ position: "relative" }}>
+                <input
+                  className="f-input"
+                  value={askQuestion}
+                  onChange={e => setAskQuestion(e.target.value)}
+                  placeholder="What should I do next?"
+                  style={{
+                    fontSize: 15, padding: "16px 56px 16px 20px",
+                    borderRadius: 14, width: "100%", boxSizing: "border-box",
+                    border: "1px solid var(--border)",
+                  }}
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  disabled={asking || !askQuestion.trim()}
+                  style={{
+                    position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                    width: 34, height: 34, borderRadius: "50%",
+                    background: askQuestion.trim() ? "#002EFF" : "var(--bg-sunken)",
+                    border: "none", cursor: askQuestion.trim() ? "pointer" : "default",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    transition: "background .15s",
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                    <path d="M7 12V2M2 7l5-5 5 5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              </form>
             </div>
-
-            <form onSubmit={e => ask(undefined, e)} style={{ display: "flex", gap: 8 }}>
-              <input
-                className="f-input"
-                value={askQuestion}
-                onChange={e => setAskQuestion(e.target.value)}
-                placeholder="e.g. What did we decide about pricing?"
-                style={{ fontSize: 15, padding: "14px 18px", borderRadius: 12 }}
-                autoFocus
-              />
-              <button type="submit" disabled={asking || !askQuestion.trim()} className="btn pri"
-                style={{ minHeight: 50, fontSize: 14, paddingInline: 26, borderRadius: 12, flexShrink: 0 }}>
-                {asking ? "Thinking…" : "Ask"}
-              </button>
-            </form>
 
             {/* suggested questions */}
             {!askAnswer && !asking && (
@@ -854,8 +889,8 @@ export default function CompanyBrainPage() {
                 {SUGGESTED_QUESTIONS.map(q => (
                   <button key={q} type="button" onClick={() => ask(q)}
                     style={{
-                      fontSize: 12, color: "var(--fd)", background: "var(--surface)",
-                      border: "1px solid var(--bd2)", borderRadius: 999, padding: "8px 16px",
+                      fontSize: 12, color: "var(--text-3)", background: "transparent",
+                      border: "1px solid var(--border)", borderRadius: 999, padding: "7px 16px",
                       cursor: "pointer",
                     }}>
                     {q}
