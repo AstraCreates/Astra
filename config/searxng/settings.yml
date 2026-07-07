@@ -28,3 +28,90 @@ server:
   public_instance: false
   image_proxy: false
   method: "GET"
+
+engines:
+  - name: ahmia
+    disabled: true
+
+  - name: brave
+    disabled: true
+
+  - name: duckduckgo
+    disabled: true
+
+  - name: duckduckgo images
+    disabled: true
+
+  - name: duckduckgo videos
+    disabled: true
+
+  - name: duckduckgo news
+    disabled: true
+
+  - name: duckduckgo weather
+    disabled: true
+
+  - name: startpage
+    disabled: true
+
+  - name: torch
+    disabled: true
+
+  - name: mojeek
+    disabled: true
+
+  - name: qwant
+    disabled: true
+
+  - name: qwant news
+    disabled: true
+
+  - name: qwant images
+    disabled: true
+
+  - name: qwant videos
+    disabled: true
+
+  - name: karmasearch
+    disabled: true
+
+  - name: ask
+    disabled: true
+
+  - name: aol
+    disabled: true
+
+  - name: aol images
+    disabled: true
+
+  - name: aol videos
+    disabled: true
+
+  - name: yahoo
+    disabled: true
+
+  - name: yahoo news
+    disabled: true
+
+  - name: wikidata
+    disabled: true
+
+  - name: bing
+    disabled: false
+    weight: 3
+    timeout: 10.0
+
+  - name: bing news
+    disabled: false
+    weight: 2
+    timeout: 10.0
+
+  - name: wikipedia
+    disabled: false
+    weight: 1
+    timeout: 8.0
+
+  - name: arxiv
+    disabled: false
+    weight: 1
+    timeout: 10.0
