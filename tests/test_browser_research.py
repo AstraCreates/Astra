@@ -262,6 +262,30 @@ def test_crw_search_and_fetch_handles_request_failure(monkeypatch):
     assert "error" in result
 
 
+def test_crw_search_and_fetch_falls_back_when_crw_returns_no_results(monkeypatch):
+    class FakeResponse:
+        def json(self):
+            return {"success": True, "data": {"results": []}}
+
+    monkeypatch.setitem(sys.modules, "httpx", types.SimpleNamespace(post=lambda url, json, timeout: FakeResponse()))
+    monkeypatch.setattr(
+        browser_research,
+        "search_and_fetch",
+        lambda query, max_results=8: {
+            "query": query,
+            "results": [{"url": "https://fallback.example.com", "title": "Fallback", "snippet": "Snippet", "content": "Body"}],
+            "formatted": "Query: fallback",
+            "total": 1,
+            "sources": [{"title": "Fallback", "url": "https://fallback.example.com"}],
+        },
+    )
+
+    result = browser_research._crw_search_and_fetch("test query")
+
+    assert result["total"] == 1
+    assert result["sources"] == [{"title": "Fallback", "url": "https://fallback.example.com"}]
+
+
 def test_crw_batch_search_aggregates_across_queries(monkeypatch):
     def fake_crw_search(query, max_results):
         return {

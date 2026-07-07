@@ -600,6 +600,20 @@ def _finalize_recursive_research(original_queries: list[str], aggregated_results
     }
 
 
+def _ddgs_fallback_search(query: str, max_results: int) -> dict:
+    fallback = search_and_fetch(query, max_results=max_results)
+    if fallback.get("error"):
+        return {
+            "query": query,
+            "results": [],
+            "formatted": "",
+            "total": 0,
+            "sources": [],
+            "error": fallback.get("error"),
+        }
+    return fallback
+
+
 def _crw_search_and_fetch(query: str, max_results: int = 8) -> dict:
     """Search + scrape one query via the self-hosted crw instance (single call —
     scrapeOptions does search and scrape together, no separate fetch round-trip).
@@ -621,10 +635,16 @@ def _crw_search_and_fetch(query: str, max_results: int = 8) -> dict:
         )
         data = r.json()
     except Exception as exc:
-        return {"query": query, "results": [], "formatted": "", "total": 0, "sources": [], "error": str(exc)}
+        logger.warning("crw search failed for %r, falling back to DDGS: %s", query, exc)
+        fallback = _ddgs_fallback_search(query, max_results)
+        fallback.setdefault("error", str(exc))
+        return fallback
 
     if not data.get("success"):
-        return {"query": query, "results": [], "formatted": "", "total": 0, "sources": [], "error": "crw_search_failed"}
+        logger.warning("crw returned unsuccessful response for %r, falling back to DDGS", query)
+        fallback = _ddgs_fallback_search(query, max_results)
+        fallback.setdefault("error", "crw_search_failed")
+        return fallback
 
     payload = data.get("data") or []
     if isinstance(payload, dict):
@@ -633,6 +653,12 @@ def _crw_search_and_fetch(query: str, max_results: int = 8) -> dict:
         items = payload
     else:
         items = []
+    if not items:
+        logger.info("crw returned no results for %r, falling back to DDGS", query)
+        fallback = _ddgs_fallback_search(query, max_results)
+        fallback.setdefault("error", "crw_no_results")
+        return fallback
+
     results, sources, blocks = [], [], []
     for item in items:
         url = _normalize_url(item.get("url", ""))
