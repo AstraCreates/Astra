@@ -1060,6 +1060,11 @@ class Agent:
             if ctx.budget:
                 await self._emit(ctx, "agent_budget_update", budget=ctx.budget.snapshot().__dict__)
             raw = await asyncio.to_thread(self._invoke_llm, messages, ctx)
+            if not isinstance(raw, str):
+                try:
+                    raw = json.dumps(raw, default=str)
+                except Exception:
+                    raw = str(raw)
             parsed = self._parse_json(raw)
             if not parsed:
                 # Handle plain-text "done" from models that don't follow JSON format

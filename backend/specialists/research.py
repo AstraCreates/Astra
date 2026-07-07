@@ -71,6 +71,57 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
     return wrapper
 
 
+def _research_focus_for_agent(agent_name: str) -> str:
+    if agent_name == "research_competitors":
+        return "competitors"
+    if agent_name == "research_customers":
+        return "customers"
+    if agent_name == "research_gtm":
+        return "gtm"
+    return "market"
+
+
+def _goal_topic(ctx: AgentContext | None) -> str:
+    raw = (getattr(ctx, "goal", "") or "").strip()
+    if not raw:
+        return ""
+    return " ".join(raw.split())[:1200]
+
+
+def _make_resilient_research_tool(tool_fn, tool_name: str, ctx_holder: list, agent_name: str = "research"):
+    """Fill common missing arguments from the active goal so research agents
+    don't burn iterations on empty tool calls."""
+    focus = _research_focus_for_agent(agent_name)
+
+    @functools.wraps(tool_fn)
+    def wrapper(*args, **kwargs):
+        ctx: AgentContext | None = ctx_holder[0] if ctx_holder else None
+        topic = _goal_topic(ctx)
+        patched_kwargs = dict(kwargs)
+
+        if tool_name in {"run_research_pipeline", "build_research_queries"}:
+            if not args and not patched_kwargs.get("topic") and not patched_kwargs.get("query") and topic:
+                patched_kwargs["topic"] = topic
+            patched_kwargs.setdefault("focus", focus)
+        elif tool_name == "research_papers":
+            if not args and not patched_kwargs.get("query") and topic:
+                patched_kwargs["query"] = topic
+        elif tool_name == "sonar_research":
+            if not args and not patched_kwargs.get("queries") and topic:
+                plan = build_research_queries(topic, focus=focus, limit=6)
+                queries = plan.get("queries") or [topic]
+                patched_kwargs["queries"] = queries
+        elif tool_name == "search_and_fetch":
+            if not args and not patched_kwargs.get("query") and topic:
+                plan = build_research_queries(topic, focus=focus, limit=1)
+                queries = plan.get("queries") or [topic]
+                patched_kwargs["query"] = queries[0]
+
+        return tool_fn(*args, **patched_kwargs)
+
+    return wrapper
+
+
 _DONE_INSTRUCTIONS = (
     "\n\nDONE OUTPUT — plain text values only, no markdown stars, no bullet symbols, no emojis.\n"
     "After obsidian_log, call done with this exact JSON structure (fill every field from research + injected company context):\n"
@@ -257,13 +308,21 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     # _2/_3/_4 variants log to same Obsidian note as base so notes merge
     import re as _re
     log_name = _re.sub(r"_\d+$", "", agent_name)
-    auto_search = _make_auto_logging_tool(search_and_fetch, "search_and_fetch", ctx_holder, log_name)
-    auto_fetch = _make_auto_logging_tool(fetch_and_read, "fetch_and_read", ctx_holder, log_name)
-    auto_batch = _make_auto_logging_tool(batch_search, "batch_search", ctx_holder, log_name)
-    auto_sonar = _make_auto_logging_tool(sonar_research, "sonar_research", ctx_holder, log_name)
-    auto_query_plan = _make_auto_logging_tool(build_research_queries, "build_research_queries", ctx_holder, log_name)
-    auto_pipeline = _make_auto_logging_tool(run_research_pipeline, "run_research_pipeline", ctx_holder, log_name)
-    auto_papers = _make_auto_logging_tool(research_papers, "research_papers", ctx_holder, log_name)
+    resilient_search = _make_resilient_research_tool(search_and_fetch, "search_and_fetch", ctx_holder, agent_name)
+    resilient_fetch = _make_resilient_research_tool(fetch_and_read, "fetch_and_read", ctx_holder, agent_name)
+    resilient_batch = _make_resilient_research_tool(batch_search, "batch_search", ctx_holder, agent_name)
+    resilient_sonar = _make_resilient_research_tool(sonar_research, "sonar_research", ctx_holder, agent_name)
+    resilient_query_plan = _make_resilient_research_tool(build_research_queries, "build_research_queries", ctx_holder, agent_name)
+    resilient_pipeline = _make_resilient_research_tool(run_research_pipeline, "run_research_pipeline", ctx_holder, agent_name)
+    resilient_papers = _make_resilient_research_tool(research_papers, "research_papers", ctx_holder, agent_name)
+
+    auto_search = _make_auto_logging_tool(resilient_search, "search_and_fetch", ctx_holder, log_name)
+    auto_fetch = _make_auto_logging_tool(resilient_fetch, "fetch_and_read", ctx_holder, log_name)
+    auto_batch = _make_auto_logging_tool(resilient_batch, "batch_search", ctx_holder, log_name)
+    auto_sonar = _make_auto_logging_tool(resilient_sonar, "sonar_research", ctx_holder, log_name)
+    auto_query_plan = _make_auto_logging_tool(resilient_query_plan, "build_research_queries", ctx_holder, log_name)
+    auto_pipeline = _make_auto_logging_tool(resilient_pipeline, "run_research_pipeline", ctx_holder, log_name)
+    auto_papers = _make_auto_logging_tool(resilient_papers, "research_papers", ctx_holder, log_name)
     auto_news = _make_auto_logging_tool(news_search, "news_search", ctx_holder, log_name)
     auto_patent = _make_auto_logging_tool(patent_search, "patent_search", ctx_holder, log_name)
     auto_youtube = _make_auto_logging_tool(youtube_research, "youtube_research", ctx_holder, log_name)
