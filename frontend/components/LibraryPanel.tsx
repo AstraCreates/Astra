@@ -11,40 +11,52 @@ import {
   updateLibraryFile,
   deleteLibraryFile,
   getExamplesLibrary,
-  getFundingStatus,
-  triggerFundingGenerate,
-  type FundingKitStatus,
 } from "@/lib/api";
-import PageHeader, { HeaderPrimaryBtn } from "@/components/PageHeader";
-import { PdfEmbed, PitchDeckSlideshow } from "@/components/GoalWorkspace";
+import { PdfEmbed } from "@/components/GoalWorkspace";
 import { useCompany } from "@/lib/company-context";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
+type TabKey = "all" | "documents" | "landing-pages" | "emails" | "templates";
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "documents", label: "Documents" },
+  { key: "landing-pages", label: "Landing pages" },
+  { key: "emails", label: "Emails" },
+  { key: "templates", label: "Templates" },
+];
+
 const DEPARTMENTS = ["All", "Research", "Marketing", "Technical", "Legal", "Ops", "Finance"] as const;
 type Department = (typeof DEPARTMENTS)[number];
 
-const DEPT_COLORS: Record<string, string> = {
-  Research: "bg-blue-50 text-blue-700 border-blue-200",
-  Marketing: "bg-purple-50 text-purple-700 border-purple-200",
-  Technical: "bg-green-50 text-green-700 border-green-200",
-  Legal: "bg-red-50 text-red-700 border-red-200",
-  Ops: "bg-yellow-50 text-yellow-700 border-yellow-200",
-  Finance: "bg-orange-50 text-orange-700 border-orange-200",
-};
+type UnifiedItem =
+  | { kind: "file"; data: LibraryFile }
+  | { kind: "template"; data: ExampleFile };
 
-const CAT_COLORS: Record<string, string> = {
-  auth: "bg-indigo-50 text-indigo-700 border-indigo-200",
-  payments: "bg-green-50 text-green-700 border-green-200",
-  database: "bg-blue-50 text-blue-700 border-blue-200",
-  deployment: "bg-orange-50 text-orange-700 border-orange-200",
-  design: "bg-pink-50 text-pink-700 border-pink-200",
-  email: "bg-purple-50 text-purple-700 border-purple-200",
-  legal: "bg-red-50 text-red-700 border-red-200",
-  marketing: "bg-yellow-50 text-yellow-700 border-yellow-200",
-  research: "bg-cyan-50 text-cyan-700 border-cyan-200",
-  sales: "bg-emerald-50 text-emerald-700 border-emerald-200",
-};
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  const hrs = Math.floor(mins / 60);
+  const days = Math.floor(hrs / 24);
+  const weeks = Math.floor(days / 7);
+  if (mins < 2) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  if (hrs < 24) return `${hrs}h ago`;
+  if (days < 7) return `${days}d ago`;
+  if (weeks < 5) return `${weeks}w ago`;
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function getFileTab(file: LibraryFile): Exclude<TabKey, "all" | "templates"> {
+  const name = file.filename.toLowerCase();
+  const tag = (file.source_tag || "").toLowerCase();
+  if (name.includes("email") || tag.includes("email") || tag.includes("outreach")) return "emails";
+  if (name.includes("landing") || tag.includes("landing")) return "landing-pages";
+  return "documents";
+}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -60,99 +72,99 @@ function formatDate(iso: string): string {
   }
 }
 
-// ── Dept badge ─────────────────────────────────────────────────────────────────
+// ── Badges ─────────────────────────────────────────────────────────────────────
 
-function DeptBadge({ department }: { department: string }) {
-  const cls = DEPT_COLORS[department] ?? "bg-gray-50 text-gray-700 border-gray-200";
+function OutputBadge() {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${cls}`}>
-      {department}
-    </span>
+    <span style={{
+      fontSize: 9.5, fontWeight: 700, letterSpacing: ".07em",
+      padding: "2px 7px", borderRadius: 4,
+      border: "1px solid rgba(125,143,255,.5)",
+      color: "#7d8fff",
+      flexShrink: 0, lineHeight: 1.6,
+    }}>OUTPUT</span>
   );
 }
 
-function CatBadge({ category }: { category: string }) {
-  const cls = CAT_COLORS[category] ?? "bg-gray-50 text-gray-700 border-gray-200";
+function TemplateBadge() {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${cls} capitalize`}>
-      {category}
-    </span>
+    <span style={{
+      fontSize: 9.5, fontWeight: 700, letterSpacing: ".07em",
+      padding: "2px 7px", borderRadius: 4,
+      background: "rgba(125,143,255,.18)",
+      color: "#a5b4fc",
+      flexShrink: 0, lineHeight: 1.6,
+    }}>TEMPLATE</span>
   );
 }
 
-// ── File row ───────────────────────────────────────────────────────────────────
+function FileBadge() {
+  return (
+    <span style={{
+      fontSize: 9.5, fontWeight: 700, letterSpacing: ".07em",
+      padding: "2px 7px", borderRadius: 4,
+      border: "1px solid rgba(255,255,255,.12)",
+      color: "var(--fd)",
+      flexShrink: 0, lineHeight: 1.6,
+    }}>FILE</span>
+  );
+}
 
-function FileRow({
-  file, selected, onSelect, onDelete,
-}: {
-  file: LibraryFile; selected: boolean; onSelect: () => void; onDelete: () => void;
+// ── Unified row ────────────────────────────────────────────────────────────────
+
+function UnifiedRow({ item, selected, onClick }: {
+  item: UnifiedItem; selected: boolean; onClick: () => void;
 }) {
-  return (
-    <div
-      onClick={onSelect}
-      className={`group flex items-start gap-3 px-5 py-4 cursor-pointer border-b border-[#E5E7EB] transition-colors ${
-        selected ? "bg-blue-50" : "hover:bg-gray-50"
-      }`}
-    >
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 mb-1.5">
-          {file.is_canonical && (
-            <span title="Auto-injected into agent context" className="text-amber-500 text-sm leading-none shrink-0">
-              &#9733;
-            </span>
-          )}
-          <span className="text-sm font-medium text-[#111827] truncate">{file.filename}</span>
+  const [hovered, setHovered] = useState(false);
+
+  const rowStyle: React.CSSProperties = {
+    display: "flex", alignItems: "center", gap: 12,
+    padding: "14px 30px",
+    cursor: "pointer",
+    borderBottom: "1px solid rgba(255,255,255,.06)",
+    background: selected
+      ? "rgba(125,143,255,.08)"
+      : hovered ? "rgba(255,255,255,.025)" : "transparent",
+    transition: "background .12s",
+  };
+
+  if (item.kind === "file") {
+    const f = item.data;
+    const isOutput = !!f.source_tag;
+    return (
+      <div onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={rowStyle}>
+        {isOutput ? <OutputBadge /> : <FileBadge />}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {f.is_canonical && <span style={{ color: "#f59e0b", marginRight: 5, fontSize: 11 }}>★</span>}
+            {f.filename}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--fm)", marginTop: 2 }}>
+            {f.source_tag ? `From ${f.source_tag}` : f.department}
+          </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap mb-1.5">
-          <DeptBadge department={file.department} />
-          {file.source_tag && (
-            <span className="text-xs text-blue-600 font-medium">{file.source_tag}</span>
-          )}
-          {file.is_canonical && !file.source_tag && (
-            <span className="text-xs text-amber-600 font-medium">Auto-injected</span>
-          )}
-        </div>
-        <div className="flex items-center gap-3 text-xs text-gray-400">
-          <span>{formatDate(file.updated_at)}</span>
-          <span>{formatBytes(file.size_bytes)}</span>
+        <div style={{ fontSize: 12, color: "var(--fd)", flexShrink: 0 }}>
+          {relativeTime(f.updated_at)}
         </div>
       </div>
-      <button
-        onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500 text-sm px-1.5 py-1 rounded mt-0.5"
-        title="Delete file"
-      >
-        &#128465;
-      </button>
-    </div>
-  );
-}
-
-// ── Template row ───────────────────────────────────────────────────────────────
-
-function TemplateRow({
-  example, selected, onSelect,
-}: {
-  example: ExampleFile; selected: boolean; onSelect: () => void;
-}) {
-  return (
-    <div
-      onClick={onSelect}
-      className={`flex items-start gap-3 px-5 py-4 cursor-pointer border-b border-[#E5E7EB] transition-colors ${
-        selected ? "bg-blue-50" : "hover:bg-gray-50"
-      }`}
-    >
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-[#111827] truncate mb-1.5">{example.title}</p>
-        <div className="flex items-center gap-2 flex-wrap mb-1.5">
-          <CatBadge category={example.category} />
+    );
+  } else {
+    const e = item.data;
+    return (
+      <div onClick={onClick} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} style={rowStyle}>
+        <TemplateBadge />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 500, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {e.title}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--fm)", marginTop: 2 }}>
+            {e.category}{e.tags.length > 0 ? ` · ${e.tags.slice(0, 3).join(", ")}` : ""}
+          </div>
         </div>
-        {example.tags.length > 0 && (
-          <p className="text-xs text-gray-400 truncate">{example.tags.slice(0, 5).join(", ")}</p>
-        )}
+        <div style={{ fontSize: 12, color: "var(--fd)", flexShrink: 0 }}>template</div>
       </div>
-    </div>
-  );
+    );
+  }
 }
 
 // ── New file form ──────────────────────────────────────────────────────────────
@@ -168,78 +180,48 @@ function NewFileForm({ founderId, onCreated, onCancel }: {
   const [error, setError] = useState("");
 
   async function handleSave() {
-    if (!filename.trim()) { setError("Filename is required."); return; }
-    setSaving(true);
-    setError("");
+    if (!filename.trim()) { setError("Filename required."); return; }
+    setSaving(true); setError("");
     try {
       const file = await createLibraryFile({ founder_id: founderId, department, filename: filename.trim(), content, is_canonical: isCanonical });
       onCreated(file);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to create file.");
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[#E5E7EB]">
-        <h3 className="text-sm font-semibold text-[#111827]">New File</h3>
-        <button onClick={onCancel} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--surface)", borderLeft: "1px solid rgba(255,255,255,.08)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+        <span style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)" }}>New File</span>
+        <button onClick={onCancel} style={{ background: "none", border: "none", color: "var(--fd)", fontSize: 20, cursor: "pointer", lineHeight: 1, padding: 0 }}>&times;</button>
       </div>
-      <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-        {error && (
-          <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</div>
-        )}
+      <div style={{ flex: 1, overflowY: "auto", padding: "20px", display: "flex", flexDirection: "column", gap: 16 }}>
+        {error && <div style={{ fontSize: 12, color: "#f87171", background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.2)", borderRadius: 6, padding: "8px 12px" }}>{error}</div>}
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">Filename</label>
-          <input
-            type="text"
-            value={filename}
-            onChange={(e) => setFilename(e.target.value)}
-            placeholder="e.g. business_context.md"
-            className="f-input"
-          />
+          <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--fd)", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Filename</label>
+          <input type="text" value={filename} onChange={e => setFilename(e.target.value)} placeholder="e.g. business_context.md" className="f-input" />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">Department</label>
-          <select
-            value={department}
-            onChange={(e) => setDepartment(e.target.value)}
-            className="f-input"
-          >
-            {DEPARTMENTS.filter((d) => d !== "All").map((d) => <option key={d} value={d}>{d}</option>)}
+          <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--fd)", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Department</label>
+          <select value={department} onChange={e => setDepartment(e.target.value)} className="f-input">
+            {DEPARTMENTS.filter(d => d !== "All").map(d => <option key={d} value={d}>{d}</option>)}
           </select>
         </div>
-        <label className="flex items-center gap-2.5 cursor-pointer select-none">
-          <input
-            id="is-canonical"
-            type="checkbox"
-            checked={isCanonical}
-            onChange={(e) => setIsCanonical(e.target.checked)}
-            className="w-4 h-4 rounded border-gray-300 text-[#002EFF] focus:ring-[#002EFF]"
-          />
-          <span className="text-sm text-[#111827]">
-            <span className="text-amber-500 mr-1">&#9733;</span>
-            Canonical — auto-inject into agent context
+        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}>
+          <input type="checkbox" checked={isCanonical} onChange={e => setIsCanonical(e.target.checked)} style={{ width: 14, height: 14, accentColor: "#7d8fff" }} />
+          <span style={{ fontSize: 13, color: "var(--fg)" }}>
+            <span style={{ color: "#f59e0b", marginRight: 4 }}>★</span>
+            Canonical — auto-inject into agents
           </span>
         </label>
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">Content</label>
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="Paste or type file content..."
-            rows={14}
-            className="f-ta"
-            style={{ fontFamily: "var(--font-code), monospace", fontSize: 12 }}
-          />
+          <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--fd)", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".05em" }}>Content</label>
+          <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="Paste or type file content..." rows={14} className="f-ta" style={{ fontFamily: "var(--font-code), monospace", fontSize: 12 }} />
         </div>
       </div>
-      <div className="flex items-center gap-3 px-6 py-4 border-t border-[#E5E7EB]">
-        <button onClick={handleSave} disabled={saving} className="btn pri" style={{ flex: 1 }}>
-          {saving ? "Saving..." : "Create File"}
-        </button>
+      <div style={{ display: "flex", gap: 10, padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,.08)" }}>
+        <button onClick={handleSave} disabled={saving} className="btn pri" style={{ flex: 1 }}>{saving ? "Saving..." : "Create File"}</button>
         <button onClick={onCancel} className="btn">Cancel</button>
       </div>
     </div>
@@ -248,8 +230,8 @@ function NewFileForm({ founderId, onCreated, onCancel }: {
 
 // ── File editor ────────────────────────────────────────────────────────────────
 
-function FileEditor({ file, founderId, onUpdated, onClose }: {
-  file: LibraryFile; founderId: string; onUpdated: (f: LibraryFile) => void; onClose: () => void;
+function FileEditor({ file, founderId, onUpdated, onClose, onDelete }: {
+  file: LibraryFile; founderId: string; onUpdated: (f: LibraryFile) => void; onClose: () => void; onDelete: () => void;
 }) {
   const [content, setContent] = useState(file.content ?? "");
   const [filename, setFilename] = useState(file.filename);
@@ -259,87 +241,72 @@ function FileEditor({ file, founderId, onUpdated, onClose }: {
   const [error, setError] = useState("");
   const [dirty, setDirty] = useState(false);
   const [loadingContent, setLoadingContent] = useState(!file.content);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   useEffect(() => {
     if (file.content !== undefined) { setContent(file.content); setLoadingContent(false); return; }
     setLoadingContent(true);
     getLibraryFile(founderId, file.id)
-      .then((full) => setContent(full.content ?? ""))
-      .catch(() => setError("Failed to load file content."))
+      .then(full => setContent(full.content ?? ""))
+      .catch(() => setError("Failed to load content."))
       .finally(() => setLoadingContent(false));
   }, [file.id, file.content, founderId]);
 
   async function handleSave() {
-    setSaving(true);
-    setError("");
+    setSaving(true); setError("");
     try {
       const updated = await updateLibraryFile(file.id, { founder_id: founderId, content, filename, department, is_canonical: isCanonical });
       setDirty(false);
       onUpdated(updated);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to save.");
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-3.5 border-b border-[#E5E7EB]">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          {isCanonical && <span className="text-amber-500 text-base leading-none shrink-0">&#9733;</span>}
-          <input
-            type="text"
-            value={filename}
-            onChange={(e) => { setFilename(e.target.value); setDirty(true); }}
-            className="text-sm font-semibold text-[#111827] bg-transparent border-0 focus:outline-none focus:ring-0 min-w-0 flex-1"
-          />
-        </div>
-        <div className="flex items-center gap-2.5 shrink-0">
-          {dirty && <span className="text-xs text-gray-400">Unsaved</span>}
-          <button
-            onClick={handleSave}
-            disabled={saving || !dirty}
-            className="btn pri sm"
-          >
-            {saving ? "Saving..." : "Save"}
-          </button>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1">&times;</button>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--surface)", borderLeft: "1px solid rgba(255,255,255,.08)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,.08)", minHeight: 52 }}>
+        {isCanonical && <span style={{ color: "#f59e0b", fontSize: 13 }}>★</span>}
+        <input
+          type="text"
+          value={filename}
+          onChange={e => { setFilename(e.target.value); setDirty(true); }}
+          style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", fontSize: 13, fontWeight: 600, color: "var(--fg)" }}
+        />
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          {dirty && <span style={{ fontSize: 11, color: "var(--fd)" }}>Unsaved</span>}
+          <button onClick={handleSave} disabled={saving || !dirty} className="btn pri sm" style={{ fontSize: 11 }}>{saving ? "Saving..." : "Save"}</button>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--fd)", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>&times;</button>
         </div>
       </div>
-      <div className="flex items-center gap-3 px-6 py-2.5 border-b border-[#E5E7EB] bg-gray-50 text-xs text-gray-500 flex-wrap">
-        <select
-          value={department}
-          onChange={(e) => { setDepartment(e.target.value); setDirty(true); }}
-          className="f-input"
-          style={{ fontSize: 11, padding: "4px 8px" }}
-        >
-          {DEPARTMENTS.filter((d) => d !== "All").map((d) => <option key={d} value={d}>{d}</option>)}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.02)" }}>
+        <select value={department} onChange={e => { setDepartment(e.target.value); setDirty(true); }} className="f-input" style={{ fontSize: 11, padding: "3px 8px" }}>
+          {DEPARTMENTS.filter(d => d !== "All").map(d => <option key={d} value={d}>{d}</option>)}
         </select>
-        <label className="flex items-center gap-1.5 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={isCanonical}
-            onChange={(e) => { setIsCanonical(e.target.checked); setDirty(true); }}
-            className="w-3.5 h-3.5 rounded border-gray-300 text-[#002EFF]"
-          />
-          <span className="text-amber-600 font-medium">Auto-inject</span>
+        <label style={{ display: "flex", alignItems: "center", gap: 5, cursor: "pointer", userSelect: "none" }}>
+          <input type="checkbox" checked={isCanonical} onChange={e => { setIsCanonical(e.target.checked); setDirty(true); }} style={{ width: 13, height: 13, accentColor: "#7d8fff" }} />
+          <span style={{ fontSize: 11, color: "#f59e0b" }}>Auto-inject</span>
         </label>
-        <span>{formatBytes(file.size_bytes)}</span>
-        <span>Updated {formatDate(file.updated_at)}</span>
+        <span style={{ fontSize: 11, color: "var(--fd)", marginLeft: "auto" }}>{formatBytes(file.size_bytes)}</span>
+        {!deleteConfirm ? (
+          <button onClick={() => setDeleteConfirm(true)} style={{ background: "none", border: "none", fontSize: 11, color: "var(--fd)", cursor: "pointer", padding: 0 }}>Delete</button>
+        ) : (
+          <span style={{ display: "flex", gap: 6 }}>
+            <button onClick={onDelete} style={{ background: "none", border: "none", fontSize: 11, color: "#f87171", cursor: "pointer", padding: 0, fontWeight: 600 }}>Confirm</button>
+            <button onClick={() => setDeleteConfirm(false)} style={{ background: "none", border: "none", fontSize: 11, color: "var(--fd)", cursor: "pointer", padding: 0 }}>Cancel</button>
+          </span>
+        )}
       </div>
-      {error && (
-        <div className="mx-6 mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</div>
-      )}
-      <div className="flex-1 p-5 overflow-hidden">
+      {error && <div style={{ margin: "12px 16px 0", fontSize: 12, color: "#f87171", background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.2)", borderRadius: 6, padding: "8px 12px" }}>{error}</div>}
+      <div style={{ flex: 1, padding: 16, overflow: "hidden" }}>
         {file.source_path && file.source_path.toLowerCase().endsWith(".pdf") ? (
           <PdfEmbed path={file.source_path} height={520} />
         ) : loadingContent ? (
-          <div className="text-sm text-gray-400 text-center pt-12">Loading content...</div>
+          <div style={{ fontSize: 13, color: "var(--fd)", textAlign: "center", paddingTop: 40 }}>Loading...</div>
         ) : (
           <textarea
             value={content}
-            onChange={(e) => { setContent(e.target.value); setDirty(true); }}
+            onChange={e => { setContent(e.target.value); setDirty(true); }}
             className="f-ta"
             style={{ height: "100%", fontFamily: "var(--font-code), monospace", fontSize: 12, resize: "none" }}
             placeholder="File content..."
@@ -355,26 +322,24 @@ function FileEditor({ file, founderId, onUpdated, onClose }: {
 
 function TemplateViewer({ example, onClose }: { example: ExampleFile; onClose: () => void }) {
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-6 py-3.5 border-b border-[#E5E7EB]">
-        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <CatBadge category={example.category} />
-          <span className="text-sm font-semibold text-[#111827] truncate">{example.title}</span>
-        </div>
-        <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none px-1 shrink-0">&times;</button>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--surface)", borderLeft: "1px solid rgba(255,255,255,.08)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+        <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".07em", padding: "2px 7px", borderRadius: 4, background: "rgba(125,143,255,.18)", color: "#a5b4fc", flexShrink: 0 }}>TEMPLATE</span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--fg)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{example.title}</span>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--fd)", fontSize: 18, cursor: "pointer", lineHeight: 1, padding: "0 2px", flexShrink: 0 }}>&times;</button>
       </div>
       {example.tags.length > 0 && (
-        <div className="flex items-center gap-1.5 px-6 py-2.5 border-b border-[#E5E7EB] bg-gray-50 flex-wrap">
-          {example.tags.map((t) => (
-            <span key={t} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{t}</span>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5, padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,.08)", background: "rgba(255,255,255,.02)" }}>
+          {example.tags.map(t => (
+            <span key={t} style={{ fontSize: 11, background: "rgba(255,255,255,.06)", color: "var(--fm)", padding: "2px 8px", borderRadius: 10 }}>{t}</span>
           ))}
         </div>
       )}
-      <div className="flex-1 p-5 overflow-hidden">
+      <div style={{ flex: 1, padding: 16, overflow: "hidden" }}>
         <textarea
           readOnly
           value={example.content}
-          className="w-full h-full text-sm font-mono border border-[#E5E7EB] rounded-lg px-4 py-3 bg-gray-50 focus:outline-none resize-none text-gray-800"
+          style={{ width: "100%", height: "100%", fontFamily: "var(--font-code), monospace", fontSize: 12, resize: "none", background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)", borderRadius: 8, padding: "12px", color: "var(--fg)", outline: "none", boxSizing: "border-box" }}
           spellCheck={false}
         />
       </div>
@@ -394,97 +359,39 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
   const searchParams = useSearchParams();
   const targetSession = searchParams.get("session");
   const didAutoSelect = useRef(false);
-  const [mode, setMode] = useState<"files" | "templates" | "funding">("files");
 
-  // Files state
   const [files, setFiles] = useState<LibraryFile[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(true);
   const [filesError, setFilesError] = useState("");
-  const [activeDept, setActiveDept] = useState<Department>("All");
-  const [selectedFile, setSelectedFile] = useState<LibraryFile | null>(null);
-  const [showNewForm, setShowNewForm] = useState(false);
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  // Templates state
   const [examples, setExamples] = useState<ExampleFile[]>([]);
   const [loadingExamples, setLoadingExamples] = useState(false);
   const [examplesLoaded, setExamplesLoaded] = useState(false);
+
+  const [activeTab, setActiveTab] = useState<TabKey>("all");
+  const [search, setSearch] = useState("");
+
+  const [selectedFile, setSelectedFile] = useState<LibraryFile | null>(null);
   const [selectedExample, setSelectedExample] = useState<ExampleFile | null>(null);
-  const [activeCat, setActiveCat] = useState("all");
-  const [templateSearch, setTemplateSearch] = useState("");
-
-  // Funding Kit state
-  const [fundingStatus, setFundingStatus] = useState<FundingKitStatus | null>(null);
-  const [fundingLoading, setFundingLoading] = useState(false);
-  const [fundingTriggering, setFundingTriggering] = useState(false);
-  const [fundingError, setFundingError] = useState("");
-  const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
-  const [pptxSlides, setPptxSlides] = useState<{ title?: string; bullets?: string[]; is_cover?: boolean }[]>([]);
-  const [pptxSlidesFilename, setPptxSlidesFilename] = useState<string>("");
-
-  const refreshFunding = useCallback(async () => {
-    if (!founderId) return;
-    try {
-      const s = await getFundingStatus(founderId, companyId || founderId);
-      setFundingStatus(s);
-    } catch {
-      setFundingError("Couldn't load funding kit status.");
-    } finally {
-      setFundingLoading(false);
-    }
-  }, [founderId, companyId]);
-
-  // Load funding status when tab activated
-  useEffect(() => {
-    if (mode !== "funding" || fundingStatus !== null) return;
-    setFundingLoading(true);
-    refreshFunding();
-  }, [mode, fundingStatus, refreshFunding]);
-
-  // Poll while generating
-  useEffect(() => {
-    if (!fundingStatus?.generating) return;
-    const t = setInterval(refreshFunding, 4000);
-    return () => clearInterval(t);
-  }, [fundingStatus?.generating, refreshFunding]);
-
-  async function handleFundingGenerate() {
-    if (!founderId) return;
-    setFundingTriggering(true);
-    setFundingError("");
-    try {
-      await triggerFundingGenerate(founderId, companyId || founderId);
-      await refreshFunding();
-    } catch (e: unknown) {
-      setFundingError(e instanceof Error ? e.message : "Failed to start generation.");
-    } finally {
-      setFundingTriggering(false);
-    }
-  }
+  const [showNewForm, setShowNewForm] = useState(false);
 
   const loadFiles = useCallback(async () => {
-    setLoadingFiles(true);
-    setFilesError("");
+    setLoadingFiles(true); setFilesError("");
     try {
       const fetched = await getLibraryFiles(founderId);
       setFiles(fetched);
     } catch (e: unknown) {
       setFilesError(e instanceof Error ? e.message : "Failed to load files.");
-    } finally {
-      setLoadingFiles(false);
-    }
+    } finally { setLoadingFiles(false); }
   }, [founderId]);
 
   useEffect(() => { if (founderId) loadFiles(); }, [founderId, loadFiles]);
 
-  // Auto-select the file matching ?session= URL param (only once per navigation).
-  // Falls back to the most recently created agent-generated file if no exact match
-  // (covers old deliverables that pre-date source_session_id tracking).
   useEffect(() => {
     if (!targetSession || didAutoSelect.current || files.length === 0) return;
-    const exact = files.find((f) => f.source_session_id === targetSession);
+    const exact = files.find(f => f.source_session_id === targetSession);
     const fallback = exact ?? [...files]
-      .filter((f) => !!f.source_tag)
+      .filter(f => !!f.source_tag)
       .sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
     if (fallback) {
       didAutoSelect.current = true;
@@ -493,468 +400,214 @@ export default function LibraryPanel({ founderId, className = "" }: LibraryPanel
     }
   }, [targetSession, files]);
 
-  async function loadExamples() {
+  useEffect(() => {
     if (examplesLoaded) return;
-    setLoadingExamples(true);
-    try {
-      const data = await getExamplesLibrary();
-      setExamples(data);
-      setExamplesLoaded(true);
-    } finally {
-      setLoadingExamples(false);
+    if (activeTab === "all" || activeTab === "templates") {
+      setLoadingExamples(true);
+      getExamplesLibrary()
+        .then(data => { setExamples(data); setExamplesLoaded(true); })
+        .finally(() => setLoadingExamples(false));
     }
-  }
-
-  function handleModeSwitch(m: "files" | "templates" | "funding") {
-    setMode(m);
-    if (m === "templates") loadExamples();
-  }
-
-  const filteredFiles = activeDept === "All" ? files : files.filter((f) => f.department === activeDept);
-
-  const exampleCategories = ["all", ...Array.from(new Set(examples.map((e) => e.category))).sort()];
-  const filteredExamples = examples.filter((e) => {
-    const matchCat = activeCat === "all" || e.category === activeCat;
-    const q = templateSearch.toLowerCase();
-    const matchSearch = !q || e.title.toLowerCase().includes(q) || e.tags.some((t) => t.includes(q)) || e.category.includes(q);
-    return matchCat && matchSearch;
-  });
+  }, [activeTab, examplesLoaded]);
 
   function handleFileCreated(file: LibraryFile) {
-    setFiles((prev) => [file, ...prev]);
+    setFiles(prev => [file, ...prev]);
     setShowNewForm(false);
     setSelectedFile(file);
+    setSelectedExample(null);
   }
 
   function handleFileUpdated(updated: LibraryFile) {
-    setFiles((prev) => prev.map((f) => (f.id === updated.id ? { ...f, ...updated, content: undefined } : f)));
+    setFiles(prev => prev.map(f => f.id === updated.id ? { ...f, ...updated, content: undefined } : f));
     if (selectedFile?.id === updated.id) setSelectedFile(updated);
   }
 
-  async function handleDelete(fileId: string) {
+  async function handleDeleteFile() {
+    if (!selectedFile) return;
     try {
-      await deleteLibraryFile(founderId, fileId);
-      setFiles((prev) => prev.filter((f) => f.id !== fileId));
-      if (selectedFile?.id === fileId) setSelectedFile(null);
-      setDeleteConfirm(null);
+      await deleteLibraryFile(founderId, selectedFile.id);
+      setFiles(prev => prev.filter(f => f.id !== selectedFile.id));
+      setSelectedFile(null);
     } catch (e: unknown) {
-      setFilesError(e instanceof Error ? e.message : "Failed to delete file.");
+      setFilesError(e instanceof Error ? e.message : "Failed to delete.");
     }
   }
 
-  const showEditor = mode === "files" && !showNewForm && selectedFile;
-  const showTemplateViewer = mode === "templates" && selectedExample;
+  const filteredItems: UnifiedItem[] = (() => {
+    const q = search.toLowerCase();
+    const items: UnifiedItem[] = [];
+
+    if (activeTab !== "templates") {
+      for (const f of files) {
+        if (activeTab !== "all") {
+          const cat = getFileTab(f);
+          if (cat !== activeTab) continue;
+        }
+        if (q && !f.filename.toLowerCase().includes(q) && !(f.source_tag || "").toLowerCase().includes(q)) continue;
+        items.push({ kind: "file", data: f });
+      }
+    }
+
+    if (activeTab === "all" || activeTab === "templates") {
+      for (const e of examples) {
+        if (q && !e.title.toLowerCase().includes(q) && !e.tags.some(t => t.toLowerCase().includes(q)) && !e.category.includes(q)) continue;
+        items.push({ kind: "template", data: e });
+      }
+    }
+
+    return items;
+  })();
+
+  const hasDetail = showNewForm || !!selectedFile || !!selectedExample;
+
+  function handleSelectItem(item: UnifiedItem) {
+    if (item.kind === "file") {
+      setSelectedFile(item.data);
+      setSelectedExample(null);
+    } else {
+      setSelectedExample(item.data);
+      setSelectedFile(null);
+    }
+    setShowNewForm(false);
+  }
+
+  function handleCloseDetail() {
+    setSelectedFile(null);
+    setSelectedExample(null);
+    setShowNewForm(false);
+  }
 
   return (
-    <div className={`flex flex-col h-full bg-white overflow-hidden ${className}`}>
-      {(() => {
-        const fundingGenerating = fundingStatus?.generating || fundingTriggering;
-        const fundingHasDocs = (fundingStatus?.documents?.length ?? 0) > 0;
-        return (
-          <PageHeader
-            title="Library"
-            subtitle="Everything your company builds — context files you upload, deliverables agents generate, and code patterns."
-            actions={
-              mode === "files" ? (
-                <HeaderPrimaryBtn label="+ New File" onClick={() => { setShowNewForm(true); setSelectedFile(null); }} />
-              ) : mode === "funding" ? (
-                <HeaderPrimaryBtn
-                  label={fundingGenerating ? "Generating…" : fundingHasDocs ? "Regenerate" : "Generate Kit"}
-                  onClick={() => { handleFundingGenerate(); }}
-                  disabled={fundingGenerating}
-                />
-              ) : undefined
-            }
-          />
-        );
-      })()}
-      {/* Top mode switcher */}
-      <div className="flex items-center gap-0 border-b border-[#E5E7EB] px-5 pt-1 shrink-0">
-        {(["files", "templates", "funding"] as const).map((m) => (
+    <div className={className} style={{ display: "flex", height: "100%", background: "var(--bg)", overflow: "hidden" }}>
+      {/* ── Left: list panel ── */}
+      <div style={{
+        display: "flex", flexDirection: "column",
+        flex: hasDetail ? "0 0 380px" : "1 1 auto",
+        minWidth: 0,
+        borderRight: hasDetail ? "1px solid rgba(255,255,255,.08)" : "none",
+        height: "100%", overflow: "hidden",
+      }}>
+        {/* Header */}
+        <div style={{ padding: "24px 30px 0", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-.01em", color: "var(--fg)" }}>Library</h1>
           <button
-            key={m}
-            onClick={() => handleModeSwitch(m)}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
-              mode === m
-                ? "border-[#002EFF] text-[#002EFF]"
-                : "border-transparent text-gray-500 hover:text-gray-800"
-            }`}
+            className="btn"
+            style={{ fontSize: 12.5 }}
+            onClick={() => { setShowNewForm(true); setSelectedFile(null); setSelectedExample(null); }}
           >
-            {m === "files" ? "Files" : m === "templates" ? "Code Patterns" : "Funding Kit"}
-            {m === "files" && files.length > 0 && (
-              <span className={`ml-1.5 text-xs ${mode === m ? "text-blue-400" : "text-gray-400"}`}>{files.length}</span>
-            )}
-            {m === "templates" && examplesLoaded && examples.length > 0 && (
-              <span className={`ml-1.5 text-xs ${mode === m ? "text-blue-400" : "text-gray-400"}`}>{examples.length}</span>
-            )}
-            {m === "funding" && fundingStatus?.needs_refresh && !fundingStatus?.generating && (
-              <span className="ml-1.5 text-xs text-amber-500">●</span>
-            )}
+            + New File
           </button>
-        ))}
+        </div>
+
+        {/* Search */}
+        <div style={{ padding: "16px 30px 0", flexShrink: 0 }}>
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search everything Astra has made..."
+            style={{
+              width: "100%", boxSizing: "border-box",
+              background: "rgba(255,255,255,.05)",
+              border: "1px solid rgba(255,255,255,.1)",
+              borderRadius: 8, padding: "9px 14px",
+              fontSize: 13, color: "var(--fg)",
+              outline: "none",
+              transition: "border-color .12s",
+            }}
+            onFocus={e => { e.currentTarget.style.borderColor = "rgba(125,143,255,.6)"; }}
+            onBlur={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,.1)"; }}
+          />
+        </div>
+
+        {/* Filter tabs */}
+        <div style={{ padding: "12px 30px 0", display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
+          {TABS.map(tab => {
+            const isActive = activeTab === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                style={{
+                  fontSize: 12.5, fontWeight: isActive ? 600 : 500,
+                  padding: "5px 13px", borderRadius: 20,
+                  border: isActive ? "1px solid rgba(125,143,255,.4)" : "1px solid rgba(255,255,255,.1)",
+                  background: isActive ? "rgba(125,143,255,.16)" : "transparent",
+                  color: isActive ? "#a5b4fc" : "var(--fd)",
+                  cursor: "pointer",
+                  transition: "all .12s",
+                }}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* List */}
+        <div style={{ flex: 1, overflowY: "auto", marginTop: 12 }}>
+          {(loadingFiles || loadingExamples) && filteredItems.length === 0 && (
+            <div style={{ fontSize: 13, color: "var(--fd)", textAlign: "center", paddingTop: 48 }}>Loading...</div>
+          )}
+          {filesError && (
+            <div style={{ fontSize: 12, color: "#f87171", textAlign: "center", paddingTop: 32, paddingInline: 30 }}>{filesError}</div>
+          )}
+          {!loadingFiles && !loadingExamples && !filesError && filteredItems.length === 0 && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", padding: "48px 30px", gap: 10 }}>
+              <div style={{ fontSize: 32, marginBottom: 4 }}>◈</div>
+              <p style={{ fontSize: 14, fontWeight: 600, color: "var(--fg)", margin: 0 }}>
+                {search ? "No results" : "Nothing here yet"}
+              </p>
+              <p style={{ fontSize: 13, color: "var(--fd)", margin: 0, maxWidth: 260, lineHeight: 1.6 }}>
+                {search
+                  ? `No items match "${search}"`
+                  : activeTab === "all"
+                    ? "Upload files or run a goal — everything Astra generates lands here."
+                    : `No ${activeTab.replace("-", " ")} yet.`}
+              </p>
+            </div>
+          )}
+          {filteredItems.map(item => {
+            const isSelected = item.kind === "file"
+              ? selectedFile?.id === item.data.id
+              : selectedExample?.path === item.data.path;
+            return (
+              <UnifiedRow
+                key={item.kind === "file" ? `f-${item.data.id}` : `t-${item.data.path}`}
+                item={item}
+                selected={isSelected}
+                onClick={() => handleSelectItem(item)}
+              />
+            );
+          })}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "10px 30px", borderTop: "1px solid rgba(255,255,255,.06)", fontSize: 11, color: "var(--fd)", flexShrink: 0, display: "flex", justifyContent: "space-between" }}>
+          <span>{files.filter(f => !f.source_tag).length} context · {files.filter(f => f.source_tag).length} outputs</span>
+          <span>{files.filter(f => f.is_canonical).length} canonical</span>
+        </div>
       </div>
 
-      <div className="flex flex-1 min-h-0">
-        {/* ── FILES MODE ── */}
-        {mode === "files" && (
-          <>
-            {/* Left sidebar */}
-            <div className="w-80 flex flex-col border-r border-[#E5E7EB] shrink-0">
-              {/* Header */}
-              <div className="flex items-center px-5 py-3.5 border-b border-[#E5E7EB]">
-                <div className="text-sm font-semibold text-[#111827]">Files</div>
-              </div>
-
-              {/* Dept filter */}
-              <div className="flex flex-wrap gap-1.5 px-4 py-3 border-b border-[#E5E7EB]">
-                {DEPARTMENTS.map((dept) => {
-                  const count = dept === "All" ? files.length : files.filter((f) => f.department === dept).length;
-                  return (
-                    <button
-                      key={dept}
-                      onClick={() => setActiveDept(dept)}
-                      className={`text-xs px-2.5 py-1 rounded-full transition-colors font-medium ${
-                        activeDept === dept
-                          ? "bg-[#002EFF] text-white"
-                          : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
-                      }`}
-                    >
-                      {dept}
-                      {count > 0 && (
-                        <span className={`ml-1 ${activeDept === dept ? "text-blue-200" : "text-gray-400"}`}>{count}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* File list */}
-              <div className="flex-1 overflow-y-auto">
-                {loadingFiles && <div className="text-sm text-gray-400 text-center py-12">Loading...</div>}
-                {!loadingFiles && filesError && <div className="text-sm text-red-500 text-center py-12 px-4">{filesError}</div>}
-                {!loadingFiles && !filesError && filteredFiles.length === 0 && (
-                  <div className="flex flex-col items-center text-center px-5 py-12 gap-2">
-                    <div className="text-3xl" style={{ color: "var(--fm)" }}>—</div>
-                    <p className="text-sm font-medium text-gray-500">
-                      {activeDept === "All" ? "No files yet" : `No ${activeDept} files`}
-                    </p>
-                    <p className="text-xs text-gray-400 leading-relaxed max-w-[200px]">
-                      {activeDept === "All"
-                        ? "Upload context files for agents to read, or run a goal — deliverables appear here automatically."
-                        : `No ${activeDept} files. Upload one or run a related goal.`}
-                    </p>
-                  </div>
-                )}
-                {!loadingFiles && (() => {
-                  const generated = filteredFiles.filter((f) => f.source_tag);
-                  const manual = filteredFiles.filter((f) => !f.source_tag);
-                  const showSections = activeDept === "All" && generated.length > 0 && manual.length > 0;
-                  const renderFile = (file: LibraryFile) => (
-                    <div key={file.id}>
-                      {deleteConfirm === file.id ? (
-                        <div className="px-5 py-4 border-b border-[#E5E7EB] bg-red-50">
-                          <p className="text-xs text-red-700 mb-3">Delete <strong>{file.filename}</strong>?</p>
-                          <div className="flex gap-2">
-                            <button onClick={() => handleDelete(file.id)} className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg transition-colors">Delete</button>
-                            <button onClick={() => setDeleteConfirm(null)} className="text-xs text-gray-600 hover:text-gray-800 border border-gray-300 px-3 py-1.5 rounded-lg transition-colors">Cancel</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <FileRow file={file} selected={selectedFile?.id === file.id} onSelect={() => { setSelectedFile(file); setShowNewForm(false); }} onDelete={() => setDeleteConfirm(file.id)} />
-                      )}
-                    </div>
-                  );
-                  if (showSections) return (
-                    <>
-                      <div className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide bg-gray-50 border-b border-[#E5E7EB]">
-                        Deliverables — generated by agents
-                      </div>
-                      {generated.map(renderFile)}
-                      <div className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide bg-gray-50 border-b border-[#E5E7EB]">
-                        Context files — uploaded by you
-                      </div>
-                      {manual.map(renderFile)}
-                    </>
-                  );
-                  return filteredFiles.map(renderFile);
-                })()}
-              </div>
-
-              {/* Footer */}
-              <div className="px-5 py-3 border-t border-[#E5E7EB] text-xs text-gray-400 flex items-center justify-between">
-                <span>{files.filter((f) => !f.source_tag).length} context · {files.filter((f) => f.source_tag).length} generated</span>
-                <span>{files.filter((f) => f.is_canonical).length} canonical</span>
-              </div>
-            </div>
-
-            {/* Right panel */}
-            <div className="flex-1 flex flex-col min-w-0">
-              {showNewForm ? (
-                <NewFileForm founderId={founderId} onCreated={handleFileCreated} onCancel={() => setShowNewForm(false)} />
-              ) : showEditor ? (
-                <FileEditor
-                  key={selectedFile.id}
-                  file={selectedFile}
-                  founderId={founderId}
-                  onUpdated={handleFileUpdated}
-                  onClose={() => setSelectedFile(null)}
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-center px-10">
-                  <div className="text-5xl mb-5">&#128193;</div>
-                  <h3 className="text-sm font-semibold text-[#111827] mb-2">Your company's file library</h3>
-                  <p className="text-sm text-gray-400 max-w-xs leading-relaxed mb-4">
-                    Two kinds of files live here:
-                  </p>
-                  <div className="text-left space-y-3 mb-7 max-w-xs">
-                    <div className="flex gap-2.5 items-start">
-                      <span className="text-base shrink-0 text-gray-400">↑</span>
-                      <div>
-                        <p className="text-xs font-semibold text-gray-700">Context files</p>
-                        <p className="text-xs text-gray-400">Files you upload — business plans, brand guides, research. Canonical ones (★) are auto-read by agents.</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2.5 items-start">
-                      <span className="text-base shrink-0 text-gray-400">◈</span>
-                      <div>
-                        <p className="text-xs font-semibold text-gray-700">Deliverables</p>
-                        <p className="text-xs text-gray-400">PDFs, docs, and files agents generate for you — legal agreements, pitch decks, marketing copy.</p>
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setShowNewForm(true)}
-                    className="bg-[#002EFF] hover:bg-[#0024CC] text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
-                  >
-                    Upload a file
-                  </button>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-
-        {/* ── FUNDING KIT MODE ── */}
-        {mode === "funding" && (() => {
-          const generating = fundingStatus?.generating || fundingTriggering;
-          const needsRefresh = fundingStatus?.needs_refresh && !generating;
-          const hasDocs = (fundingStatus?.documents?.length ?? 0) > 0;
-          const activeDoc = fundingStatus?.documents?.find((d) => d.source_path === selectedDoc)
-            ?? fundingStatus?.documents?.[0] ?? null;
-
-          // Auto-select first doc when documents arrive
-          if (hasDocs && !selectedDoc && fundingStatus?.documents?.[0]?.source_path) {
-            setSelectedDoc(fundingStatus.documents[0].source_path);
-          }
-
-          return (
-            <div className="flex flex-1 min-h-0">
-              {/* Left sidebar */}
-              <div className="w-64 flex flex-col border-r border-[#E5E7EB] shrink-0">
-                <div className="px-4 py-3 border-b border-[#E5E7EB]">
-                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Documents</div>
-                  {fundingStatus?.generated_at && (
-                    <div className="text-xs text-gray-400 mt-0.5">
-                      {new Date(fundingStatus.generated_at).toLocaleDateString()}
-                      {needsRefresh ? " · outdated" : ""}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex-1 overflow-y-auto py-2">
-                  {fundingLoading && <div className="text-xs text-gray-400 text-center py-8">Loading…</div>}
-                  {fundingError && <div className="text-xs text-red-500 px-4 py-3">{fundingError}</div>}
-                  {needsRefresh && (
-                    <div className="mx-3 mb-2 text-xs bg-amber-50 border border-amber-200 rounded px-3 py-2 text-amber-700">
-                      Genome changed.{" "}
-                      <button onClick={() => { handleFundingGenerate(); }} className="underline font-semibold">Regenerate</button>
-                    </div>
-                  )}
-                  {generating && (
-                    <div className="mx-3 mb-2 text-xs bg-blue-50 border border-blue-200 rounded px-3 py-2 text-blue-600 flex items-center gap-1.5">
-                      <span className="animate-spin">⟳</span> Generating…
-                    </div>
-                  )}
-                  {!fundingLoading && !hasDocs && !generating && (
-                    <div className="flex flex-col items-center text-center px-4 py-10">
-                      <div style={{ fontSize: 28, color: "#9CA3AF", marginBottom: 8 }}>◈</div>
-                      <p className="text-xs font-medium text-gray-500 mb-1">No documents yet</p>
-                      <p className="text-xs text-gray-400 mb-4 leading-relaxed">
-                        Fill in Company Brain, then generate your kit.
-                      </p>
-                      <button onClick={() => { handleFundingGenerate(); }} disabled={generating} className="btn pri" style={{ fontSize: 11 }}>
-                        Generate Kit
-                      </button>
-                    </div>
-                  )}
-                  {hasDocs && fundingStatus?.documents.map((doc) => (
-                    <button
-                      key={doc.type}
-                      onClick={() => setSelectedDoc(doc.source_path)}
-                      className={`w-full text-left flex items-center gap-3 px-4 py-3.5 border-b border-[#E5E7EB] transition-colors ${
-                        selectedDoc === doc.source_path ? "bg-blue-50" : "hover:bg-gray-50"
-                      }`}
-                    >
-                      <span style={{ fontSize: 14, color: "#6B7280", fontFamily: "var(--font-code)" }}>doc</span>
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium text-gray-800 truncate">{doc.label}</div>
-                        <div className="text-xs text-gray-400 truncate">{doc.filename}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Right: full-height PDF/slideshow viewer */}
-              <div className="flex-1 flex flex-col min-w-0 min-h-0">
-                {activeDoc?.source_path ? (() => {
-                  const isPptx = activeDoc.filename.toLowerCase().endsWith(".pptx");
-                  // Fetch companion slides JSON when PPTX selected
-                  if (isPptx && pptxSlidesFilename !== activeDoc.filename) {
-                    setPptxSlidesFilename(activeDoc.filename);
-                    setPptxSlides([]);
-                    const slidesFilename = activeDoc.filename.replace(/\.pptx$/i, ".slides.json");
-                    fetch(`/api/files/${encodeURIComponent(slidesFilename)}`)
-                      .then(r => r.ok ? r.json() : null)
-                      .then(data => { if (Array.isArray(data)) setPptxSlides(data); })
-                      .catch(() => {});
-                  }
-                  return (
-                    <>
-                      <div className="flex items-center gap-3 px-5 py-2.5 border-b border-[#E5E7EB] bg-gray-50 shrink-0">
-                        <span className="text-xs font-medium text-gray-600 flex-1 truncate">{activeDoc.label}</span>
-                        {isPptx && <span className="text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded px-2 py-0.5 font-medium shrink-0">Pitch Deck</span>}
-                        <a
-                          href={`/api/files/${encodeURIComponent(activeDoc.filename)}?download=1`}
-                          download={activeDoc.filename}
-                          className="text-xs text-[#002EFF] font-medium shrink-0"
-                        >
-                          Download ↓
-                        </a>
-                      </div>
-                      <div className="flex-1 min-h-0 overflow-y-auto p-4">
-                        {isPptx ? (
-                          pptxSlides.length > 0 ? (
-                            <PitchDeckSlideshow
-                              slides={pptxSlides}
-                              downloadPath={activeDoc.filename}
-                            />
-                          ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-center px-8 gap-4">
-                              <div style={{ fontSize: 32, color: "var(--fm)", fontFamily: "var(--font-code)" }}>◈</div>
-                              <div>
-                                <p className="text-sm font-semibold text-gray-700 mb-1">{activeDoc.label}</p>
-                                <p className="text-xs text-gray-400 mb-5">Loading slideshow…</p>
-                                <a
-                                  href={`/api/files/${encodeURIComponent(activeDoc.filename)}?download=1`}
-                                  download={activeDoc.filename}
-                                  className="btn pri"
-                                  style={{ textDecoration: "none", display: "inline-block" }}
-                                >
-                                  Download .pptx ↓
-                                </a>
-                              </div>
-                            </div>
-                          )
-                        ) : (
-                          <iframe
-                            src={`/api/files/${encodeURIComponent(activeDoc.filename)}`}
-                            style={{ width: "100%", height: "100%", border: "none", display: "block" }}
-                            title={activeDoc.label}
-                          />
-                        )}
-                      </div>
-                    </>
-                  );
-                })() : (
-                  !hasDocs ? null : (
-                    <div className="flex items-center justify-center h-full text-sm text-gray-400">
-                      Select a document to preview
-                    </div>
-                  )
-                )}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ── TEMPLATES MODE ── */}
-        {mode === "templates" && (
-          <>
-            {/* Left sidebar */}
-            <div className="w-80 flex flex-col border-r border-[#E5E7EB] shrink-0">
-              {/* Search */}
-              <div className="px-4 py-3 border-b border-[#E5E7EB]">
-                <input
-                  type="text"
-                  value={templateSearch}
-                  onChange={(e) => setTemplateSearch(e.target.value)}
-                  placeholder="Search templates..."
-                  className="w-full text-sm border border-[#E5E7EB] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#002EFF] focus:border-transparent"
-                />
-              </div>
-
-              {/* Category filter */}
-              <div className="flex flex-wrap gap-1.5 px-4 py-3 border-b border-[#E5E7EB]">
-                {exampleCategories.map((cat) => {
-                  const count = cat === "all" ? examples.length : examples.filter((e) => e.category === cat).length;
-                  return (
-                    <button
-                      key={cat}
-                      onClick={() => setActiveCat(cat)}
-                      className={`text-xs px-2.5 py-1 rounded-full transition-colors font-medium capitalize ${
-                        activeCat === cat
-                          ? "bg-[#002EFF] text-white"
-                          : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
-                      }`}
-                    >
-                      {cat}
-                      {count > 0 && (
-                        <span className={`ml-1 ${activeCat === cat ? "text-blue-200" : "text-gray-400"}`}>{count}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Template list */}
-              <div className="flex-1 overflow-y-auto">
-                {loadingExamples && <div className="text-sm text-gray-400 text-center py-12">Loading templates...</div>}
-                {!loadingExamples && filteredExamples.length === 0 && (
-                  <div className="text-sm text-gray-400 text-center py-12 px-4">No templates found.</div>
-                )}
-                {!loadingExamples && filteredExamples.map((ex) => (
-                  <TemplateRow
-                    key={ex.path}
-                    example={ex}
-                    selected={selectedExample?.path === ex.path}
-                    onSelect={() => setSelectedExample(ex)}
-                  />
-                ))}
-              </div>
-
-              <div className="px-5 py-3 border-t border-[#E5E7EB] text-xs text-gray-400">
-                {filteredExamples.length} of {examples.length} templates · used by agents automatically
-              </div>
-            </div>
-
-            {/* Right panel */}
-            <div className="flex-1 flex flex-col min-w-0">
-              {showTemplateViewer ? (
-                <TemplateViewer example={selectedExample} onClose={() => setSelectedExample(null)} />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-center px-10">
-                  <div className="text-5xl mb-5">&#128218;</div>
-                  <h3 className="text-sm font-semibold text-[#111827] mb-2">Code patterns agents use when building</h3>
-                  <p className="text-sm text-gray-400 max-w-sm leading-relaxed">
-                    Before writing any code, agents search these patterns — working scaffolds for auth, payments, deployments, email, and more. Read-only. Select one to inspect.
-                  </p>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
+      {/* ── Right: detail panel ── */}
+      {hasDetail && (
+        <div style={{ flex: 1, minWidth: 0, height: "100%", overflow: "hidden" }}>
+          {showNewForm ? (
+            <NewFileForm founderId={founderId} onCreated={handleFileCreated} onCancel={handleCloseDetail} />
+          ) : selectedFile ? (
+            <FileEditor
+              key={selectedFile.id}
+              file={selectedFile}
+              founderId={founderId}
+              onUpdated={handleFileUpdated}
+              onClose={handleCloseDetail}
+              onDelete={handleDeleteFile}
+            />
+          ) : selectedExample ? (
+            <TemplateViewer example={selectedExample} onClose={handleCloseDetail} />
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
