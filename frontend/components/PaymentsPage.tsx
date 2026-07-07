@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import PageHeader from "@/components/PageHeader";
+
 import { useDevUser } from "@/lib/use-dev-user";
 import { apiFetch } from "@/lib/api";
 import {
@@ -151,24 +151,24 @@ function StatCard({ label, value, sub, accent, badge }: {
   return (
     <div style={{
       borderRadius: 14,
-      border: "1px solid #E5E7EB",
-      background: "#FFFFFF",
-      boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+      border: "1px solid var(--border)",
+      background: "var(--bg-surface)",
+      boxShadow: "none",
       padding: "20px 24px",
       display: "flex",
       flexDirection: "column",
       gap: 6,
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "#9CA3AF", fontWeight: 500 }}>{label}</span>
+        <span style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-3)", fontWeight: 500 }}>{label}</span>
         {badge && (
-          <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 999, background: "#DCFCE7", color: "#16a34a", border: "1px solid #BBF7D0", fontWeight: 500 }}>
+          <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 999, background: "rgba(22,163,74,0.12)", color: "#16a34a", border: "1px solid rgba(22,163,74,0.30)", fontWeight: 500 }}>
             {badge}
           </span>
         )}
       </div>
-      <span style={{ fontSize: 26, fontWeight: 600, color: accent ?? "#111827", letterSpacing: "-0.02em", fontFamily: "var(--font-geist-sans)" }}>{value}</span>
-      {sub && <span style={{ fontSize: 12, color: "#9CA3AF" }}>{sub}</span>}
+      <span style={{ fontSize: 26, fontWeight: 600, color: accent ?? "var(--text)", letterSpacing: "-0.02em", fontFamily: "var(--font-geist-sans)" }}>{value}</span>
+      {sub && <span style={{ fontSize: 12, color: "var(--text-3)" }}>{sub}</span>}
     </div>
   );
 }
@@ -177,13 +177,13 @@ function SectionCard({ title, children, action }: { title: string; children: Rea
   return (
     <div style={{
       borderRadius: 14,
-      border: "1px solid #E5E7EB",
-      background: "#FFFFFF",
-      boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+      border: "1px solid var(--border)",
+      background: "var(--bg-surface)",
+      boxShadow: "none",
       overflow: "hidden",
     }}>
-      <div style={{ padding: "14px 20px", borderBottom: "1px solid #E5E7EB", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#F8F9FA" }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{title}</span>
+      <div style={{ padding: "14px 20px", borderBottom: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg-sunken)" }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{title}</span>
         {action}
       </div>
       {children}
@@ -195,14 +195,14 @@ const CHART_COLORS = ["#002EFF", "#16a34a", "#d97706", "#dc2626", "#7c3aed"];
 
 const tooltipStyle = {
   contentStyle: {
-    background: "#FFFFFF",
-    border: "1px solid #E5E7EB",
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border)",
     borderRadius: 10,
     fontSize: 12,
-    color: "#111827",
-    boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+    color: "var(--text)",
+    boxShadow: "0 4px 16px rgba(0,0,0,0.30)",
   },
-  labelStyle: { color: "#9CA3AF", marginBottom: 4 },
+  labelStyle: { color: "var(--text-3)", marginBottom: 4 },
 };
 
 // ── Connect screen ────────────────────────────────────────────────────────────
@@ -229,20 +229,20 @@ function ConnectStripe({ founderId, email }: { founderId: string; email: string 
       <div style={{ textAlign: "center", maxWidth: 460 }}>
         <div style={{
           width: 56, height: 56, borderRadius: 14,
-          background: "#EFF6FF", border: "1px solid #BFDBFE",
+          background: "var(--accent-light)", border: "1px solid rgba(47,85,255,0.35)",
           display: "flex", alignItems: "center", justifyContent: "center",
           fontSize: 24, margin: "0 auto 20px", color: "#002EFF",
         }}>$</div>
-        <h2 style={{ fontSize: 18, fontWeight: 600, color: "#111827", margin: "0 0 10px", letterSpacing: "-0.02em" }}>Connect your Stripe account</h2>
-        <p style={{ fontSize: 13, color: "#6B7280", margin: 0, lineHeight: 1.7 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--text)", margin: "0 0 10px", letterSpacing: "-0.02em" }}>Connect your Stripe account</h2>
+        <p style={{ fontSize: 13, color: "var(--text-3)", margin: 0, lineHeight: 1.7 }}>
           Click below to connect or create your Stripe account. Astra will securely link it so you can track revenue, balance, and payouts right here.
         </p>
-        <p style={{ fontSize: 12, color: "#9CA3AF", marginTop: 10, lineHeight: 1.6 }}>
+        <p style={{ fontSize: 12, color: "var(--text-3)", marginTop: 10, lineHeight: 1.6 }}>
           No EIN required — upgrade to a business account after your LLC is filed.
         </p>
       </div>
       {error && (
-        <div style={{ padding: "10px 16px", borderRadius: 10, background: "#FEF2F2", border: "1px solid #FECACA", fontSize: 12, color: "#dc2626", maxWidth: 420, textAlign: "center" }}>
+        <div style={{ padding: "10px 16px", borderRadius: 10, background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.30)", fontSize: 12, color: "#dc2626", maxWidth: 420, textAlign: "center" }}>
           {error}
         </div>
       )}
@@ -251,10 +251,10 @@ function ConnectStripe({ founderId, email }: { founderId: string; email: string 
       </button>
       <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
         {["Stripe opens — sign in or create a free account", "Authorize Astra to read your data", "You're redirected back here automatically"].map((s, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "#6B7280" }}>
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--text-3)" }}>
             <span style={{
               width: 20, height: 20, borderRadius: "50%",
-              background: "#EFF6FF", border: "1px solid #BFDBFE",
+              background: "var(--accent-light)", border: "1px solid rgba(47,85,255,0.35)",
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 10, flexShrink: 0, color: "#002EFF", fontWeight: 600,
             }}>{i + 1}</span>
@@ -319,7 +319,7 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
       </button>
     }>
       {showForm && (
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", display: "flex", flexDirection: "column", gap: 12, background: "#F8F9FA" }}>
+        <div style={{ padding: "16px 20px", borderBottom: "1px solid #E5E7EB", display: "flex", flexDirection: "column", gap: 12, background: "var(--bg-sunken)" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {[
               { label: "Product name *", field: "name" as const, placeholder: "Pro Plan", type: "text" },
@@ -327,7 +327,7 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
               { label: "Description", field: "description" as const, placeholder: "Access to all features", type: "text" },
             ].map(({ label, field, placeholder, type }) => (
               <div key={field} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                <label style={{ fontSize: 11, color: "#6B7280", fontWeight: 500 }}>{label}</label>
+                <label style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 500 }}>{label}</label>
                 <input
                   value={form[field]}
                   onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))}
@@ -335,23 +335,23 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
                   type={type}
                   style={{
                     padding: "8px 12px", fontSize: 13, borderRadius: 8,
-                    border: "1px solid #E5E7EB", background: "#FFFFFF",
-                    color: "#111827", outline: "none",
+                    border: "1px solid var(--border)", background: "var(--bg-surface)",
+                    color: "var(--text)", outline: "none",
                   }}
                   onFocus={e => (e.target.style.borderColor = "#002EFF")}
-                  onBlur={e => (e.target.style.borderColor = "#E5E7EB")}
+                  onBlur={e => (e.target.style.borderColor = "var(--border)")}
                 />
               </div>
             ))}
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <label style={{ fontSize: 11, color: "#6B7280", fontWeight: 500 }}>Billing</label>
+              <label style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 500 }}>Billing</label>
               <select
                 value={form.interval}
                 onChange={e => setForm(f => ({ ...f, interval: e.target.value }))}
                 style={{
                   padding: "8px 12px", fontSize: 13, borderRadius: 8,
-                  border: "1px solid #E5E7EB", background: "#FFFFFF",
-                  color: "#111827", outline: "none",
+                  border: "1px solid var(--border)", background: "var(--bg-surface)",
+                  color: "var(--text)", outline: "none",
                 }}
               >
                 <option value="">One-time</option>
@@ -375,9 +375,9 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
       )}
 
       {loading ? (
-        <p style={{ padding: "20px", fontSize: 13, color: "#9CA3AF", margin: 0 }}>Loading…</p>
+        <p style={{ padding: "20px", fontSize: 13, color: "var(--text-3)", margin: 0 }}>Loading…</p>
       ) : products.length === 0 ? (
-        <p style={{ padding: "20px", fontSize: 13, color: "#9CA3AF", margin: 0 }}>
+        <p style={{ padding: "20px", fontSize: 13, color: "var(--text-3)", margin: 0 }}>
           No products yet. Create one above — Astra will generate a shareable Stripe payment link instantly.
         </p>
       ) : (
@@ -385,13 +385,13 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
           {products.map((prod, i) => (
             <div key={prod.product_id} style={{ padding: "14px 20px", borderBottom: i < products.length - 1 ? "1px solid #E5E7EB" : "none", display: "flex", alignItems: "flex-start", gap: 16 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{prod.name}</div>
-                {prod.description && <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{prod.description}</div>}
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{prod.name}</div>
+                {prod.description && <div style={{ fontSize: 12, color: "var(--text-3)", marginTop: 2 }}>{prod.description}</div>}
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
                   {prod.prices.map(pr => (
-                    <div key={pr.price_id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 8, background: "#F8F9FA", border: "1px solid #E5E7EB" }}>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{fmt(pr.amount, pr.currency)}</span>
-                      {pr.interval && <span style={{ fontSize: 11, color: "#9CA3AF" }}>/ {pr.interval}</span>}
+                    <div key={pr.price_id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 8, background: "var(--bg-sunken)", border: "1px solid var(--border)" }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{fmt(pr.amount, pr.currency)}</span>
+                      {pr.interval && <span style={{ fontSize: 11, color: "var(--text-3)" }}>/ {pr.interval}</span>}
                       {pr.payment_link && (
                         <button
                           onClick={() => copy(pr.payment_link!)}
@@ -401,13 +401,13 @@ function ProductsSection({ founderId, currency }: { founderId: string; currency:
                         </button>
                       )}
                       {pr.payment_link && (
-                        <a href={pr.payment_link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "#9CA3AF", textDecoration: "none" }}>↗</a>
+                        <a href={pr.payment_link} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: "var(--text-3)", textDecoration: "none" }}>↗</a>
                       )}
                     </div>
                   ))}
                 </div>
               </div>
-              <span style={{ fontSize: 11, color: "#9CA3AF", flexShrink: 0, marginTop: 2 }}>{fmtDate(prod.created)}</span>
+              <span style={{ fontSize: 11, color: "var(--text-3)", flexShrink: 0, marginTop: 2 }}>{fmtDate(prod.created)}</span>
             </div>
           ))}
         </div>
@@ -466,8 +466,8 @@ function AlertsFeed({ founderId }: { founderId: string }) {
           disabled={registering}
           style={{
             fontSize: 12, padding: "4px 12px", borderRadius: 8,
-            background: "#FFFFFF", color: "#374151",
-            border: "1px solid #E5E7EB", cursor: "pointer", fontWeight: 500,
+            background: "var(--bg-surface)", color: "var(--text-2)",
+            border: "1px solid var(--border)", cursor: "pointer", fontWeight: 500,
           }}
         >
           {registering ? "Registering…" : "Enable alerts"}
@@ -481,11 +481,11 @@ function AlertsFeed({ founderId }: { founderId: string }) {
     }>
       {events.length === 0 ? (
         <div style={{ padding: "20px", display: "flex", flexDirection: "column", gap: 8 }}>
-          <p style={{ fontSize: 13, color: "#6B7280", margin: 0 }}>
+          <p style={{ fontSize: 13, color: "var(--text-3)", margin: 0 }}>
             {webhookRegistered ? "No events yet — alerts will appear here when payments come in." : "Enable alerts to get notified instantly when payments come in, subscriptions churn, or payouts complete."}
           </p>
           {!webhookRegistered && (
-            <p style={{ fontSize: 12, color: "#9CA3AF", margin: 0 }}>
+            <p style={{ fontSize: 12, color: "var(--text-3)", margin: 0 }}>
               Note: requires your backend to be publicly accessible (production URL).
             </p>
           )}
@@ -496,10 +496,10 @@ function AlertsFeed({ founderId }: { founderId: string }) {
             <div key={ev.id || i} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 20px", borderBottom: i < events.length - 1 ? "1px solid #E5E7EB" : "none", background: i % 2 === 1 ? "#F9FAFB" : "#FFFFFF" }}>
               <span style={{ fontSize: 13, color: alertColor(ev.type), flexShrink: 0, marginTop: 1, fontWeight: 600 }}>{alertIcon(ev.type)}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: 0, fontSize: 13, color: "#111827" }}>{ev.alert}</p>
-                <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9CA3AF" }}>{ev.type}</p>
+                <p style={{ margin: 0, fontSize: 13, color: "var(--text)" }}>{ev.alert}</p>
+                <p style={{ margin: "2px 0 0", fontSize: 11, color: "var(--text-3)" }}>{ev.type}</p>
               </div>
-              <span style={{ fontSize: 11, color: "#9CA3AF", flexShrink: 0 }}>{fmtDate(ev.created)}</span>
+              <span style={{ fontSize: 11, color: "var(--text-3)", flexShrink: 0 }}>{fmtDate(ev.created)}</span>
             </div>
           ))}
         </div>
@@ -516,13 +516,13 @@ function EINUpgradeSection({ upgraded, businessName }: { upgraded: boolean; busi
           {upgraded ? (
             <>
               <p style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 600, color: "#16a34a" }}>Upgraded to business account</p>
-              <p style={{ margin: 0, fontSize: 13, color: "#6B7280", lineHeight: 1.6 }}>Registered under <strong style={{ color: "#111827" }}>{businessName ?? "your LLC"}</strong>. Tax reporting now uses your EIN.</p>
+              <p style={{ margin: 0, fontSize: 13, color: "var(--text-3)", lineHeight: 1.6 }}>Registered under <strong style={{ color: "var(--text)" }}>{businessName ?? "your LLC"}</strong>. Tax reporting now uses your EIN.</p>
             </>
           ) : (
             <>
-              <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 600, color: "#111827" }}>Upgrade to LLC / Business</p>
-              <p style={{ margin: "0 0 10px", fontSize: 13, color: "#6B7280", lineHeight: 1.6 }}>Once your LLC is filed via Astra and your EIN arrives from the IRS, you&apos;ll update your Stripe account to your business entity. Switches tax reporting from SSN to EIN.</p>
-              <p style={{ margin: 0, fontSize: 12, color: "#9CA3AF" }}><strong style={{ color: "#374151" }}>Timeline:</strong> File LLC → IRS issues EIN in 1–4 weeks → update Stripe → done.</p>
+              <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 600, color: "var(--text)" }}>Upgrade to LLC / Business</p>
+              <p style={{ margin: "0 0 10px", fontSize: 13, color: "var(--text-3)", lineHeight: 1.6 }}>Once your LLC is filed via Astra and your EIN arrives from the IRS, you&apos;ll update your Stripe account to your business entity. Switches tax reporting from SSN to EIN.</p>
+              <p style={{ margin: 0, fontSize: 12, color: "var(--text-3)" }}><strong style={{ color: "var(--text-2)" }}>Timeline:</strong> File LLC → IRS issues EIN in 1–4 weeks → update Stripe → done.</p>
             </>
           )}
         </div>
@@ -601,40 +601,52 @@ export default function PaymentsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Payments"
-        subtitle="Revenue, balance, and transactions"
-        badge={status?.connected ? {
-          label: status.livemode ? "Live" : "Test",
-          color: status.livemode ? "green" : "amber",
-        } : undefined}
-        actions={status?.connected ? (
+      <div style={{ padding: "22px 24px 16px", flexShrink: 0, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-0.01em" }}>Payments</h1>
+            {status?.connected && (
+              <span style={{
+                padding: "2px 8px", fontSize: 10, fontWeight: 600, letterSpacing: ".06em",
+                textTransform: "uppercase", borderRadius: 4,
+                border: status.livemode ? "1px solid rgba(22,163,74,0.4)" : "1px solid rgba(217,119,6,0.4)",
+                background: status.livemode ? "rgba(22,163,74,0.10)" : "rgba(217,119,6,0.10)",
+                color: status.livemode ? "#16a34a" : "#d97706",
+              }}>
+                {status.livemode ? "Live" : "Test"}
+              </span>
+            )}
+          </div>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-3)" }}>Revenue, balance, and transactions</p>
+        </div>
+        {status?.connected && (
           <button
             onClick={fetchData}
             disabled={loadingData}
             style={{
-              fontSize: 12, padding: "8px 14px",
-              color: "rgba(255,255,255,0.88)",
-              background: "rgba(255,255,255,0.13)",
-              border: "1px solid rgba(255,255,255,0.28)",
+              fontSize: 12, padding: "7px 14px",
+              color: "var(--text-2)",
+              background: "var(--bg-surface)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
               cursor: loadingData ? "not-allowed" : "pointer",
               opacity: loadingData ? 0.5 : 1,
             }}
           >
             {loadingData ? "Loading…" : "Refresh"}
           </button>
-        ) : undefined}
-      />
+        )}
+      </div>
       <div style={{ width: "100%", maxWidth: 1020, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24, padding: "24px 22px 48px", fontFamily: "var(--font-geist-sans)" }}>
 
       {connectError && (
-        <div style={{ padding: "12px 16px", borderRadius: 10, background: "#FEF2F2", border: "1px solid #FECACA", fontSize: 13, color: "#dc2626" }}>
+        <div style={{ padding: "12px 16px", borderRadius: 10, background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.30)", fontSize: 13, color: "#dc2626" }}>
           {connectError}
         </div>
       )}
 
       {loadingStatus && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "48px 0", justifyContent: "center", color: "#9CA3AF", fontSize: 13 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "48px 0", justifyContent: "center", color: "var(--text-3)", fontSize: 13 }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#9CA3AF", display: "inline-block" }} />
           Checking Stripe connection…
         </div>
@@ -649,7 +661,7 @@ export default function PaymentsPage() {
       {status?.connected && (
         <>
           {dataError && (
-            <div style={{ padding: "12px 16px", borderRadius: 10, background: "#FEF2F2", border: "1px solid #FECACA", fontSize: 13, color: "#dc2626" }}>
+            <div style={{ padding: "12px 16px", borderRadius: 10, background: "rgba(220,38,38,0.10)", border: "1px solid rgba(220,38,38,0.30)", fontSize: 13, color: "#dc2626" }}>
               {dataError}
             </div>
           )}
@@ -690,7 +702,7 @@ export default function PaymentsPage() {
                       </AreaChart>
                     </ResponsiveContainer>
                   ) : (
-                    <div style={{ height: 220, display: "flex", alignItems: "center", justifyContent: "center", color: "#9CA3AF", fontSize: 13, flexDirection: "column", gap: 8 }}>
+                    <div style={{ height: 220, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-3)", fontSize: 13, flexDirection: "column", gap: 8 }}>
                       <span style={{ fontSize: 28, color: "#D1D5DB" }}>$</span>
                       No transactions yet — create a test payment in Stripe to see your chart
                     </div>
@@ -713,7 +725,7 @@ export default function PaymentsPage() {
                         </BarChart>
                       </ResponsiveContainer>
                     ) : (
-                      <div style={{ height: 180, display: "flex", alignItems: "center", justifyContent: "center", color: "#9CA3AF", fontSize: 13 }}>No payouts yet</div>
+                      <div style={{ height: 180, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-3)", fontSize: 13 }}>No payouts yet</div>
                     )}
                   </div>
                 </SectionCard>
@@ -729,11 +741,11 @@ export default function PaymentsPage() {
                             ))}
                           </Pie>
                           <Tooltip {...tooltipStyle} formatter={(v, name) => [String(v), String(name)]} />
-                          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "#6B7280" }} />
+                          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, color: "var(--text-3)" }} />
                         </PieChart>
                       </ResponsiveContainer>
                     ) : (
-                      <div style={{ height: 180, display: "flex", alignItems: "center", justifyContent: "center", color: "#9CA3AF", fontSize: 13 }}>No charges yet</div>
+                      <div style={{ height: 180, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-3)", fontSize: 13 }}>No charges yet</div>
                     )}
                   </div>
                 </SectionCard>
@@ -742,24 +754,24 @@ export default function PaymentsPage() {
               {/* Charges table */}
               <SectionCard title={`Recent Charges (${data.charges.length})`}>
                 {data.charges.length === 0 ? (
-                  <p style={{ padding: "20px", fontSize: 13, color: "#9CA3AF", margin: 0 }}>No charges yet.</p>
+                  <p style={{ padding: "20px", fontSize: 13, color: "var(--text-3)", margin: 0 }}>No charges yet.</p>
                 ) : (
                   <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                       <thead>
                         <tr style={{ borderBottom: "1px solid #E5E7EB", background: "#F9FAFB" }}>
                           {["Date", "Customer", "Description", "Amount", "Status"].map(h => (
-                            <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "#6B7280", fontWeight: 500, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
+                            <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "var(--text-3)", fontWeight: 500, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {data.charges.map((c, i) => (
                           <tr key={c.id} style={{ borderBottom: i < data.charges.length - 1 ? "1px solid #E5E7EB" : "none", background: i % 2 === 1 ? "#F9FAFB" : "#FFFFFF" }}>
-                            <td style={{ padding: "11px 16px", color: "#6B7280", whiteSpace: "nowrap", fontSize: 12 }}>{fmtDate(c.created)}</td>
-                            <td style={{ padding: "11px 16px", color: "#374151" }}>{c.customer_email ?? "—"}</td>
-                            <td style={{ padding: "11px 16px", color: "#374151", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.description ?? "—"}</td>
-                            <td style={{ padding: "11px 16px", color: "#111827", fontWeight: 600, whiteSpace: "nowrap" }}>{fmt(c.amount, c.currency)}</td>
+                            <td style={{ padding: "11px 16px", color: "var(--text-3)", whiteSpace: "nowrap", fontSize: 12 }}>{fmtDate(c.created)}</td>
+                            <td style={{ padding: "11px 16px", color: "var(--text-2)" }}>{c.customer_email ?? "—"}</td>
+                            <td style={{ padding: "11px 16px", color: "var(--text-2)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.description ?? "—"}</td>
+                            <td style={{ padding: "11px 16px", color: "var(--text)", fontWeight: 600, whiteSpace: "nowrap" }}>{fmt(c.amount, c.currency)}</td>
                             <td style={{ padding: "11px 16px" }}>
                               <span style={{
                                 fontSize: 11, padding: "3px 9px", borderRadius: 999, fontWeight: 500,
@@ -780,23 +792,23 @@ export default function PaymentsPage() {
               {/* Payouts table */}
               <SectionCard title={`Payouts (${data.payouts.length})`}>
                 {data.payouts.length === 0 ? (
-                  <p style={{ padding: "20px", fontSize: 13, color: "#9CA3AF", margin: 0 }}>No payouts yet.</p>
+                  <p style={{ padding: "20px", fontSize: 13, color: "var(--text-3)", margin: 0 }}>No payouts yet.</p>
                 ) : (
                   <div style={{ overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                       <thead>
                         <tr style={{ borderBottom: "1px solid #E5E7EB", background: "#F9FAFB" }}>
                           {["Created", "Arrival Date", "Amount", "Status"].map(h => (
-                            <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "#6B7280", fontWeight: 500, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
+                            <th key={h} style={{ padding: "10px 16px", textAlign: "left", color: "var(--text-3)", fontWeight: 500, fontSize: 11, letterSpacing: "0.06em", textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {data.payouts.map((p, i) => (
                           <tr key={p.id} style={{ borderBottom: i < data.payouts.length - 1 ? "1px solid #E5E7EB" : "none", background: i % 2 === 1 ? "#F9FAFB" : "#FFFFFF" }}>
-                            <td style={{ padding: "11px 16px", color: "#6B7280", fontSize: 12 }}>{fmtDate(p.created)}</td>
-                            <td style={{ padding: "11px 16px", color: "#6B7280", fontSize: 12 }}>{fmtDate(p.arrival_date)}</td>
-                            <td style={{ padding: "11px 16px", color: "#111827", fontWeight: 600 }}>{fmt(p.amount, p.currency)}</td>
+                            <td style={{ padding: "11px 16px", color: "var(--text-3)", fontSize: 12 }}>{fmtDate(p.created)}</td>
+                            <td style={{ padding: "11px 16px", color: "var(--text-3)", fontSize: 12 }}>{fmtDate(p.arrival_date)}</td>
+                            <td style={{ padding: "11px 16px", color: "var(--text)", fontWeight: 600 }}>{fmt(p.amount, p.currency)}</td>
                             <td style={{ padding: "11px 16px" }}>
                               <span style={{
                                 fontSize: 11, padding: "3px 9px", borderRadius: 999, fontWeight: 500,

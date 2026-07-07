@@ -18,30 +18,30 @@ import {
   ConnectorSetupPlan,
   ConnectorValidationReport,
 } from "@/lib/api";
-import PageHeader from "@/components/PageHeader";
+
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const c = {
-  bg: "#FFFFFF",
-  surface: "#F8F9FA",
-  border: "#E5E7EB",
-  borderStrong: "#D1D5DB",
-  text: "#111827",
-  textSecondary: "#374151",
-  textMuted: "#9CA3AF",
-  grey: "#6B7280",
+  bg: "var(--bg)",
+  surface: "var(--bg-surface)",
+  border: "var(--border)",
+  borderStrong: "var(--border-strong)",
+  text: "var(--text)",
+  textSecondary: "var(--text-2)",
+  textMuted: "var(--text-3)",
+  grey: "var(--text-muted)",
   blue: "#002EFF",
   blueHover: "#1f36e0",
-  blueTint: "#EFF6FF",
-  blueBorder: "#BFDBFE",
+  blueTint: "var(--accent-light)",
+  blueBorder: "rgba(47,85,255,0.35)",
   green: "#16a34a",
-  greenTint: "#F0FDF4",
-  greenBorder: "#BBF7D0",
+  greenTint: "rgba(22,163,74,0.10)",
+  greenBorder: "rgba(22,163,74,0.30)",
   red: "#dc2626",
-  redTint: "#FEF2F2",
-  redBorder: "#FECACA",
+  redTint: "rgba(220,38,38,0.10)",
+  redBorder: "rgba(220,38,38,0.30)",
   amber: "#d97706",
 };
 
@@ -1464,11 +1464,15 @@ export default function SetupPage() {
 
   return (
     <>
-      <PageHeader
-        title="Integrations"
-        subtitle="Connect services once — agents use them everywhere"
-        stats={status ? [{ label: "Connected", value: `${connectedCount} / ${totalServices}` }] : undefined}
-      />
+      <div style={{ padding: "22px 24px 16px", flexShrink: 0, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-0.01em" }}>Integrations</h1>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-3)" }}>Connect services once — agents use them everywhere</p>
+        </div>
+        {status && (
+          <span style={{ fontSize: 12, color: "var(--text-3)", alignSelf: "center" }}>{connectedCount} / {totalServices} connected</span>
+        )}
+      </div>
       <div style={{ width: "100%", maxWidth: 920, margin: "0 auto", display: "flex", flexDirection: "column", gap: 32, padding: "24px 22px 48px", fontFamily: "var(--font-geist-sans)" }}>
 
       <div>

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import { useCompany } from "@/lib/company-context";
-import PageHeader from "@/components/PageHeader";
+
 import { CHECKLIST_CATEGORIES, itemOwner, type CLItem, type CLCategory, type CLOwner } from "@/lib/checklist-data";
 import { getCompanyGoal, AGENT_LABELS, type CompanyTask } from "@/lib/api";
 
@@ -308,18 +308,33 @@ export default function ChecklistPage() {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
       <style>{`@keyframes cl-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.82); } }`}</style>
 
-      <PageHeader
-        title={`${activeCompany?.name || "Company"} Checklist`}
-        badge={stats.needsYou > 0 ? { label: `${stats.needsYou} needs you`, color: "amber" }
-             : stats.active > 0 ? { label: `${stats.active} active`, color: "blue" }
-             : { label: "all clear", color: "green" }}
-        stats={[
-          { label: "Done",      value: String(stats.done) },
-          { label: "Active",    value: String(stats.active) },
-          { label: "Needs you", value: String(stats.needsYou) },
-          { label: "Total",     value: String(allItems.length) },
-        ]}
-      />
+      <div style={{ padding: "22px 24px 16px", flexShrink: 0, borderBottom: "1px solid var(--border)", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, letterSpacing: "-0.01em" }}>{activeCompany?.name || "Company"} Checklist</h1>
+          <span style={{
+            padding: "2px 8px", fontSize: 10, fontWeight: 600, letterSpacing: ".06em",
+            textTransform: "uppercase", borderRadius: 4,
+            border: stats.needsYou > 0 ? "1px solid rgba(217,119,6,0.4)" : stats.active > 0 ? "1px solid rgba(0,26,255,0.35)" : "1px solid rgba(22,163,74,0.4)",
+            background: stats.needsYou > 0 ? "rgba(217,119,6,0.10)" : stats.active > 0 ? "rgba(0,26,255,0.10)" : "rgba(22,163,74,0.10)",
+            color: stats.needsYou > 0 ? "#d97706" : stats.active > 0 ? "#4d7aff" : "#16a34a",
+          }}>
+            {stats.needsYou > 0 ? `${stats.needsYou} needs you` : stats.active > 0 ? `${stats.active} active` : "all clear"}
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: 20 }}>
+          {[
+            { label: "Done",      value: stats.done },
+            { label: "Active",    value: stats.active },
+            { label: "Needs you", value: stats.needsYou },
+            { label: "Total",     value: allItems.length },
+          ].map(s => (
+            <div key={s.label} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em" }}>{s.value}</span>
+              <span style={{ fontSize: 10, color: "var(--text-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>{s.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
 
       <main style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {/* Tab bar + category filter */}
