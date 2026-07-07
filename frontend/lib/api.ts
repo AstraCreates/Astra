@@ -1496,7 +1496,7 @@ export async function ingestAttachment(
   founderId: string,
   file: File,
   persist = true,
-): Promise<{ filename: string; content: string; truncated: boolean; kind: string; error?: string; library_id?: string }> {
+): Promise<{ filename: string; content: string; truncated: boolean; kind: string; error?: string; library_id?: string; size_bytes?: number; summary?: string }> {
   const buf = new Uint8Array(await file.arrayBuffer());
   let binary = "";
   const CHUNK = 0x8000;
@@ -1511,7 +1511,7 @@ export async function ingestAttachment(
   });
   if (!res.ok) {
     const t = await res.text().catch(() => "");
-    return { filename: file.name, content: "", truncated: false, kind: "error", error: t || `Upload failed (HTTP ${res.status})` };
+    return { filename: file.name, content: "", truncated: false, kind: "error", size_bytes: file.size, error: t || `Upload failed (HTTP ${res.status})` };
   }
   return res.json();
 }

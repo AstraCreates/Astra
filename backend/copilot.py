@@ -55,6 +55,41 @@ def _clip(text: Any, limit: int = 280) -> str:
     return value[:limit]
 
 
+def _normalize_attachments(attachments: Any, *, max_files: int = 6, max_chars_each: int = 6000) -> list[dict[str, Any]]:
+    """Bound uploaded attachment context before it reaches the copilot prompt."""
+    if not isinstance(attachments, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for raw in attachments[:max_files]:
+        if not isinstance(raw, dict):
+            continue
+        content = str(raw.get("content") or "")
+        if not content.strip():
+            continue
+        normalized.append({
+            "filename": _clip(raw.get("filename") or raw.get("name") or "attachment", 120),
+            "kind": _clip(raw.get("kind") or "file", 40),
+            "library_id": _clip(raw.get("library_id") or "", 80),
+            "truncated": bool(raw.get("truncated")) or len(content) > max_chars_each,
+            "content": content[:max_chars_each],
+        })
+    return normalized
+
+
+def _attachment_context_block(attachments: list[dict[str, Any]]) -> str:
+    if not attachments:
+        return ""
+    parts = []
+    for item in attachments:
+        meta = f"{item['filename']} ({item['kind']})"
+        if item.get("library_id"):
+            meta += f", library_id={item['library_id']}"
+        if item.get("truncated"):
+            meta += ", truncated"
+        parts.append(f"--- {meta} ---\n{item['content']}")
+    return "\n\nUPLOADED FILE CONTEXT FOR THIS TURN:\n" + "\n\n".join(parts)
+
+
 def _detect_named_agent(message: str, valid_agents: set[str]) -> str:
     low = f" {str(message or '').lower()} "
     for agent in sorted(valid_agents, key=len, reverse=True):
@@ -1567,12 +1602,19 @@ async def _copilot_generate(prompt: str) -> str:
     return await asyncio.to_thread(_call)
 
 
-async def run_copilot(founder_id: str, session_id: str, message: str, founder_email: str = "") -> dict[str, Any]:
+async def run_copilot(
+    founder_id: str,
+    session_id: str,
+    message: str,
+    founder_email: str = "",
+    attachments: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Run one copilot turn: load history, let the model use tools, reply, persist."""
     from backend.tools._llm import generate
 
     history = get_history(session_id)
     live = await _load_live_context(session_id, founder_id)
+    attachment_context = _attachment_context_block(_normalize_attachments(attachments))
     tool_docs = "\n".join(f"- {name}: {doc}" for name, (doc, _) in _TOOLS.items())
     system = (
         "You are the founder's Copilot inside an Astra session — a hands-on operator that ACTS on "
@@ -1625,8 +1667,11 @@ async def run_copilot(founder_id: str, session_id: str, message: str, founder_em
         "the founder means. Never ask for clarification on deploy errors — just fix them.\n\n"
         "GOAL QUESTIONS: all_goals and all_recent_sessions in the snapshot give you full visibility. "
         "Use list_goals or list_sessions tools only when you need fresher data than the snapshot.\n\n"
+        "UPLOADED FILES: if the founder attached files, use their extracted content as first-class context. "
+        "When dispatching or steering agents, include the relevant file facts in the tool instruction/context so agents can act on them.\n\n"
         "LIVE SESSION SNAPSHOT (ground truth, refreshes every turn):\n"
         f"{json.dumps(live, indent=2, sort_keys=True)[:9000]}\n\n"
+        f"{attachment_context}\n\n"
         'Respond with ONE JSON object per step:\n'
         '  to use a tool: {"action":"tool","tool":"<name>","args":{...}}\n'
         '  to answer:     {"action":"reply","text":"<your message to the founder>"}\n'
@@ -1636,7 +1681,8 @@ async def run_copilot(founder_id: str, session_id: str, message: str, founder_em
         "you already have. NEVER mention tool errors, credential issues, or backend failures to the founder."
     )
     convo = [f"{h['role']}: {h['content']}" for h in history[-12:]]
-    convo.append(f"founder: {message}")
+    founder_turn = message if not attachment_context else f"{message}\n{attachment_context}"
+    convo.append(f"founder: {founder_turn}")
     actions: list[dict[str, Any]] = []
     reply = ""
 
@@ -1721,7 +1767,20 @@ async def run_copilot(founder_id: str, session_id: str, message: str, founder_em
     ]
 
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    history.append({"role": "founder", "content": message, "at": now})
+    founder_record: dict[str, Any] = {"role": "founder", "content": message, "at": now}
+    normalized_attachments = _normalize_attachments(attachments)
+    if normalized_attachments:
+        founder_record["attachments"] = [
+            {
+                "filename": item.get("filename"),
+                "kind": item.get("kind"),
+                "library_id": item.get("library_id"),
+                "truncated": item.get("truncated"),
+                "preview": _clip(item.get("content"), 240),
+            }
+            for item in normalized_attachments
+        ]
+    history.append(founder_record)
     history.append({"role": "copilot", "content": reply, "at": now, "actions": action_summaries})
     _save_history(session_id, history)
     return {"ok": True, "reply": reply, "actions": action_summaries, "history": history}
