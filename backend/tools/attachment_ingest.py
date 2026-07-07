@@ -11,11 +11,19 @@ from __future__ import annotations
 
 import io
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
 MAX_CHARS = 12000
 _VISION_MODEL = "google/gemini-2.5-flash"
+
+
+def _clean_text(text: str) -> str:
+    text = text.replace("\x00", "")
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{4,}", "\n\n\n", text)
+    return text.strip()
 
 
 def _truncate(text: str) -> tuple[str, bool]:
@@ -67,27 +75,31 @@ def ingest_attachment(filename: str, mime: str, data: bytes) -> dict:
     """Return {content, kind, truncated, error?} for an uploaded file."""
     name = (filename or "file").lower()
     mime = (mime or "").lower()
+    size_bytes = len(data or b"")
     try:
         if mime == "application/pdf" or name.endswith(".pdf"):
-            text = extract_pdf_text(data)
+            text = _clean_text(extract_pdf_text(data))
             if not text.strip():
-                return {"content": "", "kind": "pdf", "truncated": False,
+                return {"content": "", "kind": "pdf", "truncated": False, "size_bytes": size_bytes,
                         "error": "No extractable text in this PDF (it may be scanned images)."}
             text, trunc = _truncate(text)
-            return {"content": text, "kind": "pdf", "truncated": trunc}
+            return {"content": text, "kind": "pdf", "truncated": trunc, "size_bytes": size_bytes}
 
         if mime.startswith("image/") or name.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
-            desc = describe_image(data, mime or "image/png")
+            desc = _clean_text(describe_image(data, mime or "image/png"))
             if not desc:
-                return {"content": "", "kind": "image", "truncated": False,
+                return {"content": "", "kind": "image", "truncated": False, "size_bytes": size_bytes,
                         "error": "Could not read this image."}
             desc, trunc = _truncate(desc)
-            return {"content": desc, "kind": "image", "truncated": trunc}
+            return {"content": desc, "kind": "image", "truncated": trunc, "size_bytes": size_bytes}
 
         # Default: treat as text.
-        text = data.decode("utf-8", errors="replace")
+        text = _clean_text(data.decode("utf-8-sig", errors="replace"))
+        if not text:
+            return {"content": "", "kind": "text", "truncated": False, "size_bytes": size_bytes,
+                    "error": "This file did not contain readable text."}
         text, trunc = _truncate(text)
-        return {"content": text, "kind": "text", "truncated": trunc}
+        return {"content": text, "kind": "text", "truncated": trunc, "size_bytes": size_bytes}
     except Exception as e:
         logger.warning("ingest_attachment failed for %s: %s", filename, e)
-        return {"content": "", "kind": "error", "truncated": False, "error": str(e)}
+        return {"content": "", "kind": "error", "truncated": False, "size_bytes": size_bytes, "error": str(e)}

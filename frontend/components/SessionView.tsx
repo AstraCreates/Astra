@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, AGENT_LABELS, rerunAgent, openEventStream, type SessionImages, type StreamSubscription } from "@/lib/api";
+import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, ingestAttachment, AGENT_LABELS, rerunAgent, openEventStream, type SessionImages, type StreamSubscription } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import { signIn } from "next-auth/react";
@@ -28,6 +28,7 @@ type Agent = { key: string; status: string; log: LogEntry[]; term: TermEntry[]; 
 type Artifact = { key?: string; title?: string; status?: string; preview?: string; content?: string; description?: string; owner_agent?: string; verification?: ArtifactReceipt };
 type Approval = { gate_key: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string; preview?: string }[] };
 type CopilotAction = { tool: string; label: string; detail?: string; tone?: "info" | "success" | "warn" };
+type CopilotAttachment = { filename: string; content: string; kind: string; truncated: boolean; library_id?: string; size_bytes?: number; summary?: string; error?: string };
 
 type SState = {
   status: string; goal: string; company: string; projectName: string; stackId: string;
@@ -262,7 +263,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [copilot, setCopilot] = useState<{ role: string; content: string; actions?: CopilotAction[] }[]>([]);
   const [copilotBusy, setCopilotBusy] = useState(false);
   const [copilotOpen, setCopilotOpen] = useState(false);
+  const [copilotAttachments, setCopilotAttachments] = useState<CopilotAttachment[]>([]);
+  const [copilotUploading, setCopilotUploading] = useState(false);
   const copilotLoadedSession = useRef<string | null>(null);
+  const copilotFileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!copilotOpen || !sessionId || copilotLoadedSession.current === sessionId) return;
     let cancelled = false;
@@ -725,13 +729,61 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       showErr(`Approval failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
+  const uploadCopilotFiles = async (files: FileList | null) => {
+    if (!files?.length || copilotUploading) return;
+    setCopilotOpen(true);
+    setCopilotUploading(true);
+    try {
+      for (const file of Array.from(files).slice(0, 6)) {
+        const result = await ingestAttachment(sessFounder.current || founderId, file, true);
+        if (result.content) {
+          setCopilotAttachments((current) => [
+            ...current,
+            {
+              filename: result.filename || file.name,
+              content: result.content,
+              kind: result.kind,
+              truncated: result.truncated,
+              library_id: result.library_id,
+              size_bytes: result.size_bytes ?? file.size,
+              summary: result.summary,
+            },
+          ]);
+        } else {
+          setCopilot((current) => [
+            ...current,
+            { role: "copilot", content: `${file.name}: ${result.error || "No readable content found."}` },
+          ]);
+        }
+      }
+    } catch (e) {
+      setCopilot((current) => [
+        ...current,
+        { role: "copilot", content: `Upload failed: ${e instanceof Error ? e.message : String(e)}` },
+      ]);
+    } finally {
+      setCopilotUploading(false);
+      if (copilotFileRef.current) copilotFileRef.current.value = "";
+    }
+  };
   const sendCopilot = async () => {
     const msg = steerRef.current?.value.trim(); if (!msg || copilotBusy) return;
+    const attachments = copilotAttachments;
     if (steerRef.current) steerRef.current.value = "";
-    setCopilot((c) => [...c, { role: "founder", content: msg }]);
+    setCopilot((c) => [...c, {
+      role: "founder",
+      content: attachments.length
+        ? `${msg}\n\nAttached: ${attachments.map((a) => a.filename).join(", ")}`
+        : msg,
+    }]);
+    setCopilotAttachments([]);
     setCopilotBusy(true);
     try {
-      const r = await apiFetch(`${API}/copilot/${sessionId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg }) });
+      const r = await apiFetch(`${API}/copilot/${sessionId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg, attachments }),
+      });
       const d = await r.json();
       setCopilot((c) => [...c, { role: "copilot", content: d.reply || "(no reply)", actions: normalizeCopilotActions(d.actions) }]);
     } catch (e) {
@@ -1737,6 +1789,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 </div>
               );
 
+              const planArt = st.artifacts.find((a) => a.key?.startsWith("build_plan_"));
+
               return (
                 <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
 
@@ -1752,6 +1806,15 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                         ? <div style={{ fontSize: 12, color: "var(--fd)", marginTop: 5, animation: `portraitFadeIn .35s ${ease} both` }}>{p.tagline}</div>
                         : <div style={{ fontSize: 11, color: "rgba(240,238,255,0.1)", marginTop: 5 }}>Tagline forming…</div>
                       }
+                      {planArt && (
+                        <div
+                          onClick={() => sel(null, planArt.key || null)}
+                          role="button"
+                          style={{ display: "inline-flex", alignItems: "center", gap: 5, marginTop: 10, padding: "4px 10px", border: "1px solid var(--bd2)", color: "var(--blue)", fontSize: 10, fontFamily: "var(--font-code)", fontWeight: 600, letterSpacing: ".05em", textTransform: "uppercase", cursor: "pointer", background: "rgba(59,130,246,.06)" }}
+                        >
+                          View plan →
+                        </div>
+                      )}
                     </div>
                     <div style={{ paddingTop: 4, fontSize: 10.5, color: "var(--fm)", lineHeight: 1.8, maxWidth: 400 }}>
                       {p.mission || st.goal?.slice(0, 180) || ""}
@@ -1880,12 +1943,44 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         )}
         <div className="steer-wrap">
           <button className="steer-send copilot-toggle" aria-label="Toggle copilot" title="Copilot chat" onClick={() => setCopilotOpen((v) => !v)}>{copilotOpen ? "▾" : "✦"}</button>
+          <button
+            className="steer-send copilot-attach"
+            aria-label="Attach file"
+            title="Attach file"
+            disabled={copilotUploading || copilotBusy}
+            onClick={() => { setCopilotOpen(true); copilotFileRef.current?.click(); }}
+          >
+            {copilotUploading ? "…" : "+"}
+          </button>
+          <input
+            ref={copilotFileRef}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => uploadCopilotFiles(e.target.files)}
+          />
           <input ref={steerRef} className="steer-inp" aria-label="Ask or direct Astra"
             placeholder='Ask or direct Astra — "what completion issues are left?" · "focus on pricing" · "approve next goal"'
             onFocus={() => setCopilotOpen(true)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); setCopilotOpen(true); sendCopilot(); } }} />
           <button className="steer-send copilot-submit" aria-label="Send" onClick={() => { setCopilotOpen(true); sendCopilot(); }}>↑</button>
         </div>
+        {copilotAttachments.length > 0 && (
+          <div className="copilot-attachment-tray" aria-label="Attached files">
+            {copilotAttachments.map((file, index) => (
+              <button
+                key={`${file.filename}-${index}`}
+                className="copilot-attachment-chip"
+                title={file.summary || file.filename}
+                onClick={() => setCopilotAttachments((current) => current.filter((_, i) => i !== index))}
+              >
+                <span>{file.filename}</span>
+                <small>{file.kind}{file.truncated ? " · clipped" : ""}</small>
+                <b>×</b>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {showSessionTour && (

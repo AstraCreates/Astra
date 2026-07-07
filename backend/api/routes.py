@@ -843,6 +843,7 @@ async def ingest_attachment_route(founder_id: str, body: dict, request: Request)
     require_founder_access(request, founder_id, min_role="operator")
     import base64
     filename = (body.get("filename") or "file").strip()
+    filename = filename.replace("\\", "_").replace("/", "_")[:180] or "file"
     mime = (body.get("mime") or "").strip()
     data_b64 = body.get("data_base64") or ""
     if not data_b64:
@@ -868,7 +869,18 @@ async def ingest_attachment_route(founder_id: str, body: dict, request: Request)
         except Exception as e:
             logger.warning("attachment persist failed: %s", e)
 
-    return {"filename": filename, **result, "library_id": library_id}
+    content_len = len(str(result.get("content") or ""))
+    return {
+        "filename": filename,
+        **result,
+        "library_id": library_id,
+        "summary": (
+            f"Read {content_len:,} characters from {filename}"
+            + (" and saved it to Library." if library_id else ".")
+            if content_len
+            else str(result.get("error") or "No readable content extracted.")
+        ),
+    }
 
 
 @router.post("/sessions/{session_id}/kill")
@@ -1782,7 +1794,8 @@ async def copilot_chat(session_id: str, body: dict, request: Request):
     from backend.copilot import run_copilot
     fid = body.get("founder_id") or founder_id or ""
     founder_email = request.headers.get("x-astra-email") or body.get("founder_email") or ""
-    return await run_copilot(fid, session_id, message, founder_email=founder_email)
+    attachments = body.get("attachments") if isinstance(body.get("attachments"), list) else []
+    return await run_copilot(fid, session_id, message, founder_email=founder_email, attachments=attachments)
 
 
 @router.get("/copilot/{session_id}")

@@ -123,6 +123,12 @@ def test_context_compressor_preserves_head_tail_and_bounds_history():
     assert compacted[-1] == messages[-1]
 
 
+def test_context_compressor_default_threshold_leaves_headroom_for_proxy(monkeypatch):
+    monkeypatch.delenv("ASTRA_COMPRESSION_THRESHOLD", raising=False)
+    compressor = AstraContextCompressor()
+    assert compressor.token_threshold == 64000
+
+
 def test_agent_state_relevant_snapshot_filters_by_query():
     save_agent_state("s", "research", "t", {
         "plan": "find market and competitor evidence",

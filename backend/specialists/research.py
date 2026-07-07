@@ -175,6 +175,81 @@ _FOCUS_ROLES = {
 }
 
 
+_MAX_RESEARCH_PLANS = {"scale", "beta"}
+
+
+def _research_plan_for_founder(founder_id: str) -> str:
+    try:
+        from backend.accounts import get_or_create_org
+
+        org = get_or_create_org(founder_id)
+        entitlements = org.get("entitlements") or {}
+        subscription = org.get("subscription") or {}
+        return str(entitlements.get("plan_id") or subscription.get("plan") or "starter").lower()
+    except Exception:
+        return "starter"
+
+
+def _is_max_research_plan(plan: str) -> bool:
+    return (plan or "").lower() in _MAX_RESEARCH_PLANS
+
+
+def _research_depth_guidance(plan: str) -> str:
+    if _is_max_research_plan(plan):
+        return (
+            "SUPER DEEP RESEARCH MODE (Max workspace):\n"
+            "- Be THOROUGH: visit many sources across the web. Run multiple search rounds and read "
+            "8-15 high-value pages before synthesizing.\n"
+            "- Search broadly: run run_research_pipeline, THEN 2-4 sonar_research calls to fill gaps and "
+            "go deeper on specifics. Aim for 15+ distinct cited sources before you finish.\n"
+        )
+    return (
+        "FAST RESEARCH MODE:\n"
+        "- Optimize for speed and decision quality. Do one focused run_research_pipeline pass, then at most "
+        "one targeted sonar_research call only if a critical gap remains.\n"
+        "- Read only the highest-signal pages sonar missed. Aim for 5-8 distinct cited sources, then synthesize.\n"
+        "- Do not run video, patent, academic, or news research unless the founder explicitly asks or the topic requires it.\n"
+    )
+
+
+def _research_max_iterations(plan: str, requested: int | None = None) -> int:
+    if requested is not None:
+        return requested
+    return 40 if _is_max_research_plan(plan) else 22
+
+
+def _build_research_role(agent_name: str, focus_searches: str, plan: str) -> str:
+    return (
+        "You are an elite research specialist. Your ONLY domain is MARKET OPPORTUNITY — "
+        "TAM/SAM/SOM, market growth trends, timing thesis, and investment narrative. "
+        "NOT competitor profiling (research_competitors), NOT financial benchmarks (research_financial), "
+        "NOT regulatory risk (research_regulatory), NOT customer personas (customer_discovery).\n\n"
+        + _research_depth_guidance(plan)
+        + "\nTOOLS:\n"
+        "- run_research_pipeline(topic, focus) — first-pass: builds query plan + runs sonar_research in parallel. Use this first.\n"
+        "- sonar_research(queries) — PRIMARY tool. Pass a list of research questions; each returns a synthesized cited answer. Replaces batch_search + fetch_and_read loops.\n"
+        "- build_research_queries(topic, focus) — generates a high-coverage query plan. Pass result queries to sonar_research.\n"
+        "- fetch_and_read(url) — read a specific URL in full depth. Use only for paywalled reports or specific pages sonar missed.\n"
+        "- research_papers(query) — academic papers.\n"
+        "- news_search(query) — recent news.\n"
+        "- patent_search(query) — IP landscape.\n"
+        "- youtube_research(query) — searches YouTube, returns metadata + transcript excerpts for the top results.\n"
+        "- youtube_get_transcript(url_or_video_id) — full transcript + metadata for ONE specific video you already have a URL/ID for (e.g. the founder pasted a link). Use this instead of youtube_research when you're not searching.\n"
+        "- tiktok_research(query) — TikTok video metadata + captions for viral trend analysis.\n"
+        "- obsidian_log — FINAL step only after ALL searches complete.\n\n"
+        "RESEARCH QUALITY RULES:\n"
+        "- Generate specific, source-seeking queries. Avoid vague searches like just the product category.\n"
+        "- Prefer primary sources, analyst reports, competitor pages, government/public datasets, and reputable review sites.\n"
+        "- Check run_research_pipeline.coverage. If coverage.ready is false, fill gaps with one targeted search or clearly mark uncertainty.\n"
+        "- Always name concrete companies, numbers, dates, and URLs. If evidence is weak, say so.\n"
+        "- Be critical, not promotional. Try to DISPROVE the current idea, wedge, pricing, and ICP before you endorse them.\n"
+        "- Surface the strongest bear case, the most fragile assumption, and the most promising pivot or narrowing option.\n"
+        "- If research reveals a serious viability risk or a better direction, ask the founder for a decision using ask_user before finishing.\n\n"
+        "YOUR SEARCH PLAN (replace {topic} with the actual subject):\n\n"
+        + focus_searches
+    )
+
+
 def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     # ctx_holder: mutable so wrappers can see the live AgentContext
     ctx_holder: list = [None]
@@ -198,52 +273,22 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
 
     from backend.config import research_default_is_local, settings
     from backend.core.key_rotator import get_openrouter_key
-    focus_searches = _FOCUS_ROLES.get(agent_name, _FOCUS_ROLES["research"])
     # Default research routing stays on OpenRouter unless local is explicitly
     # selected as the default provider.
     _use_local = research_default_is_local()
     model = kwargs.pop("model", settings.local_research_model if _use_local else settings.or_light_model)
     model_base_url = kwargs.pop("model_base_url", settings.local_research_base_url if _use_local else settings.openrouter_base_url)
     model_api_key = kwargs.pop("model_api_key", settings.local_research_api_key if _use_local else (get_openrouter_key() or settings.agent_model_api_key))
-    _max_iter = kwargs.pop("max_iterations", 40)
+    requested_max_iterations = kwargs.pop("max_iterations", None)
+    _max_iter = _research_max_iterations("starter", requested_max_iterations)
+    focus_searches = _FOCUS_ROLES.get(agent_name, _FOCUS_ROLES["research"])
     agent = Agent(
         name=agent_name,
         model=model,
         model_base_url=model_base_url,
         model_api_key=model_api_key,
         max_iterations=_max_iter,
-        role=(
-            "You are an elite deep research specialist. Your ONLY domain is MARKET OPPORTUNITY — "
-            "TAM/SAM/SOM, market growth trends, timing thesis, and investment narrative. "
-            "NOT competitor profiling (research_competitors), NOT financial benchmarks (research_financial), "
-            "NOT regulatory risk (research_regulatory), NOT customer personas (customer_discovery).\n\n"
-            "Be THOROUGH: visit many sources across the web. Run multiple search rounds and read "
-            "8-15 high-value pages before synthesizing. Breadth and primary-source depth matter more than speed.\n\n"
-            "TOOLS:\n"
-            "- run_research_pipeline(topic, focus) — first-pass: builds query plan + runs sonar_research in parallel. Use this first.\n"
-            "- sonar_research(queries) — PRIMARY tool. Pass a list of research questions; each returns a synthesized cited answer. Replaces batch_search + fetch_and_read loops.\n"
-            "- build_research_queries(topic, focus) — generates a high-coverage query plan. Pass result queries to sonar_research.\n"
-            "- fetch_and_read(url) — read a specific URL in full depth. Use only for paywalled reports or specific pages sonar missed.\n"
-            "- research_papers(query) — academic papers.\n"
-            "- news_search(query) — recent news.\n"
-            "- patent_search(query) — IP landscape.\n"
-            "- youtube_research(query) — searches YouTube, returns metadata + transcript excerpts for the top results.\n"
-            "- youtube_get_transcript(url_or_video_id) — full transcript + metadata for ONE specific video you already have a URL/ID for (e.g. the founder pasted a link). Use this instead of youtube_research when you're not searching.\n"
-            "- tiktok_research(query) — TikTok video metadata + captions for viral trend analysis.\n"
-            "- obsidian_log — FINAL step only after ALL searches complete.\n\n"
-            "RESEARCH QUALITY RULES:\n"
-            "- Generate specific, source-seeking queries. Avoid vague searches like just the product category.\n"
-            "- Prefer primary sources, analyst reports, competitor pages, government/public datasets, and reputable review sites.\n"
-            "- Check run_research_pipeline.coverage. If coverage.ready is false, fill gaps with one targeted batch_search or clearly mark uncertainty.\n"
-            "- Always name concrete companies, numbers, dates, and URLs. If evidence is weak, say so.\n"
-            "- Be critical, not promotional. Try to DISPROVE the current idea, wedge, pricing, and ICP before you endorse them.\n"
-            "- Surface the strongest bear case, the most fragile assumption, and the most promising pivot or narrowing option.\n"
-            "- If research reveals a serious viability risk or a better direction, ask the founder for a decision using ask_user before finishing.\n"
-            "- Search broadly: run run_research_pipeline, THEN 2-4 sonar_research calls to fill gaps and "
-            "go deeper on specifics. Aim for 15+ distinct cited sources before you finish.\n\n"
-            "YOUR SEARCH PLAN (replace {topic} with the actual subject):\n\n"
-            + focus_searches
-        ),
+        role=_build_research_role(agent_name, focus_searches, "starter"),
         tools={
             "run_research_pipeline": auto_pipeline,
             "sonar_research": auto_sonar,
@@ -269,6 +314,9 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
 
     async def _patched_run(ctx: AgentContext):
         ctx_holder[0] = ctx
+        plan = _research_plan_for_founder(ctx.founder_id)
+        agent.role = _build_research_role(agent_name, focus_searches, plan)
+        agent.max_iterations = _research_max_iterations(plan, requested_max_iterations)
         return await _original_run(ctx)
 
     agent.run = _patched_run

@@ -698,7 +698,7 @@ class Agent:
                     "tool": call.function.name,
                     "args": arguments,
                 })
-            return json.dumps({"action": "tool_batch", "calls": calls})
+            return json.dumps({"action": "tool_batch", "native": True, "calls": calls})
         content = msg.content or ""
         # Strip DeepSeek-R1 <think> blocks
         content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
@@ -1174,6 +1174,7 @@ class Agent:
 
             elif action == "tool_batch":
                 calls = [call for call in (parsed.get("calls") or []) if isinstance(call, dict)]
+                is_native = bool(parsed.get("native"))
                 unique: list[dict] = []
                 seen: set[tuple[str, str]] = set()
                 for call in calls:
@@ -1195,23 +1196,60 @@ class Agent:
                     return name, result
 
                 batch_results: list[tuple[str, Any]] = []
+                # (tool, json-args) -> result, keyed the same way dedup does above, so the
+                # native branch below can map each ORIGINAL call id back to its executed
+                # result even when two ids shared identical name+args and were deduped to
+                # one execution.
+                result_by_signature: dict[tuple[str, str], Any] = {}
                 if read_calls:
-                    batch_results.extend(await asyncio.gather(*(execute(call) for call in read_calls)))
+                    read_results = await asyncio.gather(*(execute(call) for call in read_calls))
+                    batch_results.extend(read_results)
+                    for call, (name, result) in zip(read_calls, read_results):
+                        result_by_signature[(name, json.dumps(call["args"], sort_keys=True, default=str))] = result
                 for call in write_calls:
-                    batch_results.append(await execute(call))
+                    name, result = await execute(call)
+                    batch_results.append((name, result))
+                    result_by_signature[(name, json.dumps(call["args"], sort_keys=True, default=str))] = result
                 for name, result in batch_results:
                     _attempted_tools.add(name)
                     if not (isinstance(result, dict) and result.get("error")):
                         _called_tools.add(name)
                         if isinstance(result, dict):
                             _tool_results.append((name, result))
-                messages.append({
-                    "role": "user",
-                    "content": "\n\n".join(
-                        f"Tool result ({name}):\n{_format_tool_result(name, result, _tool_context_seen)}"
-                        for name, result in batch_results
-                    ),
-                })
+
+                if is_native:
+                    # Real native tool-calling response: emit conformant assistant(tool_calls)
+                    # + tool(tool_call_id) message pairs instead of one merged role:user blob,
+                    # so role-aware tooling (context compression, compression proxies) has
+                    # real signal. content:"" not None — nothing downstream in this codebase
+                    # (compression, logging, truncation) has ever had to handle a None content
+                    # field, and "" is accepted anywhere null would be.
+                    tool_calls_msg = []
+                    tool_result_msgs = []
+                    for call in calls:
+                        name = str(call.get("tool") or call.get("name") or "")
+                        args = call.get("args") or call.get("arguments") or {}
+                        call_id = call.get("id") or ""
+                        signature = (name, json.dumps(args, sort_keys=True, default=str))
+                        result = result_by_signature.get(signature, {"error": "not executed (duplicate or invalid call)"})
+                        tool_calls_msg.append({
+                            "id": call_id, "type": "function",
+                            "function": {"name": name, "arguments": json.dumps(args, default=str)},
+                        })
+                        tool_result_msgs.append({
+                            "role": "tool", "tool_call_id": call_id, "name": name,
+                            "content": _format_tool_result(name, result, _tool_context_seen),
+                        })
+                    messages.append({"role": "assistant", "content": "", "tool_calls": tool_calls_msg})
+                    messages.extend(tool_result_msgs)
+                else:
+                    messages.append({
+                        "role": "user",
+                        "content": "\n\n".join(
+                            f"Tool result ({name}):\n{_format_tool_result(name, result, _tool_context_seen)}"
+                            for name, result in batch_results
+                        ),
+                    })
 
             elif action == "tool":
                 tool_name = parsed.get("tool")
