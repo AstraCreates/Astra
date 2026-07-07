@@ -875,7 +875,13 @@ async def _tool_kill_session(founder_id: str, session_id: str, args: dict) -> An
 async def _tool_stop_agent(founder_id: str, session_id: str, args: dict) -> Any:
     """Instantly stop ONE running agent by name, without killing the rest of the run.
     Harder than steering: the agent halts at its next step instead of being asked to
-    wrap up. args: {agent, session_id?}"""
+    wrap up. args: {agent, session_id?}
+
+    "research" is not one process -- it fans out into named lanes (research,
+    research_gtm, research_competitors, research_customers, research_execution),
+    each an independently running agent loop the model has no visibility into.
+    Stopping just the literal name "research" left the other lanes running.
+    Expand to every lane sharing the given name as a prefix before stopping."""
     from backend.core.cancellation import request_kill_agent
     from backend.core.events import publish
     agent_name = str(args.get("agent") or args.get("agent_name") or "").strip().lower()
@@ -886,12 +892,21 @@ async def _tool_stop_agent(founder_id: str, session_id: str, args: dict) -> Any:
     if err:
         return {"ok": False, "error": err}
     try:
-        request_kill_agent(target, agent_name)
+        from backend.core.orchestrator import _RESEARCH_LANE_FOCUS
+        lane_names = set(_RESEARCH_LANE_FOCUS.keys())
+    except Exception:
+        lane_names = set()
+    targets = {name for name in lane_names if name == agent_name or name.startswith(agent_name + "_")}
+    if not targets:
+        targets = {agent_name}
+    try:
+        for name in targets:
+            request_kill_agent(target, name)
         try:
-            await publish(target, {"type": "agent_stop_requested", "agent": agent_name})
+            await publish(target, {"type": "agent_stop_requested", "agent": agent_name, "stopped_lanes": sorted(targets)})
         except Exception:
             pass
-        return {"ok": True, "stopped": agent_name, "session_id": target}
+        return {"ok": True, "stopped": sorted(targets), "session_id": target}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

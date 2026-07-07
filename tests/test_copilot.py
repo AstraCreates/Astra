@@ -144,6 +144,41 @@ async def test_tool_decide_goal_task_updates_waiting_milestone(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_tool_stop_agent_expands_research_lanes(monkeypatch):
+    """'research' is not one process -- it's 5 concurrently-running lanes. Stopping
+    the bare name must stop all of them, not just the literal 'research' agent."""
+    monkeypatch.setattr(copilot, "_assert_session_owner", lambda session_id, founder_id: None)
+    monkeypatch.setattr("backend.core.events.publish", AsyncMock())
+
+    stopped = []
+    monkeypatch.setattr("backend.core.cancellation.request_kill_agent", lambda sid, name: stopped.append(name))
+
+    result = await copilot._tool_stop_agent("founder_123", "sess_123", {"agent": "research"})
+
+    assert result["ok"] is True
+    assert set(stopped) == {
+        "research", "research_gtm", "research_competitors",
+        "research_customers", "research_execution",
+    }
+    assert set(result["stopped"]) == set(stopped)
+
+
+@pytest.mark.asyncio
+async def test_tool_stop_agent_single_instance_unaffected(monkeypatch):
+    """A single-instance specialist (no lanes) must stop only itself."""
+    monkeypatch.setattr(copilot, "_assert_session_owner", lambda session_id, founder_id: None)
+    monkeypatch.setattr("backend.core.events.publish", AsyncMock())
+
+    stopped = []
+    monkeypatch.setattr("backend.core.cancellation.request_kill_agent", lambda sid, name: stopped.append(name))
+
+    result = await copilot._tool_stop_agent("founder_123", "sess_123", {"agent": "design"})
+
+    assert result["ok"] is True
+    assert stopped == ["design"]
+
+
+@pytest.mark.asyncio
 async def test_tool_get_subteam_report_returns_summary(monkeypatch):
     monkeypatch.setattr(
         "backend.company_reports.build_company_subteam_report",
