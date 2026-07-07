@@ -65,7 +65,10 @@ def init_graph_store(founder_id: str) -> None:
                 type TEXT NOT NULL DEFAULT 'entity',
                 description TEXT NOT NULL DEFAULT '',
                 importance REAL NOT NULL DEFAULT 1.0,
-                community_id TEXT
+                mentions REAL NOT NULL DEFAULT 1.0,
+                community_id TEXT,
+                first_seen TEXT NOT NULL DEFAULT '',
+                last_seen TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS graph_edges (
                 id TEXT PRIMARY KEY,
@@ -73,7 +76,9 @@ def init_graph_store(founder_id: str) -> None:
                 source TEXT NOT NULL,
                 target TEXT NOT NULL,
                 relation TEXT NOT NULL DEFAULT 'related_to',
-                weight REAL NOT NULL DEFAULT 1.0
+                weight REAL NOT NULL DEFAULT 1.0,
+                first_seen TEXT NOT NULL DEFAULT '',
+                last_seen TEXT NOT NULL DEFAULT ''
             );
             CREATE TABLE IF NOT EXISTS graph_chunks (
                 id TEXT PRIMARY KEY,
@@ -81,7 +86,8 @@ def init_graph_store(founder_id: str) -> None:
                 text TEXT NOT NULL,
                 source TEXT NOT NULL DEFAULT '',
                 title TEXT NOT NULL DEFAULT '',
-                doc_hash TEXT NOT NULL
+                doc_hash TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT ''
             );
             CREATE VIRTUAL TABLE IF NOT EXISTS graph_chunks_fts USING fts5(
                 text,
@@ -106,6 +112,22 @@ def init_graph_store(founder_id: str) -> None:
             CREATE INDEX IF NOT EXISTS idx_graph_chunks_founder_hash ON graph_chunks(founder_id, doc_hash);
             """
         )
+        # Migrate DBs created before first_seen/last_seen existed — SQLite has no
+        # "ADD COLUMN IF NOT EXISTS", so probe and swallow the duplicate-column error.
+        for table in ("graph_nodes", "graph_edges"):
+            for column in ("first_seen", "last_seen"):
+                try:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+                except sqlite3.OperationalError:
+                    pass
+        try:
+            conn.execute("ALTER TABLE graph_nodes ADD COLUMN mentions REAL NOT NULL DEFAULT 1.0")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE graph_chunks ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
 
 
 def _fts_query(query: str) -> str:
@@ -121,7 +143,7 @@ def graph_rag_search(founder_id: str, query: str, limit: int = 8) -> dict[str, A
         with _connect(founder_id) as conn:
             chunks = conn.execute(
                 """
-                SELECT c.id, c.text, c.source, c.title, bm25(graph_chunks_fts) AS rank
+                SELECT c.id, c.text, c.source, c.title, c.updated_at, bm25(graph_chunks_fts) AS rank
                 FROM graph_chunks_fts
                 JOIN graph_chunks c ON c.rowid = graph_chunks_fts.rowid
                 WHERE graph_chunks_fts MATCH ? AND c.founder_id = ?
@@ -136,7 +158,7 @@ def graph_rag_search(founder_id: str, query: str, limit: int = 8) -> dict[str, A
                 where = " OR ".join(["lower(name) LIKE lower(?)"] * len(like_terms))
                 nodes = conn.execute(
                     f"""
-                    SELECT id, name, type, description, importance, community_id
+                    SELECT id, name, type, description, importance, community_id, first_seen, last_seen
                     FROM graph_nodes
                     WHERE founder_id = ? AND ({where})
                     ORDER BY importance DESC
@@ -191,6 +213,7 @@ def graph_rag_search(founder_id: str, query: str, limit: int = 8) -> dict[str, A
             "content": row["text"],
             "snippet": row["text"][:420],
             "score": float(-row["rank"]),
+            "updated_at": row["updated_at"],
         }
         for row in chunks
     ]

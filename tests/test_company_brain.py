@@ -15,7 +15,7 @@ from backend.tools.company_brain import (
     sync_company_brain,
 )
 from backend.tools.company_brain_connectors import import_company_brain_sources
-from backend.tools.graph_rag_ingest import run_graph_rag_sync
+from backend.tools.graph_rag_ingest import _is_value_fragment, _is_meaningful_entity, run_graph_rag_sync
 from backend.tools.graph_rag_v2 import export_graph_visualization
 
 
@@ -83,6 +83,75 @@ def test_graph_rag_v2_sync_search_and_snapshot(tmp_path, monkeypatch):
     graph = export_graph_visualization(founder_id)
     assert graph["ok"] is True
     assert graph["nodes"]
+
+
+def test_graph_rag_hardening_typed_edges_communities_and_importance(tmp_path, monkeypatch):
+    from backend.tools import graph_rag_ingest
+
+    monkeypatch.chdir(tmp_path)
+    # Force the heuristic (LLM-free) entity extractor so this test is deterministic
+    # and doesn't depend on live LLM access.
+    monkeypatch.setattr(graph_rag_ingest, "_llm_extract_entities", lambda title, combined, limit: [])
+    founder_id = "founder_graph_hardening"
+
+    add_company_brain_record(
+        founder_id=founder_id,
+        source="manual",
+        title="Founding story",
+        content=(
+            "Jane Doe founded Acme Corp in 2020. "
+            "Acme Corp partners with Beta Industries on cloud infrastructure."
+        ),
+        canonical=True,
+        stale_risk="low",
+    )
+    # Separate record so Acme Corp picks up a 4th connection (Gamma Systems) that
+    # Jane Doe/Beta Industries don't share — makes Acme Corp the actual graph hub
+    # instead of all three forming a symmetric triangle with identical centrality.
+    add_company_brain_record(
+        founder_id=founder_id,
+        source="manual",
+        title="Hardware supply",
+        content="Acme Corp also partners with Gamma Systems on hardware supply.",
+        canonical=True,
+        stale_risk="low",
+    )
+
+    synced = run_graph_rag_sync(founder_id)
+    assert synced["ok"] is True
+
+    graph = export_graph_visualization(founder_id)
+    names = {n["name"]: n for n in graph["nodes"]}
+    assert {"Jane Doe", "Acme Corp", "Beta Industries"} <= set(names)
+
+    # Temporal fields — real Graphiti-style edge/node freshness tracking, not blank columns.
+    for node in graph["nodes"]:
+        assert node["first_seen"] and node["last_seen"]
+    for edge in graph["edges"]:
+        assert edge["first_seen"] and edge["last_seen"]
+
+    # Typed relations inferred from sentence context, not blind "co_mentions" for everything.
+    relations = {e["relation"] for e in graph["edges"]}
+    assert "founded" in relations or "partners_with" in relations
+
+    # Real graph clustering, not the old first-letter-of-name bucket scheme (which
+    # would have produced "community_j" / "community_a" / "community_b" / "community_g").
+    assert names["Jane Doe"]["community_id"]
+    for node in graph["nodes"]:
+        assert node["community_id"].startswith("community_cluster")
+
+    # Real centrality: Acme Corp (degree 2, bridges both other entities) outranks
+    # a leaf node (degree 1) — a raw mention counter would tie them at 1 mention each.
+    assert names["Acme Corp"]["importance"] > names["Beta Industries"]["importance"]
+
+
+def test_entity_extraction_rejects_raw_metric_literals():
+    for garbage in ["#0EA5E9", "$10-50k", "15-20% 30-day churn", "70-85% gross margins"]:
+        assert _is_value_fragment(garbage) is True
+        assert _is_meaningful_entity(garbage) is False
+    for real in ["Average Contract Value", "Bebas Neue", "GPT-4"]:
+        assert _is_value_fragment(real) is False
+        assert _is_meaningful_entity(real) is True
 
 
 def test_company_brain_ingest_detects_conflicts_and_resolves_proposals(tmp_path, monkeypatch):
@@ -923,6 +992,32 @@ def test_company_brain_ask_returns_citations(tmp_path, monkeypatch):
     assert "onboarding" in asked["answer"].lower()
     assert "[1]" in asked["answer"]
     assert asked["citations"][0]["title"] == "Onboarding strategy"
+    assert asked["gap_note"] == ""  # fresh record, no staleness warning
+
+
+def test_company_brain_ask_flags_stale_evidence(tmp_path, monkeypatch):
+    from backend.tools import company_brain
+
+    monkeypatch.chdir(tmp_path)
+    founder_id = "founder_ask_stale"
+
+    real_now = company_brain._now
+    monkeypatch.setattr(company_brain, "_now", lambda: "2020-01-01T00:00:00Z")
+    add_company_brain_record(
+        founder_id=founder_id,
+        source="manual",
+        title="Old pricing plan",
+        content="We priced the starter tier at $49/month.",
+        canonical=True,
+        stale_risk="low",
+    )
+    monkeypatch.setattr(company_brain, "_now", real_now)  # restore so "today" is far past the record's date
+
+    asked = ask_company_brain(founder_id, "What is our pricing?", limit=5)
+    assert asked["ok"] is True
+    assert asked["gap_note"] != ""
+    assert "Heads up" in asked["gap_note"]
+    assert asked["gap_note"] in asked["answer"]
 
 
 def test_company_brain_ask_answers_subteam_activity_from_memory(tmp_path, monkeypatch):

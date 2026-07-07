@@ -7,6 +7,7 @@ expanded per provider without changing the API surface.
 """
 from __future__ import annotations
 
+import calendar
 import json
 import logging
 import re
@@ -212,6 +213,29 @@ def list_company_brain_instances() -> list[tuple[str, str]]:
 
 def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _days_since(timestamp: str) -> float | None:
+    try:
+        return (calendar.timegm(time.gmtime()) - calendar.timegm(time.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ"))) / 86400.0
+    except (TypeError, ValueError):
+        return None
+
+
+def _gap_analysis_note(records: list[dict[str, Any]], stale_after_days: float = 30.0) -> str:
+    """GBrain-style honesty check: tell the caller when the evidence behind an
+    answer is old, instead of presenting a stale answer with the same
+    confidence as a fresh one. Silent (no note) when nothing is stale or no
+    record carries a timestamp — never fabricate a freshness claim."""
+    ages = [age for age in (_days_since(str(rec.get("updated_at") or "")) for rec in records) if age is not None]
+    if not ages:
+        return ""
+    freshest = min(ages)
+    if freshest < stale_after_days:
+        return ""
+    if freshest >= 1:
+        return f"Heads up: nothing in the brain newer than {int(freshest)} days on this — it may be out of date."
+    return ""
 
 
 def _iso_from_epoch(ts: float) -> str:
@@ -1739,6 +1763,10 @@ def ask_company_brain(
     if top_title and top_title.lower() not in answer.lower():
         answer = f"{top_title}: {answer}"
 
+    gap_note = _gap_analysis_note(top)
+    if gap_note:
+        answer = f"{answer}\n\n{gap_note}"
+
     return {
         "ok": True,
         "question": question,
@@ -1747,4 +1775,5 @@ def ask_company_brain(
         "citations": citations,
         "evidence": evidence_lines,
         "context": search.get("formatted", ""),
+        "gap_note": gap_note,
     }

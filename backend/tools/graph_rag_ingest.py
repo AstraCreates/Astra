@@ -10,9 +10,44 @@ import time
 from collections import Counter, defaultdict
 from typing import Any
 
+import networkx as nx
+
 from backend.tools.graph_rag_v2 import _connect, context_snapshot_path, init_graph_store
 
 logger = logging.getLogger(__name__)
+
+
+# Zero-LLM-call relation typing (same approach as GBrain's edge extraction):
+# scan the sentence containing both entity names for a connective keyword,
+# and use that in place of the generic "co_mentions" label. Order matters —
+# first keyword hit wins, so more specific relations are listed before
+# generic ones that could also match the same sentence.
+_RELATION_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
+    ("founded", ("co-founded", "founded", "started")),
+    ("acquired", ("acquired", "bought out")),
+    ("invested_in", ("invested in", "backed by", "funded by")),
+    ("advises", ("advises", "advisor to", "mentors")),
+    ("works_at", ("works at", "works for", "employed by", "joined")),
+    ("partners_with", ("partners with", "partnered with", "partnership with")),
+    ("competes_with", ("competitor of", "competes with", "rival to")),
+    ("customer_of", ("customer of", "subscribed to", "purchased from")),
+    ("decided", ("decided to", "decision to", "agreed to")),
+]
+
+
+def _infer_relation(name_a: str, name_b: str, text: str) -> str:
+    """Best-effort relation label for a co-occurring entity pair, inferred from
+    the sentence(s) that actually mention both — falls back to 'co_mentions'
+    when no connective keyword is found. No LLM call."""
+    low_a, low_b = name_a.lower(), name_b.lower()
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+        low_sentence = sentence.lower()
+        if low_a not in low_sentence or low_b not in low_sentence:
+            continue
+        for relation, keywords in _RELATION_PATTERNS:
+            if any(kw in low_sentence for kw in keywords):
+                return relation
+    return "co_mentions"
 
 
 ENTITY_STOPWORDS = {
@@ -70,11 +105,24 @@ def _is_internal_token(name: str) -> bool:
     return False
 
 
+def _is_value_fragment(name: str) -> bool:
+    """True for raw metric/data literals leaked from doc text as nodes — hex
+    color codes from a brand palette, dollar ranges and percent ranges from a
+    pricing/metrics sheet. These are data POINTS, not named entities, and the
+    other filters let them through because they're multi-word or digit-bearing."""
+    n = name.strip()
+    if n.startswith("#") or n.startswith("$"):
+        return True
+    if n[:1].isdigit() and "%" in n:
+        return True
+    return False
+
+
 def _is_generic_single(name: str) -> bool:
     """True for a bare single-token generic/stopword, or a machine identifier
     (the node-spam class)."""
     n = name.strip()
-    if _is_internal_token(n):
+    if _is_internal_token(n) or _is_value_fragment(n):
         return True
     if " " in n:
         return False
@@ -127,7 +175,7 @@ def _is_meaningful_entity(name: str) -> bool:
     n = _clean_entity_name(name)
     if len(n) < 3 or len(n) > 60:
         return False
-    if n.lower() in ENTITY_STOPWORDS:
+    if n.lower() in ENTITY_STOPWORDS or _is_value_fragment(n):
         return False
     if " " in n:                                  # multi-word concept
         return True
@@ -149,7 +197,10 @@ def _llm_extract_entities(title: str, combined: str, limit: int) -> list[dict[st
         "knowledge graph. Return named entities (people, companies, products, technologies, "
         "places), metrics, and meaningful MULTI-WORD concepts (e.g. 'confidence scoring', "
         "'retail investors'). Do NOT return generic single words like 'website', 'online', "
-        "'their', 'system', 'feature', 'data', 'users'. "
+        "'their', 'system', 'feature', 'data', 'users'. Do NOT return raw values "
+        "like hex color codes ('#0EA5E9'), dollar ranges ('$10-50k'), or percent "
+        "ranges ('15-20% churn') — name the METRIC itself instead (e.g. 'churn rate', "
+        "'brand accent color'), not its value. "
         f"At most {limit} items, most important first.\n\n"
         f"TITLE: {title}\nTEXT: {combined[:3000]}\n\n"
         'Respond with ONLY a JSON array: '
@@ -244,7 +295,9 @@ def run_graph_rag_sync(founder_id: str) -> dict[str, Any]:
     inserted_chunks = 0
     node_mentions: Counter[str] = Counter()
     edge_weights: Counter[tuple[str, str]] = Counter()
+    edge_relations: dict[tuple[str, str], Counter[str]] = defaultdict(Counter)
     node_payloads: dict[str, dict[str, str]] = {}
+    now = _now()
 
     with _connect(founder_id) as conn:
         for rec in records:
@@ -258,33 +311,40 @@ def run_graph_rag_sync(founder_id: str) -> dict[str, Any]:
             title = str(rec.get("title") or rec.get("source") or "Untitled")
             source = str(rec.get("source") or "")
             text = str(rec.get("content") or rec.get("text") or "")
+            record_updated_at = str(rec.get("updated_at") or now)
+            combined = f"{title}\n{text}"
             entities = _extract_entities(title, text)
             node_ids = []
+            names_by_id: dict[str, str] = {}
             for ent in entities:
                 nid = _node_id(founder_id, ent["name"])
                 node_ids.append(nid)
+                names_by_id[nid] = ent["name"]
                 node_mentions[nid] += 1
                 node_payloads[nid] = ent
                 conn.execute(
                     """
-                    INSERT INTO graph_nodes(id, founder_id, name, type, description, importance)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO graph_nodes(id, founder_id, name, type, description, importance, mentions, first_seen, last_seen)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         description = excluded.description,
-                        importance = graph_nodes.importance + 1
+                        mentions = graph_nodes.mentions + 1,
+                        importance = graph_nodes.mentions + 1,
+                        last_seen = excluded.last_seen
                     """,
-                    (nid, founder_id, ent["name"], ent["type"], ent["description"], 1.0),
+                    (nid, founder_id, ent["name"], ent["type"], ent["description"], 1.0, 1.0, now, now),
                 )
             for a, b in itertools.combinations(sorted(set(node_ids)), 2):
                 edge_weights[(a, b)] += 1
+                edge_relations[(a, b)][_infer_relation(names_by_id[a], names_by_id[b], combined)] += 1
             for idx, chunk in enumerate(_chunk_text(f"{title}\n{text}")):
                 cid = _chunk_id(founder_id, doc_hash, idx)
                 conn.execute(
                     """
-                    INSERT OR IGNORE INTO graph_chunks(id, founder_id, text, source, title, doc_hash)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT OR IGNORE INTO graph_chunks(id, founder_id, text, source, title, doc_hash, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (cid, founder_id, chunk, source, title, doc_hash),
+                    (cid, founder_id, chunk, source, title, doc_hash, record_updated_at),
                 )
                 conn.execute(
                     """
@@ -301,14 +361,21 @@ def run_graph_rag_sync(founder_id: str) -> dict[str, Any]:
                     )
         for (source, target), weight in edge_weights.items():
             eid = f"edge_{hashlib.sha1(f'{source}:{target}'.encode()).hexdigest()[:16]}"
+            counts = edge_relations[(source, target)]
+            specific = {k: v for k, v in counts.items() if k != "co_mentions"}
+            relation = max(specific, key=specific.get) if specific else "co_mentions"
             conn.execute(
                 """
-                INSERT INTO graph_edges(id, founder_id, source, target, relation, weight)
-                VALUES (?, ?, ?, ?, 'co_mentions', ?)
-                ON CONFLICT(id) DO UPDATE SET weight = graph_edges.weight + excluded.weight
+                INSERT INTO graph_edges(id, founder_id, source, target, relation, weight, first_seen, last_seen)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    weight = graph_edges.weight + excluded.weight,
+                    relation = excluded.relation,
+                    last_seen = excluded.last_seen
                 """,
-                (eid, founder_id, source, target, float(weight)),
+                (eid, founder_id, source, target, relation, float(weight), now, now),
             )
+        _update_importance(founder_id, conn)
         communities = _build_communities(founder_id, conn)
         _write_snapshot(founder_id, conn)
         conn.commit()
@@ -342,12 +409,57 @@ def rebuild_graph_rag(founder_id: str) -> dict[str, Any]:
     return run_graph_rag_sync(founder_id)
 
 
+def _load_graph(founder_id: str, conn) -> "nx.Graph":
+    graph = nx.Graph()
+    for row in conn.execute("SELECT id FROM graph_nodes WHERE founder_id = ?", (founder_id,)):
+        graph.add_node(row["id"])
+    for row in conn.execute(
+        "SELECT source, target, weight FROM graph_edges WHERE founder_id = ?", (founder_id,)
+    ):
+        graph.add_edge(row["source"], row["target"], weight=float(row["weight"]))
+    return graph
+
+
+def _update_importance(founder_id: str, conn) -> None:
+    """Real graph centrality (PageRank) blended with raw mention count, so a
+    color hex code repeated across 3 brand docs no longer outranks a single
+    real mention of the company name. Always derived fresh from the stable
+    `mentions` counter (never from the previous importance value) — otherwise
+    re-running this every sync would compound the same <=1.0 factor and decay
+    every node's importance toward zero over time."""
+    graph = _load_graph(founder_id, conn)
+    if graph.number_of_edges() == 0:
+        return
+    scores = nx.pagerank(graph, weight="weight")
+    if not scores:
+        return
+    peak = max(scores.values()) or 1.0
+    for node_id, score in scores.items():
+        conn.execute(
+            "UPDATE graph_nodes SET importance = mentions * (0.5 + 0.5 * ?) WHERE id = ? AND founder_id = ?",
+            (score / peak, node_id, founder_id),
+        )
+
+
 def _build_communities(founder_id: str, conn) -> int:
-    rows = conn.execute("SELECT id, name FROM graph_nodes WHERE founder_id = ?", (founder_id,)).fetchall()
+    graph = _load_graph(founder_id, conn)
+    # Clear stale assignments first — an isolated node dropped from every
+    # cluster this run must not keep pointing at a community_id from a
+    # previous (possibly alphabet-bucket-era) run.
+    conn.execute("UPDATE graph_nodes SET community_id = NULL WHERE founder_id = ?", (founder_id,))
     buckets: dict[str, list[str]] = defaultdict(list)
-    for row in rows:
-        key = str(row["name"][:1] or "x").lower()
-        buckets[key].append(row["id"])
+    if graph.number_of_edges() > 0:
+        # Real modularity-based clustering (Louvain) — connected/related entities
+        # end up in the same community instead of whatever shares a first letter.
+        partition = nx.community.louvain_communities(graph, weight="weight", seed=0)
+        for index, members in enumerate(partition):
+            if members:
+                buckets[f"cluster{index}"] = list(members)
+    else:
+        buckets = defaultdict(list)
+    # Nodes with no edges yet (fresh single-mention entities) get no community —
+    # a community of one isn't a cluster, and forcing one back into an
+    # alphabet bucket is the exact bug this replaces.
     built_at = _now()
     count = 0
     for key, members in buckets.items():
