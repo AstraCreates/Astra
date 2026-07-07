@@ -118,11 +118,28 @@ def _is_value_fragment(name: str) -> bool:
     return False
 
 
+# Astra's own build-loop writes run-digest records with embedded telemetry
+# JSON (elapsed_seconds, deadline_seconds, cost_usd, budget_exhausted) — the
+# LLM extractor sometimes humanizes those field names into fake "concepts"
+# once the underscore is gone, which slips past _is_internal_token's
+# snake_case check. Not an exhaustive list; extend here if more show up.
+_TELEMETRY_UNIT_WORDS = {"seconds", "usd", "ms", "minutes", "tokens", "rounds", "count"}
+_TELEMETRY_PHRASES = {"budget exhausted", "tool rounds", "token count"}
+
+
+def _is_telemetry_field(name: str) -> bool:
+    low = name.strip().lower()
+    if low in _TELEMETRY_PHRASES:
+        return True
+    words = low.split()
+    return len(words) == 2 and words[1] in _TELEMETRY_UNIT_WORDS
+
+
 def _is_generic_single(name: str) -> bool:
     """True for a bare single-token generic/stopword, or a machine identifier
     (the node-spam class)."""
     n = name.strip()
-    if _is_internal_token(n) or _is_value_fragment(n):
+    if _is_internal_token(n) or _is_value_fragment(n) or _is_telemetry_field(n):
         return True
     if " " in n:
         return False
@@ -175,7 +192,7 @@ def _is_meaningful_entity(name: str) -> bool:
     n = _clean_entity_name(name)
     if len(n) < 3 or len(n) > 60:
         return False
-    if n.lower() in ENTITY_STOPWORDS or _is_value_fragment(n):
+    if n.lower() in ENTITY_STOPWORDS or _is_value_fragment(n) or _is_telemetry_field(n):
         return False
     if " " in n:                                  # multi-word concept
         return True

@@ -15,7 +15,7 @@ from backend.tools.company_brain import (
     sync_company_brain,
 )
 from backend.tools.company_brain_connectors import import_company_brain_sources
-from backend.tools.graph_rag_ingest import _is_value_fragment, _is_meaningful_entity, run_graph_rag_sync
+from backend.tools.graph_rag_ingest import _is_value_fragment, _is_telemetry_field, _is_meaningful_entity, run_graph_rag_sync
 from backend.tools.graph_rag_v2 import export_graph_visualization
 
 
@@ -152,6 +152,14 @@ def test_entity_extraction_rejects_raw_metric_literals():
     for real in ["Average Contract Value", "Bebas Neue", "GPT-4"]:
         assert _is_value_fragment(real) is False
         assert _is_meaningful_entity(real) is True
+
+
+def test_entity_extraction_rejects_humanized_telemetry_fields():
+    for garbage in ["cost USD", "elapsed seconds", "deadline seconds", "budget exhausted", "tool rounds", "token count"]:
+        assert _is_telemetry_field(garbage) is True
+        assert _is_meaningful_entity(garbage) is False
+    for real in ["Average Contract Value", "Bebas Neue"]:
+        assert _is_telemetry_field(real) is False
 
 
 def test_company_brain_ingest_detects_conflicts_and_resolves_proposals(tmp_path, monkeypatch):
