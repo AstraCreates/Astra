@@ -34,7 +34,7 @@ def openrouter_extra_body(model: str, extra: dict[str, Any] | None = None) -> di
     # their own JSON-structured reasoning, so the trace just burns tokens/latency
     # (mimo/hy3 were spending most of each call generating reasoning → slow agents).
     _m = (model or "").lower()
-    if "deepseek-v4-flash" in _m and "reasoning" not in body:
+    if any(token in _m for token in ("deepseek-v4-flash", "ling-2.6-flash")) and "reasoning" not in body:
         # Bench v11 #3: max effort raises P_hard; cost unchanged (same output rate).
         body["reasoning"] = {"effort": "max"}
     elif ("hy3" in _m or "qwen" in _m or "deepseek" in _m) and "thinking" not in _m and "reasoning" not in body:

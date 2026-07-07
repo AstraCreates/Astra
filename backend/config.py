@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     mvp_build_model: str = "deepseek/deepseek-v4-pro"
     # Legacy research-model slot; the stack now uses cheaper local search +
     # synthesis, so this stays as a lightweight default instead of a premium web model.
-    research_model: str = "deepseek/deepseek-v4-flash"
+    research_model: str = "inclusionai/ling-2.6-flash"
     # Which coding-agent CLI drives MVP builds: "caveman" (@juliusbrussee/caveman-code,
     # ~2x fewer tokens, native openrouter provider) or "openclaude" (legacy fallback).
     code_agent: str = "caveman"
@@ -49,14 +49,14 @@ class Settings(BaseSettings):
     # full build + one round of error recovery without hitting max_iterations.
     technical_agent_max_iterations: int = 30
     # Web agent wrapper model (drives its tool calls: repo create, run_mvp_loop).
-    web_agent_model: str = "deepseek/deepseek-v4-flash"
+    web_agent_model: str = "inclusionai/ling-2.6-flash"
     mvp_max_completion_rounds: int = 1
     # Compiler-as-critic recovery: re-run `npm run build`, feed real errors to the
     # coder, re-verify — up to this many rounds before giving up.
     mvp_max_build_rounds: int = 3
     # DeepSeek Flash: planning writes long outputs; MiMo's $2.82/M output rate
     # dominates cost at scale. Flash handles plan-length output at $1.72/M.
-    build_plan_model: str = "deepseek/deepseek-v4-flash"
+    build_plan_model: str = "inclusionai/ling-2.6-flash"
     # MVP builds (openclaude tool-use) are billed as separate, higher-rate
     # credits — this multiplier is applied to the build's token-based credit cost.
     mvp_credit_multiplier: float = 3.0
@@ -64,40 +64,40 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     agent_model_base_url: str = "https://openrouter.ai/api/v1"
     agent_model_api_key: str = ""
-    agent_model_name: str = "deepseek/deepseek-v4-flash"
+    agent_model_name: str = "inclusionai/ling-2.6-flash"
     # OpenRouter — NOT overridden by Coolify (new field names)
     openrouter_api_key: str = ""
     openrouter_api_key_2: str = ""
     openrouter_api_key_3: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # DeepSeek Flash: long planner outputs at $2.82/M (MiMo) → $1.72/M.
-    or_planner_model: str = "deepseek/deepseek-v4-flash"
+    or_planner_model: str = "inclusionai/ling-2.6-flash"
     # Bench v2 (2026-06-26, LLM-judge): DeepSeek Flash 4.33/5 on NDA + pitch + finance
     # at QAC $0.261/1k. Qwen3-235b was $0.176/1k but capped at 16k max output — truncates
     # long financial models. DeepSeek Flash has 65k output / 1M context, no ceiling issue.
-    or_highoutput_model: str = "deepseek/deepseek-v4-flash"
+    or_highoutput_model: str = "inclusionai/ling-2.6-flash"
     # DeepSeek Flash: Qwen3-235b-T won bench on quality but runs full thinking (exempt
     # from effort:none), billing thinking tokens as output at $3.34/M — 17% of prod spend.
     # Flash ($1.72/M output, no thinking overhead) cuts this line to ~$0.50/M effective.
-    or_light_model: str = "deepseek/deepseek-v4-flash"
+    or_light_model: str = "inclusionai/ling-2.6-flash"
     tooluse_model_base_url: str = "https://openrouter.ai/api/v1"
-    tooluse_model_name: str = "deepseek/deepseek-v4-flash"
+    tooluse_model_name: str = "inclusionai/ling-2.6-flash"
     # Web-search synthesis model — uncached, so input price dominates.
     # Used by web_search.py deep_research → Flash is 4.4× cheaper input
     # than Pro for synthesis calls.
     planner_model_base_url: str = "https://openrouter.ai/api/v1"
     planner_model_api_key: str = ""
-    planner_model_name: str = "deepseek/deepseek-v4-flash"
+    planner_model_name: str = "inclusionai/ling-2.6-flash"
     # Chat model — DeepSeek V4 Flash: chat endpoint has no prompt caching; Flash
     # is 4.4× cheaper on fresh input than Pro with equivalent chat quality.
     chat_model_base_url: str = "https://openrouter.ai/api/v1"
     chat_model_api_key: str = ""
-    chat_model_name: str = "deepseek/deepseek-v4-flash"
+    chat_model_name: str = "inclusionai/ling-2.6-flash"
     light_model_base_url: str = "https://openrouter.ai/api/v1"
-    light_model_name: str = "deepseek/deepseek-v4-flash"
+    light_model_name: str = "inclusionai/ling-2.6-flash"
     # High-output model — DeepSeek Flash (65k max output vs qwen3-235b's 16k ceiling)
     highoutput_model_base_url: str = "https://openrouter.ai/api/v1"
-    highoutput_model_name: str = "deepseek/deepseek-v4-flash"
+    highoutput_model_name: str = "inclusionai/ling-2.6-flash"
     vertex_project: str = ""
     vertex_location: str = "us-central1"
 

@@ -25,6 +25,7 @@ model_settings_router = APIRouter()
 
 AVAILABLE_MODELS: list[str] = [
     "deepseek/deepseek-v4-pro",
+    "inclusionai/ling-2.6-flash",
     "deepseek/deepseek-v4-flash",
     "tencent/hy3-preview",
     "xiaomi/mimo-v2.5",

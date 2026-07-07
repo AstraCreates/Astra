@@ -14,7 +14,7 @@ class ModelCapabilities:
 
 _CAPABILITIES = {
     "deepseek/deepseek-v4-pro": ModelCapabilities(True, True, True, 1_000_000),
-    "deepseek/deepseek-v4-flash": ModelCapabilities(True, True, True, 1_000_000),
+    "inclusionai/ling-2.6-flash": ModelCapabilities(True, True, True, 1_000_000),
     "xiaomi/mimo-v2.5": ModelCapabilities(True, True, False, 262_144),
     "xiaomi/mimo-v2.5-pro": ModelCapabilities(True, True, False, 262_144),
     "minimax/minimax-m3": ModelCapabilities(True, True, False, 1_000_000),
