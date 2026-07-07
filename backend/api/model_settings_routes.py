@@ -26,8 +26,10 @@ model_settings_router = APIRouter()
 AVAILABLE_MODELS: list[str] = [
     "deepseek/deepseek-v4-pro",
     "deepseek/deepseek-v4-flash",
+    "inclusionai/ling-2.6-flash",
     "tencent/hy3-preview",
     "xiaomi/mimo-v2.5",
+    "xiaomi/mimo-v2.5-pro",
     "google/gemma-3-27b-it",
     "deepseek-ai/DeepSeek-V4-Flash",
     "meta-llama/Llama-4-Scout-17B-16E-Instruct",

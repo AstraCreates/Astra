@@ -15,19 +15,21 @@ _PRICING: dict[str, tuple[float, float, float]] = {
     "stepfun-ai/Step-3.5-Flash":                         (0.09,  0.30,  0.02),
     "mistralai/Mistral-Small-3.2-24B-Instruct-2506":     (0.075, 0.20,  0.02),
     "zai-org/GLM-4.7-Flash":                             (0.06,  0.40,  0.01),
-    "deepseek-ai/DeepSeek-V4-Flash":                     (0.10,  0.20,  0.02),
+    # OpenRouter pricing verified 2026-07-07. Cached-token rates follow
+    # OpenRouter's documented 90% prompt-caching discount.
+    "deepseek-ai/DeepSeek-V4-Flash":                     (0.09,  0.18,  0.009),
     "Qwen/Qwen3.6-35B-A3B":                              (0.15,  0.95,  0.04),
     "meta-llama/Llama-4-Scout-17B-16E-Instruct":         (0.08,  0.30,  0.02),
     "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8": (0.15,  0.60,  0.03),
     "tencent/hy3-preview":                               (0.063, 0.21,  0.02),
-    "deepseek/deepseek-v4-flash":                        (0.0983, 0.1966, 0.0197),
-    "deepseek/deepseek-v4-pro":                          (0.435,  0.87,   0.003625),
-    "xiaomi/mimo-v2.5":                                  (0.14,  0.40,  0.0028),
-    "xiaomi/mimo-v2.5-pro":                              (0.435, 0.87,  0.0036),
+    "deepseek/deepseek-v4-flash":                        (0.09,  0.18,  0.009),
+    "deepseek/deepseek-v4-pro":                          (0.435, 0.87,  0.0435),
+    "xiaomi/mimo-v2.5":                                  (0.105, 0.28,  0.0105),
+    "xiaomi/mimo-v2.5-pro":                              (0.435, 0.87,  0.0435),
     "minimax/minimax-m3":                                (0.30,  1.20,  0.06),
     "moonshotai/kimi-k2.6:free":                         (0.00,  0.00,  0.00),
     "google/gemma-4-31b-it:free":                        (0.00,  0.00,  0.00),
-    "inclusionai/ling-2.6-flash":                        (0.01,  0.03,  0.00),
+    "inclusionai/ling-2.6-flash":                        (0.01,  0.03,  0.001),
     "meta-llama/llama-3.3-70b-instruct":                 (0.05,  0.15,  0.01),
 }
 
