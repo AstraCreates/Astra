@@ -543,6 +543,17 @@ def _approval_workflow_snapshot(session_id: str) -> dict[str, Any]:
 def _approval_request_state(request: dict[str, Any]) -> dict[str, Any]:
     gate_key = str(request.get("gate_key") or request.get("key") or request.get("id") or "")
     required_before = request.get("required_before") or request.get("tool") or request.get("action_id") or "sensitive action"
+    inferred_phase = ""
+    inferred_next_phase = ""
+    inferred_is_phase_gate = bool(request.get("is_phase_gate"))
+    if gate_key.startswith("phase_gate_"):
+        inferred_is_phase_gate = True
+        inferred_phase = gate_key.removeprefix("phase_gate_")
+        _phase_order = ["diagnose", "design", "deploy", "govern", "operate", "complete"]
+        if inferred_phase in _phase_order:
+            _idx = _phase_order.index(inferred_phase)
+            if _idx + 1 < len(_phase_order):
+                inferred_next_phase = _phase_order[_idx + 1]
     return {
         "key": gate_key,
         "id": request.get("id") or gate_key,
@@ -559,8 +570,8 @@ def _approval_request_state(request: dict[str, Any]) -> dict[str, Any]:
         "decided_by": request.get("decided_by"),
         "decided_at": request.get("decided_at"),
         "history": request.get("history") or [],
-        "is_phase_gate": bool(request.get("is_phase_gate")),
-        "phase": request.get("phase") or "",
-        "next_phase": request.get("next_phase") or "",
+        "is_phase_gate": inferred_is_phase_gate,
+        "phase": request.get("phase") or inferred_phase,
+        "next_phase": request.get("next_phase") or inferred_next_phase,
         "artifacts": request.get("artifacts") or [],
     }
