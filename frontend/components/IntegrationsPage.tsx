@@ -1508,92 +1508,7 @@ export default function SetupPage() {
             <p style={{ margin: 0, fontSize: 12, color: c.textMuted }}>Loading stack connector guidance…</p>
           ) : (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-                {[
-                  { label: "Stack", value: stackSetup.stack_name },
-                  { label: "Required ready", value: `${stackCoverage.ready_required}/${stackCoverage.required_total}` },
-                  { label: "Need connection", value: `${stackSetup.missing_required}` },
-                  { label: "Need memory sync", value: `${stackSetup.connected_needs_sync}` },
-                ].map((item) => (
-                  <div key={item.label} style={{ padding: "12px 14px", borderRadius: 10, background: c.surface, border: `1px solid ${c.border}` }}>
-                    <div style={{ fontSize: 11, color: c.textMuted, textTransform: "uppercase" }}>{item.label}</div>
-                    <div style={{ marginTop: 4, fontSize: 14, color: c.text, fontWeight: 600 }}>{item.value}</div>
-                  </div>
-                ))}
-              </div>
-
               <p style={{ margin: 0, fontSize: 12, color: c.textSecondary, lineHeight: 1.6 }}>{stackCoverage.summary}</p>
-              {stackJourneys.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <div style={{ fontSize: 11, color: c.textMuted, textTransform: "uppercase", fontWeight: 600 }}>
-                    Guided bundles
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10, width: "100%" }}>
-                    {stackJourneys.map((journey) => {
-                      const tone = journeyToneStyles(journey.tone);
-                      return (
-                        <div
-                          key={journey.id}
-                          style={{
-                            padding: 14,
-                            borderRadius: 10,
-                            background: c.surface,
-                            border: `1px solid ${tone.border}`,
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 10,
-                          }}
-                        >
-                          <div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
-                              <span style={{ fontSize: 13, fontWeight: 600, color: c.text }}>{journey.title}</span>
-                              <span style={{
-                                padding: "3px 8px",
-                                borderRadius: 999,
-                                fontSize: 10,
-                                fontWeight: 600,
-                                color: tone.color,
-                                background: tone.background,
-                                border: `1px solid ${tone.border}`,
-                                whiteSpace: "nowrap",
-                                flexShrink: 0,
-                              }}>
-                                {journey.summary}
-                              </span>
-                            </div>
-                            <p style={{ margin: 0, fontSize: 12, color: c.textSecondary, lineHeight: 1.5 }}>{journey.description}</p>
-                          </div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                            {journey.connectors.map(({ connector, status }) => {
-                              const connectorTone = journeyToneStyles(status.tone);
-                              return (
-                                <div
-                                  key={connector.key}
-                                  style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    gap: 6,
-                                    padding: "6px 8px",
-                                    borderRadius: 8,
-                                    border: `1px solid ${connectorTone.border}`,
-                                    background: connectorTone.background,
-                                    color: connectorTone.color,
-                                  }}
-                                >
-                                  <ServiceLogo serviceKey={connector.key} label={connector.label} size={14} />
-                                  <span style={{ fontSize: 11, fontWeight: 600 }}>{connector.label}</span>
-                                  <span style={{ fontSize: 10 }}>{status.label}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                          <p style={{ margin: 0, fontSize: 11, color: c.textMuted, lineHeight: 1.5 }}>{journey.nextStep}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <button
                   onClick={() => void validateConnectorLive()}
@@ -1728,25 +1643,6 @@ export default function SetupPage() {
                               {importingKey === connector.key ? "Importing…" : "Import context"}
                             </button>
                           )}
-                          <button
-                            onClick={() => void validateConnectorLive(connector.key)}
-                            disabled={!!validatingKey}
-                            style={{
-                              padding: "7px 12px",
-                              borderRadius: 8,
-                              border: `1px solid ${c.border}`,
-                              background: c.bg,
-                              color: c.textSecondary,
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: validatingKey ? "wait" : "pointer",
-                            }}
-                          >
-                            {validatingKey === connector.key ? "Checking…" : "Validate"}
-                          </button>
-                          <Link href="/company-brain" style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${c.border}`, background: c.bg, color: c.textSecondary, fontSize: 12, fontWeight: 600, textDecoration: "none" }}>
-                            Open memory
-                          </Link>
                         </div>
                       </div>
                       {isEditing && (
