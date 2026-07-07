@@ -55,6 +55,16 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+function KindBadge({ kind }: { kind?: string }) {
+  if (kind === "user") return (
+    <span style={{ fontSize: 8, fontFamily: "var(--font-code)", fontWeight: 700, color: "var(--blue)", background: "var(--bdim)", border: "1px solid var(--bb)", padding: "1px 5px", letterSpacing: ".06em", textTransform: "uppercase", flexShrink: 0 }}>User</span>
+  );
+  if (kind === "operating" || kind === "scheduled") return (
+    <span style={{ fontSize: 8, fontFamily: "var(--font-code)", fontWeight: 700, color: "var(--amber)", background: "var(--adim)", border: "1px solid var(--ab)", padding: "1px 5px", letterSpacing: ".06em", textTransform: "uppercase", flexShrink: 0 }}>Auto</span>
+  );
+  return null;
+}
+
 function ChildRow({ session }: { session: SessionIndexEntry }) {
   const kind = statusKind(session.status);
   const meta = STATUS_META[kind];
@@ -77,9 +87,7 @@ function ChildRow({ session }: { session: SessionIndexEntry }) {
       <span style={{ fontSize: 9, fontFamily: "var(--font-code)", color: meta.color, fontWeight: 700, flexShrink: 0, textTransform: "uppercase" }}>
         {meta.label}
       </span>
-      {(session.kind === "operating" || session.kind === "scheduled") && (
-        <span style={{ fontSize: 8, fontFamily: "var(--font-code)", fontWeight: 700, color: "var(--amber)", background: "var(--adim)", border: "1px solid var(--ab)", padding: "1px 5px", letterSpacing: ".06em", textTransform: "uppercase", flexShrink: 0 }}>Auto</span>
-      )}
+      <KindBadge kind={session.kind} />
     </div>
   );
 }
@@ -140,9 +148,7 @@ function GoalCard({ session, childSessions }: { session: SessionIndexEntry; chil
           }}>
             {meta.label}
           </span>
-          {(session.kind === "operating" || session.kind === "scheduled") && (
-            <span style={{ fontSize: 8, fontFamily: "var(--font-code)", fontWeight: 700, color: "var(--amber)", background: "var(--adim)", border: "1px solid var(--ab)", padding: "1px 5px", letterSpacing: ".06em", textTransform: "uppercase" }}>Auto</span>
-          )}
+          <KindBadge kind={session.kind} />
         </div>
       </div>
 
