@@ -27,6 +27,11 @@ _BUILD_SLOTS = int(os.environ.get("ASTRA_MAX_CONCURRENT_BUILDS", "4"))
 _build_semaphore = threading.Semaphore(_BUILD_SLOTS)
 
 logger = logging.getLogger(__name__)
+_RTK_SHIM_DIR = "/opt/rtk-shims"
+
+
+def _env_flag_enabled(name: str) -> bool:
+    return os.environ.get(name, "").lower() in {"1", "true", "yes", "on"}
 
 def _find_caveman_bin() -> str:
     """Find caveman-code binary (@juliusbrussee/caveman-code)."""
@@ -827,6 +832,8 @@ def _make_env() -> dict:
     # session) pulls packages from local disk instead of re-downloading — the biggest
     # chunk of build time. prefer-offline = use the cache whenever possible.
     _apply_npm_cache_env(env)
+    if _env_flag_enabled("ASTRA_CAVEMAN_RTK_SHIM"):
+        env["PATH"] = f"{_RTK_SHIM_DIR}:{env.get('PATH', '')}" if env.get("PATH") else _RTK_SHIM_DIR
     return env
 
 

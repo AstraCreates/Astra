@@ -13,6 +13,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nodejs \
     libjpeg-dev zlib1g-dev libpng-dev libwebp-dev libfreetype6-dev \
     && rm -rf /var/lib/apt/lists/* \
+    && RTK_INSTALL_DIR=/usr/local/bin curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/refs/heads/master/install.sh | sh \
+    && mkdir -p /opt/rtk-shims \
+    && printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/rtk git "$@"' > /opt/rtk-shims/git \
+    && printf '%s\n' '#!/bin/sh' 'exec /usr/local/bin/rtk cat "$@"' > /opt/rtk-shims/cat \
+    && chmod +x /opt/rtk-shims/git /opt/rtk-shims/cat \
     && npm install -g @gitlawb/openclaude 2>/dev/null || true \
     && npm install -g @juliusbrussee/caveman-code 2>/dev/null || true \
     && useradd -m -s /bin/bash astra \

@@ -153,3 +153,27 @@ def test_run_caveman_sudo_command_does_not_put_secret_in_argv(monkeypatch, tmp_p
     assert seen["env_mode"] == 0o600
     assert f"OPENROUTER_API_KEY={secret}" in seen["env_text"]
     assert not os.path.exists(str(seen["env_file"]))
+
+
+def test_make_env_prepends_rtk_shim_path_when_flag_enabled(monkeypatch):
+    monkeypatch.setenv("ASTRA_CAVEMAN_RTK_SHIM", "true")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setattr(git_tools.settings, "openrouter_base_url", "https://openrouter.example/api", raising=False)
+    monkeypatch.setattr(git_tools.settings, "mvp_build_model", "test/model", raising=False)
+    monkeypatch.setattr("backend.core.key_rotator.get_openrouter_key", lambda: "or-key")
+
+    env = git_tools._make_env()
+
+    assert env["PATH"] == "/opt/rtk-shims:/usr/bin:/bin"
+
+
+def test_make_env_leaves_path_unchanged_when_rtk_shim_flag_disabled(monkeypatch):
+    monkeypatch.delenv("ASTRA_CAVEMAN_RTK_SHIM", raising=False)
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.setattr(git_tools.settings, "openrouter_base_url", "https://openrouter.example/api", raising=False)
+    monkeypatch.setattr(git_tools.settings, "mvp_build_model", "test/model", raising=False)
+    monkeypatch.setattr("backend.core.key_rotator.get_openrouter_key", lambda: "or-key")
+
+    env = git_tools._make_env()
+
+    assert env["PATH"] == "/usr/bin:/bin"
