@@ -75,6 +75,7 @@ async def launch_custom_agent_run(
     spec: dict[str, Any],
     goal: str | None = None,
     company_id: str | None = None,
+    kind: str = "",
 ) -> str:
     """Start a background orchestrator run scoped to a single custom agent.
 
@@ -131,6 +132,7 @@ async def launch_custom_agent_run(
             workspace_id=resolved_company,
             company_id=resolved_company,
             chapter_id="",
+            kind=kind,
         )
     except Exception as exc:
         logger.warning("custom_agent run: register_session failed: %s", exc)

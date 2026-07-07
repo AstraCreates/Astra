@@ -62,7 +62,7 @@ async def _tick() -> int:
         except Exception:
             pass
         try:
-            await launch_custom_agent_run(founder_id=founder_id, spec=spec, company_id=company_id)
+            await launch_custom_agent_run(founder_id=founder_id, spec=spec, company_id=company_id, kind="scheduled")
             await asyncio.to_thread(store.mark_ran, founder_id, spec["id"])
             launched += 1
             logger.info("custom_agents_scheduler: launched %s (founder=%s)", spec["id"], founder_id)

@@ -77,6 +77,9 @@ function ChildRow({ session }: { session: SessionIndexEntry }) {
       <span style={{ fontSize: 9, fontFamily: "var(--font-code)", color: meta.color, fontWeight: 700, flexShrink: 0, textTransform: "uppercase" }}>
         {meta.label}
       </span>
+      {(session.kind === "operating" || session.kind === "scheduled") && (
+        <span style={{ fontSize: 8, fontFamily: "var(--font-code)", fontWeight: 700, color: "var(--amber)", background: "var(--adim)", border: "1px solid var(--ab)", padding: "1px 5px", letterSpacing: ".06em", textTransform: "uppercase", flexShrink: 0 }}>Auto</span>
+      )}
     </div>
   );
 }
@@ -129,14 +132,18 @@ function GoalCard({ session, childSessions }: { session: SessionIndexEntry; chil
             </span>
           </div>
         </div>
-        <span style={{
-          flexShrink: 0, fontSize: 10, fontWeight: 700,
-          color: meta.color, fontFamily: "var(--font-code)",
-          textTransform: "uppercase", letterSpacing: ".05em",
-          marginTop: 2,
-        }}>
-          {meta.label}
-        </span>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0, marginTop: 2 }}>
+          <span style={{
+            fontSize: 10, fontWeight: 700,
+            color: meta.color, fontFamily: "var(--font-code)",
+            textTransform: "uppercase", letterSpacing: ".05em",
+          }}>
+            {meta.label}
+          </span>
+          {(session.kind === "operating" || session.kind === "scheduled") && (
+            <span style={{ fontSize: 8, fontFamily: "var(--font-code)", fontWeight: 700, color: "var(--amber)", background: "var(--adim)", border: "1px solid var(--ab)", padding: "1px 5px", letterSpacing: ".06em", textTransform: "uppercase" }}>Auto</span>
+          )}
+        </div>
       </div>
 
       {childSessions.length > 0 && (

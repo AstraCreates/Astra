@@ -586,6 +586,9 @@ export default function DashboardView() {
                                 </div>
                                 <div style={{ fontSize: 11, color: "#6f7b98", marginTop: 2 }}>{meta(s)}</div>
                               </div>
+                              {(s.kind === "operating" || s.kind === "scheduled") && (
+                                <span style={{ fontSize: 8, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.28)", padding: "2px 6px", letterSpacing: ".06em", textTransform: "uppercase", borderRadius: 4, flexShrink: 0, whiteSpace: "nowrap" }}>Auto</span>
+                              )}
                               {chip(s.status)}
                               <button
                                 title={pendingDel.has(s.session_id) ? "Click again to confirm" : "Delete"}
