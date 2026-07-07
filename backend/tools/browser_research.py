@@ -113,6 +113,24 @@ _QUERY_BLUEPRINTS = {
         "{topic} YC a16z Sequoia backed startup competitor",
         "{topic} market map landscape companies",
     ],
+    "customers": [
+        "{topic} customer pain points buyer persona ICP demographics firmographics",
+        "{topic} customer complaints reviews reddit forum churn reasons",
+        "{topic} jobs to be done buying triggers implementation blockers",
+        "{topic} willingness to pay pricing sensitivity budget owner",
+        "{topic} onboarding friction adoption retention case study",
+        "{topic} user interview survey findings personas",
+        "{topic} customer success manager revenue operations head of operations pain points",
+    ],
+    "gtm": [
+        "{topic} go to market strategy distribution channels launch playbook",
+        "{topic} acquisition channels SEO outbound partnerships communities benchmark",
+        "{topic} pricing model packaging subscription retainers project fees",
+        "{topic} CAC LTV benchmark payback period sales cycle",
+        "{topic} product hunt linkedin outbound founder led sales case study",
+        "{topic} conversion funnel onboarding trial demo benchmark",
+        "{topic} growth tactics launch examples competitors",
+    ],
     "execution": [
         "{topic} go to market strategy startup playbook",
         "{topic} business model revenue streams monetization pricing",
@@ -123,6 +141,61 @@ _QUERY_BLUEPRINTS = {
         "{topic} customer success story ROI case study",
     ],
 }
+
+_FOCUS_ALIASES = {
+    "market": "market",
+    "markets": "market",
+    "research": "market",
+    "competitor": "competitors",
+    "competitors": "competitors",
+    "customer": "customers",
+    "customers": "customers",
+    "icp": "customers",
+    "persona": "customers",
+    "gtm": "gtm",
+    "go-to-market": "gtm",
+    "go_to_market": "gtm",
+    "distribution": "gtm",
+    "execution": "execution",
+}
+
+_TOPIC_NOISE_PATTERNS = (
+    r"\bvalidate the market\b",
+    r"\btarget customer\b",
+    r"\bcompetitor intel\b",
+    r"\bresearch gtm\b",
+    r"\bgo to market\b",
+    r"\bpricing and launch playbook\b",
+    r"\bbuild(?:ing)? repeatable sales and delivery engine\b",
+    r"\busing run research pipeline\b",
+)
+
+
+def _normalize_focus(focus: str) -> str:
+    key = re.sub(r"[\s_]+", "-", (focus or "market").strip().lower())
+    return _FOCUS_ALIASES.get(key, "market")
+
+
+def _normalize_research_topic(topic: str) -> str:
+    text = re.sub(r"\s+", " ", (topic or "").strip())
+    if not text:
+        return ""
+    text = re.sub(r"https?://\S+", " ", text)
+    text = re.sub(r"\[[^\]]+\]", " ", text)
+    text = re.sub(r"[|]+", " ", text)
+    text = re.split(r"(?:\n|;)", text, maxsplit=1)[0]
+    if ":" in text:
+        prefix, suffix = text.split(":", 1)
+        if len(prefix.split()) <= 5 and len(suffix.split()) >= 3:
+            text = suffix.strip()
+    for pattern in _TOPIC_NOISE_PATTERNS:
+        text = re.sub(pattern, " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\b(please|help|need|want|make sure|figure out)\b", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text).strip(" ,.-")
+    words = text.split()
+    if len(words) > 18:
+        text = " ".join(words[:18])
+    return text
 
 
 # Domains that reliably 403/404/auth-wall scrapers — skip fetch, use snippet only
@@ -203,12 +276,10 @@ def build_research_queries(topic: str, focus: str = "market", limit: int = 7) ->
     start browsing, instead of relying on the model to invent a good search mix
     every run.
     """
-    clean_topic = re.sub(r"\s+", " ", (topic or "").strip())
+    clean_topic = _normalize_research_topic(topic)
     if not clean_topic:
         return {"topic": topic, "focus": focus, "queries": [], "error": "topic is required"}
-    normalized_focus = (focus or "market").strip().lower()
-    if normalized_focus not in _QUERY_BLUEPRINTS:
-        normalized_focus = "market"
+    normalized_focus = _normalize_focus(focus)
     queries = [template.format(topic=clean_topic) for template in _QUERY_BLUEPRINTS[normalized_focus]]
     deduped = []
     seen = set()

@@ -15,10 +15,10 @@ def build_design_agent(**kwargs) -> Agent:
     return Agent(
         name="design",
         role=(
-            "You are a design specialist. Your ONLY domain is visual identity — logo, color system, typography, "
-            "wireframes, and brand board. NOT brand positioning or messaging strategy (brand_marketing), "
-            "NOT ad copy (brand_marketing), NOT marketing content (content_engine).\n\n"
-            "Produce a complete visual design system including real logo images.\n\n"
+            "You are a design specialist. Your domain is brand direction translated into implementable visual identity: "
+            "logo, color system, typography, layout rules, component tokens, accessibility guidance, and wireframes. "
+            "Do NOT hand-wave with mood-board prose. Every run must produce both visual assets and written implementation guidance.\n\n"
+            "Produce a complete visual design system including real logo images and a substantial written brand-direction artifact.\n\n"
             "Before choosing colors, fonts, logo motif, or layout style, read SHARED CONTEXT.creative_brief. "
             "Use creative_brief.brand_vibe, visual_style, palette_hint, typography_hint, motif, and creative_seed as binding direction. "
             "If the founder submits the exact same prompt in another session, the creative seed should make that run look meaningfully different.\n"
@@ -37,7 +37,9 @@ def build_design_agent(**kwargs) -> Agent:
             "9. generate_wireframe(page='onboarding', layout_description=<signup flow using creative_brief.visual_style>, brand_vibe=<creative_brief.brand_vibe>)\n"
             "10. generate_brand_board(brand_name=<COMPANY_NAME>, colors=<primary hex accent hex from palette>, vibe=<creative_brief.design_instruction>, tagline=<one-line tagline>, founder_id=<FOUNDER_ID>, session_id=<SESSION>) — brand identity board with multiple graphic compositions\n"
             "11. obsidian_log — save everything including logo base64 data so marketing can use them\n"
-            "12. done — return {design_spec, color_palette, wireframes, logo_wordmark: {base64, prompt}, logo_icon: {base64, prompt}, brand_images}\n\n"
+            "12. done — return {design_spec, color_palette, palette, wireframes, logo_wordmark: {base64, prompt}, logo_icon: {base64, prompt}, brand_images, brand_direction, formatted_text, summary, spec, report}\n\n"
+            "The written brand_direction/formatted_text/spec/report must be 200+ chars and cover: positioning statement, brand personality, typography system with exact font names, color tokens with semantic usage, spacing or layout rules, primary CTA/button treatment, component styling notes, accessibility constraints, responsive notes, and logo usage guidance.\n"
+            "Mirror the same substantive text into brand_direction, formatted_text, and summary/spec/report as needed so downstream verification has a clear evidence trail.\n\n"
             "CRITICAL: Use SPECIFIC Google Font names. Use BOLD, DISTINCTIVE colors — never grey/white-only."
         ),
         tools={

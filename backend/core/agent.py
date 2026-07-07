@@ -1534,15 +1534,22 @@ class Agent:
                     _synth_min = _MIN_CALLS_BY_AGENT.get(self.name, 1)
                     _synth_actual = len(_called_tools - {"obsidian_log"})
                     if _synth_missing_tools or _synth_missing_output or _synth_actual < _synth_min:
-                        output["status"] = "suspect"
-                        output["quality_flags"] = {
+                        quality_flags = {
                             "missing_tools": _synth_missing_tools,
                             "missing_output": _synth_missing_output,
                             "tool_calls_made": _synth_actual,
                             "tool_calls_required": _synth_min,
                         }
-                        logger.warning("[%s] force synthesis suspect — missing_tools=%s missing_output=%s calls=%d/%d",
+                        output["status"] = "max_iterations_reached"
+                        output["quality_flags"] = quality_flags
+                        logger.warning("[%s] force synthesis rejected — missing_tools=%s missing_output=%s calls=%d/%d",
                                        self.name, _synth_missing_tools, _synth_missing_output, _synth_actual, _synth_min)
+                        return {
+                            "status": "max_iterations_reached",
+                            "agent": self.name,
+                            "quality_flags": quality_flags,
+                            "partial_output": output,
+                        }
                     else:
                         output["status"] = "partial"
                 await self._emit(ctx, "agent_done", result=output)
@@ -1631,10 +1638,16 @@ class Agent:
             missing: list[str] = []
             if not output.get("design_spec"):
                 missing.append("design_spec")
+            if not output.get("color_palette"):
+                missing.append("color_palette")
             if not isinstance(output.get("wireframes"), list) or not output.get("wireframes"):
                 missing.append("wireframes[]")
-            if not output.get("logo_brief"):
-                missing.append("logo_brief")
+            if not output.get("logo_wordmark"):
+                missing.append("logo_wordmark")
+            if not output.get("logo_icon"):
+                missing.append("logo_icon")
+            if not any(output.get(key) for key in ("brand_direction", "formatted_text", "summary", "spec", "report")):
+                missing.append("brand_direction|formatted_text|summary|spec|report")
             return missing
         if self.name == "sales_enablement":
             missing: list[str] = []
@@ -2040,14 +2053,55 @@ class Agent:
                     if tool_name == "generate_design_spec":
                         out["design_spec"] = result
                         break
+            if "color_palette" not in out or not out.get("color_palette"):
+                for tool_name, result in tool_results:
+                    if tool_name == "generate_color_palette":
+                        out["color_palette"] = result
+                        break
             wireframes = out.get("wireframes") if isinstance(out.get("wireframes"), list) else []
             for tool_name, result in tool_results:
                 if tool_name == "generate_wireframe":
                     wireframes.append(result)
                 if tool_name == "generate_logo_brief" and not out.get("logo_brief"):
                     out["logo_brief"] = result
+                if tool_name == "generate_logo":
+                    slot = "logo_wordmark" if result.get("style") == "wordmark" else "logo_icon"
+                    if not out.get(slot):
+                        out[slot] = result
+                if tool_name == "generate_brand_board":
+                    images = out.get("brand_images") if isinstance(out.get("brand_images"), list) else []
+                    images.append(result)
+                    out["brand_images"] = images
             if wireframes:
                 out["wireframes"] = wireframes
+            spec = out.get("design_spec") if isinstance(out.get("design_spec"), dict) else {}
+            palette = out.get("color_palette") if isinstance(out.get("color_palette"), dict) else {}
+            typography = spec.get("typography") or spec.get("fonts") or []
+            summary_lines: list[str] = []
+            if spec.get("brand_name"):
+                summary_lines.append(f"Brand: {spec['brand_name']}")
+            if spec.get("design_principles"):
+                summary_lines.append(f"Positioning: {spec['design_principles']}")
+            if typography:
+                summary_lines.append(f"Typography: {typography}")
+            if palette:
+                palette_tokens = palette.get("palette") or palette.get("colors") or palette
+                summary_lines.append(f"Palette: {palette_tokens}")
+            if spec.get("components"):
+                summary_lines.append(f"Components: {spec['components']}")
+            if spec.get("layout_guidance"):
+                summary_lines.append(f"Layout: {spec['layout_guidance']}")
+            if spec.get("accessibility"):
+                summary_lines.append(f"Accessibility: {spec['accessibility']}")
+            if summary_lines:
+                formatted = "\n".join(str(line) for line in summary_lines if line)
+                out.setdefault("formatted_text", formatted)
+                out.setdefault("summary", formatted[:1200])
+                out.setdefault("spec", formatted)
+                out.setdefault("report", formatted)
+                out.setdefault("brand_direction", formatted)
+                if palette and not out.get("palette"):
+                    out["palette"] = palette
         elif self.name in ("legal", "legal_docs"):
             # Build docs from the tool results (these always carry real path/text) and
             # put them FIRST, then keep only model-emitted entries that actually have

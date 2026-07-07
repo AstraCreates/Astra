@@ -114,7 +114,7 @@ _AGENT_SHAPE: dict[str, dict[str, Any]] = {
     "marketing": {"text_fields": ["content", "campaign", "posts", "report", "formatted_text", "summary"], "min_text_chars": 300, "min_specifics": 0},
     "ops":       {"text_fields": ["report", "summary", "formatted_text", "output_summary"], "min_text_chars": 300, "min_specifics": 2},
     "sales":     {"text_fields": ["leads", "report", "summary", "outreach", "formatted_text"], "min_text_chars": 200, "min_specifics": 2},
-    "design":    {"text_fields": ["spec", "report", "summary", "palette", "formatted_text"], "min_text_chars": 200, "min_specifics": 0},
+    "design":    {"text_fields": ["brand_direction", "formatted_text", "spec", "report", "summary", "design_spec"], "min_text_chars": 200, "min_specifics": 0},
 }
 
 # Rubric the LLM judge applies, per agent. Keep concrete and falsifiable.
