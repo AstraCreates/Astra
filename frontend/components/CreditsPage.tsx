@@ -28,7 +28,7 @@ function CoinIcon({ size = 18 }: { size?: number }) {
 }
 
 function TxRow({ tx }: { tx: CreditBalance["transactions"][number] }) {
-  const isCredit = tx.amount > 0;
+  const isCredit = tx.type !== "usage";
   const date = new Date(tx.ts).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid var(--bd)" }}>

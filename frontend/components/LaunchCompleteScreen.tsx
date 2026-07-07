@@ -148,7 +148,7 @@ export default function LaunchCompleteScreen({
   const isOut = phase === "out";
 
   const personName = (founderName || displayName).trim();
-  const FF = "var(--font-geist-sans), 'Geist', sans-serif";
+  const FF = "var(--font-instrument), 'Instrument Sans', sans-serif";
 
   return (
     <div style={{

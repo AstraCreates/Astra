@@ -639,7 +639,7 @@ export default function DashboardView() {
               )}
               <input
                 ref={copilotInputRef}
-                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#EDF1FB", fontSize: 13.5, fontFamily: "'Hanken Grotesk', sans-serif" }}
+                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#EDF1FB", fontSize: 13.5, fontFamily: "var(--font-instrument), sans-serif" }}
                 placeholder="Ask Astra to start a run, draft copy, or find leads…"
                 disabled={copilotBusy}
                 onFocus={() => setCopilotOpen(true)}

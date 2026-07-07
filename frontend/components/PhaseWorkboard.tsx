@@ -359,7 +359,7 @@ function AgentPreview({ agentName, state }: { agentName: string; state: AgentSta
                   <div style={{ display: "flex", gap: 4 }}>
                     {["#FF5F56","#FFBD2E","#27C93F"].map(c => <span key={c} style={{ width: 8, height: 8, borderRadius: "50%", background: c }} />)}
                   </div>
-                  <span style={{ flex: 1, fontSize: 10, color: "rgba(176,180,186,0.5)", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ flex: 1, fontSize: 10, color: "rgba(176,180,186,0.5)", fontFamily: "var(--font-geist-mono), monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {state.previewUrl}
                   </span>
                 </div>
@@ -381,7 +381,7 @@ function AgentPreview({ agentName, state }: { agentName: string; state: AgentSta
                   <div style={{ display: "flex", gap: 4 }}>
                     {["#FF5F56","#FFBD2E","#27C93F"].map(c => <span key={c} style={{ width: 8, height: 8, borderRadius: "50%", background: c }} />)}
                   </div>
-                  <span style={{ flex: 1, fontSize: 10, color: "#2563EB", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <span style={{ flex: 1, fontSize: 10, color: "#2563EB", fontFamily: "var(--font-geist-mono), monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {state.previewUrl}
                   </span>
                   <a href={state.previewUrl} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: "#2563EB", textDecoration: "none", flexShrink: 0 }}>↗</a>
@@ -408,7 +408,7 @@ function AgentPreview({ agentName, state }: { agentName: string; state: AgentSta
                         : f.includes("backend") || f.endsWith(".py") ? "🔶"
                         : "📄";
                       return (
-                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, fontFamily: "monospace", color: "rgba(176,180,186,0.65)", padding: "2px 5px", borderRadius: 4, background: "rgba(255,255,255,0.02)" }}>
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, fontFamily: "var(--font-geist-mono), monospace", color: "rgba(176,180,186,0.65)", padding: "2px 5px", borderRadius: 4, background: "rgba(255,255,255,0.02)" }}>
                           <span>{emoji}</span><span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f}</span>
                         </div>
                       );
@@ -423,7 +423,7 @@ function AgentPreview({ agentName, state }: { agentName: string; state: AgentSta
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                     {state.commits.slice(-6).reverse().map((c, i) => (
-                      <div key={i} style={{ fontSize: 10.5, color: "rgba(176,180,186,0.6)", fontFamily: "monospace", padding: "2px 5px", borderLeft: "2px solid rgba(61,158,95,0.3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div key={i} style={{ fontSize: 10.5, color: "rgba(176,180,186,0.6)", fontFamily: "var(--font-geist-mono), monospace", padding: "2px 5px", borderLeft: "2px solid rgba(61,158,95,0.3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {c}
                       </div>
                     ))}
@@ -441,7 +441,7 @@ function AgentPreview({ agentName, state }: { agentName: string; state: AgentSta
                 {state.colors.map((c, i) => (
                   <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}>
                     <div style={{ width: 40, height: 40, borderRadius: 8, background: c, border: "1px solid rgba(255,255,255,0.1)", cursor: "pointer" }} title={c} />
-                    <span style={{ fontSize: 9, fontFamily: "monospace", color: "rgba(176,180,186,0.5)" }}>{c}</span>
+                    <span style={{ fontSize: 9, fontFamily: "var(--font-geist-mono), monospace", color: "rgba(176,180,186,0.5)" }}>{c}</span>
                   </div>
                 ))}
               </div>

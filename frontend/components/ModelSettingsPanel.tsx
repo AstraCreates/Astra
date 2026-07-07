@@ -388,7 +388,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
               background: "#fff",
               border: "1px solid #E5E7EB",
               color: "#374151",
-              fontFamily: "monospace",
+              fontFamily: "var(--font-geist-mono), monospace",
             }}
           >
             {shortModelName(m)}
@@ -482,7 +482,7 @@ export default function ModelSettingsPanel({ founderId }: Props) {
                             </span>
                           )}
                         </div>
-                        <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2, fontFamily: "monospace" }}>
+                        <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2, fontFamily: "var(--font-geist-mono), monospace" }}>
                           {agent.key}
                         </div>
                       </div>
