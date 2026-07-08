@@ -9,6 +9,7 @@ import ServiceLogo from "@/components/ServiceLogo";
 import { useCompany } from "@/lib/company-context";
 import {
   addCompanyBrainRecord,
+  apiFetch,
   askCompanyBrain,
   configureCompanyBrainSync,
   getCompanyBrain,
@@ -127,16 +128,20 @@ function RecordCard({ record }: { record: BrainRecord }) {
 /* ─── source connect modal ─── */
 
 function ConnectModal({
-  source, values, saving, onChange, onSave, onClose,
+  source, values, saving, connectingOauth, onChange, onSave, onOAuthConnect, onClose,
 }: {
   source: BrainSource;
   values: Record<string, string>;
   saving: boolean;
+  connectingOauth: boolean;
   onChange: (field: string, value: string) => void;
   onSave: () => void;
+  onOAuthConnect: () => void;
   onClose: () => void;
 }) {
   const fields = source.credential_fields ?? [];
+  const oauthApps = source.oauth_apps ?? [];
+  const isOauthSource = oauthApps.length > 0;
   const canSave = fields.length > 0 && fields.every(f => values[f]?.trim());
   return (
     <div onClick={onClose} className="astra-modal-backdrop" style={{ zIndex: 200 }}>
@@ -175,7 +180,21 @@ function ConnectModal({
                 Where do I find this? →
               </a>
             )}
-            {fields.length > 0 ? (
+            {isOauthSource ? (
+              <div className="astra-modal-card" style={{ padding: 18, display: "grid", gap: 12 }}>
+                <p style={{ color: "var(--fm)", fontSize: 12, lineHeight: 1.6, margin: 0 }}>
+                  This source supports one-click OAuth. Connect it once and Astra will use it for Company Brain sync automatically.
+                </p>
+                <div className="astra-modal-actions" style={{ paddingTop: 4 }}>
+                  <button type="button" onClick={onClose} className="btn" style={{ minHeight: 38, fontSize: 13 }}>
+                    Cancel
+                  </button>
+                  <button type="button" onClick={onOAuthConnect} disabled={connectingOauth} className="btn pri" style={{ minHeight: 38, fontSize: 13 }}>
+                    {connectingOauth ? "Redirecting…" : "Connect"}
+                  </button>
+                </div>
+              </div>
+            ) : fields.length > 0 ? (
               <div className="astra-modal-card" style={{ padding: 18, display: "grid", gap: 10 }}>
                 {fields.map(field => (
                   <input
@@ -547,6 +566,7 @@ export default function CompanyBrainPage() {
   const [importing, setImporting] = useState(false);
   const [maintaining, setMaintaining] = useState(false);
   const [savingCredential, setSavingCredential] = useState(false);
+  const [connectingOauthSource, setConnectingOauthSource] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [importSummary, setImportSummary] = useState<string | null>(null);
   const [syncInterval, setSyncInterval] = useState(60);
@@ -558,6 +578,7 @@ export default function CompanyBrainPage() {
   const [pinOpen, setPinOpen] = useState(false);
   const [connectKey, setConnectKey] = useState<string | null>(null);
   const [credentialValues, setCredentialValues] = useState<Record<string, Record<string, string>>>({});
+  const sourceConnectPollRef = useRef<number | null>(null);
 
   // TEMPORARY: force light mode on this page regardless of the user's global
   // theme choice, while the knowledge-map redesign is in progress. Restores
@@ -689,6 +710,50 @@ export default function CompanyBrainPage() {
       setSavingCredential(false);
     }
   }
+
+  function stopSourceConnectPolling() {
+    if (sourceConnectPollRef.current !== null) {
+      window.clearInterval(sourceConnectPollRef.current);
+      sourceConnectPollRef.current = null;
+    }
+  }
+
+  async function connectSourceOAuth() {
+    if (!connectSource || !(connectSource.oauth_apps?.length)) return;
+    const oauthApp = connectSource.oauth_apps[0];
+    setConnectingOauthSource(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/setup/composio/connect/${founderId}?apps=${encodeURIComponent(oauthApp)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail ?? `Error ${res.status}`);
+      const oauthUrl = data?.oauth_urls?.[oauthApp] || "";
+      if (!oauthUrl) throw new Error(`No OAuth URL returned for ${connectSource.label}`);
+      const popup = window.open(oauthUrl, `brain_connect_${connectSource.key}`, "width=1060,height=720,scrollbars=yes,resizable=yes");
+      if (!popup) throw new Error("Popup blocked by browser");
+      stopSourceConnectPolling();
+      sourceConnectPollRef.current = window.setInterval(async () => {
+        try {
+          const latest = await getCompanyBrain(founderId, "", companyId);
+          setBrain(latest);
+          const latestSource = Object.values(latest.sources ?? {}).find((s) => s.key === connectSource.key);
+          if (latestSource && isConnected(latestSource)) {
+            stopSourceConnectPolling();
+            popup.close();
+            setConnectingOauthSource(false);
+            setConnectKey(null);
+          }
+        } catch {
+          // keep polling during auth flow
+        }
+      }, 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start OAuth connection.");
+      setConnectingOauthSource(false);
+    }
+  }
+
+  useEffect(() => () => stopSourceConnectPolling(), []);
 
   async function configureContinuousSync(enabled: boolean) {
     setContinuousSyncing(true);
@@ -1200,6 +1265,7 @@ export default function CompanyBrainPage() {
           source={connectSource}
           values={credentialValues[connectSource.key] ?? {}}
           saving={savingCredential}
+          connectingOauth={connectingOauthSource}
           onChange={(field, value) => {
             setCredentialValues(prev => ({
               ...prev,
@@ -1207,6 +1273,7 @@ export default function CompanyBrainPage() {
             }));
           }}
           onSave={saveConnectCredential}
+          onOAuthConnect={connectSourceOAuth}
           onClose={() => setConnectKey(null)}
         />
       )}
