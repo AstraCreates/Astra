@@ -6,6 +6,7 @@ import secrets
 import threading
 import time
 import uuid
+from urllib.parse import urlsplit, urlunsplit
 
 # Short-TTL nonce store for OAuth state parameters.
 # Maps random nonce → (founder_id, expiry_unix). Consumed on use.
@@ -31,6 +32,21 @@ def _oauth_state_consume(nonce: str) -> str | None:
     if time.time() > expiry:
         return None
     return founder_id
+
+
+def _public_base_url(url: str, *, default: str) -> str:
+    """Normalize public callback/redirect bases.
+
+    Local development keeps http://localhost, but any non-local public host is
+    upgraded to https to match how nginx serves the production app and how
+    OAuth providers register redirect URIs.
+    """
+    raw = (url or default).strip() or default
+    parsed = urlsplit(raw)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme == "http" and host not in {"localhost", "127.0.0.1", "::1", ""}:
+        return urlunsplit(("https", parsed.netloc, parsed.path, parsed.query, parsed.fragment)).rstrip("/")
+    return raw.rstrip("/")
 
 from fastapi import APIRouter, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 
@@ -2306,7 +2322,8 @@ async def stripe_oauth_url(founder_id: str, request: Request, email: str = "", f
     require_founder_access(request, founder_id, min_role="admin")
     from backend.tools.stripe_tools import get_oauth_url_with_email
     from backend.config import settings
-    redirect_uri = f"{settings.backend_url}/stripe/callback"
+    redirect_base = _public_base_url(settings.backend_url, default="http://localhost:8000")
+    redirect_uri = f"{redirect_base}/stripe/callback"
     try:
         url = get_oauth_url_with_email(founder_id, redirect_uri, email)
         return {"url": url}
@@ -2325,7 +2342,7 @@ async def stripe_callback(code: str = "", state: str = "", error: str = "", fron
     from backend.provisioning.credentials_store import store_credentials
     from backend.config import settings
 
-    fe_base = settings.frontend_url
+    fe_base = _public_base_url(settings.frontend_url, default="http://localhost:3000")
 
     if error:
         return RedirectResponse(url=f"{fe_base}/payments?stripe_error={error}")
@@ -2424,7 +2441,8 @@ async def gmail_oauth_url(founder_id: str, request: Request):
     if not settings.google_client_id:
         raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID not configured")
 
-    redirect_uri = f"{settings.backend_url}/api/gmail/callback"
+    redirect_base = _public_base_url(settings.backend_url, default="http://localhost:8000")
+    redirect_uri = f"{redirect_base}/api/gmail/callback"
     params = urlencode({
         "client_id": settings.google_client_id,
         "redirect_uri": redirect_uri,
@@ -2449,7 +2467,8 @@ async def google_workspace_oauth_url(founder_id: str, request: Request):
     if not settings.google_client_id:
         raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID not configured")
 
-    redirect_uri = f"{settings.backend_url}/api/google-workspace/callback"
+    redirect_base = _public_base_url(settings.backend_url, default="http://localhost:8000")
+    redirect_uri = f"{redirect_base}/api/google-workspace/callback"
     params = urlencode({
         "client_id": settings.google_client_id,
         "redirect_uri": redirect_uri,
@@ -2474,7 +2493,7 @@ async def gmail_callback(code: str = "", state: str = "", error: str = ""):
     from backend.config import settings
     from backend.provisioning.credentials_store import store_credentials
 
-    fe_base = settings.frontend_url
+    fe_base = _public_base_url(settings.frontend_url, default="http://localhost:3000")
 
     if error:
         return RedirectResponse(url=f"{fe_base}/integrations?gmail_error={error}")
@@ -2484,7 +2503,8 @@ async def gmail_callback(code: str = "", state: str = "", error: str = ""):
     founder_id = _oauth_state_consume(state)
     if not founder_id:
         return RedirectResponse(url=f"{fe_base}/integrations?gmail_error=invalid_state")
-    redirect_uri = f"{settings.backend_url}/api/gmail/callback"
+    redirect_base = _public_base_url(settings.backend_url, default="http://localhost:8000")
+    redirect_uri = f"{redirect_base}/api/gmail/callback"
 
     async with httpx.AsyncClient() as client:
         token_resp = await client.post(
@@ -2547,7 +2567,7 @@ async def google_workspace_callback(code: str = "", state: str = "", error: str 
     from backend.config import settings
     from backend.provisioning.credentials_store import store_credentials
 
-    fe_base = settings.frontend_url
+    fe_base = _public_base_url(settings.frontend_url, default="http://localhost:3000")
 
     if error:
         return RedirectResponse(url=f"{fe_base}/integrations?google_workspace_error={error}")
@@ -2557,7 +2577,8 @@ async def google_workspace_callback(code: str = "", state: str = "", error: str 
     founder_id = _oauth_state_consume(state)
     if not founder_id:
         return RedirectResponse(url=f"{fe_base}/integrations?google_workspace_error=invalid_state")
-    redirect_uri = f"{settings.backend_url}/api/google-workspace/callback"
+    redirect_base = _public_base_url(settings.backend_url, default="http://localhost:8000")
+    redirect_uri = f"{redirect_base}/api/google-workspace/callback"
 
     async with httpx.AsyncClient() as client:
         token_resp = await client.post(
@@ -2618,7 +2639,8 @@ async def github_oauth_url(founder_id: str, request: Request):
     from urllib.parse import urlencode
     if not settings.github_client_id:
         raise HTTPException(status_code=500, detail="GITHUB_CLIENT_ID not configured")
-    redirect_uri = f"{settings.backend_url}/api/github/callback"
+    redirect_base = _public_base_url(settings.backend_url, default="http://localhost:8000")
+    redirect_uri = f"{redirect_base}/api/github/callback"
     params = urlencode({
         "client_id": settings.github_client_id,
         "redirect_uri": redirect_uri,
@@ -2640,7 +2662,7 @@ async def github_callback(code: str = "", state: str = "", error: str = ""):
     from backend.config import settings
     from backend.provisioning.credentials_store import store_credentials
 
-    fe_base = settings.frontend_url
+    fe_base = _public_base_url(settings.frontend_url, default="http://localhost:3000")
 
     if error:
         return RedirectResponse(url=f"{fe_base}/integrations?github_error={error}")
@@ -2650,7 +2672,8 @@ async def github_callback(code: str = "", state: str = "", error: str = ""):
     founder_id = _oauth_state_consume(state)
     if not founder_id:
         return RedirectResponse(url=f"{fe_base}/integrations?github_error=invalid_state")
-    redirect_uri = f"{settings.backend_url}/api/github/callback"
+    redirect_base = _public_base_url(settings.backend_url, default="http://localhost:8000")
+    redirect_uri = f"{redirect_base}/api/github/callback"
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
@@ -2686,7 +2709,8 @@ async def linkedin_oauth_url(founder_id: str, request: Request):
     from urllib.parse import urlencode
     if not settings.linkedin_client_id:
         raise HTTPException(status_code=500, detail="LINKEDIN_CLIENT_ID not configured")
-    redirect_uri = f"{settings.backend_url}/api/linkedin/callback"
+    redirect_base = _public_base_url(settings.backend_url, default="http://localhost:8000")
+    redirect_uri = f"{redirect_base}/api/linkedin/callback"
     params = urlencode({
         "response_type": "code",
         "client_id": settings.linkedin_client_id,
@@ -2706,7 +2730,7 @@ async def linkedin_callback(code: str = "", state: str = "", error: str = ""):
     from backend.provisioning.credentials_store import store_credentials
 
     from urllib.parse import quote as _urlquote
-    fe_base = settings.frontend_url
+    fe_base = _public_base_url(settings.frontend_url, default="http://localhost:3000")
 
     def _err_redirect(msg: str):
         return RedirectResponse(url=f"{fe_base}/integrations?linkedin_error={_urlquote(msg, safe='')}")
@@ -2720,7 +2744,8 @@ async def linkedin_callback(code: str = "", state: str = "", error: str = ""):
     if not founder_id:
         return _err_redirect("invalid_state")
 
-    redirect_uri = f"{settings.backend_url}/api/linkedin/callback"
+    redirect_base = _public_base_url(settings.backend_url, default="http://localhost:8000")
+    redirect_uri = f"{redirect_base}/api/linkedin/callback"
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
