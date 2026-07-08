@@ -166,7 +166,70 @@ const WORKSPACE_SERVICES = [
   },
 ] as const;
 
-const ADDITIONAL_SERVICES = [
+const COLLABORATION_SERVICES = [
+  {
+    key: "slack",
+    credKey: "token",
+    label: "Slack",
+    icon: "◻",
+    desc: "Let agents post updates into your team channels",
+    placeholder: "",
+    createUrl: "https://slack.com/",
+    createLabel: "slack.com",
+    steps: 1,
+    oauthApp: "slack",
+  },
+  {
+    key: "discord",
+    credKey: "token",
+    label: "Discord",
+    icon: "◻",
+    desc: "Send Discord messages and status updates",
+    placeholder: "",
+    createUrl: "https://discord.com/",
+    createLabel: "discord.com",
+    steps: 1,
+    oauthApp: "discord",
+  },
+  {
+    key: "twitter",
+    credKey: "token",
+    label: "X / Twitter",
+    icon: "◻",
+    desc: "Publish posts directly from Astra",
+    placeholder: "",
+    createUrl: "https://x.com/",
+    createLabel: "x.com",
+    steps: 1,
+    oauthApp: "twitter",
+  },
+  {
+    key: "reddit",
+    credKey: "token",
+    label: "Reddit",
+    icon: "◻",
+    desc: "Post directly to community threads",
+    placeholder: "",
+    createUrl: "https://www.reddit.com/",
+    createLabel: "reddit.com",
+    steps: 1,
+    oauthApp: "reddit",
+  },
+  {
+    key: "telegram",
+    credKey: "token",
+    label: "Telegram",
+    icon: "◻",
+    desc: "Send Telegram messages and broadcast updates",
+    placeholder: "",
+    createUrl: "https://telegram.org/",
+    createLabel: "telegram.org",
+    steps: 1,
+    oauthApp: "telegram",
+  },
+] as const;
+
+const MANUAL_SERVICES = [
   {
     key: "resend",
     credKey: "api_key",
@@ -676,7 +739,8 @@ type AnyService =
   | typeof SERVICES[number]
   | typeof ECOMM_SERVICES[number]
   | typeof WORKSPACE_SERVICES[number]
-  | typeof ADDITIONAL_SERVICES[number];
+  | typeof COLLABORATION_SERVICES[number]
+  | typeof MANUAL_SERVICES[number];
 
 function ServiceCard({
   svc, connected, founderId, onSaved,
@@ -1432,7 +1496,14 @@ export default function SetupPage() {
     notion: !!status?.notion || !!status?.apps?.["notion"],
     linear: !!status?.linear || !!status?.apps?.["linear"],
   };
-  const additionalConnected: Partial<Record<(typeof ADDITIONAL_SERVICES)[number]["key"], boolean>> = {
+  const collaborationConnected: Partial<Record<(typeof COLLABORATION_SERVICES)[number]["key"], boolean>> = {
+    slack: !!status?.slack || !!status?.apps?.["slack"],
+    discord: !!status?.discord || !!status?.apps?.["discord"],
+    twitter: !!status?.apps?.["twitter"],
+    reddit: !!status?.apps?.["reddit"],
+    telegram: !!status?.apps?.["telegram"],
+  };
+  const manualConnected: Partial<Record<(typeof MANUAL_SERVICES)[number]["key"], boolean>> = {
     resend: !!status?.resend,
     hubspot: !!status?.hubspot || !!status?.apps?.["hubspot"],
     mailchimp: !!status?.mailchimp || !!status?.apps?.["mailchimp"],
@@ -1925,13 +1996,28 @@ export default function SetupPage() {
       </div>
 
       <div>
-        <SectionLabel>Additional tools</SectionLabel>
+        <SectionLabel>Collaboration & Social</SectionLabel>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {ADDITIONAL_SERVICES.map(svc => (
+          {COLLABORATION_SERVICES.map(svc => (
             <ServiceCard
               key={svc.key}
               svc={svc}
-              connected={additionalConnected[svc.key] ?? false}
+              connected={collaborationConnected[svc.key] ?? false}
+              founderId={founderId}
+              onSaved={loadStatus}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <SectionLabel>Advanced Manual Credentials</SectionLabel>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {MANUAL_SERVICES.map(svc => (
+            <ServiceCard
+              key={svc.key}
+              svc={svc}
+              connected={manualConnected[svc.key] ?? false}
               founderId={founderId}
               onSaved={loadStatus}
             />
