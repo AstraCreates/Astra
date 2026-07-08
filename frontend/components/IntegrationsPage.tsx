@@ -1581,9 +1581,14 @@ export default function SetupPage() {
   const [connectorDrafts, setConnectorDrafts] = useState<Record<string, Record<string, string>>>({});
   const [connectorSavingKey, setConnectorSavingKey] = useState<string | null>(null);
   const [connectorSaveError, setConnectorSaveError] = useState<string | null>(null);
+  const [connectorConnectingKey, setConnectorConnectingKey] = useState<string | null>(null);
+  const [connectorConnectError, setConnectorConnectError] = useState<string | null>(null);
+  const [connectorConnectErrorKey, setConnectorConnectErrorKey] = useState<string | null>(null);
   const [validationReport, setValidationReport] = useState<ConnectorValidationReport | null>(null);
   const [validatingKey, setValidatingKey] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const stackConnectPopupRef = useRef<Window | null>(null);
+  const stackConnectPollRef = useRef<number | null>(null);
   const coreConnected: Partial<Record<(typeof SERVICES)[number]["key"], boolean>> = {
     github: !!status?.github,
     vercel: !!status?.vercel,
@@ -1735,6 +1740,65 @@ export default function SetupPage() {
       setConnectorSavingKey(null);
     }
   }
+
+  function stopStackConnectorPolling() {
+    if (stackConnectPollRef.current !== null) {
+      window.clearInterval(stackConnectPollRef.current);
+      stackConnectPollRef.current = null;
+    }
+  }
+
+  async function connectStackConnector(connector: ConnectorSetupPlan["connectors"][number]) {
+    setConnectorConnectError(null);
+    setConnectorConnectErrorKey(null);
+    setConnectorConnectingKey(connector.key);
+    try {
+      let oauthUrl = "";
+      if (connector.connect_kind === "direct" && connector.oauth_endpoint) {
+        const res = await apiFetch(`${BASE}${connector.oauth_endpoint.replace("{founder_id}", encodeURIComponent(founderId))}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail ?? `Error ${res.status}`);
+        oauthUrl = data.url || "";
+      } else if (connector.connect_kind === "composio" && connector.oauth_app) {
+        const res = await apiFetch(`${BASE}/setup/composio/connect/${founderId}?apps=${encodeURIComponent(connector.oauth_app)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail ?? `Error ${res.status}`);
+        oauthUrl = data?.oauth_urls?.[connector.oauth_app] || "";
+      }
+      if (!oauthUrl) throw new Error(`No OAuth URL returned for ${connector.label}`);
+      const popup = window.open(oauthUrl, `stack_connect_${connector.key}`, "width=1060,height=720,scrollbars=yes,resizable=yes");
+      if (!popup) throw new Error("Popup blocked by browser");
+      stackConnectPopupRef.current = popup;
+      stopStackConnectorPolling();
+      stackConnectPollRef.current = window.setInterval(async () => {
+        try {
+          await Promise.all([loadStatus(), loadStackData()]);
+          const latest = await getSetupStatus(founderId);
+          const connected = (
+            connector.key === "github" ? !!latest.github :
+            connector.key === "gmail" ? !!latest.apps?.["gmail_direct"] :
+            connector.key === "google_workspace" ? !!latest.google_workspace :
+            connector.key === "linkedin" ? !!latest.linkedin :
+            !!latest.apps?.[connector.oauth_app || connector.key] || !!latest[connector.key as keyof SetupStatus]
+          );
+          if (connected) {
+            stopStackConnectorPolling();
+            stackConnectPopupRef.current?.close();
+            setConnectorConnectingKey(null);
+            setConnectorConnectErrorKey(null);
+          }
+        } catch {
+          // keep polling during auth flow
+        }
+      }, 2000);
+    } catch (e) {
+      setConnectorConnectError(e instanceof Error ? e.message : "Failed to start OAuth connect");
+      setConnectorConnectErrorKey(connector.key);
+      setConnectorConnectingKey(null);
+    }
+  }
+
+  useEffect(() => () => stopStackConnectorPolling(), []);
 
   const SERVICE_KEYS: (keyof SetupStatus)[] = [
     "github", "vercel", "sendgrid", "supabase",
@@ -1931,7 +1995,7 @@ export default function SetupPage() {
                           )}
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                          {(connector.missing_fields.length > 0 || connector.setup_status === "missing_credentials") && (
+                          {(connector.missing_fields.length > 0 || connector.setup_status === "missing_credentials") && connector.connect_kind === "manual" && (
                             <button
                               onClick={() => {
                                 setEditingConnectorKey((current) => current === connector.key ? null : connector.key);
@@ -1949,6 +2013,24 @@ export default function SetupPage() {
                               }}
                             >
                               {isEditing ? "Close form" : "Add credentials"}
+                            </button>
+                          )}
+                          {(connector.missing_fields.length > 0 || connector.setup_status === "missing_credentials") && connector.connect_kind !== "manual" && (
+                            <button
+                              onClick={() => void connectStackConnector(connector)}
+                              disabled={connectorConnectingKey === connector.key}
+                              style={{
+                                padding: "7px 12px",
+                                borderRadius: 8,
+                                border: `1px solid ${c.border}`,
+                                background: c.bg,
+                                color: c.textSecondary,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                cursor: connectorConnectingKey === connector.key ? "wait" : "pointer",
+                              }}
+                            >
+                              {connectorConnectingKey === connector.key ? "Redirecting…" : "Connect"}
                             </button>
                           )}
                           {connector.setup_url && (
@@ -1990,7 +2072,10 @@ export default function SetupPage() {
                           )}
                         </div>
                       </div>
-                      {isEditing && (
+                      {connectorConnectError && connectorConnectErrorKey === connector.key && (
+                        <p style={{ margin: "8px 0 0", fontSize: 11, color: c.red }}>{connectorConnectError}</p>
+                      )}
+                      {isEditing && connector.connect_kind === "manual" && (
                         <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${c.border}` }}>
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
                             {connector.fields.map((field) => (

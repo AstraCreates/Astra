@@ -25,6 +25,32 @@ from backend.stacks.templates import get_stack_template
 
 _WEBHOOK_CAPABLE = {"github", "slack", "discord", "notion", "google_drive", "linear", "crm", "helpdesk", "product_tracker"}
 
+_OAUTH_CONNECTORS: dict[str, dict[str, str]] = {
+    "github": {"kind": "direct", "oauth_endpoint": "/github/oauth-url/{founder_id}"},
+    "gmail": {"kind": "direct", "oauth_endpoint": "/gmail/oauth-url/{founder_id}"},
+    "google_workspace": {"kind": "direct", "oauth_endpoint": "/google-workspace/oauth-url/{founder_id}"},
+    "linkedin": {"kind": "direct", "oauth_endpoint": "/linkedin/oauth-url/{founder_id}"},
+    "notion": {"kind": "composio", "oauth_app": "notion"},
+    "linear": {"kind": "composio", "oauth_app": "linear"},
+    "slack": {"kind": "composio", "oauth_app": "slack"},
+    "discord": {"kind": "composio", "oauth_app": "discord"},
+    "twitter": {"kind": "composio", "oauth_app": "twitter"},
+    "reddit": {"kind": "composio", "oauth_app": "reddit"},
+    "telegram": {"kind": "composio", "oauth_app": "telegram"},
+    "hubspot": {"kind": "composio", "oauth_app": "hubspot"},
+    "mailchimp": {"kind": "composio", "oauth_app": "mailchimp"},
+    "airtable": {"kind": "composio", "oauth_app": "airtable"},
+    "dropbox": {"kind": "composio", "oauth_app": "dropbox"},
+    "jira": {"kind": "composio", "oauth_app": "jira"},
+    "trello": {"kind": "composio", "oauth_app": "trello"},
+    "asana": {"kind": "composio", "oauth_app": "asana"},
+    "clickup": {"kind": "composio", "oauth_app": "clickup"},
+    "calendly": {"kind": "composio", "oauth_app": "calendly"},
+    "zoom": {"kind": "composio", "oauth_app": "zoom"},
+    "youtube": {"kind": "composio", "oauth_app": "youtube"},
+    "outlook": {"kind": "composio", "oauth_app": "outlook"},
+}
+
 _ENV_CREDENTIAL_SOURCES: dict[str, list[tuple[str, str]]] = {
     "github": [("token", "github_token")],
     "vercel": [("token", "vercel_token")],
@@ -168,6 +194,7 @@ def _connector_setup_item(founder_id: str, coverage_item: dict[str, Any], creden
         "optional_missing" if not coverage_item.get("required") else
         "needs_setup"
     )
+    oauth_meta = _OAUTH_CONNECTORS.get(key, {})
     return {
         "key": key,
         "label": coverage_item["label"],
@@ -193,6 +220,9 @@ def _connector_setup_item(founder_id: str, coverage_item: dict[str, Any], creden
         "validation": validate_connector(founder_id, key, credentials=credentials, required=bool(coverage_item.get("required")), live=False),
         "setup_status": setup_status,
         "connect_endpoint": "/setup/service",
+        "connect_kind": oauth_meta.get("kind", "manual"),
+        "oauth_app": oauth_meta.get("oauth_app", ""),
+        "oauth_endpoint": oauth_meta.get("oauth_endpoint", ""),
         "import_endpoint": f"/brain/{founder_id}/import",
         "setup_url": str(brain_requirement.get("setup_url") or ""),
         "setup_hint": str(brain_requirement.get("setup_hint") or ""),
@@ -223,6 +253,9 @@ def _seed_skip(key: str, reason: str, *, service: str | None = None, missing_fie
 def _next_actions(blockers: list[dict[str, Any]], sync_needed: list[dict[str, Any]], connectors: list[dict[str, Any]]) -> list[str]:
     actions: list[str] = []
     for item in blockers:
+        if item.get("connect_kind") in {"direct", "composio"}:
+            actions.append(f"Connect {item['label']} with the one-click OAuth flow.")
+            continue
         fields = ", ".join(item["missing_fields"]) or "credentials"
         actions.append(f"Connect {item['label']} via {item['connect_endpoint']} with: {fields}.")
     for item in sync_needed:

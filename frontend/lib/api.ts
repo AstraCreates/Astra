@@ -242,6 +242,9 @@ export interface ConnectorSetupPlan {
     validation?: ConnectorValidationItem;
     setup_status: string;
     connect_endpoint: string;
+    connect_kind: string;
+    oauth_app: string;
+    oauth_endpoint: string;
     import_endpoint: string;
     setup_url: string;
     setup_hint: string;
