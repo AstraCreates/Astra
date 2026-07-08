@@ -229,6 +229,156 @@ const COLLABORATION_SERVICES = [
   },
 ] as const;
 
+const BUSINESS_SERVICES = [
+  {
+    key: "hubspot",
+    credKey: "access_token",
+    label: "HubSpot",
+    icon: "◔",
+    desc: "CRM sync and contact creation",
+    placeholder: "",
+    createUrl: "https://app.hubspot.com/",
+    createLabel: "app.hubspot.com",
+    steps: 1,
+    oauthApp: "hubspot",
+  },
+  {
+    key: "mailchimp",
+    credKey: "api_key",
+    label: "Mailchimp",
+    icon: "◌",
+    desc: "Audience sync and lifecycle campaigns",
+    placeholder: "",
+    createUrl: "https://mailchimp.com/",
+    createLabel: "mailchimp.com",
+    steps: 1,
+    oauthApp: "mailchimp",
+  },
+  {
+    key: "airtable",
+    credKey: "access_token",
+    label: "Airtable",
+    icon: "▦",
+    desc: "Structured records and lightweight ops data",
+    placeholder: "",
+    createUrl: "https://airtable.com/",
+    createLabel: "airtable.com",
+    steps: 1,
+    oauthApp: "airtable",
+  },
+  {
+    key: "dropbox",
+    credKey: "access_token",
+    label: "Dropbox",
+    icon: "◫",
+    desc: "File drop-offs and artifact handoff",
+    placeholder: "",
+    createUrl: "https://www.dropbox.com/",
+    createLabel: "dropbox.com",
+    steps: 1,
+    oauthApp: "dropbox",
+  },
+] as const;
+
+const OPS_SERVICES = [
+  {
+    key: "jira",
+    credKey: "token",
+    label: "Jira",
+    icon: "◻",
+    desc: "Create and track engineering issues",
+    placeholder: "",
+    createUrl: "https://www.atlassian.com/software/jira",
+    createLabel: "atlassian.com/jira",
+    steps: 1,
+    oauthApp: "jira",
+  },
+  {
+    key: "trello",
+    credKey: "token",
+    label: "Trello",
+    icon: "◻",
+    desc: "Create task cards and keep lightweight boards updated",
+    placeholder: "",
+    createUrl: "https://trello.com/",
+    createLabel: "trello.com",
+    steps: 1,
+    oauthApp: "trello",
+  },
+  {
+    key: "asana",
+    credKey: "token",
+    label: "Asana",
+    icon: "◻",
+    desc: "Create and manage work across project plans",
+    placeholder: "",
+    createUrl: "https://asana.com/",
+    createLabel: "asana.com",
+    steps: 1,
+    oauthApp: "asana",
+  },
+  {
+    key: "clickup",
+    credKey: "token",
+    label: "ClickUp",
+    icon: "◻",
+    desc: "Track tasks and action items in ClickUp",
+    placeholder: "",
+    createUrl: "https://clickup.com/",
+    createLabel: "clickup.com",
+    steps: 1,
+    oauthApp: "clickup",
+  },
+  {
+    key: "calendly",
+    credKey: "token",
+    label: "Calendly",
+    icon: "◻",
+    desc: "Read scheduling activity and booked events",
+    placeholder: "",
+    createUrl: "https://calendly.com/",
+    createLabel: "calendly.com",
+    steps: 1,
+    oauthApp: "calendly",
+  },
+  {
+    key: "zoom",
+    credKey: "token",
+    label: "Zoom",
+    icon: "◻",
+    desc: "Create meetings directly from Astra",
+    placeholder: "",
+    createUrl: "https://zoom.us/",
+    createLabel: "zoom.us",
+    steps: 1,
+    oauthApp: "zoom",
+  },
+  {
+    key: "youtube",
+    credKey: "token",
+    label: "YouTube",
+    icon: "◻",
+    desc: "Connect YouTube for research and publishing workflows",
+    placeholder: "",
+    createUrl: "https://youtube.com/",
+    createLabel: "youtube.com",
+    steps: 1,
+    oauthApp: "youtube",
+  },
+  {
+    key: "outlook",
+    credKey: "token",
+    label: "Outlook",
+    icon: "◻",
+    desc: "Send email via Microsoft 365",
+    placeholder: "",
+    createUrl: "https://outlook.office.com/",
+    createLabel: "outlook.office.com",
+    steps: 1,
+    oauthApp: "outlook",
+  },
+] as const;
+
 const MANUAL_SERVICES = [
   {
     key: "resend",
@@ -240,54 +390,6 @@ const MANUAL_SERVICES = [
     createUrl: "https://resend.com/api-keys",
     createLabel: "resend.com/api-keys",
     steps: 2,
-  },
-  {
-    key: "hubspot",
-    credKey: "access_token",
-    label: "HubSpot",
-    icon: "◔",
-    desc: "CRM sync and contact creation",
-    placeholder: "pat-xxxxxxxxxxxxxxxx",
-    createUrl: "https://app.hubspot.com/private-apps",
-    createLabel: "app.hubspot.com/private-apps",
-    steps: 3,
-    oauthApp: "hubspot",
-  },
-  {
-    key: "mailchimp",
-    credKey: "api_key",
-    label: "Mailchimp",
-    icon: "◌",
-    desc: "Audience sync and lifecycle campaigns",
-    placeholder: "xxxxxxxxxxxxxxxx-us1",
-    createUrl: "https://admin.mailchimp.com/account/api/",
-    createLabel: "mailchimp.com/account/api",
-    steps: 2,
-    oauthApp: "mailchimp",
-  },
-  {
-    key: "airtable",
-    credKey: "access_token",
-    label: "Airtable",
-    icon: "▦",
-    desc: "Structured records and lightweight ops data",
-    placeholder: "patxxxxxxxxxxxxxxxx",
-    createUrl: "https://airtable.com/create/tokens",
-    createLabel: "airtable.com/create/tokens",
-    steps: 2,
-    oauthApp: "airtable",
-  },
-  {
-    key: "dropbox",
-    credKey: "access_token",
-    label: "Dropbox",
-    icon: "◫",
-    desc: "File drop-offs and artifact handoff",
-    placeholder: "sl.xxxxxxxxxxxxxxxx",
-    createUrl: "https://www.dropbox.com/developers/apps",
-    createLabel: "dropbox.com/developers/apps",
-    steps: 2,
-    oauthApp: "dropbox",
   },
   {
     key: "figma",
@@ -740,6 +842,8 @@ type AnyService =
   | typeof ECOMM_SERVICES[number]
   | typeof WORKSPACE_SERVICES[number]
   | typeof COLLABORATION_SERVICES[number]
+  | typeof BUSINESS_SERVICES[number]
+  | typeof OPS_SERVICES[number]
   | typeof MANUAL_SERVICES[number];
 
 function ServiceCard({
@@ -1503,12 +1607,24 @@ export default function SetupPage() {
     reddit: !!status?.apps?.["reddit"],
     telegram: !!status?.apps?.["telegram"],
   };
-  const manualConnected: Partial<Record<(typeof MANUAL_SERVICES)[number]["key"], boolean>> = {
-    resend: !!status?.resend,
+  const businessConnected: Partial<Record<(typeof BUSINESS_SERVICES)[number]["key"], boolean>> = {
     hubspot: !!status?.hubspot || !!status?.apps?.["hubspot"],
     mailchimp: !!status?.mailchimp || !!status?.apps?.["mailchimp"],
     airtable: !!status?.airtable || !!status?.apps?.["airtable"],
     dropbox: !!status?.dropbox || !!status?.apps?.["dropbox"],
+  };
+  const opsConnected: Partial<Record<(typeof OPS_SERVICES)[number]["key"], boolean>> = {
+    jira: !!status?.apps?.["jira"],
+    trello: !!status?.apps?.["trello"],
+    asana: !!status?.apps?.["asana"],
+    clickup: !!status?.apps?.["clickup"],
+    calendly: !!status?.apps?.["calendly"],
+    zoom: !!status?.apps?.["zoom"],
+    youtube: !!status?.apps?.["youtube"],
+    outlook: !!status?.apps?.["outlook"],
+  };
+  const manualConnected: Partial<Record<(typeof MANUAL_SERVICES)[number]["key"], boolean>> = {
+    resend: !!status?.resend,
     figma: !!status?.figma,
   };
 
@@ -2003,6 +2119,36 @@ export default function SetupPage() {
               key={svc.key}
               svc={svc}
               connected={collaborationConnected[svc.key] ?? false}
+              founderId={founderId}
+              onSaved={loadStatus}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <SectionLabel>CRM & File Tools</SectionLabel>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {BUSINESS_SERVICES.map(svc => (
+            <ServiceCard
+              key={svc.key}
+              svc={svc}
+              connected={businessConnected[svc.key] ?? false}
+              founderId={founderId}
+              onSaved={loadStatus}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <SectionLabel>Ops & Meetings</SectionLabel>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {OPS_SERVICES.map(svc => (
+            <ServiceCard
+              key={svc.key}
+              svc={svc}
+              connected={opsConnected[svc.key] ?? false}
               founderId={founderId}
               onSaved={loadStatus}
             />
