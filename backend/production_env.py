@@ -192,7 +192,14 @@ def audit_runtime_settings(settings: Any) -> dict[str, Any]:
     require_auth = str(values.get("ASTRA_REQUIRE_AUTH", "")).strip().lower() in TRUE_VALUES
     local_backend = str(values.get("BACKEND_URL", "")).startswith("http://localhost")
     local_frontend = str(values.get("FRONTEND_URL", "")).startswith("http://localhost")
-    local_mode = local_backend or local_frontend
+    # Hostname alone can't tell a locked-down production deploy from a real,
+    # non-localhost staging box (e.g. an IP+nip.io host) that was never meant to
+    # carry live Stripe/NextAuth secrets — ASTRA_REQUIRE_AUTH is the deliberate
+    # signal an operator actually flips on for a real production deployment, so
+    # gate the strict secrets checklist on that too, not hostname string-matching
+    # alone (a real production deploy with ASTRA_REQUIRE_AUTH=true still gets the
+    # full check).
+    local_mode = local_backend or local_frontend or not require_auth
     wildcard_cors = "*" in str(values.get("ASTRA_CORS_ORIGINS", ""))
     trust_headers = str(values.get("ASTRA_TRUST_AUTH_HEADERS", "")).strip().lower() in TRUE_VALUES
     errors: list[str] = []
