@@ -837,6 +837,24 @@ def _make_env() -> dict:
     return env
 
 
+def _coder_model_for_agent(agent: str = "", model_override: str = "") -> str:
+    """Pick the coding model for a build lane.
+
+    Technical now uses a medium coder by default; its spawned helpers can override
+    this to a lighter worker model. Other lanes keep the heavyweight MVP fallback.
+    """
+    if model_override:
+        return model_override
+    if agent == "technical":
+        return (
+            getattr(settings, "technical_build_model", "")
+            or getattr(settings, "technical_agent_model", "")
+            or getattr(settings, "mvp_build_model", "")
+            or "xiaomi/mimo-v2.5-pro"
+        )
+    return getattr(settings, "mvp_build_model", "") or "xiaomi/mimo-v2.5-pro"
+
+
 _NPM_CACHE_DIR = os.environ.get("ASTRA_NPM_CACHE", "/data/npm-cache")
 
 
@@ -1878,6 +1896,7 @@ def run_mvp_loop(
     max_rounds: int = None,  # kept for API compat, ignored
     founder_id: str = "",
     agent: str = "technical",
+    model: str = "",
 ) -> dict:
     """Build a complete MVP product end-to-end: plans, codes, build-checks, and deploys."""
     if required_files is None:
@@ -1936,6 +1955,7 @@ def run_mvp_loop(
             except Exception:
                 pass
 
+        coder_model = _coder_model_for_agent(agent, model)
         oc_session_id = str(uuid.uuid4())
         Path(local, ".oc_session_id").write_text(oc_session_id)
         commits = []
@@ -1956,7 +1976,10 @@ def run_mvp_loop(
                                       "kind": "build_start", "goal": goal[:160], "github": is_github})
         except Exception:
             pass
-        _phase(f"Workspace ready ({'GitHub' if is_github else 'local'}) — {len(required_files)} target files")
+        _phase(
+            f"Workspace ready ({'GitHub' if is_github else 'local'}) — {len(required_files)} target files",
+            model=coder_model,
+        )
 
         logger.info("MVP build start (github=%s) for %s", is_github, repo_url or "(local)")
         if is_github:
@@ -2083,7 +2106,7 @@ def run_mvp_loop(
         _phase(("Applying incremental change" if incremental else "Pass 1/4 — building the full product")
                + ("" if incremental else (" from plan" if build_plan else "")))
         _run_claude(local, build_prompt, session_id=build_sid, timeout=1800,
-                    founder_id=founder_id, app_session_id=session_id, agent=agent)
+                    founder_id=founder_id, app_session_id=session_id, agent=agent, model=coder_model)
 
         # Completion loop: keep going until required files exist. Technical agent gets
         # 2 rounds by default (landing page pass rarely creates auth+dashboard on the
@@ -2104,7 +2127,7 @@ def run_mvp_loop(
                 + f"Project: {goal}."
             )
             _run_claude(local, fix_prompt, session_id=build_sid, timeout=900,
-                        founder_id=founder_id, app_session_id=session_id, agent=agent)
+                        founder_id=founder_id, app_session_id=session_id, agent=agent, model=coder_model)
 
         # Placeholder env so the verification build + deploy work without real keys.
         # Always writes .env.local — _placeholder_env now infers service vars from
@@ -2163,7 +2186,7 @@ def run_mvp_loop(
                 f"=== npm run build output ===\n{(build_output or '')[-4500:]}"
             )
             _run_claude(local, fix_prompt, session_id=recovery_sid, timeout=900,
-                        founder_id=founder_id, app_session_id=session_id, agent=agent)
+                        founder_id=founder_id, app_session_id=session_id, agent=agent, model=coder_model)
             # Re-assert deterministic fixes so the LLM can't undo the known-good toolchain.
             _sanitize_package_json(local)
             _ensure_tailwind_setup(local)

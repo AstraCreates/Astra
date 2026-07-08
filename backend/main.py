@@ -99,9 +99,11 @@ async def startup_background_jobs():
     loop.set_default_executor(ThreadPoolExecutor(max_workers=_pool_size, thread_name_prefix="astra"))
     logger.info("Thread pool sized to %d workers", _pool_size)
     logger.info(
-        "Model routing: mvp_build=%s technical=%s web=%s planner=%s highoutput=%s light=%s tooluse=%s chat=%s",
+        "Model routing: mvp_build=%s technical=%s technical_build=%s technical_subagent=%s web=%s planner=%s highoutput=%s light=%s tooluse=%s chat=%s",
         _settings.mvp_build_model,
         _settings.technical_agent_model,
+        _settings.technical_build_model,
+        _settings.technical_subagent_model,
         _settings.web_agent_model,
         _settings.or_planner_model,
         _settings.or_highoutput_model,

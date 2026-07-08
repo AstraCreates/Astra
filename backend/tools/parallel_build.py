@@ -77,6 +77,8 @@ async def spawn_parallel_coders(
     context: str = "",
     founder_id: str = "",
     agent: str = "technical",
+    worker_model: str = "",
+    merge_model: str = "",
 ) -> dict:
     """Build several product modules concurrently, each with its own coding agent.
 
@@ -89,10 +91,13 @@ async def spawn_parallel_coders(
                  NON-OVERLAPPING directories.
     Returns {ok, modules_built, build_passes, repo_url, deploy_url?}.
     """
+    from backend.config import settings
     from backend.tools.git_tools import (
         _get_workspace, _run_claude, _pull, _stage_all, _npm_build_passes,
-        _build_doctor, _commit_and_push,
+        _build_doctor, _commit_and_push, _coder_model_for_agent,
     )
+    light_worker_model = worker_model or getattr(settings, "technical_subagent_model", "") or getattr(settings, "or_light_model", "")
+    medium_merge_model = merge_model or _coder_model_for_agent(agent)
 
     mods = [m for m in (modules or []) if isinstance(m, dict) and m.get("goal") and m.get("owns")]
     if len(mods) < 2:
@@ -101,7 +106,13 @@ async def spawn_parallel_coders(
     main_local, is_github = _get_workspace(repo_url, session_id)
     if is_github:
         _pull(main_local)
-    _phase(session_id, agent, f"Spawning {len(mods)} coding agents in parallel: {', '.join(m['name'] for m in mods)}")
+    _phase(
+        session_id,
+        agent,
+        f"Spawning {len(mods)} coding agents in parallel: {', '.join(m['name'] for m in mods)}",
+        worker_model=light_worker_model,
+        merge_model=medium_merge_model,
+    )
 
     # Give each coder its own clone of the repo so concurrent openclaude runs can't
     # race on the same git index / working tree.
@@ -137,7 +148,15 @@ async def spawn_parallel_coders(
             f"discarded. No stubs/TODOs — fully implement the module. Verify with `npx tsc --noEmit`."
         )
         _phase(session_id, agent, f"[{m['name']}] coding agent started → {m['owns']}")
-        _run_claude(wd, prompt, timeout=1800, founder_id=founder_id, app_session_id=session_id, agent=agent)
+        _run_claude(
+            wd,
+            prompt,
+            timeout=1800,
+            founder_id=founder_id,
+            app_session_id=session_id,
+            agent=agent,
+            model=light_worker_model,
+        )
         return {"name": m["name"], "ok": True, "owns": m["owns"]}
 
     # Run all coders concurrently (each openclaude is a blocking subprocess → thread it).
@@ -174,7 +193,15 @@ async def spawn_parallel_coders(
                 "The merged product fails to build. Fix ALL compile/type/import errors across the "
                 "modules so `npm run build` passes. Build output:\n" + (out or "")[:4000]
             )
-            _run_claude(main_local, recovery, timeout=1200, founder_id=founder_id, app_session_id=session_id, agent=agent)
+            _run_claude(
+                main_local,
+                recovery,
+                timeout=1200,
+                founder_id=founder_id,
+                app_session_id=session_id,
+                agent=agent,
+                model=medium_merge_model,
+            )
             _build_doctor(main_local)
             passed, out = _npm_build_passes(main_local)
 

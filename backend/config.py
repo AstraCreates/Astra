@@ -24,10 +24,8 @@ class Settings(BaseSettings):
 
     supabase_url: str = ""
     supabase_key: str = ""
-    # Model that drives the coding agent (caveman) for technical-agent MVP builds.
-    # deepseek-v4-pro ($0.435/$0.870) — still ~3× cheaper input than GLM-5.2 ($1.2) which
-    # was 46% of prod spend, and native function-calls in caveman. NOT qwen3-coder-FLASH:
-    # it emits XML-text tool calls (<function=write>...) caveman can't parse → 0 tools run.
+    # Heavy coder for broad end-to-end builds outside the technical specialist's new
+    # "medium brain + light workers" lane. Kept for web/ops/full-build fallback paths.
     mvp_build_model: str = "deepseek/deepseek-v4-pro"
     # Web-search/research model. perplexity/sonar ($1/$1), NOT sonar-pro ($3/$15) — the
     # pro tier's $15/M output made it 36% of prod spend for marginal research-depth gain.
@@ -35,15 +33,17 @@ class Settings(BaseSettings):
     # Which coding-agent CLI drives MVP builds: "caveman" (@juliusbrussee/caveman-code,
     # ~2x fewer tokens, native openrouter provider) or "openclaude" (legacy fallback).
     code_agent: str = "caveman"
-    # Technical wrapper orchestrates a multi-step workflow (build → provision infra via
-    # browser → self-QA the live site → fix), so it gets a smart model for reliable
-    # tool decisions; the heavy code generation is still done by mvp_build_model in
-    # run_mvp_loop / openclaude. Few wrapper calls, so the cost impact is small.
-    # Flash not Pro: the wrapper loop has no prompt caching wired, Pro's $0.435/M
-    # input rate is wasteful for ~20 orchestration calls per build.
-    # Bench v11 (2026-06-26, ACES): MiMo-V2.5 #1 (ACES=5661, P_hard=0.98, $0.0003/suc).
-    # Thinking-on in prod (mimo exempt from effort:none suppression in llm_cache.py).
+    # Technical wrapper/orchestrator model. This is the agent that plans work,
+    # reasons about architecture, decides when to delegate, and supervises QA/fix loops.
     technical_agent_model: str = "xiaomi/mimo-v2.5"
+    # Primary coding model for the technical lane itself. This is intentionally a
+    # medium model: strong enough to implement cohesive features end-to-end, but
+    # cheaper than the heavyweight MVP builder. The technical agent can then fan
+    # out smaller, isolated code tasks to lighter worker coders below.
+    technical_build_model: str = "xiaomi/mimo-v2.5"
+    # Light coding worker model used for delegated / parallelized technical sub-builds
+    # such as auth screens, isolated dashboard modules, spot fixes, and narrow patches.
+    technical_subagent_model: str = "deepseek/deepseek-v4-flash"
     # 20 was too tight for multi-step builds (resolve → run_mvp_loop → provision
     # → QA → fix rounds → obsidian_log → done). 30 gives enough headroom for a
     # full build + one round of error recovery without hitting max_iterations.
