@@ -122,6 +122,107 @@ def _run_calendar_event(params: dict, founder_id: str) -> dict:
     )
 
 
+def _run_google_calendar_event(params: dict, founder_id: str) -> dict:
+    from backend.tools.google_workspace_tools import google_calendar_create_event
+    return google_calendar_create_event(
+        founder_id,
+        params.get("summary", ""),
+        params.get("start_time", ""),
+        params.get("end_time", ""),
+        params.get("description", ""),
+        params.get("timezone") or "UTC",
+    )
+
+
+def _run_google_calendar_list(params: dict, founder_id: str) -> dict:
+    from backend.tools.google_workspace_tools import google_calendar_list_events
+    try:
+        max_results = int(float(params.get("max_results") or 10))
+    except (TypeError, ValueError):
+        max_results = 10
+    return google_calendar_list_events(founder_id, params.get("time_min", ""), params.get("time_max", ""), max_results)
+
+
+def _run_google_docs_create(params: dict, founder_id: str) -> dict:
+    from backend.tools.google_workspace_tools import google_docs_create_document
+    return google_docs_create_document(founder_id, params.get("title", ""), params.get("text", ""))
+
+
+def _run_google_docs_append(params: dict, founder_id: str) -> dict:
+    from backend.tools.google_workspace_tools import google_docs_append_text
+    return google_docs_append_text(founder_id, params.get("document_id", ""), params.get("text", ""))
+
+
+def _run_google_docs_read(params: dict, founder_id: str) -> dict:
+    from backend.tools.google_workspace_tools import google_docs_read_document
+    return google_docs_read_document(founder_id, params.get("document_id", ""))
+
+
+def _run_google_sheets_create(params: dict, founder_id: str) -> dict:
+    import json as _json
+    from backend.tools.google_workspace_tools import google_sheets_create_spreadsheet
+    try:
+        headers = _json.loads(params.get("headers") or "[]")
+        rows = _json.loads(params.get("rows") or "[]")
+    except _json.JSONDecodeError:
+        return {"error": "headers and rows must be valid JSON arrays"}
+    return google_sheets_create_spreadsheet(founder_id, params.get("title", ""), params.get("sheet_name", "Sheet1"), headers, rows)
+
+
+def _run_google_sheets_append(params: dict, founder_id: str) -> dict:
+    import json as _json
+    from backend.tools.google_workspace_tools import google_sheets_append_row
+    try:
+        values = _json.loads(params.get("values") or "[]")
+    except _json.JSONDecodeError:
+        return {"error": "values must be a valid JSON array"}
+    return google_sheets_append_row(founder_id, params.get("spreadsheet_id", ""), params.get("sheet_name", ""), values)
+
+
+def _run_google_sheets_read(params: dict, founder_id: str) -> dict:
+    from backend.tools.google_workspace_tools import google_sheets_read
+    return google_sheets_read(founder_id, params.get("spreadsheet_id", ""), params.get("range_a1", "A1:Z100"))
+
+
+def _run_google_sheets_update(params: dict, founder_id: str) -> dict:
+    import json as _json
+    from backend.tools.google_workspace_tools import google_sheets_update_range
+    try:
+        values = _json.loads(params.get("values") or "[]")
+    except _json.JSONDecodeError:
+        return {"error": "values must be a valid JSON 2D array"}
+    return google_sheets_update_range(founder_id, params.get("spreadsheet_id", ""), params.get("range_a1", ""), values)
+
+
+def _run_google_slides_create(params: dict, founder_id: str) -> dict:
+    from backend.tools.google_workspace_tools import google_slides_create_presentation
+    return google_slides_create_presentation(founder_id, params.get("title", ""))
+
+
+def _run_google_slides_add(params: dict, founder_id: str) -> dict:
+    from backend.tools.google_workspace_tools import google_slides_add_slide
+    return google_slides_add_slide(founder_id, params.get("presentation_id", ""), params.get("title", ""), params.get("body", ""))
+
+
+def _run_google_drive_list(params: dict, founder_id: str) -> dict:
+    from backend.tools.google_workspace_tools import google_drive_list_files
+    try:
+        page_size = int(float(params.get("page_size") or 20))
+    except (TypeError, ValueError):
+        page_size = 20
+    return google_drive_list_files(founder_id, params.get("query", ""), page_size)
+
+
+def _run_google_drive_read(params: dict, founder_id: str) -> dict:
+    from backend.tools.google_workspace_tools import google_drive_read_file
+    return google_drive_read_file(founder_id, params.get("file_id", ""))
+
+
+def _run_google_drive_create(params: dict, founder_id: str) -> dict:
+    from backend.tools.google_workspace_tools import google_drive_create_text_file
+    return google_drive_create_text_file(founder_id, params.get("name", ""), params.get("content", ""), params.get("mime_type", "text/plain"))
+
+
 # ── Stripe ───────────────────────────────────────────────────────────────────
 
 def _stripe_access_token(founder_id: str) -> str:
@@ -374,6 +475,41 @@ _register("calendar_create_event", "Create event", "Calendar", "founder",
             _p("end_time", "End (ISO 8601)", placeholder="2026-01-01T15:00:00Z"), _p("description", "Description", "textarea"),
             _p("timezone", "Timezone", placeholder="UTC")],
            _run_calendar_event)
+_register("google_calendar_create_event", "Create Google event", "Google Calendar", "founder",
+           [_p("summary", "Title"), _p("start_time", "Start (ISO 8601)", placeholder="2026-01-01T14:00:00Z"),
+            _p("end_time", "End (ISO 8601)", placeholder="2026-01-01T15:00:00Z"), _p("description", "Description", "textarea"),
+            _p("timezone", "Timezone", placeholder="UTC")],
+           _run_google_calendar_event)
+_register("google_calendar_list_events", "List Google events", "Google Calendar", "founder",
+           [_p("time_min", "Time min (ISO 8601, optional)"), _p("time_max", "Time max (ISO 8601, optional)"), _p("max_results", "Max results", "number", "10")],
+           _run_google_calendar_list)
+_register("google_docs_create", "Create Google Doc", "Google Docs", "founder",
+           [_p("title", "Title"), _p("text", "Initial text", "textarea")], _run_google_docs_create)
+_register("google_docs_append", "Append Google Doc", "Google Docs", "founder",
+           [_p("document_id", "Document ID"), _p("text", "Text", "textarea")], _run_google_docs_append)
+_register("google_docs_read", "Read Google Doc", "Google Docs", "founder",
+           [_p("document_id", "Document ID")], _run_google_docs_read)
+_register("google_sheets_create", "Create Google Sheet", "Google Sheets", "founder",
+           [_p("title", "Title"), _p("sheet_name", "Sheet name"), _p("headers", "Headers (JSON array)", "textarea", '["Name","Email"]'),
+            _p("rows", "Rows (JSON 2D array)", "textarea", '[["Ada","ada@example.com"]]')], _run_google_sheets_create)
+_register("google_sheets_append", "Append Google Sheet row", "Google Sheets", "founder",
+           [_p("spreadsheet_id", "Spreadsheet ID"), _p("sheet_name", "Sheet name"), _p("values", "Values (JSON array)", "textarea", '["Ada","ada@example.com"]')],
+           _run_google_sheets_append)
+_register("google_sheets_read", "Read Google Sheet", "Google Sheets", "founder",
+           [_p("spreadsheet_id", "Spreadsheet ID"), _p("range_a1", "Range A1", placeholder="Sheet1!A1:Z100")], _run_google_sheets_read)
+_register("google_sheets_update", "Update Google Sheet range", "Google Sheets", "founder",
+           [_p("spreadsheet_id", "Spreadsheet ID"), _p("range_a1", "Range A1"), _p("values", "Values (JSON 2D array)", "textarea", '[["Done"]]')],
+           _run_google_sheets_update)
+_register("google_slides_create", "Create Google Slides", "Google Slides", "founder",
+           [_p("title", "Title")], _run_google_slides_create)
+_register("google_slides_add_slide", "Add Google Slide", "Google Slides", "founder",
+           [_p("presentation_id", "Presentation ID"), _p("title", "Slide title"), _p("body", "Slide body", "textarea")], _run_google_slides_add)
+_register("google_drive_list_files", "List Google Drive files", "Google Drive", "founder",
+           [_p("query", "Drive query", placeholder="name contains 'proposal'"), _p("page_size", "Page size", "number", "20")], _run_google_drive_list)
+_register("google_drive_read_file", "Read Google Drive file", "Google Drive", "founder",
+           [_p("file_id", "File ID")], _run_google_drive_read)
+_register("google_drive_create_file", "Create Google Drive text file", "Google Drive", "founder",
+           [_p("name", "File name"), _p("content", "Content", "textarea"), _p("mime_type", "MIME type", placeholder="text/plain")], _run_google_drive_create)
 
 _register("stripe_payment_link", "Create payment link", "Stripe", "founder",
            [_p("title", "Product name"), _p("description", "Description", "textarea"), _p("amount", "Amount (cents)", "number"),

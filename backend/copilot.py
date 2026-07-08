@@ -772,6 +772,84 @@ async def _tool_session_status(founder_id: str, session_id: str, args: dict) -> 
             "credits_used": meta.get("credits_used", 0), "kind": meta.get("kind")}
 
 
+async def _tool_google_drive_list(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.tools.google_workspace_tools import google_drive_list_files
+    return google_drive_list_files(founder_id, str(args.get("query") or ""), int(args.get("page_size") or 20))
+
+
+async def _tool_google_drive_read(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.tools.google_workspace_tools import google_drive_read_file
+    return google_drive_read_file(founder_id, str(args.get("file_id") or ""))
+
+
+async def _tool_google_docs_create(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.tools.google_workspace_tools import google_docs_create_document
+    return google_docs_create_document(founder_id, str(args.get("title") or ""), str(args.get("text") or ""))
+
+
+async def _tool_google_docs_append(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.tools.google_workspace_tools import google_docs_append_text
+    return google_docs_append_text(founder_id, str(args.get("document_id") or ""), str(args.get("text") or ""))
+
+
+async def _tool_google_docs_read(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.tools.google_workspace_tools import google_docs_read_document
+    return google_docs_read_document(founder_id, str(args.get("document_id") or ""))
+
+
+async def _tool_google_sheets_create(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.tools.google_workspace_tools import google_sheets_create_spreadsheet
+    return google_sheets_create_spreadsheet(
+        founder_id,
+        str(args.get("title") or ""),
+        str(args.get("sheet_name") or "Sheet1"),
+        list(args.get("headers") or []),
+        list(args.get("rows") or []),
+    )
+
+
+async def _tool_google_sheets_read(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.tools.google_workspace_tools import google_sheets_read
+    return google_sheets_read(founder_id, str(args.get("spreadsheet_id") or ""), str(args.get("range_a1") or "A1:Z100"))
+
+
+async def _tool_google_sheets_update(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.tools.google_workspace_tools import google_sheets_update_range
+    return google_sheets_update_range(founder_id, str(args.get("spreadsheet_id") or ""), str(args.get("range_a1") or ""), list(args.get("values") or []))
+
+
+async def _tool_google_slides_create(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.tools.google_workspace_tools import google_slides_create_presentation
+    return google_slides_create_presentation(founder_id, str(args.get("title") or ""))
+
+
+async def _tool_google_slides_add(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.tools.google_workspace_tools import google_slides_add_slide
+    return google_slides_add_slide(founder_id, str(args.get("presentation_id") or ""), str(args.get("title") or ""), str(args.get("body") or ""))
+
+
+async def _tool_google_calendar_create(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.tools.google_workspace_tools import google_calendar_create_event
+    return google_calendar_create_event(
+        founder_id,
+        str(args.get("summary") or ""),
+        str(args.get("start_time") or ""),
+        str(args.get("end_time") or ""),
+        str(args.get("description") or ""),
+        str(args.get("timezone") or "UTC"),
+    )
+
+
+async def _tool_google_calendar_list(founder_id: str, session_id: str, args: dict) -> Any:
+    from backend.tools.google_workspace_tools import google_calendar_list_events
+    return google_calendar_list_events(
+        founder_id,
+        str(args.get("time_min") or ""),
+        str(args.get("time_max") or ""),
+        int(args.get("max_results") or 10),
+    )
+
+
 # ── MCP parity: expose the rest of the astra MCP surface in-process ──────────────
 # Reuses the exact MCP handlers (run AS this session's founder), so the copilot has
 # the same toolset as the MCP without reimplementing anything. Session-scoped tools
@@ -1355,6 +1433,18 @@ _TOOLS = {
     "add_dashboard_tile": ("add a tile to the founder dashboard. args: {title, type, size, config}. type: metric|chart|table|markdown|list|progress|status_board", _tool_add_dashboard_tile),
     # ── Integrations ──────────────────────────────────────────────────────────
     "get_integrations": ("list connected integrations and their on/off status. args: {}", _tool_get_integrations),
+    "google_drive_list_files": ("list files available in the founder's connected Google Drive. args: {query?, page_size?}", _tool_google_drive_list),
+    "google_drive_read_file": ("read one Google Drive / Docs / Sheets / Slides file by file_id. args: {file_id}", _tool_google_drive_read),
+    "google_docs_create": ("create a Google Doc in the founder's connected Workspace. args: {title, text?}", _tool_google_docs_create),
+    "google_docs_append": ("append text to a Google Doc. args: {document_id, text}", _tool_google_docs_append),
+    "google_docs_read": ("read a Google Doc. args: {document_id}", _tool_google_docs_read),
+    "google_sheets_create": ("create a Google Sheet. args: {title, sheet_name?, headers?, rows?}", _tool_google_sheets_create),
+    "google_sheets_read": ("read a Google Sheet range. args: {spreadsheet_id, range_a1?}", _tool_google_sheets_read),
+    "google_sheets_update": ("write a Google Sheet range. args: {spreadsheet_id, range_a1, values}", _tool_google_sheets_update),
+    "google_slides_create": ("create a Google Slides presentation. args: {title}", _tool_google_slides_create),
+    "google_slides_add_slide": ("add a title/body slide to Google Slides. args: {presentation_id, title?, body?}", _tool_google_slides_add),
+    "google_calendar_create_event": ("create a Google Calendar event. args: {summary, start_time, end_time, description?, timezone?}", _tool_google_calendar_create),
+    "google_calendar_list_events": ("list Google Calendar events. args: {time_min?, time_max?, max_results?}", _tool_google_calendar_list),
     # ── Outreach / CRM ────────────────────────────────────────────────────────
     "get_outreach": ("get outreach contacts and campaigns summary. args: {limit?}", _tool_get_outreach),
     # ── Cost / vault ──────────────────────────────────────────────────────────
