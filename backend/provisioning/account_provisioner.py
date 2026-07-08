@@ -30,8 +30,11 @@ _CONNECTOR_SERVICE_MAP: dict[str, set[str]] = {
     "vercel": {"vercel"},
     "supabase": {"supabase"},
     "gmail": {"composio"},
+    "google_workspace": {"composio"},
     "google_drive": {"composio"},
     "google_sheets": {"composio"},
+    "google_docs": {"composio"},
+    "google_slides": {"composio"},
     "google_calendar": {"composio"},
     "notion": {"composio"},
     "linear": {"composio"},
@@ -39,8 +42,11 @@ _CONNECTOR_SERVICE_MAP: dict[str, set[str]] = {
 }
 _CONNECTOR_COMPOSIO_APP_MAP: dict[str, str] = {
     "gmail": "gmail",
+    "google_workspace": "google_drive",
     "google_drive": "google_drive",
     "google_sheets": "google_drive",
+    "google_docs": "google_drive",
+    "google_slides": "google_drive",
     "google_calendar": "googlecalendar",
     "notion": "notion",
     "linear": "linear",
@@ -362,9 +368,11 @@ async def get_founder_setup_status(founder_id: str) -> dict:
         apps["linear"] = True
         apps["product_tracker"] = True
     if live_apps.get("google_drive"):
+        apps["google_workspace"] = True
         apps["google_drive"] = True
         apps["google_sheets"] = True
         apps["google_docs"] = True
+        apps["google_slides"] = True
     if live_apps.get("googlecalendar"):
         apps["google_calendar"] = True
 
@@ -372,8 +380,10 @@ async def get_founder_setup_status(founder_id: str) -> dict:
     linkedin_creds = creds.get("linkedin") or {}
     notion_creds = creds.get("notion") or {}
     linear_creds = creds.get("linear") or {}
-    google_drive_creds = creds.get("google_drive") or creds.get("google") or {}
+    google_workspace_creds = creds.get("google_workspace") or {}
+    google_drive_creds = creds.get("google_drive") or google_workspace_creds or creds.get("google") or {}
     google_docs_creds = creds.get("google_docs") or creds.get("googledocs") or {}
+    google_slides_creds = creds.get("google_slides") or creds.get("googleslides") or {}
     google_calendar_creds = creds.get("google_calendar") or {}
     if linkedin_creds.get("access_token"):
         apps["linkedin"] = True
@@ -383,12 +393,19 @@ async def get_founder_setup_status(founder_id: str) -> dict:
         apps["linear"] = True
         apps["product_tracker"] = True
     if google_drive_creds.get("access_token"):
+        apps["google_workspace"] = True
         apps["google_drive"] = True
         apps["google_sheets"] = True
+        apps["google_slides"] = True
     if google_docs_creds.get("access_token"):
         apps["google_docs"] = True
+        apps["google_workspace"] = True
+    if google_slides_creds.get("access_token"):
+        apps["google_slides"] = True
+        apps["google_workspace"] = True
     if google_calendar_creds.get("access_token"):
         apps["google_calendar"] = True
+        apps["google_workspace"] = True
 
     return {
         "composio": bool(creds.get("composio", {}).get("api_key")),
@@ -406,8 +423,11 @@ async def get_founder_setup_status(founder_id: str) -> dict:
         "linear": bool(linear_creds.get("api_key")),
         "slack": bool(creds.get("slack", {}).get("bot_token")),
         "discord": bool(creds.get("discord", {}).get("bot_token")),
+        "google_workspace": bool(google_workspace_creds.get("access_token") or google_drive_creds.get("access_token")),
         "google_drive": bool(google_drive_creds.get("access_token")),
         "google_docs": bool(google_docs_creds.get("access_token")),
+        "google_sheets": bool(google_drive_creds.get("access_token")),
+        "google_slides": bool(google_slides_creds.get("access_token") or google_drive_creds.get("access_token")),
         "google_calendar": bool(google_calendar_creds.get("access_token")),
         "hubspot": bool(creds.get("hubspot", {}).get("access_token")),
         "mailchimp": bool(creds.get("mailchimp", {}).get("api_key")),
@@ -441,9 +461,11 @@ def _connected_composio_services(creds: dict[str, Any]) -> dict[str, bool]:
             continue
         apps[service] = True
         if app == "google_drive":
+            apps["google_workspace"] = True
             apps["google_drive"] = True
             apps["google_sheets"] = True
             apps["google_docs"] = True
+            apps["google_slides"] = True
         elif app == "googlecalendar":
             apps["google_calendar"] = True
         elif app == "linear":

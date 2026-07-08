@@ -67,6 +67,7 @@ CONNECTORS: list[ConnectorMeta] = [
     ConnectorMeta("airtable", "Airtable", "composio", "airtable"),
     ConnectorMeta("googlesheets", "Google Sheets", "composio", "googlesheets"),
     ConnectorMeta("googledocs", "Google Docs", "composio", "googledocs"),
+    ConnectorMeta("googleslides", "Google Slides", "composio", "googleslides"),
     ConnectorMeta("googledrive", "Google Drive", "composio", "googledrive"),
     ConnectorMeta("google_calendar", "Google Calendar", "composio", "googlecalendar"),
     ConnectorMeta("calendly", "Calendly", "composio", "calendly"),

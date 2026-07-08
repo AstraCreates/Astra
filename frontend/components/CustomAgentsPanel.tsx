@@ -66,6 +66,7 @@ const CONNECTOR_LABELS: Record<string, string> = {
   airtable: "Airtable",
   googlesheets: "Google Sheets",
   googledocs: "Google Docs",
+  googleslides: "Google Slides",
   googledrive: "Google Drive",
   google_calendar: "Google Calendar",
   calendly: "Calendly",

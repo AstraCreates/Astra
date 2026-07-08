@@ -7,10 +7,13 @@ from typing import Any
 
 _SERVICE_ALIASES: dict[str, str] = {
     "google": "google_drive",
+    "googleworkspace": "google_workspace",
+    "google_workspace": "google_workspace",
     "googledrive": "google_drive",
     "googlesheets": "google_sheets",
     "googlecalendar": "google_calendar",
     "googledocs": "google_docs",
+    "googleslides": "google_slides",
     "mailchimp_marketing": "mailchimp",
 }
 
@@ -26,9 +29,11 @@ CONNECTOR_FIELD_SPECS: dict[str, list[dict[str, Any]]] = {
     "stripe": [{"key": "access_token", "label": "Stripe access token", "secret": True, "required": True}],
     "resend": [{"key": "api_key", "label": "Resend API key", "secret": True, "required": True}],
     "gmail": [{"key": "access_token", "label": "Google OAuth access token", "secret": True, "required": True}],
+    "google_workspace": [{"key": "access_token", "label": "Google OAuth access token", "secret": True, "required": True}],
     "google_drive": [{"key": "access_token", "label": "Google OAuth access token", "secret": True, "required": True}],
     "google_sheets": [{"key": "access_token", "label": "Google OAuth access token", "secret": True, "required": True}],
     "google_docs": [{"key": "access_token", "label": "Google OAuth access token", "secret": True, "required": True}],
+    "google_slides": [{"key": "access_token", "label": "Google OAuth access token", "secret": True, "required": True}],
     "google_calendar": [{"key": "access_token", "label": "Google OAuth access token", "secret": True, "required": True}],
     "slack": [
         {"key": "bot_token", "label": "Slack bot token", "secret": True, "required": True},

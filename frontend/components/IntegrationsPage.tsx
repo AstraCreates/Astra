@@ -1090,7 +1090,7 @@ function stackImportSources(
   if (matched.length) return Array.from(new Set(matched));
 
   if (IMPORTABLE_SOURCES.has(connector.key)) return [connector.key];
-  if (connector.key === "google_sheets" || connector.key === "google_docs") return ["google_drive"];
+  if (connector.key === "google_sheets" || connector.key === "google_docs" || connector.key === "google_slides" || connector.key === "google_workspace") return ["google_drive"];
   if (connector.key === "email_marketing") return ["gmail"];
   return [];
 }
@@ -1396,7 +1396,7 @@ export default function SetupPage() {
     "stripe", "resend",
     "instagram", "tiktok", "meta_ads",
     "linkedin", "notion", "linear", "slack", "discord",
-    "google_drive", "google_docs", "google_calendar",
+    "google_workspace", "google_drive", "google_sheets", "google_docs", "google_slides", "google_calendar",
     "hubspot", "mailchimp", "airtable", "dropbox", "figma", "obsidian", "zendesk", "confluence",
     "klaviyo", "printful", "lemonsqueezy", "square", "yelp", "twilio",
   ];
@@ -1836,8 +1836,11 @@ export default function SetupPage() {
           {[
             { key: "slack", label: "Slack", connected: status?.slack },
             { key: "discord", label: "Discord", connected: status?.discord },
+            { key: "google_workspace", label: "Google Workspace", connected: status?.google_workspace || status?.apps?.["google_workspace"] },
             { key: "google_drive", label: "Google Drive", connected: status?.google_drive || status?.apps?.["google_drive"] },
+            { key: "google_sheets", label: "Google Sheets", connected: status?.google_sheets || status?.apps?.["google_sheets"] },
             { key: "google_docs", label: "Google Docs", connected: status?.google_docs || status?.apps?.["google_docs"] },
+            { key: "google_slides", label: "Google Slides", connected: status?.google_slides || status?.apps?.["google_slides"] },
             { key: "google_calendar", label: "Google Calendar", connected: status?.google_calendar || status?.apps?.["google_calendar"] },
             { key: "obsidian", label: "Obsidian", connected: status?.obsidian },
             { key: "zendesk", label: "Zendesk", connected: status?.zendesk },

@@ -25,6 +25,8 @@ export const SERVICE_LOGOS: Record<string, string> = {
   google_drive:     `${SI}/googledrive/4285F4`,
   google_workspace: `${SI}/google/4285F4`,
   google_sheets:    `${SI}/googlesheets/34A853`,
+  google_docs:      `${SI}/googledocs/4285F4`,
+  google_slides:    `${SI}/googleslides/FBBC04`,
   confluence:       `${SI}/confluence/172B4D`,
   zendesk:          `${SI}/zendesk/03363D`,
   helpdesk:         `${SI}/zendesk/03363D`,

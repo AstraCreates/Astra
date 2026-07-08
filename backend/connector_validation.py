@@ -24,9 +24,11 @@ DEFAULT_TIMEOUT = 8
 _WEBHOOK_CAPABLE = {"github", "slack", "discord", "notion", "google_drive", "linear", "crm", "helpdesk", "product_tracker"}
 _COMPOSIO_CONNECTOR_APPS = {
     "gmail": "gmail",
+    "google_workspace": "google_drive",
     "google_drive": "google_drive",
     "google_sheets": "google_drive",
     "google_docs": "google_drive",
+    "google_slides": "google_drive",
     "google_calendar": "googlecalendar",
     "notion": "notion",
     "linear": "linear",
@@ -360,6 +362,9 @@ _LIVE_CHECKS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "notion": _notion_check,
     "linear": _linear_check,
     "google_drive": _google_check,
+    "google_workspace": _google_check,
+    "google_docs": _google_check,
+    "google_slides": _google_check,
     "google_sheets": _google_check,
     "google_calendar": _google_check,
     "gmail": _google_check,

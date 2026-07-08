@@ -557,8 +557,11 @@ export interface SetupStatus {
   linear?: boolean;
   slack?: boolean;
   discord?: boolean;
+  google_workspace?: boolean;
   google_drive?: boolean;
+  google_sheets?: boolean;
   google_docs?: boolean;
+  google_slides?: boolean;
   google_calendar?: boolean;
   hubspot?: boolean;
   mailchimp?: boolean;
