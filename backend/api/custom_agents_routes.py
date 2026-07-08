@@ -92,6 +92,14 @@ async def connect_agent_connector(founder_id: str, connector_key: str, request: 
             raise HTTPException(status_code=502, detail=f"Could not start {meta.label} connect: {url or 'no url'}")
         return {"kind": "composio", "connector": connector_key, "label": meta.label, "oauth_url": url}
 
+    if meta.kind == "direct":
+        return {
+            "kind": "direct",
+            "connector": connector_key,
+            "label": meta.label,
+            "oauth_endpoint": meta.oauth_endpoint,
+        }
+
     # key-based connector — the founder saves a credential (token) for this service
     return {
         "kind": "key",

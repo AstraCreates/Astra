@@ -141,7 +141,7 @@ function ConnectModal({
 }) {
   const fields = source.credential_fields ?? [];
   const oauthApps = source.oauth_apps ?? [];
-  const isOauthSource = oauthApps.length > 0;
+  const isOauthSource = !!source.oauth || oauthApps.length > 0;
   const canSave = fields.length > 0 && fields.every(f => values[f]?.trim());
   return (
     <div onClick={onClose} className="astra-modal-backdrop" style={{ zIndex: 200 }}>
@@ -719,15 +719,25 @@ export default function CompanyBrainPage() {
   }
 
   async function connectSourceOAuth() {
-    if (!connectSource || !(connectSource.oauth_apps?.length)) return;
-    const oauthApp = connectSource.oauth_apps[0];
+    if (!connectSource) return;
     setConnectingOauthSource(true);
     setError(null);
     try {
-      const res = await apiFetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/setup/composio/connect/${founderId}?apps=${encodeURIComponent(oauthApp)}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail ?? `Error ${res.status}`);
-      const oauthUrl = data?.oauth_urls?.[oauthApp] || "";
+      let oauthUrl = "";
+      if (connectSource.oauth?.kind === "direct" && connectSource.oauth.endpoint) {
+        const endpoint = connectSource.oauth.endpoint.replace("{founder_id}", encodeURIComponent(founderId));
+        const res = await apiFetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}${endpoint}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail ?? `Error ${res.status}`);
+        oauthUrl = data?.oauth_url || data?.url || "";
+      } else {
+        const oauthApp = connectSource.oauth?.app || connectSource.oauth_apps?.[0];
+        if (!oauthApp) throw new Error(`No OAuth app configured for ${connectSource.label}`);
+        const res = await apiFetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/setup/composio/connect/${founderId}?apps=${encodeURIComponent(oauthApp)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail ?? `Error ${res.status}`);
+        oauthUrl = data?.oauth_urls?.[oauthApp] || "";
+      }
       if (!oauthUrl) throw new Error(`No OAuth URL returned for ${connectSource.label}`);
       const popup = window.open(oauthUrl, `brain_connect_${connectSource.key}`, "width=1060,height=720,scrollbars=yes,resizable=yes");
       if (!popup) throw new Error("Popup blocked by browser");

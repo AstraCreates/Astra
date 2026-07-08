@@ -643,6 +643,11 @@ export interface BrainSource {
   notes: string;
   credential_fields?: string[];
   oauth_apps?: string[];
+  oauth?: {
+    kind: "direct" | "composio";
+    app?: string;
+    endpoint?: string;
+  };
   setup_url?: string;
   setup_hint?: string;
   importer?: boolean;
@@ -2934,8 +2939,9 @@ export interface CustomAgentInput {
 export interface CustomAgentConnectorMeta {
   key: string;
   label: string;
-  kind: "composio" | "key";
+  kind: "composio" | "direct" | "key";
   composio_slug: string;
+  oauth_endpoint?: string;
 }
 
 export async function getCustomAgentToolCatalog(): Promise<{
@@ -2950,7 +2956,7 @@ export async function getCustomAgentToolCatalog(): Promise<{
 export async function startConnectorConnect(
   founderId: string,
   connectorKey: string,
-): Promise<{ kind: "composio" | "key"; connector: string; label: string; oauth_url?: string; field?: string; fields?: Array<{ key: string; label: string; secret: boolean; required: boolean }> }> {
+): Promise<{ kind: "composio" | "direct" | "key"; connector: string; label: string; oauth_url?: string; oauth_endpoint?: string; field?: string; fields?: Array<{ key: string; label: string; secret: boolean; required: boolean }> }> {
   const res = await apiFetch(
     `${BASE}/custom-agents/${encodeURIComponent(founderId)}/connect/${encodeURIComponent(connectorKey)}`,
   );

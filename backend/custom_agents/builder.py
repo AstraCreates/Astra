@@ -131,24 +131,39 @@ def connector_readiness(founder_id: str, tool_keys: list[str], company_id: str |
     _READY = {"validated", "locally_valid"}
     missing: list[str] = []
     missing_details: list[dict[str, Any]] = []
+    def _has_direct_oauth(connector_key: str) -> bool:
+        try:
+            from backend.provisioning.credentials_store import load_credentials
+        except Exception:
+            return False
+        aliases = {
+            "gmail": ("gmail", "google_workspace", "google_drive", "google"),
+            "googledrive": ("google_drive", "google_workspace", "google"),
+            "googlesheets": ("google_sheets", "google_drive", "google_workspace", "google"),
+            "googledocs": ("google_docs", "google_drive", "google_workspace", "google"),
+            "googleslides": ("google_slides", "google_drive", "google_workspace", "google"),
+            "google_calendar": ("google_calendar", "google_workspace", "google_drive", "google"),
+            "github": ("github",),
+            "linkedin": ("linkedin",),
+        }.get(connector_key, (connector_key,))
+        for service in aliases:
+            creds = load_credentials(founder_id, service) or {}
+            if creds.get("access_token") or creds.get("refresh_token") or creds.get("token"):
+                return True
+        return False
+
     for key in required:
         meta = CONNECTOR_BY_KEY.get(key)
-        # Gmail: check direct OAuth credentials first (bypasses broken Composio)
-        if key == "gmail":
-            try:
-                from backend.provisioning.credentials_store import load_credentials
-                gmail_creds = load_credentials(founder_id, "gmail") or {}
-                if gmail_creds.get("access_token") or gmail_creds.get("refresh_token"):
-                    continue  # connected via direct OAuth
-            except Exception:
-                pass
+        if meta and meta.kind == "direct":
+            if _has_direct_oauth(key):
+                continue
             missing.append(key)
             missing_details.append({
                 "key": key,
                 "label": meta.label if meta else key,
-                "kind": meta.kind if meta else "composio",
+                "kind": meta.kind,
                 "fields": [],
-                "setup_hint": "Connect Gmail so this agent can send or read mail as intended.",
+                "setup_hint": f"Connect {meta.label} with one-click OAuth for this custom agent.",
             })
             continue
         if meta and meta.kind == "composio":

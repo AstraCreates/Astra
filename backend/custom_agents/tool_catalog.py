@@ -36,8 +36,9 @@ class ToolSpec:
 class ConnectorMeta:
     key: str
     label: str
-    kind: str  # "composio" | "key"
+    kind: str  # "composio" | "direct" | "key"
     composio_slug: str = ""  # toolkit slug for OAuth when kind == "composio"
+    oauth_endpoint: str = ""  # backend endpoint template when kind == "direct"
 
 
 # ── Connector registry ────────────────────────────────────────────────────────
@@ -47,10 +48,17 @@ CONNECTORS: list[ConnectorMeta] = [
     ConnectorMeta("hunter", "Hunter.io", "key"),
     ConnectorMeta("sendgrid", "SendGrid", "key"),
     ConnectorMeta("resend", "Resend", "key"),
+    # Direct OAuth
+    ConnectorMeta("gmail", "Gmail", "direct", oauth_endpoint="/gmail/oauth-url/{founder_id}"),
+    ConnectorMeta("linkedin", "LinkedIn", "direct", oauth_endpoint="/linkedin/oauth-url/{founder_id}"),
+    ConnectorMeta("github", "GitHub", "direct", oauth_endpoint="/github/oauth-url/{founder_id}"),
+    ConnectorMeta("googlesheets", "Google Sheets", "direct", oauth_endpoint="/google-workspace/oauth-url/{founder_id}"),
+    ConnectorMeta("googledocs", "Google Docs", "direct", oauth_endpoint="/google-workspace/oauth-url/{founder_id}"),
+    ConnectorMeta("googleslides", "Google Slides", "direct", oauth_endpoint="/google-workspace/oauth-url/{founder_id}"),
+    ConnectorMeta("googledrive", "Google Drive", "direct", oauth_endpoint="/google-workspace/oauth-url/{founder_id}"),
+    ConnectorMeta("google_calendar", "Google Calendar", "direct", oauth_endpoint="/google-workspace/oauth-url/{founder_id}"),
     # Composio OAuth
-    ConnectorMeta("gmail", "Gmail", "composio", "gmail"),
     ConnectorMeta("outlook", "Outlook", "composio", "outlook"),
-    ConnectorMeta("linkedin", "LinkedIn", "composio", "linkedin"),
     ConnectorMeta("twitter", "X / Twitter", "composio", "twitter"),
     ConnectorMeta("reddit", "Reddit", "composio", "reddit"),
     ConnectorMeta("slack", "Slack", "composio", "slack"),
@@ -65,16 +73,10 @@ CONNECTORS: list[ConnectorMeta] = [
     ConnectorMeta("hubspot", "HubSpot", "composio", "hubspot"),
     ConnectorMeta("mailchimp", "Mailchimp", "composio", "mailchimp"),
     ConnectorMeta("airtable", "Airtable", "composio", "airtable"),
-    ConnectorMeta("googlesheets", "Google Sheets", "composio", "googlesheets"),
-    ConnectorMeta("googledocs", "Google Docs", "composio", "googledocs"),
-    ConnectorMeta("googleslides", "Google Slides", "composio", "googleslides"),
-    ConnectorMeta("googledrive", "Google Drive", "composio", "googledrive"),
-    ConnectorMeta("google_calendar", "Google Calendar", "composio", "googlecalendar"),
     ConnectorMeta("calendly", "Calendly", "composio", "calendly"),
     ConnectorMeta("zoom", "Zoom", "composio", "zoom"),
     ConnectorMeta("dropbox", "Dropbox", "composio", "dropbox"),
     ConnectorMeta("youtube", "YouTube", "composio", "youtube"),
-    ConnectorMeta("github", "GitHub", "composio", "github"),
 ]
 
 CONNECTOR_BY_KEY: dict[str, ConnectorMeta] = {c.key: c for c in CONNECTORS}
@@ -195,7 +197,16 @@ def public_catalog() -> list[dict[str, Any]]:
 
 
 def public_connectors() -> list[dict[str, Any]]:
-    return [{"key": c.key, "label": c.label, "kind": c.kind, "composio_slug": c.composio_slug} for c in CONNECTORS]
+    return [
+        {
+            "key": c.key,
+            "label": c.label,
+            "kind": c.kind,
+            "composio_slug": c.composio_slug,
+            "oauth_endpoint": c.oauth_endpoint,
+        }
+        for c in CONNECTORS
+    ]
 
 
 def connectors_for_tool_keys(tool_keys: list[str]) -> list[str]:

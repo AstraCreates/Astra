@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCompany } from "@/lib/company-context";
 import PageHeader, { HeaderPrimaryBtn } from "@/components/PageHeader";
 import {
+  apiFetch,
   createCustomAgent,
   deleteCustomAgent,
   getCustomAgentToolCatalog,
@@ -75,6 +76,17 @@ const CONNECTOR_LABELS: Record<string, string> = {
   youtube: "YouTube",
   github: "GitHub",
   hunter: "email finder",
+};
+
+const DIRECT_OAUTH_ENDPOINTS: Record<string, string> = {
+  gmail: "/gmail/oauth-url/{founder_id}",
+  linkedin: "/linkedin/oauth-url/{founder_id}",
+  github: "/github/oauth-url/{founder_id}",
+  googlesheets: "/google-workspace/oauth-url/{founder_id}",
+  googledocs: "/google-workspace/oauth-url/{founder_id}",
+  googleslides: "/google-workspace/oauth-url/{founder_id}",
+  googledrive: "/google-workspace/oauth-url/{founder_id}",
+  google_calendar: "/google-workspace/oauth-url/{founder_id}",
 };
 
 const CATEGORY_ORDER = [
@@ -443,6 +455,17 @@ export default function CustomAgentsPanel({
       if (res.kind === "composio" && res.oauth_url) {
         window.open(res.oauth_url, "_blank", "noopener");
         // Give the founder time to authorize, then refresh status.
+        setTimeout(load, 4000);
+      } else if (res.kind === "direct") {
+        const endpointTemplate = res.oauth_endpoint || DIRECT_OAUTH_ENDPOINTS[connectorKey];
+        if (!endpointTemplate) throw new Error(`No OAuth endpoint configured for ${connectorLabel(connectorKey)}`);
+        const endpoint = endpointTemplate.replace("{founder_id}", encodeURIComponent(founderId));
+        const oauthRes = await apiFetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}${endpoint}`);
+        const data = await oauthRes.json();
+        if (!oauthRes.ok) throw new Error(data.detail ?? `Error ${oauthRes.status}`);
+        const oauthUrl = data?.oauth_url || data?.url || "";
+        if (!oauthUrl) throw new Error(`No OAuth URL returned for ${connectorLabel(connectorKey)}`);
+        window.open(oauthUrl, "_blank", "noopener");
         setTimeout(load, 4000);
       } else if (res.kind === "key") {
         setConnectorEntry({

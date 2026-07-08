@@ -63,6 +63,7 @@ SOURCE_CATALOG: dict[str, dict[str, str]] = {
 CONNECTOR_REQUIREMENTS: dict[str, dict[str, Any]] = {
     "github": {
         "credential_fields": ["token"],
+        "oauth": {"kind": "direct", "endpoint": "/github/oauth-url/{founder_id}"},
         "oauth_apps": ["github"],
         "setup_url": "https://github.com/settings/tokens/new?description=Astra&scopes=repo,read:user",
         "setup_hint": "Save a GitHub personal access token with repo read access, or connect GitHub through Composio.",
@@ -84,6 +85,7 @@ CONNECTOR_REQUIREMENTS: dict[str, dict[str, Any]] = {
     },
     "linear": {
         "credential_fields": ["token"],
+        "oauth": {"kind": "composio", "app": "linear"},
         "oauth_apps": ["linear"],
         "setup_url": "https://linear.app/settings/api",
         "setup_hint": "Save a Linear API key, or connect Linear through Composio.",
@@ -91,6 +93,7 @@ CONNECTOR_REQUIREMENTS: dict[str, dict[str, Any]] = {
     },
     "notion": {
         "credential_fields": ["token"],
+        "oauth": {"kind": "composio", "app": "notion"},
         "oauth_apps": ["notion"],
         "setup_url": "https://www.notion.so/my-integrations",
         "setup_hint": "Save a Notion integration token and share pages with it, or connect Notion through Composio.",
@@ -98,6 +101,7 @@ CONNECTOR_REQUIREMENTS: dict[str, dict[str, Any]] = {
     },
     "google_drive": {
         "credential_fields": ["access_token"],
+        "oauth": {"kind": "direct", "endpoint": "/google-workspace/oauth-url/{founder_id}"},
         "oauth_apps": ["googledrive"],
         "setup_url": "https://console.cloud.google.com/apis/credentials",
         "setup_hint": "Save a Google OAuth access token with Drive read scope, or connect Google through Composio.",
@@ -105,6 +109,7 @@ CONNECTOR_REQUIREMENTS: dict[str, dict[str, Any]] = {
     },
     "google_workspace": {
         "credential_fields": ["access_token"],
+        "oauth": {"kind": "direct", "endpoint": "/google-workspace/oauth-url/{founder_id}"},
         "oauth_apps": ["googledrive"],
         "setup_url": "https://console.cloud.google.com/apis/credentials",
         "setup_hint": "Uses the Google Drive importer for Docs, Sheets, and Slides exports.",
@@ -112,6 +117,7 @@ CONNECTOR_REQUIREMENTS: dict[str, dict[str, Any]] = {
     },
     "google_docs": {
         "credential_fields": ["access_token"],
+        "oauth": {"kind": "direct", "endpoint": "/google-workspace/oauth-url/{founder_id}"},
         "oauth_apps": ["googledrive"],
         "setup_url": "https://console.cloud.google.com/apis/credentials",
         "setup_hint": "Uses the Google Workspace connection and Drive exporter for Google Docs.",
@@ -119,6 +125,7 @@ CONNECTOR_REQUIREMENTS: dict[str, dict[str, Any]] = {
     },
     "google_sheets": {
         "credential_fields": ["access_token"],
+        "oauth": {"kind": "direct", "endpoint": "/google-workspace/oauth-url/{founder_id}"},
         "oauth_apps": ["googledrive"],
         "setup_url": "https://console.cloud.google.com/apis/credentials",
         "setup_hint": "Uses the Google Workspace connection and Drive exporter for Google Sheets.",
@@ -126,6 +133,7 @@ CONNECTOR_REQUIREMENTS: dict[str, dict[str, Any]] = {
     },
     "google_slides": {
         "credential_fields": ["access_token"],
+        "oauth": {"kind": "direct", "endpoint": "/google-workspace/oauth-url/{founder_id}"},
         "oauth_apps": ["googledrive"],
         "setup_url": "https://console.cloud.google.com/apis/credentials",
         "setup_hint": "Uses the Google Workspace connection and Drive exporter for Google Slides.",
@@ -133,6 +141,7 @@ CONNECTOR_REQUIREMENTS: dict[str, dict[str, Any]] = {
     },
     "gmail": {
         "credential_fields": ["access_token"],
+        "oauth": {"kind": "direct", "endpoint": "/gmail/oauth-url/{founder_id}"},
         "oauth_apps": ["gmail"],
         "setup_url": "https://console.cloud.google.com/apis/credentials",
         "setup_hint": "Save a Google OAuth access token with Gmail readonly scope, or connect Gmail through Composio.",
@@ -895,9 +904,15 @@ def _source_status(founder_id: str, source: str) -> tuple[str, str]:
         direct = load_credentials(founder_id, source)
         if direct:
             return "connected", "Manual credentials saved."
+        if source in {"google_docs", "google_sheets", "google_slides"}:
+            workspace = load_credentials(founder_id, "google_workspace") or load_credentials(founder_id, "google_drive")
+            if workspace:
+                return "connected", "Google Workspace OAuth is connected."
         composio = load_credentials("__platform__", "composio")
-        if composio and source in {"github", "gmail", "linear", "notion", "google_drive", "google_workspace"}:
-            return "oauth_ready", "Composio configured; connect this account from Integrations."
+        if source in {"github", "gmail", "google_drive", "google_workspace", "google_docs", "google_sheets", "google_slides"}:
+            return "oauth_ready", "One-click OAuth is available from Integrations."
+        if composio and source in {"linear", "notion"}:
+            return "oauth_ready", "Composio OAuth is configured; connect this account from Integrations."
     except Exception:
         pass
     if source in {"slack", "confluence", "zendesk", "granola"}:
