@@ -443,7 +443,11 @@ def import_google_drive(
     company_id: str | None = None,
 ) -> dict[str, Any]:
     """Import Google Drive file metadata and Google Docs/Sheets/Slides export text."""
-    token = _token(founder_id, "google_drive", "token", "access_token") or _token(founder_id, "google", "token", "access_token")
+    token = (
+        _token(founder_id, "google_workspace", "token", "access_token")
+        or _token(founder_id, "google_drive", "token", "access_token")
+        or _token(founder_id, "google", "token", "access_token")
+    )
     if not token:
         return {"ok": False, "source": "google_drive", "error": "Google Drive access token not configured"}
     headers = {"Authorization": f"Bearer {token}"}

@@ -163,8 +163,13 @@ CATALOG: list[ToolSpec] = [
     # ── Data & files ─────────────────────────────────────────────────────────
     ToolSpec("composio_sheets_append_row", "Append to Google Sheet", "Append a row to a Google Sheet.", "data", connector="googlesheets"),
     ToolSpec("composio_sheets_read", "Read Google Sheet", "Read cells from a Google Sheet.", "data", connector="googlesheets"),
+    ToolSpec("google_sheets_create_spreadsheet", "Create Google Sheet", "Create a Google Sheet directly with Workspace OAuth.", "data", connector="googlesheets"),
+    ToolSpec("google_sheets_append_row", "Append row to Google Sheet", "Append a row directly with Workspace OAuth.", "data", connector="googlesheets"),
+    ToolSpec("google_sheets_read", "Read Google Sheet directly", "Read cells directly with Workspace OAuth.", "data", connector="googlesheets"),
     ToolSpec("composio_airtable_create_record", "Create Airtable record", "Create a record in Airtable.", "data", connector="airtable"),
     ToolSpec("composio_docs_create", "Create Google Doc", "Create a Google Doc.", "data", connector="googledocs"),
+    ToolSpec("google_docs_create_document", "Create Google Doc directly", "Create a Google Doc directly with Workspace OAuth.", "data", connector="googledocs"),
+    ToolSpec("google_slides_create_presentation", "Create Google Slides deck", "Create a Google Slides deck directly with Workspace OAuth.", "data", connector="googleslides"),
     ToolSpec("composio_drive_upload", "Upload to Google Drive", "Create a text file in Google Drive.", "data", connector="googledrive"),
     ToolSpec("composio_dropbox_upload", "Upload to Dropbox", "Upload a text file to Dropbox.", "data", connector="dropbox"),
 

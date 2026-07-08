@@ -18,6 +18,13 @@ from __future__ import annotations
 from typing import Any
 
 from backend.tools.composio_tools import _run
+from backend.tools.google_workspace_tools import (
+    google_docs_create_document,
+    google_sheets_append_row,
+    google_sheets_create_spreadsheet,
+    google_sheets_read,
+    google_slides_create_presentation,
+)
 
 
 # ── Generic escape hatch ──────────────────────────────────────────────────────
@@ -204,6 +211,11 @@ EXTENDED_TOOLS: dict[str, Any] = {
     "composio_sheets_read": composio_sheets_read,
     "composio_docs_create": composio_docs_create,
     "composio_drive_upload": composio_drive_upload,
+    "google_docs_create_document": google_docs_create_document,
+    "google_sheets_create_spreadsheet": google_sheets_create_spreadsheet,
+    "google_sheets_append_row": google_sheets_append_row,
+    "google_sheets_read": google_sheets_read,
+    "google_slides_create_presentation": google_slides_create_presentation,
     "composio_airtable_create_record": composio_airtable_create_record,
     "composio_trello_create_card": composio_trello_create_card,
     "composio_asana_create_task": composio_asana_create_task,

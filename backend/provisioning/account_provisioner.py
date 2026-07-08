@@ -367,13 +367,13 @@ async def get_founder_setup_status(founder_id: str) -> dict:
     if live_apps.get("linear"):
         apps["linear"] = True
         apps["product_tracker"] = True
-    if live_apps.get("google_drive"):
+    if live_apps.get("google_drive") or live_apps.get("googledrive"):
         apps["google_workspace"] = True
         apps["google_drive"] = True
         apps["google_sheets"] = True
         apps["google_docs"] = True
         apps["google_slides"] = True
-    if live_apps.get("googlecalendar"):
+    if live_apps.get("googlecalendar") or live_apps.get("google_calendar"):
         apps["google_calendar"] = True
 
     # Direct credential checks (no Composio)
@@ -382,9 +382,9 @@ async def get_founder_setup_status(founder_id: str) -> dict:
     linear_creds = creds.get("linear") or {}
     google_workspace_creds = creds.get("google_workspace") or {}
     google_drive_creds = creds.get("google_drive") or google_workspace_creds or creds.get("google") or {}
-    google_docs_creds = creds.get("google_docs") or creds.get("googledocs") or {}
-    google_slides_creds = creds.get("google_slides") or creds.get("googleslides") or {}
-    google_calendar_creds = creds.get("google_calendar") or {}
+    google_docs_creds = creds.get("google_docs") or creds.get("googledocs") or google_workspace_creds or {}
+    google_slides_creds = creds.get("google_slides") or creds.get("googleslides") or google_workspace_creds or {}
+    google_calendar_creds = creds.get("google_calendar") or google_workspace_creds or {}
     if linkedin_creds.get("access_token"):
         apps["linkedin"] = True
     if notion_creds.get("token"):
