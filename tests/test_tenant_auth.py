@@ -8,6 +8,7 @@ from backend.billing import fake_signed_payload, verify_stripe_signature
 from backend.config import settings
 from backend.tenant_auth import (
     actor_or_body,
+    normalize_email_to_founder_id,
     require_current_founder,
     require_founder_access,
     require_org_access,
@@ -111,3 +112,37 @@ def test_stripe_signature_verifier_accepts_valid_and_rejects_invalid_secret():
     body, signature = fake_signed_payload({"id": "evt_1", "type": "invoice.paid"}, "whsec_valid")
     assert verify_stripe_signature(body, signature, "whsec_valid") is True
     assert verify_stripe_signature(body, signature, "whsec_wrong") is False
+
+
+def test_normalize_email_to_founder_id_matches_frontend_transform():
+    # Must match frontend/lib/auth.ts normalizeEmailToFounderId exactly —
+    # that's what actually lands in the JWT's sub claim.
+    assert normalize_email_to_founder_id("Astra.Testing+Mail@Gmail.com") == "google_astra_testing_mail_gmail_com"
+    assert normalize_email_to_founder_id("  founder@example.com  ") == "google_founder_example_com"
+
+
+def test_beta_allowlist_rejects_non_allowlisted_email(monkeypatch):
+    monkeypatch.setattr(settings, "astra_require_auth", True)
+    monkeypatch.setattr(settings, "astra_jwt_secret", "test-secret-long-enough-for-hs256")
+    monkeypatch.setattr(settings, "astra_beta_allowlist", "tester@example.com")
+
+    allowed_sub = normalize_email_to_founder_id("tester@example.com")
+    blocked_sub = normalize_email_to_founder_id("stranger@example.com")
+    allowed_token = jwt.encode({"sub": allowed_sub}, "test-secret-long-enough-for-hs256", algorithm="HS256")
+    blocked_token = jwt.encode({"sub": blocked_sub}, "test-secret-long-enough-for-hs256", algorithm="HS256")
+
+    assert require_founder_access(_request({"authorization": f"Bearer {allowed_token}"}), allowed_sub, "viewer") == allowed_sub
+
+    with pytest.raises(HTTPException) as exc:
+        require_founder_access(_request({"authorization": f"Bearer {blocked_token}"}), blocked_sub, "viewer")
+    assert exc.value.status_code == 403
+    assert "waitlist" in exc.value.detail.lower()
+    assert exc.value.headers.get("X-Astra-Beta-Gate") == "1"
+
+
+def test_beta_allowlist_empty_allows_everyone(monkeypatch):
+    monkeypatch.setattr(settings, "astra_require_auth", True)
+    monkeypatch.setattr(settings, "astra_trust_auth_headers", True)
+    monkeypatch.setattr(settings, "astra_beta_allowlist", "")
+
+    assert require_founder_access(_request({"x-astra-user-id": "anyone_at_all"}), "anyone_at_all", "viewer") == "anyone_at_all"

@@ -87,8 +87,28 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
   return fetch(input, { ...init, headers: existing });
 }
 
+// Reactive beta-gate state — set when the backend rejects the caller as not
+// on the tester allowlist (X-Astra-Beta-Gate header, not string-matching the
+// message, so this can't collide with an unrelated 403 like insufficient role).
+const BETA_GATE_EVENT = "astra:beta-gate-blocked";
+let _betaGateBlocked = false;
+export function isBetaGateBlocked(): boolean {
+  return _betaGateBlocked;
+}
+export function subscribeBetaGate(callback: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener(BETA_GATE_EVENT, callback);
+  return () => window.removeEventListener(BETA_GATE_EVENT, callback);
+}
+function _markBetaGateBlocked(): void {
+  if (_betaGateBlocked) return;
+  _betaGateBlocked = true;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(BETA_GATE_EVENT));
+}
+
 export async function checkOk(res: Response): Promise<Response> {
   if (res.ok) return res;
+  if (res.status === 403 && res.headers.get("X-Astra-Beta-Gate")) _markBetaGateBlocked();
   throw new Error(await res.text());
 }
 

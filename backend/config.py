@@ -147,6 +147,10 @@ class Settings(BaseSettings):
     # Comma-separated user IDs allowed to access platform-wide admin endpoints.
     # In local dev with auth disabled, admin endpoints remain available.
     astra_platform_admins: str = ""
+    # Comma-separated tester emails allowed to use the app at all, for a
+    # gated beta launch. Empty = allow everyone (matches astra_platform_admins'
+    # unset-is-permissive convention) — set once a real allowlist is needed.
+    astra_beta_allowlist: str = ""
     astra_storage_backend: str = "local"
     astra_alert_webhook_url: str = ""
     astra_alert_min_severity: str = "warning"

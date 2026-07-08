@@ -136,11 +136,8 @@ def test_audit_runtime_settings_does_not_misclassify_non_localhost_staging_as_pr
     assert result["ok"] is True
 
 
-def test_audit_runtime_settings_still_fails_real_production_misconfiguration():
-    """The fix above must not blanket-disable the check — a real production
-    deploy (ASTRA_REQUIRE_AUTH=true, real domain) missing Stripe keys must
-    still fail loudly."""
-    settings = _FakeSettings(
+def _real_production_settings(**overrides) -> _FakeSettings:
+    base = dict(
         backend_url="https://api.astracreates.com",
         frontend_url="https://astracreates.com",
         astra_require_auth="true",
@@ -158,11 +155,43 @@ def test_audit_runtime_settings_still_fails_real_production_misconfiguration():
         wm_db_password="realkey",
         astra_jwt_secret="realjwtsecret",
         astra_trust_auth_headers="false",
-        # stripe_* left blank on purpose
     )
+    base.update(overrides)
+    return _FakeSettings(**base)
+
+
+def test_audit_runtime_settings_still_fails_real_production_misconfiguration():
+    """The fix above must not blanket-disable the check — a real production
+    deploy (ASTRA_REQUIRE_AUTH=true, real domain) missing a core secret
+    (not Stripe) must still fail loudly."""
+    settings = _real_production_settings(astra_creds_key="")
 
     result = audit_runtime_settings(settings)
 
     assert result["mode"] == "production"
     assert result["ok"] is False
-    assert any("STRIPE" in err for err in result["errors"])
+    assert any("ASTRA_CREDS_KEY" in err for err in result["errors"])
+
+
+def test_audit_runtime_settings_allows_production_before_stripe_exists():
+    """Billing isn't a launch prerequisite — a real production deploy with
+    every core secret set but no Stripe configured at all (tester-gated beta,
+    no billing yet) must boot clean."""
+    settings = _real_production_settings()  # stripe_* left blank on purpose
+
+    result = audit_runtime_settings(settings)
+
+    assert result["mode"] == "production"
+    assert result["ok"] is True
+
+
+def test_audit_runtime_settings_catches_half_configured_stripe():
+    """Once Stripe has actually been started (STRIPE_SECRET_KEY set), all 5
+    Stripe keys become required again — a half-configured Stripe setup must
+    still fail instead of silently running with some prices missing."""
+    settings = _real_production_settings(stripe_secret_key="sk_live_x")
+
+    result = audit_runtime_settings(settings)
+
+    assert result["ok"] is False
+    assert any("STRIPE_WEBHOOK_SECRET" in err for err in result["errors"])

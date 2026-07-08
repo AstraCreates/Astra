@@ -34,6 +34,24 @@ REQUIRED_PRODUCTION_ENV: tuple[str, ...] = (
     "WM_DB_PASSWORD",
 )
 
+# Billing isn't a prerequisite for turning on real auth (a tester-gated beta
+# launch has no Stripe yet) — audit_runtime_settings (the boot-gating check)
+# only requires these once Stripe has actually been started (STRIPE_SECRET_KEY
+# set), so it doesn't block launch before billing exists, but still catches a
+# half-configured Stripe setup once it does. audit_env_file / the CLI template
+# tool below are unaffected — they still report against the full list above,
+# since that's just informational for someone setting up a complete deployment.
+STRIPE_ENV: tuple[str, ...] = (
+    "STRIPE_SECRET_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "STRIPE_PRICE_STARTER",
+    "STRIPE_PRICE_TEAM",
+    "STRIPE_PRICE_SCALE",
+)
+_CORE_REQUIRED_PRODUCTION_ENV: tuple[str, ...] = tuple(
+    key for key in REQUIRED_PRODUCTION_ENV if key not in STRIPE_ENV
+)
+
 AUTH_SOURCE_ENV: tuple[str, ...] = (
     "ASTRA_JWT_JWKS_URL",
     "ASTRA_JWT_SECRET",
@@ -185,8 +203,12 @@ def audit_runtime_settings(settings: Any) -> dict[str, Any]:
         key.upper(): getattr(settings, key, "")
         for key in getattr(type(settings), "model_fields", {})
     }
-    required = [_env_status(key, values) for key in REQUIRED_PRODUCTION_ENV]
+    required = [_env_status(key, values) for key in _CORE_REQUIRED_PRODUCTION_ENV]
     missing = [item.key for item in required if not item.configured]
+    stripe_started = bool(str(values.get("STRIPE_SECRET_KEY") or "").strip())
+    if stripe_started:
+        stripe_required = [_env_status(key, values) for key in STRIPE_ENV]
+        missing += [item.key for item in stripe_required if not item.configured]
     placeholders = [key for key, value in values.items() if _looks_placeholder(key, str(value or ""))]
     auth_source_configured = _auth_source_configured(values)
     require_auth = str(values.get("ASTRA_REQUIRE_AUTH", "")).strip().lower() in TRUE_VALUES

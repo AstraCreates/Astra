@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
@@ -32,7 +33,17 @@ class FounderActor:
 
 
 def request_user_id(request: Request) -> str | None:
-    """Extract the authenticated user id from a verified token or trusted dev header."""
+    """Extract the authenticated user id from a verified token or trusted dev
+    header, then enforce the beta allowlist (if configured) before returning
+    it — the single choke point every other auth helper in this module funnels
+    through, so this covers every route without touching individual call sites."""
+    user_id = _resolve_raw_user_id(request)
+    if user_id is not None:
+        _enforce_beta_allowlist(user_id)
+    return user_id
+
+
+def _resolve_raw_user_id(request: Request) -> str | None:
     auth = request.headers.get("authorization", "")
     if auth.lower().startswith("bearer "):
         token = auth.split(" ", 1)[1].strip()
@@ -60,6 +71,36 @@ def request_user_id(request: Request) -> str | None:
             if value:
                 return value.strip()
     return None
+
+
+def normalize_email_to_founder_id(email: str) -> str:
+    """Must match the frontend's normalizeEmailToFounderId (frontend/lib/auth.ts) —
+    that's what actually lands in the JWT's `sub` claim, so the beta allowlist
+    is expressed in plain emails and compared after applying the same transform,
+    with no changes needed to the JWT payload or verification code."""
+    return "google_" + re.sub(r"[^a-z0-9]", "_", email.strip().lower())
+
+
+def _beta_allowlist_founder_ids() -> frozenset[str] | None:
+    """None = no allowlist configured, allow everyone (same unset-is-permissive
+    convention as astra_platform_admins)."""
+    raw = str(_settings().astra_beta_allowlist or "").strip()
+    if not raw:
+        return None
+    return frozenset(normalize_email_to_founder_id(email) for email in raw.split(",") if email.strip())
+
+
+def _enforce_beta_allowlist(user_id: str) -> None:
+    allowed = _beta_allowlist_founder_ids()
+    if allowed is not None and user_id not in allowed:
+        # Distinct header (not string-matching the detail message) so the
+        # frontend can reliably tell "not on the beta list" apart from any
+        # other 403 (insufficient role, wrong workspace, etc).
+        raise HTTPException(
+            status_code=403,
+            detail="You're on the waitlist — we'll email you when your access is ready.",
+            headers={"X-Astra-Beta-Gate": "1"},
+        )
 
 
 def _settings() -> Any:

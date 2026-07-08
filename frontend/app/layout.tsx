@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, DM_Sans, IBM_Plex_Mono, JetBrains_Mono, Pixelify_Sans, Instrument_Sans } from "next/font/google";
 import ApiAuthBridge from "@/components/ApiAuthBridge";
+import BetaGateOverlay from "@/components/BetaGateOverlay";
 import CookieNotice from "@/components/CookieNotice";
 import SessionWrapper from "@/components/SessionWrapper";
 import AppChrome from "@/components/AppChrome";
@@ -27,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body suppressHydrationWarning>
         <SessionWrapper>
           <ApiAuthBridge />
+          <BetaGateOverlay />
           <CompanyProvider>
             <AppChrome>{children}</AppChrome>
           </CompanyProvider>
