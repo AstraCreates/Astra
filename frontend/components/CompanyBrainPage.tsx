@@ -302,8 +302,10 @@ function KnowledgeMap({
   // so the map reflects actual graph topology instead of an arbitrary wedge
   // per community that made cross-community edges look like a random hairball.
   const layout = useMemo(() => {
-    const width = 720;
-    const height = 360;
+    // Scale the world with node count — 80 nodes crammed into a small fixed
+    // canvas looks clustered no matter how good the physics are.
+    const width = Math.max(720, Math.round(160 * Math.sqrt(Math.max(1, visibleNodes.length))));
+    const height = Math.round(width * 0.62);
     type SimNode = { id: string; x: number; y: number; radius: number; color: string };
     const simNodes: SimNode[] = visibleNodes.map((node, i) => {
       const ci = Math.max(0, communities.indexOf(node.community_id || "unassigned"));
@@ -311,27 +313,40 @@ function KnowledgeMap({
       const seedAngle = (i / Math.max(1, visibleNodes.length)) * Math.PI * 2;
       return {
         id: node.id,
-        x: width / 2 + Math.cos(seedAngle) * 60,
-        y: height / 2 + Math.sin(seedAngle) * 60,
+        x: width / 2 + Math.cos(seedAngle) * (width * 0.2),
+        y: height / 2 + Math.sin(seedAngle) * (height * 0.2),
         radius: Math.max(5, Math.min(15, 5 + imp * 1.4)),
         color: communityColor(ci),
       };
     });
     const visibleEdgeIds = new Set(simNodes.map(n => n.id));
+    // Weight-1 co-mentions (two entities happened to share a single doc) are
+    // real edges worth drawing, but letting every last one of them pull on the
+    // physics — on a dense graph that's easily 300+ links among 80 nodes — is
+    // what was crushing everything into one clump. Only meaningfully-repeated
+    // relationships get to influence layout; all real edges still get drawn.
+    const degree = new Map<string, number>();
+    for (const e of edges) {
+      if (!visibleEdgeIds.has(e.source) || !visibleEdgeIds.has(e.target)) continue;
+      degree.set(e.source, (degree.get(e.source) || 0) + 1);
+      degree.set(e.target, (degree.get(e.target) || 0) + 1);
+    }
     const simLinks = edges
-      .filter(e => visibleEdgeIds.has(e.source) && visibleEdgeIds.has(e.target))
-      .map(e => ({ source: e.source, target: e.target, weight: Number(e.weight || 1) }));
+      .filter(e => visibleEdgeIds.has(e.source) && visibleEdgeIds.has(e.target) && Number(e.weight || 1) >= 2)
+      .map(e => ({ source: e.source, target: e.target }));
 
     const simulation = forceSimulation(simNodes as unknown as SimulationNodeDatum[])
       .force("link", forceLink(simLinks as unknown as SimulationLinkDatum<SimulationNodeDatum>[])
         .id((d: any) => d.id)
-        .distance(44)
-        .strength(0.25))
-      .force("charge", forceManyBody().strength(-95))
+        .distance(90))
+        // no fixed .strength() override — d3's default divides by min(degree(source),
+        // degree(target)), so hub nodes with dozens of links aren't dragged into
+        // the same spot by the sheer count of weak connections.
+      .force("charge", forceManyBody().strength((d: any) => -260 - (degree.get(d.id) || 0) * 8))
       .force("center", forceCenter(width / 2, height / 2))
-      .force("collide", forceCollide((d: any) => d.radius + 6))
+      .force("collide", forceCollide((d: any) => d.radius + 14))
       .stop();
-    for (let i = 0; i < 300; i++) simulation.tick();
+    for (let i = 0; i < 400; i++) simulation.tick();
 
     const positions = new Map<string, { x: number; y: number; color: string; radius: number }>();
     for (const n of simNodes) positions.set(n.id, { x: n.x, y: n.y, color: n.color, radius: n.radius });
