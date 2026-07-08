@@ -20,57 +20,45 @@ async def _file_entity_agent_safe(
 ) -> dict:
     """Agent-callable wrapper for entity formation.
 
-    The real file_llc_live requires an interactive WebSocket + Playwright browser
-    session that is not available in agent context.  This wrapper attempts to use
-    the real function (if playwright is installed), and falls back to a pending
-    confirmation ticket so the rest of the workflow can continue unblocked.
+    ALWAYS returns a pending confirmation ticket — never calls the real
+    file_llc_live filer. That function drives a real third-party browser
+    automation (Northwest Registered Agent) that can submit a real filing
+    with a real card and a founder's real SSN; it requires genuine human
+    input at three points (routes.py's /ws/llc-filing WebSocket, where a
+    founder watches the live browser and answers each prompt themselves).
+
+    This wrapper previously tried the real filer directly whenever Playwright
+    happened to be installed, using no-op send_message/wait_input callbacks —
+    meaning an autonomous agent could drive a real filing submission with
+    completely empty founder fields (name, email, SSN), with no human ever
+    seeing the three required prompts. There is no way to safely collect a
+    founder's real personal/payment info through this text-only tool-call
+    interface, so the real filer must only ever run through the supervised
+    WebSocket flow, never from here.
     """
     founders = founders or []
-    try:
-        from playwright.async_api import async_playwright  # noqa: F401 — just check availability
-
-        # playwright is available — invoke the real filer with no-op callbacks
-        messages: list = []
-
-        async def _send(msg: dict) -> None:
-            messages.append(msg)
-
-        async def _wait() -> dict:
-            return {}
-
-        from backend.tools.llc_filing import file_llc_live
-        result = await file_llc_live(
-            founder_id="agent",
-            company_name=company_name,
-            state=state,
-            send_message=_send,
-            wait_input=_wait,
-        )
-        return result
-    except ImportError:
-        # playwright not installed — return a pending ticket so the agent continues
-        ticket = f"PENDING-{uuid.uuid4().hex[:8].upper()}"
-        logger.info(
-            "[legal_entity] playwright not available — returning pending filing ticket %s for %s",
-            ticket, company_name,
-        )
-        return {
-            "status": "pending",
-            "confirmation_number": ticket,
-            "message": (
-                f"{entity_type.upper()} formation for {company_name} in {state} has been queued. "
-                f"Confirmation ticket: {ticket}. "
-                "A human will complete the Northwest Registered Agent form using this reference. "
-                "All other documents (EIN guidance, founder agreement, cap table) are generated below."
-            ),
-            "company_name": company_name,
-            "state": state,
-            "entity_type": entity_type,
-            "founders": founders,
-        }
-    except Exception as e:
-        logger.warning("[legal_entity] file_entity error: %s", e)
-        return {"error": str(e), "company_name": company_name, "state": state}
+    ticket = f"PENDING-{uuid.uuid4().hex[:8].upper()}"
+    logger.info(
+        "[legal_entity] queuing filing ticket %s for %s — real filing only happens via the "
+        "founder-supervised /ws/llc-filing flow, never from the autonomous agent",
+        ticket, company_name,
+    )
+    return {
+        "status": "pending",
+        "confirmation_number": ticket,
+        "message": (
+            f"{entity_type.upper()} formation for {company_name} in {state} has been queued. "
+            f"Confirmation ticket: {ticket}. "
+            "Open the 'File Your LLC' flow to complete the Northwest Registered Agent filing "
+            "yourself — that step needs your real name, email, and SSN, and always shows you "
+            "the live browser so you can verify every field before it submits. "
+            "All other documents (EIN guidance, founder agreement, cap table) are generated below."
+        ),
+        "company_name": company_name,
+        "state": state,
+        "entity_type": entity_type,
+        "founders": founders,
+    }
 
 
 def build_legal_entity_agent(**kwargs) -> Agent:

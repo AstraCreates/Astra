@@ -22,6 +22,14 @@ MUTATING_TOOLS = frozenset({
     "create_stripe_product", "create_stripe_price", "create_stripe_payment_link",
     "create_product_with_payment_link", "cloudflare_setup_vercel_domain",
     "cloudflare_setup_email_dns", "file_llc_live",
+    # Real-money/real-world-effect tools that were confirmed to have no risk
+    # classification at all (infer_mutability's prefix/toolset inference
+    # doesn't cover these names) — printful places a real print-on-demand
+    # order, twilio sends real SMS, square creates real bookings/catalog
+    # items, lemonsqueezy creates live storefront products.
+    "printful_create_order", "twilio_send_sms", "twilio_send_bulk_sms",
+    "square_create_booking", "square_create_service",
+    "ls_create_product", "ls_create_discount",
 })
 
 

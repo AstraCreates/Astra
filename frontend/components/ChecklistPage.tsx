@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useDevUser } from "@/lib/use-dev-user";
 import { useCompany } from "@/lib/company-context";
+import LLCFilingModal from "@/components/LLCFilingModal";
 
 import { CHECKLIST_CATEGORIES, itemOwner, type CLItem, type CLCategory, type CLOwner } from "@/lib/checklist-data";
 import { getCompanyGoal, AGENT_LABELS, type CompanyTask } from "@/lib/api";
@@ -115,8 +116,12 @@ function OwnerBadge({ owner }: { owner: CLOwner }) {
 
 // ── Task row ─────────────────────────────────────────────────────────────────
 
-function TaskRow({ item, state, task }: { item: CLItem; state: RowState; task?: CompanyTask | null }) {
+function TaskRow({ item, state, task, founderId, companyName }: {
+  item: CLItem; state: RowState; task?: CompanyTask | null;
+  founderId?: string; companyName?: string;
+}) {
   const owner = itemOwner(item);
+  const [filingOpen, setFilingOpen] = useState(false);
   const meta = STATE_META[state];
   const settled = state === "done";
   const runId = task?.last_run_id;
@@ -152,6 +157,23 @@ function TaskRow({ item, state, task }: { item: CLItem; state: RowState; task?: 
               View deliverable →
             </a>
           )}
+          {/* Entity formation gets its own direct action here — burying a
+              step this important behind a separate Library tab most founders
+              never open is exactly the gap that left it undiscoverable. */}
+          {item.id === "form_entity" && founderId && (
+            <button
+              type="button"
+              onClick={() => setFilingOpen(true)}
+              style={{
+                fontSize: 10.5, color: "#001AFF", background: "none", border: "none", padding: 0,
+                fontWeight: 500, opacity: 0.85, whiteSpace: "nowrap", cursor: "pointer",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.opacity = "1"; e.currentTarget.style.textDecoration = "underline"; }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = "0.85"; e.currentTarget.style.textDecoration = "none"; }}
+            >
+              File Your LLC →
+            </button>
+          )}
         </div>
         {item.detail && !settled && (
           <p style={{ fontSize: 11.5, color: "var(--fd)", margin: "3px 0 0", lineHeight: 1.5 }}>
@@ -174,6 +196,14 @@ function TaskRow({ item, state, task }: { item: CLItem; state: RowState; task?: 
       }}>
         {meta.label}
       </span>
+      {filingOpen && founderId && (
+        <LLCFilingModal
+          founderId={founderId}
+          companyName={companyName || "My Company LLC"}
+          state="Wyoming"
+          onClose={() => setFilingOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -434,7 +464,9 @@ export default function ChecklistPage() {
                 </p>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  {buckets[tab].map(({ item, state, task }) => <TaskRow key={item.id} item={item} state={state} task={task} />)}
+                  {buckets[tab].map(({ item, state, task }) => (
+                    <TaskRow key={item.id} item={item} state={state} task={task} founderId={founderId} companyName={activeCompany?.name} />
+                  ))}
                 </div>
               )}
             </>

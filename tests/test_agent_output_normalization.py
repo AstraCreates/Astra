@@ -179,3 +179,23 @@ def test_generate_landing_page_html_accepts_written_doctype_html(monkeypatch):
         business_context="Use #112233 and #f5f5f5",
     )
     assert "custom page" in html.lower()
+
+
+def test_legal_entity_surfaces_confirmation_from_real_filer_url():
+    """The real filer (llc_filing.file_llc_live) returns confirmation_url, not
+    confirmation_number — only the safe-stub fallback returns the latter. A
+    genuinely successful real filing must still surface a confirmation."""
+    agent = Agent(name="legal_entity", role="le", tools={})
+    normalized = agent._normalize_done_output({}, [
+        ("file_llc_live", {"status": "submitted", "confirmation_url": "https://nwra.example/order/12345", "entity_type": "LLC"}),
+    ])
+    assert normalized["filing_confirmation"] == "https://nwra.example/order/12345"
+    assert normalized["entity_type"] == "LLC"
+
+
+def test_legal_entity_prefers_confirmation_number_when_present():
+    agent = Agent(name="legal_entity", role="le", tools={})
+    normalized = agent._normalize_done_output({}, [
+        ("file_llc_live", {"status": "pending", "confirmation_number": "PENDING-ABC123"}),
+    ])
+    assert normalized["filing_confirmation"] == "PENDING-ABC123"

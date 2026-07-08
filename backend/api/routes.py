@@ -1219,6 +1219,7 @@ async def rerun_agent(session_id: str, agent_name: str, body: dict, request: Req
     from backend.core.events import publish, reopen_session
     from backend.core.session_store import update_session_status
     from backend.workflow_state import build_session_state, load_session_state
+    from backend.core import cancellation
     import asyncio
 
     founder_id = body.get("founder_id", "")
@@ -1271,8 +1272,11 @@ async def rerun_agent(session_id: str, agent_name: str, body: dict, request: Req
         except Exception as e:
             await publish(session_id, {"type": "agent_error", "agent": agent_name, "task_id": f"rerun_{agent_name}", "error": str(e)})
             await publish(session_id, {"type": "goal_error", "error": str(e), "rerun": agent_name})
+        finally:
+            cancellation.clear(session_id)
 
-    asyncio.create_task(_run())
+    _task = asyncio.create_task(_run())
+    cancellation.register_task(session_id, _task)
     return {"ok": True, "session_id": session_id, "agent": agent_name, "status": "started"}
 
 
@@ -1543,6 +1547,7 @@ async def continue_goal(body: ContinueRequest, request: Request):
     """Run follow-up tasks on an existing company session with full vault context."""
     require_founder_access(request, body.founder_id, min_role="operator")
     from backend.core.session_ids import new_session_id
+    from backend.core import cancellation
     orch = get_orchestrator()
 
     # Detect rerun intent via LLM — no regex
@@ -1580,8 +1585,11 @@ async def continue_goal(body: ContinueRequest, request: Request):
                 await publish(session_id, {"type": "goal_done", "results": {agent_name: result}})
             except Exception as e:
                 await publish(session_id, {"type": "agent_error", "agent": agent_name, "error": str(e)})
+            finally:
+                cancellation.clear(session_id)
 
-        asyncio.create_task(_rerun())
+        _task = asyncio.create_task(_rerun())
+        cancellation.register_task(session_id, _task)
         return {"session_id": session_id, "status": "running", "prior_session_id": body.prior_session_id, "rerun": agent_name}
 
     session_id = new_session_id()
@@ -1597,8 +1605,11 @@ async def continue_goal(body: ContinueRequest, request: Request):
             )
         except Exception as e:
             await publish(session_id, {"type": "goal_error", "error": str(e)})
+        finally:
+            cancellation.clear(session_id)
 
-    asyncio.create_task(_run())
+    _task = asyncio.create_task(_run())
+    cancellation.register_task(session_id, _task)
     return {"session_id": session_id, "status": "running", "prior_session_id": body.prior_session_id}
 
 

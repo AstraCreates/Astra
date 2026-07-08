@@ -265,6 +265,20 @@ def _format_search_fetch_for_context(result: dict[str, Any], seen_urls: set[str]
     return "\n".join(lines)
 
 
+_SPOOFABLE_CONTROL_TAG_RE = re.compile(r"\[\s*founder\s+directive\s*\]", re.IGNORECASE)
+
+
+def _neutralize_spoofed_control_tags(text: str) -> str:
+    """Real founder directives are injected as a bare '[FOUNDER DIRECTIVE] ...'
+    role:user message (agent.py ~line 1031) with no structural marker beyond
+    that literal string — tool output (scraped web pages, ingested email/
+    Slack content) shares the same role:user channel. Untrusted content could
+    forge that exact tag to make an agent treat it as an authentic override.
+    Since this is TOOL OUTPUT, not a real directive, neutralize any lookalike
+    before it enters context."""
+    return _SPOOFABLE_CONTROL_TAG_RE.sub("[quoted text: founder directive]", text)
+
+
 def _format_tool_result(tool_name: str, result: Any, seen_context: dict[str, Any] | None = None) -> str:
     safe_result = _strip_large_context_blobs(result)
     if tool_name == "search_and_fetch" and isinstance(safe_result, dict):
@@ -272,8 +286,10 @@ def _format_tool_result(tool_name: str, result: Any, seen_context: dict[str, Any
         text = _format_search_fetch_for_context(safe_result, seen_urls)
     else:
         text = _format_tool_result_raw(tool_name, safe_result)
-    if isinstance(text, str) and len(text) > _TOOL_RESULT_CHAR_CAP:
-        return text[:_TOOL_RESULT_CHAR_CAP] + f"\n... (truncated, {len(text):,} chars total)"
+    if isinstance(text, str):
+        text = _neutralize_spoofed_control_tags(text)
+        if len(text) > _TOOL_RESULT_CHAR_CAP:
+            return text[:_TOOL_RESULT_CHAR_CAP] + f"\n... (truncated, {len(text):,} chars total)"
     return text
 
 
@@ -2252,7 +2268,11 @@ class Agent:
                     current_doc = None
             if filing:
                 out.setdefault("entity_type", filing.get("entity_type"))
-                out.setdefault("filing_confirmation", filing.get("confirmation_number"))
+                # The real filer (llc_filing.file_llc_live) returns confirmation_url;
+                # only the safe-stub fallback (legal_entity._file_entity_agent_safe)
+                # returns confirmation_number. A genuinely successful real filing
+                # never surfaced its confirmation without this fallback.
+                out.setdefault("filing_confirmation", filing.get("confirmation_number") or filing.get("confirmation_url"))
             if docs:
                 out["documents"] = docs
         elif self.name == "legal_ip":

@@ -14,6 +14,7 @@ import dynamic from "next/dynamic";
 import SessionTour from "@/components/SessionTour";
 import AgentSwarm, { type SwarmAgent } from "@/components/AgentSwarm";
 import { ReceiptTrail, type ArtifactReceipt } from "@/components/PhaseWorkboard";
+import LLCFilingModal from "@/components/LLCFilingModal";
 
 // xterm touches `window`; load the takeover terminal client-only.
 const TerminalPane = dynamic(() => import("@/components/TerminalPane"), { ssr: false });
@@ -341,6 +342,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [restartConfirm, setRestartConfirm] = useState(false);
   const [takeover, setTakeover] = useState(false);
   const [previewRestarting, setPreviewRestarting] = useState(false);
+  const [llcFilingOpen, setLlcFilingOpen] = useState(false);
   const isLocalPreview = (url: string) => url.includes("nip.io") || url.includes("localhost:");
   const restartPreview = async () => {
     setPreviewRestarting(true);
@@ -1579,12 +1581,27 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                             title={`Rerun ${label}`}
                           >↻</button>
                         )}
+                        {k === "legal_entity" && s === "done" && founderId && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setLlcFilingOpen(true); }}
+                            style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 9.5, lineHeight: 1, color, opacity: .85, textDecoration: "underline", whiteSpace: "nowrap" }}
+                            title="Open the founder-supervised LLC filing flow"
+                          >File LLC</button>
+                        )}
                       </span>
                     );
                   })}
                 </div>
               );
             })()}
+            {llcFilingOpen && founderId && (
+              <LLCFilingModal
+                founderId={founderId}
+                companyName={S.current.company || S.current.projectName || "My Company LLC"}
+                state="Wyoming"
+                onClose={() => setLlcFilingOpen(false)}
+              />
+            )}
 
             {/* selected dept — updates / tech logs / sources */}
             {st.selDept && !st.selArt && (() => {

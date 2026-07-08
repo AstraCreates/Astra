@@ -47,11 +47,16 @@ TOOLSET_BY_PREFIX = {
     "vision_browse": "provisioning",
     "run_web_task": "provisioning",
     "file_llc": "provisioning",
+    "printful_create": "commerce_fulfillment",
+    "twilio_send": "outreach_send",
+    "square_create": "commerce_fulfillment",
+    "ls_create": "billing",
 }
 
 EXTERNAL_PREFIXES = (
     "send_", "composio_gmail", "composio_linkedin", "vercel_", "cloudflare_",
     "create_stripe", "create_product_with_payment", "file_llc", "supabase_create",
+    "printful_create", "twilio_send", "square_create", "ls_create",
 )
 ONE_SHOT_PREFIXES = (
     "vercel_", "github_create_repo", "generate_landing_page_html",
@@ -85,20 +90,28 @@ def infer_mutability(name: str) -> str:
 def register_agent_tools(agent: Any) -> dict[str, ToolEntry]:
     entries: dict[str, ToolEntry] = {}
     for name, handler in agent.tools.items():
+        # Always recompute risk classification from the tool NAME, even when an
+        # entry already exists. Agent.__init__ (agent.py:445-452) eagerly
+        # pre-registers every tool the moment the first agent holding it is
+        # constructed, using register_callable's bare defaults
+        # (mutability="read", toolset="legacy", risk_category=None) — that
+        # runs before this function ever sees the tool. Reusing that stale
+        # entry silently defeated SafeRun gating for every tool not hand-
+        # curated in safety/saferun.py's _RISKY_TOOLS: confirmed live on
+        # production that file_llc_live, printful_create_order,
+        # twilio_send_sms and others all came back mutability="read" with no
+        # risk_category despite file_llc_live being in both MUTATING_TOOLS
+        # and matching an EXTERNAL_PREFIXES entry. The handler itself stays
+        # per-agent-local (different specialists legitimately bind different
+        # functions under the same tool name — e.g. legal's raw
+        # file_llc_live vs legal_entity's safe wrapper).
         existing = registry.get(name)
-        if existing is not None:
-            # Specialist wrappers are intentionally local, so preserve them in
-            # the agent while retaining shared metadata from the first entry.
-            entries[name] = ToolEntry(
-                **{**existing.__dict__, "handler": handler, "is_async": inspect.iscoroutinefunction(handler)}
-            )
-            continue
         mutability = infer_mutability(name)
         toolset = infer_toolset(name)
         entry = ToolEntry(
             name=name,
             toolset=toolset,
-            schema=schema_from_callable(name, handler),
+            schema=existing.schema if existing is not None else schema_from_callable(name, handler),
             handler=handler,
             is_async=inspect.iscoroutinefunction(handler),
             description=(inspect.getdoc(handler) or "").splitlines()[0] if inspect.getdoc(handler) else name,
@@ -107,7 +120,7 @@ def register_agent_tools(agent: Any) -> dict[str, ToolEntry]:
             context_fields=infer_context_fields(handler),
             one_shot=name.startswith(ONE_SHOT_PREFIXES),
         )
-        registry.register(entry)
+        registry.register(entry, override=True)
         entries[name] = entry
     return entries
 
