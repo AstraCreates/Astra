@@ -228,10 +228,18 @@ class RunContextPolicy:
             "run_context_pack": pack,
             "current_company_goal": goal_pack,
             "company_brain_context": brain_context_text or base_shared.get("company_brain_context", ""),
-            # Compacted (was raw dep_results) so a big dependency payload can't blow the
-            # prompt — _render_shared_context renders this into every call. No code reads
-            # prior_results programmatically; it's prompt-only.
-            "prior_results": _compact_value(dep_results, 4000),
+            # compact_agent_result (already used for company_brain persistence below)
+            # keeps only the fields a downstream agent actually needs — summary,
+            # key_findings, decisions, next_actions, artifacts_produced, etc — and
+            # drops raw payloads by design. The previous _compact_value(dep_results,
+            # 4000) blindly truncated the whole dict by character count, which could
+            # cut off the useful summary while keeping an earlier raw field intact
+            # depending on dict iteration order. No code reads prior_results
+            # programmatically; it's prompt-only, rendered by _render_shared_context.
+            "prior_results": {
+                dep_name: compact_agent_result(dep_result)
+                for dep_name, dep_result in dep_results.items()
+            },
             "prior_vault_notes": vault_notes,
         }
 

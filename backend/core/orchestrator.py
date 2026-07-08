@@ -2718,10 +2718,17 @@ class Orchestrator:
             brain_coro = asyncio.to_thread(_cb_ctx, founder_id, instruction, 10, company_id=company_id)
             _results = await asyncio.gather(*vault_coros, brain_coro, return_exceptions=True)
             vault_results, brain_result = _results[:-1], _results[-1]
+            # Keep the per-agent text too — _run_task used to re-fetch the exact same
+            # sessions/*/<agent>.md files via a second format_vault_context call
+            # (same agent, same founder, same max_notes=5) just to get this same data
+            # into build_agent_shared's vault_context param. Reuse it instead.
+            self._continuation_vault_by_agent = {
+                name: ctx_text for name, ctx_text in zip(self.specialists, vault_results)
+                if isinstance(ctx_text, str) and ctx_text
+            }
             vault_summary_parts = [
                 f"## {name}\n{ctx_text}"
-                for name, ctx_text in zip(self.specialists, vault_results)
-                if isinstance(ctx_text, str) and ctx_text
+                for name, ctx_text in self._continuation_vault_by_agent.items()
             ]
             shared["company_vault_context"] = "\n\n".join(vault_summary_parts)
             if isinstance(brain_result, str) and brain_result:
@@ -2791,7 +2798,10 @@ class Orchestrator:
             if agent is None:
                 completed[tid] = {"error": f"unknown agent {agent_name}"}
                 return
-            vault_ctx = await asyncio.to_thread(format_vault_context, agent_name, 5, founder_id)
+            # Already fetched in the bulk gather above (same agent, same founder,
+            # same max_notes=5, same sessions/*/<agent>.md files) — reuse it instead
+            # of re-reading the same files from disk a second time.
+            vault_ctx = getattr(self, "_continuation_vault_by_agent", {}).get(agent_name, "")
             # Pin the original mission at the top of every agent's goal so context
             # can't be diluted across child sessions. If agents see only their
             # sub-task they drift; anchoring to root_goal keeps them on path.

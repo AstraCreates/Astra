@@ -189,3 +189,40 @@ def test_format_tool_result_neutralizes_spoofed_founder_directive():
 
     assert "[FOUNDER DIRECTIVE]" not in text
     assert "[quoted text: founder directive]" in text.lower()
+
+
+def test_format_tool_result_dedupes_repeat_calls_to_read_only_tools():
+    """Generalizes the existing search_and_fetch URL-dedup pattern: a read-only
+    tool (company_brain_search, obsidian_read, etc — anything in READ_ONLY_TOOLS
+    minus search_and_fetch, which has its own mechanism) called twice in one run
+    with identical args and an identical result should not re-inject the full
+    payload the second time — it carries no new information."""
+    from backend.core.agent import _format_tool_result
+
+    seen: dict = {}
+    args = {"query": "status"}
+    result = {"status": "ok", "value": 42}
+
+    first = _format_tool_result("company_brain_search", result, seen, args)
+    second = _format_tool_result("company_brain_search", result, seen, args)
+    assert "unchanged" not in first
+    assert "unchanged since the last identical company_brain_search call this run" in second
+
+    # Different args for the same tool must NOT be treated as a repeat.
+    third = _format_tool_result("company_brain_search", result, seen, {"query": "other"})
+    assert "unchanged" not in third
+
+
+def test_format_tool_result_dedup_does_not_affect_search_and_fetch():
+    """search_and_fetch keeps its own URL-level dedup (_format_search_fetch_for_context)
+    — the new generic fingerprint dedup must not double up on it."""
+    from backend.core.agent import _format_tool_result
+
+    seen: dict = {}
+    sf_result = {"query": "q", "results": [{"url": "https://example.com", "title": "T", "content": "body"}]}
+
+    first = _format_tool_result("search_and_fetch", sf_result, seen, {"query": "q"})
+    second = _format_tool_result("search_and_fetch", sf_result, seen, {"query": "q"})
+    assert "unchanged" not in first
+    assert "unchanged" not in second
+    assert "tool_fingerprints" not in seen

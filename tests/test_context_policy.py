@@ -93,3 +93,47 @@ def test_goal_chain_budget_respects_low_caps(tmp_path, monkeypatch):
     }
 
     assert chain_allowed(goal) is False
+
+
+def test_build_agent_shared_compacts_dep_results_per_dependency(tmp_path, monkeypatch):
+    """Real bug: prior_results used to be a blind _compact_value(dep_results, 4000)
+    char-truncation of the WHOLE combined dep dict — could cut off a useful summary
+    while keeping an earlier raw field intact, depending on dict iteration order.
+    Now each dependency is run through compact_agent_result (the same extractor
+    already trusted for company_brain persistence), so summary-shaped fields always
+    survive and raw payloads are always dropped, regardless of size or order."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(tmp_path))
+    founder_id = "founder_dep_results"
+
+    policy = RunContextPolicy(session_id="session_1", founder_id=founder_id, constraints={})
+    dep_results = {
+        "research": {
+            "summary": "Enterprise buyers want SSO and audit logs.",
+            "key_findings": ["SSO is a hard requirement", "Audit logs expected by month 2"],
+            "raw": "x" * 50_000,
+            "sources": [{"url": f"https://example.com/{i}"} for i in range(200)],
+        },
+        "design": {
+            "summary": "Landing page uses a dark hero with a single CTA.",
+            "screenshot": "data:image/png;base64," + ("A" * 20_000),
+        },
+    }
+    shared = policy.build_agent_shared(
+        base_shared={}, agent_name="sales",
+        task={"id": "t1", "instruction": "close a deal"},
+        dep_results=dep_results,
+    )
+
+    prior = shared["prior_results"]
+    assert prior["research"]["summary"] == "Enterprise buyers want SSO and audit logs."
+    assert "SSO is a hard requirement" in prior["research"]["key_findings"]
+    assert "raw" not in prior["research"]
+    assert "sources" not in prior["research"]
+    assert prior["design"]["summary"] == "Landing page uses a dark hero with a single CTA."
+    assert "screenshot" not in prior["design"]
+
+    # The whole thing should be dramatically smaller than the raw input.
+    raw_size = len(json.dumps(dep_results))
+    compact_size = len(json.dumps(prior))
+    assert compact_size < raw_size * 0.05

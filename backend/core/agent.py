@@ -4,6 +4,7 @@ Each agent has: identity, tools, memory, P2P messaging, optional computer use.
 """
 import asyncio
 import difflib
+import hashlib
 import json
 import logging
 import os
@@ -279,13 +280,34 @@ def _neutralize_spoofed_control_tags(text: str) -> str:
     return _SPOOFABLE_CONTROL_TAG_RE.sub("[quoted text: founder directive]", text)
 
 
-def _format_tool_result(tool_name: str, result: Any, seen_context: dict[str, Any] | None = None) -> str:
+# Read-only tools prone to being re-called with identical args within one run
+# (a status re-check, a repeat brain query) — safe to dedupe since a repeat call
+# with the same args and the same result carries no new information the second
+# time. Reuses the existing READ_ONLY_TOOLS curation rather than a new list.
+# search_and_fetch is excluded: it already has its own URL-level dedup below.
+_DEDUP_PRONE_TOOLS = READ_ONLY_TOOLS - {"search_and_fetch"}
+
+
+def _format_tool_result(
+    tool_name: str, result: Any, seen_context: dict[str, Any] | None = None, args: dict | None = None,
+) -> str:
     safe_result = _strip_large_context_blobs(result)
     if tool_name == "search_and_fetch" and isinstance(safe_result, dict):
         seen_urls = seen_context.setdefault("search_urls", set()) if seen_context is not None else set()
         text = _format_search_fetch_for_context(safe_result, seen_urls)
     else:
         text = _format_tool_result_raw(tool_name, safe_result)
+        if seen_context is not None and args is not None and tool_name in _DEDUP_PRONE_TOOLS and isinstance(text, str):
+            try:
+                fp = hashlib.sha1(json.dumps(args, sort_keys=True, default=str).encode()).hexdigest()[:12]
+                content_hash = hashlib.sha1(text.encode()).hexdigest()[:12]
+                fingerprints: dict[str, str] = seen_context.setdefault("tool_fingerprints", {})
+                seen_key = f"{tool_name}:{fp}"
+                if fingerprints.get(seen_key) == content_hash:
+                    return f"[unchanged since the last identical {tool_name} call this run]"
+                fingerprints[seen_key] = content_hash
+            except Exception:
+                pass  # fingerprinting is a pure optimization — never let it block a real result
     if isinstance(text, str):
         text = _neutralize_spoofed_control_tags(text)
         if len(text) > _TOOL_RESULT_CHAR_CAP:
@@ -829,35 +851,30 @@ class Agent:
 
         tool_list = "\n".join(_sig(name, fn) for name, fn in self.tools.items())
         sub_list = "\n".join(f"  - {n}" for n in self.sub_agents)
+        # Dense pipe-delimited format instead of column-aligned lines — the padding
+        # spaces in the old version cost real tokens every turn (this block is
+        # rebuilt into every fresh run's messages[0], never trimmed) with zero
+        # information value to the model. Same commands/params/effects, ~36% fewer
+        # chars.
         computer_section = (
             "\nTo control the browser:\n"
             '{"action": "computer_use", "action_detail": {"action": "<cmd>", ...params}, "reasoning": "..."}\n'
-            "Commands:\n"
-            "  navigate       {url}                          → go to URL\n"
-            "  read_page      {}                             → clean readable content (use after every navigate)\n"
-            "  find_elements  {}                             → list all buttons/inputs/links with selectors\n"
-            "  click          {selector} or {x, y}          → click element\n"
-            "  type           {selector, text}               → fill input field\n"
-            "  clear          {selector}                     → clear input before re-typing\n"
-            "  key            {key}                          → e.g. Enter, Tab, Escape\n"
-            "  scroll         {delta_y}                      → scroll page\n"
-            "  scroll_to      {text} or {selector}           → scroll element into view\n"
-            "  hover          {selector} or {x, y}           → hover (reveals dropdown menus)\n"
-            "  select_option  {selector, value} or {label}   → pick from <select> dropdown\n"
-            "  check          {selector, checked: true/false} → tick/untick checkbox\n"
-            "  get_text       {selector}                     → read element text\n"
-            "  get_attribute  {selector, attribute}          → get HTML attribute (e.g. value, href, data-*)\n"
-            "  extract_table  {}                             → extract table data\n"
-            "  eval_js        {script}                       → run JS and return result (powerful for hidden values)\n"
-            "  wait           {ms}                           → sleep N milliseconds\n"
-            "  wait_for_text  {text, timeout_ms}             → wait until text appears on page\n"
-            "  wait_for_url   {contains, timeout_ms}         → wait until URL contains substring\n"
-            "  screenshot     {}                             → capture screenshot (use when text parsing fails)\n"
-            "  new_tab        {url}                          → open new tab\n"
+            "Commands (cmd{params}→effect):\n"
+            "navigate{url}→go to URL | read_page{}→clean readable content (use after every navigate) | "
+            "find_elements{}→list buttons/inputs/links with selectors | click{selector|x,y}→click | "
+            "type{selector,text}→fill input | clear{selector}→clear before re-typing | "
+            "key{key}→e.g. Enter/Tab/Escape | scroll{delta_y}→scroll page | "
+            "scroll_to{text|selector}→scroll into view | hover{selector|x,y}→hover (reveals dropdowns) | "
+            "select_option{selector,value|label}→pick from select | check{selector,checked}→tick/untick checkbox | "
+            "get_text{selector}→read element text | get_attribute{selector,attribute}→get HTML attr (value/href/data-*) | "
+            "extract_table{}→extract table data | eval_js{script}→run JS, return result (masked values) | "
+            "wait{ms}→sleep ms | wait_for_text{text,timeout_ms}→wait for text | "
+            "wait_for_url{contains,timeout_ms}→wait for URL | screenshot{}→capture (when text parsing fails) | "
+            "new_tab{url}→open new tab\n"
             "After each action: result + current URL + page body text.\n"
             "STANDARD LOOP: navigate → read_page → find_elements → act → read_page to verify.\n"
-            "Use find_elements before clicking — never guess selectors.\n"
-            "Use eval_js to extract values that aren't in visible text (e.g. masked API keys).\n"
+            "Use find_elements before clicking — never guess selectors. "
+            "Use eval_js for values not in visible text (e.g. masked API keys).\n"
         ) if self.use_computer else ""
 
         # Build library context block if canonical files are present
@@ -1209,14 +1226,14 @@ class Agent:
                 read_calls = [call for call in unique if call["tool"] in READ_ONLY_TOOLS]
                 write_calls = [call for call in unique if call["tool"] not in READ_ONLY_TOOLS]
 
-                async def execute(call: dict) -> tuple[str, Any]:
+                async def execute(call: dict) -> tuple[str, dict, Any]:
                     name, args = call["tool"], call["args"]
                     await self._emit(ctx, "agent_action", action="tool", tool=name, args=args, reasoning=reasoning)
                     result = await self._execute_tool(name, args, ctx)
                     await self._emit(ctx, "agent_action_result", tool=name, result=result)
-                    return name, result
+                    return name, args, result
 
-                batch_results: list[tuple[str, Any]] = []
+                batch_results: list[tuple[str, dict, Any]] = []
                 # (tool, json-args) -> result, keyed the same way dedup does above, so the
                 # native branch below can map each ORIGINAL call id back to its executed
                 # result even when two ids shared identical name+args and were deduped to
@@ -1225,13 +1242,13 @@ class Agent:
                 if read_calls:
                     read_results = await asyncio.gather(*(execute(call) for call in read_calls))
                     batch_results.extend(read_results)
-                    for call, (name, result) in zip(read_calls, read_results):
-                        result_by_signature[(name, json.dumps(call["args"], sort_keys=True, default=str))] = result
+                    for name, args, result in read_results:
+                        result_by_signature[(name, json.dumps(args, sort_keys=True, default=str))] = result
                 for call in write_calls:
-                    name, result = await execute(call)
-                    batch_results.append((name, result))
-                    result_by_signature[(name, json.dumps(call["args"], sort_keys=True, default=str))] = result
-                for name, result in batch_results:
+                    name, args, result = await execute(call)
+                    batch_results.append((name, args, result))
+                    result_by_signature[(name, json.dumps(args, sort_keys=True, default=str))] = result
+                for name, args, result in batch_results:
                     _attempted_tools.add(name)
                     if not (isinstance(result, dict) and result.get("error")):
                         _called_tools.add(name)
@@ -1259,7 +1276,7 @@ class Agent:
                         })
                         tool_result_msgs.append({
                             "role": "tool", "tool_call_id": call_id, "name": name,
-                            "content": _format_tool_result(name, result, _tool_context_seen),
+                            "content": _format_tool_result(name, result, _tool_context_seen, args),
                         })
                     messages.append({"role": "assistant", "content": "", "tool_calls": tool_calls_msg})
                     messages.extend(tool_result_msgs)
@@ -1267,8 +1284,8 @@ class Agent:
                     messages.append({
                         "role": "user",
                         "content": "\n\n".join(
-                            f"Tool result ({name}):\n{_format_tool_result(name, result, _tool_context_seen)}"
-                            for name, result in batch_results
+                            f"Tool result ({name}):\n{_format_tool_result(name, result, _tool_context_seen, args)}"
+                            for name, args, result in batch_results
                         ),
                     })
 
@@ -1341,7 +1358,7 @@ class Agent:
                     _tool_fail_counts[tool_name] = 0  # reset on success
                     if tool_name in _ONE_SHOT_TOOLS:
                         _one_shot_done.add(tool_name)
-                    content = f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result, _tool_context_seen)}"
+                    content = f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result, _tool_context_seen, args)}"
                     if i >= MAX_ITERATIONS - 5:
                         content += f"\n\n[Iteration {i}/{MAX_ITERATIONS}] You are near the iteration limit. Wrap up: call obsidian_log then done unless one more tool call is critical."
                     if tool_name in _ONE_SHOT_TOOLS:
@@ -1452,7 +1469,7 @@ class Agent:
                             messages.append({"role": "user", "content": f"TOOL FAILED: {json.dumps(result)}"})
                     else:
                         _tool_fail_counts[tool_name] = 0
-                        messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result, _tool_context_seen)}"})
+                        messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result, _tool_context_seen, args)}"})
                 else:
                     messages.append({"role": "user", "content": f"Unknown tool '{tool_name}'. Use: tool, delegate, computer_use, or done."})
 
@@ -1503,7 +1520,7 @@ class Agent:
                         messages.append({"role": "user", "content": f"TOOL FAILED: {json.dumps(result)}"})
                 else:
                     _tool_fail_counts[tool_name] = 0
-                    messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result, _tool_context_seen)}"})
+                    messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result, _tool_context_seen, args)}"})
 
             else:
                 logger.warning("[%s] iter=%d unknown action=%r parsed_keys=%s raw=%r", self.name, i, action, list(parsed.keys()), raw[:200])
