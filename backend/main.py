@@ -77,6 +77,11 @@ app.include_router(preview_proxy_router)
 
 @app.on_event("startup")
 async def startup_background_jobs():
+    from backend.production_env import audit_runtime_settings
+    runtime_env = audit_runtime_settings(_settings)
+    if not runtime_env.get("ok") and runtime_env.get("mode") == "production":
+        raise RuntimeError(runtime_env.get("summary") or "Production env validation failed.")
+
     # Store main event loop so publish_sync works from threads
     from backend.core.events import set_main_loop
     loop = asyncio.get_running_loop()

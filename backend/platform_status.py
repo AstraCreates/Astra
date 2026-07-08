@@ -201,6 +201,20 @@ def _check_auth_policy() -> dict[str, Any]:
         return {"ok": False, "status": "error", "detail": str(exc)}
 
 
+def _check_production_env() -> dict[str, Any]:
+    try:
+        from backend.config import settings
+        from backend.production_env import audit_runtime_settings
+        result = audit_runtime_settings(settings)
+        return {
+            "ok": bool(result.get("ok")),
+            "status": "ready" if result.get("ok") else "misconfigured",
+            **result,
+        }
+    except Exception as exc:
+        return {"ok": False, "status": "error", "detail": str(exc)}
+
+
 def _check_durable_ledgers() -> dict[str, Any]:
     checks = {
         "workflows": _writable_dir(".astra/workflows"),
@@ -312,6 +326,7 @@ def platform_status() -> dict[str, Any]:
         "redis": _check_redis(),
         "supabase": _check_supabase(),
         "models": _check_models(),
+        "production_env": _check_production_env(),
         "company_brain_scheduler": _check_company_brain_scheduler(),
         "storage": storage_check,
         "stack_templates": stack_template_check,
@@ -321,7 +336,7 @@ def platform_status() -> dict[str, Any]:
         "durable_ledgers": _check_durable_ledgers(),
         "runtime": _runtime_metrics(),
     }
-    required = ["redis", "models", "company_brain_scheduler", "stack_templates", "objective_readiness", "accounts_billing", "auth_policy", "durable_ledgers"]
+    required = ["redis", "models", "production_env", "company_brain_scheduler", "stack_templates", "objective_readiness", "accounts_billing", "auth_policy", "durable_ledgers"]
     if storage_check.get("backend") in {"supabase", "dual"}:
         required.append("storage")
     ready = all(checks[key].get("ok") for key in required)
@@ -343,7 +358,7 @@ def platform_status() -> dict[str, Any]:
 
 def readiness_status() -> dict[str, Any]:
     status = platform_status()
-    readiness_keys = {"redis", "models", "company_brain_scheduler", "stack_templates", "objective_readiness", "accounts_billing", "auth_policy", "durable_ledgers"}
+    readiness_keys = {"redis", "models", "production_env", "company_brain_scheduler", "stack_templates", "objective_readiness", "accounts_billing", "auth_policy", "durable_ledgers"}
     if status["checks"].get("storage", {}).get("backend") in {"supabase", "dual"}:
         readiness_keys.add("storage")
     return {
