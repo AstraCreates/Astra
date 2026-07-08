@@ -150,6 +150,7 @@ const WORKSPACE_SERVICES = [
     createUrl: "https://www.notion.so/profile/integrations",
     createLabel: "notion.so/profile/integrations",
     steps: 2,
+    oauthApp: "notion",
   },
   {
     key: "linear",
@@ -161,6 +162,7 @@ const WORKSPACE_SERVICES = [
     createUrl: "https://linear.app/settings/api",
     createLabel: "linear.app/settings/api",
     steps: 2,
+    oauthApp: "linear",
   },
 ] as const;
 
@@ -186,6 +188,7 @@ const ADDITIONAL_SERVICES = [
     createUrl: "https://app.hubspot.com/private-apps",
     createLabel: "app.hubspot.com/private-apps",
     steps: 3,
+    oauthApp: "hubspot",
   },
   {
     key: "mailchimp",
@@ -197,6 +200,7 @@ const ADDITIONAL_SERVICES = [
     createUrl: "https://admin.mailchimp.com/account/api/",
     createLabel: "mailchimp.com/account/api",
     steps: 2,
+    oauthApp: "mailchimp",
   },
   {
     key: "airtable",
@@ -208,6 +212,7 @@ const ADDITIONAL_SERVICES = [
     createUrl: "https://airtable.com/create/tokens",
     createLabel: "airtable.com/create/tokens",
     steps: 2,
+    oauthApp: "airtable",
   },
   {
     key: "dropbox",
@@ -219,6 +224,7 @@ const ADDITIONAL_SERVICES = [
     createUrl: "https://www.dropbox.com/developers/apps",
     createLabel: "dropbox.com/developers/apps",
     steps: 2,
+    oauthApp: "dropbox",
   },
   {
     key: "figma",
@@ -689,6 +695,8 @@ function ServiceCard({
   const [connecting, setConnecting] = useState(false);
   const popupRef = useRef<Window | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pollRef = useRef<number | null>(null);
+  const oauthApp = "oauthApp" in svc ? svc.oauthApp : undefined;
 
   useEffect(() => {
     if (svc.key !== "github") return;
@@ -726,6 +734,35 @@ function ServiceCard({
     }
   };
 
+  const stopPolling = () => {
+    if (pollRef.current !== null) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  const startOAuthPolling = () => {
+    stopPolling();
+    pollRef.current = window.setInterval(async () => {
+      try {
+        const res = await apiFetch(`${BASE}/setup/composio/connected/${founderId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (oauthApp && data?.apps?.[oauthApp]) {
+          stopPolling();
+          setJustConnected(true);
+          setPopupOpen(false);
+          setShowForm(false);
+          setConnecting(false);
+          popupRef.current?.close();
+          onSaved();
+        }
+      } catch {
+        // Keep polling while the OAuth popup is active.
+      }
+    }, 2000);
+  };
+
   const openPopup = () => {
     const popup = window.open(svc.createUrl, `connect_${svc.key}`, "width=1060,height=720,scrollbars=yes,resizable=yes");
     popupRef.current = popup;
@@ -739,10 +776,50 @@ function ServiceCard({
   useEffect(() => {
     if (!popupOpen) return;
     const interval = setInterval(() => {
-      if (popupRef.current?.closed) { clearInterval(interval); setPopupOpen(false); }
+      if (popupRef.current?.closed) {
+        clearInterval(interval);
+        stopPolling();
+        setPopupOpen(false);
+        setConnecting(false);
+      }
     }, 600);
     return () => clearInterval(interval);
   }, [popupOpen]);
+
+  useEffect(() => () => stopPolling(), []);
+
+  const openOAuthPopup = async () => {
+    if (!oauthApp) return;
+    setConnecting(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`${BASE}/setup/composio/connect/${founderId}?apps=${encodeURIComponent(oauthApp)}`);
+      const data = await res.json();
+      const oauthUrl = data?.oauth_urls?.[oauthApp];
+      if (!res.ok) {
+        setError(data.detail ?? `Error ${res.status}`);
+        setConnecting(false);
+        return;
+      }
+      if (!oauthUrl) {
+        setError(`No OAuth URL returned for ${svc.label}`);
+        setConnecting(false);
+        return;
+      }
+      const popup = window.open(oauthUrl, `connect_${svc.key}`, "width=1060,height=720,scrollbars=yes,resizable=yes");
+      if (!popup) {
+        setError("Popup blocked by browser");
+        setConnecting(false);
+        return;
+      }
+      popupRef.current = popup;
+      setPopupOpen(true);
+      startOAuthPolling();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to reach server");
+      setConnecting(false);
+    }
+  };
 
   async function save() {
     if (!value.trim()) return;
@@ -765,6 +842,7 @@ function ServiceCard({
 
   const isConnected = connected || justConnected;
   const isGitHub = svc.key === "github";
+  const isOAuthApp = !!oauthApp;
 
   return (
     <div style={cardStyle(isConnected, showForm && !isConnected)}>
@@ -775,12 +853,16 @@ function ServiceCard({
             <span style={{ fontSize: 14, fontWeight: 600, color: c.text }}>{svc.label}</span>
             <StatusDot connected={isConnected} />
             {isConnected && <span style={{ fontSize: 11, color: c.green, fontWeight: 500 }}>Connected</span>}
-            {popupOpen && !isConnected && <span style={{ fontSize: 11, color: c.blue, fontWeight: 500 }}>Popup open</span>}
+            {popupOpen && !isConnected && (
+              <span style={{ fontSize: 11, color: c.blue, fontWeight: 500 }}>
+                {isOAuthApp ? "Authorizing…" : "Popup open"}
+              </span>
+            )}
           </div>
           <span style={{ fontSize: 12, color: c.grey }}>{svc.desc}</span>
         </div>
         <button
-          onClick={isGitHub ? connectGitHubOAuth : openPopup}
+          onClick={isGitHub ? connectGitHubOAuth : isOAuthApp ? openOAuthPopup : openPopup}
           disabled={connecting}
           className="m-tap"
           style={{
@@ -801,7 +883,20 @@ function ServiceCard({
         </div>
       )}
 
-      {!isGitHub && showForm && (
+      {isOAuthApp && popupOpen && !isConnected && (
+        <div style={{
+          borderTop: `1px solid ${c.blueBorder}`,
+          padding: "14px 18px", background: c.blueTint,
+          display: "flex", flexDirection: "column", gap: 8,
+        }}>
+          <p style={{ margin: 0, fontSize: 13, color: c.textSecondary, lineHeight: 1.6 }}>
+            Finish the OAuth flow in the popup. Astra will mark this connected automatically as soon as the provider returns.
+          </p>
+          {error && <p style={{ fontSize: 12, color: c.red, margin: 0 }}>{error}</p>}
+        </div>
+      )}
+
+      {!isGitHub && !isOAuthApp && showForm && (
         <div style={{
           borderTop: `1px solid ${c.blueBorder}`,
           padding: "14px 18px", background: c.blueTint,
@@ -1334,15 +1429,15 @@ export default function SetupPage() {
     yelp: !!status?.yelp,
   };
   const workspaceConnected: Partial<Record<(typeof WORKSPACE_SERVICES)[number]["key"], boolean>> = {
-    notion: !!status?.notion,
-    linear: !!status?.linear,
+    notion: !!status?.notion || !!status?.apps?.["notion"],
+    linear: !!status?.linear || !!status?.apps?.["linear"],
   };
   const additionalConnected: Partial<Record<(typeof ADDITIONAL_SERVICES)[number]["key"], boolean>> = {
     resend: !!status?.resend,
-    hubspot: !!status?.hubspot,
-    mailchimp: !!status?.mailchimp,
-    airtable: !!status?.airtable,
-    dropbox: !!status?.dropbox,
+    hubspot: !!status?.hubspot || !!status?.apps?.["hubspot"],
+    mailchimp: !!status?.mailchimp || !!status?.apps?.["mailchimp"],
+    airtable: !!status?.airtable || !!status?.apps?.["airtable"],
+    dropbox: !!status?.dropbox || !!status?.apps?.["dropbox"],
     figma: !!status?.figma,
   };
 
