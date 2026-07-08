@@ -49,15 +49,42 @@ const TOKEN_CONFIG: Record<string, { service: string; credKey: string; createUrl
   linear:           { service: "linear",   credKey: "api_key",          createUrl: "https://linear.app/settings/api",               placeholder: "lin_api_..." },
 };
 
+const DIRECT_OAUTH_ENDPOINTS: Record<string, string> = {
+  github: "/github/oauth-url/{founder_id}",
+  gmail: "/gmail/oauth-url/{founder_id}",
+  google_workspace: "/google-workspace/oauth-url/{founder_id}",
+  linkedin: "/linkedin/oauth-url/{founder_id}",
+};
+
 const COMPOSIO_APPS = new Set([
-  // Only services that still require Composio OAuth (no direct connection yet)
   "google_drive",
   "google_sheets",
+  "google_calendar",
+  "notion",
+  "linear",
+  "slack",
+  "discord",
+  "hubspot",
+  "mailchimp",
+  "airtable",
+  "dropbox",
+  "jira",
+  "trello",
+  "asana",
+  "clickup",
+  "calendly",
+  "zoom",
+  "youtube",
+  "outlook",
+  "twitter",
+  "reddit",
+  "telegram",
 ]);
 
 const COMPOSIO_APP_KEYS: Record<string, string> = {
   google_calendar: "googlecalendar",
   google_sheets: "google_drive",
+  google_drive: "google_drive",
   product_tracker: "linear",
 };
 
@@ -371,7 +398,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
   const [autoPassword, setAutoPassword] = useState("");
   const [autoProvisioning, setAutoProvisioning] = useState(false);
   const [autoSummary, setAutoSummary] = useState<string[]>([]);
-  const composioConnected = !!connected["__composio__"];
+  const composioConnected = true;
 
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
@@ -400,7 +427,6 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
           vercel: prev.vercel || status.vercel,
           sendgrid: prev.sendgrid || status.sendgrid,
           supabase: prev.supabase || status.supabase,
-          __composio__: prev.__composio__,
           ...Object.fromEntries(Object.entries(appStatus).filter(([, value]) => value)),
         }));
       })
@@ -475,20 +501,6 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
     } catch { setErrors(e => ({ ...e, stripe: "Failed to reach server" })); }
   }
 
-  async function saveComposio() {
-    const val = tokenValues["__composio__"]?.trim();
-    if (!val) return;
-    setSaving("__composio__");
-    try {
-      await saveServiceCredential(founderId, "composio", { api_key: val });
-      const urls = await getComposioOAuthUrls(founderId).catch(() => ({} as Record<string, string>));
-      setConnected(prev => ({ ...prev, "__composio__": true }));
-      setComposioOAuthUrls(urls);
-      setExpandedKey(null);
-    } catch (e) { setErrors(prev => ({ ...prev, "__composio__": e instanceof Error ? e.message : "Save failed" })); }
-    finally { setSaving(null); }
-  }
-
   async function saveToken(key: string) {
     const cfg = TOKEN_CONFIG[key];
     const val = tokenValues[key]?.trim();
@@ -502,18 +514,39 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
     finally { setSaving(null); }
   }
 
-  function connectComposioApp(key: string) {
+  async function connectComposioApp(key: string) {
     const appKey = COMPOSIO_APP_KEYS[key] ?? key;
-    const url = composioOAuthUrls[appKey] ?? composioOAuthUrls[key];
-    if (url) { window.open(url, "_blank", "width=860,height=640"); setConnected(prev => ({ ...prev, [key]: true })); }
+    let url = composioOAuthUrls[appKey] ?? composioOAuthUrls[key];
+    if (!url) {
+      try {
+        const urls = await getComposioOAuthUrls(founderId);
+        setComposioOAuthUrls(urls);
+        url = urls[appKey] ?? urls[key];
+      } catch (e) {
+        setErrors(prev => ({ ...prev, [key]: e instanceof Error ? e.message : "Failed to start OAuth" }));
+        return;
+      }
+    }
+    if (url) window.open(url, "_blank", "width=860,height=640");
+  }
+
+  async function connectDirectOAuth(key: string) {
+    const endpoint = DIRECT_OAUTH_ENDPOINTS[key];
+    if (!endpoint) return;
+    try {
+      const res = await apiFetch(`${BASE}${endpoint.replace("{founder_id}", founderId)}`);
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+      else setErrors(prev => ({ ...prev, [key]: "No OAuth URL returned" }));
+    } catch (e) {
+      setErrors(prev => ({ ...prev, [key]: e instanceof Error ? e.message : "Failed to start OAuth" }));
+    }
   }
 
   function toggleExpand(key: string) {
-    if (!TOKEN_CONFIG[key] && key !== "__composio__") return;
-    if (key !== "__composio__" && TOKEN_CONFIG[key]) {
+    if (!TOKEN_CONFIG[key]) return;
+    if (TOKEN_CONFIG[key]) {
       window.open(TOKEN_CONFIG[key].createUrl, `connect_${key}`, "width=1060,height=720,scrollbars=yes,resizable=yes");
-    } else if (key === "__composio__") {
-      window.open("https://app.composio.dev/settings", "composio", "width=1060,height=720,scrollbars=yes");
     }
     setExpandedKey(prev => prev === key ? null : key);
   }
@@ -531,7 +564,6 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
         vercel: prev.vercel || serviceCreated("vercel"),
         sendgrid: prev.sendgrid || serviceCreated("sendgrid"),
         supabase: prev.supabase || serviceCreated("supabase"),
-        __composio__: prev.__composio__ || serviceCreated("composio"),
       }));
       if (result.composio_oauth_urls) setComposioOAuthUrls(result.composio_oauth_urls);
       setAutoSummary([
@@ -554,6 +586,7 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
     const isGH = key === "github";
     const isStripe = key === "stripe";
     const isComp = COMPOSIO_APPS.has(key);
+    const isDirect = !!DIRECT_OAUTH_ENDPOINTS[key];
 
     let borderStyle: string;
     let bgStyle: string;
@@ -597,10 +630,10 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
               <button style={cardBtnStyle} onClick={connectGitHub}>Connect ↗</button>
             ) : isStripe ? (
               <button style={cardBtnStyle} onClick={connectStripe}>Connect ↗</button>
+            ) : isDirect ? (
+              <button style={cardBtnStyle} onClick={() => connectDirectOAuth(key)}>Connect ↗</button>
             ) : isComp && composioConnected ? (
-              <button style={cardBtnStyle} onClick={() => connectComposioApp(key)}>Connect ↗</button>
-            ) : isComp ? (
-              <span style={{ fontSize: 11, color: T.textMuted, flexShrink: 0 }}>Set up Composio first</span>
+              <button style={cardBtnStyle} onClick={() => void connectComposioApp(key)}>Connect ↗</button>
             ) : cfg ? (
               <button style={isExpanded ? expandedBtnStyle : cardBtnStyle} onClick={() => toggleExpand(key)}>
                 {isExpanded ? "Popup open ↗" : "Connect ↗"}
@@ -644,35 +677,6 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
       </div>
     );
   }
-
-  const composioCard = (
-    <div style={{
-      borderRadius: 14,
-      border: composioConnected ? `1.5px solid ${T.greenBorder}` : expandedKey === "__composio__" ? `1.5px solid ${T.blueMid}` : `1px solid ${T.border}`,
-      background: composioConnected ? T.greenTint : expandedKey === "__composio__" ? T.blueTint : T.white,
-      transition: "border 0.2s, background 0.2s",
-      boxShadow: T.shadow,
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px" }}>
-        <span style={{ fontSize: 16, lineHeight: 1, flexShrink: 0, color: T.blue }}>◈</span>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ fontSize: 13, fontWeight: 500, color: T.textPrimary, fontFamily: "var(--font-geist-sans), 'Geist', sans-serif" }}>Composio</span>
-            {composioConnected && <span style={{ fontSize: 10, color: T.green, fontWeight: 600 }}>Connected</span>}
-          </div>
-          <span style={{ fontSize: 11, color: T.textMuted }}>Enables Gmail, LinkedIn, Notion, Calendar</span>
-        </div>
-        {!composioConnected && (
-          <button
-            style={expandedKey === "__composio__" ? expandedBtnStyle : cardBtnStyle}
-            onClick={() => toggleExpand("__composio__")}
-          >
-            {expandedKey === "__composio__" ? "Popup open ↗" : "Connect ↗"}
-          </button>
-        )}
-      </div>
-    </div>
-  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -734,12 +738,6 @@ function StepConnectIntegrations({ stackName, readiness, founderId, userEmail, o
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {hasComposioApp && (
-          <>
-            <span style={SECTION_LABEL}>Communication hub</span>
-            {composioCard}
-          </>
-        )}
         {required.length > 0 && (
           <>
             <span style={{ ...SECTION_LABEL, marginTop: 12 }}>Required for {stackName}</span>
