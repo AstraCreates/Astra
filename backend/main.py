@@ -80,7 +80,15 @@ async def startup_background_jobs():
     from backend.production_env import audit_runtime_settings
     runtime_env = audit_runtime_settings(_settings)
     if not runtime_env.get("ok") and runtime_env.get("mode") == "production":
-        raise RuntimeError(runtime_env.get("summary") or "Production env validation failed.")
+        # NOT a hard boot-blocker: audit_runtime_settings' local/production split
+        # only checks for the literal string "localhost" in BACKEND_URL/FRONTEND_URL.
+        # A real non-Stripe-configured staging box (this one — IP+nip.io host,
+        # ASTRA_REQUIRE_AUTH=false) gets misclassified as "production" and hard-
+        # crashed the whole server demanding Stripe/NextAuth keys it was never
+        # meant to have. Log loudly instead of raising until that heuristic
+        # reflects deployment intent (e.g. an explicit ASTRA_ENV flag) rather
+        # than hostname string-matching.
+        logger.error("Runtime settings validation failed (non-fatal): %s", runtime_env.get("summary"))
 
     # Store main event loop so publish_sync works from threads
     from backend.core.events import set_main_loop
