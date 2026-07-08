@@ -213,10 +213,14 @@ def obsidian_log(
                 # again at this layer just destroys agent output for no reason before
                 # it ever gets there.
                 body += "\n\n" + json.dumps(output_dict, indent=2)
+            # A title of "sales — 2026-07-07 22:44" tells a reader nothing about
+            # WHAT was logged — every record from one agent looks identical except
+            # for the timestamp. Use the actual summary when there is one.
+            record_title = f"{agent}: {summary.strip()[:70]}" if summary and summary.strip() else f"{agent} — {date} {time_str}"
             add_company_brain_record(
                 founder_id,
                 source=f"agent:{agent}",
-                title=f"{agent} — {date} {time_str}",
+                title=record_title,
                 content=body,
                 kind="agent_output",
                 metadata={"session_id": session_id, "agent": agent},

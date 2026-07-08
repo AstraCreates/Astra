@@ -166,16 +166,42 @@ def _doc_hash(record: dict[str, Any]) -> str:
 
 
 def _chunk_text(text: str, size: int = 1_200, overlap: int = 160) -> list[str]:
-    clean = re.sub(r"\s+", " ", text or "").strip()
+    """Split into overlapping chunks on LINE boundaries, never mid-line.
+
+    Agent-output records store a pretty-printed JSON blob as content (one key
+    per line). The previous approach collapsed ALL whitespace — including
+    newlines — to single spaces before slicing by raw character count, which
+    destroyed that line structure and then cut straight through the middle of
+    JSON string values, producing unreadable fragments as both human-facing
+    evidence and agent context (e.g. a chunk starting mid-string: 't": "Closing
+    the loop...'). Preserving line breaks keeps every chunk boundary clean.
+    """
+    clean = re.sub(r"[ \t]+", " ", text or "").strip()
     if not clean:
         return []
+    lines = [ln.strip() for ln in clean.split("\n") if ln.strip()]
+    if not lines:
+        return []
     chunks: list[str] = []
-    start = 0
-    while start < len(clean):
-        chunks.append(clean[start:start + size])
-        if start + size >= len(clean):
-            break
-        start += max(1, size - overlap)
+    current: list[str] = []
+    current_len = 0
+    for line in lines:
+        line_len = len(line) + 1
+        if current and current_len + line_len > size:
+            chunks.append("\n".join(current))
+            overlap_lines: list[str] = []
+            overlap_len = 0
+            for prior in reversed(current):
+                overlap_len += len(prior) + 1
+                overlap_lines.insert(0, prior)
+                if overlap_len >= overlap:
+                    break
+            current = overlap_lines
+            current_len = sum(len(l) + 1 for l in current)
+        current.append(line)
+        current_len += line_len
+    if current:
+        chunks.append("\n".join(current))
     return chunks
 
 

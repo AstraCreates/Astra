@@ -15,8 +15,8 @@ from backend.tools.company_brain import (
     sync_company_brain,
 )
 from backend.tools.company_brain_connectors import import_company_brain_sources
-from backend.tools.graph_rag_ingest import _is_value_fragment, _is_telemetry_field, _is_meaningful_entity, run_graph_rag_sync
-from backend.tools.graph_rag_v2 import export_graph_visualization
+from backend.tools.graph_rag_ingest import _is_value_fragment, _is_telemetry_field, _is_meaningful_entity, _chunk_text, run_graph_rag_sync
+from backend.tools.graph_rag_v2 import export_graph_visualization, graph_rag_search
 
 
 def test_company_brain_sync_add_and_search(tmp_path, monkeypatch):
@@ -1134,3 +1134,67 @@ def test_company_brain_ask_reports_connector_coverage_against_stack(tmp_path, mo
     assert "1/2 required connectors" in asked["answer"]
     assert any("GitHub: ready" in line for line in asked["evidence"])
     assert any("Vercel: missing_required" in line for line in asked["evidence"])
+
+
+def test_chunk_text_never_splits_mid_line():
+    import json as _json
+
+    blob = "Summary line.\n\n" + _json.dumps(
+        {"email": {"subject": "Closing the loop", "body": "Hi David,\n\nBest,\nTeam"}},
+        indent=2,
+    )
+    chunks = _chunk_text(blob, size=80, overlap=20)
+    assert len(chunks) > 1
+    # every chunk must be made of whole lines from the source — never a fragment
+    # that starts mid-string (the real garbled-evidence bug: 't": "Closing...')
+    source_lines = {ln.strip() for ln in blob.split("\n") if ln.strip()}
+    for chunk in chunks:
+        for line in chunk.split("\n"):
+            assert line in source_lines
+
+
+def test_graph_rag_relationships_carry_real_names_not_raw_ids(tmp_path, monkeypatch):
+    from backend.tools import graph_rag_ingest
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(graph_rag_ingest, "_llm_extract_entities", lambda title, combined, limit: [])
+    founder_id = "founder_relationship_names"
+
+    add_company_brain_record(
+        founder_id=founder_id,
+        source="manual",
+        title="Founding story",
+        content="Jane Doe founded Acme Corp in 2020.",
+        canonical=True,
+        stale_risk="low",
+    )
+    run_graph_rag_sync(founder_id)
+
+    result = graph_rag_search(founder_id, "Acme Corp", limit=5)
+    assert result["ok"] is True
+    assert result["relationships"]
+    for rel in result["relationships"]:
+        assert rel.get("source_name")
+        assert rel.get("target_name")
+        assert not rel["source_name"].startswith("node_")
+    assert "node_" not in result["formatted"]
+
+
+def test_obsidian_log_uses_summary_for_brain_record_title(tmp_path, monkeypatch):
+    from backend.tools import obsidian_logger
+
+    monkeypatch.chdir(tmp_path)
+    captured = {}
+
+    def fake_add_record(founder_id, source, title, content, **kwargs):
+        captured["title"] = title
+        return {"ok": True, "id": "rec1"}
+
+    monkeypatch.setattr("backend.tools.company_brain.add_company_brain_record", fake_add_record)
+    obsidian_logger.obsidian_log(
+        agent="sales",
+        session_id="s1",
+        summary="Closed the loop with David — no further follow-up needed",
+        founder_id="f1",
+    )
+    assert captured["title"] == "sales: Closed the loop with David — no further follow-up needed"

@@ -183,13 +183,18 @@ def graph_rag_search(founder_id: str, query: str, limit: int = 8) -> dict[str, A
             edges: list[sqlite3.Row] = []
             if seed_ids:
                 placeholders = ",".join("?" for _ in seed_ids)
+                # Join in real entity names — an LLM reading "node_7f2cf3885e82d2d9
+                # co_mentions node_bf41904a09e298ff" has no idea what that means.
                 edges = conn.execute(
                     f"""
-                    SELECT id, source, target, relation, weight
-                    FROM graph_edges
-                    WHERE founder_id = ?
-                      AND (source IN ({placeholders}) OR target IN ({placeholders}))
-                    ORDER BY weight DESC
+                    SELECT e.id, e.source, e.target, e.relation, e.weight,
+                           sn.name AS source_name, tn.name AS target_name
+                    FROM graph_edges e
+                    LEFT JOIN graph_nodes sn ON sn.id = e.source AND sn.founder_id = e.founder_id
+                    LEFT JOIN graph_nodes tn ON tn.id = e.target AND tn.founder_id = e.founder_id
+                    WHERE e.founder_id = ?
+                      AND (e.source IN ({placeholders}) OR e.target IN ({placeholders}))
+                    ORDER BY e.weight DESC
                     LIMIT 24
                     """,
                     (founder_id, *seed_ids, *seed_ids),
@@ -224,7 +229,9 @@ def graph_rag_search(founder_id: str, query: str, limit: int = 8) -> dict[str, A
         desc = node["description"] or node["type"]
         lines.append(f"- Entity: {node['name']} ({desc[:180]})")
     for edge in edges[:8]:
-        lines.append(f"- Relationship: {edge['source']} {edge['relation']} {edge['target']}")
+        src_label = edge["source_name"] or edge["source"]
+        tgt_label = edge["target_name"] or edge["target"]
+        lines.append(f"- Relationship: {src_label} {edge['relation']} {tgt_label}")
     for community in communities:
         lines.append(f"- Community: {community['summary'][:360]}")
     return {
