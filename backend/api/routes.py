@@ -1218,7 +1218,7 @@ async def rerun_agent(session_id: str, agent_name: str, body: dict, request: Req
     from backend.core.factory import get_orchestrator
     from backend.core.events import publish, reopen_session
     from backend.core.session_store import update_session_status
-    from backend.workflow_state import load_session_state
+    from backend.workflow_state import build_session_state, load_session_state
     import asyncio
 
     founder_id = body.get("founder_id", "")
