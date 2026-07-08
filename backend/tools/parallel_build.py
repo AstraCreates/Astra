@@ -17,9 +17,11 @@ import logging
 import os
 import shutil
 import subprocess
+import uuid
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+_MAX_PARALLEL_MODULES = 6
 
 
 def _phase(session_id: str, agent: str, text: str, **extra) -> None:
@@ -70,6 +72,51 @@ def _merge_owned(main_local: str, worker_dir: str, owns: str) -> int:
     return sum(1 for _ in dst.rglob("*") if _.is_file())
 
 
+def _normalize_owns(raw: str) -> str:
+    owns = str(raw or "").strip().strip("/")
+    if not owns or owns in {".", ".."}:
+        raise ValueError("owns must be a real repo subdirectory")
+    path = Path(owns)
+    if path.is_absolute() or ".." in path.parts:
+        raise ValueError("owns must stay within the repo")
+    return path.as_posix()
+
+
+def _validate_modules(modules: list[dict]) -> tuple[list[dict], list[str]]:
+    valid: list[dict] = []
+    errors: list[str] = []
+    seen_names: set[str] = set()
+    for idx, raw in enumerate(modules or []):
+        if not isinstance(raw, dict):
+            errors.append(f"module[{idx}] must be an object")
+            continue
+        name = str(raw.get("name") or f"module_{idx + 1}").strip()
+        goal = str(raw.get("goal") or "").strip()
+        try:
+            owns = _normalize_owns(str(raw.get("owns") or ""))
+        except Exception as exc:
+            errors.append(f"{name}: {exc}")
+            continue
+        if not goal:
+            errors.append(f"{name}: goal is required")
+            continue
+        lname = name.lower()
+        if lname in seen_names:
+            errors.append(f"{name}: duplicate module name")
+            continue
+        seen_names.add(lname)
+        valid.append({"name": name[:80], "goal": goal, "owns": owns})
+    for i, left in enumerate(valid):
+        left_prefix = f"{left['owns'].rstrip('/')}/"
+        for right in valid[i + 1:]:
+            right_prefix = f"{right['owns'].rstrip('/')}/"
+            if left["owns"] == right["owns"] or left_prefix.startswith(right_prefix) or right_prefix.startswith(left_prefix):
+                errors.append(
+                    f"overlapping ownership: {left['name']} ({left['owns']}) conflicts with {right['name']} ({right['owns']})"
+                )
+    return valid, errors
+
+
 async def spawn_parallel_coders(
     repo_url: str,
     modules: list[dict],
@@ -99,9 +146,13 @@ async def spawn_parallel_coders(
     light_worker_model = worker_model or getattr(settings, "technical_subagent_model", "") or getattr(settings, "or_light_model", "")
     medium_merge_model = merge_model or _coder_model_for_agent(agent)
 
-    mods = [m for m in (modules or []) if isinstance(m, dict) and m.get("goal") and m.get("owns")]
+    mods, validation_errors = _validate_modules(list(modules or []))
+    if validation_errors:
+        return {"ok": False, "error": "invalid modules", "details": validation_errors[:10]}
     if len(mods) < 2:
         return {"ok": False, "error": "spawn_parallel_coders needs >=2 modules with {name, goal, owns}; use run_mvp_loop for a single build"}
+    if len(mods) > _MAX_PARALLEL_MODULES:
+        return {"ok": False, "error": f"spawn_parallel_coders supports at most {_MAX_PARALLEL_MODULES} modules per run"}
 
     main_local, is_github = _get_workspace(repo_url, session_id)
     if is_github:
@@ -118,8 +169,9 @@ async def spawn_parallel_coders(
     # race on the same git index / working tree.
     is_git_repo = (Path(main_local) / ".git").exists()
     worker_dirs: list[str] = []
+    worker_nonce = uuid.uuid4().hex[:8]
     for i, m in enumerate(mods):
-        wd = f"{main_local}_coder_{i}"
+        wd = f"{main_local}_coder_{worker_nonce}_{i}"
         shutil.rmtree(wd, ignore_errors=True)
         try:
             if is_git_repo:
@@ -170,6 +222,18 @@ async def spawn_parallel_coders(
             built.append(r)
         else:
             logger.warning("parallel coder failed: %s", r)
+    if not built:
+        _phase(session_id, agent, "Parallel build aborted — all worker coders failed before merge")
+        for wd in worker_dirs:
+            if wd:
+                shutil.rmtree(wd, ignore_errors=True)
+        return {
+            "ok": False,
+            "error": "all parallel worker coders failed",
+            "modules_built": [],
+            "modules_failed": [m["name"] for m in mods],
+            "repo_url": repo_url,
+        }
 
     merged_files = 0
     passed = None

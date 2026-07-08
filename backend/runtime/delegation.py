@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import threading
 import time
 import uuid
@@ -24,6 +25,23 @@ BLOCKED_TOOLS = frozenset({
 _active: dict[str, dict[str, Any]] = {}
 _lock = threading.Lock()
 _semaphores: dict[str, asyncio.Semaphore] = {}
+_MAX_SUBAGENTS_PER_SESSION = 3
+_MAX_QUEUED_SUBAGENTS_PER_PARENT = 2
+_MAX_TASK_CHARS = 4000
+
+
+def _normalize_text(value: str) -> str:
+    return " ".join((value or "").split()).strip()
+
+
+def _delegation_fingerprint(parent_name: str, parent_task_id: str, role: str, task: str) -> str:
+    normalized = f"{parent_name}|{parent_task_id}|{_normalize_text(role).lower()}|{_normalize_text(task).lower()}"
+    return hashlib.sha1(normalized.encode("utf-8")).hexdigest()
+
+
+def _snapshot_session_records(session_id: str) -> list[dict[str, Any]]:
+    with _lock:
+        return [record.copy() for record in _active.values() if record.get("session_id") == session_id]
 
 
 def list_active_subagents(session_id: str | None = None) -> list[dict[str, Any]]:
@@ -73,6 +91,14 @@ async def run_delegated_task(
 ) -> dict[str, Any]:
     from backend.core.events import publish
 
+    role = _normalize_text(role)
+    task = (task or "").strip()
+    if not role:
+        return {"error": "Delegated subagent role is required"}
+    if not task:
+        return {"error": "Delegated subagent task is required"}
+    if len(task) > _MAX_TASK_CHARS:
+        task = task[:_MAX_TASK_CHARS]
     if ctx.delegation_depth >= 1:
         return {"error": "Delegation depth limit reached", "restricted_action": "delegate_task"}
     requested_sets = [name for name in (toolsets or []) if name not in BLOCKED_TOOLSETS]
@@ -85,6 +111,59 @@ async def run_delegated_task(
         name: entry for name, entry in registry.snapshot().items()
         if name in BLOCKED_TOOLS or entry.mutability == "external"
     }
+
+    fingerprint = _delegation_fingerprint(parent.name, ctx.task_id, role, task)
+    session_records = _snapshot_session_records(ctx.session_id)
+    session_active = len(session_records)
+    parent_active = [
+        record for record in session_records
+        if record.get("parent_agent") == parent.name and record.get("parent_task_id") == ctx.task_id
+    ]
+    duplicate = next((record for record in parent_active if record.get("fingerprint") == fingerprint), None)
+    if duplicate:
+        await publish(ctx.session_id, {
+            "type": "subagent_rejected",
+            "reason": "duplicate",
+            "parent_agent": parent.name,
+            "parent_task_id": ctx.task_id,
+            "existing_subagent_id": duplicate.get("subagent_id"),
+            "role": role,
+        })
+        return {
+            "error": "Duplicate delegated task already active",
+            "reason": "duplicate",
+            "existing_subagent_id": duplicate.get("subagent_id"),
+        }
+    if session_active >= _MAX_SUBAGENTS_PER_SESSION:
+        await publish(ctx.session_id, {
+            "type": "subagent_rejected",
+            "reason": "session_limit",
+            "parent_agent": parent.name,
+            "parent_task_id": ctx.task_id,
+            "limit": _MAX_SUBAGENTS_PER_SESSION,
+            "active": session_active,
+            "role": role,
+        })
+        return {
+            "error": f"Subagent session limit reached ({_MAX_SUBAGENTS_PER_SESSION})",
+            "reason": "session_limit",
+            "active": session_active,
+        }
+    if len(parent_active) >= _MAX_QUEUED_SUBAGENTS_PER_PARENT:
+        await publish(ctx.session_id, {
+            "type": "subagent_rejected",
+            "reason": "parent_limit",
+            "parent_agent": parent.name,
+            "parent_task_id": ctx.task_id,
+            "limit": _MAX_QUEUED_SUBAGENTS_PER_PARENT,
+            "active": len(parent_active),
+            "role": role,
+        })
+        return {
+            "error": f"Parent subagent limit reached ({_MAX_QUEUED_SUBAGENTS_PER_PARENT})",
+            "reason": "parent_limit",
+            "active": len(parent_active),
+        }
 
     def request_action(tool_name: str):
         def handler(**args):
@@ -122,6 +201,7 @@ async def run_delegated_task(
         "parent_task_id": ctx.task_id,
         "role": role,
         "task": task[:500],
+        "fingerprint": fingerprint,
         "status": "spawned",
         "started_at": time.time(),
         "agent": child,
@@ -129,7 +209,7 @@ async def run_delegated_task(
     with _lock:
         _active[subagent_id] = record
     await publish(ctx.session_id, {"type": "subagent_spawned", **{k: v for k, v in record.items() if k != "agent"}})
-    semaphore = _semaphores.setdefault(ctx.session_id, asyncio.Semaphore(3))
+    semaphore = _semaphores.setdefault(ctx.session_id, asyncio.Semaphore(_MAX_SUBAGENTS_PER_SESSION))
     try:
         async with semaphore:
             record["task_handle"] = asyncio.current_task()
@@ -179,3 +259,5 @@ async def run_delegated_task(
     finally:
         with _lock:
             _active.pop(subagent_id, None)
+            if not any(record.get("session_id") == ctx.session_id for record in _active.values()):
+                _semaphores.pop(ctx.session_id, None)

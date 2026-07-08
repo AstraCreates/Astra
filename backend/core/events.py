@@ -32,7 +32,7 @@ _RUNTIME_EVENT_TYPES = {
     "tool_guardrail_warning", "tool_guardrail_blocked", "tool_unavailable",
     "context_compression_started", "context_compression_completed",
     "context_compression_failed", "subagent_spawned", "subagent_started",
-    "subagent_progress", "subagent_action_requested", "subagent_completed",
+    "subagent_progress", "subagent_action_requested", "subagent_rejected", "subagent_completed",
     "subagent_failed", "subagent_interrupted",
     "web_task_started", "web_task_state", "web_task_needs_user",
     "web_task_resumed", "web_task_completed", "web_task_failed",
