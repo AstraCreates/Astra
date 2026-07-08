@@ -231,12 +231,7 @@ async def run_delegated_task(
                 parent_task_id=ctx.task_id,
             )
             result = await child.run(child_ctx)
-            action_results = []
-            for request in _find_restricted_requests(result):
-                action_result = await parent._execute_tool(
-                    str(request["tool"]), dict(request.get("args") or {}), ctx,
-                )
-                action_results.append({"tool": request["tool"], "result": action_result})
+            action_requests = _find_restricted_requests(result)
             record["status"] = "completed"
             await publish(ctx.session_id, {
                 "type": "subagent_completed", "subagent_id": subagent_id,
@@ -246,7 +241,8 @@ async def run_delegated_task(
                 "subagent_id": subagent_id,
                 "role": role,
                 "result": result,
-                "parent_action_results": action_results,
+                "restricted_action_requests": action_requests,
+                "parent_action_results": [],
             }
     except asyncio.CancelledError:
         record["status"] = "interrupted"

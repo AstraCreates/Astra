@@ -29,7 +29,7 @@ _DEPARTMENT_AGENT: dict[str, str] = {
     "research":  "research",
     "marketing": "marketing_content",
     "sales":     "sales_pipeline",
-    "technical": "technical_scaffold",
+    "technical": "technical",
     "legal":     "legal_docs",
     "ops":       "ops",
     "finance":   "finance_model",
@@ -125,9 +125,11 @@ def _reconcile_tasks(mission: dict, result: Any, session_id: str) -> list[dict[s
                 by_id[task_id]["last_run_id"] = session_id
                 by_id[task_id]["notes"] = (by_id[task_id].get("notes", "") + f"\nAgent finished in run {session_id}: {summary}").strip()
     elif open_ids:
+        # Fail closed: if the agent didn't explicitly identify which task(s) it
+        # completed, do not guess and mark the first open item done. Keep the
+        # task open and just attach the run summary for human/operator review.
         first = open_ids[0]
-        by_id[first]["status"] = _done_status
-        by_id[first]["notes"] = (by_id[first].get("notes", "") + f"\nAgent finished in run {session_id}: {summary}").strip()
+        by_id[first]["notes"] = (by_id[first].get("notes", "") + f"\nAgent run {session_id} reported progress but no explicit completed_tasks were returned: {summary}").strip()
         by_id[first]["last_run_id"] = session_id
 
     if isinstance(blocked_map, dict):
