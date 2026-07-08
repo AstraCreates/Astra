@@ -1900,15 +1900,23 @@ class Agent:
                 logger.warning("[%s] SafeRun approval wait failed for %s: %s", self.name, tool_name, e)
                 return {"error": f"SafeRun approval check failed for {tool_name}: {e}"}
         # Inject required context fields that models sometimes omit
-        # Unwrap common extra wrapper keys models accidentally include
+        # Unwrap common extra wrapper keys models accidentally include — some
+        # models nest multiple levels deep, e.g.
+        # {"args": {"arguments": {"args": {...real fields...}}}}, so this must
+        # loop (not just unwrap once) and include "args" itself as a wrapper
+        # name, since after unwrapping "arguments" once the leftover single
+        # key is often literally "args" again.
         import inspect as _inspect
         try:
             _sig_params = set(_inspect.signature(fn).parameters.keys())
-            # If args has a single wrapper key whose value is a dict with valid params, unwrap it
-            for _wrap_key in ("arguments", "tool_args", "parameters", "input", "kwargs"):
-                if list(args.keys()) == [_wrap_key] and isinstance(args.get(_wrap_key), dict):
-                    args = args[_wrap_key]
-                    break
+            _wrap_keys = {"args", "arguments", "tool_args", "parameters", "input", "kwargs"}
+            for _ in range(5):
+                if isinstance(args, dict) and len(args) == 1:
+                    ((_only_key, _only_val),) = args.items()
+                    if _only_key in _wrap_keys and isinstance(_only_val, dict):
+                        args = _only_val
+                        continue
+                break
         except Exception:
             _sig_params = set()
         # Inject run context into ANY tool that declares these params, so the model

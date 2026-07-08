@@ -144,3 +144,32 @@ async def test_agent_run_prose_tool_batch_unchanged(mocker):
     assert not [m for m in captured_messages if m.get("role") == "tool"]
     user_blobs = [m for m in captured_messages if m.get("role") == "user" and "Tool result (" in str(m.get("content", ""))]
     assert len(user_blobs) == 1
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_unwraps_multi_level_nested_args(mocker):
+    """Real production bug: a model called company_brain_add_record with
+    args triple-wrapped as {"args": {"arguments": {"args": {...real fields...}}}}.
+    The old single-pass unwrap (missing "args" itself as a wrapper key, and
+    only unwrapping once) left a leftover {"args": {...}} wrapper that then
+    got silently stripped by the unknown-key filter, calling the tool with
+    none of its real fields — a TypeError: missing required positional args."""
+    received = {}
+
+    def fake_add_record(founder_id, source, title, content):
+        received.update(founder_id=founder_id, source=source, title=title, content=content)
+        return {"ok": True}
+
+    agent = Agent(name="design", role="design", tools={"company_brain_add_record": fake_add_record})
+    mocker.patch("backend.core.events.publish", new=AsyncMock())
+
+    nested_args = {"arguments": {"args": {"source": "designer_research", "title": "GTM strategy", "content": "positioning text"}}}
+    result = await agent._execute_tool("company_brain_add_record", nested_args, _ctx())
+
+    assert result == {"ok": True}
+    assert received == {
+        "founder_id": "f1",
+        "source": "designer_research",
+        "title": "GTM strategy",
+        "content": "positioning text",
+    }

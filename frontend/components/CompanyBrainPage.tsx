@@ -507,6 +507,20 @@ export default function CompanyBrainPage() {
   const [connectKey, setConnectKey] = useState<string | null>(null);
   const [credentialValues, setCredentialValues] = useState<Record<string, Record<string, string>>>({});
 
+  // TEMPORARY: force light mode on this page regardless of the user's global
+  // theme choice, while the knowledge-map redesign is in progress. Restores
+  // whatever theme was active when navigating away. Remove once the page
+  // looks right in dark mode too.
+  useEffect(() => {
+    const root = document.documentElement;
+    const previous = root.getAttribute("data-theme");
+    root.setAttribute("data-theme", "light");
+    return () => {
+      if (previous) root.setAttribute("data-theme", previous);
+      else root.removeAttribute("data-theme");
+    };
+  }, []);
+
   /* ── data loaders ── */
   const loadBrain = useCallback(async () => {
     setError(null);
