@@ -1,6 +1,10 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide,
+  type SimulationNodeDatum, type SimulationLinkDatum,
+} from "d3-force";
 import ServiceLogo from "@/components/ServiceLogo";
 import { useCompany } from "@/lib/company-context";
 import {
@@ -244,6 +248,15 @@ function SuggestionCard({
 
 const GRAPH_COLORS = ["#002EFF", "#16a34a", "#d97706", "#B45EA4", "#0F766E", "#DC2626", "#7C3AED", "#64748B"];
 
+// Community counts routinely exceed the fixed palette above (real clustering can
+// produce 15-20+ communities) — beyond it, generate golden-angle-spaced hues so
+// unrelated communities never collide onto the same color.
+function communityColor(index: number): string {
+  if (index < GRAPH_COLORS.length) return GRAPH_COLORS[index];
+  const hue = (index * 137.508) % 360;
+  return `hsl(${hue.toFixed(0)}, 62%, 46%)`;
+}
+
 function KnowledgeMap({
   graph, loading, rebuilding, onReload, onRebuild,
 }: {
@@ -268,7 +281,12 @@ function KnowledgeMap({
   const onUp = () => { panRef.current = null; };
   const nodes = useMemo(() => graph?.nodes ?? [], [graph]);
   const edges = useMemo(() => graph?.edges ?? [], [graph]);
-  const visibleNodes = useMemo(() => nodes.slice(0, 80), [nodes]);
+  // Top 80 by importance, not an arbitrary DB-order slice — otherwise real
+  // high-importance entities can get cut off while low-importance ones show.
+  const visibleNodes = useMemo(
+    () => [...nodes].sort((a, b) => Number(b.importance || 0) - Number(a.importance || 0)).slice(0, 80),
+    [nodes]
+  );
   const visibleIds = useMemo(() => new Set(visibleNodes.map(n => n.id)), [visibleNodes]);
   const visibleEdges = useMemo(
     () => edges.filter(e => visibleIds.has(e.source) && visibleIds.has(e.target)).slice(0, 180),
@@ -279,27 +297,46 @@ function KnowledgeMap({
     () => Array.from(new Set(visibleNodes.map(n => n.community_id || "unassigned"))),
     [visibleNodes]
   );
+  // Real force-directed layout (d3-force) instead of a fixed polar-angle
+  // placement — connected entities pull together and unconnected ones repel,
+  // so the map reflects actual graph topology instead of an arbitrary wedge
+  // per community that made cross-community edges look like a random hairball.
   const layout = useMemo(() => {
     const width = 720;
     const height = 360;
-    const cx = width / 2;
-    const cy = height / 2;
-    const positions = new Map<string, { x: number; y: number; color: string; radius: number }>();
-    visibleNodes.forEach((node, i) => {
+    type SimNode = { id: string; x: number; y: number; radius: number; color: string };
+    const simNodes: SimNode[] = visibleNodes.map((node, i) => {
       const ci = Math.max(0, communities.indexOf(node.community_id || "unassigned"));
-      const ba = (ci / Math.max(1, communities.length)) * Math.PI * 2;
-      const la = ba + ((i % 13) - 6) * 0.105 + (Math.floor(i / 13) * 0.035);
-      const ring = 78 + (ci % 3) * 54 + (i % 5) * 10;
       const imp = Number(node.importance || 1);
-      positions.set(node.id, {
-        x: cx + Math.cos(la) * ring,
-        y: cy + Math.sin(la) * ring * 0.72,
-        color: GRAPH_COLORS[ci % GRAPH_COLORS.length],
+      const seedAngle = (i / Math.max(1, visibleNodes.length)) * Math.PI * 2;
+      return {
+        id: node.id,
+        x: width / 2 + Math.cos(seedAngle) * 60,
+        y: height / 2 + Math.sin(seedAngle) * 60,
         radius: Math.max(5, Math.min(15, 5 + imp * 1.4)),
-      });
+        color: communityColor(ci),
+      };
     });
+    const visibleEdgeIds = new Set(simNodes.map(n => n.id));
+    const simLinks = edges
+      .filter(e => visibleEdgeIds.has(e.source) && visibleEdgeIds.has(e.target))
+      .map(e => ({ source: e.source, target: e.target, weight: Number(e.weight || 1) }));
+
+    const simulation = forceSimulation(simNodes as unknown as SimulationNodeDatum[])
+      .force("link", forceLink(simLinks as unknown as SimulationLinkDatum<SimulationNodeDatum>[])
+        .id((d: any) => d.id)
+        .distance(44)
+        .strength(0.25))
+      .force("charge", forceManyBody().strength(-95))
+      .force("center", forceCenter(width / 2, height / 2))
+      .force("collide", forceCollide((d: any) => d.radius + 6))
+      .stop();
+    for (let i = 0; i < 300; i++) simulation.tick();
+
+    const positions = new Map<string, { x: number; y: number; color: string; radius: number }>();
+    for (const n of simNodes) positions.set(n.id, { x: n.x, y: n.y, color: n.color, radius: n.radius });
     return { width, height, positions };
-  }, [visibleNodes, communities]);
+  }, [visibleNodes, edges, communities]);
   // Legend: each color group named after its most important entity.
   const legend = useMemo(() =>
     communities.slice(0, 8).map((cid, ci) => {
@@ -307,7 +344,7 @@ function KnowledgeMap({
       const top = [...members].sort((a, b) => Number(b.importance || 0) - Number(a.importance || 0))[0];
       return {
         id: cid,
-        color: GRAPH_COLORS[ci % GRAPH_COLORS.length],
+        color: communityColor(ci),
         label: top ? top.name.slice(0, 22) : "Other",
         count: members.length,
       };
