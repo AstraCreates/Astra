@@ -854,7 +854,7 @@ def _legacy_sonar_research(queries: list[str]) -> dict:
     }
 
 
-def sonar_research(queries=None) -> dict:
+def deep_research(queries=None) -> dict:
     """Run recursive crw (self-hosted search+scrape) + ling web research, preserving the existing output contract."""
     if not queries:
         return {"error": "queries required — pass a list of research question strings"}
@@ -904,6 +904,11 @@ def sonar_research(queries=None) -> dict:
         round_queries = _build_followup_queries(synthesis.get("directions", []), queries)
 
     return _finalize_recursive_research(queries, aggregated_results, learnings)
+
+
+def sonar_research(queries=None) -> dict:
+    """Backward-compatible alias for deep_research."""
+    return deep_research(queries)
 
 
 def batch_search(queries=None, max_results_each: int = 8) -> dict:

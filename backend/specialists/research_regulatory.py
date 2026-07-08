@@ -2,7 +2,7 @@
 import functools
 from backend.core.agent import Agent, AgentContext
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
-from backend.tools.browser_research import search_and_fetch, fetch_and_read, sonar_research
+from backend.tools.browser_research import search_and_fetch, fetch_and_read, deep_research, sonar_research
 from backend.tools.web_search import web_search, news_search
 from backend.tools.patent_search import patent_search
 from backend.tools.pdf_generator import generate_pdf
@@ -64,7 +64,7 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
 
 _REGULATORY_SEARCHES = (
     "REGULATORY & COMPLIANCE RESEARCH:\n"
-    "1. sonar_research([\n"
+    "1. deep_research([\n"
     "     '{topic} regulatory requirements compliance 2025',\n"
     "     '{topic} GDPR CCPA data privacy compliance requirements',\n"
     "     '{topic} HIPAA SOC2 ISO27001 compliance requirements',\n"
@@ -72,7 +72,7 @@ _REGULATORY_SEARCHES = (
     "     '{topic} legal risks liability exposure startup',\n"
     "     '{topic} FTC FCC SEC FDA regulatory oversight enforcement',\n"
     "     '{topic} international regulations EU UK APAC compliance',\n"
-    "   ]) — sonar fetches government sites and legal publishers internally.\n"
+    "   ]) — deep_research fetches government sites and legal publishers internally.\n"
     "2. news_search('{topic} regulatory enforcement fine penalty 2024 2025')\n"
     "3. web_search('{topic} compliance framework checklist requirements')\n"
     "4. patent_search('{topic} regulatory technology compliance')\n"
@@ -122,8 +122,9 @@ def build_research_regulatory_agent(**kwargs) -> Agent:
             "NOT entity formation (legal_entity). "
             "You think like a compliance attorney combined with a startup risk advisor.\n\n"
             "TOOLS:\n"
-            "- sonar_research(queries) — PRIMARY tool. List of questions → synthesized cited answers from authoritative sources. Replaces search_and_fetch + fetch_and_read loops.\n"
-            "- fetch_and_read(url) — read a specific URL (only for official government/legal sources sonar missed, max 3).\n"
+            "- deep_research(queries) — PRIMARY tool. List of questions → synthesized cited answers from authoritative sources. Replaces search_and_fetch + fetch_and_read loops.\n"
+            "- sonar_research(queries) — compatibility alias for deep_research.\n"
+            "- fetch_and_read(url) — read a specific URL (only for official government/legal sources deep_research missed, max 3).\n"
             "- web_search(query) — targeted web search.\n"
             "- news_search(query) — recent regulatory enforcement news.\n"
             "- patent_search(query) — IP and regtech landscape.\n"
@@ -133,6 +134,7 @@ def build_research_regulatory_agent(**kwargs) -> Agent:
             + _REGULATORY_SEARCHES
         ),
         tools={
+            "deep_research": auto_sonar,
             "sonar_research": auto_sonar,
             "search_and_fetch": auto_search,
             "fetch_and_read": auto_fetch,

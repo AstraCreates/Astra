@@ -3,7 +3,7 @@ import functools
 import re as _re
 from backend.core.agent import Agent, AgentContext
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
-from backend.tools.browser_research import search_and_fetch, fetch_and_read, sonar_research
+from backend.tools.browser_research import search_and_fetch, fetch_and_read, deep_research, sonar_research
 from backend.tools.web_search import web_search, news_search
 
 
@@ -61,7 +61,7 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
 
 _MARKET_RESEARCH_SEARCHES = (
     "MARKET SIZING & ICP RESEARCH:\n"
-    "1. sonar_research([\n"
+    "1. deep_research([\n"
     "     '{topic} total addressable market TAM SAM SOM size 2025 billion statistics',\n"
     "     '{topic} market size growth rate CAGR forecast 2025 2026 2027 2030',\n"
     "     '{topic} industry report grand view mordor ibisworld statista market research',\n"
@@ -70,7 +70,7 @@ _MARKET_RESEARCH_SEARCHES = (
     "     '{topic} competitor pricing how much does it cost per user per month',\n"
     "     '{topic} willingness to pay price sensitivity customer survey',\n"
     "     '{topic} market opportunity whitespace unmet need underserved segment',\n"
-    "   ]) — sonar fetches and synthesizes sources internally, no separate URL fetching needed.\n"
+    "   ]) — deep_research fetches and synthesizes sources internally, no separate URL fetching needed.\n"
     "2. news_search('{topic} market growth investment funding opportunity 2025 2026')\n"
     "3. Use fetch_and_read only for specific analyst report URLs or paywalled pages sonar could not fully read.\n\n"
     "obsidian_log with ALL of the following sections:\n"
@@ -123,8 +123,9 @@ def build_research_market_agent(**kwargs) -> Agent:
             "(analyst reports, primary data, competitor pages) so every output section is backed by hard "
             "numbers from named, cited sources.\n\n"
             "TOOLS:\n"
-            "- sonar_research(queries) — PRIMARY tool. Pass a list of research questions; each returns a synthesized cited answer with sources. Replaces search_and_fetch + fetch_and_read loops.\n"
-            "- fetch_and_read(url) — read a specific URL in full depth (only for paywalled reports sonar missed).\n"
+            "- deep_research(queries) — PRIMARY tool. Pass a list of research questions; each returns a synthesized cited answer with sources. Replaces search_and_fetch + fetch_and_read loops.\n"
+            "- sonar_research(queries) — compatibility alias for deep_research.\n"
+            "- fetch_and_read(url) — read a specific URL in full depth (only for paywalled reports deep_research missed).\n"
             "- web_search(query) — targeted web search for specific facts or sources.\n"
             "- news_search(query) — recent news and market developments.\n"
             "- obsidian_log — FINAL step only, called once after ALL searches and fetches are complete.\n\n"
@@ -132,6 +133,7 @@ def build_research_market_agent(**kwargs) -> Agent:
             + _MARKET_RESEARCH_SEARCHES
         ),
         tools={
+            "deep_research": auto_sonar,
             "sonar_research": auto_sonar,
             "search_and_fetch": auto_search,
             "fetch_and_read": auto_fetch,

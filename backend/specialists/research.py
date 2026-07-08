@@ -7,6 +7,7 @@ from backend.tools.browser_research import (
     fetch_and_read,
     research_papers,
     batch_search,
+    deep_research,
     sonar_research,
     build_research_queries,
     run_research_pipeline,
@@ -180,21 +181,21 @@ _FOCUS_ROLES = {
     "research": (
         "COMPREHENSIVE RESEARCH — cover all 4 areas in sequence:\n\n"
         "1. MARKET (TAM/SAM/SOM, growth, regulation, funding): run_research_pipeline(focus='market') — sonar_research handles fetching internally, no separate URL fetching needed.\n"
-        "2. COMPETITORS (named companies, pricing, features, weaknesses): run_research_pipeline(focus='competitors') then sonar_research(['<topic> top competitors pricing', '<topic> alternatives G2 reviews', ...]).\n"
-        "3. CUSTOMERS (ICP, buyer pain, Reddit/reviews, WTP): build_research_queries(focus='customers') then sonar_research(queries). Add tiktok_research + youtube_research for sentiment.\n"
-        "4. GTM (acquisition channels, CAC benchmarks, launch tactics): build_research_queries(focus='gtm') then sonar_research(queries) + news_search.\n\n"
-        "Use fetch_and_read only for specific competitor pricing pages or paywalled reports sonar cannot reach.\n"
-        "Do NOT run batch_search — sonar_research replaces it. Move through all 4 areas before logging.\n\n"
+        "2. COMPETITORS (named companies, pricing, features, weaknesses): run_research_pipeline(focus='competitors') then deep_research(['<topic> top competitors pricing', '<topic> alternatives G2 reviews', ...]).\n"
+        "3. CUSTOMERS (ICP, buyer pain, Reddit/reviews, WTP): build_research_queries(focus='customers') then deep_research(queries). Add tiktok_research + youtube_research for sentiment.\n"
+        "4. GTM (acquisition channels, CAC benchmarks, launch tactics): build_research_queries(focus='gtm') then deep_research(queries) + news_search.\n\n"
+        "Use fetch_and_read only for specific competitor pricing pages or paywalled reports deep_research cannot reach.\n"
+        "Do NOT run batch_search — deep_research replaces it. Move through all 4 areas before logging.\n\n"
         "obsidian_log with ALL sections: MARKET SIZE, COMPETITOR TABLE, ICP PROFILE, PAIN POINTS, GTM CHANNELS, SOURCES."
         + _DONE_INSTRUCTIONS
     ),
     "research_competitors": (
         "COMPETITOR INTELLIGENCE (named companies, pricing, features, weaknesses):\n"
         "FIRST: call obsidian_read to see what prior research passes already found. Skip any sources already cited.\n"
-        "1. run_research_pipeline(topic='{topic}', focus='competitors') — sonar handles content fetching internally.\n"
-        "2. sonar_research(['<topic> competitor pricing 2025', '<topic> alternatives Capterra G2 ProductHunt', "
+        "1. run_research_pipeline(topic='{topic}', focus='competitors') — deep_research handles content fetching internally.\n"
+        "2. deep_research(['<topic> competitor pricing 2025', '<topic> alternatives Capterra G2 ProductHunt', "
         "'<topic> YC-backed startups funding', '<topic> competitor weaknesses reviews']) for deeper coverage.\n"
-        "3. Extract at least 8 named competitors. Use fetch_and_read only for specific pricing pages sonar missed.\n"
+        "3. Extract at least 8 named competitors. Use fetch_and_read only for specific pricing pages deep_research missed.\n"
         "4. patent_search and youtube_research when product demos/reviews matter.\n\n"
         "obsidian_log with: COMPETITOR TABLE (name, URL, pricing, funding, strengths, weaknesses), WHITESPACE OPPORTUNITIES, SOURCES."
         + _DONE_COMPETITORS
@@ -202,11 +203,11 @@ _FOCUS_ROLES = {
     "research_customers": (
         "CUSTOMER & ICP INTELLIGENCE (who buys, why, how, pain severity):\n"
         "FIRST: call obsidian_read to see what prior research passes already found. Skip any sources already cited.\n"
-        "1. build_research_queries(topic='{topic}', focus='customers') then sonar_research(queries).\n"
+        "1. build_research_queries(topic='{topic}', focus='customers') then deep_research(queries).\n"
         "   Covers: Reddit/forum complaints, App Store/G2 reviews, pain signals, "
         "buyer demographics, job-to-be-done, willingness to pay, churn reasons, buying triggers.\n"
         "2. tiktok_research and youtube_research for consumer sentiment and creator commentary.\n"
-        "3. Use fetch_and_read only for specific high-signal community pages sonar did not cover.\n\n"
+        "3. Use fetch_and_read only for specific high-signal community pages deep_research did not cover.\n\n"
         "obsidian_log with: ICP PROFILE (demographics, job title, company size), TOP PAIN POINTS (quoted), "
         "BUYING TRIGGERS, WILLINGNESS TO PAY, CHURN REASONS, SOURCES."
         + _DONE_CUSTOMERS
@@ -214,11 +215,11 @@ _FOCUS_ROLES = {
     "research_gtm": (
         "GO-TO-MARKET & DISTRIBUTION INTELLIGENCE (channels, growth tactics, pricing models):\n"
         "FIRST: call obsidian_read to see what prior research passes already found. Skip any sources already cited.\n"
-        "1. build_research_queries(topic='{topic}', focus='gtm') then sonar_research(queries).\n"
+        "1. build_research_queries(topic='{topic}', focus='gtm') then deep_research(queries).\n"
         "   Covers: how competitors acquire customers, CAC benchmarks, successful launch channels (PH, HN, Reddit, "
         "cold email, SEO, paid), pricing page patterns, freemium vs trial vs direct-sales split.\n"
         "2. news_search for recent launches and growth stories in this space.\n"
-        "3. Use fetch_and_read only for specific competitor growth pages sonar did not cover.\n\n"
+        "3. Use fetch_and_read only for specific competitor growth pages deep_research did not cover.\n\n"
         "obsidian_log with: CHANNEL MAP (channel, fit, cost, speed), PRICING MODEL PATTERNS, "
         "LAUNCH PLAYBOOK (what worked for others), CAC BENCHMARKS, SOURCES."
         + _DONE_GTM
@@ -251,13 +252,13 @@ def _research_depth_guidance(plan: str) -> str:
             "SUPER DEEP RESEARCH MODE (Max workspace):\n"
             "- Be THOROUGH: visit many sources across the web. Run multiple search rounds and read "
             "8-15 high-value pages before synthesizing.\n"
-            "- Search broadly: run run_research_pipeline, THEN 2-4 sonar_research calls to fill gaps and "
+            "- Search broadly: run run_research_pipeline, THEN 2-4 deep_research calls to fill gaps and "
             "go deeper on specifics. Aim for 15+ distinct cited sources before you finish.\n"
         )
     return (
         "FAST RESEARCH MODE:\n"
         "- Optimize for speed and decision quality. Do one focused run_research_pipeline pass, then at most "
-        "one targeted sonar_research call only if a critical gap remains.\n"
+        "one targeted deep_research call only if a critical gap remains.\n"
         "- Read only the highest-signal pages sonar missed. Aim for 5-8 distinct cited sources, then synthesize.\n"
         "- Do not run video, patent, academic, or news research unless the founder explicitly asks or the topic requires it.\n"
     )
@@ -266,7 +267,7 @@ def _research_depth_guidance(plan: str) -> str:
 def _research_max_iterations(plan: str, requested: int | None = None) -> int:
     if requested is not None:
         return requested
-    return 40 if _is_max_research_plan(plan) else 22
+    return 60 if _is_max_research_plan(plan) else 30
 
 
 def _build_research_role(agent_name: str, focus_searches: str, plan: str) -> str:
@@ -277,10 +278,11 @@ def _build_research_role(agent_name: str, focus_searches: str, plan: str) -> str
         "NOT regulatory risk (research_regulatory), NOT customer personas (customer_discovery).\n\n"
         + _research_depth_guidance(plan)
         + "\nTOOLS:\n"
-        "- run_research_pipeline(topic, focus) — first-pass: builds query plan + runs sonar_research in parallel. Use this first.\n"
-        "- sonar_research(queries) — PRIMARY tool. Pass a list of research questions; each returns a synthesized cited answer. Replaces batch_search + fetch_and_read loops.\n"
+        "- run_research_pipeline(topic, focus) — first-pass: builds query plan + runs deep_research in parallel. Use this first.\n"
+        "- deep_research(queries) — PRIMARY tool. Pass a list of research questions; each returns a synthesized cited answer. Replaces batch_search + fetch_and_read loops.\n"
+        "- sonar_research(queries) — compatibility alias for deep_research.\n"
         "- build_research_queries(topic, focus) — generates a high-coverage query plan. Pass result queries to sonar_research.\n"
-        "- fetch_and_read(url) — read a specific URL in full depth. Use only for paywalled reports or specific pages sonar missed.\n"
+        "- fetch_and_read(url) — read a specific URL in full depth. Use only for paywalled reports or specific pages deep_research missed.\n"
         "- research_papers(query) — academic papers.\n"
         "- news_search(query) — recent news.\n"
         "- patent_search(query) — IP landscape.\n"
@@ -311,6 +313,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     resilient_search = _make_resilient_research_tool(search_and_fetch, "search_and_fetch", ctx_holder, agent_name)
     resilient_fetch = _make_resilient_research_tool(fetch_and_read, "fetch_and_read", ctx_holder, agent_name)
     resilient_batch = _make_resilient_research_tool(batch_search, "batch_search", ctx_holder, agent_name)
+    resilient_deep = _make_resilient_research_tool(deep_research, "deep_research", ctx_holder, agent_name)
     resilient_sonar = _make_resilient_research_tool(sonar_research, "sonar_research", ctx_holder, agent_name)
     resilient_query_plan = _make_resilient_research_tool(build_research_queries, "build_research_queries", ctx_holder, agent_name)
     resilient_pipeline = _make_resilient_research_tool(run_research_pipeline, "run_research_pipeline", ctx_holder, agent_name)
@@ -319,6 +322,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     auto_search = _make_auto_logging_tool(resilient_search, "search_and_fetch", ctx_holder, log_name)
     auto_fetch = _make_auto_logging_tool(resilient_fetch, "fetch_and_read", ctx_holder, log_name)
     auto_batch = _make_auto_logging_tool(resilient_batch, "batch_search", ctx_holder, log_name)
+    auto_deep = _make_auto_logging_tool(resilient_deep, "deep_research", ctx_holder, log_name)
     auto_sonar = _make_auto_logging_tool(resilient_sonar, "sonar_research", ctx_holder, log_name)
     auto_query_plan = _make_auto_logging_tool(resilient_query_plan, "build_research_queries", ctx_holder, log_name)
     auto_pipeline = _make_auto_logging_tool(resilient_pipeline, "run_research_pipeline", ctx_holder, log_name)
@@ -350,6 +354,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
         role=_build_research_role(agent_name, focus_searches, "starter"),
         tools={
             "run_research_pipeline": auto_pipeline,
+            "deep_research": auto_deep,
             "sonar_research": auto_sonar,
             "build_research_queries": auto_query_plan,
             "search_and_fetch": auto_search,

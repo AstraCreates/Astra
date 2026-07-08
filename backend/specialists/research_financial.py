@@ -4,7 +4,7 @@ import re as _re
 
 from backend.core.agent import Agent, AgentContext
 from backend.tools.obsidian_logger import obsidian_log, obsidian_read, obsidian_append
-from backend.tools.browser_research import search_and_fetch, fetch_and_read, sonar_research
+from backend.tools.browser_research import search_and_fetch, fetch_and_read, deep_research, sonar_research
 from backend.tools.web_search import web_search, news_search
 from backend.tools.pdf_generator import generate_pdf
 
@@ -63,7 +63,7 @@ def _make_auto_logging_tool(tool_fn, tool_name: str, ctx_holder: list, agent_nam
 
 _FINANCIAL_SEARCH_SEQUENCE = (
     "FINANCIAL BENCHMARKS RESEARCH:\n"
-    "1. sonar_research([\n"
+    "1. deep_research([\n"
     "     '{topic} unit economics CAC LTV payback period benchmark 2025',\n"
     "     '{topic} burn rate monthly cash burn benchmark seed Series A startup',\n"
     "     '{topic} ARR revenue multiple valuation SaaS B2B 2025',\n"
@@ -72,7 +72,7 @@ _FINANCIAL_SEARCH_SEQUENCE = (
     "     '{topic} gross margin net margin operating expenses benchmark',\n"
     "     '{topic} NRR net revenue retention ARR growth rate benchmark',\n"
     "     '{topic} Rule of 40 magic number sales efficiency benchmark',\n"
-    "   ]) — sonar fetches and synthesizes authoritative sources internally.\n"
+    "   ]) — deep_research fetches and synthesizes authoritative sources internally.\n"
     "2. web_search('{topic} recent funding rounds investors Series A 2024 2025')\n"
     "3. news_search('{topic} funding raised valuation 2025')\n"
     "4. Use fetch_and_read only for specific Bessemer/OpenView/a16z/PitchBook report URLs sonar could not fully read.\n\n"
@@ -125,8 +125,9 @@ def build_research_financial_agent(**kwargs) -> Agent:
             "(Bessemer Venture Partners, OpenView, a16z, NFX, SaaStr, Crunchbase, PitchBook, "
             "CB Insights, Meritech Capital public comps, and primary investor blogs).\n\n"
             "TOOLS:\n"
-            "- sonar_research(queries) — PRIMARY tool. List of questions → synthesized cited answers. Replaces search_and_fetch + fetch_and_read loops.\n"
-            "- fetch_and_read(url) — read a specific URL in full depth (only for paywalled reports sonar missed).\n"
+            "- deep_research(queries) — PRIMARY tool. List of questions → synthesized cited answers. Replaces search_and_fetch + fetch_and_read loops.\n"
+            "- sonar_research(queries) — compatibility alias for deep_research.\n"
+            "- fetch_and_read(url) — read a specific URL in full depth (only for paywalled reports deep_research missed).\n"
             "- web_search(query) — broad web search for recent data.\n"
             "- news_search(query) — recent news and announcements.\n"
             "- obsidian_log — log structured findings after ALL searches complete.\n"
@@ -135,6 +136,7 @@ def build_research_financial_agent(**kwargs) -> Agent:
             + _FINANCIAL_SEARCH_SEQUENCE
         ),
         tools={
+            "deep_research": auto_sonar,
             "sonar_research": auto_sonar,
             "search_and_fetch": auto_search,
             "fetch_and_read": auto_fetch,
