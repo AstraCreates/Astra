@@ -30,6 +30,42 @@ from backend.stacks.verification_gates import _FILLER as _OUTPUT_FILLER
 
 logger = logging.getLogger(__name__)
 
+_headroom_tuned = False
+
+
+def _tune_headroom_pipeline_once() -> None:
+    """headroom's default ContentRouterConfig.protect_recent_reads_fraction is
+    0.0 ("protect ALL excluded-tool outputs") — not exposed via the public
+    compress() kwargs API. Real production data (156 sessions) showed this
+    capped real savings at ~10-20% regardless of target_ratio/protect_recent
+    tuning, because short agent-loop conversations fall entirely inside the
+    always-protected window. Opens most of the conversation (all but the most
+    recent ~30%) to compression once it exceeds 4 messages, leaving active
+    recent turns untouched. Reaches past compress()'s public wrapper into its
+    private pipeline singleton — not a supported integration point, so any
+    failure (headroom-ai internals changed) silently no-ops and falls back to
+    default (safe, lower-savings) behavior rather than breaking the agent loop."""
+    global _headroom_tuned
+    if _headroom_tuned:
+        return
+    _headroom_tuned = True
+    try:
+        import headroom.compress as _hr_mod
+        from headroom.transforms.pipeline import TransformPipeline
+        from headroom.transforms.content_router import ContentRouter, ContentRouterConfig
+
+        base_pipeline = _hr_mod._get_pipeline()
+        router_cfg = ContentRouterConfig(protect_recent_reads_fraction=0.3)
+        tuned_transforms = [
+            ContentRouter(config=router_cfg) if isinstance(t, ContentRouter) else t
+            for t in base_pipeline.transforms
+        ]
+        _hr_mod._pipeline = TransformPipeline(transforms=tuned_transforms)
+        logger.info("headroom: tuned protect_recent_reads_fraction=0.3 (default was 0.0)")
+    except Exception as exc:
+        logger.debug("headroom pipeline tuning skipped: %s", exc)
+
+
 # Quality gates — module-level so they're never re-allocated per run
 _REQUIRED_BY_AGENT: dict[str, set[str]] = {
     "research":          {"web_search"},
@@ -539,6 +575,7 @@ class Agent:
         #   [1] initial user   — goal + shared context, stable for the entire agent loop
         # MiMo: $0.14→$0.0028/M on cache hit (50x cheaper). hy3/ling also benefit.
         try:
+            _tune_headroom_pipeline_once()
             from headroom import compress as _hr_compress
             # gpt-4o: tiktoken compat (model name only affects token counting, not compression logic)
             _hr = _hr_compress(messages, model="gpt-4o", model_limit=128000, compress_user_messages=True)
