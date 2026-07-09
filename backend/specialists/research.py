@@ -183,7 +183,8 @@ _DONE_GTM = (
 _FOCUS_ROLES = {
     "research": (
         "COMPREHENSIVE RESEARCH — cover all 4 areas in sequence:\n\n"
-        "1. MARKET (TAM/SAM/SOM, growth, regulation, funding): run_research_pipeline(focus='market') — sonar_research handles fetching internally, no separate URL fetching needed.\n"
+        "1. MARKET (TAM/SAM/SOM, growth, regulation, funding): run_research_pipeline(focus='market') for source discovery, "
+        "then deep_research([...]) for real synthesis — the pipeline alone only returns shallow snippets.\n"
         "2. COMPETITORS (named companies, pricing, features, weaknesses): run_research_pipeline(focus='competitors') then deep_research(['<topic> top competitors pricing', '<topic> alternatives G2 reviews', ...]).\n"
         "3. CUSTOMERS (ICP, buyer pain, Reddit/reviews, WTP): build_research_queries(focus='customers') then deep_research(queries). Add tiktok_research + youtube_research for sentiment.\n"
         "4. GTM (acquisition channels, CAC benchmarks, launch tactics): build_research_queries(focus='gtm') then deep_research(queries) + news_search.\n\n"
@@ -195,8 +196,8 @@ _FOCUS_ROLES = {
     "research_competitors": (
         "COMPETITOR INTELLIGENCE (named companies, pricing, features, weaknesses):\n"
         "FIRST: call obsidian_read to see what prior research passes already found. Skip any sources already cited.\n"
-        "1. run_research_pipeline(topic='{topic}', focus='competitors') — deep_research handles content fetching internally.\n"
-        "2. deep_research(['<topic> competitor pricing 2025', '<topic> alternatives Capterra G2 ProductHunt', "
+        "1. run_research_pipeline(topic='{topic}', focus='competitors') for source discovery — this only returns shallow snippets, not synthesis.\n"
+        "2. You MUST also call deep_research(['<topic> competitor pricing 2025', '<topic> alternatives Capterra G2 ProductHunt', "
         "'<topic> YC-backed startups funding', '<topic> competitor weaknesses reviews']) for deeper coverage.\n"
         "3. Extract at least 8 named competitors. Use fetch_and_read only for specific pricing pages deep_research missed.\n"
         "4. patent_search and youtube_research when product demos/reviews matter.\n\n"
@@ -291,8 +292,12 @@ def _build_research_role(agent_name: str, focus_searches: str, plan: str, depth_
         "NOT regulatory risk (research_regulatory), NOT customer personas (customer_discovery).\n\n"
         + _research_depth_guidance(plan, depth_override)
         + "\nTOOLS:\n"
-        "- run_research_pipeline(topic, focus) — first-pass: builds query plan + runs deep_research in parallel. Use this first.\n"
-        "- deep_research(queries) — PRIMARY tool. Pass a list of research questions; each returns a synthesized cited answer. Replaces batch_search + fetch_and_read loops.\n"
+        "- run_research_pipeline(topic, focus) — first-pass ONLY: plans queries + runs a shallow batch_search "
+        "(titles/snippets, no full-page synthesis). It does NOT call deep_research. Use it first for broad "
+        "source discovery, then call deep_research yourself for real depth — do not treat pipeline output as final.\n"
+        "- deep_research(queries) — PRIMARY tool for real synthesis. Pass a list of research questions; each returns a "
+        "synthesized cited answer from full page content. You MUST call this after run_research_pipeline for every "
+        "focus area unless coverage.ready is true and evidence is already concrete — pipeline snippets alone are not enough.\n"
         "- sonar_research(queries) — compatibility alias for deep_research.\n"
         "- build_research_queries(topic, focus) — generates a high-coverage query plan. Pass result queries to sonar_research.\n"
         "- fetch_and_read(url) — read a specific URL in full depth. Use only for paywalled reports or specific pages deep_research missed.\n"
