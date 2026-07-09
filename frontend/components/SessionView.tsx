@@ -30,6 +30,7 @@ type Artifact = { key?: string; title?: string; status?: string; preview?: strin
 type Approval = { gate_key: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string; preview?: string }[] };
 type CopilotAction = { tool: string; label: string; detail?: string; tone?: "info" | "success" | "warn" };
 type CopilotAttachment = { filename: string; content: string; kind: string; truncated: boolean; library_id?: string; size_bytes?: number; summary?: string; error?: string };
+type PlanTask = { id: string; agent: string; instruction: string };
 
 type SState = {
   status: string; goal: string; company: string; projectName: string; stackId: string;
@@ -48,6 +49,8 @@ type SState = {
   credits: number;
   headroomSaved: number;
   headroomBefore: number;
+  planTasks: PlanTask[];
+  plannerModel: string;
 };
 
 function fmtElapsed(ms: number): string {
@@ -275,8 +278,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false,
     revisionGate: null, revisionNote: "", liveUrl: "", needsReview: false, reviewReason: "", completionAuditSummary: "", completionAuditFailures: [],
     operating: null, parentId: "", startedAt: 0, credits: 0, headroomSaved: 0, headroomBefore: 0,
+    planTasks: [], plannerModel: "",
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
+  const [planOpen, setPlanOpen] = useState(false);
   const sseRef = useRef<StreamSubscription | null>(null);
   const steerRef = useRef<HTMLInputElement>(null);
   const [copilot, setCopilot] = useState<{ role: string; content: string; actions?: CopilotAction[] }[]>([]);
@@ -481,8 +486,16 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         st.status = "running"; break;
       }
       case "plan_done":
-        if (Array.isArray(ev.tasks)) ev.tasks.forEach((t: any) => t.agent && ensureAg(t.agent));
+        if (Array.isArray(ev.tasks)) {
+          ev.tasks.forEach((t: any) => t.agent && ensureAg(t.agent));
+          // A session can plan in more than one pass (e.g. research first,
+          // then the rest once findings are in) — later passes only carry
+          // their own agents, so merge rather than replace.
+          const incoming = new Set(ev.tasks.map((t: PlanTask) => t.agent));
+          st.planTasks = [...st.planTasks.filter((t) => !incoming.has(t.agent)), ...ev.tasks];
+        }
         if (Array.isArray(ev.agents)) ev.agents.forEach((a: string) => ensureAg(a));
+        if (ev.planner_model) st.plannerModel = ev.planner_model;
         break;
       case "company_genome": case "company_name":
         if (ev.company_name || ev.name) st.company = ev.company_name || ev.name; break;
@@ -628,6 +641,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         decidedKeys: new Set(), selDept: null, selArt: null, tab: "updates", paused: false, revisionGate: null, revisionNote: "",
         liveUrl: "", needsReview: false, reviewReason: "", completionAuditSummary: "", completionAuditFailures: [],
         operating: null, parentId: "", startedAt: 0, credits: 0, headroomSaved: 0, headroomBefore: 0,
+        planTasks: [], plannerModel: "",
       };
       cacheSession(sessionId, S.current);
     }
@@ -1076,6 +1090,51 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg)" }}>
+      {planOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setPlanOpen(false)}>
+          <div style={{ background: "var(--surface)", border: "1px solid var(--bd)", borderRadius: 12, width: "100%", maxWidth: 560, maxHeight: "min(680px, 86vh)", display: "flex", flexDirection: "column", boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, padding: "20px 22px 14px", borderBottom: "1px solid var(--bd)", flexShrink: 0 }}>
+              <div>
+                <div style={{ fontFamily: "var(--font-chakra), sans-serif", fontSize: 9, fontWeight: 700, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--fm)", marginBottom: 4 }}>
+                  Execution plan
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 600, color: "var(--fg)", lineHeight: 1.35 }}>
+                  {st.planTasks.length} step{st.planTasks.length !== 1 ? "s" : ""} across {new Set(st.planTasks.map((t) => t.agent)).size} agent{new Set(st.planTasks.map((t) => t.agent)).size !== 1 ? "s" : ""}
+                </div>
+                {st.plannerModel && (
+                  <div style={{ fontSize: 9.5, color: "var(--fm)", fontFamily: "var(--font-code), monospace", marginTop: 4 }}>
+                    planned by {st.plannerModel}
+                  </div>
+                )}
+              </div>
+              <button type="button" onClick={() => setPlanOpen(false)} className="dc-badge que" style={{ cursor: "pointer", flexShrink: 0 }}>Close</button>
+            </div>
+            <div style={{ overflowY: "auto", padding: "8px 10px" }}>
+              {st.planTasks.map((task, i) => {
+                const agState = st.agents[task.agent]?.status;
+                const badgeCls = agState === "done" ? "done" : agState === "running" ? "run" : agState === "error" ? "err" : "que";
+                const badgeLabel = agState === "done" ? "Done" : agState === "running" ? "Working" : agState === "error" ? "Error" : "Queued";
+                return (
+                  <div key={task.id} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "12px 12px", borderTop: i ? "1px solid var(--bd)" : "none" }}>
+                    <span style={{ width: 20, height: 20, borderRadius: "50%", border: "1px solid var(--bd2)", display: "grid", placeItems: "center", fontSize: 9.5, fontFamily: "var(--font-code), monospace", color: "var(--fm)", flexShrink: 0, marginTop: 1 }}>
+                      {i + 1}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                        <span style={{ fontFamily: "var(--font-chakra), sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: ".04em", color: "var(--fg)" }}>
+                          {AGENT_LABELS[task.agent] ?? task.agent}
+                        </span>
+                        <span className={`dc-badge ${badgeCls}`}>{badgeLabel}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--fd)", lineHeight: 1.55 }}>{task.instruction}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
       {agentQuestion && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div style={{ background: "var(--surface)", border: "1px solid var(--bd)", borderRadius: 12, padding: "28px 24px", width: "100%", maxWidth: 460, boxShadow: "0 24px 64px rgba(0,0,0,0.4)" }}>
@@ -1294,6 +1353,16 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             {err > 0 && <><div className="s-sep" /><span className="sv r">{err}</span> error{err !== 1 ? "s" : ""}</>}
             {artReady > 0 && <><div className="s-sep" /><span className="sv g">{artReady}</span> deliverable{artReady !== 1 ? "s" : ""}</>}
           </>}
+        {st.planTasks.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setPlanOpen(true)}
+            className="dc-badge que"
+            style={{ marginLeft: "auto", cursor: "pointer", fontFamily: "var(--font-chakra), sans-serif", letterSpacing: ".04em", textTransform: "uppercase" }}
+          >
+            ◱ Plan · {st.planTasks.length} step{st.planTasks.length !== 1 ? "s" : ""}
+          </button>
+        )}
       </div>
 
       {/* dept cards */}
