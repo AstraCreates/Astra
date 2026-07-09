@@ -386,6 +386,25 @@ def _merge_live_tool_result(agent_state: dict[str, Any], tool: str | None, resul
             live_result["research_sources"] = _compact_value(result.get("sources"))
         if result.get("combined_formatted") is not None:
             live_result["research_summary"] = _compact_value(result.get("combined_formatted"))
+        if result.get("deep_research_result") is not None:
+            deep = result.get("deep_research_result") or {}
+            live_result["deep_research_used"] = bool(result.get("deep_research_used"))
+            live_result["deep_research_queries"] = _compact_value(result.get("deep_research_queries") or [])
+            if isinstance(deep, dict):
+                if deep.get("sources") is not None:
+                    live_result["deep_research_sources"] = _compact_value(deep.get("sources"))
+                if deep.get("combined_formatted") is not None:
+                    live_result["deep_research_summary"] = _compact_value(deep.get("combined_formatted"))
+                if deep.get("results_by_query") is not None:
+                    live_result["deep_research_results"] = _compact_value(deep.get("results_by_query"))
+    elif tool in {"deep_research", "sonar_research"}:
+        live_result["deep_research_used"] = True
+        if result.get("sources") is not None:
+            live_result["deep_research_sources"] = _compact_value(result.get("sources"))
+        if result.get("combined_formatted") is not None:
+            live_result["deep_research_summary"] = _compact_value(result.get("combined_formatted"))
+        if result.get("results_by_query") is not None:
+            live_result["deep_research_results"] = _compact_value(result.get("results_by_query"))
     elif tool == "generate_pdf" and result.get("path"):
         pdfs = list(live_result.get("pdfs") or [])
         pdfs.append(str(result.get("path")))
