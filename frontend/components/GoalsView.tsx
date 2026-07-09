@@ -176,9 +176,12 @@ export default function GoalsView() {
   }, [userId]);
 
   useEffect(() => {
-    load();
+    const boot = setTimeout(() => { void load(); }, 0);
     const t = setInterval(load, 15_000);
-    return () => clearInterval(t);
+    return () => {
+      clearTimeout(boot);
+      clearInterval(t);
+    };
   }, [load]);
 
   const allSessions = sessions ?? [];
@@ -217,7 +220,7 @@ export default function GoalsView() {
       <style>{`@keyframes gl-pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.5; transform:scale(0.75); } }`}</style>
 
       <PageHeader
-        title="Goals"
+        title="Runs"
         badge={
           activeCount > 0
             ? { label: `${activeCount} active`, color: "blue" }

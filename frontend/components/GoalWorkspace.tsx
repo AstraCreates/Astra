@@ -5080,32 +5080,9 @@ export function GoalWorkspace({
                 liveResult = { ...liveResult, lead: r.company ?? r.name, leads: [...existingLeads, r] };
               }
             }
-            else if (tool === "run_research_pipeline") {
-              const nextResearch: Record<string, unknown> = {};
-              if (r.sources) {
-                nextResearch.research_sources = r.sources;
-                nextResearch.research_summary = r.combined_formatted;
-              }
-              if (r.deep_research_result) {
-                const deep = r.deep_research_result as Record<string, unknown>;
-                nextResearch.deep_research_used = Boolean(r.deep_research_used);
-                nextResearch.deep_research_queries = r.deep_research_queries ?? [];
-                if (deep.sources) nextResearch.deep_research_sources = deep.sources;
-                if (deep.combined_formatted) nextResearch.deep_research_summary = deep.combined_formatted;
-                if (deep.results_by_query) nextResearch.deep_research_results = deep.results_by_query;
-              }
-              if (Object.keys(nextResearch).length) {
-                liveResult = { ...liveResult, ...nextResearch };
-              }
-            }
-            else if ((tool === "deep_research" || tool === "sonar_research") && r) {
-              liveResult = {
-                ...liveResult,
-                deep_research_used: true,
-                ...(r.sources ? { deep_research_sources: r.sources } : {}),
-                ...(r.combined_formatted ? { deep_research_summary: r.combined_formatted } : {}),
-                ...(r.results_by_query ? { deep_research_results: r.results_by_query } : {}),
-              };
+            else if (tool === "run_research_pipeline" && r.sources) {
+              // Expose research summary so ResearchPreview can show sources immediately
+              liveResult = { ...liveResult, research_sources: r.sources, research_summary: r.combined_formatted };
             }
             else if (tool === "generate_logo_brief") liveResult = { ...liveResult, logo_brief: r };
           }
