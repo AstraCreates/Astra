@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     # otherwise unbounded — a real production build hit 3.99M tokens in one call.
     # Killed mid-stream once crossed; generous enough not to cut normal builds.
     mvp_max_build_tokens: int = 1_500_000
+    # Kill switch for the headroom pipeline tuning monkeypatch (agent.py
+    # _tune_headroom_pipeline_once) — it reaches past headroom-ai's public
+    # compress() API into its private pipeline singleton, which is not a
+    # supported integration point. Flip off via env (ASTRA_HEADROOM_TUNING_ENABLED=false)
+    # without a code deploy if a future headroom-ai version breaks the assumption.
+    headroom_tuning_enabled: bool = True
     # DeepSeek Flash: planning writes long outputs; MiMo's $2.82/M output rate
     # dominates cost at scale. Flash handles plan-length output at $1.72/M.
     build_plan_model: str = "deepseek/deepseek-v4-flash"

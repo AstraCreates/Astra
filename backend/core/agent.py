@@ -30,6 +30,70 @@ from backend.stacks.verification_gates import _FILLER as _OUTPUT_FILLER
 
 logger = logging.getLogger(__name__)
 
+_headroom_tuned = False
+
+
+def _tune_headroom_pipeline_once() -> None:
+    """headroom's default ContentRouterConfig.protect_recent_reads_fraction is
+    0.0 ("protect ALL excluded-tool outputs") — not exposed via the public
+    compress() kwargs API. Real production data (156 sessions) showed this
+    capped real savings at ~10-20% regardless of target_ratio/protect_recent
+    tuning, because short agent-loop conversations fall entirely inside the
+    always-protected window (verified empirically, not guessed — see commit
+    history). Opens most of the conversation (all but the most recent ~30%)
+    to compression once it exceeds 4 messages, leaving active recent turns
+    untouched.
+
+    Reaches past compress()'s public wrapper into its private pipeline
+    singleton — not a supported integration point, so this is gated behind
+    settings.headroom_tuning_enabled (env: ASTRA_HEADROOM_TUNING_ENABLED) as
+    a kill switch, and any failure (headroom-ai internals changed) silently
+    no-ops rather than breaking the agent loop. Runs once per process; if it
+    fails silently, `_headroom_tuning_active()` reports that back so the
+    result is checkable without ad-hoc scripts against the live container."""
+    global _headroom_tuned
+    if _headroom_tuned:
+        return
+    _headroom_tuned = True
+    if not getattr(settings, "headroom_tuning_enabled", True):
+        logger.info("headroom: pipeline tuning disabled via settings.headroom_tuning_enabled")
+        return
+    try:
+        import importlib
+        # `import headroom.compress as X` would bind X via attribute lookup
+        # on the `headroom` package (`headroom.compress`), not the module
+        # directly — headroom/__init__.py does `from .compress import
+        # compress`, which overwrites that same attribute with the function.
+        # importlib.import_module bypasses the shadowed attribute and returns
+        # the real submodule from sys.modules. (Confirmed via a real
+        # production incident: the naive `import ... as` form silently
+        # bound to the function, and the outer try/except swallowed the
+        # resulting AttributeError — the tuning was a no-op for a period
+        # despite logging no error. importlib_module_name is asserted below
+        # so that specific failure mode can never recur silently again.)
+        _hr_mod = importlib.import_module("headroom.compress")
+        assert hasattr(_hr_mod, "_get_pipeline"), (
+            "headroom.compress resolved to something other than the real module "
+            f"({type(_hr_mod)!r}) — likely the import-shadowing bug again"
+        )
+        from headroom.transforms.pipeline import TransformPipeline
+        from headroom.transforms.content_router import ContentRouter, ContentRouterConfig
+
+        base_pipeline = _hr_mod._get_pipeline()
+        router_cfg = ContentRouterConfig(protect_recent_reads_fraction=0.3)
+        tuned_transforms = [
+            ContentRouter(config=router_cfg) if isinstance(t, ContentRouter) else t
+            for t in base_pipeline.transforms
+        ]
+        if not any(isinstance(t, ContentRouter) for t in tuned_transforms):
+            logger.warning("headroom: no ContentRouter found in default pipeline — tuning skipped")
+            return
+        _hr_mod._pipeline = TransformPipeline(transforms=tuned_transforms)
+        logger.info("headroom: tuned protect_recent_reads_fraction=0.3 (default was 0.0)")
+    except Exception as exc:
+        logger.warning("headroom pipeline tuning skipped: %s", exc)
+
+
 # Quality gates — module-level so they're never re-allocated per run
 _REQUIRED_BY_AGENT: dict[str, set[str]] = {
     "research":          {"web_search"},
@@ -539,6 +603,7 @@ class Agent:
         #   [1] initial user   — goal + shared context, stable for the entire agent loop
         # MiMo: $0.14→$0.0028/M on cache hit (50x cheaper). hy3/ling also benefit.
         try:
+            _tune_headroom_pipeline_once()
             from headroom import compress as _hr_compress
             # gpt-4o: tiktoken compat (model name only affects token counting, not compression logic)
             _hr = _hr_compress(messages, model="gpt-4o", model_limit=128000, compress_user_messages=True)
