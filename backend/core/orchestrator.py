@@ -15,6 +15,7 @@ from backend.core.context_policy import RunContextPolicy
 from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
 
 logger = logging.getLogger(__name__)
+_BUILD_TIMEOUT = int(os.environ.get("ASTRA_BUILD_TIMEOUT", "5400"))
 
 # Keys whose values are raw fetched page bodies / large blobs that must NOT be
 # replayed into every downstream agent's SHARED CONTEXT (they overflow the model's
@@ -2281,10 +2282,8 @@ class Orchestrator:
         logger.info("Starting scheduler: %s", [t["agent"] for t in remaining])
         in_flight: set[str] = set()
         import os as _os
-        # Build agents (web / technical) run with NO outer kill — run_mvp_loop is a
-        # never-ending chain of openclaude passes, each already bounded by its own
-        # timeout (build 30m, rounds 15m, …), so the build can take as long as it needs
-        # without hanging forever. Non-build agents keep a 1h guard against true hangs.
+        # Build agents (web / technical) need a much larger bound than other agents,
+        # but still a finite one so a wedged build cannot pin the run forever.
         _AGENT_TIMEOUT = int(_os.environ.get("ASTRA_AGENT_TIMEOUT", "3600"))
 
         def _is_build_agent(agent: str) -> bool:
@@ -2293,12 +2292,28 @@ class Orchestrator:
         agent_semaphore = asyncio.Semaphore(max(1, context_policy.max_concurrent_agents))
 
         async def _run_task_guarded(t: dict) -> None:
-            """Run a task. Build agents run unguarded (per-pass timeouts bound them);
-            others get a hard timeout so a hung agent never blocks the wave."""
+            """Run a task. Build agents get the build timeout; others use the default timeout."""
             async with agent_semaphore:
                 if _is_build_agent(t["agent"]):
                     try:
-                        await _run_task(t)
+                        await asyncio.wait_for(_run_task(t), timeout=_BUILD_TIMEOUT)
+                    except asyncio.TimeoutError:
+                        logger.error("Build agent %s timed out after %ds — marking done to unblock downstream", t["agent"], _BUILD_TIMEOUT)
+                        completed[t["id"]] = {"error": f"build_timed_out_after_{_BUILD_TIMEOUT}s", "agent": t["agent"], "timed_out": True}
+                        await publish(session_id, {
+                            "type": "agent_error", "agent": t["agent"],
+                            "task_id": t["id"], "error": f"build timed out after {_BUILD_TIMEOUT}s",
+                        })
+                        await publish(session_id, {
+                            "type": "stack_lane_status",
+                            "lane_id": t.get("id"),
+                            "agent": t["agent"],
+                            "task_id": t["id"],
+                            "status": "blocked",
+                            "title": t.get("stack_task_title") or t["agent"],
+                            "blockers": [f"build timed out after {_BUILD_TIMEOUT}s"],
+                            "next_actor": "founder",
+                        })
                     except Exception as _be:
                         logger.error("Build agent %s raised: %s", t["agent"], _be)
                         if t["id"] not in completed:
@@ -2872,11 +2887,6 @@ class Orchestrator:
         import os as _os
         _CONT_TIMEOUT = int(_os.environ.get("ASTRA_AGENT_TIMEOUT", "3600"))
 
-        # Builds (web/technical) legitimately run long, so they get a far more generous
-        # ceiling than other agents — but still a ceiling, or a wedged build (hung
-        # openclaude/caveman, stuck npm) pins the whole run open forever.
-        _BUILD_TIMEOUT = int(_os.environ.get("ASTRA_BUILD_TIMEOUT", "5400"))
-
         async def _run_task_guarded(t: dict) -> None:
             if (t.get("agent") or "").lower().startswith(("web", "technical")):
                 try:
@@ -2906,7 +2916,13 @@ class Orchestrator:
             except Exception as e:
                 completed.setdefault(t["id"], {"error": str(e), "agent": t["agent"]})
 
-        await asyncio.gather(*[_run_task_guarded(t) for t in tasks])
+        agent_semaphore = asyncio.Semaphore(max(1, context_policy.max_concurrent_agents))
+
+        async def _run_task_with_limit(task: dict, semaphore: asyncio.Semaphore) -> None:
+            async with semaphore:
+                await _run_task_guarded(task)
+
+        await asyncio.gather(*[_run_task_with_limit(t, agent_semaphore) for t in tasks])
         await publish(session_id, {"type": "goal_done", "results": completed})
         asyncio.create_task(self._bootstrap_operating_after_run(session_id, founder_id, instruction))
         asyncio.create_task(self._sync_session_deliverables(session_id, founder_id, completed))

@@ -238,6 +238,24 @@ _TOOL_ALIASES = {
 # Generic verbs shared by many tool names — ignore them when token-matching so the
 # distinctive part of the name drives the match (e.g. "brand identity" → brand_board).
 _GENERIC_TOOL_TOKENS = {"generate", "create", "make", "get", "run", "build", "do", "new", "the", "a", "tool"}
+_DEFAULT_TOOL_TIMEOUT_SECONDS = 180
+# Research/browser tools legitimately chain many LLM + network calls (deep_research
+# fans out 9+ synthesis calls), so 180s clips them mid-work. Give them a generous
+# middle tier — long enough not to truncate a real research pass, still finite.
+_RESEARCH_TOOL_TIMEOUT_SECONDS = int(os.environ.get("ASTRA_RESEARCH_TOOL_TIMEOUT", "600"))
+_BUILD_TOOL_TIMEOUT_SECONDS = int(os.environ.get("ASTRA_BUILD_TIMEOUT", "5400"))
+_LONG_RUNNING_TOOL_TIMEOUTS = {
+    "run_mvp_loop": _BUILD_TOOL_TIMEOUT_SECONDS,
+    "spawn_parallel_coders": _BUILD_TOOL_TIMEOUT_SECONDS,
+    "deep_research": _RESEARCH_TOOL_TIMEOUT_SECONDS,
+    "run_research_pipeline": _RESEARCH_TOOL_TIMEOUT_SECONDS,
+    "browser_research": _RESEARCH_TOOL_TIMEOUT_SECONDS,
+    "batch_search": _RESEARCH_TOOL_TIMEOUT_SECONDS,
+    "search_and_fetch": _RESEARCH_TOOL_TIMEOUT_SECONDS,
+    "tiktok_research": _RESEARCH_TOOL_TIMEOUT_SECONDS,
+    "youtube_research": _RESEARCH_TOOL_TIMEOUT_SECONDS,
+    "news_search": _RESEARCH_TOOL_TIMEOUT_SECONDS,
+}
 
 
 def fuzzy_resolve_tool(name: str, tool_names) -> str | None:
@@ -2070,18 +2088,22 @@ class Agent:
         args_preview = {k: (str(v)[:120] + "…" if isinstance(v, str) and len(str(v)) > 120 else v) for k, v in args.items()}
         logger.debug("[%s] → %s  args=%s", self.name, tool_name, args_preview)
         t0 = _time.monotonic()
+        _tool_timeout = _LONG_RUNNING_TOOL_TIMEOUTS.get(tool_name, _DEFAULT_TOOL_TIMEOUT_SECONDS)
         try:
             entry = self._runtime_entries.get(tool_name)
             if settings.astra_tool_registry_v2 and entry:
-                result = await runtime_tool_registry.dispatch(entry, args, {
-                    "session_id": ctx.session_id,
-                    "founder_id": ctx.founder_id,
-                    "agent": self.name,
-                })
+                result = await asyncio.wait_for(
+                    runtime_tool_registry.dispatch(entry, args, {
+                        "session_id": ctx.session_id,
+                        "founder_id": ctx.founder_id,
+                        "agent": self.name,
+                    }),
+                    timeout=_tool_timeout,
+                )
             elif asyncio.iscoroutinefunction(fn):
-                result = await fn(**args)
+                result = await asyncio.wait_for(fn(**args), timeout=_tool_timeout)
             else:
-                result = await asyncio.to_thread(fn, **args)
+                result = await asyncio.wait_for(asyncio.to_thread(fn, **args), timeout=_tool_timeout)
             elapsed = _time.monotonic() - t0
             if ctx.guardrails:
                 post = ctx.guardrails.after_call(
@@ -2114,6 +2136,24 @@ class Agent:
                 except Exception as e:
                     logger.warning("[%s] SafeRun result emit failed for %s: %s", self.name, tool_name, e)
             return result
+        except asyncio.TimeoutError:
+            elapsed = _time.monotonic() - t0
+            logger.error("[%s] ✗ %s  %.1fs  TimeoutError: timed out after %ss", self.name, tool_name, elapsed, _tool_timeout)
+            if saferun_action:
+                try:
+                    from backend.core.events import publish
+                    await publish(ctx.session_id, {
+                        "type": "saferun_result",
+                        "action_id": saferun_action["id"],
+                        "tool": tool_name,
+                        "agent": self.name,
+                        "status": "error",
+                        "result_preview": f"timed out after {_tool_timeout}s",
+                        "elapsed_seconds": round(elapsed, 2),
+                    })
+                except Exception as emit_error:
+                    logger.warning("[%s] SafeRun timeout emit failed for %s: %s", self.name, tool_name, emit_error)
+            return {"error": f"Tool '{tool_name}' timed out after {_tool_timeout}s", "timed_out": True, "tool": tool_name}
         except Exception as e:
             elapsed = _time.monotonic() - t0
             logger.error("[%s] ✗ %s  %.1fs  %s: %s", self.name, tool_name, elapsed, type(e).__name__, e)
