@@ -78,12 +78,24 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
     preview_url = ""
     deployment_checks: list[dict[str, Any]] = []
     pending_agent_question: dict[str, Any] | None = None
+    plan_tasks: dict[str, dict[str, Any]] = {}
+    planner_model = ""
 
     for event in event_dicts:
         event_type = event.get("type")
         _update_agent_snapshot(agents, event)
         if event_type == "goal_start":
             final_status = "running"
+        if event_type == "plan_done":
+            # A session can plan in more than one pass (e.g. research first,
+            # then the rest once findings are in) — later passes only carry
+            # their own agents, so merge by agent rather than replace.
+            for task in event.get("tasks") or []:
+                agent_name = task.get("agent")
+                if agent_name:
+                    plan_tasks[agent_name] = task
+            if event.get("planner_model"):
+                planner_model = event["planner_model"]
         if event_type == "agent_build" and event.get("kind") == "deploy" and event.get("url"):
             preview_url = event["url"]
         elif event_type == "agent_done" and isinstance(event.get("result"), dict):
@@ -278,6 +290,8 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
         "event_count": len(events),
         "last_event_id": events[-1][0] if events else 0,
         "stack": stack,
+        "plan_tasks": list(plan_tasks.values()),
+        "planner_model": planner_model,
         "operating_plan": operating_plan,
         "manifest": manifest,
         "execution_contract": execution_contract,

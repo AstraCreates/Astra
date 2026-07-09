@@ -373,6 +373,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     if (d.previewUrl) st.liveUrl = d.previewUrl;
     else if (!st.liveUrl && d.session_meta?.deploy_url) st.liveUrl = d.session_meta.deploy_url;
     st.status = d.status || st.status;
+    if (Array.isArray(d.plan_tasks) && d.plan_tasks.length) st.planTasks = d.plan_tasks;
+    if (d.planner_model) st.plannerModel = d.planner_model;
     st.needsReview = Boolean(d.needs_review || d.session_meta?.needs_review);
     st.reviewReason = String(d.review_reason || d.session_meta?.review_reason || "");
     st.completionAuditSummary = String(d.completion_audit?.summary || "");
