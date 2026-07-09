@@ -34,6 +34,22 @@ def _oauth_state_consume(nonce: str) -> str | None:
     return founder_id
 
 
+def _run_option_exclusions(technical_scope: str | None, marketing_channels: str | None) -> list[str]:
+    """Translate the founder-facing technical_scope/marketing_channels enums into
+    an agent-name exclusion list consumed by Orchestrator.run/continue_run.
+    Unset/"both" excludes nothing — today's default behavior is unchanged."""
+    exclude: list[str] = []
+    if technical_scope == "none":
+        exclude += ["technical", "web"]
+    elif technical_scope == "website":
+        exclude.append("technical")
+    elif technical_scope == "technical":
+        exclude.append("web")
+    if marketing_channels == "organic":
+        exclude.append("marketing_paid")
+    return exclude
+
+
 def _public_base_url(url: str, *, default: str) -> str:
     """Normalize public callback/redirect bases.
 
@@ -619,6 +635,11 @@ async def submit_goal(body: GoalRequest, request: Request):
     if _effective_stack:
         constraints["stack_id"] = _effective_stack
     constraints["unlimited_credits"] = _unlimited
+    _exclude_agents = _run_option_exclusions(body.technical_scope, body.marketing_channels)
+    if _exclude_agents:
+        constraints["exclude_agents"] = _exclude_agents
+    if body.research_depth:
+        constraints["research_depth"] = body.research_depth
     # Prepend LLM-generated business profile so all agents have full context
     _goal_instruction = body.instruction
     if _business_profile and "---" not in body.instruction[:80]:
@@ -1593,6 +1614,7 @@ async def continue_goal(body: ContinueRequest, request: Request):
         return {"session_id": session_id, "status": "running", "prior_session_id": body.prior_session_id, "rerun": agent_name}
 
     session_id = new_session_id()
+    _exclude_agents = _run_option_exclusions(body.technical_scope, body.marketing_channels)
 
     async def _run():
         try:
@@ -1602,6 +1624,8 @@ async def continue_goal(body: ContinueRequest, request: Request):
                 prior_session_id=body.prior_session_id,
                 agents=body.agents,
                 session_id=session_id,
+                exclude_agents=_exclude_agents or None,
+                research_depth=body.research_depth,
             )
         except Exception as e:
             await publish(session_id, {"type": "goal_error", "error": str(e)})

@@ -63,6 +63,56 @@ def test_stream_build_events_returns_and_publishes_stderr(monkeypatch):
     assert any(event.get("kind") == "done" and "Node.js >=22.0.0" in str(event.get("error", "")) for event in published)
 
 
+def test_stream_caveman_events_kills_proc_past_token_cap(monkeypatch):
+    """Real production bug: a single _run_claude/_run_caveman call hit 3,988,616
+    tokens with no internal ceiling. mvp_max_build_tokens must kill the
+    subprocess once cumulative usage crosses it, instead of running unbounded."""
+    published: list[dict] = []
+    killed: list[bool] = []
+
+    big_usage_event = (
+        '{"type": "message_end", "message": {"role": "assistant", "content": "chunk", '
+        '"usage": {"input": 900000, "output": 700000}}}\n'
+    )
+    # A second event that must NOT be processed once the cap trips.
+    trailing_event = (
+        '{"type": "message_end", "message": {"role": "assistant", "content": "should not run", '
+        '"usage": {"input": 1, "output": 1}}}\n'
+    )
+
+    class FakeProc:
+        def __init__(self, *_args, **_kwargs):
+            self.stdout = [big_usage_event, trailing_event]
+            self.stderr = []
+            self.returncode = 0
+
+        def kill(self):
+            killed.append(True)
+            self.returncode = -9
+
+        def wait(self, timeout: int | None = None):
+            return self.returncode
+
+    monkeypatch.setattr(git_tools.settings, "mvp_max_build_tokens", 1_000_000, raising=False)
+    monkeypatch.setattr(git_tools.subprocess, "Popen", FakeProc)
+    monkeypatch.setattr("backend.core.events.publish_sync", lambda _sid, event: published.append(event))
+    monkeypatch.setattr(git_tools, "_record_build_usage", lambda *_args, **_kwargs: None)
+
+    git_tools._stream_caveman_events(
+        ["caveman", "-p"],
+        cwd="/tmp",
+        timeout=60,
+        env={},
+        founder_id="founder_1",
+        app_session_id="app_session_1",
+        agent="technical",
+    )
+
+    assert killed == [True]
+    assert any("token cap" in str(e.get("text", "")) for e in published if e.get("kind") == "error")
+    assert not any("should not run" in str(e.get("text", "")) for e in published)
+
+
 def test_run_claude_sudo_command_does_not_put_secret_in_argv(monkeypatch, tmp_path):
     secret = "sk-openai-secret-value"
     seen: dict[str, object] = {}

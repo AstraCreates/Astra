@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     # Compiler-as-critic recovery: re-run `npm run build`, feed real errors to the
     # coder, re-verify — up to this many rounds before giving up.
     mvp_max_build_rounds: int = 3
+    # Hard ceiling on cumulative input+output tokens for a single build subprocess
+    # call (_run_claude/_run_caveman). caveman-code's own internal tool-use loop is
+    # otherwise unbounded — a real production build hit 3.99M tokens in one call.
+    # Killed mid-stream once crossed; generous enough not to cut normal builds.
+    mvp_max_build_tokens: int = 1_500_000
     # DeepSeek Flash: planning writes long outputs; MiMo's $2.82/M output rate
     # dominates cost at scale. Flash handles plan-length output at $1.72/M.
     build_plan_model: str = "deepseek/deepseek-v4-flash"

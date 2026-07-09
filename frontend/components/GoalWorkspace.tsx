@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useDevUser } from "@/lib/use-dev-user";
 import ServiceLogo from "@/components/ServiceLogo";
 import LLCFilingModal from "@/components/LLCFilingModal";
-import { apiFetch, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, getCompanyGoal, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote, killSession, ingestAttachment, emailDeliverable, getSessionBenchmark } from "@/lib/api";
+import { apiFetch, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, getCompanyGoal, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote, killSession, ingestAttachment, emailDeliverable, getSessionBenchmark, type TechnicalScope, type ResearchDepth, type MarketingChannels } from "@/lib/api";
 import type { DeploymentRecord } from "@/lib/api";
 import type { AgentCatalogEntry } from "@/lib/api";
 import type { AgentDepartmentManifest, AgentStackTemplate, CompanyGoal, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionBenchmark, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
@@ -3150,6 +3150,9 @@ function ContinuePanel({ sessionId, founderId, company }: { sessionId: string; f
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [technicalScope, setTechnicalScope] = useState<TechnicalScope | "">("");
+  const [researchDepth, setResearchDepth] = useState<ResearchDepth | "">("");
+  const [marketingChannels, setMarketingChannels] = useState<MarketingChannels | "">("");
 
   const SUGGESTIONS = [
     "Add Stripe subscriptions with 3 pricing tiers and a billing page",
@@ -3168,7 +3171,11 @@ function ContinuePanel({ sessionId, founderId, company }: { sessionId: string; f
     setLoading(true);
     setError(null);
     try {
-      const result = await continueSession(founderId, sessionId, instruction + buildAttachmentBlock(attachments));
+      const result = await continueSession(founderId, sessionId, instruction + buildAttachmentBlock(attachments), undefined, {
+        technicalScope: technicalScope || undefined,
+        researchDepth: researchDepth || undefined,
+        marketingChannels: marketingChannels || undefined,
+      });
       router.push(`/?session=${encodeURIComponent(result.session_id)}&instruction=${encodeURIComponent(instruction)}&founder=${encodeURIComponent(founderId)}&company=${encodeURIComponent(company)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to continue");
@@ -3193,6 +3200,29 @@ function ContinuePanel({ sessionId, founderId, company }: { sessionId: string; f
           disabled={loading}
         />
         <AttachBar attachments={attachments} setAttachments={setAttachments} disabled={loading} founderId={founderId} />
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <select value={technicalScope} onChange={e => setTechnicalScope(e.target.value as TechnicalScope | "")} disabled={loading}
+            className="site-input" style={{ flex: "1 1 160px", fontSize: 12, padding: "6px 10px" }}>
+            <option value="">Technical: default</option>
+            <option value="both">Website + technical build</option>
+            <option value="website">Website only</option>
+            <option value="technical">Technical build only</option>
+            <option value="none">Skip both</option>
+          </select>
+          <select value={researchDepth} onChange={e => setResearchDepth(e.target.value as ResearchDepth | "")} disabled={loading}
+            className="site-input" style={{ flex: "1 1 160px", fontSize: 12, padding: "6px 10px" }}>
+            <option value="">Research: default</option>
+            <option value="fast">Fast</option>
+            <option value="deep">Deep</option>
+          </select>
+          <select value={marketingChannels} onChange={e => setMarketingChannels(e.target.value as MarketingChannels | "")} disabled={loading}
+            className="site-input" style={{ flex: "1 1 160px", fontSize: 12, padding: "6px 10px" }}>
+            <option value="">Marketing: default</option>
+            <option value="both">Organic + paid</option>
+            <option value="organic">Organic only</option>
+            <option value="paid">Paid included</option>
+          </select>
+        </div>
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button type="submit" disabled={loading || !instruction.trim()} className="site-btn site-btn-primary" style={{ padding: "0 22px" }}>
             {loading ? "Launching…" : "Run agents"} <span aria-hidden>→</span>

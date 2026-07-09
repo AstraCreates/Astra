@@ -1132,11 +1132,22 @@ export interface CompanySubteamReport {
   next_actions: string[];
 }
 
+export type TechnicalScope = "none" | "website" | "technical" | "both";
+export type ResearchDepth = "fast" | "deep";
+export type MarketingChannels = "organic" | "paid" | "both";
+
+export interface RunOptions {
+  technicalScope?: TechnicalScope;
+  researchDepth?: ResearchDepth;
+  marketingChannels?: MarketingChannels;
+}
+
 export async function submitGoal(
   founderId: string,
   instruction: string,
   constraints: Record<string, unknown> = {},
   stackId = "idea_to_revenue",
+  runOptions: RunOptions = {},
 ): Promise<{ session_id: string; status: string; workspace_id: string; chapter_id: string }> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 30_000);
@@ -1150,6 +1161,9 @@ export async function submitGoal(
         instruction,
         constraints,
         stack_id: stackId,
+        ...(runOptions.technicalScope ? { technical_scope: runOptions.technicalScope } : {}),
+        ...(runOptions.researchDepth ? { research_depth: runOptions.researchDepth } : {}),
+        ...(runOptions.marketingChannels ? { marketing_channels: runOptions.marketingChannels } : {}),
       }),
       signal: ctrl.signal,
     });
@@ -1660,12 +1674,21 @@ export async function continueSession(
   founderId: string,
   priorSessionId: string,
   instruction: string,
-  agents?: string[]
+  agents?: string[],
+  runOptions: RunOptions = {},
 ): Promise<{ session_id: string; status: string; prior_session_id: string }> {
   const res = await apiFetch(`${BASE}/goal/continue`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ founder_id: founderId, prior_session_id: priorSessionId, instruction, agents }),
+    body: JSON.stringify({
+      founder_id: founderId,
+      prior_session_id: priorSessionId,
+      instruction,
+      agents,
+      technical_scope: runOptions.technicalScope,
+      research_depth: runOptions.researchDepth,
+      marketing_channels: runOptions.marketingChannels,
+    }),
   });
   await checkOk(res);
   return res.json();

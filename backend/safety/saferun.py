@@ -109,6 +109,24 @@ _RISKY_TOOLS: dict[str, dict[str, str]] = {
         "approval_gate": "outbound_send",
         "reason": "Changes email DNS configuration.",
     },
+    "run_mvp_loop": {
+        "risk_level": "medium",
+        "category": "build_spend",
+        "approval_gate": "technical_build",
+        "reason": "Starts a paid AI code-generation build — can cost 100s of credits.",
+    },
+    "spawn_parallel_coders": {
+        "risk_level": "medium",
+        "category": "build_spend",
+        "approval_gate": "technical_build",
+        "reason": "Starts multiple parallel paid AI code-generation builds.",
+    },
+    "run_claude_in_repo": {
+        "risk_level": "medium",
+        "category": "build_spend",
+        "approval_gate": "technical_build",
+        "reason": "Starts a paid AI code-generation build — can cost 100s of credits.",
+    },
 }
 
 

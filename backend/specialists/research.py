@@ -246,8 +246,18 @@ def _is_max_research_plan(plan: str) -> bool:
     return (plan or "").lower() in _MAX_RESEARCH_PLANS
 
 
-def _research_depth_guidance(plan: str) -> str:
-    if _is_max_research_plan(plan):
+def _effective_is_deep(plan: str, depth_override: str | None = None) -> bool:
+    """Founder-chosen research_depth constraint (fast/deep) takes precedence
+    over the billing-tier default; unset falls back to plan tier."""
+    if depth_override == "deep":
+        return True
+    if depth_override == "fast":
+        return False
+    return _is_max_research_plan(plan)
+
+
+def _research_depth_guidance(plan: str, depth_override: str | None = None) -> str:
+    if _effective_is_deep(plan, depth_override):
         return (
             "SUPER DEEP RESEARCH MODE (Max workspace):\n"
             "- Be THOROUGH: visit many sources across the web. Run multiple search rounds and read "
@@ -264,19 +274,19 @@ def _research_depth_guidance(plan: str) -> str:
     )
 
 
-def _research_max_iterations(plan: str, requested: int | None = None) -> int:
+def _research_max_iterations(plan: str, requested: int | None = None, depth_override: str | None = None) -> int:
     if requested is not None:
         return requested
-    return 60 if _is_max_research_plan(plan) else 30
+    return 60 if _effective_is_deep(plan, depth_override) else 30
 
 
-def _build_research_role(agent_name: str, focus_searches: str, plan: str) -> str:
+def _build_research_role(agent_name: str, focus_searches: str, plan: str, depth_override: str | None = None) -> str:
     return (
         "You are an elite research specialist. Your ONLY domain is MARKET OPPORTUNITY — "
         "TAM/SAM/SOM, market growth trends, timing thesis, and investment narrative. "
         "NOT competitor profiling (research_competitors), NOT financial benchmarks (research_financial), "
         "NOT regulatory risk (research_regulatory), NOT customer personas (customer_discovery).\n\n"
-        + _research_depth_guidance(plan)
+        + _research_depth_guidance(plan, depth_override)
         + "\nTOOLS:\n"
         "- run_research_pipeline(topic, focus) — first-pass: builds query plan + runs deep_research in parallel. Use this first.\n"
         "- deep_research(queries) — PRIMARY tool. Pass a list of research questions; each returns a synthesized cited answer. Replaces batch_search + fetch_and_read loops.\n"
@@ -379,8 +389,9 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     async def _patched_run(ctx: AgentContext):
         ctx_holder[0] = ctx
         plan = _research_plan_for_founder(ctx.founder_id)
-        agent.role = _build_research_role(agent_name, focus_searches, plan)
-        agent.max_iterations = _research_max_iterations(plan, requested_max_iterations)
+        depth_override = ((ctx.shared or {}).get("constraints") or {}).get("research_depth")
+        agent.role = _build_research_role(agent_name, focus_searches, plan, depth_override)
+        agent.max_iterations = _research_max_iterations(plan, requested_max_iterations, depth_override)
         return await _original_run(ctx)
 
     agent.run = _patched_run

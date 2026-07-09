@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getStacks, submitGoal, ingestAttachment, type AgentStackTemplate } from "@/lib/api";
+import { getStacks, submitGoal, ingestAttachment, type AgentStackTemplate, type TechnicalScope, type ResearchDepth, type MarketingChannels } from "@/lib/api";
 import { useDevUser } from "@/lib/use-dev-user";
 import BusinessQuizModal, { type QuizResult, STACK_MAP, BIZ_TYPES } from "@/components/BusinessQuizModal";
 
@@ -12,6 +12,9 @@ export default function NewGoalView() {
   const [stacks, setStacks] = useState<AgentStackTemplate[]>([]);
   const [stackHint, setStackHint] = useState("Loading stacks…");
   const [selStack, setSelStack] = useState<string>("");
+  const [technicalScope, setTechnicalScope] = useState<TechnicalScope>("both");
+  const [researchDepth, setResearchDepth] = useState<ResearchDepth | "">("");
+  const [marketingChannels, setMarketingChannels] = useState<MarketingChannels>("both");
   const [chars, setChars] = useState(0);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -91,7 +94,11 @@ export default function NewGoalView() {
         instruction += "\n\nAttached context:\n" + attachments.map((a) => `--- ${a.name} ---\n${a.content.slice(0, 8000)}`).join("\n\n");
       }
       const stackId = selStack || (quiz?.businessType ? STACK_MAP[quiz.businessType] : "") || "idea_to_revenue";
-      const data = await submitGoal(userId, instruction, {}, stackId);
+      const data = await submitGoal(userId, instruction, {}, stackId, {
+        technicalScope,
+        researchDepth: researchDepth || undefined,
+        marketingChannels,
+      });
       if (!data.session_id) throw new Error("No session_id returned");
       window.location.assign(`/s/${data.session_id}`);
     } catch (e) {
@@ -243,6 +250,37 @@ export default function NewGoalView() {
             ))}
           </div>
           <div className="f-hint" style={{ marginTop: 7 }}>{stackHint}</div>
+        </div>
+
+        <div className="f-field" style={{ marginBottom: 18 }}>
+          <label className="f-label">Run options <span style={{ color: "var(--fm)", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span></label>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 160px" }}>
+              <div className="f-hint" style={{ marginBottom: 4 }}>Technical scope</div>
+              <select className="f-input" value={technicalScope} onChange={(e) => setTechnicalScope(e.target.value as TechnicalScope)}>
+                <option value="both">Website + technical build</option>
+                <option value="website">Website only</option>
+                <option value="technical">Technical build only</option>
+                <option value="none">Skip both</option>
+              </select>
+            </div>
+            <div style={{ flex: "1 1 160px" }}>
+              <div className="f-hint" style={{ marginBottom: 4 }}>Research depth</div>
+              <select className="f-input" value={researchDepth} onChange={(e) => setResearchDepth(e.target.value as ResearchDepth | "")}>
+                <option value="">Default (plan-based)</option>
+                <option value="fast">Fast</option>
+                <option value="deep">Deep</option>
+              </select>
+            </div>
+            <div style={{ flex: "1 1 160px" }}>
+              <div className="f-hint" style={{ marginBottom: 4 }}>Marketing channels</div>
+              <select className="f-input" value={marketingChannels} onChange={(e) => setMarketingChannels(e.target.value as MarketingChannels)}>
+                <option value="both">Organic + paid</option>
+                <option value="organic">Organic only</option>
+                <option value="paid">Paid included</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         <div className="f-field" style={{ marginBottom: 18 }}>

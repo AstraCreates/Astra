@@ -1188,6 +1188,13 @@ def _stream_caveman_events(cmd: list, cwd: str, timeout: int, env: dict,
                         if txt:
                             result_text = txt
                             pub({"kind": "log", "text": txt[:2000]})
+                        token_cap = getattr(settings, "mvp_max_build_tokens", 0) or 0
+                        if token_cap and (usage_in + usage_out) > token_cap:
+                            pub({"kind": "error",
+                                 "text": f"Build stopped: exceeded {token_cap:,} token cap "
+                                         f"({usage_in + usage_out:,} tokens used)."})
+                            proc.kill()
+                            break
         finally:
             watchdog.cancel()
             try:

@@ -1,5 +1,10 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Literal, Optional
+
+
+TechnicalScope = Literal["none", "website", "technical", "both"]
+ResearchDepth = Literal["fast", "deep"]
+MarketingChannels = Literal["organic", "paid", "both"]
 
 
 class GoalRequest(BaseModel):
@@ -10,6 +15,11 @@ class GoalRequest(BaseModel):
     company_id: Optional[str] = None
     workspace_id: Optional[str] = None
     workspace_name: Optional[str] = None
+    # Per-agent-category run options. All optional/default-preserving — omitting
+    # them keeps today's behavior (planner/plan-tier decides everything).
+    technical_scope: TechnicalScope = "both"
+    research_depth: Optional[ResearchDepth] = None
+    marketing_channels: MarketingChannels = "both"
 
 
 class StackRecommendRequest(BaseModel):
@@ -88,6 +98,9 @@ class ContinueRequest(BaseModel):
     instruction: str
     prior_session_id: str
     agents: Optional[list[str]] = None  # if None, planner decides
+    technical_scope: Optional[TechnicalScope] = None
+    research_depth: Optional[ResearchDepth] = None
+    marketing_channels: Optional[MarketingChannels] = None
 
 
 class BrainSyncRequest(BaseModel):

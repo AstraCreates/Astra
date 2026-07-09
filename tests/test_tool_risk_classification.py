@@ -74,3 +74,15 @@ def test_saferun_gates_previously_uncovered_real_action_tools(monkeypatch):
         action = build_saferun_action(name, {}, "sales")
         assert action is not None, f"{name} still ungated"
         assert action["approval_required"] is True, f"{name} gated but not requiring approval"
+
+
+def test_saferun_gates_technical_build_tools():
+    """MVP builds were the single largest real spend category (5,468 credits /
+    11 txns vs ~856 credits / 347 txns for everything else combined) with no
+    approval gate before spend started. run_mvp_loop/spawn_parallel_coders/
+    run_claude_in_repo must require founder approval before firing."""
+    for name in ("run_mvp_loop", "spawn_parallel_coders", "run_claude_in_repo"):
+        action = build_saferun_action(name, {}, "technical")
+        assert action is not None, f"{name} still ungated"
+        assert action["approval_required"] is True, f"{name} gated but not requiring approval"
+        assert action["approval_gate"] == "technical_build"

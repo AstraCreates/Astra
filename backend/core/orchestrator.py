@@ -1427,6 +1427,14 @@ class Orchestrator:
                     if _ag not in _existing_agents and _ag in self.specialists:
                         other_agents_initial.append({"id": f"forced_{_ag}", "agent": _ag, "instruction": _instr, "depends_on": []})
 
+        # Founder-chosen exclusions (technical_scope=none/website/technical,
+        # marketing_channels=organic) — a simple post-filter on the finalized task
+        # list so it applies uniformly regardless of custom vs default stack path,
+        # without touching the allow-list/mandatory-add logic above.
+        _exclude_agents: set[str] = set((constraints or {}).get("exclude_agents") or [])
+        if _exclude_agents:
+            other_agents_initial = [t for t in other_agents_initial if t["agent"] not in _exclude_agents]
+
         # bypass_planner: skip research wave + replan, dispatch requested agents immediately
         if _bypass_planner and _is_custom:
             _test_model = (constraints or {}).get("test_model")
@@ -2556,6 +2564,8 @@ class Orchestrator:
         prior_session_id: str,
         agents: list[str] | None = None,
         session_id: str | None = None,
+        exclude_agents: list[str] | None = None,
+        research_depth: str | None = None,
     ) -> dict[str, Any]:
         """
         Continue work on an existing company. Loads full vault context from prior sessions,
@@ -2577,6 +2587,8 @@ class Orchestrator:
                 prior_session_id=prior_session_id,
                 agents=agents,
                 session_id=session_id,
+                exclude_agents=exclude_agents,
+                research_depth=research_depth,
             )
         finally:
             _active_continue_runs.discard(session_id)
@@ -2588,6 +2600,8 @@ class Orchestrator:
         prior_session_id: str,
         agents: list[str] | None,
         session_id: str,
+        exclude_agents: list[str] | None = None,
+        research_depth: str | None = None,
     ) -> dict[str, Any]:
         try:
             from backend.core.session_store import get_session_meta as _session_meta
@@ -2646,6 +2660,7 @@ class Orchestrator:
             "prior_session_id": prior_session_id,
             "creative_brief": creative_brief,
             "company_id": company_id,
+            "constraints": {"research_depth": research_depth} if research_depth else {},
         }
         if _root_goal:
             shared["root_session_goal"] = _root_goal
@@ -2782,6 +2797,13 @@ class Orchestrator:
             tasks = await self._llm_plan(messages)
             if not tasks:
                 tasks = [{"id": "c1", "agent": "technical", "instruction": instruction, "depends_on": []}]
+
+        # Founder-chosen exclusions (technical_scope=none/website/technical,
+        # marketing_channels=organic) — same post-filter pattern as run(), applied
+        # after the planner (or explicit agents list) resolves the task list.
+        if exclude_agents:
+            _exclude_set = set(exclude_agents)
+            tasks = [t for t in tasks if t["agent"] not in _exclude_set]
 
         await publish(session_id, {
             "type": "plan_done",
