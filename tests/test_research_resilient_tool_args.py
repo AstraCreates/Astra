@@ -35,3 +35,52 @@ def test_resilient_search_and_fetch_still_backfills_when_truly_empty():
     wrapped()
 
     assert captured.get("query")
+
+
+def test_resilient_deep_research_backfills_missing_queries():
+    """Real production bug: research_customers called deep_research() with no
+    queries at all, hitting deep_research's hard "queries required" error
+    repeatedly with zero backfill — unlike every other research tool
+    (sonar_research, search_and_fetch, etc.), deep_research had no resilience
+    wrapping despite the role prompt now telling agents to call it directly."""
+    captured = {}
+
+    def fake_tool(**kwargs):
+        captured.update(kwargs)
+        return {"ok": True}
+
+    wrapped = _make_resilient_research_tool(fake_tool, "deep_research", [_ctx()])
+    wrapped()
+
+    assert captured.get("queries")
+    assert isinstance(captured["queries"], list)
+
+
+def test_resilient_deep_research_converts_singular_query_kwarg():
+    """The model sometimes passes the singular `query` string every other
+    research tool uses instead of deep_research's actual plural `queries`
+    list — recover that real intent instead of discarding it."""
+    captured = {}
+
+    def fake_tool(**kwargs):
+        captured.update(kwargs)
+        return {"ok": True}
+
+    wrapped = _make_resilient_research_tool(fake_tool, "deep_research", [_ctx()])
+    wrapped(query="Goon competitor pricing 2025")
+
+    assert captured["queries"] == ["Goon competitor pricing 2025"]
+    assert "query" not in captured
+
+
+def test_resilient_deep_research_preserves_real_queries_list():
+    captured = {}
+
+    def fake_tool(**kwargs):
+        captured.update(kwargs)
+        return {"ok": True}
+
+    wrapped = _make_resilient_research_tool(fake_tool, "deep_research", [_ctx()])
+    wrapped(queries=["real question one", "real question two"])
+
+    assert captured["queries"] == ["real question one", "real question two"]

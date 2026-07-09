@@ -107,11 +107,23 @@ def _make_resilient_research_tool(tool_fn, tool_name: str, ctx_holder: list, age
         elif tool_name == "research_papers":
             if not args and not patched_kwargs.get("query") and topic:
                 patched_kwargs["query"] = topic
-        elif tool_name == "sonar_research":
-            if not args and not patched_kwargs.get("queries") and topic:
-                plan = build_research_queries(topic, focus=focus, limit=6)
-                queries = plan.get("queries") or [topic]
-                patched_kwargs["queries"] = queries
+        elif tool_name in {"deep_research", "sonar_research"}:
+            # Real production bug: the role prompt tells agents to call
+            # deep_research(queries) directly (sonar_research is its
+            # documented alias), but the model sometimes omits queries
+            # entirely, passes an empty list, or passes a singular `query`
+            # string (matching the singular naming every other research tool
+            # uses) instead of the plural `queries` list deep_research
+            # actually takes — deep_research has no built-in tolerance for
+            # any of these and just returns a hard "queries required" error,
+            # repeatedly, burning turns with zero research done.
+            if not args and not patched_kwargs.get("queries"):
+                single = patched_kwargs.pop("query", None)
+                if single:
+                    patched_kwargs["queries"] = [single] if isinstance(single, str) else list(single)
+                elif topic:
+                    plan = build_research_queries(topic, focus=focus, limit=6)
+                    patched_kwargs["queries"] = plan.get("queries") or [topic]
         elif tool_name == "search_and_fetch":
             # Only backfill when the model gave us nothing usable at all — a
             # `url` kwarg (model confusing this with fetch_and_read) is real
