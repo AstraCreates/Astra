@@ -3,6 +3,33 @@ import types
 import sys
 
 
+def test_search_and_fetch_url_kwarg_routes_to_fetch_and_read(monkeypatch):
+    """Real production bug: the model called search_and_fetch(url=..., max_results=8)
+    28 times in a row (confusing it with fetch_and_read). Since search_and_fetch
+    had no `url` param, the arg silently got dropped by the tool-call filter and
+    a generic auto-query was substituted instead — returning irrelevant results
+    every single time. search_and_fetch must accept `url` and route it straight
+    to fetch_and_read instead of losing the model's actual intent."""
+    calls = []
+
+    def fake_fetch_and_read(url):
+        calls.append(url)
+        return {"url": url, "title": "G2 Reviews", "content": "real page content"}
+
+    monkeypatch.setattr(browser_research, "fetch_and_read", fake_fetch_and_read)
+
+    result = browser_research.search_and_fetch(url="https://www.g2.com/products/goon/reviews", max_results=8)
+
+    assert calls == ["https://www.g2.com/products/goon/reviews"]
+    assert result["routed_to"] == "fetch_and_read"
+    assert result["results"][0]["content"] == "real page content"
+
+
+def test_search_and_fetch_still_requires_query_or_url():
+    result = browser_research.search_and_fetch()
+    assert "error" in result
+
+
 def test_batch_search_aggregates_unique_sources(monkeypatch):
     def fake_search_and_fetch(query, max_results):
         return {

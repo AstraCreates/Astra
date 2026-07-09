@@ -113,7 +113,10 @@ def _make_resilient_research_tool(tool_fn, tool_name: str, ctx_holder: list, age
                 queries = plan.get("queries") or [topic]
                 patched_kwargs["queries"] = queries
         elif tool_name == "search_and_fetch":
-            if not args and not patched_kwargs.get("query") and topic:
+            # Only backfill when the model gave us nothing usable at all — a
+            # `url` kwarg (model confusing this with fetch_and_read) is real
+            # intent and must not be overwritten with an unrelated auto-query.
+            if not args and not patched_kwargs.get("query") and not patched_kwargs.get("url") and topic:
                 plan = build_research_queries(topic, focus=focus, limit=1)
                 queries = plan.get("queries") or [topic]
                 patched_kwargs["query"] = queries[0]

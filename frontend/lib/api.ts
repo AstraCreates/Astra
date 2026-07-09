@@ -2448,6 +2448,8 @@ export const AGENT_LABELS: Record<string, string> = {
   research_market: "Market Analysis",
   research_financial: "Financial Research",
   research_regulatory: "Regulatory Research",
+  research_customers: "Customer Intel",
+  research_gtm: "GTM Strategy",
   web: "Web & Landing Page",
   web_navigator: "Web Navigator",
   marketing: "Marketing & Social",
@@ -2476,7 +2478,7 @@ export const AGENT_LABELS: Record<string, string> = {
 
 export const AGENT_ORDER = [
   "planner", "strategy",
-  "research", "research_competitors", "research_execution", "research_market", "research_financial", "research_regulatory",
+  "research", "research_competitors", "research_execution", "research_market", "research_financial", "research_regulatory", "research_customers", "research_gtm",
   "design",
   "technical", "technical_scaffold", "technical_infra", "technical_data",
   "web", "web_navigator",

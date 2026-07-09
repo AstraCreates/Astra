@@ -1693,6 +1693,12 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 return <div style={{ color: "var(--fd)", fontSize: 10.5, lineHeight: 1.6 }}>{isRunning ? "Agents are working — updates appear here as they act." : "Waiting to start."}</div>;
               }
 
+              // Short per-agent tag for the compact log column. `agent.split("_")[0]`
+              // used to collapse research_competitors/research_customers/research_gtm
+              // all down to "research" — indistinguishable in a multi-agent run.
+              const agentTag = (agent: string): string =>
+                (AGENT_LABELS as Record<string, string>)[agent] || agent.replace(/_/g, " ");
+
               // Reformat a tool log entry into a human-readable action string
               const TOOL_VERBS: Record<string, string> = {
                 web_search: "Searching", search: "Searching", google_search: "Searching",
@@ -1765,7 +1771,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                     const action = fmtTool(l.text);
                     return (
                       <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "4px 0" }}>
-                        {ags.length > 1 && <span style={{ fontSize: 9, color: "var(--blue)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", flexShrink: 0, marginTop: 2, minWidth: 54 }}>{l.agent.split("_")[0]}</span>}
+                        {ags.length > 1 && <span style={{ fontSize: 9, color: "var(--blue)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", flexShrink: 0, marginTop: 2, minWidth: 84 }}>{agentTag(l.agent)}</span>}
                         <span style={{ fontSize: 11.5, color: "var(--fg)", lineHeight: 1.5 }}>{action}</span>
                       </div>
                     );
@@ -1775,7 +1781,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                   if (!snippet) return null;
                   return (
                     <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "3px 0" }}>
-                      {ags.length > 1 && <span style={{ fontSize: 9, color: "var(--blue)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", flexShrink: 0, marginTop: 2, minWidth: 54 }}>{l.agent.split("_")[0]}</span>}
+                      {ags.length > 1 && <span style={{ fontSize: 9, color: "var(--blue)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", flexShrink: 0, marginTop: 2, minWidth: 84 }}>{agentTag(l.agent)}</span>}
                       <span style={{ fontSize: 11.5, color: "var(--fd)", lineHeight: 1.55, fontStyle: "italic" }}>{snippet}</span>
                     </div>
                   );

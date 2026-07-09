@@ -452,8 +452,16 @@ def fetch_and_read(url: str = "") -> dict:
         return _remember({"url": url, "skipped": str(e)[:80], "content": ""})
 
 
-def search_and_fetch(query: str = "", max_results: int = 16) -> dict:
-    """Search web then fetch full page content from each result."""
+def search_and_fetch(query: str = "", max_results: int = 16, url: str = "") -> dict:
+    """Search web then fetch full page content from each result.
+
+    Models sometimes call this with a `url` kwarg (confusing it with
+    fetch_and_read) when they already have a specific page in mind — route
+    that straight to fetch_and_read instead of silently dropping the arg and
+    falling back to an unrelated auto-generated query."""
+    if url and not query:
+        page = fetch_and_read(url)
+        return {"query": url, "results": [page] if page else [], "routed_to": "fetch_and_read"}
     if not query:
         return {"error": "query is required — pass a search string, e.g. \"competitor pricing SaaS\""}
     raw = _robust_search(query, max_results=max_results * 2)
