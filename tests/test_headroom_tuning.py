@@ -54,13 +54,6 @@ def test_tune_headroom_pipeline_swaps_content_router_config(monkeypatch):
     hr_compress_mod.__dict__["_pipeline"] = None
 
     hr_pkg = types.ModuleType("headroom")
-    # Replicate the real headroom-ai package shape: headroom/__init__.py does
-    # `from .compress import compress`, which overwrites the `headroom.compress`
-    # ATTRIBUTE with the function, shadowing the submodule of the same name.
-    # `import headroom.compress as X` resolves via that attribute and would
-    # bind X to this function, not the real module — the exact bug this test
-    # must catch. importlib.import_module("headroom.compress") must bypass it.
-    hr_pkg.compress = lambda *a, **k: None
     hr_transforms_pkg = types.ModuleType("headroom.transforms")
     hr_pipeline_mod = types.ModuleType("headroom.transforms.pipeline")
     hr_pipeline_mod.TransformPipeline = FakeTransformPipeline

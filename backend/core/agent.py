@@ -50,14 +50,7 @@ def _tune_headroom_pipeline_once() -> None:
         return
     _headroom_tuned = True
     try:
-        import importlib
-        # `import headroom.compress as X` would bind X via attribute lookup
-        # on the `headroom` package (`headroom.compress`), not the module
-        # directly — and headroom/__init__.py does `from .compress import
-        # compress`, which overwrites that same attribute with the function.
-        # importlib.import_module bypasses the shadowed attribute and returns
-        # the real submodule from sys.modules.
-        _hr_mod = importlib.import_module("headroom.compress")
+        import headroom.compress as _hr_mod
         from headroom.transforms.pipeline import TransformPipeline
         from headroom.transforms.content_router import ContentRouter, ContentRouterConfig
 
