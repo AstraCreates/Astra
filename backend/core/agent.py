@@ -551,6 +551,24 @@ class Agent:
                     existing = runtime_tool_registry.register_callable(
                         tool_name, handler, toolset="legacy", override=False,
                     )
+                elif existing.handler is not handler:
+                    # Another Agent instance registered a tool of the same
+                    # name with a DIFFERENT callable (e.g. two specialists
+                    # sharing a tool name with distinct implementations, or
+                    # a custom/per-founder closure). register_callable's
+                    # override=False means the shared registry keeps
+                    # whichever was registered first — reusing that entry
+                    # here would silently execute the WRONG handler for
+                    # this agent's tool calls. Scope a fresh entry to just
+                    # this agent's _runtime_entries (not written back to the
+                    # shared registry) with this agent's real handler, keeping
+                    # the tool-name-intrinsic classification (risk_category,
+                    # mutability, schema) from the existing entry.
+                    from dataclasses import replace as _dc_replace
+                    existing = _dc_replace(
+                        existing, handler=handler,
+                        is_async=asyncio.iscoroutinefunction(handler),
+                    )
                 self._runtime_entries[tool_name] = existing
             resolved = runtime_tool_registry.resolve(toolsets=self.toolsets)
             self._runtime_entries.update(resolved)

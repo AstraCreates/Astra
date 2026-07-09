@@ -277,16 +277,30 @@ def test_crw_search_and_fetch_parses_nested_results_response(monkeypatch):
 
 
 def test_crw_search_and_fetch_handles_request_failure(monkeypatch):
+    """On a crw request failure, _crw_search_and_fetch falls back to
+    _ddgs_fallback_search (real, intentional resilience — see the "falling
+    back to DDGS" log line) rather than just returning empty. That fallback
+    itself makes a real network call unless mocked directly, which the
+    previous version of this test didn't do — it only stubbed `httpx`, so
+    _ddgs_fallback_search's own live DDGS search ran for real and returned
+    real (non-empty) results, making `total == 0` a false assumption rather
+    than the actual contract. Mock the fallback directly so the test verifies
+    the real behavior (fallback invoked, its result returned, error recorded)
+    without depending on network."""
     def raise_error(*args, **kwargs):
         raise ConnectionError("crw unreachable")
 
     monkeypatch.setitem(sys.modules, "httpx", types.SimpleNamespace(post=raise_error))
+    monkeypatch.setattr(
+        browser_research, "_ddgs_fallback_search",
+        lambda query, max_results: {"query": query, "results": [], "formatted": "", "total": 0, "sources": []},
+    )
 
     result = browser_research._crw_search_and_fetch("test query")
 
     assert result["total"] == 0
     assert result["results"] == []
-    assert "error" in result
+    assert result["error"] == "crw unreachable"
 
 
 def test_crw_search_and_fetch_falls_back_when_crw_returns_no_results(monkeypatch):

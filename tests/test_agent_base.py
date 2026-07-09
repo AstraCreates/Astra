@@ -32,6 +32,30 @@ def test_agent_stores_tools():
     assert "generate_pdf" in agent.tools
 
 
+def test_agent_registry_v2_does_not_leak_stale_handler_across_instances(mocker):
+    """Real bug (not just a test-ordering flake): with astra_tool_registry_v2
+    enabled, Agent.__init__ eagerly registers each tool into the shared
+    runtime_tool_registry with override=False. A second Agent instance whose
+    tools dict has a DIFFERENT callable under the same tool name got the
+    FIRST agent's stale handler silently reused for its own tool calls —
+    e.g. two specialists sharing a tool name with distinct implementations,
+    or a custom/per-founder closure, would silently execute the wrong code.
+    _runtime_entries must always resolve to THIS agent's own handler."""
+    from backend.config import settings
+    mocker.patch.object(settings, "astra_tool_registry_v2", True)
+
+    first_handler = lambda: "first"  # noqa: E731
+    Agent(name="agent_one", role="irrelevant", tools={"shared_tool": first_handler})
+
+    second_handler = lambda title, sections: "second"  # noqa: E731
+    agent_two = Agent(name="agent_two", role="irrelevant", tools={"shared_tool": second_handler})
+
+    entry = agent_two._runtime_entries.get("shared_tool")
+    assert entry is not None
+    assert entry.handler is second_handler
+    assert entry.handler is not first_handler
+
+
 @pytest.mark.asyncio
 async def test_agent_run_calls_llm_and_returns_result(mocker):
     done_json = json.dumps({

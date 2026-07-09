@@ -8,7 +8,7 @@ def test_starter_research_defaults_to_fast_mode():
     assert "one focused run_research_pipeline pass" in role
     assert "5-8 distinct cited sources" in role
     assert "SUPER DEEP RESEARCH MODE" not in role
-    assert research._research_max_iterations("starter") == 22
+    assert research._research_max_iterations("starter") == 30
 
 
 def test_team_research_does_not_get_super_deep_mode():
@@ -16,7 +16,7 @@ def test_team_research_does_not_get_super_deep_mode():
 
     assert "FAST RESEARCH MODE" in role
     assert research._is_max_research_plan("team") is False
-    assert research._research_max_iterations("team") == 22
+    assert research._research_max_iterations("team") == 30
 
 
 def test_scale_and_beta_get_super_deep_research_mode():
@@ -26,7 +26,7 @@ def test_scale_and_beta_get_super_deep_research_mode():
         assert "SUPER DEEP RESEARCH MODE" in role
         assert "15+ distinct cited sources" in role
         assert research._is_max_research_plan(plan) is True
-        assert research._research_max_iterations(plan) == 40
+        assert research._research_max_iterations(plan) == 60
 
 
 def test_explicit_max_iterations_override_entitlement_default():
