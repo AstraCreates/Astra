@@ -30,6 +30,13 @@ from backend.stacks.verification_gates import _FILLER as _OUTPUT_FILLER
 
 logger = logging.getLogger(__name__)
 
+# Confirmed fast in real production traffic (ledger-timestamp measurement:
+# ~4s/call average during a live multi-agent burst). A hang past this timeout
+# is abnormal for these models specifically — fail/retry sooner instead of
+# the generous 300s default sized for slower/unverified models.
+_FAST_MODELS = {"inclusionai/ling-2.6-flash", "xiaomi/mimo-v2.5"}
+_FAST_MODEL_TIMEOUT = 90.0
+
 _headroom_tuned = False
 
 
@@ -638,14 +645,20 @@ class Agent:
             messages = cacheable_messages(messages)
         # Cap the per-call output. The agent loop only ever emits a small JSON action
         # (tool call / done), so a few thousand tokens is plenty. WITHOUT a cap, reasoning
-        # models like hy3-preview run to their 65536-token default and, hitting the 300s
-        # timeout, retry up to 5× → a single stuck iteration burns ~22 minutes (this is
+        # models like hy3-preview run to their 65536-token default and, hitting the
+        # timeout, retry up to 5× → a single stuck iteration burns a long time (this is
         # exactly why the design agent "took ages"). The cap bounds worst-case latency.
+        # Real production ling-2.6-flash calls average ~4s (measured from ledger
+        # timestamps during a live multi-agent burst) — a hang past _FAST_MODEL_TIMEOUT
+        # is unambiguously abnormal for these models, so fail/retry sooner instead of
+        # eating a 300s wait per stuck attempt. Slower/unverified models keep the
+        # original generous timeout as a safety net.
+        _call_timeout = _FAST_MODEL_TIMEOUT if self.model in _FAST_MODELS else 300.0
         kwargs: dict = dict(
             model=self.model,
             messages=messages,
             temperature=0.1,
-            timeout=300.0,
+            timeout=_call_timeout,
             max_tokens=int(os.environ.get("ASTRA_AGENT_MAX_TOKENS", "8192")),
         )
         extra_body = openrouter_extra_body(self.model) if is_openrouter else None

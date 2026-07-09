@@ -143,7 +143,7 @@ def build_finance_fundraise_agent(**kwargs) -> Agent:
         model=settings.or_highoutput_model,
         model_base_url=settings.openrouter_base_url,
         model_api_key=settings.openrouter_api_key or settings.agent_model_api_key,
-        max_iterations=25,
+        max_iterations=20,  # ling-2.6-flash is fast/reliable in production — 25 was oversized headroom
         role=(
             "You are an elite fundraising preparation specialist. Your ONLY domain is the fundraising package — "
             "investor research, round sizing, SAFE/priced round terms, pitch narrative, and investor one-pager. "

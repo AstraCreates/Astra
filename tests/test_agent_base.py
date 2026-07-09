@@ -32,6 +32,35 @@ def test_agent_stores_tools():
     assert "generate_pdf" in agent.tools
 
 
+def test_call_llm_uses_short_timeout_for_confirmed_fast_models():
+    """ling-2.6-flash/mimo-v2.5 average ~4s/call in real production traffic
+    (measured from credits-ledger timestamps during a live multi-agent
+    burst) — a hang past a short timeout is unambiguously abnormal for
+    these models. Other/unverified models keep the original generous
+    300s safety-net timeout."""
+    from backend.core.agent import Agent, _FAST_MODEL_TIMEOUT
+
+    done_json = json.dumps({"tool": "done", "args": {"summary": "ok", "output": {}}})
+
+    fast_agent = Agent(name="research", role="research", tools={}, model="inclusionai/ling-2.6-flash")
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content=done_json))]
+    )
+    fast_agent._client = mock_client
+    fast_agent._call_llm([{"role": "user", "content": "hi"}])
+    assert mock_client.chat.completions.create.call_args.kwargs["timeout"] == _FAST_MODEL_TIMEOUT
+
+    slow_agent = Agent(name="research", role="research", tools={}, model="some/unverified-model")
+    mock_client2 = MagicMock()
+    mock_client2.chat.completions.create.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content=done_json))]
+    )
+    slow_agent._client = mock_client2
+    slow_agent._call_llm([{"role": "user", "content": "hi"}])
+    assert mock_client2.chat.completions.create.call_args.kwargs["timeout"] == 300.0
+
+
 def test_agent_registry_v2_does_not_leak_stale_handler_across_instances(mocker):
     """Real bug (not just a test-ordering flake): with astra_tool_registry_v2
     enabled, Agent.__init__ eagerly registers each tool into the shared

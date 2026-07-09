@@ -125,6 +125,12 @@ async def startup_background_jobs():
     start_monitoring_scheduler(interval_seconds=3600)
     asyncio.create_task(_platform_alert_loop())
     asyncio.create_task(_pii_purge_loop())
+    # _resume_interrupted_sessions was fully implemented but never actually
+    # wired up — every backend restart (deploys, crashes) silently orphaned
+    # any in-flight session at "running" forever, since nothing else ever
+    # flips that status. Found 59 real stale sessions on 2026-07-09, some
+    # 15 days old. This recovers/expires them on every future boot instead.
+    asyncio.create_task(_resume_interrupted_sessions())
 
 
 async def _resume_interrupted_sessions() -> None:

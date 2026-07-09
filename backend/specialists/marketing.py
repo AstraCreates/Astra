@@ -22,7 +22,7 @@ from backend.tools.composio_tools import (
 
 
 def build_marketing_agent(**kwargs) -> Agent:
-    kwargs.setdefault("max_iterations", 35)
+    kwargs.setdefault("max_iterations", 22)  # ling-2.6-flash is fast/reliable in production — 35 was oversized headroom
     kwargs.setdefault("max_tool_calls", {"search_and_fetch": 3})
     return Agent(
         name="marketing",

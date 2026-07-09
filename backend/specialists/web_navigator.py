@@ -125,6 +125,6 @@ def build_web_navigator_agent(use_computer: bool = True, **model_kwargs) -> Agen
         role=_ROLE,
         tools=tools,
         use_computer=use_computer,
-        max_iterations=25,
+        max_iterations=20,  # ling-2.6-flash is fast/reliable in production — 25 was oversized headroom
         **model_kwargs,
     )

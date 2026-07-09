@@ -115,7 +115,7 @@ def build_research_market_agent(**kwargs) -> Agent:
         model=model,
         model_base_url=model_base_url,
         model_api_key=model_api_key,
-        max_iterations=40,
+        max_iterations=25,  # ling-2.6-flash is fast/reliable in production — 40 was oversized headroom
         role=(
             "You are an elite market research analyst. You produce investment-grade market sizing, "
             "ICP definitions, pricing benchmarks, and opportunity framing that founders use in pitch decks "

@@ -6,7 +6,7 @@ from backend.tools.pdf_generator import generate_pdf
 
 
 def build_marketing_content_agent(**kwargs) -> Agent:
-    kwargs.setdefault("max_iterations", 25)
+    kwargs.setdefault("max_iterations", 20)  # ling-2.6-flash is fast/reliable in production — 25 was oversized headroom
     return Agent(
         name="marketing_content",
         role=(
