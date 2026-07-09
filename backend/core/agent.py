@@ -601,23 +601,23 @@ class Agent:
         if legacy_client is not None:
             return legacy_client
         is_openrouter = self._model_base_url and "openrouter" in self._model_base_url
-        extra = {}
         if is_openrouter:
-            extra["default_headers"] = {
-                "HTTP-Referer": "https://astracreates.com",
-                "X-Title": "Astra",
-            }
-            # Rotate key on every new client to distribute across all keys
+            from backend.core.llm_client import get_or_client
             from backend.core.key_rotator import get_openrouter_key
+
+            # Rotate key on every new acquisition to distribute across all keys;
+            # the pooled getter reuses the client for whichever key was selected.
             api_key = get_openrouter_key() or self._model_api_key
-        else:
-            api_key = self._model_api_key
-        # Always create a fresh client when using OpenRouter (rotates key per agent)
-        if self._llm is None or is_openrouter:
-            self._llm = openai.OpenAI(
+            self._llm = get_or_client(
                 base_url=self._model_base_url,
                 api_key=api_key,
-                **extra,
+                timeout=None,
+            )
+            return self._llm
+        if self._llm is None:
+            self._llm = openai.OpenAI(
+                base_url=self._model_base_url,
+                api_key=self._model_api_key,
             )
         return self._llm
 
