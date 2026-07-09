@@ -143,6 +143,14 @@ def _analyze_goal(instruction: str) -> tuple[str | None, str | None]:
         return (None, None)
 
 
+async def _analyze_goal_fast(instruction: str, timeout_s: float = 4.0) -> tuple[str | None, str | None]:
+    """Best-effort goal enrichment that must never block run creation for long."""
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_analyze_goal, instruction), timeout=timeout_s)
+    except Exception:
+        return (None, None)
+
+
 def _write_env_key(key: str, value: str) -> None:
     # A newline in either key or value lets a caller inject arbitrary extra
     # lines into the .env file (e.g. value="foo\nASTRA_REQUIRE_AUTH=false"),
@@ -630,7 +638,7 @@ async def submit_goal(body: GoalRequest, request: Request):
     if not _unlimited and get_balance(body.founder_id) < 1:
         raise HTTPException(status_code=402, detail="Insufficient credits. Purchase more to continue.")
     constraints = dict(body.constraints or {})
-    _inferred_stack, _business_profile = _analyze_goal(body.instruction)
+    _inferred_stack, _business_profile = await _analyze_goal_fast(body.instruction)
     _effective_stack = body.stack_id or _inferred_stack or ""
     if _effective_stack:
         constraints["stack_id"] = _effective_stack

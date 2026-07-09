@@ -1150,7 +1150,7 @@ export async function submitGoal(
   runOptions: RunOptions = {},
 ): Promise<{ session_id: string; status: string; workspace_id: string; chapter_id: string }> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 30_000);
+  const timer = setTimeout(() => ctrl.abort(), 90_000);
   let res: Response;
   try {
     res = await fetch(`${BASE}/goal`, {
