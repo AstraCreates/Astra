@@ -89,6 +89,32 @@ def _goal_topic(ctx: AgentContext | None) -> str:
     return " ".join(raw.split())[:1200]
 
 
+def _run_research_pipeline_with_deep_research(
+    topic: str,
+    *,
+    focus: str,
+    max_results_each: int = 8,
+) -> dict:
+    """Research specialists should never stop at shallow source discovery.
+
+    This wrapper preserves the existing `run_research_pipeline` entrypoint the
+    agents already know about, but forces the second-stage CRW-backed synthesis
+    pass so discovery cannot silently become the final answer.
+    """
+    pipeline = run_research_pipeline(topic=topic, focus=focus, max_results_each=max_results_each)
+    queries = list(pipeline.get("queries") or [])
+    deep_result = deep_research(queries) if queries else {"error": "queries required — pass a list of research question strings"}
+    return {
+        **pipeline,
+        "deep_research_used": True,
+        "deep_research_queries": queries,
+        "deep_research_result": deep_result,
+        "sources": deep_result.get("sources") or pipeline.get("sources") or [],
+        "combined_formatted": deep_result.get("formatted") or pipeline.get("combined_formatted") or "",
+        "next_step": "Deep synthesis completed. Use the cited findings below as the primary evidence base.",
+    }
+
+
 def _make_resilient_research_tool(tool_fn, tool_name: str, ctx_holder: list, agent_name: str = "research"):
     """Fill common missing arguments from the active goal so research agents
     don't burn iterations on empty tool calls."""
@@ -120,6 +146,15 @@ def _make_resilient_research_tool(tool_fn, tool_name: str, ctx_holder: list, age
                 plan = build_research_queries(topic, focus=focus, limit=1)
                 queries = plan.get("queries") or [topic]
                 patched_kwargs["query"] = queries[0]
+
+        if tool_name == "run_research_pipeline":
+            topic_arg = args[0] if args else patched_kwargs.pop("topic", "")
+            max_results_each = patched_kwargs.pop("max_results_each", 8)
+            return _run_research_pipeline_with_deep_research(
+                topic_arg,
+                focus=str(patched_kwargs.get("focus") or focus),
+                max_results_each=max_results_each,
+            )
 
         return tool_fn(*args, **patched_kwargs)
 
