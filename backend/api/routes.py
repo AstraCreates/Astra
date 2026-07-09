@@ -1040,6 +1040,7 @@ async def session_images(session_id: str, request: Request):
     """Return design images (logos, brand board) with full base64 from the durable
     store. SSE strips large base64 to avoid browser crashes, so the preview fetches
     the real images here."""
+    await _require_session_access(request, session_id, min_role="viewer")
     from backend.core.session_store import load_events
     events = await asyncio.to_thread(load_events, session_id) or []
     logos: dict[str, str] = {}
@@ -1089,6 +1090,7 @@ async def session_images(session_id: str, request: Request):
 @router.get("/sessions/{session_id}/replay")
 async def replay_session(session_id: str, request: Request):
     """Stream the full event log for a session as SSE — rebuilds frontend from scratch."""
+    await _require_session_access(request, session_id, min_role="viewer")
     from backend.core.session_store import load_events as _load
     from backend.core.events import _event_log, _fmt, _restore_session
     import asyncio as _asyncio
@@ -1567,9 +1569,16 @@ def _detect_rerun_intent(instruction: str, available_agents: list[str]) -> dict 
 async def continue_goal(body: ContinueRequest, request: Request):
     """Run follow-up tasks on an existing company session with full vault context."""
     require_founder_access(request, body.founder_id, min_role="operator")
+    from backend.core.session_store import get_session_meta
     from backend.core.session_ids import new_session_id
     from backend.core import cancellation
     orch = get_orchestrator()
+
+    prior_owner = str((await asyncio.to_thread(get_session_meta, body.prior_session_id) or {}).get("founder_id") or "")
+    if not prior_owner:
+        raise HTTPException(status_code=404, detail="prior session not found")
+    if prior_owner != body.founder_id:
+        raise HTTPException(status_code=403, detail="prior session does not belong to founder")
 
     # Detect rerun intent via LLM — no regex
     rerun = await asyncio.to_thread(
@@ -4003,6 +4012,10 @@ async def parse_audience_prompt(body: dict, request: Request):
     """Use a fast LLM to convert a natural-language audience description into
     structured Apollo search filters (titles, locations, industries, etc.)."""
     import json, re as _re
+    founder_id = str(body.get("founder_id") or actor_or_body(request)).strip()
+    if not founder_id:
+        raise HTTPException(status_code=400, detail="founder_id is required")
+    require_founder_access(request, founder_id, min_role="viewer")
     prompt = (body.get("prompt") or "").strip()
     if not prompt:
         return JSONResponse({"error": "No prompt provided"}, status_code=400)

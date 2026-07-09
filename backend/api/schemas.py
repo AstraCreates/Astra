@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal, Optional
 
 
@@ -9,7 +9,7 @@ MarketingChannels = Literal["organic", "paid", "both"]
 
 class GoalRequest(BaseModel):
     founder_id: str
-    instruction: str
+    instruction: str = Field(max_length=20000)
     stack_id: Optional[str] = None
     constraints: dict = {}
     company_id: Optional[str] = None
@@ -62,8 +62,8 @@ class SessionAskRequest(BaseModel):
 
 class AskRequest(BaseModel):
     target_agent: str
-    question: str
-    context: Optional[str] = None
+    question: str = Field(max_length=20000)
+    context: Optional[str] = Field(default=None, max_length=20000)
     founder_id: str
     session_id: Optional[str] = None    # for Obsidian note lookup
     company_name: Optional[str] = None  # company name for this session
@@ -95,7 +95,7 @@ class SteerRequest(BaseModel):
 
 class ContinueRequest(BaseModel):
     founder_id: str
-    instruction: str
+    instruction: str = Field(max_length=20000)
     prior_session_id: str
     agents: Optional[list[str]] = None  # if None, planner decides
     technical_scope: Optional[TechnicalScope] = None
@@ -119,7 +119,7 @@ class BrainSyncConfigRequest(BaseModel):
 class BrainRecordRequest(BaseModel):
     source: str
     title: str
-    content: str
+    content: str = Field(max_length=100000)
     kind: str = "note"
     url: Optional[str] = ""
     canonical: bool = False
