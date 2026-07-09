@@ -1180,7 +1180,13 @@ class Agent:
                     action = "done"
             reasoning = parsed.get("reasoning", "")
             tool_hint = parsed.get("tool", "")
-            logger.info("[%s] iter=%d  action=%-12s  %s", self.name, i, action, (tool_hint or reasoning)[:80])
+            log_hint = tool_hint or reasoning
+            if not isinstance(log_hint, str):
+                try:
+                    log_hint = json.dumps(log_hint, default=str)
+                except Exception:
+                    log_hint = str(log_hint)
+            logger.info("[%s] iter=%d  action=%-12s  %s", self.name, i, action, log_hint[:80])
             messages.append({"role": "assistant", "content": raw})
             if action in ("done", "tool", "tool_batch", "delegate", "computer_use"):
                 _consecutive_unknown = 0
