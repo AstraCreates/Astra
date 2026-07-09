@@ -86,7 +86,7 @@ def _load_examples() -> list[dict]:
 
 
 def search_examples(
-    query: str,
+    query: str = "",
     category: str = "",
     agent_role: str = "",
     max_results: int = 3,
@@ -112,6 +112,15 @@ def search_examples(
     Returns:
         {"examples": [{"title", "category", "path", "content"}, ...], "count": int}
     """
+    if not query:
+        # Real production bug: models called search_examples() with no
+        # query, hitting a raw TypeError repeatedly with zero corrective
+        # signal — fall back to the category/agent_role if given, since
+        # that's still a usable (if broad) search, and only error if
+        # nothing at all was passed.
+        query = category or agent_role
+        if not query:
+            return {"examples": [], "count": 0, "error": "search_examples requires 'query' (e.g. search_examples('nextauth google oauth'))"}
     max_results = min(max_results, 5)
     examples = _load_examples()
     if not examples:

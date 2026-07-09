@@ -21,9 +21,10 @@ def github_create_repo(
     **kwargs,
 ) -> dict:
     repo_name = repo_name or name
-    if stack is None:
-        stack = {}
-    if isinstance(stack, str):
+    if not isinstance(stack, dict):
+        # Real production bug: a model passed stack as a list (or other
+        # non-dict), which _generate_scaffold's stack.get(...) calls can't
+        # handle — AttributeError: 'list' object has no attribute 'get'.
         stack = {}
     if mvp_features is None:
         mvp_features = []

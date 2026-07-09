@@ -14,7 +14,7 @@ _SOCIAL_DOMAINS = {"linkedin.com", "twitter.com", "x.com", "facebook.com", "inst
 
 
 def find_leads(
-    industry: str,
+    industry: str = "",
     job_title: str = "owner",
     location: str = "",
     company_size: str = "",
@@ -25,6 +25,12 @@ def find_leads(
     Search for potential leads matching criteria. Returns enriched contact list.
     Set no_website=True to target businesses that likely lack their own website (searches Yelp/GMaps listings).
     """
+    if not industry:
+        # Real production bug: models called find_leads() with no industry,
+        # hitting a raw TypeError repeatedly with zero corrective signal —
+        # a structured error the model can actually read and fix beats a
+        # crash it can only blindly retry.
+        return {"error": "find_leads requires 'industry' (e.g. find_leads(industry='restaurant', job_title='owner', max_results=10))"}
     try:
         max_results = int(max_results)
     except (TypeError, ValueError):
