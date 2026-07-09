@@ -47,17 +47,19 @@ def _tune_headroom_pipeline_once() -> None:
     capped real savings at ~10-20% regardless of target_ratio/protect_recent
     tuning, because short agent-loop conversations fall entirely inside the
     always-protected window (verified empirically, not guessed — see commit
-    history). Opens most of the conversation (all but the most recent ~30%)
-    to compression once it exceeds 4 messages, leaving active recent turns
-    untouched.
+    history). Opens a fraction of the conversation (settings.
+    headroom_protect_recent_reads_fraction, tunable — a real 2026-07-10
+    incident showed 0.3 was too CPU/memory-heavy for this box) to
+    compression once it exceeds 4 messages, leaving the rest — including
+    all active recent turns — untouched.
 
     Reaches past compress()'s public wrapper into its private pipeline
     singleton — not a supported integration point, so this is gated behind
-    settings.headroom_tuning_enabled (env: ASTRA_HEADROOM_TUNING_ENABLED) as
-    a kill switch, and any failure (headroom-ai internals changed) silently
-    no-ops rather than breaking the agent loop. Runs once per process; if it
-    fails silently, `_headroom_tuning_active()` reports that back so the
-    result is checkable without ad-hoc scripts against the live container."""
+    settings.headroom_tuning_enabled (env: HEADROOM_TUNING_ENABLED, defaults
+    False — see the field's docstring for the real 2026-07-10 incident this
+    default is protecting against) as a kill switch, and any failure
+    (headroom-ai internals changed) silently no-ops rather than breaking the
+    agent loop. Runs once per process."""
     global _headroom_tuned
     if _headroom_tuned:
         return
@@ -86,8 +88,9 @@ def _tune_headroom_pipeline_once() -> None:
         from headroom.transforms.pipeline import TransformPipeline
         from headroom.transforms.content_router import ContentRouter, ContentRouterConfig
 
+        fraction = getattr(settings, "headroom_protect_recent_reads_fraction", 0.1)
         base_pipeline = _hr_mod._get_pipeline()
-        router_cfg = ContentRouterConfig(protect_recent_reads_fraction=0.3)
+        router_cfg = ContentRouterConfig(protect_recent_reads_fraction=fraction)
         tuned_transforms = [
             ContentRouter(config=router_cfg) if isinstance(t, ContentRouter) else t
             for t in base_pipeline.transforms
@@ -96,7 +99,7 @@ def _tune_headroom_pipeline_once() -> None:
             logger.warning("headroom: no ContentRouter found in default pipeline — tuning skipped")
             return
         _hr_mod._pipeline = TransformPipeline(transforms=tuned_transforms)
-        logger.info("headroom: tuned protect_recent_reads_fraction=0.3 (default was 0.0)")
+        logger.info("headroom: tuned protect_recent_reads_fraction=%.2f (default was 0.0)", fraction)
     except Exception as exc:
         logger.warning("headroom pipeline tuning skipped: %s", exc)
 

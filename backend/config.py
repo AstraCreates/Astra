@@ -62,9 +62,23 @@ class Settings(BaseSettings):
     # Kill switch for the headroom pipeline tuning monkeypatch (agent.py
     # _tune_headroom_pipeline_once) — it reaches past headroom-ai's public
     # compress() API into its private pipeline singleton, which is not a
-    # supported integration point. Flip off via env (ASTRA_HEADROOM_TUNING_ENABLED=false)
-    # without a code deploy if a future headroom-ai version breaks the assumption.
-    headroom_tuning_enabled: bool = True
+    # supported integration point. Real incident 2026-07-10: opening the
+    # protect-everything default made the ContentRouter's ModernBERT
+    # (Kompress) text compressor actually engage under real traffic for the
+    # first time — that's real local CPU inference, not an API call, and it
+    # pegged the backend container's CPU and permanently grew its resident
+    # memory (model stays loaded for the process lifetime), making the whole
+    # site unresponsive. Defaults OFF until Kompress's real resource cost is
+    # measured properly; flip on via env HEADROOM_TUNING_ENABLED=true.
+    headroom_tuning_enabled: bool = False
+    # How much of a conversation to expose to compression (was hardcoded 0.3,
+    # the value implicated in the 2026-07-10 incident). Lower = less content
+    # routed through the real local Kompress/ModernBERT inference per call,
+    # which scales down the CPU cost — but does NOT avoid the one-time
+    # memory cost of loading the model at all once any content is exposed,
+    # since that happens as soon as this is > 0. Tune via env
+    # HEADROOM_PROTECT_RECENT_READS_FRACTION.
+    headroom_protect_recent_reads_fraction: float = 0.1
     # DeepSeek Flash: planning writes long outputs; MiMo's $2.82/M output rate
     # dominates cost at scale. Flash handles plan-length output at $1.72/M.
     build_plan_model: str = "deepseek/deepseek-v4-flash"

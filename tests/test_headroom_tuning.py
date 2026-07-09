@@ -43,6 +43,7 @@ def test_tune_headroom_pipeline_swaps_content_router_config(monkeypatch):
     pipeline singleton with one configured to open the protection window,
     while leaving every other transform in the pipeline untouched."""
     agent_mod._headroom_tuned = False
+    monkeypatch.setattr(settings, "headroom_tuning_enabled", True, raising=False)
 
     class FakeContentRouterConfig:
         def __init__(self, protect_recent_reads_fraction=0.0):
@@ -96,7 +97,56 @@ def test_tune_headroom_pipeline_swaps_content_router_config(monkeypatch):
     new_router = new_pipeline.transforms[1]
     assert isinstance(new_router, FakeContentRouter)
     assert new_router is not original_router
-    assert new_router.config.protect_recent_reads_fraction == 0.3
+    assert new_router.config.protect_recent_reads_fraction == settings.headroom_protect_recent_reads_fraction
+
+
+def test_tune_headroom_pipeline_uses_configured_ratio(monkeypatch):
+    """Real incident 2026-07-10: a hardcoded protect_recent_reads_fraction=0.3
+    made the ContentRouter's real local Kompress/ModernBERT text compressor
+    engage under production traffic for the first time, pegging the backend
+    container's CPU and permanently growing its resident memory. The ratio
+    must be configurable (settings.headroom_protect_recent_reads_fraction)
+    so it can be tuned down without a code change, not hardcoded again."""
+    agent_mod._headroom_tuned = False
+    monkeypatch.setattr(settings, "headroom_tuning_enabled", True, raising=False)
+    monkeypatch.setattr(settings, "headroom_protect_recent_reads_fraction", 0.05, raising=False)
+
+    class FakeContentRouterConfig:
+        def __init__(self, protect_recent_reads_fraction=0.0):
+            self.protect_recent_reads_fraction = protect_recent_reads_fraction
+
+    class FakeContentRouter:
+        def __init__(self, config=None):
+            self.config = config or FakeContentRouterConfig()
+
+    class FakeTransformPipeline:
+        def __init__(self, transforms):
+            self.transforms = transforms
+
+    base_pipeline = FakeTransformPipeline(transforms=[FakeContentRouter()])
+    hr_compress_mod = types.ModuleType("headroom.compress")
+    hr_compress_mod._get_pipeline = lambda: base_pipeline
+    hr_compress_mod.__dict__["_pipeline"] = None
+
+    hr_pkg = types.ModuleType("headroom")
+    hr_pkg.compress = lambda *a, **k: None
+    hr_transforms_pkg = types.ModuleType("headroom.transforms")
+    hr_pipeline_mod = types.ModuleType("headroom.transforms.pipeline")
+    hr_pipeline_mod.TransformPipeline = FakeTransformPipeline
+    hr_router_mod = types.ModuleType("headroom.transforms.content_router")
+    hr_router_mod.ContentRouter = FakeContentRouter
+    hr_router_mod.ContentRouterConfig = FakeContentRouterConfig
+
+    monkeypatch.setitem(sys.modules, "headroom", hr_pkg)
+    monkeypatch.setitem(sys.modules, "headroom.compress", hr_compress_mod)
+    monkeypatch.setitem(sys.modules, "headroom.transforms", hr_transforms_pkg)
+    monkeypatch.setitem(sys.modules, "headroom.transforms.pipeline", hr_pipeline_mod)
+    monkeypatch.setitem(sys.modules, "headroom.transforms.content_router", hr_router_mod)
+
+    agent_mod._tune_headroom_pipeline_once()
+
+    new_router = hr_compress_mod._pipeline.transforms[0]
+    assert new_router.config.protect_recent_reads_fraction == 0.05
 
 
 def test_tune_headroom_pipeline_detects_shadowed_import(monkeypatch):
