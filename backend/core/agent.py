@@ -5,6 +5,7 @@ Each agent has: identity, tools, memory, P2P messaging, optional computer use.
 import asyncio
 import difflib
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -155,6 +156,10 @@ _MIN_CALLS_BY_AGENT: dict[str, int] = {
     "design": 3, "marketing_content": 3,
     "finance_fundraise": 2,
 }
+_RESEARCH_AGENT_NAMES = {
+    "research", "research_competitors", "research_customers", "research_gtm",
+    "research_market", "research_financial", "research_regulatory", "research_execution",
+}
 
 
 # Hard cap on any single tool result appended to an agent's conversation. Even
@@ -254,15 +259,25 @@ def _normalize_toolish_payload(parsed: dict[str, Any]) -> dict[str, Any]:
     if parsed.get("action") is not None:
         return parsed
 
+    def _coerce_args(value: Any) -> dict[str, Any]:
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except Exception:
+                return {}
+        return value if isinstance(value, dict) else {}
+
     tool_payload = parsed.get("tool")
     if isinstance(tool_payload, dict):
         name = tool_payload.get("tool") or tool_payload.get("name")
-        args = (
+        args = _coerce_args(
+            (
             tool_payload.get("args")
             or tool_payload.get("arguments")
             or tool_payload.get("parameters")
             or tool_payload.get("input")
             or {}
+            )
         )
         out = dict(parsed)
         out["action"] = "tool"
@@ -273,7 +288,7 @@ def _normalize_toolish_payload(parsed: dict[str, Any]) -> dict[str, Any]:
     function_payload = parsed.get("function")
     if isinstance(function_payload, dict):
         name = function_payload.get("name")
-        args = function_payload.get("arguments") or function_payload.get("args") or {}
+        args = _coerce_args(function_payload.get("arguments") or function_payload.get("args") or {})
         out = dict(parsed)
         out["action"] = "tool"
         out["tool"] = name
@@ -284,7 +299,7 @@ def _normalize_toolish_payload(parsed: dict[str, Any]) -> dict[str, Any]:
         out = dict(parsed)
         out["action"] = "tool"
         out["tool"] = parsed.get("name")
-        out["args"] = parsed.get("args") or parsed.get("arguments") or parsed.get("parameters") or parsed.get("input") or {}
+        out["args"] = _coerce_args(parsed.get("args") or parsed.get("arguments") or parsed.get("parameters") or parsed.get("input") or {})
         return out
 
     return parsed
@@ -1257,6 +1272,72 @@ class Agent:
         _tool_results: list[tuple[str, dict[str, Any]]] = []
         _tool_context_seen: dict[str, Any] = {}
         _consecutive_unknown = 0  # consecutive "unknown action" responses
+        _repair_attempts = 0
+        _pending_error_backoff = 0.0
+        _error_streak = 0
+
+        def _schedule_error_backoff(reason: str) -> None:
+            nonlocal _pending_error_backoff, _error_streak
+            _error_streak += 1
+            base = max(0.0, float(os.environ.get("ASTRA_AGENT_ERROR_BACKOFF_SECONDS", "2")))
+            _pending_error_backoff = min(base * (2 ** min(_error_streak - 1, 3)), 10.0)
+            logger.warning("[%s] error backoff %.1fs after %s", self.name, _pending_error_backoff, reason)
+
+        async def _repair_response(raw_response: str, failure: str) -> dict[str, Any] | None:
+            """Use one bounded same-model pass to recover a malformed action.
+
+            This is deliberately outside the normal path: the repair model sees
+            only the bad response, the exact tool contract, and the allowed
+            envelope, so it cannot turn a parser error into another long agent
+            history or an open-ended research retry.
+            """
+            nonlocal _repair_attempts
+            if _repair_attempts >= 1:
+                return None
+            _repair_attempts += 1
+            allowed_tools = sorted(self.tools)
+            tool_contracts = []
+            for tool_name in allowed_tools:
+                handler = self.tools[tool_name]
+                try:
+                    signature = str(inspect.signature(handler))
+                except Exception:
+                    signature = "(...)"
+                description = (getattr(handler, "__doc__", "") or "").strip().splitlines()
+                tool_contracts.append(f"- {tool_name}{signature}: {description[0] if description else 'no description'}")
+            repair_prompt = (
+                "Repair exactly one malformed Astra agent response or natural-language tool request. Return ONLY one JSON object.\n"
+                "Valid actions are: tool, tool_batch, delegate, computer_use, done.\n"
+                f"Current goal: {ctx.goal}\n"
+                "Available tool contracts:\n"
+                + "\n".join(tool_contracts) + "\n"
+                "For a tool call use {\"action\":\"tool\",\"tool\":\"<exact available name>\",\"args\":{}}.\n"
+                "Translate only an explicit tool request. If the response is merely commentary or the intended tool/arguments are ambiguous, return {\"action\":\"done\",\"output\":{\"status\":\"repair_ambiguous\"}}.\n"
+                "Preserve the intended tool and arguments; do not invent a different task.\n"
+                f"Failure: {failure}\nMalformed response:\n{raw_response[:16000]}"
+            )
+            try:
+                repaired_raw = await asyncio.to_thread(
+                    self._invoke_llm,
+                    [{"role": "system", "content": "You are a strict JSON repair parser."},
+                     {"role": "user", "content": repair_prompt}],
+                    ctx,
+                )
+                repaired = _normalize_toolish_payload(self._parse_json(str(repaired_raw or "")))
+                repaired_action = _coerce_model_selector(repaired.get("action"))
+                repaired_tool = _coerce_model_selector(repaired.get("tool"))
+                valid_actions = {"tool", "tool_batch", "delegate", "computer_use", "done"}
+                if repaired_action not in valid_actions:
+                    return None
+                if repaired_action == "tool" and repaired_tool not in self.tools:
+                    return None
+                if repaired_action == "computer_use" and not self.use_computer:
+                    return None
+                logger.warning("[%s] repaired malformed response into action=%s tool=%s", self.name, repaired_action, repaired_tool)
+                return repaired
+            except Exception as exc:
+                logger.warning("[%s] malformed-response repair failed: %s", self.name, exc)
+                return None
 
         def _tool_limit_status(tool_name: str) -> tuple[str, int | None, int, int]:
             cap_key = _tool_cap_name(tool_name)
@@ -1266,6 +1347,9 @@ class Agent:
             return cap_key, limit, attempts, successes
 
         while i < MAX_ITERATIONS:
+            if _pending_error_backoff:
+                await asyncio.sleep(_pending_error_backoff)
+                _pending_error_backoff = 0.0
             # Per-agent stop: copilot can halt THIS agent without killing the run.
             try:
                 from backend.core.cancellation import is_agent_killed
@@ -1333,11 +1417,16 @@ class Agent:
                 if raw_stripped in ("done", "complete", "finished"):
                     parsed = {"action": "done", "result": {}}
                 else:
-                    logger.warning("%s iteration %d: unparseable response — raw: %r", self.name, i, raw[:300])
-                    await self._emit(ctx, "agent_thinking", iteration=i, hint=raw[:80])
-                    messages.append({"role": "assistant", "content": raw})
-                    messages.append({"role": "user", "content": 'Respond with valid JSON only. Example: {"action":"done","result":{}} or {"action":"tool_call","tool":"batch_search","args":{"queries":["..."]}}. No prose.'})
-                    continue
+                    repaired = await _repair_response(raw, "response was not parseable JSON")
+                    if repaired is not None:
+                        parsed = repaired
+                    else:
+                        _schedule_error_backoff("unparseable model response")
+                        logger.warning("%s iteration %d: unparseable response — raw: %r", self.name, i, raw[:300])
+                        await self._emit(ctx, "agent_thinking", iteration=i, hint=raw[:80])
+                        messages.append({"role": "assistant", "content": raw})
+                        messages.append({"role": "user", "content": 'Respond with valid JSON only. Example: {"action":"done","result":{}} or {"action":"tool_call","tool":"batch_search","args":{"queries":["..."]}}. No prose.'})
+                        continue
 
             parsed = _normalize_toolish_payload(parsed)
             action = _coerce_model_selector(parsed.get("action"))
@@ -1365,6 +1454,20 @@ class Agent:
                 if any(k not in _noise for k in parsed):
                     parsed = {"action": "done", "output": parsed}
                     action = "done"
+            # A parsed envelope can still be semantically invalid (unknown action
+            # or tool). Give the one-shot repair pass the raw response before the
+            # normal retry prompt starts a potentially expensive loop.
+            valid_actions = {"tool", "tool_batch", "delegate", "computer_use", "done"}
+            if (
+                action not in valid_actions
+                or (action == "tool" and tool_field not in self.tools)
+                or (action == "computer_use" and not self.use_computer)
+            ):
+                repaired = await _repair_response(raw, f"invalid action={action!r}, tool={tool_field!r}")
+                if repaired is not None:
+                    parsed = repaired
+                    action = _coerce_model_selector(parsed.get("action"))
+                    tool_field = _coerce_model_selector(parsed.get("tool"))
             reasoning = parsed.get("reasoning", "")
             tool_hint = tool_field or ""
             _log_hint = tool_hint or reasoning
@@ -1500,6 +1603,8 @@ class Agent:
                         _called_tools.add(name)
                         if isinstance(result, dict):
                             _tool_results.append((name, result))
+                if any(isinstance(result, dict) and result.get("error") for _, _, result in batch_results):
+                    _schedule_error_backoff("tool batch error")
 
                 if is_native:
                     # Real native tool-calling response: emit conformant assistant(tool_calls)
@@ -1566,6 +1671,16 @@ class Agent:
                             f"({_tool_success_count} succeeded, limit={_tool_call_limit}). You have enough research data. "
                             f"Stop calling {tool_name} and move on to content creation tools now."
                         )})
+                        # Once a research lane has completed its required evidence
+                        # calls, a blocked repeat is a stop signal, not another
+                        # prompt-turn. Falling through to forced synthesis prevents
+                        # Ling from spending the remaining budget rephrasing reads.
+                        if (
+                            self.name in _RESEARCH_AGENT_NAMES
+                            and _REQUIRED_BY_AGENT.get(self.name, set()) <= _called_tools
+                        ):
+                            logger.info("[%s] required research evidence complete; forcing synthesis after blocked %s", self.name, tool_name)
+                            break
                         continue
                 # Always use the actual cached HTML — LLM may pass a truncated/regenerated version
                 if tool_name == "vercel_deploy" and _large_results.get("generate_landing_page_html"):
@@ -1583,6 +1698,7 @@ class Agent:
                     elif isinstance(result, str) and len(result) > 2000:
                         _large_results[tool_name] = result
                 if "error" in result:
+                    _schedule_error_backoff(f"tool {tool_name}")
                     _tool_fail_counts[tool_name] = _tool_fail_counts.get(tool_name, 0) + 1
                     if _tool_fail_counts[tool_name] >= 3:
                         # Force the agent to give up on this tool
@@ -1599,6 +1715,7 @@ class Agent:
                             f"Do NOT report this tool as successful."
                         )})
                 else:
+                    _error_streak = 0
                     _tool_fail_counts[tool_name] = 0  # reset on success
                     if tool_name in _ONE_SHOT_TOOLS:
                         _one_shot_done.add(tool_name)
@@ -1626,10 +1743,12 @@ class Agent:
                     result = await asyncio.wait_for(browser.execute_action(detail), timeout=60)
                     state = await asyncio.wait_for(browser.page_state(), timeout=30)
                 except asyncio.TimeoutError:
+                    _schedule_error_backoff("computer_use timeout")
                     messages.append({"role": "user", "content": "computer_use timed out. Proceed to done with results gathered so far."})
                     await self._emit(ctx, "agent_action_result", action="computer_use", url="", title="timeout")
                     continue
                 except Exception as _cu_err:
+                    _schedule_error_backoff("computer_use error")
                     messages.append({"role": "user", "content": f"computer_use failed: {_cu_err}. Proceed to done with results gathered so far."})
                     await self._emit(ctx, "agent_action_result", action="computer_use", url="", title="error")
                     continue
@@ -1706,6 +1825,7 @@ class Agent:
                         if tool_name in _ONE_SHOT_TOOLS:
                             _one_shot_done.add(tool_name)
                     if "error" in result:
+                        _schedule_error_backoff(f"tool {tool_name}")
                         _tool_fail_counts[tool_name] = _tool_fail_counts.get(tool_name, 0) + 1
                         if _tool_fail_counts[tool_name] >= 3:
                             messages.append({"role": "user", "content": (
@@ -1715,6 +1835,7 @@ class Agent:
                         else:
                             messages.append({"role": "user", "content": f"TOOL FAILED: {json.dumps(result)}"})
                     else:
+                        _error_streak = 0
                         _tool_fail_counts[tool_name] = 0
                         messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result, _tool_context_seen, args)}"})
                 else:
@@ -1755,6 +1876,7 @@ class Agent:
                     if tool_name in _ONE_SHOT_TOOLS:
                         _one_shot_done.add(tool_name)
                 if "error" in result:
+                    _schedule_error_backoff(f"tool {tool_name}")
                     _tool_fail_counts[tool_name] = _tool_fail_counts.get(tool_name, 0) + 1
                     if _tool_fail_counts[tool_name] >= 3:
                         messages.append({"role": "user", "content": (
@@ -1764,10 +1886,12 @@ class Agent:
                     else:
                         messages.append({"role": "user", "content": f"TOOL FAILED: {json.dumps(result)}"})
                 else:
+                    _error_streak = 0
                     _tool_fail_counts[tool_name] = 0
                     messages.append({"role": "user", "content": f"Tool result ({tool_name}):\n{_format_tool_result(tool_name, result, _tool_context_seen, args)}"})
 
             else:
+                _schedule_error_backoff("unknown action")
                 logger.warning("[%s] iter=%d unknown action=%r parsed_keys=%s raw=%r", self.name, i, action, list(parsed.keys()), raw[:200])
                 await self._emit(ctx, "agent_unknown_action", action=action, parsed_keys=list(parsed.keys()), raw_snippet=raw[:120])
                 _consecutive_unknown += 1

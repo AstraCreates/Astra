@@ -157,7 +157,12 @@ def get_orchestrator() -> Orchestrator:
             import_company_brain_source,
             import_company_brain_sources,
         )
-        for agent in specialists.values():
+        for name, agent in specialists.items():
+            # Research lanes have a closed evidence-gathering contract. Adding
+            # company-brain maintenance tools here causes tool drift and leaves
+            # Ling looping on unrelated reads/writes instead of synthesizing.
+            if name.startswith("research"):
+                continue
             agent.tools.setdefault("company_brain_search", search_company_brain)
             agent.tools.setdefault("company_brain_sync", sync_company_brain)
             agent.tools.setdefault("company_brain_add_record", add_company_brain_record)
@@ -264,7 +269,9 @@ def get_orchestrator() -> Orchestrator:
 
         # Examples library — inject into every agent so all specialists can search patterns
         from backend.tools.examples_library import search_examples, list_example_categories
-        for agent in specialists.values():
+        for name, agent in specialists.items():
+            if name.startswith("research"):
+                continue
             agent.tools.setdefault("search_examples", search_examples)
             agent.tools.setdefault("list_example_categories", list_example_categories)
 

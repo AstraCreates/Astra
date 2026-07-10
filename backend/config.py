@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Web-search/research model. perplexity/sonar ($1/$1), NOT sonar-pro ($3/$15) — the
     # pro tier's $15/M output made it 36% of prod spend for marginal research-depth gain.
     research_model: str = "perplexity/sonar"
+    # Wrapper model for research specialists. This is separate from
+    # research_model, which is the internal web-research synthesis model.
+    research_agent_model: str = "inclusionai/ling-2.6-flash"
     # Which coding-agent CLI drives MVP builds: "caveman" (@juliusbrussee/caveman-code,
     # ~2x fewer tokens, native openrouter provider) or "openclaude" (legacy fallback).
     code_agent: str = "caveman"

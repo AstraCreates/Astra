@@ -387,7 +387,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     # Default research routing stays on OpenRouter unless local is explicitly
     # selected as the default provider.
     _use_local = research_default_is_local()
-    model = kwargs.pop("model", settings.local_research_model if _use_local else settings.or_light_model)
+    model = kwargs.pop("model", settings.local_research_model if _use_local else settings.research_agent_model)
     model_base_url = kwargs.pop("model_base_url", settings.local_research_base_url if _use_local else settings.openrouter_base_url)
     model_api_key = kwargs.pop("model_api_key", settings.local_research_api_key if _use_local else (get_openrouter_key() or settings.agent_model_api_key))
     requested_max_iterations = kwargs.pop("max_iterations", None)
@@ -419,10 +419,10 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     # pages deep_research/run_research_pipeline missed" — a handful of calls,
     # not dozens — so cap them at the same order of magnitude as deep_research.
     _ROLE_TOOL_CALL_CAPS = {
-        "research":             {"run_research_pipeline": 5, "deep_research": 8, "search_and_fetch": 6, "fetch_and_read": 6},
-        "research_competitors": {"run_research_pipeline": 3, "deep_research": 4, "search_and_fetch": 5, "fetch_and_read": 5},
-        "research_customers":   {"run_research_pipeline": 2, "deep_research": 5, "search_and_fetch": 4, "fetch_and_read": 4},
-        "research_gtm":         {"run_research_pipeline": 2, "deep_research": 5, "search_and_fetch": 4, "fetch_and_read": 4},
+        "research":             {"run_research_pipeline": 3, "deep_research": 5, "search_and_fetch": 2, "fetch_and_read": 2, "obsidian_read": 1, "obsidian_log": 1},
+        "research_competitors": {"run_research_pipeline": 2, "deep_research": 2, "search_and_fetch": 1, "fetch_and_read": 2, "obsidian_read": 1, "obsidian_log": 1},
+        "research_customers":   {"run_research_pipeline": 1, "deep_research": 2, "search_and_fetch": 1, "fetch_and_read": 1, "obsidian_read": 1, "obsidian_log": 1},
+        "research_gtm":         {"run_research_pipeline": 1, "deep_research": 2, "search_and_fetch": 1, "fetch_and_read": 1, "obsidian_read": 1, "obsidian_log": 1},
     }
     _tool_call_caps = dict(_ROLE_TOOL_CALL_CAPS.get(agent_name, _ROLE_TOOL_CALL_CAPS["research"]))
     _tool_call_caps.update(kwargs.pop("max_tool_calls", None) or {})
@@ -444,6 +444,9 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
         "obsidian_read": obsidian_read,
         "obsidian_append": obsidian_append,
     }
+    # Research wrappers already persist evidence and the final report. Do not
+    # expose the generic append path, which invites one-write-per-thought loops.
+    lane_tools.pop("obsidian_append", None)
     # Keep narrow lanes on their intended path. In production these agents were
     # repeatedly drifting into random search_and_fetch/fetch_and_read URL loops
     # (often junk or ambiguous pages) instead of taking the required

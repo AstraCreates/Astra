@@ -102,9 +102,15 @@ def build_research_regulatory_agent(**kwargs) -> Agent:
     auto_news = _make_auto_logging_tool(news_search, "news_search", ctx_holder)
     auto_patent = _make_auto_logging_tool(patent_search, "patent_search", ctx_holder)
 
+    kwargs.setdefault("max_tool_calls", {
+        "deep_research": 2, "search_and_fetch": 1, "fetch_and_read": 2,
+        "web_search": 2, "news_search": 2, "patent_search": 1,
+        "obsidian_read": 1, "obsidian_log": 1,
+    })
+
     from backend.config import settings
     from backend.core.key_rotator import get_openrouter_key
-    model = kwargs.pop("model", settings.or_light_model)
+    model = kwargs.pop("model", settings.research_agent_model)
     model_base_url = kwargs.pop("model_base_url", settings.openrouter_base_url)
     model_api_key = kwargs.pop("model_api_key", get_openrouter_key() or settings.agent_model_api_key)
 
@@ -144,7 +150,6 @@ def build_research_regulatory_agent(**kwargs) -> Agent:
             "generate_pdf": generate_pdf,
             "obsidian_log": obsidian_log,
             "obsidian_read": obsidian_read,
-            "obsidian_append": obsidian_append,
         },
         **kwargs,
     )
