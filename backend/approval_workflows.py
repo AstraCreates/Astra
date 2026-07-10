@@ -131,13 +131,18 @@ def decide_approval_request(
             "requests": [],
         }
     changed: list[dict[str, Any]] = []
+    matched = 0
+    pending = 0
+    role_blocked = 0
     for request in data.get("requests", []):
         if request.get("gate_key") != gate_key:
             continue
         if request_id and request.get("id") != request_id:
             continue
+        matched += 1
         if request.get("status") in FINAL_APPROVAL_STATUSES:
             continue
+        pending += 1
         required_role = request.get("required_role") or "owner"
         if not _role_allows(actor_role, required_role):
             request.setdefault("history", []).append({
@@ -147,7 +152,7 @@ def decide_approval_request(
                 "role": actor_role,
                 "note": f"requires {required_role}",
             })
-            changed.append(request)
+            role_blocked += 1
             continue
         request["status"] = decision
         request["decision"] = decision
@@ -164,6 +169,33 @@ def decide_approval_request(
         })
         changed.append(request)
     _save(session_id, data)
+    if matched == 0:
+        return {
+            "ok": False,
+            "session_id": session_id,
+            "gate_key": gate_key,
+            "decision": decision,
+            "error": f"no approval request found for gate '{gate_key}'",
+            "requests": [],
+        }
+    if pending == 0:
+        return {
+            "ok": False,
+            "session_id": session_id,
+            "gate_key": gate_key,
+            "decision": decision,
+            "error": f"no pending approval request found for gate '{gate_key}'",
+            "requests": [],
+        }
+    if role_blocked and not changed:
+        return {
+            "ok": False,
+            "session_id": session_id,
+            "gate_key": gate_key,
+            "decision": decision,
+            "error": "actor role does not satisfy the approval requirement",
+            "requests": [],
+        }
     return {"ok": True, "session_id": session_id, "gate_key": gate_key, "decision": decision, "requests": changed}
 
 

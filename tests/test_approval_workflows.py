@@ -63,7 +63,8 @@ def test_approval_workflow_rejects_insufficient_actor_role(tmp_path, monkeypatch
     workflow = get_approval_workflow("session_role")
     stored = workflow["requests"][0]
 
-    assert decision["ok"] is True
+    assert decision["ok"] is False
+    assert "role does not satisfy" in decision["error"]
     assert stored["status"] == "pending"
     assert stored["history"][-1]["event"] == "decision_rejected"
     assert stored["history"][-1]["note"] == "requires owner"
@@ -120,3 +121,43 @@ def test_approval_workflow_persists_phase_gate_metadata(tmp_path, monkeypatch):
     assert req["phase"] == "design"
     assert req["next_phase"] == "deploy"
     assert req["artifacts"][0]["key"] == "brand_direction"
+
+
+def test_approval_workflow_rejects_unknown_or_already_resolved_gate(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    missing = decide_approval_request(
+        "session_missing",
+        "phase_gate_design",
+        "approved",
+        actor_id="owner_1",
+        actor_role="owner",
+    )
+    assert missing["ok"] is False
+    assert "no approval request found" in missing["error"]
+
+    created = create_approval_request(
+        "session_done",
+        "phase_gate_design",
+        agent="orchestrator",
+    )
+    first = decide_approval_request(
+        "session_done",
+        "phase_gate_design",
+        "approved",
+        request_id=created["id"],
+        actor_id="owner_1",
+        actor_role="owner",
+    )
+    second = decide_approval_request(
+        "session_done",
+        "phase_gate_design",
+        "approved",
+        request_id=created["id"],
+        actor_id="owner_1",
+        actor_role="owner",
+    )
+
+    assert first["ok"] is True
+    assert second["ok"] is False
+    assert "no pending approval request found" in second["error"]
