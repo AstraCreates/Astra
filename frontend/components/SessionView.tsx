@@ -291,7 +291,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const steerRef = useRef<HTMLInputElement>(null);
   const [copilot, setCopilot] = useState<{ role: string; content: string; actions?: CopilotAction[] }[]>([]);
   const [copilotBusy, setCopilotBusy] = useState(false);
-  const [copilotOpen, setCopilotOpen] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(true);
   const [copilotAttachments, setCopilotAttachments] = useState<CopilotAttachment[]>([]);
   const [copilotUploading, setCopilotUploading] = useState(false);
   const copilotLoadedSession = useRef<string | null>(null);
@@ -2087,7 +2087,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             )}
           </div>
         )}
-        <div className="steer-wrap" style={{ padding: 4, border: "1px solid var(--bd2)", background: "var(--surface)", boxShadow: "0 0 0 1px rgba(59,130,246,.05)" }}>
+        <div className="steer-wrap" style={{ padding: 6, border: "1px solid var(--bd2)", background: "var(--surface)", boxShadow: "0 0 0 1px rgba(59,130,246,.06)" }}>
           <button className="steer-send copilot-toggle" aria-label="Toggle copilot" title="Copilot chat" onClick={() => setCopilotOpen((v) => !v)}>{copilotOpen ? "▾" : "✦"}</button>
           <button
             className="steer-send copilot-attach"
