@@ -2055,7 +2055,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           <div style={{ fontSize: 9.5, color: "var(--fm)", lineHeight: 1.5 }}>Type a follow-up, ask a question, or redirect the work. Astra will handle the next step from here.</div>
         </div>
         {copilotOpen && (
-          <div className="copilot-thread">
+          <div className={`copilot-thread${copilot.length === 0 ? " is-empty" : ""}`}>
             {copilot.length === 0 && (
               <div className="copilot-empty">
                 Ask or direct Astra. The copilot can read the company brain, inspect completion audits, approve milestones and gates, answer blocked agent questions, pause or resume runs, restart previews, steer live agents, and dispatch new work. Try “what completion issues are blocking this run?”, “approve the next goal”, or “tell the web agent to fix the deploy”.
