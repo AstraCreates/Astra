@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, listSessions, deleteSessionRemote, killSession, getSessionDigest, getCredits, type SessionIndexEntry, type SessionDigest } from "@/lib/api";
+import { apiFetch, listSessions, deleteSessionRemote, killSession, getSessionDigest, getCredits, AGENT_LABELS, type SessionIndexEntry, type SessionDigest } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import LaunchCompleteScreen, { shouldShowLaunchComplete, markLaunchCompleteShown, consumePreviewSignal } from "./LaunchCompleteScreen";
+import AstraCopilotComposer, { type CopilotAgentOption } from "./AstraCopilotComposer";
 
 const GREETINGS = [
   "Welcome back",
@@ -105,12 +106,12 @@ export default function DashboardView() {
   const [showCompleted, setShowCompleted] = useState(false);
   const [copilot, setCopilot] = useState<{ role: string; content: string; actions?: CopilotAction[] }[]>([]);
   const [copilotBusy, setCopilotBusy] = useState(false);
-  const [copilotOpen, setCopilotOpen] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(true);
   const [copilotSessionId, setCopilotSessionId] = useState("");
   const retriedRef = useRef(false);
   const prevStatusRef = useRef<Map<string, string>>(new Map());
   const copilotLoadedSession = useRef<string | null>(null);
-  const copilotInputRef = useRef<HTMLInputElement>(null);
+  const [copilotInput, setCopilotInput] = useState("");
   const [launchComplete, setLaunchComplete] = useState<{ companyName: string; founderName: string; agentsRan: number; artifactsCreated: number; stackName?: string } | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
 
@@ -296,20 +297,24 @@ export default function DashboardView() {
   const regularSessions = (sessions || []).filter((s) => s.stack_id !== "custom");
   const copilotSession = (sessions || []).find((session) => session.session_id === copilotSessionId) || null;
   const copilotTitle = copilotSession ? extractGoalTitle(copilotSession.goal || "Current run") : "";
+  const copilotAgents: CopilotAgentOption[] = Object.entries(AGENT_LABELS)
+    .map(([id, label]) => ({ id, label }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 
   const headline = greeting && firstName ? `${greeting}, ${firstName}.` : greeting ? `${greeting}.` : "";
 
-  const sendCopilot = useCallback(async () => {
-    const msg = copilotInputRef.current?.value.trim();
+  const sendCopilot = useCallback(async (message?: string, mentionedAgents: string[] = []) => {
+    const msg = (message ?? copilotInput).trim();
     if (!msg || copilotBusy || !copilotSessionId) return;
-    if (copilotInputRef.current) copilotInputRef.current.value = "";
+    setCopilotInput("");
+    setCopilotOpen(true);
     setCopilot((current) => [...current, { role: "founder", content: msg }]);
     setCopilotBusy(true);
     try {
       const r = await apiFetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/copilot/${copilotSessionId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg }),
+        body: JSON.stringify({ message: msg, mentioned_agents: mentionedAgents }),
       });
       const d = await r.json();
       setCopilot((current) => [...current, { role: "copilot", content: d.reply || "(no reply)", actions: normalizeCopilotActions(d.actions) }]);
@@ -318,7 +323,7 @@ export default function DashboardView() {
     } finally {
       setCopilotBusy(false);
     }
-  }, [copilotBusy, copilotSessionId]);
+  }, [copilotBusy, copilotInput, copilotSessionId]);
 
   return (
     <>
@@ -361,33 +366,17 @@ export default function DashboardView() {
 
       <div style={{ flex: 1, overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
 
-        {/* ── Hero: lineart variant ── */}
-        <div style={{ position: "relative", height: 224, overflow: "hidden", background: "#0a1b6b" }}>
-          <img src="/hero-lineart.png" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 25%" } as React.CSSProperties} />
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg,rgba(5,7,14,.82) 0%,rgba(5,7,14,.44) 42%,transparent 72%)" }} />
-          <div style={{ position: "relative", zIndex: 2, padding: "28px 32px", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-            <div>
-              <div style={{ fontSize: 11, letterSpacing: ".1em", color: "rgba(255,255,255,.7)", fontWeight: 600, textTransform: "uppercase" }}>Dashboard</div>
-              <h1 style={{ margin: "12px 0 4px", fontSize: 32, fontWeight: 700, letterSpacing: "-.02em", color: "#fff" }}>{headline || "Welcome back."}</h1>
-              <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.78)" }}>
-                {sessions !== null
-                  ? `${running > 0 ? `${running} run${running !== 1 ? "s" : ""} active` : "No active runs"} · ${(sessions || []).filter(s => s.status === "done" && s.created_at && (Date.now() - new Date(s.created_at).getTime()) < 86400000).length} completed today`
-                  : "Loading…"}
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
-              <button
-                data-tour="dash-new-run"
-                onClick={() => router.push("/dashboard?new=1")}
-                style={{ background: "#fff", color: "#002EFF", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
-              >+ New run</button>
-              <button
-                onClick={load}
-                style={{ background: "rgba(255,255,255,.14)", color: "#fff", border: "1px solid rgba(255,255,255,.3)", borderRadius: 8, padding: "10px 18px", fontWeight: 600, fontSize: 13, cursor: "pointer" }}
-              >Refresh</button>
-            </div>
+        <header className="dashboard-calm-header">
+          <div>
+            <span>Workspace</span>
+            <h1>{headline || "Welcome back."}</h1>
+            <p>{sessions === null ? "Loading your workspace…" : running > 0 ? `${running} active run${running !== 1 ? "s" : ""}` : "Astra is ready when you are."}</p>
           </div>
-        </div>
+          <div>
+            <button type="button" onClick={load}>Refresh</button>
+            <button type="button" data-tour="dash-new-run" onClick={() => router.push("/dashboard?new=1")}>New run</button>
+          </div>
+        </header>
 
         {toastErr && (
           <div style={{ background: "rgba(255,80,80,0.08)", borderBottom: "1px solid rgba(255,80,80,0.18)", padding: "6px 18px", display: "flex", alignItems: "center", gap: 10, fontSize: 11, color: "#ff6b6b" }}>
@@ -400,8 +389,56 @@ export default function DashboardView() {
         {/* ── Main content: flex column, gap:16 — mirrors HTML spec ── */}
         <div style={{ padding: "18px 30px", display: "flex", flexDirection: "column", gap: 16 }}>
 
-          {/* Today header */}
-          <div style={{ fontSize: 11, letterSpacing: ".08em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>Today</div>
+          <section className="dashboard-copilot-home">
+            <div className="dashboard-copilot-title">
+              <img src="/astra-copilot.png" alt="Astra" />
+              <div>
+                <span>Astra copilot</span>
+                <h2>What should we move forward?</h2>
+                <p>{copilotSession ? `Working with ${copilotTitle}` : "Start a run to give Astra an active workspace."}</p>
+              </div>
+            </div>
+            <AstraCopilotComposer
+              value={copilotInput}
+              onChange={setCopilotInput}
+              onSubmit={sendCopilot}
+              agents={copilotAgents}
+              disabled={copilotBusy || !copilotSessionId}
+              placeholder={copilotSessionId ? "Ask Astra or @mention an agent" : "Start a run to enable copilot"}
+              contextLabel={copilotSession ? copilotTitle : undefined}
+            />
+            {copilotOpen && (
+              <div className="dashboard-copilot-thread">
+                {copilot.length === 0 ? (
+                  <div className="dashboard-copilot-prompts">
+                    <button onClick={() => setCopilotInput("What needs my attention today?")}>What needs attention?</button>
+                    <button onClick={() => setCopilotInput("Summarize the latest run and recommend the next move.")}>Recommend the next move</button>
+                    <button onClick={() => setCopilotInput("@research What are the strongest findings so far?")}>Ask research</button>
+                  </div>
+                ) : copilot.map((message, index) => (
+                  <div key={index} className={`dash-copilot-row ${message.role === "founder" ? "is-founder" : "is-astra"}`}>
+                    {message.role !== "founder" && <span className="dash-copilot-avatar">A</span>}
+                    <div className="dash-copilot-bubble">
+                      {message.content}
+                      {message.actions && message.actions.length > 0 && (
+                        <div className="dash-copilot-actions">
+                          {message.actions.map((action, actionIndex) => (
+                            <div key={`${action.tool}-${actionIndex}`} className={`dash-copilot-action is-${action.tone || "info"}`}>
+                              <div className="dash-copilot-action-label">{action.label}</div>
+                              {action.detail && <div className="dash-copilot-action-detail">{action.detail}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {copilotBusy && <div className="dash-copilot-row is-astra"><span className="dash-copilot-avatar">A</span><div className="dash-copilot-thinking"><span /><span /><span /></div></div>}
+              </div>
+            )}
+          </section>
+
+          <div style={{ fontSize: 11, letterSpacing: ".08em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>Current work</div>
 
           {/* Two columns */}
           <div className="dv-body" style={{ display: "flex", gap: 18, alignItems: "stretch" }}>
@@ -633,80 +670,10 @@ export default function DashboardView() {
             </div>
           </div>
 
-          {/* ── Automations banner ── */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "15px 18px", background: "#0A0D17", border: "1px solid rgba(255,255,255,.08)", borderRadius: 12 }}>
-            <div>
-              <div style={{ fontSize: 11, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase" }}>Automations</div>
-              <div style={{ fontSize: 13, color: "#c3cbe0", marginTop: 6 }}>
-                No automations yet.{" "}
-                <button onClick={() => router.push("/automations")} style={{ background: "none", border: "none", color: "#7d8fff", cursor: "pointer", padding: 0, fontWeight: 600, fontSize: 13 }}>Create one →</button>
-              </div>
-            </div>
-            <button onClick={() => router.push("/automations")} style={{ fontSize: 12.5, color: "#7d8fff", background: "none", border: "none", cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap" }}>Manage automations →</button>
-          </div>
-
-          {/* ── Copilot ── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,.06)" }}>
-            <div style={{ fontSize: 11, letterSpacing: ".06em", color: "#6f7b98", fontWeight: 700, textTransform: "uppercase", paddingLeft: 2 }}>Copilot</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 11, background: "#0A0D17", border: "1px solid rgba(255,255,255,.1)", borderRadius: 16, padding: "7px 7px 7px 16px", boxShadow: "0 10px 26px -16px rgba(0,0,0,.6)" }}>
-              <img src="/logo.png" alt="" style={{ width: 17, height: 17, objectFit: "contain", opacity: 0.75, flexShrink: 0, cursor: "pointer" } as React.CSSProperties} onClick={() => setCopilotOpen(v => !v)} />
-              {copilotOpen && copilot.length > 0 && (
-                <div className="dash-copilot-thread" style={{ position: "absolute", bottom: "100%", left: 0, right: 0, marginBottom: 8 }}>
-                  {/* thread is shown inline below */}
-                </div>
-              )}
-              <input
-                ref={copilotInputRef}
-                style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "#EDF1FB", fontSize: 13.5, fontFamily: "var(--font-instrument), sans-serif" }}
-                placeholder="Ask Astra to start a run, draft copy, or find leads…"
-                disabled={copilotBusy}
-                onFocus={() => setCopilotOpen(true)}
-                onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void sendCopilot(); } }}
-              />
-              <button
-                disabled={copilotBusy}
-                onClick={() => { setCopilotOpen(true); void sendCopilot(); }}
-                style={{ width: 36, height: 36, borderRadius: 10, background: "#002EFF", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
-              >
-                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 19V5M5 12l7-7 7 7" />
-                </svg>
-              </button>
-            </div>
-            {/* Copilot thread (below bar when open) */}
-            {copilotOpen && (
-              <div className="dash-copilot-thread">
-                {copilot.length === 0 && (
-                  <div className="dash-copilot-bubble">
-                    {copilotSession ? `Copilot attached to "${copilotTitle}". Ask anything about run state, approvals, or next steps.` : "Start a run to enable copilot context."}
-                  </div>
-                )}
-                {copilot.map((message, index) => (
-                  <div key={index} className={`dash-copilot-row ${message.role === "founder" ? "is-founder" : "is-astra"}`}>
-                    {message.role !== "founder" && <span className="dash-copilot-avatar">A</span>}
-                    <div className="dash-copilot-bubble">
-                      {message.content}
-                      {message.actions && message.actions.length > 0 && (
-                        <div className="dash-copilot-actions">
-                          {message.actions.map((action, ai) => (
-                            <div key={`${action.tool}-${ai}`} className={`dash-copilot-action is-${action.tone || "info"}`}>
-                              <div className="dash-copilot-action-label">{action.label}</div>
-                              {action.detail && <div className="dash-copilot-action-detail">{action.detail}</div>}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {copilotBusy && (
-                  <div className="dash-copilot-row is-astra">
-                    <span className="dash-copilot-avatar">A</span>
-                    <div className="dash-copilot-thinking"><span /><span /><span /></div>
-                  </div>
-                )}
-              </div>
-            )}
+          <div className="dashboard-secondary-links">
+            <button type="button" onClick={() => router.push("/automations")}>Automations</button>
+            <button type="button" onClick={() => router.push("/goals")}>Goals</button>
+            <button type="button" onClick={() => router.push("/agents")}>Agent team</button>
           </div>
 
         </div>

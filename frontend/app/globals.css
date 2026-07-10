@@ -79,6 +79,188 @@
   --action-text:  #FFFFFF;
 }
 
+/* Shared copilot composer --------------------------------------------------- */
+.astra-composer-shell {
+  position: relative;
+  width: 100%;
+  min-height: 132px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: #17191d;
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.28);
+  overflow: visible;
+}
+.astra-composer-shell:focus-within { border-color: rgba(125, 143, 255, 0.62); }
+.astra-composer-shell textarea {
+  display: block;
+  width: 100%;
+  min-height: 76px;
+  max-height: 180px;
+  resize: none;
+  border: 0;
+  outline: 0;
+  padding: 18px 18px 8px;
+  background: transparent;
+  color: #edf1fb;
+  font: 14px/1.55 var(--font-geist-sans, system-ui, sans-serif);
+  letter-spacing: 0;
+  box-sizing: border-box;
+}
+.astra-composer-shell textarea::placeholder { color: rgba(237, 241, 251, 0.34); }
+.astra-composer-footer {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 8px 8px 12px;
+}
+.astra-composer-tools { display: flex; align-items: center; gap: 10px; min-width: 0; color: rgba(237, 241, 251, 0.42); }
+.astra-composer-tools > button {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #cbd2e2;
+  cursor: pointer;
+}
+.astra-composer-tools > button span { position: absolute; right: -4px; top: -5px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px; background: #526cff; color: white; font-size: 9px; display: grid; place-items: center; }
+.astra-composer-tools > span { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; white-space: nowrap; }
+.astra-composer-tools > small { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; color: rgba(237, 241, 251, 0.3); }
+.astra-composer-submit {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 7px;
+  background: #edf1fb;
+  color: #111318;
+  cursor: pointer;
+}
+.astra-composer-submit:disabled { opacity: 0.28; cursor: default; }
+.astra-composer-targets { display: flex; flex-wrap: wrap; gap: 5px; padding: 10px 14px 0; }
+.astra-composer-targets span { display: inline-flex; align-items: center; gap: 3px; padding: 3px 7px; border: 1px solid rgba(125, 143, 255, 0.26); border-radius: 5px; background: rgba(125, 143, 255, 0.09); color: #aab5ff; font-size: 10px; }
+.astra-mention-menu {
+  position: absolute;
+  left: 12px;
+  bottom: calc(100% + 8px);
+  z-index: 80;
+  width: min(360px, calc(100vw - 48px));
+  max-height: 330px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  background: #202226;
+  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.48);
+}
+.astra-mention-heading { padding: 7px 9px 6px; color: rgba(237, 241, 251, 0.42); font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.08em; }
+.astra-mention-option { width: 100%; min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 7px 9px; border: 0; border-radius: 6px; background: transparent; color: #edf1fb; text-align: left; cursor: pointer; }
+.astra-mention-option:hover, .astra-mention-option.is-active { background: rgba(255, 255, 255, 0.07); }
+.astra-mention-option > span:nth-child(2) { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.astra-mention-option b { font-size: 12px; font-weight: 620; }
+.astra-mention-option small { color: rgba(237, 241, 251, 0.38); font-size: 10px; }
+.astra-mention-option em { font-size: 9px; font-style: normal; color: rgba(237, 241, 251, 0.42); text-transform: capitalize; }
+.astra-mention-option em.is-running { color: #7cffc6; }
+.astra-agent-mark { width: 28px; height: 28px; display: grid; place-items: center; flex-shrink: 0; border-radius: 6px; background: rgba(125, 143, 255, 0.14); color: #aab5ff; font-size: 11px; font-weight: 700; }
+
+@media (max-width: 700px) {
+  .astra-composer-shell { min-height: 118px; }
+  .astra-composer-shell textarea { min-height: 66px; padding: 14px 14px 6px; font-size: 13px; }
+  .astra-composer-tools > span, .astra-composer-tools > small { display: none; }
+  .astra-mention-menu { left: 0; width: 100%; }
+}
+
+/* Copilot-first dashboard --------------------------------------------------- */
+.dashboard-calm-header { min-height: 86px; display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 18px 30px; border-bottom: 1px solid rgba(255,255,255,0.07); background: #0a0c11; }
+.dashboard-calm-header span { color: #7cffc6; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; }
+.dashboard-calm-header h1 { margin: 3px 0 1px; color: #edf1fb; font-size: 21px; font-weight: 650; letter-spacing: 0; }
+.dashboard-calm-header p { margin: 0; color: #6f7b98; font-size: 11px; }
+.dashboard-calm-header > div:last-child { display: flex; gap: 8px; }
+.dashboard-calm-header button { min-height: 34px; padding: 0 13px; border: 1px solid rgba(255,255,255,0.12); border-radius: 7px; background: rgba(255,255,255,0.04); color: #cbd2e2; font-size: 11px; font-weight: 600; cursor: pointer; }
+.dashboard-calm-header button:last-child { border-color: #526cff; background: #526cff; color: #fff; }
+.dashboard-copilot-home { width: min(820px, 100%); margin: 16px auto 24px; display: grid; gap: 14px; }
+.dashboard-copilot-title { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: 15px; }
+.dashboard-copilot-title img { width: 62px; height: 62px; object-fit: cover; object-position: center 34%; border-radius: 8px; border: 1px solid rgba(124,255,198,0.18); }
+.dashboard-copilot-title span { color: #7cffc6; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; }
+.dashboard-copilot-title h2 { margin: 3px 0; color: #edf1fb; font-size: 22px; line-height: 1.25; font-weight: 630; letter-spacing: 0; }
+.dashboard-copilot-title p { margin: 0; max-width: 600px; color: #6f7b98; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dashboard-copilot-thread { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 2px 0; }
+.dashboard-copilot-prompts { display: flex; flex-wrap: wrap; justify-content: center; gap: 7px; }
+.dashboard-copilot-prompts button { min-height: 32px; padding: 0 11px; border: 1px solid rgba(255,255,255,0.08); border-radius: 7px; background: rgba(255,255,255,0.025); color: #8a93ad; font-size: 10.5px; cursor: pointer; }
+.dashboard-secondary-links { display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding-top: 2px; }
+.dashboard-secondary-links button { min-height: 30px; padding: 0 9px; border: 0; background: transparent; color: #6f7b98; font-size: 10.5px; cursor: pointer; }
+.dashboard-secondary-links button:hover { color: #aab5ff; }
+
+@media (max-width: 700px) {
+  .dashboard-calm-header { min-height: 76px; padding: 14px 16px; align-items: flex-end; }
+  .dashboard-calm-header h1 { font-size: 17px; }
+  .dashboard-calm-header p, .dashboard-calm-header > div:last-child button:first-child { display: none; }
+  .dashboard-copilot-home { margin: 4px auto 18px; }
+  .dashboard-copilot-title { grid-template-columns: 46px 1fr; gap: 11px; }
+  .dashboard-copilot-title img { width: 46px; height: 46px; }
+  .dashboard-copilot-title h2 { font-size: 17px; }
+  .dashboard-copilot-prompts { justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; }
+  .dashboard-copilot-prompts button { white-space: nowrap; }
+}
+
+/* Copilot-first session ----------------------------------------------------- */
+.session-copilot-home {
+  width: min(880px, calc(100% - 40px));
+  flex: 1;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 34px 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow: hidden;
+}
+.session-copilot-intro { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; align-items: center; gap: 16px; }
+.session-copilot-intro > img { width: 58px; height: 58px; object-fit: cover; object-position: center 34%; border-radius: 8px; border: 1px solid rgba(124, 255, 198, 0.2); }
+.session-copilot-intro span { color: #7cffc6; font-size: 10px; font-weight: 680; text-transform: uppercase; letter-spacing: 0.08em; }
+.session-copilot-intro h1 { margin: 4px 0 3px; max-width: 640px; color: var(--fg); font-size: 20px; line-height: 1.3; font-weight: 640; letter-spacing: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-copilot-intro p { margin: 0; color: var(--fd); font-size: 12px; line-height: 1.45; }
+.session-copilot-intro > button { min-height: 34px; padding: 0 12px; border: 1px solid var(--bd2); border-radius: 7px; background: var(--surface); color: var(--fg); font-size: 11px; cursor: pointer; }
+.session-agent-pulse { display: flex; gap: 7px; overflow-x: auto; padding: 1px 0 4px; scrollbar-width: none; }
+.session-agent-pulse::-webkit-scrollbar { display: none; }
+.session-agent-pulse button { min-width: 148px; height: 48px; display: grid; grid-template-columns: auto 1fr; grid-template-rows: 1fr 1fr; column-gap: 7px; align-items: center; padding: 7px 10px; border: 1px solid var(--bd); border-radius: 7px; background: rgba(255, 255, 255, 0.025); color: var(--fg); text-align: left; cursor: pointer; }
+.session-agent-pulse button > span { grid-row: 1 / 3; }
+.session-agent-pulse button > span.is-done { color: var(--green); font-size: 10px; }
+.session-agent-pulse b { align-self: end; font-size: 10.5px; font-weight: 620; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-agent-pulse small { align-self: start; color: var(--fm); font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-copilot-thread { flex: 1; min-height: 160px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 12px 4px 4px; }
+.session-copilot-thread.is-empty { justify-content: flex-end; }
+.session-copilot-starters { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; padding-bottom: 16px; }
+.session-copilot-starters button { min-height: 34px; padding: 0 12px; border: 1px solid var(--bd); border-radius: 7px; background: rgba(255,255,255,0.025); color: var(--fd); font-size: 11px; cursor: pointer; }
+.session-chat-row { display: flex; align-items: flex-start; gap: 9px; }
+.session-chat-row.is-founder { justify-content: flex-end; }
+.session-chat-avatar { width: 26px; height: 26px; display: grid; place-items: center; flex-shrink: 0; border-radius: 7px; background: #526cff; color: #fff; font-size: 10px; font-weight: 720; }
+.session-chat-bubble { max-width: min(690px, 84%); padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.045); border: 1px solid var(--bd); color: var(--fg); font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; }
+.session-chat-row.is-founder .session-chat-bubble { background: #2d48c8; border-color: #2d48c8; color: #fff; }
+.session-copilot-dock { width: min(880px, calc(100% - 40px)); margin: 0 auto; padding: 8px 0 18px; flex-shrink: 0; position: relative; z-index: 20; }
+.session-copilot-dock .copilot-attachment-tray { padding: 7px 0 0; }
+
+@media (max-width: 700px) {
+  .session-copilot-home { width: calc(100% - 24px); padding-top: 20px; gap: 12px; }
+  .session-copilot-intro { grid-template-columns: 44px minmax(0, 1fr); gap: 11px; }
+  .session-copilot-intro > img { width: 44px; height: 44px; }
+  .session-copilot-intro h1 { font-size: 16px; }
+  .session-copilot-intro > button { grid-column: 1 / -1; justify-self: stretch; }
+  .session-agent-pulse button { min-width: 132px; }
+  .session-copilot-dock { width: calc(100% - 24px); padding-bottom: 10px; }
+  .session-chat-bubble { max-width: 90%; }
+  .session-topbar { padding-left: 10px !important; padding-right: 8px !important; gap: 5px !important; }
+  .session-topbar .topbar-title { display: none; }
+  .session-topbar .session-restart { display: none !important; }
+}
+
 /* ── Dark ────────────────────────────────────────────────────── */
 [data-theme="dark"] {
   --bg:           #05070E;

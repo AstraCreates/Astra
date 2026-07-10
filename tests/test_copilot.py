@@ -134,6 +134,67 @@ async def test_run_copilot_auto_routes_named_agent_directive(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_run_copilot_routes_explicit_ui_mentions_to_each_running_agent(monkeypatch):
+    monkeypatch.setattr(copilot, "_copilot_generate", AsyncMock(return_value='{"action":"reply","text":"I am on it."}'))
+    monkeypatch.setattr(copilot, "get_history", lambda session_id: [])
+    monkeypatch.setattr(copilot, "_save_history", lambda session_id, history: None)
+    monkeypatch.setattr(copilot, "_load_live_context", AsyncMock(return_value={
+        "running_agents": ["web", "design"],
+        "child_sessions_running": [],
+        "session_meta": {"status": "running"},
+    }))
+    monkeypatch.setattr(copilot, "_agent_roster", lambda: {"web": "landing pages", "design": "brand systems"})
+
+    delivered: list[str] = []
+
+    async def fake_message_agent(founder_id: str, session_id: str, args: dict):
+        delivered.append(args["agent"])
+        return {"ok": True, "target_agent": args["agent"]}
+
+    monkeypatch.setattr(copilot, "_tool_message_agent", fake_message_agent)
+
+    result = await copilot.run_copilot(
+        "founder_123",
+        "sess_123",
+        "@web @design tighten the launch experience",
+        mentioned_agents=["web", "design", "not_a_real_agent"],
+    )
+
+    assert delivered == ["web", "design"]
+    assert [action["tool"] for action in result["actions"]] == ["message_agent", "message_agent"]
+
+
+@pytest.mark.asyncio
+async def test_run_copilot_preserves_unmentioned_idle_dispatch(monkeypatch):
+    outputs = iter([
+        '{"action":"tool","tool":"dispatch_agents","args":{"agents":["web","technical"],"instruction":"Build the launch site"}}',
+        '{"action":"reply","text":"I started the build."}',
+    ])
+    monkeypatch.setattr(copilot, "_copilot_generate", AsyncMock(side_effect=lambda *args, **kwargs: next(outputs)))
+    monkeypatch.setattr(copilot, "get_history", lambda session_id: [])
+    monkeypatch.setattr(copilot, "_save_history", lambda session_id, history: None)
+    monkeypatch.setattr(copilot, "_load_live_context", AsyncMock(return_value={
+        "running_agents": [],
+        "child_sessions_running": [],
+        "session_meta": {"status": "done"},
+    }))
+    monkeypatch.setattr(copilot, "_agent_roster", lambda: {"web": "landing pages", "technical": "apps"})
+
+    dispatched: list[dict] = []
+
+    async def fake_dispatch(founder_id: str, session_id: str, args: dict):
+        dispatched.append(args)
+        return {"ok": True, "dispatched": args["agents"]}
+
+    monkeypatch.setitem(copilot._TOOLS, "dispatch_agents", ("doc", fake_dispatch))
+
+    result = await copilot.run_copilot("founder_123", "sess_123", "Build the launch site")
+
+    assert dispatched == [{"agents": ["web", "technical"], "instruction": "Build the launch site"}]
+    assert result["reply"] == "I started the build."
+
+
+@pytest.mark.asyncio
 async def test_run_copilot_auto_dispatches_deploy_breakage_fix(monkeypatch):
     monkeypatch.setattr(copilot, "_copilot_generate", AsyncMock(return_value='{"action":"reply","text":"Checking."}'))
     monkeypatch.setattr(copilot, "get_history", lambda session_id: [])

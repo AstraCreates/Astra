@@ -15,6 +15,7 @@ import SessionTour from "@/components/SessionTour";
 import AgentSwarm, { type SwarmAgent } from "@/components/AgentSwarm";
 import { ReceiptTrail, type ArtifactReceipt } from "@/components/PhaseWorkboard";
 import LLCFilingModal from "@/components/LLCFilingModal";
+import AstraCopilotComposer, { type CopilotAgentOption } from "@/components/AstraCopilotComposer";
 
 // xterm touches `window`; load the takeover terminal client-only.
 const TerminalPane = dynamic(() => import("@/components/TerminalPane"), { ssr: false });
@@ -289,10 +290,11 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   }, []);
   const [planOpen, setPlanOpen] = useState(false);
   const sseRef = useRef<StreamSubscription | null>(null);
-  const steerRef = useRef<HTMLInputElement>(null);
+  const [copilotInput, setCopilotInput] = useState("");
   const [copilot, setCopilot] = useState<{ role: string; content: string; actions?: CopilotAction[] }[]>([]);
   const [copilotBusy, setCopilotBusy] = useState(false);
   const [copilotOpen, setCopilotOpen] = useState(true);
+  const [workbenchOpen, setWorkbenchOpen] = useState(false);
   const [copilotAttachments, setCopilotAttachments] = useState<CopilotAttachment[]>([]);
   const [copilotUploading, setCopilotUploading] = useState(false);
   const copilotLoadedSession = useRef<string | null>(null);
@@ -816,10 +818,12 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       if (copilotFileRef.current) copilotFileRef.current.value = "";
     }
   };
-  const sendCopilot = async () => {
-    const msg = steerRef.current?.value.trim(); if (!msg || copilotBusy) return;
+  const sendCopilot = async (message?: string, mentionedAgents: string[] = []) => {
+    const msg = (message ?? copilotInput).trim(); if (!msg || copilotBusy) return;
     const attachments = copilotAttachments;
-    if (steerRef.current) steerRef.current.value = "";
+    setCopilotInput("");
+    setCopilotOpen(true);
+    setWorkbenchOpen(false);
     setCopilot((c) => [...c, {
       role: "founder",
       content: attachments.length
@@ -832,18 +836,13 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       const r = await apiFetch(`${API}/copilot/${sessionId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg, attachments }),
+        body: JSON.stringify({ message: msg, attachments, mentioned_agents: mentionedAgents }),
       });
       const d = await r.json();
       setCopilot((c) => [...c, { role: "copilot", content: d.reply || "(no reply)", actions: normalizeCopilotActions(d.actions) }]);
     } catch (e) {
       setCopilot((c) => [...c, { role: "copilot", content: "Copilot error — try again." }]);
     } finally { setCopilotBusy(false); }
-  };
-  const sendSteer = async () => {
-    const msg = steerRef.current?.value.trim(); if (!msg) return;
-    if (steerRef.current) steerRef.current.value = "";
-    try { await apiFetch(`${API}/steer/${sessionId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg }) }); } catch {}
   };
   const answerAgentQuestion = async (answer: string) => {
     if (!agentQuestion) return;
@@ -894,6 +893,14 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const agents = Object.values(st.agents);
   const total = agents.length, run = agents.filter((a) => a.status === "running").length,
     done = agents.filter((a) => a.status === "done").length, err = agents.filter((a) => a.status === "error").length;
+  const copilotAgentIds = new Set([...Object.keys(AGENT_LABELS), ...Object.keys(st.agents)]);
+  const copilotAgents: CopilotAgentOption[] = Array.from(copilotAgentIds)
+    .map((id) => ({ id, label: AGENT_LABELS[id] ?? id.replace(/_/g, " "), status: st.agents[id]?.status }))
+    .sort((a, b) => {
+      if (a.status === "running" && b.status !== "running") return -1;
+      if (b.status === "running" && a.status !== "running") return 1;
+      return a.label.localeCompare(b.label);
+    });
   const artReady = st.artifacts.filter((a) => a.status === "ready").length;
 
   const phases = useMemo<[string, string][]>(() => {
@@ -970,7 +977,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     const running = inS.find((a) => st.agents[a].status === "running");
     if (running) {
       const ag = st.agents[running];
-      if (ag.currentTool) return `Using: ${ag.currentTool}`;
+      if (ag.currentTool) return `Using ${ag.currentTool.replace(/_/g, " ")}`;
       const last = ag.log[ag.log.length - 1];
       return (last ? last.text : ag.instruction || "Working…").slice(0, 80);
     }
@@ -1209,7 +1216,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         </div>
       )}
       {/* topbar */}
-      <div style={{ height: 44, display: "flex", alignItems: "center", gap: 7, padding: "0 14px 0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
+      <div className="session-topbar" style={{ height: 44, display: "flex", alignItems: "center", gap: 7, padding: "0 14px 0 18px", borderBottom: "1px solid var(--bd)", background: "var(--surface)", flexShrink: 0 }}>
         <div className="topbar-title" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{displayName || shortGoal}</div>
         {st.parentId && (
           <a href={`/s/${st.parentId}`} className="btn sm" title="View parent session"
@@ -1232,6 +1239,15 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             {previewRestarting ? "↻ Restarting…" : "↻ Restart preview"}
           </button>
         )}
+        <button
+          type="button"
+          className={`btn sm${workbenchOpen ? " pri" : ""}`}
+          aria-pressed={workbenchOpen}
+          onClick={() => setWorkbenchOpen((open) => !open)}
+          style={{ flexShrink: 0 }}
+        >
+          {workbenchOpen ? "Copilot" : "Workbench"}
+        </button>
         <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
           {st.headroomSaved > 0 && (
             <span
@@ -1272,7 +1288,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               onClick={() => setRestartConfirm(false)}>✕</button>
           </>
         ) : (
-          <button className="btn sm" title="Restart this run" aria-label="Restart run"
+          <button className="btn sm session-restart" title="Restart this run" aria-label="Restart run"
             style={{ flexShrink: 0, touchAction: "manipulation" }}
             onClick={() => { setRestartConfirm(true); setTimeout(() => setRestartConfirm(false), 5000); }}>↻ Restart</button>
         )}
@@ -1334,12 +1350,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               )}
               <button className="btn sm" onClick={() => {
                 setCopilotOpen(true);
-                if (steerRef.current && !steerRef.current.value.trim()) {
-                  steerRef.current.value = st.reviewReason
-                    ? `Fix this run issue: ${st.reviewReason}`
-                    : "Review the completion issues and tell the right agents to fix them.";
-                }
-                steerRef.current?.focus();
+                setWorkbenchOpen(false);
+                setCopilotInput((current) => current.trim() ? current : st.reviewReason
+                  ? `Fix this run issue: ${st.reviewReason}`
+                  : "Review the completion issues and tell the right agents to fix them.");
               }}>Ask copilot</button>
             </div>
           </div>
@@ -1361,6 +1375,77 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         )
       )}
 
+      {!workbenchOpen && (
+        <main className="session-copilot-home">
+          <div className="session-copilot-intro">
+            <img src="/astra-copilot.png" alt="Astra" />
+            <div>
+              <span>{st.status === "running" || st.status === "loading" ? "Astra is working" : st.status === "stalled" ? "Astra needs your input" : "Astra copilot"}</span>
+              <h1>{displayName || shortGoal}</h1>
+              <p>
+                {st.status === "running" || st.status === "loading"
+                  ? `${run || "The team"} working · ${done} finished · ${artReady} deliverables ready`
+                  : st.status === "done"
+                    ? `${done} agents finished this run. Ask for a summary or direct the next move.`
+                    : st.reviewReason || "Ask a question, redirect the work, or mention a specific agent."}
+              </p>
+            </div>
+            <button type="button" onClick={() => setWorkbenchOpen(true)}>Open workbench</button>
+          </div>
+
+          <div className="session-agent-pulse" aria-label="Agent activity">
+            {Object.values(st.agents).filter((agent) => agent.status === "running").slice(0, 6).map((agent) => (
+              <button key={agent.key} type="button" onClick={() => setCopilotInput(`@${agent.key} `)}>
+                <span className="live-dot" />
+                <b>{AGENT_LABELS[agent.key] ?? agent.key.replace(/_/g, " ")}</b>
+                <small>{agent.currentTool ? agent.currentTool.replace(/_/g, " ") : "working"}</small>
+              </button>
+            ))}
+            {run === 0 && Object.values(st.agents).filter((agent) => agent.status === "done").slice(-4).map((agent) => (
+              <button key={agent.key} type="button" onClick={() => setCopilotInput(`@${agent.key} `)}>
+                <span className="is-done">✓</span>
+                <b>{AGENT_LABELS[agent.key] ?? agent.key.replace(/_/g, " ")}</b>
+                <small>finished</small>
+              </button>
+            ))}
+          </div>
+
+          <div className={`session-copilot-thread${copilot.length === 0 ? " is-empty" : ""}`}>
+            {copilot.length === 0 ? (
+              <div className="session-copilot-starters">
+                <button onClick={() => setCopilotInput("What is the team working on right now?")}>What is happening?</button>
+                <button onClick={() => setCopilotInput("What needs my attention?")}>What needs my attention?</button>
+                <button onClick={() => setCopilotInput("Summarize the strongest findings and next steps.")}>Summarize this run</button>
+              </div>
+            ) : copilot.map((message, index) => (
+              <div key={index} className={`session-chat-row ${message.role === "founder" ? "is-founder" : "is-astra"}`}>
+                {message.role !== "founder" && <span className="session-chat-avatar">A</span>}
+                <div className="session-chat-bubble">
+                  {message.content}
+                  {message.actions && message.actions.length > 0 && (
+                    <div className="copilot-actions" aria-label="Copilot actions">
+                      {message.actions.map((action, actionIndex) => (
+                        <div key={`${action.tool}-${actionIndex}`} className={`copilot-action-card is-${action.tone || "info"}`}>
+                          <div className="copilot-action-label">{action.label}</div>
+                          {action.detail && <div className="copilot-action-detail">{action.detail}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {copilotBusy && (
+              <div className="session-chat-row is-astra">
+                <span className="session-chat-avatar">A</span>
+                <div className="copilot-thinking"><span /><span /><span /></div>
+              </div>
+            )}
+          </div>
+        </main>
+      )}
+
+      {workbenchOpen && <>
       {/* phase bar */}
       <div data-tour="session-phasebar" className="phasebar">
         {phases.map(([cls, lbl], i) => (
@@ -1385,14 +1470,17 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             {artReady > 0 && <><div className="s-sep" /><span className="sv g">{artReady}</span> deliverable{artReady !== 1 ? "s" : ""}</>}
           </>}
         {st.planTasks.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setPlanOpen(true)}
-            className="dc-badge plan"
-            style={{ marginLeft: "auto", cursor: "pointer", fontFamily: "var(--font-chakra), sans-serif", letterSpacing: ".04em", textTransform: "uppercase" }}
-          >
-            ◱ Plan · {st.planTasks.length} step{st.planTasks.length !== 1 ? "s" : ""}
-          </button>
+          <>
+            <div className="s-sep" />
+            <button
+              type="button"
+              onClick={() => setPlanOpen(true)}
+              className="dc-badge plan"
+              style={{ cursor: "pointer", fontFamily: "var(--font-chakra), sans-serif", letterSpacing: ".04em", textTransform: "uppercase" }}
+            >
+              ◱ Plan · {st.planTasks.length} step{st.planTasks.length !== 1 ? "s" : ""}
+            </button>
+          </>
         )}
       </div>
 
@@ -2050,70 +2138,22 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           </div>
         </div>
       </div>
+      </>}
 
       {/* copilot chat bar */}
-      <div data-tour="session-steerbar" className={`steerbar copilot-dock ${copilotOpen ? "is-open" : ""}`}>
-        <div style={{ padding: copilotOpen ? "16px 20px 10px" : "14px 20px 8px" }}>
-          <div style={{ fontSize: 10.5, color: "var(--fg)", fontWeight: 600, marginBottom: 3 }}>Continue with Astra</div>
-          <div style={{ fontSize: 9.5, color: "var(--fm)", lineHeight: 1.5 }}>Type a follow-up, ask a question, or redirect the work. Astra will handle the next step from here.</div>
-        </div>
-        {copilotOpen && (
-          <div className={`copilot-thread${copilot.length === 0 ? " is-empty" : ""}`}>
-            {copilot.length === 0 && (
-              <div className="copilot-empty">
-                Ask or direct Astra. The copilot can read the company brain, inspect completion audits, approve milestones and gates, answer blocked agent questions, pause or resume runs, restart previews, steer live agents, and dispatch new work. Try “what completion issues are blocking this run?”, “approve the next goal”, or “tell the web agent to fix the deploy”.
-              </div>
-            )}
-            {copilot.map((m, i) => (
-              <div key={i} className={`copilot-row ${m.role === "founder" ? "is-founder" : "is-astra"}`}>
-                {m.role !== "founder" && <span className="copilot-avatar">A</span>}
-                <div className="copilot-bubble">
-                  {m.content}
-                  {m.actions && m.actions.length > 0 && (
-                    <div className="copilot-actions" aria-label="Copilot actions">
-                      {m.actions.map((action, actionIndex) => (
-                        <div key={`${action.tool}-${actionIndex}`} className={`copilot-action-card is-${action.tone || "info"}`}>
-                          <div className="copilot-action-label">{action.label}</div>
-                          {action.detail && <div className="copilot-action-detail">{action.detail}</div>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-            {copilotBusy && (
-              <div className="copilot-row is-astra">
-                <span className="copilot-avatar">A</span>
-                <div className="copilot-thinking"><span /><span /><span /></div>
-              </div>
-            )}
-          </div>
-        )}
-        <div className="steer-wrap" style={{ padding: 6, border: "1px solid var(--bd2)", background: "var(--surface)", boxShadow: "0 0 0 1px rgba(59,130,246,.06)" }}>
-          <button className="steer-send copilot-toggle" aria-label="Toggle copilot" title="Copilot chat" onClick={() => setCopilotOpen((v) => !v)}>{copilotOpen ? "▾" : "✦"}</button>
-          <button
-            className="steer-send copilot-attach"
-            aria-label="Attach file"
-            title="Attach file"
-            disabled={copilotUploading || copilotBusy}
-            onClick={() => { setCopilotOpen(true); copilotFileRef.current?.click(); }}
-          >
-            {copilotUploading ? "…" : "+"}
-          </button>
-          <input
-            ref={copilotFileRef}
-            type="file"
-            multiple
-            hidden
-            onChange={(e) => uploadCopilotFiles(e.target.files)}
-          />
-          <input ref={steerRef} className="steer-inp" aria-label="Ask or direct Astra"
-            placeholder='Tell Astra what to do next — "focus on pricing" · "what completion issues are left?" · "approve next goal"'
-            onFocus={() => setCopilotOpen(true)}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); setCopilotOpen(true); sendCopilot(); } }} />
-          <button className="steer-send copilot-submit" aria-label="Send" onClick={() => { setCopilotOpen(true); sendCopilot(); }}>↑</button>
-        </div>
+      <div data-tour="session-steerbar" className="session-copilot-dock">
+        <input ref={copilotFileRef} type="file" multiple hidden onChange={(event) => uploadCopilotFiles(event.target.files)} />
+        <AstraCopilotComposer
+          value={copilotInput}
+          onChange={setCopilotInput}
+          onSubmit={sendCopilot}
+          agents={copilotAgents}
+          disabled={copilotBusy || copilotUploading}
+          placeholder="Ask Astra anything or @mention a specific agent"
+          contextLabel={workbenchOpen ? "Workbench open" : `${run} working · ${done} done`}
+          onAttach={() => copilotFileRef.current?.click()}
+          attachmentCount={copilotAttachments.length}
+        />
         {copilotAttachments.length > 0 && (
           <div className="copilot-attachment-tray" aria-label="Attached files">
             {copilotAttachments.map((file, index) => (

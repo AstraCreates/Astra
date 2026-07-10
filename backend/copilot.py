@@ -1617,6 +1617,14 @@ def _is_steer_directive(msg: str) -> bool:
     return any(f" {w} " in low or low.startswith(f" {w} "[1:]) for w in _DIRECTIVE_WORDS)
 
 
+def _looks_like_question(msg: str) -> bool:
+    low = re.sub(r"(?:^|\s)@[a-z0-9_]+", " ", str(msg or "").lower()).strip()
+    return low.endswith("?") or low.startswith((
+        "what ", "why ", "how ", "when ", "where ", "who ", "which ",
+        "is ", "are ", "can ", "could ", "would ", "should ", "tell me ",
+    ))
+
+
 def _fallback_copilot_reply(actions: list[dict[str, Any]]) -> str:
     if not actions:
         return "I didn't catch that clearly. Try rephrasing, or tell me which agents to dispatch and what to do."
@@ -1713,12 +1721,19 @@ async def run_copilot(
     message: str,
     founder_email: str = "",
     attachments: list[dict[str, Any]] | None = None,
+    mentioned_agents: list[str] | None = None,
 ) -> dict[str, Any]:
     """Run one copilot turn: load history, let the model use tools, reply, persist."""
     from backend.tools._llm import generate
 
     history = get_history(session_id)
     live = await _load_live_context(session_id, founder_id)
+    roster = _agent_roster()
+    explicit_agents = list(dict.fromkeys(
+        str(agent).strip().lower()
+        for agent in (mentioned_agents or [])
+        if str(agent).strip().lower() in roster
+    ))
     attachment_context = _attachment_context_block(_normalize_attachments(attachments))
     tool_docs = "\n".join(f"- {name}: {doc}" for name, (doc, _) in _TOOLS.items())
     system = (
@@ -1736,7 +1751,13 @@ async def run_copilot(
         "approve the next goal, approve individual milestones, steer running agents, resolve approval gates, "
         "answer blocked questions, restart previews, pause/resume runs, inspect completion audits, read subteam reports, "
         "and run another cycle.\n\n"
-        "DECISION TREE — check in this exact order for every message:\n"
+        + (
+            "EXPLICIT UI MENTIONS (authoritative): " + ", ".join(explicit_agents) + ". "
+            "The founder selected these exact agents with @mentions. For a directive, target every mentioned agent; "
+            "for a question, answer through the mentioned agent. Do not broaden the target set unless the founder explicitly asks.\n\n"
+            if explicit_agents else ""
+        )
+        + "DECISION TREE — check in this exact order for every message:\n"
         "0. SESSION DONE CHECK: if session_meta.status == 'done' OR state.status == 'done', "
         "the session has COMPLETED — there are NO running agents regardless of what running_agents shows. "
         "NEVER call steer_agents for a done session. Treat ALL imperatives as dispatch_agents or set_goal.\n"
@@ -1843,22 +1864,39 @@ async def run_copilot(
 
     # Auto-steer fallback: model replied without calling steer_agents, but agents ARE
     # running and the message is clearly a directive — push the steer directly.
-    if not actions and _is_steer_directive(message):
+    _explicit_command = bool(explicit_agents) and not _looks_like_question(message)
+    if not actions and (_is_steer_directive(message) or _explicit_command):
         running = live.get("running_agents") or []
         child_running = live.get("child_sessions_running") or []
         if running or child_running:
             try:
-                named = _detect_named_agent(message, set(_agent_roster().keys()) | set(str(item) for item in running))
-                if named:
-                    await _tool_message_agent(founder_id, session_id, {"agent": named, "message": message})
-                    actions.append({"tool": "message_agent", "args": {"agent": named, "message": message}, "result": {"ok": True, "target_agent": named}})
-                    reply = f"Sent to {named}: {message}"
+                named_agents = explicit_agents or [
+                    agent for agent in [_detect_named_agent(message, set(roster.keys()) | set(str(item) for item in running))]
+                    if agent
+                ]
+                if named_agents:
+                    for named in named_agents:
+                        await _tool_message_agent(founder_id, session_id, {"agent": named, "message": message})
+                        actions.append({"tool": "message_agent", "args": {"agent": named, "message": message}, "result": {"ok": True, "target_agent": named}})
+                    reply = f"Sent to {', '.join(named_agents)}: {message}"
                 else:
                     await _tool_steer_agents(founder_id, session_id, {"message": message})
                     actions.append({"tool": "steer_agents", "args": {"message": message}, "result": {"ok": True, "message": message}})
                     reply = f"Sent to the running agents: {message}"
             except Exception:
                 pass
+
+    if not actions and explicit_agents and (_is_steer_directive(message) or _explicit_command):
+        try:
+            result = await _tool_dispatch_agents(
+                founder_id,
+                session_id,
+                {"agents": explicit_agents, "instruction": message},
+            )
+            actions.append({"tool": "dispatch_agents", "args": {"agents": explicit_agents, "instruction": message}, "result": result})
+            reply = f"Started {', '.join(explicit_agents)} on that request."
+        except Exception:
+            pass
 
     if not actions and _looks_like_deploy_breakage(message):
         try:

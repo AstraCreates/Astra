@@ -392,7 +392,7 @@ button:not(:disabled):active { transform: scale(0.97); }
 .dtabs{display:flex;padding:0 18px;border-bottom:1px solid var(--bd);flex-shrink:0;background:var(--surface)}
 .dtab{font-family:var(--font-chakra),sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fm);padding:8px 11px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;transition:color .12s}
 .dtab:hover{color:var(--fd)}.dtab.on{color:var(--fg);border-bottom-color:var(--mint);background:linear-gradient(180deg,transparent 0%,rgba(124,255,198,.07) 100%)}
-.dscroll{flex:1;overflow-y:auto;padding:16px 20px;display:flex;flex-direction:column;gap:11px}
+.dscroll{flex:1;overflow-y:auto;padding:16px 20px 96px;display:flex;flex-direction:column;gap:11px}
 
 /* Session — log entries */
 .le{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid rgba(0,0,0,.04)}

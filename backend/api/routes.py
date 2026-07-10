@@ -1856,7 +1856,15 @@ async def copilot_chat(session_id: str, body: dict, request: Request):
     fid = body.get("founder_id") or founder_id or ""
     founder_email = request.headers.get("x-astra-email") or body.get("founder_email") or ""
     attachments = body.get("attachments") if isinstance(body.get("attachments"), list) else []
-    return await run_copilot(fid, session_id, message, founder_email=founder_email, attachments=attachments)
+    mentioned_agents = body.get("mentioned_agents") if isinstance(body.get("mentioned_agents"), list) else []
+    return await run_copilot(
+        fid,
+        session_id,
+        message,
+        founder_email=founder_email,
+        attachments=attachments,
+        mentioned_agents=mentioned_agents,
+    )
 
 
 @router.get("/copilot/{session_id}")
