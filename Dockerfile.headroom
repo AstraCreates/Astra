@@ -4,9 +4,8 @@ RUN pip install --no-cache-dir "headroom-ai[proxy]"
 
 EXPOSE 8787
 
-# mode=token + no-ccr-inject-tool: confirmed via live A/B against real OpenRouter
-# traffic to cut prompt tokens ~70% with no retrieve round-trip (CCR's default
-# retrieve-tool path didn't reliably resolve in testing — avoid it).
+# Token mode keeps the proxy focused on prompt reduction. The installed
+# headroom-ai release no longer exposes the old CCR injection flag.
 CMD ["headroom", "proxy", "--host", "0.0.0.0", "--port", "8787", \
-     "--mode", "token", "--no-ccr-inject-tool", \
+     "--mode", "token", \
      "--openai-api-url", "https://openrouter.ai/api/v1"]
