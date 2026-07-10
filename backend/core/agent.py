@@ -958,11 +958,11 @@ class Agent:
             try:
                 sig = inspect.signature(fn)
                 params = ", ".join(
-                    f"{pname}={repr(param.default)}" if param.default is not inspect.Parameter.empty else pname
+                    pname
                     for pname, param in sig.parameters.items()
                 )
                 doc = (fn.__doc__ or "").split("\n")[0].strip()
-                return f"  - {name}({params})\n    {doc}"
+                return f"  - {name}({params}): {doc}"
             except Exception:
                 return f"  - {name}: {fn.__doc__ or ''}"
 
