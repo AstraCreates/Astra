@@ -425,11 +425,18 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     # - "research_customers" / "research_gtm": one area each, deep_research is
     #   their PRIMARY tool (their prompts don't call run_research_pipeline at
     #   all), so deep_research gets more room than run_research_pipeline.
+    # search_and_fetch/fetch_and_read were NOT capped here originally — a real
+    # production incident showed research_competitors calling search_and_fetch
+    # 20+ times in a row (each one a real full-page fetch, not a cheap snippet
+    # call) before hitting max_iterations, burning real tokens the whole way.
+    # Every role's own prompt already says to use these "only for specific
+    # pages deep_research/run_research_pipeline missed" — a handful of calls,
+    # not dozens — so cap them at the same order of magnitude as deep_research.
     _ROLE_TOOL_CALL_CAPS = {
-        "research":             {"run_research_pipeline": 5, "deep_research": 8},
-        "research_competitors": {"run_research_pipeline": 3, "deep_research": 4},
-        "research_customers":   {"run_research_pipeline": 2, "deep_research": 5},
-        "research_gtm":         {"run_research_pipeline": 2, "deep_research": 5},
+        "research":             {"run_research_pipeline": 5, "deep_research": 8, "search_and_fetch": 6, "fetch_and_read": 6},
+        "research_competitors": {"run_research_pipeline": 3, "deep_research": 4, "search_and_fetch": 5, "fetch_and_read": 5},
+        "research_customers":   {"run_research_pipeline": 2, "deep_research": 5, "search_and_fetch": 4, "fetch_and_read": 4},
+        "research_gtm":         {"run_research_pipeline": 2, "deep_research": 5, "search_and_fetch": 4, "fetch_and_read": 4},
     }
     _tool_call_caps = dict(_ROLE_TOOL_CALL_CAPS.get(agent_name, _ROLE_TOOL_CALL_CAPS["research"]))
     _tool_call_caps.update(kwargs.pop("max_tool_calls", None) or {})
