@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from unittest.mock import AsyncMock
 
@@ -290,6 +292,45 @@ async def test_tool_stop_agent_single_instance_unaffected(monkeypatch):
 
     assert result["ok"] is True
     assert stopped == ["design"]
+
+
+@pytest.mark.asyncio
+async def test_tool_rerun_agent_runs_in_place_not_new_session(monkeypatch):
+    """Rerunning an agent must publish into the SAME session the founder is
+    looking at, not spawn a hidden child session for them to go find (real
+    complaint: 'i dont want copilot to keep making new sessions whenever it
+    wants to restart an agent thats just confusing')."""
+    monkeypatch.setattr(copilot, "_assert_session_owner", lambda session_id, founder_id: None)
+    monkeypatch.setattr("backend.core.session_store.get_session_meta", lambda sid: {"goal": "redo research"})
+    monkeypatch.setattr("backend.tools.obsidian_logger.format_vault_context", lambda *a, **k: "")
+    monkeypatch.setattr("backend.core.cancellation.register_task", lambda sid, task: None)
+    monkeypatch.setattr("backend.core.cancellation.clear", lambda sid: None)
+
+    published = []
+
+    async def fake_publish(sid, event):
+        published.append((sid, event))
+
+    monkeypatch.setattr("backend.core.events.publish", fake_publish)
+
+    class FakeAgent:
+        async def run(self, ctx):
+            return {"summary": "done"}
+
+    class FakeOrch:
+        specialists = {"research": FakeAgent()}
+
+    monkeypatch.setattr("backend.core.factory.get_orchestrator", lambda: FakeOrch())
+
+    result = await copilot._tool_rerun_agent("founder_123", "sess_123", {"agent_name": "research"})
+
+    assert result["ok"] is True
+    assert result["session_id"] == "sess_123"
+
+    await asyncio.sleep(0.05)  # let the background rerun task publish
+
+    assert published
+    assert {sid for sid, _ in published} == {"sess_123"}
 
 
 @pytest.mark.asyncio

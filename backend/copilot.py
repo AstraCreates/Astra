@@ -990,11 +990,18 @@ async def _tool_stop_agent(founder_id: str, session_id: str, args: dict) -> Any:
 
 
 async def _tool_rerun_agent(founder_id: str, session_id: str, args: dict) -> Any:
-    """Re-run a single agent that failed or needs to redo its work. args: {agent_name, session_id?}"""
+    """Re-run a single agent that failed or needs to redo its work. args: {agent_name, session_id?}
+
+    Runs IN PLACE in the target session (same pattern as the chat rerun-intent
+    path in routes.py::continue_goal) rather than spawning a new child session
+    -- founders were confused when "restart this agent" silently opened a
+    second session they had to go find instead of showing progress in the one
+    they were already looking at."""
     import asyncio
+    from backend.core import cancellation
+    from backend.core.events import publish
     from backend.core.factory import get_orchestrator
-    from backend.core.session_ids import new_session_id
-    from backend.core.session_store import register_session, get_session_meta
+    from backend.core.session_store import get_session_meta
     agent_name = str(args.get("agent_name") or args.get("agent") or "").strip()
     target_sid = str(args.get("session_id") or session_id)
     if not agent_name:
@@ -1002,19 +1009,43 @@ async def _tool_rerun_agent(founder_id: str, session_id: str, args: dict) -> Any
     err = _assert_session_owner(target_sid, founder_id)
     if err:
         return {"ok": False, "error": err}
+    orch = get_orchestrator()
+    if agent_name not in (orch.specialists or {}):
+        return {"ok": False, "error": f"unknown agent {agent_name!r}; use list_agents"}
     try:
         src_meta = get_session_meta(target_sid) or {}
         instruction = src_meta.get("goal") or f"Complete your assigned work for: {agent_name}"
-        child = new_session_id()
-        company_id = src_meta.get("company_id") or founder_id
-        register_session(session_id=child, founder_id=founder_id, goal=instruction,
-                         company_id=company_id, parent_session_id=target_sid, kind="user")
-        orch = get_orchestrator()
+
+        vault_context = ""
+        try:
+            from backend.tools.obsidian_logger import format_vault_context
+            vault_context = await asyncio.to_thread(format_vault_context, agent_name, 5, founder_id)
+        except Exception:
+            pass
+
+        from backend.core.agent import AgentContext
+        ctx = AgentContext(
+            goal=instruction,
+            founder_id=founder_id,
+            session_id=target_sid,
+            shared={"prior_vault_notes": vault_context, "rerun": True},
+        )
+        agent = orch.specialists[agent_name]
+        await publish(target_sid, {"type": "agent_start", "agent": agent_name, "task_id": f"rerun_{agent_name}", "instruction": instruction})
+        await publish(target_sid, {"type": "chat_intent", "intent": "rerun", "agent": agent_name})
+
         async def _go():
-            await orch.continue_run(instruction=instruction, founder_id=founder_id,
-                                    prior_session_id=target_sid, agents=[agent_name], session_id=child)
-        asyncio.create_task(_go())
-        return {"ok": True, "agent": agent_name, "session_id": child}
+            try:
+                result = await agent.run(ctx)
+                await publish(target_sid, {"type": "agent_done", "agent": agent_name, "task_id": f"rerun_{agent_name}", "result": result})
+            except Exception as e:
+                await publish(target_sid, {"type": "agent_error", "agent": agent_name, "error": str(e)})
+            finally:
+                cancellation.clear(target_sid)
+
+        _task = asyncio.create_task(_go())
+        cancellation.register_task(target_sid, _task)
+        return {"ok": True, "agent": agent_name, "session_id": target_sid}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
