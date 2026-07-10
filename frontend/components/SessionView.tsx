@@ -4,7 +4,7 @@
    Self-contained: own SSE + state, wired to the real backend via apiFetch.
    Layout: phase bar → status bar → dept cards → vault | detail → steer bar. */
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, ingestAttachment, AGENT_LABELS, rerunAgent, openEventStream, type SessionImages, type StreamSubscription } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
@@ -281,6 +281,11 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     planTasks: [], plannerModel: "",
   });
   const [, force] = useReducer((x: number) => x + 1, 0);
+  const [stateVersion, bumpStateVersion] = useReducer((x: number) => x + 1, 0);
+  const commitState = useCallback(() => {
+    bumpStateVersion();
+    force();
+  }, []);
   const [planOpen, setPlanOpen] = useState(false);
   const sseRef = useRef<StreamSubscription | null>(null);
   const steerRef = useRef<HTMLInputElement>(null);
@@ -424,10 +429,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       if (!r.ok) return;
       const d = await r.json();
       applyStateSnapshot(d, true);
-      force();
+      commitState();
     } catch {}
     sseRef.current?.close();
-  }, [applyStateSnapshot, sessionId]);
+  }, [applyStateSnapshot, commitState, sessionId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -623,8 +628,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         break;
       default: return; // ignore pings/unknown without re-render
     }
-    force();
-  }, [pushAgentToast, reconcileTerminalState]);
+    commitState();
+  }, [commitState, pushAgentToast, reconcileTerminalState]);
 
   // Load meta + state, then connect SSE.
   useEffect(() => {
@@ -647,7 +652,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       };
       cacheSession(sessionId, S.current);
     }
-    force();
+    commitState();
 
     (async () => {
       // Session header by id (auth-gated). meta is null when the server denies access
@@ -698,7 +703,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       } catch {}
       if (!alive) return;
       if (S.current.status === "loading") S.current.status = "running";
-      force();
+      commitState();
 
       const es = openEventStream(`${API}/stream/${sessionId}`);
       sseRef.current = es;
@@ -711,7 +716,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     })();
 
     return () => { alive = false; sseRef.current?.close(); sseRef.current = null; };
-  }, [sessionId, founderId, handleEvent, isSignedIn, applyStateSnapshot]);
+  }, [sessionId, founderId, handleEvent, isSignedIn, applyStateSnapshot, commitState]);
 
   // Poll session meta every 30s to pick up live credits + headroom savings.
   useEffect(() => {
@@ -724,20 +729,29 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         const credits = Number(m.credits_used || 0);
         const saved = Number(m.headroom_tokens_saved || 0);
         const before = Number(m.headroom_tokens_before || 0);
+        const status = String(m.status || "");
+        const liveUrl = String(m.deploy_url || "");
         const reviewChanged = Boolean(m.needs_review) !== S.current.needsReview || String(m.review_reason || "") !== S.current.reviewReason;
-        if (credits !== S.current.credits || saved !== S.current.headroomSaved || reviewChanged) {
+        const changed = credits !== S.current.credits
+          || saved !== S.current.headroomSaved
+          || before !== S.current.headroomBefore
+          || reviewChanged
+          || (!S.current.liveUrl && !!liveUrl);
+        if (changed) {
           S.current.credits = credits;
           S.current.headroomSaved = saved;
           S.current.headroomBefore = before;
           S.current.needsReview = Boolean(m.needs_review);
           S.current.reviewReason = String(m.review_reason || "");
-          if (!S.current.liveUrl && m.deploy_url) S.current.liveUrl = m.deploy_url;
-          force();
+          if (!S.current.liveUrl && liveUrl) S.current.liveUrl = liveUrl;
+          commitState();
+        } else if (S.current.status === "done" && status === "done") {
+          clearInterval(id);
         }
       } catch {}
     }, 30_000);
     return () => clearInterval(id);
-  }, [sessionId]);
+  }, [commitState, sessionId]);
 
   // Run timer — tick every second while running so the elapsed clock counts up.
   useEffect(() => {
@@ -754,13 +768,13 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     if (decision !== "rejected") S.current.decidedKeys.add(key);
     S.current.approvals = S.current.approvals.filter((a) => a.gate_key !== key);
     S.current.revisionGate = null; S.current.revisionNote = "";
-    force();
+    commitState();
     try {
       await decideStackApproval(sessionId, key, decision as any, founderId, note);
     } catch (e) {
       if (decision !== "rejected") S.current.decidedKeys.delete(key);
       S.current.approvals = snapshot;
-      force();
+      commitState();
       showErr(`Approval failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
@@ -843,7 +857,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   };
   // No window.confirm — mobile in-app webviews suppress it (returns false), which
   // made Stop/Restart silently no-op. Optimistic UI + fire the request.
-  const stop = async () => { S.current.status = "killed"; sseRef.current?.close(); force(); await killSession(sessionId).catch(() => {}); };
+  const stop = async () => { S.current.status = "killed"; sseRef.current?.close(); commitState(); await killSession(sessionId).catch(() => {}); };
   // TEMP: kill this run, delete it server+local, resubmit the same goal as a fresh run.
   const killClearRestart = async () => {
     const goal = S.current.goal;
@@ -851,7 +865,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     const stack = S.current.stackId || "idea_to_revenue";
     if (!goal) { showErr("Original goal hasn't loaded yet — try again in a moment."); return; }
     // No window.confirm — suppressed in mobile webviews.
-    S.current.status = "killed"; force();
+    S.current.status = "killed"; commitState();
     try {
       sseRef.current?.close();
       await killSession(sessionId).catch(() => {});
@@ -869,10 +883,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     const next = !S.current.paused;
     try {
       await apiFetch(`${API}/sessions/${sessionId}/${next ? "pause" : "resume"}`, { method: "POST" });
-      S.current.paused = next; force();
+      S.current.paused = next; commitState();
     } catch {}
   };
-  const sel = (dept: string | null, art: string | null) => { S.current.selDept = dept; S.current.selArt = art; S.current.tab = art ? "read" : "updates"; if (dept || art) setTeamTab(false); force(); };
+  const sel = (dept: string | null, art: string | null) => { S.current.selDept = dept; S.current.selArt = art; S.current.tab = art ? "read" : "updates"; if (dept || art) setTeamTab(false); commitState(); };
 
   // ── Derived render data ──
   const st = S.current;
@@ -881,55 +895,67 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     done = agents.filter((a) => a.status === "done").length, err = agents.filter((a) => a.status === "error").length;
   const artReady = st.artifacts.filter((a) => a.status === "ready").length;
 
-  const plan = PHASE_PLANS[st.stackId];
-  let phases: [string, string][];
-  if (plan) {
-    if (st.status === "done") {
-      phases = [...plan.map((p) => ["done", p.name] as [string, string]), ["act", "Complete"]];
-    } else {
+  const phases = useMemo<[string, string][]>(() => {
+    const plan = PHASE_PLANS[st.stackId];
+    const memoAgents = Object.values(st.agents);
+    const memoTotal = memoAgents.length;
+    if (plan) {
+      if (st.status === "done") {
+        return [...plan.map((p) => ["done", p.name] as [string, string]), ["act", "Complete"]];
+      }
       const built = plan.map((ph) => {
-        const ags = agents.filter((a) => ph.groups.some((g) => a.key === g || a.key.startsWith(g + "_")));
+        const ags = memoAgents.filter((a) => ph.groups.some((g) => a.key === g || a.key.startsWith(g + "_")));
         const present = ags.length > 0;
         return { name: ph.name, present, allDone: present && ags.every((a) => a.status === "done"), anyRunning: ags.some((a) => a.status === "running") };
       });
-      // Phase advances ONLY when agents actually start running (triggered by approval).
-      // Never speculatively activate a phase — approvals are the gate.
       let activeSeen = false;
-      phases = built.map((b) => {
-        if (b.allDone) return ["done", b.name];
-        if (!activeSeen && b.anyRunning) { activeSeen = true; return ["act", b.name]; }
-        return ["", b.name]; // locked
+      const nextPhases = built.map((b) => {
+        if (b.allDone) return ["done", b.name] as [string, string];
+        if (!activeSeen && b.anyRunning) { activeSeen = true; return ["act", b.name] as [string, string]; }
+        return ["", b.name] as [string, string];
       });
-      // Approval pending: insert "⚠ Approval" as active step, keep next phases locked.
-      // Do NOT activate next phase via fallback — approval gate controls when agents start.
       if (st.approvals.length) {
-        const insertAt = phases.findIndex(([c]) => c === "");
-        if (insertAt >= 0) phases.splice(insertAt, 0, ["act", "⚠ Approval"]);
-        else phases.push(["act", "⚠ Approval"]);
+        const insertAt = nextPhases.findIndex(([c]) => c === "");
+        if (insertAt >= 0) nextPhases.splice(insertAt, 0, ["act", "⚠ Approval"]);
+        else nextPhases.push(["act", "⚠ Approval"]);
       } else if (!activeSeen) {
-        // Nothing running and no approvals pending: planning stage — make first phase active
-        const i = phases.findIndex(([c]) => c !== "done");
-        if (i >= 0) phases[i] = ["act", phases[i][1]];
+        const i = nextPhases.findIndex(([c]) => c !== "done");
+        if (i >= 0) nextPhases[i] = ["act", nextPhases[i][1]];
       }
-      phases.push(["", "Complete"]);
+      nextPhases.push(["", "Complete"]);
+      return nextPhases;
     }
-  } else {
-    phases = st.status === "done"
+    return st.status === "done"
       ? [["done", "Planning"], ["done", "Execution"], ["act", "Complete"]]
-      : !total ? [["act", "Planning"], ["", "Execution"], ["", "Complete"]]
+      : !memoTotal ? [["act", "Planning"], ["", "Execution"], ["", "Complete"]]
       : st.approvals.length ? [["done", "Planning"], ["act", "Execution"], ["act", "Approval"], ["", "Complete"]]
       : [["done", "Planning"], ["act", "Execution"], ["", "Complete"]];
-  }
+  }, [st.approvals.length, st.stackId, st.status, stateVersion]);
 
-  // active depts
-  const agToDept = (k: string) => Object.keys(DEPTS).find(dk => DEPTS[dk].ags.includes(k));
-  const activeDepts: [string, { n: string; ic: string; ags: string[]; inS: string[] }][] = [];
-  for (const [dk, d] of Object.entries(DEPTS)) {
-    const inS = d.ags.filter((a) => st.agents[a]);
-    if (inS.length) activeDepts.push([dk, { ...d, inS }]);
-  }
-  const otherAgs = Object.keys(st.agents).filter((k) => !agToDept(k));
-  if (otherAgs.length) activeDepts.push(["__other", { n: "Other", ic: "🤖", ags: otherAgs, inS: otherAgs }]);
+  const { activeDepts, otherAgs } = useMemo(() => {
+    const agToDept = new Map<string, string>();
+    for (const [dk, d] of Object.entries(DEPTS)) {
+      for (const ag of d.ags) agToDept.set(ag, dk);
+    }
+    const nextActiveDepts: [string, { n: string; ic: string; ags: string[]; inS: string[] }][] = [];
+    for (const [dk, d] of Object.entries(DEPTS)) {
+      const inS = d.ags.filter((a) => st.agents[a]);
+      if (inS.length) nextActiveDepts.push([dk, { ...d, inS }]);
+    }
+    const nextOtherAgs = Object.keys(st.agents).filter((k) => !agToDept.has(k));
+    if (nextOtherAgs.length) nextActiveDepts.push(["__other", { n: "Other", ic: "🤖", ags: nextOtherAgs, inS: nextOtherAgs }]);
+    return { activeDepts: nextActiveDepts, otherAgs: nextOtherAgs };
+  }, [stateVersion]);
+
+  const selectedDeptLogs = useMemo<(LogEntry & { agent: string })[]>(() => {
+    if (!st.selDept || st.selArt) return [];
+    const d = st.selDept === "__other" ? { ags: otherAgs } : DEPTS[st.selDept] || { ags: [] };
+    const ags = (d.ags || []).filter((a) => st.agents[a]);
+    const all: (LogEntry & { agent: string })[] = [];
+    for (const k of ags) for (const e of st.agents[k].log) all.push({ ...e, agent: k });
+    all.sort((a, b) => a.ts - b.ts);
+    return all;
+  }, [otherAgs, st.selArt, st.selDept, stateVersion]);
 
   const deptSt = (inS: string[]) => {
     if (!inS.length) return "que";
@@ -1347,7 +1373,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         {st.status === "stalled" ? <><span className="sv r">⚠</span> Review needed · <span className="sv g">{done}</span> done <div className="s-sep" /> <span style={{ color: "var(--fd)" }}>{st.completionAuditFailures[0] || st.reviewReason || "Completion audit flagged the run."}</span></>
         : st.status === "done" ? <><span className="sv g">✓</span> Complete · <span className="sv g">{done}</span> agents · <span className="sv g">{artReady}</span> deliverable{artReady !== 1 ? "s" : ""}</>
         : st.status === "error" ? <><span className="sv r">✗</span> Failed · <span className="sv r">{err}</span> error{err !== 1 ? "s" : ""}</>
-        : !total ? <><div className="live-dot" /><span style={{ color: "var(--fd)" }}>Planning your goal…</span></>
+        : !total ? <><div className="live-dot" /><span style={{ color: "var(--fd)" }}>Planning your goal… You can relax for a moment while Astra lines up the right work.</span></>
         : st.approvals.length ? <><span className="sv r">⚠</span> Approval needed — run paused <div className="s-sep" /> <span className="sv g">{done}</span> done</>
         : <>
             {run > 0 && <><div className="live-dot" /><span className="sv b">{run}</span> working</>}
@@ -1369,7 +1395,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
       {/* dept cards */}
       <div data-tour="session-depts" className="depts">
-        {activeDepts.length === 0 ? <div style={{ padding: 6, fontSize: 9.5, color: "var(--fm)" }}>Waiting for agents…</div>
+        {activeDepts.length === 0 ? <div style={{ padding: 6, fontSize: 9.5, color: "var(--fm)", lineHeight: 1.55 }}>Waiting for agents… Astra is getting the team in motion, so you do not need to do anything yet.</div>
         : activeDepts.map(([dk, d]) => {
           const s = deptSt(d.inS);
           const prog = d.inS.length ? Math.round(d.inS.filter((a) => st.agents[a].status === "done").length / d.inS.length * 100) : 0;
@@ -1391,7 +1417,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         {/* vault */}
         <div data-tour="session-vault" className="vault">
           <div className="v-sec">Deliverables</div>
-          {st.artifacts.length === 0 ? <div style={{ padding: "10px 8px", fontSize: 9.5, color: "var(--fm)", lineHeight: 1.55 }}>{st.status === "running" ? "Agents working — deliverables appear here when ready." : "Nothing yet."}</div>
+          {st.artifacts.length === 0 ? <div style={{ padding: "10px 8px", fontSize: 9.5, color: "var(--fm)", lineHeight: 1.55 }}>{st.status === "running" ? "Agents working — deliverables appear here when ready. You do not need to check every step." : "Nothing yet. Astra will place finished work here when it is ready for you."}</div>
           : <>
             {ready.length > 0 && <><div style={{ fontSize: 9, color: "var(--fm)", padding: "3px 8px", display: "flex", alignItems: "center", gap: 4 }}><span className="v-dot ready" /> Ready</div>
               {ready.map((a) => <div key={a.key} className={`v-art${st.selArt === a.key ? " sel" : ""}`} onClick={() => sel(null, a.key || null)}>{a.title || a.key}</div>)}</>}
@@ -1404,12 +1430,12 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         <div data-tour="session-detail" className="detail">
           <div className="dtabs">
             {st.selArt
-              ? <div className={`dtab${st.tab === "read" ? " on" : ""}`} onClick={() => { st.tab = "read"; force(); }}>Read it</div>
+              ? <div className={`dtab${st.tab === "read" ? " on" : ""}`} onClick={() => { st.tab = "read"; commitState(); }}>Read it</div>
               : st.selDept ? <>
-                  <div className={`dtab${st.tab === "updates" ? " on" : ""}`} onClick={() => { st.tab = "updates"; force(); }}>Updates</div>
-                  {st.selDept === "technical" && <div className={`dtab${st.tab === "terminal" ? " on" : ""}`} onClick={() => { st.tab = "terminal"; force(); }}>Terminal</div>}
-                  <div className={`dtab${st.tab === "tech" ? " on" : ""}`} onClick={() => { st.tab = "tech"; force(); }}>Technical logs</div>
-                  <div className={`dtab${st.tab === "sources" ? " on" : ""}`} onClick={() => { st.tab = "sources"; force(); }}>Sources</div>
+                  <div className={`dtab${st.tab === "updates" ? " on" : ""}`} onClick={() => { st.tab = "updates"; commitState(); }}>Updates</div>
+                  {st.selDept === "technical" && <div className={`dtab${st.tab === "terminal" ? " on" : ""}`} onClick={() => { st.tab = "terminal"; commitState(); }}>Terminal</div>}
+                  <div className={`dtab${st.tab === "tech" ? " on" : ""}`} onClick={() => { st.tab = "tech"; commitState(); }}>Technical logs</div>
+                  <div className={`dtab${st.tab === "sources" ? " on" : ""}`} onClick={() => { st.tab = "sources"; commitState(); }}>Sources</div>
                 </>
               : null}
           </div>
@@ -1453,7 +1479,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                     <div style={{ fontSize: 10.5, color: "var(--fd)", fontWeight: 500 }}>What needs to be fixed?</div>
                     <textarea
                       value={st.revisionNote}
-                      onChange={(e) => { st.revisionNote = e.target.value; force(); }}
+                      onChange={(e) => { st.revisionNote = e.target.value; commitState(); }}
                       placeholder={`Tell the ${ap.phase} team what to redo — be specific. E.g. "The ICP analysis missed SMB segment, focus on companies 10-50 employees."`}
                       style={{ width: "100%", minHeight: 72, padding: "8px 10px", border: "1.5px solid var(--blue)", background: "var(--bg)", color: "var(--fg)", fontSize: 11.5, lineHeight: 1.55, resize: "vertical", fontFamily: "inherit", boxSizing: "border-box" }}
                     />
@@ -1463,7 +1489,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                         Send revision request
                       </button>
                       <button style={{ padding: "7px 12px", border: "1px solid var(--bd)", background: "var(--surface)", color: "var(--fm)", fontSize: 11, cursor: "pointer" }}
-                        onClick={() => { st.revisionGate = null; st.revisionNote = ""; force(); }}>
+                        onClick={() => { st.revisionGate = null; st.revisionNote = ""; commitState(); }}>
                         Cancel
                       </button>
                     </div>
@@ -1475,7 +1501,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                       Approve → Continue to {ap.next_phase || "next phase"}
                     </button>
                     <button style={{ padding: "9px 14px", border: "1.5px solid var(--red)", background: "rgba(239,68,68,.07)", color: "var(--red)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-                      onClick={() => { st.revisionGate = ap.gate_key; st.revisionNote = ""; force(); }}>
+                      onClick={() => { st.revisionGate = ap.gate_key; st.revisionNote = ""; commitState(); }}>
                       Request revisions
                     </button>
                   </div>
@@ -1624,7 +1650,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
             {/* back button — clear dept selection */}
             {st.selDept && !st.selArt && (
-              <button onClick={() => { S.current.selDept = null; S.current.selArt = null; S.current.tab = "updates"; force(); }}
+              <button onClick={() => { S.current.selDept = null; S.current.selArt = null; S.current.tab = "updates"; commitState(); }}
                 style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", padding: "0 0 10px", color: "var(--fm)", fontSize: 10.5, fontFamily: "var(--font-geist-sans), system-ui, sans-serif" }}>
                 ← Back
               </button>
@@ -1647,7 +1673,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                         {label}
                         {rerunnable && (
                           <button
-                            onClick={(e) => { e.stopPropagation(); rerunAgent(sessionId, k, founderId).then(() => { S.current.agents[k].status = "queued"; force(); }).catch(() => showErr("Rerun failed")); }}
+                            onClick={(e) => { e.stopPropagation(); rerunAgent(sessionId, k, founderId).then(() => { S.current.agents[k].status = "queued"; commitState(); }).catch(() => showErr("Rerun failed")); }}
                             style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12, lineHeight: 1, color, opacity: .7 }}
                             title={`Rerun ${label}`}
                           >↻</button>
@@ -1678,9 +1704,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             {st.selDept && !st.selArt && (() => {
               const d = st.selDept === "__other" ? { ags: otherAgs } : DEPTS[st.selDept] || { ags: [] };
               const ags = (d.ags || []).filter((a) => st.agents[a]);
-              const all: (LogEntry & { agent: string })[] = [];
-              for (const k of ags) for (const e of st.agents[k].log) all.push({ ...e, agent: k });
-              all.sort((a, b) => a.ts - b.ts);
+              const all = selectedDeptLogs;
 
               // Terminal tab — raw openclaude (claude-code CLI) stream for the
               // technical/web build. Only the technical dept arms it; if the tab
@@ -1717,33 +1741,38 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 const C: Record<string, string> = { command: "#7dd3fc", output: "#d4d4d8", error: "#fca5a5", file: "#86efac", log: "#e4e4e7", plan: "#fcd34d", tool: "#a5b4fc", phase: "#fcd34d", deploy: "#86efac" };
                 return <>
                   {takeoverBtn}
-                  <div style={{ background: "#0c0d10", borderRadius: 8, padding: "10px 12px", maxHeight: "60vh", overflowY: "auto", fontFamily: "var(--font-mono, monospace)", fontSize: 10.5, lineHeight: 1.55 }}>
-                    {term.map((e, i) => {
-                      const color = C[e.kind] || "#d4d4d8";
-                      const prefix = e.kind === "command" ? "$ " : e.kind === "error" ? "✗ " : e.kind === "file" ? "✎ " : e.kind === "phase" ? "▸ " : e.kind === "deploy" ? "→ " : "";
-                      return <div key={i} style={{ display: "flex", gap: 6, padding: "1px 0", alignItems: "flex-start" }}>
-                        {ags.length > 1 && <span style={{ color: "#6b7280", flexShrink: 0, fontSize: 9, minWidth: 70 }}>{e.agent}</span>}
-                        <pre style={{ margin: 0, color, whiteSpace: "pre-wrap", wordBreak: "break-word", flex: 1 }}>{prefix}{e.text}</pre>
-                      </div>;
-                    })}
-                    {isRunning && <div style={{ color: "#7dd3fc" }}>▌</div>}
-                  </div>
+                  <details>
+                    <summary style={{ cursor: "pointer", fontSize: 10.5, color: "var(--fd)", marginBottom: 8 }}>Show raw terminal output</summary>
+                    <div style={{ background: "#0c0d10", borderRadius: 8, padding: "10px 12px", maxHeight: "60vh", overflowY: "auto", fontFamily: "var(--font-mono, monospace)", fontSize: 10.5, lineHeight: 1.55 }}>
+                      {term.map((e, i) => {
+                        const color = C[e.kind] || "#d4d4d8";
+                        const prefix = e.kind === "command" ? "$ " : e.kind === "error" ? "✗ " : e.kind === "file" ? "✎ " : e.kind === "phase" ? "▸ " : e.kind === "deploy" ? "→ " : "";
+                        return <div key={i} style={{ display: "flex", gap: 6, padding: "1px 0", alignItems: "flex-start" }}>
+                          {ags.length > 1 && <span style={{ color: "#6b7280", flexShrink: 0, fontSize: 9, minWidth: 70 }}>{e.agent}</span>}
+                          <pre style={{ margin: 0, color, whiteSpace: "pre-wrap", wordBreak: "break-word", flex: 1 }}>{prefix}{e.text}</pre>
+                        </div>;
+                      })}
+                      {isRunning && <div style={{ color: "#7dd3fc" }}>▌</div>}
+                    </div>
+                  </details>
                 </>;
               }
 
               if (st.tab === "sources") {
                 const urls: string[] = [];
                 for (const k of ags) for (const u of st.agents[k].visitedUrls) if (!urls.includes(u)) urls.push(u);
-                if (!urls.length) return <div style={{ color: "var(--fm)", fontSize: 10 }}>No sources logged yet.</div>;
+                if (!urls.length) return <div style={{ color: "var(--fm)", fontSize: 10, lineHeight: 1.6 }}>No sources logged yet. Astra will list references here once this team looks things up.</div>;
                 return <><div style={{ fontFamily: "var(--font-chakra)", fontSize: 8, fontWeight: 700, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".14em" }}>{urls.length} source{urls.length !== 1 ? "s" : ""} visited</div>
                   <div className="url-list" style={{ display: "flex", flexDirection: "column", gap: 3 }}>{urls.map((u) => { let dm = u; try { dm = new URL(u).hostname.replace(/^www\./, ""); } catch {} return <a key={u} className="url-item" href={u} target="_blank" rel="noreferrer">{dm} ↗</a>; })}</div></>;
               }
 
               if (st.tab === "tech") {
-                if (!all.length) return <div style={{ color: "var(--fd)", fontSize: 10 }}>No activity yet.</div>;
+                if (!all.length) return <div style={{ color: "var(--fd)", fontSize: 10, lineHeight: 1.6 }}>No activity yet. The technical trace will appear here automatically if you want the raw detail later.</div>;
                 return <>
                   <div style={{ fontFamily: "var(--font-chakra)", fontSize: 8, fontWeight: 700, color: "var(--fm)", textTransform: "uppercase", letterSpacing: ".14em", marginBottom: 6 }}>Technical log · {all.length} entries</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                  <details>
+                    <summary style={{ cursor: "pointer", fontSize: 10.5, color: "var(--fd)", marginBottom: 8 }}>Show raw technical log</summary>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
                     {all.map((l, i) => (
                       <div key={i} style={{ display: "flex", gap: 7, padding: "3px 0", borderBottom: "1px solid rgba(0,0,0,.04)", alignItems: "flex-start" }}>
                         <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 8.5, color: "var(--fm)", flexShrink: 0, marginTop: 1, minWidth: 42, textTransform: "uppercase", letterSpacing: ".06em" }}>{l.type}</span>
@@ -1751,7 +1780,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                         <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 9, color: "var(--fg)", lineHeight: 1.5, wordBreak: "break-all" }}>{l.text}</span>
                       </div>
                     ))}
-                  </div>
+                    </div>
+                  </details>
                 </>;
               }
 
@@ -1862,7 +1892,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
             {/* company portrait — default state */}
             {!st.selDept && !st.selArt && st.approvals.length === 0 && (() => {
-              if (Object.keys(st.agents).length === 0) return <div className="empty"><div style={{ fontSize: 34, opacity: .12 }}>◈</div><div className="empty-title">Waiting for agents…</div></div>;
+              if (Object.keys(st.agents).length === 0) return <div className="empty"><div style={{ fontSize: 34, opacity: .12 }}>◈</div><div className="empty-title">Waiting for agents…</div><div style={{ fontSize: 10.5, color: "var(--fm)", lineHeight: 1.6, maxWidth: 280, textAlign: "center" }}>Astra is setting up the first steps, so you do not need to do anything yet.</div></div>;
               const p = portrait;
 
               // helpers
@@ -2020,6 +2050,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
       {/* copilot chat bar */}
       <div data-tour="session-steerbar" className={`steerbar copilot-dock ${copilotOpen ? "is-open" : ""}`}>
+        <div style={{ padding: copilotOpen ? "0 0 10px" : "0 0 8px" }}>
+          <div style={{ fontSize: 10.5, color: "var(--fg)", fontWeight: 600, marginBottom: 3 }}>Continue with Astra</div>
+          <div style={{ fontSize: 9.5, color: "var(--fm)", lineHeight: 1.5 }}>Type a follow-up, ask a question, or redirect the work. Astra will handle the next step from here.</div>
+        </div>
         {copilotOpen && (
           <div className="copilot-thread">
             {copilot.length === 0 && (
@@ -2053,7 +2087,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             )}
           </div>
         )}
-        <div className="steer-wrap">
+        <div className="steer-wrap" style={{ padding: 4, border: "1px solid var(--bd2)", background: "var(--surface)", boxShadow: "0 0 0 1px rgba(59,130,246,.05)" }}>
           <button className="steer-send copilot-toggle" aria-label="Toggle copilot" title="Copilot chat" onClick={() => setCopilotOpen((v) => !v)}>{copilotOpen ? "▾" : "✦"}</button>
           <button
             className="steer-send copilot-attach"
@@ -2072,7 +2106,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             onChange={(e) => uploadCopilotFiles(e.target.files)}
           />
           <input ref={steerRef} className="steer-inp" aria-label="Ask or direct Astra"
-            placeholder='Ask or direct Astra — "what completion issues are left?" · "focus on pricing" · "approve next goal"'
+            placeholder='Tell Astra what to do next — "focus on pricing" · "what completion issues are left?" · "approve next goal"'
             onFocus={() => setCopilotOpen(true)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); setCopilotOpen(true); sendCopilot(); } }} />
           <button className="steer-send copilot-submit" aria-label="Send" onClick={() => { setCopilotOpen(true); sendCopilot(); }}>↑</button>
