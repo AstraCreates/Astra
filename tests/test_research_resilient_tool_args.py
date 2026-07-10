@@ -86,6 +86,19 @@ def test_resilient_deep_research_preserves_real_queries_list():
     assert captured["queries"] == ["real question one", "real question two"]
 
 
+def test_resilient_news_search_backfills_empty_query():
+    captured = {}
+
+    def fake_tool(**kwargs):
+        captured.update(kwargs)
+        return {"ok": True}
+
+    wrapped = _make_resilient_research_tool(fake_tool, "news_search", [_ctx()], "research_gtm")
+    wrapped()
+
+    assert captured.get("query")
+
+
 def test_resilient_pipeline_backfills_topic_from_founder_goal_not_lane_boilerplate():
     captured = {}
 
@@ -160,6 +173,7 @@ def test_research_customers_toolset_stays_narrow():
     assert "fetch_and_read" not in agent.tools
     assert "batch_search" not in agent.tools
     assert "run_research_pipeline" not in agent.tools
+    assert "news_search" not in agent.tools
 
 
 def test_research_gtm_toolset_stays_narrow_but_keeps_pipeline():

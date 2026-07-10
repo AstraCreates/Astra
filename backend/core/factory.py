@@ -230,7 +230,7 @@ def get_orchestrator() -> Orchestrator:
             "research_customers", "research_gtm",
         }
         for name, agent in specialists.items():
-            if name not in _integration_agent_names:
+            if name not in _integration_agent_names or name.startswith("research"):
                 continue
             # Klaviyo / email marketing
             agent.tools.setdefault("klaviyo_create_list", klaviyo_create_list)

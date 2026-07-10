@@ -162,6 +162,9 @@ def _make_resilient_research_tool(tool_fn, tool_name: str, ctx_holder: list, age
                 plan = build_research_queries(topic, focus=focus, limit=1)
                 queries = plan.get("queries") or [topic]
                 patched_kwargs["query"] = queries[0]
+        elif tool_name == "news_search":
+            if not args and not patched_kwargs.get("query") and topic:
+                patched_kwargs["query"] = topic
 
         return tool_fn(*args, **patched_kwargs)
 
@@ -366,6 +369,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     resilient_query_plan = _make_resilient_research_tool(build_research_queries, "build_research_queries", ctx_holder, agent_name)
     resilient_pipeline = _make_resilient_research_tool(run_research_pipeline, "run_research_pipeline", ctx_holder, agent_name)
     resilient_papers = _make_resilient_research_tool(research_papers, "research_papers", ctx_holder, agent_name)
+    resilient_news = _make_resilient_research_tool(news_search, "news_search", ctx_holder, agent_name)
 
     auto_search = _make_auto_logging_tool(resilient_search, "search_and_fetch", ctx_holder, log_name)
     auto_fetch = _make_auto_logging_tool(resilient_fetch, "fetch_and_read", ctx_holder, log_name)
@@ -375,7 +379,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     auto_query_plan = _make_auto_logging_tool(resilient_query_plan, "build_research_queries", ctx_holder, log_name)
     auto_pipeline = _make_auto_logging_tool(resilient_pipeline, "run_research_pipeline", ctx_holder, log_name)
     auto_papers = _make_auto_logging_tool(resilient_papers, "research_papers", ctx_holder, log_name)
-    auto_news = _make_auto_logging_tool(news_search, "news_search", ctx_holder, log_name)
+    auto_news = _make_auto_logging_tool(resilient_news, "news_search", ctx_holder, log_name)
     auto_patent = _make_auto_logging_tool(patent_search, "patent_search", ctx_holder, log_name)
     auto_youtube = _make_auto_logging_tool(youtube_research, "youtube_research", ctx_holder, log_name)
     auto_tiktok = _make_auto_logging_tool(tiktok_research, "tiktok_research", ctx_holder, log_name)
@@ -464,6 +468,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
         lane_tools.pop("run_research_pipeline", None)
         lane_tools.pop("research_papers", None)
         lane_tools.pop("patent_search", None)
+        lane_tools.pop("news_search", None)
     elif agent_name == "research_gtm":
         lane_tools.pop("search_and_fetch", None)
         lane_tools.pop("fetch_and_read", None)
