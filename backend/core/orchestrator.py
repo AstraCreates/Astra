@@ -3,9 +3,11 @@ Hierarchical orchestrator. Receives a goal, plans task graph, dispatches special
 Specialists run in dependency order; results flow back into shared context.
 """
 import asyncio
+import difflib
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from typing import Any
@@ -49,6 +51,40 @@ _RESEARCH_LANE_FOCUS = {
         "Do NOT repeat competitor profiles or market size data."
     ),
 }
+
+
+def _dedupe_goal_text(goal: str, max_chars: int = 12000) -> str:
+    """Collapse repeated onboarding/profile blocks before fan-out.
+
+    Frontend retries and planner expansion can paste the same business profile
+    into the goal several times. Every stack task inherits this string, so one
+    duplicated goal becomes four large agent prompts and then four growing
+    histories. Keep the first occurrence of near-identical paragraphs while
+    preserving genuinely different fields and the original order.
+    """
+    raw = "\n".join(line.rstrip() for line in str(goal or "").splitlines()).strip()
+    if not raw:
+        return ""
+    paragraphs = ["\n".join(part.splitlines()).strip() for part in re.split(r"\n\s*\n", raw) if part.strip()]
+    kept: list[str] = []
+    normalized_kept: list[str] = []
+    for paragraph in paragraphs:
+        normalized = " ".join(paragraph.split()).lower()
+        if not normalized:
+            continue
+        duplicate = normalized in normalized_kept
+        if not duplicate and len(normalized) >= 100:
+            duplicate = any(
+                difflib.SequenceMatcher(None, normalized, existing).ratio() >= 0.88
+                for existing in normalized_kept
+                if len(existing) >= 100
+            )
+        if duplicate:
+            continue
+        kept.append(paragraph)
+        normalized_kept.append(normalized)
+    compact = "\n\n".join(kept)
+    return compact[:max_chars] + ("\n\n...[goal compacted]" if len(compact) > max_chars else "")
 
 
 def candidate_research_agents_for_default_provider() -> list[tuple[str, str]]:
@@ -1134,6 +1170,10 @@ class Orchestrator:
         if not session_id:
             from backend.core.session_ids import new_session_id
             session_id = new_session_id()
+        original_goal_chars = len(str(goal or ""))
+        goal = _dedupe_goal_text(goal)
+        if len(goal) < original_goal_chars:
+            logger.warning("Compacted founder goal before fan-out: %d -> %d chars", original_goal_chars, len(goal))
         company_id = str((constraints or {}).get("company_id") or founder_id)
         # Inject any founder-defined custom agents into the specialist pool so tasks
         # referencing them (via constraints.agents) resolve. Namespaced ids make this

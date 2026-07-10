@@ -1272,6 +1272,7 @@ class Agent:
         _tool_results: list[tuple[str, dict[str, Any]]] = []
         _tool_context_seen: dict[str, Any] = {}
         _consecutive_unknown = 0  # consecutive "unknown action" responses
+        _invalid_action_count = 0
         _repair_attempts = 0
         _pending_error_backoff = 0.0
         _error_streak = 0
@@ -1895,9 +1896,11 @@ class Agent:
                 logger.warning("[%s] iter=%d unknown action=%r parsed_keys=%s raw=%r", self.name, i, action, list(parsed.keys()), raw[:200])
                 await self._emit(ctx, "agent_unknown_action", action=action, parsed_keys=list(parsed.keys()), raw_snippet=raw[:120])
                 _consecutive_unknown += 1
-                if _consecutive_unknown >= 3:
+                _invalid_action_count += 1
+                invalid_limit = 2 if self.name in _RESEARCH_AGENT_NAMES else 3
+                if _consecutive_unknown >= 3 or _invalid_action_count >= invalid_limit:
                     # Break narrative loop — force done
-                    logger.error("[%s] %d consecutive unknown actions — forcing done", self.name, _consecutive_unknown)
+                    logger.error("[%s] invalid action limit reached (%d) — forcing done", self.name, _invalid_action_count)
                     break
                 messages.append({"role": "user", "content": (
                     f"INVALID RESPONSE. You must output ONLY valid JSON with an 'action' key.\n"

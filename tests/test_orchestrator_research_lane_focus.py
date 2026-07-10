@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.config import settings
-from backend.core.orchestrator import Orchestrator, candidate_research_agents_for_default_provider
+from backend.core.orchestrator import Orchestrator, _dedupe_goal_text, candidate_research_agents_for_default_provider
 
 
 class _FakePlanner:
@@ -69,3 +69,30 @@ def test_candidate_research_agents_keep_parallel_openrouter_default_even_if_loca
         ("r_customers", "research_customers"),
         ("r_gtm", "research_gtm"),
     ]
+
+
+def test_dedupe_goal_collapses_repeated_profile_blocks_but_keeps_distinct_fields():
+    goal = """Founder goal: Business profile:
+
+Goon is a $20/month AI model subscription for companies.
+
+Company/project name: Goon
+
+Business profile:
+
+Goon is a $20/month AI model subscription for companies.
+
+Company/project name: Goon
+
+Business type: SaaS / Web App
+
+Customers: Both / Marketplace
+
+Stage: Idea"""
+
+    compact = _dedupe_goal_text(goal)
+
+    assert compact.count("Goon is a $20/month AI model subscription") == 1
+    assert "Business type: SaaS / Web App" in compact
+    assert "Customers: Both / Marketplace" in compact
+    assert len(compact) < len(goal)
