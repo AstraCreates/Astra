@@ -28,6 +28,16 @@ def test_focus_roles_still_instruct_deep_research_escalation_after_pipeline():
     assert "coverage gaps" in competitors_role
 
 
+def test_customer_and_gtm_roles_start_with_pipeline_before_deep_escalation():
+    customers_role = research._FOCUS_ROLES["research_customers"]
+    gtm_role = research._FOCUS_ROLES["research_gtm"]
+
+    assert "run_research_pipeline(topic='{topic}', focus='customers')" in customers_role
+    assert "run_research_pipeline returns coverage.ready=true" in customers_role
+    assert "run_research_pipeline(topic='{topic}', focus='gtm')" in gtm_role
+    assert "run_research_pipeline returns coverage.ready=true" in gtm_role
+
+
 def test_research_focus_role_is_market_only_while_sibling_roles_stay_scoped():
     market_role = research._FOCUS_ROLES["research"]
     competitors_role = research._FOCUS_ROLES["research_competitors"]

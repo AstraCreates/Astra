@@ -236,11 +236,14 @@ _FOCUS_ROLES = {
     "research_customers": (
         "CUSTOMER & ICP INTELLIGENCE (who buys, why, how, pain severity):\n"
         "FIRST: call obsidian_read to see what prior research passes already found. Skip any sources already cited.\n"
-        "1. build_research_queries(topic='{topic}', focus='customers') then deep_research(queries).\n"
+        "1. build_research_queries(topic='{topic}', focus='customers').\n"
+        "2. run_research_pipeline(topic='{topic}', focus='customers') for a quick resource discovery pass.\n"
+        "3. Call deep_research(queries) only if the first pass still leaves coverage gaps or the founder explicitly asked for deep/premium research.\n"
         "   Covers: Reddit/forum complaints, App Store/G2 reviews, pain signals, "
         "buyer demographics, job-to-be-done, willingness to pay, churn reasons, buying triggers.\n"
         "2. tiktok_research and youtube_research for consumer sentiment and creator commentary.\n"
         "3. Stay within the lane tools: use deep_research, build_research_queries, and optional video research only. "
+        "If run_research_pipeline returns coverage.ready=true or next_step says to synthesize, finish without a deep pass unless a critical unanswered question remains.\n"
         "If evidence is still thin after that pass, log the uncertainty instead of reaching for unavailable raw-fetch tools.\n\n"
         "obsidian_log with: ICP PROFILE (demographics, job title, company size), TOP PAIN POINTS (quoted), "
         "BUYING TRIGGERS, WILLINGNESS TO PAY, CHURN REASONS, SOURCES."
@@ -249,11 +252,14 @@ _FOCUS_ROLES = {
     "research_gtm": (
         "GO-TO-MARKET & DISTRIBUTION INTELLIGENCE (channels, growth tactics, pricing models):\n"
         "FIRST: call obsidian_read to see what prior research passes already found. Skip any sources already cited.\n"
-        "1. build_research_queries(topic='{topic}', focus='gtm') then deep_research(queries).\n"
+        "1. build_research_queries(topic='{topic}', focus='gtm').\n"
+        "2. run_research_pipeline(topic='{topic}', focus='gtm') for a quick resource discovery pass.\n"
+        "3. Call deep_research(queries) only if the first pass still leaves coverage gaps or the founder explicitly asked for deep/premium research.\n"
         "   Covers: how competitors acquire customers, CAC benchmarks, successful launch channels (PH, HN, Reddit, "
         "cold email, SEO, paid), pricing page patterns, freemium vs trial vs direct-sales split.\n"
         "2. news_search for recent launches and growth stories in this space.\n"
         "3. Stay within the lane tools: use build_research_queries, deep_research, and news_search. "
+        "If run_research_pipeline returns coverage.ready=true or next_step says to synthesize, finish without a deep pass unless a critical unanswered question remains.\n"
         "If evidence remains thin, log the gap explicitly instead of reaching for unavailable raw-fetch tools.\n\n"
         "obsidian_log with: CHANNEL MAP (channel, fit, cost, speed), PRICING MODEL PATTERNS, "
         "LAUNCH PLAYBOOK (what worked for others), CAC BENCHMARKS, SOURCES."
@@ -305,6 +311,7 @@ def _research_depth_guidance(plan: str, depth_override: str | None = None) -> st
         "- Optimize for speed and decision quality. Do one focused run_research_pipeline pass, then at most "
         "one targeted deep_research call only if a critical gap remains.\n"
         "- Read only the highest-signal pages sonar missed. Aim for 5-8 distinct cited sources, then synthesize.\n"
+        "- If the first pass already has enough named sources and concrete signals, stop there and write the brief.\n"
         "- Do not run video, patent, academic, or news research unless the founder explicitly asks or the topic requires it.\n"
     )
 
@@ -312,7 +319,7 @@ def _research_depth_guidance(plan: str, depth_override: str | None = None) -> st
 def _research_max_iterations(plan: str, requested: int | None = None, depth_override: str | None = None) -> int:
     if requested is not None:
         return requested
-    return 60 if _effective_is_deep(plan, depth_override) else 30
+    return 60 if _effective_is_deep(plan, depth_override) else 24
 
 
 def _build_research_role(agent_name: str, focus_searches: str, plan: str, depth_override: str | None = None) -> str:
@@ -423,10 +430,10 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     # pages deep_research/run_research_pipeline missed" — a handful of calls,
     # not dozens — so cap them at the same order of magnitude as deep_research.
     _ROLE_TOOL_CALL_CAPS = {
-        "research":             {"run_research_pipeline": 3, "deep_research": 5, "search_and_fetch": 2, "fetch_and_read": 2, "obsidian_read": 1, "obsidian_log": 1},
-        "research_competitors": {"run_research_pipeline": 2, "deep_research": 2, "search_and_fetch": 1, "fetch_and_read": 2, "obsidian_read": 1, "obsidian_log": 1},
-        "research_customers":   {"run_research_pipeline": 1, "deep_research": 2, "search_and_fetch": 1, "fetch_and_read": 1, "obsidian_read": 1, "obsidian_log": 1},
-        "research_gtm":         {"run_research_pipeline": 1, "deep_research": 2, "search_and_fetch": 1, "fetch_and_read": 1, "obsidian_read": 1, "obsidian_log": 1},
+        "research":             {"run_research_pipeline": 2, "deep_research": 3, "search_and_fetch": 1, "fetch_and_read": 2, "obsidian_read": 1, "obsidian_log": 1},
+        "research_competitors": {"run_research_pipeline": 1, "deep_research": 1, "search_and_fetch": 1, "fetch_and_read": 2, "obsidian_read": 1, "obsidian_log": 1},
+        "research_customers":   {"run_research_pipeline": 1, "deep_research": 1, "search_and_fetch": 1, "fetch_and_read": 1, "obsidian_read": 1, "obsidian_log": 1},
+        "research_gtm":         {"run_research_pipeline": 1, "deep_research": 1, "search_and_fetch": 1, "fetch_and_read": 1, "obsidian_read": 1, "obsidian_log": 1},
     }
     _tool_call_caps = dict(_ROLE_TOOL_CALL_CAPS.get(agent_name, _ROLE_TOOL_CALL_CAPS["research"]))
     _tool_call_caps.update(kwargs.pop("max_tool_calls", None) or {})
@@ -465,7 +472,6 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
         lane_tools.pop("search_and_fetch", None)
         lane_tools.pop("fetch_and_read", None)
         lane_tools.pop("batch_search", None)
-        lane_tools.pop("run_research_pipeline", None)
         lane_tools.pop("research_papers", None)
         lane_tools.pop("patent_search", None)
         lane_tools.pop("news_search", None)

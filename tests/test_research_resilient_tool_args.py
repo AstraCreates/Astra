@@ -169,10 +169,10 @@ def test_research_customers_toolset_stays_narrow():
 
     assert "deep_research" in agent.tools
     assert "build_research_queries" in agent.tools
+    assert "run_research_pipeline" in agent.tools
     assert "search_and_fetch" not in agent.tools
     assert "fetch_and_read" not in agent.tools
     assert "batch_search" not in agent.tools
-    assert "run_research_pipeline" not in agent.tools
     assert "news_search" not in agent.tools
 
 

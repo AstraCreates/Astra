@@ -2370,80 +2370,99 @@ class Orchestrator:
         def _is_build_agent(agent: str) -> bool:
             return (agent or "").lower().startswith(("web", "technical"))
 
+        def _is_heavy_research_agent(agent: str) -> bool:
+            return (agent or "").lower().startswith("research")
+
         agent_semaphore = asyncio.Semaphore(max(1, context_policy.max_concurrent_agents))
+        research_semaphore = asyncio.Semaphore(
+            max(
+                1,
+                min(
+                    context_policy.max_concurrent_agents,
+                    int(_os.environ.get("ASTRA_MAX_CONCURRENT_RESEARCH_AGENTS_PER_SESSION", "2")),
+                ),
+            )
+        )
+
+        async def _run_task_with_timeout(t: dict) -> None:
+            if _is_build_agent(t["agent"]):
+                try:
+                    await asyncio.wait_for(_run_task(t), timeout=_BUILD_TIMEOUT)
+                except asyncio.TimeoutError:
+                    logger.error("Build agent %s timed out after %ds — marking done to unblock downstream", t["agent"], _BUILD_TIMEOUT)
+                    completed[t["id"]] = {"error": f"build_timed_out_after_{_BUILD_TIMEOUT}s", "agent": t["agent"], "timed_out": True}
+                    await publish(session_id, {
+                        "type": "agent_error", "agent": t["agent"],
+                        "task_id": t["id"], "error": f"build timed out after {_BUILD_TIMEOUT}s",
+                    })
+                    await publish(session_id, {
+                        "type": "stack_lane_status",
+                        "lane_id": t.get("id"),
+                        "agent": t["agent"],
+                        "task_id": t["id"],
+                        "status": "blocked",
+                        "title": t.get("stack_task_title") or t["agent"],
+                        "blockers": [f"build timed out after {_BUILD_TIMEOUT}s"],
+                        "next_actor": "founder",
+                    })
+                except Exception as _be:
+                    logger.error("Build agent %s raised: %s", t["agent"], _be)
+                    if t["id"] not in completed:
+                        completed[t["id"]] = {"error": str(_be), "agent": t["agent"]}
+                    await publish(session_id, {
+                        "type": "agent_error", "agent": t["agent"],
+                        "task_id": t["id"], "error": str(_be)[:400],
+                    })
+                return
+            _to = _AGENT_TIMEOUT
+            try:
+                await asyncio.wait_for(_run_task(t), timeout=_to)
+            except asyncio.TimeoutError:
+                logger.error("Agent %s timed out after %ds — marking done to unblock downstream", t["agent"], _to)
+                completed[t["id"]] = {"error": f"timed_out_after_{_to}s", "agent": t["agent"], "timed_out": True}
+                await publish(session_id, {
+                    "type": "agent_error", "agent": t["agent"],
+                    "task_id": t["id"], "error": f"agent timed out after {_to}s",
+                })
+                await publish(session_id, {
+                    "type": "stack_lane_status",
+                    "lane_id": t.get("id"),
+                    "agent": t["agent"],
+                    "task_id": t["id"],
+                    "status": "blocked",
+                    "title": t.get("stack_task_title") or t["agent"],
+                    "blockers": [f"agent timed out after {_to}s"],
+                    "next_actor": "founder",
+                })
+            except Exception as _te:
+                logger.error("Agent %s raised unhandled exception: %s", t["agent"], _te, exc_info=True)
+                if t["id"] not in completed:
+                    completed[t["id"]] = {"error": str(_te), "agent": t["agent"]}
+                await publish(session_id, {
+                    "type": "agent_error",
+                    "agent": t["agent"],
+                    "task_id": t["id"],
+                    "error": str(_te)[:400],
+                })
+                await publish(session_id, {
+                    "type": "stack_lane_status",
+                    "lane_id": t.get("id"),
+                    "agent": t["agent"],
+                    "task_id": t["id"],
+                    "status": "blocked",
+                    "title": t.get("stack_task_title") or t["agent"],
+                    "blockers": [str(_te)[:220]],
+                    "next_actor": "founder",
+                })
 
         async def _run_task_guarded(t: dict) -> None:
             """Run a task. Build agents get the build timeout; others use the default timeout."""
             async with agent_semaphore:
-                if _is_build_agent(t["agent"]):
-                    try:
-                        await asyncio.wait_for(_run_task(t), timeout=_BUILD_TIMEOUT)
-                    except asyncio.TimeoutError:
-                        logger.error("Build agent %s timed out after %ds — marking done to unblock downstream", t["agent"], _BUILD_TIMEOUT)
-                        completed[t["id"]] = {"error": f"build_timed_out_after_{_BUILD_TIMEOUT}s", "agent": t["agent"], "timed_out": True}
-                        await publish(session_id, {
-                            "type": "agent_error", "agent": t["agent"],
-                            "task_id": t["id"], "error": f"build timed out after {_BUILD_TIMEOUT}s",
-                        })
-                        await publish(session_id, {
-                            "type": "stack_lane_status",
-                            "lane_id": t.get("id"),
-                            "agent": t["agent"],
-                            "task_id": t["id"],
-                            "status": "blocked",
-                            "title": t.get("stack_task_title") or t["agent"],
-                            "blockers": [f"build timed out after {_BUILD_TIMEOUT}s"],
-                            "next_actor": "founder",
-                        })
-                    except Exception as _be:
-                        logger.error("Build agent %s raised: %s", t["agent"], _be)
-                        if t["id"] not in completed:
-                            completed[t["id"]] = {"error": str(_be), "agent": t["agent"]}
-                        await publish(session_id, {
-                            "type": "agent_error", "agent": t["agent"],
-                            "task_id": t["id"], "error": str(_be)[:400],
-                        })
+                if _is_heavy_research_agent(t["agent"]):
+                    async with research_semaphore:
+                        await _run_task_with_timeout(t)
                     return
-                _to = _AGENT_TIMEOUT
-                try:
-                    await asyncio.wait_for(_run_task(t), timeout=_to)
-                except asyncio.TimeoutError:
-                    logger.error("Agent %s timed out after %ds — marking done to unblock downstream", t["agent"], _to)
-                    completed[t["id"]] = {"error": f"timed_out_after_{_to}s", "agent": t["agent"], "timed_out": True}
-                    await publish(session_id, {
-                        "type": "agent_error", "agent": t["agent"],
-                        "task_id": t["id"], "error": f"agent timed out after {_to}s",
-                    })
-                    await publish(session_id, {
-                        "type": "stack_lane_status",
-                        "lane_id": t.get("id"),
-                        "agent": t["agent"],
-                        "task_id": t["id"],
-                        "status": "blocked",
-                        "title": t.get("stack_task_title") or t["agent"],
-                        "blockers": [f"agent timed out after {_to}s"],
-                        "next_actor": "founder",
-                    })
-                except Exception as _te:
-                    logger.error("Agent %s raised unhandled exception: %s", t["agent"], _te, exc_info=True)
-                    if t["id"] not in completed:
-                        completed[t["id"]] = {"error": str(_te), "agent": t["agent"]}
-                    await publish(session_id, {
-                        "type": "agent_error",
-                        "agent": t["agent"],
-                        "task_id": t["id"],
-                        "error": str(_te)[:400],
-                    })
-                    await publish(session_id, {
-                        "type": "stack_lane_status",
-                        "lane_id": t.get("id"),
-                        "agent": t["agent"],
-                        "task_id": t["id"],
-                        "status": "blocked",
-                        "title": t.get("stack_task_title") or t["agent"],
-                        "blockers": [str(_te)[:220]],
-                        "next_actor": "founder",
-                    })
+                await _run_task_with_timeout(t)
 
         # Prune dependencies on agents that aren't actually in this run's task set
         # (custom stacks, agent-filtered runs, or any plan where an upstream agent was
