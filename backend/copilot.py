@@ -990,7 +990,13 @@ async def _tool_stop_agent(founder_id: str, session_id: str, args: dict) -> Any:
 
 
 async def _tool_rerun_agent(founder_id: str, session_id: str, args: dict) -> Any:
-    """Re-run a single agent that failed or needs to redo its work. args: {agent_name, session_id?}
+    """Re-run a single agent that failed or needs to redo its work.
+    args: {agent_name, instruction?, session_id?}
+
+    instruction, when given, replaces the default full-redo directive so a
+    founder can scope the rerun -- e.g. "regenerate just the logo, bolder
+    colors" or "redo only the competitor section, add 2 more competitors"
+    instead of the agent redoing its entire prior workflow from scratch.
 
     Runs IN PLACE in the target session (same pattern as the chat rerun-intent
     path in routes.py::continue_goal) rather than spawning a new child session
@@ -1014,7 +1020,8 @@ async def _tool_rerun_agent(founder_id: str, session_id: str, args: dict) -> Any
         return {"ok": False, "error": f"unknown agent {agent_name!r}; use list_agents"}
     try:
         src_meta = get_session_meta(target_sid) or {}
-        instruction = src_meta.get("goal") or f"Complete your assigned work for: {agent_name}"
+        custom_instruction = str(args.get("instruction") or "").strip()
+        instruction = custom_instruction or src_meta.get("goal") or f"Complete your assigned work for: {agent_name}"
 
         vault_context = ""
         try:
@@ -1445,7 +1452,7 @@ _TOOLS = {
     "session_status": ("status of a session (defaults to the current one). args: {session_id?}", _tool_session_status),
     "kill_session": ("stop/kill a running or hung session. args: {session_id?}", _tool_kill_session),
     "stop_agent": ("INSTANTLY stop ONE running agent by name (halts at its next step) without killing the rest of the run. Harder than message_agent/steer_agents, which only ask. args: {agent, session_id?}", _tool_stop_agent),
-    "rerun_agent": ("re-run a single agent that failed or needs to redo its work. args: {agent_name, session_id?}", _tool_rerun_agent),
+    "rerun_agent": ("re-run a single agent that failed or needs to redo its work. Pass instruction to scope the redo to a specific piece (e.g. 'regenerate just the logo, bolder colors') instead of a full redo. args: {agent_name, instruction?, session_id?}", _tool_rerun_agent),
     # ── Read session outputs ───────────────────────────────────────────────────
     "get_session_digest": ("full digest of a session — what each agent produced, key outputs, deploy URLs. args: {session_id?}", _tool_get_session_digest),
     "get_completion_audit": ("inspect whether a run really finished cleanly, including deploy and handoff checks. args: {session_id?}", _tool_get_completion_audit),

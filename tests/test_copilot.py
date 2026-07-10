@@ -334,6 +334,41 @@ async def test_tool_rerun_agent_runs_in_place_not_new_session(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_tool_rerun_agent_honors_scoped_instruction(monkeypatch):
+    """A founder should be able to scope a rerun to one piece (e.g. 'redo
+    just the logo, bolder colors') instead of always getting the generic
+    full-redo default built from the session goal."""
+    monkeypatch.setattr(copilot, "_assert_session_owner", lambda session_id, founder_id: None)
+    monkeypatch.setattr("backend.core.session_store.get_session_meta", lambda sid: {"goal": "full brand kit"})
+    monkeypatch.setattr("backend.tools.obsidian_logger.format_vault_context", lambda *a, **k: "")
+    monkeypatch.setattr("backend.core.cancellation.register_task", lambda sid, task: None)
+    monkeypatch.setattr("backend.core.cancellation.clear", lambda sid: None)
+    monkeypatch.setattr("backend.core.events.publish", AsyncMock())
+
+    seen_goals = []
+
+    class FakeAgent:
+        async def run(self, ctx):
+            seen_goals.append(ctx.goal)
+            return {"summary": "done"}
+
+    class FakeOrch:
+        specialists = {"design": FakeAgent()}
+
+    monkeypatch.setattr("backend.core.factory.get_orchestrator", lambda: FakeOrch())
+
+    result = await copilot._tool_rerun_agent(
+        "founder_123", "sess_123",
+        {"agent_name": "design", "instruction": "regenerate just the logo, bolder colors"},
+    )
+
+    assert result["ok"] is True
+    await asyncio.sleep(0.05)
+
+    assert seen_goals == ["regenerate just the logo, bolder colors"]
+
+
+@pytest.mark.asyncio
 async def test_tool_get_subteam_report_returns_summary(monkeypatch):
     monkeypatch.setattr(
         "backend.company_reports.build_company_subteam_report",
