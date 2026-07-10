@@ -307,6 +307,9 @@ def _build_research_role(agent_name: str, focus_searches: str, plan: str, depth_
         "- run_research_pipeline(topic, focus) — first-pass ONLY: plans queries + runs a shallow batch_search "
         "(titles/snippets, no full-page synthesis). It does NOT call deep_research. Use it first for broad "
         "source discovery, then call deep_research yourself only when coverage gaps remain or deep mode justifies the extra pass — do not treat pipeline output as final.\n"
+        "  STOP RULE: check the returned coverage.ready and next_step fields. If coverage.ready is true or "
+        "next_step says 'Synthesize findings', DO NOT call run_research_pipeline again — you already have enough. "
+        "Move straight to writing your findings and calling obsidian_log. Calling it again wastes time and it will eventually be BLOCKED.\n"
         "- deep_research(queries) — PRIMARY tool for real synthesis. Pass a list of research questions; each returns a "
         "synthesized cited answer from full page content. Use it as an escalation after run_research_pipeline when coverage.ready is false, evidence is still thin, or the founder asked for deep/premium research.\n"
         "- sonar_research(queries) — compatibility alias for deep_research.\n"
@@ -374,12 +377,39 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     requested_max_iterations = kwargs.pop("max_iterations", None)
     _max_iter = _research_max_iterations("starter", requested_max_iterations)
     focus_searches = _FOCUS_ROLES.get(agent_name, _FOCUS_ROLES["research"])
+    # Real production bug: run_research_pipeline returns coverage.ready=True with
+    # next_step="Synthesize findings..." but the fast research model (ling-2.6-flash)
+    # sometimes ignores that signal and keeps re-calling the same first-pass tool with
+    # rephrased queries — observed running 8+ times before hitting max_iterations,
+    # burning ~1M tokens on one lane. The prompt already tells it to stop; this is the
+    # code-level backstop, reusing the same max_tool_calls mechanism marketing agents
+    # already use (factory.py) to hard-cap repeat calls to the same tool.
+    #
+    # Caps are per-role, not flat, because each role's own prompt asks for a
+    # different amount of legitimate tool use:
+    # - "research" (comprehensive, covers all 4 areas): run_research_pipeline for
+    #   market + competitors (2 legit calls) plus retries, and deep_research for
+    #   customers + gtm (2 legit calls) plus escalation retries in deep mode.
+    # - "research_competitors": one area, run_research_pipeline first then
+    #   deep_research escalation — needs the least of either.
+    # - "research_customers" / "research_gtm": one area each, deep_research is
+    #   their PRIMARY tool (their prompts don't call run_research_pipeline at
+    #   all), so deep_research gets more room than run_research_pipeline.
+    _ROLE_TOOL_CALL_CAPS = {
+        "research":             {"run_research_pipeline": 5, "deep_research": 8},
+        "research_competitors": {"run_research_pipeline": 3, "deep_research": 4},
+        "research_customers":   {"run_research_pipeline": 2, "deep_research": 5},
+        "research_gtm":         {"run_research_pipeline": 2, "deep_research": 5},
+    }
+    _tool_call_caps = dict(_ROLE_TOOL_CALL_CAPS.get(agent_name, _ROLE_TOOL_CALL_CAPS["research"]))
+    _tool_call_caps.update(kwargs.pop("max_tool_calls", None) or {})
     agent = Agent(
         name=agent_name,
         model=model,
         model_base_url=model_base_url,
         model_api_key=model_api_key,
         max_iterations=_max_iter,
+        max_tool_calls=_tool_call_caps,
         role=_build_research_role(agent_name, focus_searches, "starter"),
         tools={
             "run_research_pipeline": auto_pipeline,
