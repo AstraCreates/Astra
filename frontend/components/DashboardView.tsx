@@ -90,6 +90,13 @@ export default function DashboardView() {
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
   const [pendingDel, setPendingDel] = useState<Set<string>>(new Set());
+  // Sessions the founder deleted this page session. The 15s poll below re-fetches
+  // the full list from the server; if a delete hasn't fully persisted server-side
+  // by the next poll tick, the stale response brings the "deleted" row right back
+  // (real bug: founder deletes an errored run, it reappears seconds later looking
+  // like a duplicate, they delete it again). Filter every fetch against this so a
+  // locally-confirmed delete can never be undone by a lagging poll.
+  const deletedIdsRef = useRef<Set<string>>(new Set());
   const [toastErr, setToastErr] = useState("");
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
   const [firstName, setFirstName] = useState("");
@@ -138,7 +145,9 @@ export default function DashboardView() {
     }
     setPendingDel((p) => { const n = new Set(p); n.delete(s.session_id); return n; });
     setDeleting((p) => new Set(p).add(s.session_id));
-    // Optimistically drop from the UI immediately so it feels instant.
+    // Optimistically drop from the UI immediately so it feels instant, and remember
+    // it so a lagging poll response can't bring it back (see deletedIdsRef above).
+    deletedIdsRef.current.add(s.session_id);
     deleteLocalSession(s.session_id);
     setSessions((prev) => (prev || []).filter((x) => x.session_id !== s.session_id));
     try {
@@ -156,7 +165,10 @@ export default function DashboardView() {
     if (!userId) return;
     setError("");
     // Don't reset sessions to null on refresh — keeps existing count visible while refetching
-    try { setSessions(await listSessions(userId, 50)); }
+    try {
+      const fetched = await listSessions(userId, 50);
+      setSessions(fetched.filter((x) => !deletedIdsRef.current.has(x.session_id)));
+    }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); setSessions((p) => p ?? []); }
   }, [userId]);
 

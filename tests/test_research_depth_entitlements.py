@@ -19,14 +19,24 @@ def test_team_research_does_not_get_super_deep_mode():
     assert research._research_max_iterations("team") == 30
 
 
-def test_scale_and_beta_get_super_deep_research_mode():
-    for plan in ("scale", "beta"):
-        role = research._build_research_role("research", "SEARCH PLAN", plan)
+def test_only_scale_gets_super_deep_research_mode():
+    """scale is the real top paying tier and gets SUPER DEEP mode. beta is the
+    default fallback plan for accounts with no explicit subscription (see
+    accounts.py: plan_id = subscription.plan or "beta") — most accounts sit here,
+    so bundling it with scale meant nearly everyone got expensive deep research by
+    default. beta now gets the same FAST mode as starter/team."""
+    role = research._build_research_role("research", "SEARCH PLAN", "scale")
+    assert "SUPER DEEP RESEARCH MODE" in role
+    assert "15+ distinct cited sources" in role
+    assert research._is_max_research_plan("scale") is True
+    assert research._research_max_iterations("scale") == 60
 
-        assert "SUPER DEEP RESEARCH MODE" in role
-        assert "15+ distinct cited sources" in role
-        assert research._is_max_research_plan(plan) is True
-        assert research._research_max_iterations(plan) == 60
+    for plan in ("beta", "starter", "team"):
+        role = research._build_research_role("research", "SEARCH PLAN", plan)
+        assert "FAST RESEARCH MODE" in role
+        assert "SUPER DEEP RESEARCH MODE" not in role
+        assert research._is_max_research_plan(plan) is False
+        assert research._research_max_iterations(plan) == 30
 
 
 def test_explicit_max_iterations_override_entitlement_default():

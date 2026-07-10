@@ -86,13 +86,40 @@ def _goal_topic(ctx: AgentContext | None) -> str:
     raw = (getattr(ctx, "goal", "") or "").strip()
     if not raw:
         return ""
-    return " ".join(raw.split())[:1200]
+    normalized = " ".join(raw.split())
+    founder_section = raw.split("Founder goal:", 1)[1].strip() if "Founder goal:" in raw else raw
+    founder_section = founder_section.split("\n\nStack:", 1)[0].strip()
+
+    company_name = ""
+    import re as _re
+    name_match = _re.search(r"Company/project name:\s*(.+)", founder_section)
+    if name_match:
+        company_name = " ".join(name_match.group(1).split())
+
+    profile = ""
+    if "Business profile:" in founder_section:
+        profile = founder_section.split("Business profile:", 1)[1]
+        profile = profile.split("\n---", 1)[0].strip()
+
+    post_name = ""
+    if company_name and name_match:
+        post_name = founder_section[name_match.end():].strip()
+    elif "---" in founder_section:
+        post_name = founder_section.split("---", 1)[1].strip()
+
+    candidate_parts = [company_name, post_name or profile]
+    candidate = " ".join(part.strip() for part in candidate_parts if part and part.strip())
+    candidate = " ".join(candidate.split())
+    if candidate:
+        return candidate[:320]
+    return normalized[:1200]
 
 
 def _make_resilient_research_tool(tool_fn, tool_name: str, ctx_holder: list, agent_name: str = "research"):
     """Fill common missing arguments from the active goal so research agents
     don't burn iterations on empty tool calls."""
     focus = _research_focus_for_agent(agent_name)
+    force_lane_focus = agent_name in {"research_competitors", "research_customers", "research_gtm"}
 
     @functools.wraps(tool_fn)
     def wrapper(*args, **kwargs):
@@ -103,7 +130,10 @@ def _make_resilient_research_tool(tool_fn, tool_name: str, ctx_holder: list, age
         if tool_name in {"run_research_pipeline", "build_research_queries"}:
             if not args and not patched_kwargs.get("topic") and not patched_kwargs.get("query") and topic:
                 patched_kwargs["topic"] = topic
-            patched_kwargs.setdefault("focus", focus)
+            if force_lane_focus:
+                patched_kwargs["focus"] = focus
+            else:
+                patched_kwargs.setdefault("focus", focus)
         elif tool_name == "research_papers":
             if not args and not patched_kwargs.get("query") and topic:
                 patched_kwargs["query"] = topic
@@ -243,7 +273,7 @@ _FOCUS_ROLES = {
 }
 
 
-_MAX_RESEARCH_PLANS = {"scale", "beta"}
+_MAX_RESEARCH_PLANS = {"scale"}
 
 
 def _research_plan_for_founder(founder_id: str) -> str:
@@ -403,6 +433,48 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     }
     _tool_call_caps = dict(_ROLE_TOOL_CALL_CAPS.get(agent_name, _ROLE_TOOL_CALL_CAPS["research"]))
     _tool_call_caps.update(kwargs.pop("max_tool_calls", None) or {})
+    lane_tools = {
+        "run_research_pipeline": auto_pipeline,
+        "deep_research": auto_deep,
+        "sonar_research": auto_sonar,
+        "build_research_queries": auto_query_plan,
+        "search_and_fetch": auto_search,
+        "batch_search": auto_batch,
+        "fetch_and_read": auto_fetch,
+        "research_papers": auto_papers,
+        "news_search": auto_news,
+        "patent_search": auto_patent,
+        "youtube_research": auto_youtube,
+        "youtube_get_transcript": auto_youtube_transcript,
+        "tiktok_research": auto_tiktok,
+        "obsidian_log": obsidian_log,
+        "obsidian_read": obsidian_read,
+        "obsidian_append": obsidian_append,
+    }
+    # Keep narrow lanes on their intended path. In production these agents were
+    # repeatedly drifting into random search_and_fetch/fetch_and_read URL loops
+    # (often junk or ambiguous pages) instead of taking the required
+    # deep_research pass that their own prompts demand.
+    if agent_name == "research":
+        lane_tools.pop("search_and_fetch", None)
+        lane_tools.pop("fetch_and_read", None)
+        lane_tools.pop("batch_search", None)
+        lane_tools.pop("research_papers", None)
+        lane_tools.pop("patent_search", None)
+    elif agent_name == "research_customers":
+        lane_tools.pop("search_and_fetch", None)
+        lane_tools.pop("fetch_and_read", None)
+        lane_tools.pop("batch_search", None)
+        lane_tools.pop("run_research_pipeline", None)
+        lane_tools.pop("research_papers", None)
+        lane_tools.pop("patent_search", None)
+    elif agent_name == "research_gtm":
+        lane_tools.pop("search_and_fetch", None)
+        lane_tools.pop("fetch_and_read", None)
+        lane_tools.pop("batch_search", None)
+        lane_tools.pop("research_papers", None)
+        lane_tools.pop("patent_search", None)
+
     agent = Agent(
         name=agent_name,
         model=model,
@@ -411,24 +483,7 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
         max_iterations=_max_iter,
         max_tool_calls=_tool_call_caps,
         role=_build_research_role(agent_name, focus_searches, "starter"),
-        tools={
-            "run_research_pipeline": auto_pipeline,
-            "deep_research": auto_deep,
-            "sonar_research": auto_sonar,
-            "build_research_queries": auto_query_plan,
-            "search_and_fetch": auto_search,
-            "batch_search": auto_batch,
-            "fetch_and_read": auto_fetch,
-            "research_papers": auto_papers,
-            "news_search": auto_news,
-            "patent_search": auto_patent,
-            "youtube_research": auto_youtube,
-            "youtube_get_transcript": auto_youtube_transcript,
-            "tiktok_research": auto_tiktok,
-            "obsidian_log": obsidian_log,
-            "obsidian_read": obsidian_read,
-            "obsidian_append": obsidian_append,
-        },
+        tools=lane_tools,
         **kwargs,
     )
 
