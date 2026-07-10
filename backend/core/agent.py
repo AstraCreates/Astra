@@ -228,6 +228,17 @@ def _trim_message_history(messages: list[dict]) -> list[dict]:
         return messages
 
 
+def _coerce_model_selector(value: Any) -> Optional[str]:
+    """Coerce model-controlled action/tool selector fields to a stable string
+    before using them in dict/set membership checks."""
+    if value is None or isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, sort_keys=True, default=str)
+    except Exception:
+        return str(value)
+
+
 # Aliases for tool names models commonly hallucinate → the real registered tool.
 _TOOL_ALIASES = {
     "obsidian_write": "obsidian_log",
@@ -1260,8 +1271,9 @@ class Agent:
                     messages.append({"role": "user", "content": 'Respond with valid JSON only. Example: {"action":"done","result":{}} or {"action":"tool_call","tool":"batch_search","args":{"queries":["..."]}}. No prose.'})
                     continue
 
-            action = parsed.get("action")
-            if parsed.get("tool") == "done" and action in (None, "tool"):
+            action = _coerce_model_selector(parsed.get("action"))
+            tool_field = _coerce_model_selector(parsed.get("tool"))
+            if tool_field == "done" and action in (None, "tool"):
                 args = parsed.get("args") or {}
                 parsed = {
                     "action": "done",
@@ -1272,7 +1284,8 @@ class Agent:
             # If action is missing but parsed has an "output" key containing a dict with "action", unwrap it
             if action is None and isinstance(parsed.get("output"), dict) and parsed["output"].get("action"):
                 parsed = parsed["output"]
-                action = parsed.get("action")
+                action = _coerce_model_selector(parsed.get("action"))
+                tool_field = _coerce_model_selector(parsed.get("tool"))
             # Model returned a bare RESULT object with no action envelope (common
             # drift: dumps {"documents":...} / {"design_spec":...} instead of
             # {"action":"done","output":{...}}). If it carries substantive content
@@ -1284,7 +1297,7 @@ class Agent:
                     parsed = {"action": "done", "output": parsed}
                     action = "done"
             reasoning = parsed.get("reasoning", "")
-            tool_hint = parsed.get("tool", "")
+            tool_hint = tool_field or ""
             _log_hint = tool_hint or reasoning
             if not isinstance(_log_hint, str):
                 _log_hint = json.dumps(_log_hint, default=str)
@@ -1442,7 +1455,7 @@ class Agent:
                     })
 
             elif action == "tool":
-                tool_name = parsed.get("tool")
+                tool_name = tool_field
                 args = parsed.get("args", {})
                 # Some models wrap args under "arguments" key instead of "args"
                 if not args and "arguments" in parsed:
@@ -1569,10 +1582,15 @@ class Agent:
             elif action == "computer_use" and browser is None:
                 messages.append({"role": "user", "content": "computer_use not available. Use tool or delegate."})
 
-            elif action in ("tool_call", "function_call", "call_tool", "use_tool") or (action is None and (parsed.get("tool") in self.tools or parsed.get("name") in self.tools)):
+            elif action in ("tool_call", "function_call", "call_tool", "use_tool") or (
+                action is None and (
+                    tool_field in self.tools
+                    or _coerce_model_selector(parsed.get("name")) in self.tools
+                )
+            ):
                 # Normalize: some models output {"action":"tool_call",...} or {"tool":"name","args":{}} with no action
                 parsed["action"] = "tool"
-                tool_name = parsed.get("tool") or parsed.get("function") or parsed.get("name")
+                tool_name = tool_field or _coerce_model_selector(parsed.get("function")) or _coerce_model_selector(parsed.get("name"))
                 args = parsed.get("args") or parsed.get("parameters") or parsed.get("input") or parsed.get("arguments") or {}
                 if not args and "arguments" in parsed:
                     args = parsed["arguments"]
