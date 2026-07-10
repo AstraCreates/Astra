@@ -100,7 +100,7 @@ def build_marketing_outreach_agent(**kwargs) -> Agent:
             "- Execute steps in order: obsidian_read → search → hunter_search_by_domains → build_outreach_sequence × N → obsidian_log → done.\n"
             "- Call hunter_search_by_domains ONCE with all domains — do NOT loop over domains individually.\n"
             "- Hunter domain searches cost credits. Be selective — pick the most relevant domains.\n"
-            "- If Hunter returns 0 contacts, invent 2 plausible example contacts for the sequence demo and note them as 'example'.\n"
+            "- If Hunter returns 0 contacts, do not invent contacts. Return an empty leads array, log the miss, and broaden the domain search or stop cleanly.\n"
             "- Sequences must be specific to each contact's company and title — no generic copy.\n"
             "- Never send emails unless explicitly instructed.\n"
             "- For obsidian_log: use session_id=SESSION value from SHARED CONTEXT or the SESSION field in your initial prompt. Required field.\n"

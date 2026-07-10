@@ -1,5 +1,5 @@
 from backend.core.agent import AgentContext
-from backend.specialists.research import _make_resilient_research_tool
+from backend.specialists.research import _make_resilient_research_tool, build_research_agent
 
 
 def _ctx():
@@ -84,3 +84,101 @@ def test_resilient_deep_research_preserves_real_queries_list():
     wrapped(queries=["real question one", "real question two"])
 
     assert captured["queries"] == ["real question one", "real question two"]
+
+
+def test_resilient_pipeline_backfills_topic_from_founder_goal_not_lane_boilerplate():
+    captured = {}
+
+    def fake_tool(**kwargs):
+        captured.update(kwargs)
+        return {"ok": True}
+
+    ctx = AgentContext(
+        goal=(
+            "Validate the market, target customer, pain severity, buying trigger.\n\n"
+            "Founder goal: Business profile:\n"
+            "Goon is a collaborative project management platform for remote product teams at early-stage startups.\n\n"
+            "---\n"
+            "Company/project name: Goon\n\n"
+            "a collaborative project management platform for remote product teams at early-stage startups"
+        ),
+        founder_id="f1",
+        session_id="s1",
+        shared={},
+    )
+
+    wrapped = _make_resilient_research_tool(fake_tool, "run_research_pipeline", [ctx], "research_competitors")
+    wrapped()
+
+    assert captured["focus"] == "competitors"
+    assert captured["topic"].startswith("Goon")
+    assert "pain severity" not in captured["topic"]
+
+
+def test_lane_specific_pipeline_overrides_wrong_focus_from_model():
+    captured = {}
+
+    def fake_tool(**kwargs):
+        captured.update(kwargs)
+        return {"ok": True}
+
+    wrapped = _make_resilient_research_tool(
+        fake_tool,
+        "run_research_pipeline",
+        [_ctx()],
+        "research_customers",
+    )
+    wrapped(topic="AtlasHaven", focus="market")
+
+    assert captured["focus"] == "customers"
+
+
+def test_general_research_pipeline_keeps_explicit_focus_choice():
+    captured = {}
+
+    def fake_tool(**kwargs):
+        captured.update(kwargs)
+        return {"ok": True}
+
+    wrapped = _make_resilient_research_tool(
+        fake_tool,
+        "run_research_pipeline",
+        [_ctx()],
+        "research",
+    )
+    wrapped(topic="AtlasHaven", focus="competitors")
+
+    assert captured["focus"] == "competitors"
+
+
+def test_research_customers_toolset_stays_narrow():
+    agent = build_research_agent("research_customers")
+
+    assert "deep_research" in agent.tools
+    assert "build_research_queries" in agent.tools
+    assert "search_and_fetch" not in agent.tools
+    assert "fetch_and_read" not in agent.tools
+    assert "batch_search" not in agent.tools
+    assert "run_research_pipeline" not in agent.tools
+
+
+def test_research_gtm_toolset_stays_narrow_but_keeps_pipeline():
+    agent = build_research_agent("research_gtm")
+
+    assert "deep_research" in agent.tools
+    assert "build_research_queries" in agent.tools
+    assert "run_research_pipeline" in agent.tools
+    assert "search_and_fetch" not in agent.tools
+    assert "fetch_and_read" not in agent.tools
+    assert "batch_search" not in agent.tools
+
+
+def test_research_toolset_prefers_pipeline_and_deep_research_without_raw_fetch_loops():
+    agent = build_research_agent("research")
+
+    assert "run_research_pipeline" in agent.tools
+    assert "deep_research" in agent.tools
+    assert "build_research_queries" in agent.tools
+    assert "search_and_fetch" not in agent.tools
+    assert "fetch_and_read" not in agent.tools
+    assert "batch_search" not in agent.tools

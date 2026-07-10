@@ -48,6 +48,28 @@ _FETCH_CACHE_MAX = 512
 
 _RECURSIVE_RESEARCH_ROUNDS = 2
 _RECURSIVE_RESEARCH_MAX_FOLLOWUPS = 4
+_RESEARCH_QUERY_PLAN_LIMIT = 6
+_MAX_SEARCH_QUERY_WORDS = 24
+_MAX_SEARCH_QUERY_CHARS = 180
+_RESEARCH_EVIDENCE_CHAR_CAP = 2200
+_RESEARCH_COMBINED_QUERY_CHAR_CAP = 3000
+_RESEARCH_PER_QUERY_FORMATTED_CAP = 5000
+_RESEARCH_MAX_SOURCES = 24
+_RESEARCH_SYNTHESIS_MAX_TOKENS = 700
+_RESEARCH_FOLLOWUP_MAX_TOKENS = 400
+_RESEARCH_FINAL_ANSWER_MAX_TOKENS = 500
+_RESEARCH_FETCH_TEXT_CHAR_CAP = 12000
+_RESEARCH_RESULT_CONTENT_CHAR_CAP = 2400
+_RESEARCH_MAX_URL_CANDIDATES_BUFFER = 2
+_RESEARCH_SEARCH_MULTIPLIER = 1.5
+_RESEARCH_BLOCK_WINDOW_SENTENCES = 1
+_RESEARCH_QUERY_STOPWORDS = {
+    "the", "and", "for", "with", "from", "that", "this", "into", "about", "their", "there",
+    "what", "when", "where", "which", "while", "who", "why", "how", "your", "have", "has",
+    "had", "were", "been", "being", "than", "then", "them", "they", "you", "our", "its",
+    "not", "but", "can", "could", "would", "should", "are", "was", "will", "may", "might",
+    "research", "report", "analysis", "market", "industry", "company",
+}
 
 
 def _robust_search(query: str, max_results: int = 12) -> list[dict]:
@@ -288,7 +310,7 @@ def _source_score(result: dict, query: str) -> int:
     return score
 
 
-def build_research_queries(topic: str, focus: str = "market", limit: int = 7) -> dict:
+def build_research_queries(topic: str, focus: str = "market", limit: int = _RESEARCH_QUERY_PLAN_LIMIT) -> dict:
     """Build source-seeking search queries for a research lane.
 
     This gives agents a deterministic, high-coverage query plan before they
@@ -310,7 +332,7 @@ def build_research_queries(topic: str, focus: str = "market", limit: int = 7) ->
     return {
         "topic": clean_topic,
         "focus": normalized_focus,
-        "queries": deduped[: max(1, min(limit, 8))],
+        "queries": deduped[: max(1, min(limit, _RESEARCH_QUERY_PLAN_LIMIT))],
         "recommended_tool": "batch_search",
     }
 
@@ -377,7 +399,7 @@ def _http_get(url: str, timeout: float = 8.0) -> str:
         raise
 
 
-def _extract_text(html: str, max_chars: int = 6000) -> str:
+def _extract_text(html: str, max_chars: int = _RESEARCH_FETCH_TEXT_CHAR_CAP) -> str:
     """Strip HTML tags, collapse whitespace, return readable text."""
     # Remove scripts, styles, nav, header, footer blocks
     html = re.sub(r"<(script|style|nav|header|footer|aside)[^>]*>.*?</\1>", "", html, flags=re.DOTALL | re.IGNORECASE)
@@ -399,7 +421,33 @@ def _extract_links(html: str, base_domain: str = "") -> list[str]:
 
 
 def _canonicalize_search_query(query: object) -> str:
-    return re.sub(r"\s+", " ", _coerce_text(query)).strip()
+    text = re.sub(r"\s+", " ", _coerce_text(query)).strip()
+    if not text:
+        return ""
+    # Research agents often pass full natural-language questions or prompt
+    # sentences into search. Keep the high-signal subject after a colon and
+    # strip long example lists so SearXNG/CRW don't choke on paragraph-sized
+    # queries.
+    if ":" in text:
+        lead, tail = text.split(":", 1)
+        if len(tail.strip()) >= 24 and len(lead.strip()) <= 120:
+            text = tail.strip()
+    text = re.sub(r"\([^)]{25,}\)", "", text)
+    text = re.sub(
+        r"^(identify|articulate|derive|explain|find|research|map|summarize|outline|determine)\s+",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"^(what are|what is|who are|how do|why do)\s+", "", text, flags=re.IGNORECASE)
+    text = text.replace("—", " ").replace("–", " ")
+    text = re.sub(r"\s+", " ", text).strip(" -,:;")
+    words = text.split()
+    if len(words) > _MAX_SEARCH_QUERY_WORDS:
+        text = " ".join(words[:_MAX_SEARCH_QUERY_WORDS])
+    if len(text) > _MAX_SEARCH_QUERY_CHARS:
+        text = text[:_MAX_SEARCH_QUERY_CHARS].rsplit(" ", 1)[0].strip()
+    return text.strip(" -,:;")
 
 
 def _dedupe_search_queries(queries: list[object], limit: int = 12) -> list[str]:
@@ -415,6 +463,85 @@ def _dedupe_search_queries(queries: list[object], limit: int = 12) -> list[str]:
         if len(unique) >= limit:
             break
     return unique
+
+
+def _research_query_terms(query: str) -> set[str]:
+    return {
+        token for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9+.-]{2,}", (query or "").lower())
+        if token not in _RESEARCH_QUERY_STOPWORDS
+    }
+
+
+def _split_research_blocks(text: str) -> list[str]:
+    cleaned = re.sub(r"\n{3,}", "\n\n", (text or "").strip())
+    if not cleaned:
+        return []
+    blocks = [block.strip() for block in re.split(r"\n\s*\n", cleaned) if block.strip()]
+    if len(blocks) > 1:
+        return blocks
+    sentences = re.split(r"(?<=[.!?])\s+", cleaned)
+    windowed: list[str] = []
+    for index in range(0, len(sentences), _RESEARCH_BLOCK_WINDOW_SENTENCES):
+        block = " ".join(part.strip() for part in sentences[index:index + _RESEARCH_BLOCK_WINDOW_SENTENCES] if part.strip()).strip()
+        if block:
+            windowed.append(block)
+    return windowed or [cleaned]
+
+
+def _score_research_block(block: str, query_terms: set[str]) -> tuple[int, int]:
+    lowered = block.lower()
+    block_terms = set(re.findall(r"[A-Za-z0-9][A-Za-z0-9+.-]{2,}", lowered))
+    overlap = len(query_terms & block_terms)
+    numeric_hits = len(re.findall(r"\b\d+(?:\.\d+)?(?:%|x|k|m|b)?\b", block))
+    currency_hits = len(re.findall(r"[$€£]\s?\d", block))
+    year_hits = len(re.findall(r"\b20\d{2}\b", block))
+    keyword_hits = len(re.findall(r"\b(cagr|tam|sam|som|pricing|revenue|growth|benchmark|market share|margin|funding)\b", lowered))
+    score = overlap * 6 + numeric_hits * 2 + currency_hits * 2 + year_hits * 2 + keyword_hits * 3
+    return score, overlap
+
+
+def _compact_research_evidence(content: str, query: str, max_chars: int) -> str:
+    text = (content or "").strip()
+    if not text:
+        return ""
+    if len(text) <= max_chars:
+        return text
+
+    query_terms = _research_query_terms(query)
+    blocks = _split_research_blocks(text)
+    ranked: list[tuple[int, int, int, str]] = []
+    for index, block in enumerate(blocks):
+        score, overlap = _score_research_block(block, query_terms)
+        ranked.append((score, overlap, index, block))
+
+    selected_indices: set[int] = set()
+    chosen: list[tuple[int, str]] = []
+    used = 0
+
+    for score, overlap, index, block in sorted(ranked, key=lambda item: (item[0], item[1], -item[2]), reverse=True):
+        if used >= max_chars and chosen:
+            break
+        if chosen and score <= 0 and overlap == 0:
+            continue
+        piece = block if len(block) <= max_chars else block[:max_chars].rsplit(" ", 1)[0].strip()
+        projected = used + len(piece) + (2 if chosen else 0)
+        if projected > max_chars and chosen:
+            continue
+        selected_indices.add(index)
+        chosen.append((index, piece))
+        used = projected
+
+    if not chosen:
+        head = text[: max_chars // 2].rsplit(" ", 1)[0].strip()
+        tail = text[-(max_chars // 3):].split(" ", 1)[-1].strip()
+        fallback = "\n...\n".join(part for part in [head, tail] if part)
+        return fallback[:max_chars].strip()
+
+    chosen.sort(key=lambda item: item[0])
+    compacted = "\n\n".join(piece for _, piece in chosen).strip()
+    if len(compacted) <= max_chars:
+        return compacted
+    return compacted[:max_chars].rsplit(" ", 1)[0].strip()
 
 
 def fetch_and_read(url: str = "") -> dict:
@@ -450,7 +577,7 @@ def fetch_and_read(url: str = "") -> dict:
 
         title_match = re.search(r"<title[^>]*>([^<]+)</title>", html, re.IGNORECASE)
         title = title_match.group(1).strip() if title_match else ""
-        content = _extract_text(html, max_chars=8000)
+        content = _extract_text(html, max_chars=_RESEARCH_FETCH_TEXT_CHAR_CAP)
 
         return _remember({
             "url": url,
@@ -481,9 +608,18 @@ def search_and_fetch(query: str = "", max_results: int = 16, url: str = "") -> d
     if url and not query:
         page = fetch_and_read(url)
         return {"query": url, "results": [page] if page else [], "routed_to": "fetch_and_read"}
+    if isinstance(query, (list, tuple)):
+        queries = _dedupe_search_queries(list(query), limit=12)
+        if not queries:
+            return {"error": "query is required — pass a search string, e.g. \"competitor pricing SaaS\""}
+        if len(queries) == 1:
+            query = queries[0]
+        else:
+            return batch_search(queries, max_results_each=max_results)
     if not query:
         return {"error": "query is required — pass a search string, e.g. \"competitor pricing SaaS\""}
-    raw = _robust_search(query, max_results=max_results * 2)
+    search_limit = max(max_results + _RESEARCH_MAX_URL_CANDIDATES_BUFFER, int(max_results * _RESEARCH_SEARCH_MULTIPLIER))
+    raw = _robust_search(query, max_results=search_limit)
     if not raw:
         return {"query": query, "results": [], "error": "Search returned no results"}
 
@@ -517,9 +653,9 @@ def search_and_fetch(query: str = "", max_results: int = 16, url: str = "") -> d
                 results.append({"url": url, "title": titles.get(url, ""), "snippet": snippet, "content": ""})
         else:
             fetch_urls.append(url)
-    fetch_urls = fetch_urls[:max_results + 4]
+    fetch_urls = fetch_urls[:max_results + _RESEARCH_MAX_URL_CANDIDATES_BUFFER]
 
-    with ThreadPoolExecutor(max_workers=16) as ex:
+    with ThreadPoolExecutor(max_workers=min(len(fetch_urls) or 1, 8)) as ex:
         futures = {ex.submit(fetch_and_read, url): url for url in fetch_urls}
         for fut in as_completed(futures, timeout=25):
             url = futures[fut]
@@ -547,7 +683,7 @@ def search_and_fetch(query: str = "", max_results: int = 16, url: str = "") -> d
         formatted.append(f"\n### {r['title'] or r['url']}")
         formatted.append(f"URL: {r['url']}")
         if r.get("content"):
-            formatted.append(r["content"][:8000])
+            formatted.append(_compact_research_evidence(r["content"], query, _RESEARCH_RESULT_CONTENT_CHAR_CAP))
         elif r.get("snippet"):
             formatted.append(f"[snippet only] {r['snippet']}")
 
@@ -611,7 +747,7 @@ def _research_llm_json(prompt: str, max_tokens: int = 900) -> dict:
 def _format_batch_answer(search_result: dict, query: str) -> str:
     formatted = (search_result.get("formatted") or "").strip()
     if formatted:
-        return formatted[:4000]
+        return formatted[:_RESEARCH_EVIDENCE_CHAR_CAP]
     snippets = []
     for source in (search_result.get("sources") or [])[:6]:
         title = source.get("title") or source.get("url") or ""
@@ -635,7 +771,7 @@ def _synthesize_research_round(queries: list[str], batch_result: dict, prior_lea
         + "\n\nReturn JSON with this shape:\n"
         '{"learnings":["fact with number/company/date"],"directions":["specific unresolved question"],"summary":"short synthesis"}'
     )
-    parsed = _research_llm_json(prompt, max_tokens=1100)
+    parsed = _research_llm_json(prompt, max_tokens=_RESEARCH_SYNTHESIS_MAX_TOKENS)
     learnings = [str(item).strip() for item in (parsed.get("learnings") or []) if str(item).strip()]
     directions = [str(item).strip() for item in (parsed.get("directions") or []) if str(item).strip()]
     return {
@@ -654,8 +790,56 @@ def _build_followup_queries(directions: list[str], original_queries: list[str]) 
         f"Directions:\n{chr(10).join(f'- {d}' for d in directions)}\n\n"
         "Return JSON as {\"queries\": [\"...\"]}. Make the queries specific and source-seeking."
     )
-    parsed = _research_llm_json(prompt, max_tokens=700)
+    parsed = _research_llm_json(prompt, max_tokens=_RESEARCH_FOLLOWUP_MAX_TOKENS)
     return _dedupe_search_queries(parsed.get("queries") or [], limit=_RECURSIVE_RESEARCH_MAX_FOLLOWUPS)
+
+
+def _final_answers_prompt(original_queries: list[str], aggregated_results: dict, learnings: list[str]) -> str:
+    evidence_blocks = []
+    for query in original_queries:
+        result = aggregated_results.get(query) or {"query": query, "results": [], "formatted": "", "total": 0, "sources": []}
+        evidence_blocks.append(f"## QUERY: {query}\n{_format_batch_answer(result, query)}")
+    return (
+        "Answer each research question using only the provided evidence.\n"
+        "Be concise and concrete. Return one short synthesized answer per question.\n\n"
+        f"Shared learnings:\n{chr(10).join(f'- {item}' for item in learnings) or '- none'}\n\n"
+        "Evidence blocks:\n"
+        + "\n\n".join(evidence_blocks)
+        + "\n\nReturn JSON as "
+        '{"answers":[{"query":"exact question","answer":"concise synthesized answer","support":["key support point"]}]}'
+    )
+
+
+def _batched_final_answers(original_queries: list[str], aggregated_results: dict, learnings: list[str]) -> dict[str, str]:
+    parsed = _research_llm_json(
+        _final_answers_prompt(original_queries, aggregated_results, learnings),
+        max_tokens=_RESEARCH_FINAL_ANSWER_MAX_TOKENS,
+    )
+    answers: dict[str, str] = {}
+    items = parsed.get("answers")
+    if isinstance(items, list):
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            query = str(item.get("query") or "").strip()
+            answer = str(item.get("answer") or "").strip()
+            if query and answer:
+                answers[query] = answer
+    if answers:
+        return answers
+
+    # Backward-compatible fallback if the LLM returns the old single-answer
+    # shape or a dict keyed by query.
+    if isinstance(parsed.get("answer"), str) and len(original_queries) == 1:
+        return {original_queries[0]: str(parsed.get("answer") or "").strip()}
+    raw_answers = parsed.get("answers")
+    if isinstance(raw_answers, dict):
+        for query, answer in raw_answers.items():
+            query_text = str(query).strip()
+            answer_text = str(answer.get("answer") if isinstance(answer, dict) else answer).strip()
+            if query_text and answer_text:
+                answers[query_text] = answer_text
+    return answers
 
 
 def _finalize_recursive_research(original_queries: list[str], aggregated_results: dict, learnings: list[str]) -> dict:
@@ -663,18 +847,11 @@ def _finalize_recursive_research(original_queries: list[str], aggregated_results
     combined = []
     all_sources = []
     seen_sources = set()
+    batched_answers = _batched_final_answers(original_queries, aggregated_results, learnings)
 
     for query in original_queries:
         result = aggregated_results.get(query) or {"query": query, "results": [], "formatted": "", "total": 0, "sources": []}
-        answer_prompt = (
-            "Answer the research question using only the provided evidence.\n"
-            f"Question: {query}\n\n"
-            f"Shared learnings:\n{chr(10).join(f'- {item}' for item in learnings) or '- none'}\n\n"
-            f"Evidence:\n{_format_batch_answer(result, query)}\n\n"
-            'Return JSON as {"answer":"concise synthesized answer","support":["key support point"]}.'
-        )
-        parsed = _research_llm_json(answer_prompt, max_tokens=900)
-        answer = str(parsed.get("answer") or "").strip()
+        answer = batched_answers.get(query, "")
         citations = []
         for source in result.get("sources") or []:
             url = _normalize_url(source.get("url", ""))
@@ -694,7 +871,7 @@ def _finalize_recursive_research(original_queries: list[str], aggregated_results
         "queries_run": len(original_queries),
         "results_by_query": results_by_query,
         "combined_formatted": "\n\n".join(combined),
-        "sources": all_sources,
+        "sources": all_sources[:_RESEARCH_MAX_SOURCES],
     }
 
 
@@ -767,7 +944,7 @@ def _crw_search_and_fetch(query: str, max_results: int = 8) -> dict:
         if url:
             sources.append({"title": title, "url": url})
         block = f"### {title}\nURL: {url}\n"
-        block += content[:8000] if content else f"[snippet only] {snippet}"
+        block += _compact_research_evidence(content, query, _RESEARCH_RESULT_CONTENT_CHAR_CAP) if content else f"[snippet only] {snippet}"
         blocks.append(block)
 
     return {
@@ -788,10 +965,10 @@ def _crw_batch_search(queries=None, max_results_each: int = 8) -> dict:
     queries = _dedupe_search_queries(list(queries), limit=12)
 
     results_by_query: dict = {}
-    with ThreadPoolExecutor(max_workers=min(len(queries), 6)) as ex:
+    with ThreadPoolExecutor(max_workers=min(len(queries), 4)) as ex:
         futures = {ex.submit(_crw_search_and_fetch, q, max_results_each): q for q in queries}
         try:
-            for fut in as_completed(futures, timeout=60):
+            for fut in as_completed(futures, timeout=45):
                 q = futures[fut]
                 try:
                     results_by_query[q] = fut.result()
@@ -805,7 +982,7 @@ def _crw_batch_search(queries=None, max_results_each: int = 8) -> dict:
 
     combined, all_sources, seen = [], [], set()
     for q, r in results_by_query.items():
-        combined.append(f"\n\n## QUERY: {q}\n{r.get('formatted', '')[:8000]}")
+        combined.append(f"\n\n## QUERY: {q}\n{r.get('formatted', '')[:_RESEARCH_COMBINED_QUERY_CHAR_CAP]}")
         for source in r.get("sources", []):
             url = _normalize_url(source.get("url", ""))
             if url and url not in seen:
@@ -814,9 +991,9 @@ def _crw_batch_search(queries=None, max_results_each: int = 8) -> dict:
 
     return {
         "queries_run": len(queries),
-        "results_by_query": {q: {"total": r.get("total", 0), "formatted": r.get("formatted", "")[:8000], "sources": r.get("sources", [])} for q, r in results_by_query.items()},
+        "results_by_query": {q: {"total": r.get("total", 0), "formatted": r.get("formatted", "")[:_RESEARCH_PER_QUERY_FORMATTED_CAP], "sources": r.get("sources", [])} for q, r in results_by_query.items()},
         "combined_formatted": "\n".join(combined),
-        "sources": all_sources[:50],
+        "sources": all_sources[:_RESEARCH_MAX_SOURCES],
     }
 
 
@@ -877,7 +1054,7 @@ def _legacy_sonar_research(queries: list[str]) -> dict:
             for q in queries
         },
         "combined_formatted": "\n\n".join(combined),
-        "sources": all_sources,
+        "sources": all_sources[:_RESEARCH_MAX_SOURCES],
     }
 
 
@@ -897,11 +1074,13 @@ def deep_research(queries=None) -> dict:
     aggregated_results: dict[str, dict] = {}
     learnings: list[str] = []
     round_queries = list(queries)
+    avg_query_len = sum(len(q) for q in queries) / max(len(queries), 1)
+    max_rounds = 1 if len(queries) >= 6 or avg_query_len > 120 else _RECURSIVE_RESEARCH_ROUNDS
 
-    for round_index in range(_RECURSIVE_RESEARCH_ROUNDS):
+    for round_index in range(max_rounds):
         if not round_queries:
             break
-        search = _crw_batch_search(round_queries, max_results_each=8)
+        search = _crw_batch_search(round_queries, max_results_each=5)
         batch_results = search.get("results_by_query") or {}
         for query, result in batch_results.items():
             existing = aggregated_results.get(query)
@@ -913,7 +1092,11 @@ def deep_research(queries=None) -> dict:
                     "sources": [],
                 }
             merged = aggregated_results[query]
-            merged["formatted"] = (merged.get("formatted") or "") + ("\n\n" if merged.get("formatted") else "") + (result.get("formatted") or "")
+            merged["formatted"] = (
+                (merged.get("formatted") or "")
+                + ("\n\n" if merged.get("formatted") else "")
+                + (result.get("formatted") or "")
+            )[:_RESEARCH_PER_QUERY_FORMATTED_CAP]
             merged["total"] = max(int(merged.get("total") or 0), int(result.get("total") or 0))
         for query, result in batch_results.items():
             bucket = aggregated_results.setdefault(query, {"query": query, "formatted": "", "total": 0, "sources": []})
@@ -926,7 +1109,7 @@ def deep_research(queries=None) -> dict:
         for item in synthesis.get("learnings", []):
             if item not in learnings:
                 learnings.append(item)
-        if round_index >= _RECURSIVE_RESEARCH_ROUNDS - 1:
+        if round_index >= max_rounds - 1:
             break
         round_queries = _build_followup_queries(synthesis.get("directions", []), queries)
 
@@ -978,7 +1161,7 @@ def batch_search(queries=None, max_results_each: int = 8) -> dict:
     seen_sources = set()
     compact_results = {}
     for q, r in results_by_query.items():
-        combined.append(f"\n\n## QUERY: {q}\n{r.get('formatted', '')[:3000]}")
+        combined.append(f"\n\n## QUERY: {q}\n{r.get('formatted', '')[:_RESEARCH_COMBINED_QUERY_CHAR_CAP]}")
         per_query_sources = []
         for source in r.get("sources", []):
             url = _normalize_url(source.get("url", ""))
@@ -989,7 +1172,7 @@ def batch_search(queries=None, max_results_each: int = 8) -> dict:
                 all_sources.append({**source, "url": url})
         compact_results[q] = {
             "total": r.get("total", 0),
-            "formatted": r.get("formatted", "")[:8000],
+            "formatted": r.get("formatted", "")[:_RESEARCH_PER_QUERY_FORMATTED_CAP],
             "sources": per_query_sources,
         }
 
@@ -997,7 +1180,7 @@ def batch_search(queries=None, max_results_each: int = 8) -> dict:
         "queries_run": len(queries),
         "results_by_query": compact_results,
         "combined_formatted": "\n".join(combined),
-        "sources": all_sources[:50],
+        "sources": all_sources[:_RESEARCH_MAX_SOURCES],
     }
 
 
@@ -1051,7 +1234,7 @@ def run_research_pipeline(topic: str, focus: str = "market", max_results_each: i
     it plans lane-specific queries, executes them in parallel, dedupes sources,
     and returns a compact evidence package for synthesis.
     """
-    plan = build_research_queries(topic, focus=focus, limit=10)
+    plan = build_research_queries(topic, focus=focus, limit=_RESEARCH_QUERY_PLAN_LIMIT)
     queries = plan.get("queries", [])
     if not queries:
         return {

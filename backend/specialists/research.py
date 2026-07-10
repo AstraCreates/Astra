@@ -170,28 +170,15 @@ def _make_resilient_research_tool(tool_fn, tool_name: str, ctx_holder: list, age
 
 _DONE_INSTRUCTIONS = (
     "\n\nDONE OUTPUT — plain text values only, no markdown stars, no bullet symbols, no emojis.\n"
-    "After obsidian_log, call done with this exact JSON structure (fill every field from research + injected company context):\n"
+    "After obsidian_log, call done with this exact JSON structure (fill only the market fields from research; do not invent competitor/customer/GTM details for this lane):\n"
     '{"action":"done","output":{'
     '"summary":"one paragraph synthesis of all findings",'
     '"market_size":"TAM/SAM/SOM with concrete numbers e.g. $12B TAM growing 18% CAGR",'
-    '"icp":"who the ideal customer is, 1-2 sentences",'
-    '"problem":"core pain point the company solves, 1-2 sentences",'
-    '"solution":"what the product does, 1-2 sentences",'
-    '"differentiator":"key competitive advantage over alternatives, 1 sentence",'
-    '"moat":"defensibility or barriers to entry, 1 sentence",'
-    '"revenue_model":"how the company makes money, 1 sentence",'
-    '"go_to_market":"primary acquisition strategy and key channels, 1-2 sentences",'
     '"risks":"top 2-3 risks in 1-2 sentences",'
-    '"tagline":"one-line value proposition",'
-    '"mission":"company mission statement",'
-    '"competitors":["CompanyA","CompanyB","CompanyC"],'
     '"sources":["url1","url2"]}}\n'
-    "For identity fields (problem, solution, tagline, mission, revenue_model, differentiator, moat, icp): "
-    "use injected company brain context as the source of truth, supplement with research.\n"
-    "For market/competitor fields: use your research findings.\n"
-    "Before done, pressure-test the idea hard: what is weak, crowded, unconvincing, or likely to fail? "
-    "If the evidence points to a materially better wedge, ICP, pricing model, or product direction, call ask_user "
-    "with a decision-grade question before done."
+    "Use injected company brain context only if it already contains a market thesis; otherwise keep the output strictly market-focused and do not backfill missing company-positioning fields.\n"
+    "Before done, pressure-test the market thesis hard: what is weak, crowded, unconvincing, or likely to fail? "
+    "If the evidence points to a materially different market thesis, call ask_user with a decision-grade question before done."
 )
 
 _DONE_COMPETITORS = (
@@ -224,15 +211,12 @@ _DONE_GTM = (
 
 _FOCUS_ROLES = {
     "research": (
-        "COMPREHENSIVE RESEARCH — cover all 4 areas in sequence:\n\n"
-        "1. MARKET (TAM/SAM/SOM, growth, regulation, funding): run_research_pipeline(focus='market') for source discovery, "
-        "then use deep_research([...]) only if the first pass leaves coverage gaps or you are in premium/deep research mode.\n"
-        "2. COMPETITORS (named companies, pricing, features, weaknesses): run_research_pipeline(focus='competitors') first; escalate to deep_research(['<topic> top competitors pricing', '<topic> alternatives G2 reviews', ...]) only when evidence is still thin or depth is explicitly required.\n"
-        "3. CUSTOMERS (ICP, buyer pain, Reddit/reviews, WTP): build_research_queries(focus='customers'); use deep_research(queries) only for unresolved gaps or premium/deep research. Add tiktok_research + youtube_research for sentiment when useful.\n"
-        "4. GTM (acquisition channels, CAC benchmarks, launch tactics): build_research_queries(focus='gtm'); add deep_research(queries) only when the first pass leaves important unanswered questions or for premium/deep research, plus news_search as needed.\n\n"
-        "Use fetch_and_read only for specific competitor pricing pages or paywalled reports deep_research cannot reach.\n"
-        "Do NOT run batch_search — deep_research replaces it. Move through all 4 areas before logging.\n\n"
-        "obsidian_log with ALL sections: MARKET SIZE, COMPETITOR TABLE, ICP PROFILE, PAIN POINTS, GTM CHANNELS, SOURCES."
+        "MARKET OPPORTUNITY RESEARCH — cover market sizing, timing, and investment narrative only:\n\n"
+        "1. MARKET (TAM/SAM/SOM, growth, regulation, funding, timing thesis): run_research_pipeline(focus='market') for source discovery, "
+        "then use deep_research([...]) only if the first pass leaves coverage gaps or you are in premium/deep research mode.\n\n"
+        "Use news_search, research_papers, and patent_search only when they materially sharpen the market thesis.\n"
+        "Do NOT run batch_search — deep_research replaces it. Finish the market pass before logging.\n\n"
+        "obsidian_log with MARKET sections only: MARKET SIZE, GROWTH DRIVERS, TIMING THESIS, SOURCES."
         + _DONE_INSTRUCTIONS
     ),
     "research_competitors": (

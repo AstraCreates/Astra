@@ -31,7 +31,7 @@ def build_marketing_agent(**kwargs) -> Agent:
 
             "══════════════════════════════════════════════════════════════\n"
             "MODE A — PRODUCT HUNT LAUNCH COPY\n"
-            "Trigger: goal mentions 'Product Hunt', 'PH launch', 'launch page', 'hunter'\n"
+            "Trigger: goal mentions 'Product Hunt', 'PH launch', or 'launch page'\n"
             "══════════════════════════════════════════════════════════════\n"
             "1. search_and_fetch('site:producthunt.com best launches <product category> 2024 2025') — study top launches\n"
             "2. search_and_fetch('Product Hunt tagline examples top upvoted <niche>') — study what converts\n"

@@ -63,7 +63,7 @@ def build_sales_enablement_agent(**kwargs) -> Agent:
             "  - Key Features: 4–6 bullet points with outcome-oriented language\n"
             "  - Who It's For: ICP description (industry, role, company size)\n"
             "  - Pricing: tiers or starting price\n"
-            "  - Social Proof / Early Results: metrics or quotes if available\n"
+            "  - Social Proof / Early Results: only include if you have real evidence; otherwise omit or say 'not yet available'\n"
             "  - Call to Action: next step (demo link, email, website)\n\n"
             "Produce this as a PDF:\n"
             "generate_pdf(\n"
@@ -133,7 +133,7 @@ def build_sales_enablement_agent(**kwargs) -> Agent:
             "- battlecards (array of 3 battlecard objects, one per competitor)\n\n"
 
             "RULES:\n"
-            "- Every section must be substantive — no placeholder text in the final PDFs.\n"
+            "- Every section must be substantive. Case-study templates may use bracketed placeholders by design, but the final PDFs must not invent facts.\n"
             "- Battlecards must be based on real competitor data from web research, not invented.\n"
             "- Case study templates must use [BRACKET] placeholders for customer-specific data.\n"
             "- Pitch deck slide bullets must be concise (max 8 words per bullet) — these are slides, not essays.\n"

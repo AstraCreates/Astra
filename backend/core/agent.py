@@ -262,6 +262,16 @@ _TOOL_ALIASES = {
     "generate_colors": "generate_color_palette",
 }
 
+# Some tool names stay separately dispatchable for compatibility, but should
+# share one usage budget because they route to the same expensive backend work.
+_TOOL_CAP_ALIASES = {
+    "sonar_research": "deep_research",
+}
+
+
+def _tool_cap_name(tool_name: str) -> str:
+    return _TOOL_CAP_ALIASES.get(tool_name, tool_name)
+
 # Generic verbs shared by many tool names — ignore them when token-matching so the
 # distinctive part of the name drives the match (e.g. "brand identity" → brand_board).
 _GENERIC_TOOL_TOKENS = {"generate", "create", "make", "get", "run", "build", "do", "new", "the", "a", "tool"}
@@ -1197,6 +1207,13 @@ class Agent:
         _tool_context_seen: dict[str, Any] = {}
         _consecutive_unknown = 0  # consecutive "unknown action" responses
 
+        def _tool_limit_status(tool_name: str) -> tuple[str, int | None, int, int]:
+            cap_key = _tool_cap_name(tool_name)
+            limit = self._max_tool_calls.get(cap_key)
+            attempts = _tool_attempt_counts.get(cap_key, 0)
+            successes = sum(1 for tn, _ in _tool_results if _tool_cap_name(tn) == cap_key)
+            return cap_key, limit, attempts, successes
+
         while i < MAX_ITERATIONS:
             # Per-agent stop: copilot can halt THIS agent without killing the run.
             try:
@@ -1393,7 +1410,19 @@ class Agent:
 
                 async def execute(call: dict) -> tuple[str, dict, Any]:
                     name, args = call["tool"], call["args"]
+                    cap_key, limit, attempts, successes = _tool_limit_status(name)
+                    if limit is not None and attempts >= limit:
+                        return name, args, {
+                            "error": (
+                                f"BLOCKED: {name} has already been attempted {attempts} time(s) "
+                                f"({successes} succeeded, limit={limit}). Stop calling {name} and move on."
+                            ),
+                            "blocked": True,
+                            "tool": name,
+                            "cap_key": cap_key,
+                        }
                     await self._emit(ctx, "agent_action", action="tool", tool=name, args=args, reasoning=reasoning)
+                    _tool_attempt_counts[cap_key] = attempts + 1
                     result = await self._execute_tool(name, args, ctx)
                     await self._emit(ctx, "agent_action_result", tool=name, result=result)
                     return name, args, result
@@ -1477,11 +1506,9 @@ class Agent:
                     continue
                 # Enforce per-tool call limits (e.g. max 3 search calls for marketing)
                 # Count ALL attempts (success + failure) so retries don't bypass the cap.
-                _tool_call_limit = self._max_tool_calls.get(tool_name)
+                _tool_cap_key, _tool_call_limit, _tool_total_attempts, _tool_success_count = _tool_limit_status(tool_name)
                 if _tool_call_limit is not None:
-                    _tool_total_attempts = _tool_attempt_counts.get(tool_name, 0)
                     if _tool_total_attempts >= _tool_call_limit:
-                        _tool_success_count = sum(1 for tn, _ in _tool_results if tn == tool_name)
                         messages.append({"role": "user", "content": (
                             f"BLOCKED: {tool_name} has already been attempted {_tool_total_attempts} time(s) "
                             f"({_tool_success_count} succeeded, limit={_tool_call_limit}). You have enough research data. "
@@ -1494,7 +1521,7 @@ class Agent:
                     logger.debug("[%s] forced cached HTML into vercel_deploy args (%d chars)", self.name, len(args["html"]))
                 await self._emit(ctx, "agent_action", action="tool", tool=tool_name, args=args, reasoning=reasoning)
                 _attempted_tools.add(tool_name)
-                _tool_attempt_counts[tool_name] = _tool_attempt_counts.get(tool_name, 0) + 1
+                _tool_attempt_counts[_tool_cap_key] = _tool_total_attempts + 1
                 result = await self._execute_tool(tool_name, args, ctx)
                 await self._emit(ctx, "agent_action_result", tool=tool_name, result=result)
                 if "error" not in result:
@@ -1606,11 +1633,9 @@ class Agent:
                             f"You MUST NOT call it again. Call done with the results you already have."
                         )})
                         continue
-                    _tool_call_limit = self._max_tool_calls.get(tool_name)
+                    _tool_cap_key, _tool_call_limit, _tool_total_attempts, _tool_success_count = _tool_limit_status(tool_name)
                     if _tool_call_limit is not None:
-                        _tool_total_attempts = _tool_attempt_counts.get(tool_name, 0)
                         if _tool_total_attempts >= _tool_call_limit:
-                            _tool_success_count = sum(1 for tn, _ in _tool_results if tn == tool_name)
                             messages.append({"role": "user", "content": (
                                 f"BLOCKED: {tool_name} has already been attempted {_tool_total_attempts} time(s) "
                                 f"({_tool_success_count} succeeded, limit={_tool_call_limit}). "
@@ -1619,7 +1644,7 @@ class Agent:
                             continue
                     await self._emit(ctx, "agent_action", action="tool", tool=tool_name, args=args, reasoning=reasoning)
                     _attempted_tools.add(tool_name)
-                    _tool_attempt_counts[tool_name] = _tool_attempt_counts.get(tool_name, 0) + 1
+                    _tool_attempt_counts[_tool_cap_key] = _tool_total_attempts + 1
                     result = await self._execute_tool(tool_name, args, ctx)
                     await self._emit(ctx, "agent_action_result", tool=tool_name, result=result)
                     if "error" not in result:
@@ -1657,11 +1682,9 @@ class Agent:
                         f"You MUST NOT call it again. Call done with the results you already have."
                     )})
                     continue
-                _tool_call_limit = self._max_tool_calls.get(tool_name)
+                _tool_cap_key, _tool_call_limit, _tool_total_attempts, _tool_success_count = _tool_limit_status(tool_name)
                 if _tool_call_limit is not None:
-                    _tool_total_attempts = _tool_attempt_counts.get(tool_name, 0)
                     if _tool_total_attempts >= _tool_call_limit:
-                        _tool_success_count = sum(1 for tn, _ in _tool_results if tn == tool_name)
                         messages.append({"role": "user", "content": (
                             f"BLOCKED: {tool_name} has already been attempted {_tool_total_attempts} time(s) "
                             f"({_tool_success_count} succeeded, limit={_tool_call_limit}). "
@@ -1670,7 +1693,7 @@ class Agent:
                         continue
                 await self._emit(ctx, "agent_action", action="tool", tool=tool_name, args=args, reasoning=reasoning)
                 _attempted_tools.add(tool_name)
-                _tool_attempt_counts[tool_name] = _tool_attempt_counts.get(tool_name, 0) + 1
+                _tool_attempt_counts[_tool_cap_key] = _tool_total_attempts + 1
                 result = await self._execute_tool(tool_name, args, ctx)
                 await self._emit(ctx, "agent_action_result", tool=tool_name, result=result)
                 if "error" not in result:

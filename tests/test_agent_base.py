@@ -117,6 +117,33 @@ async def test_agent_run_with_tool_call(mocker):
 
 
 @pytest.mark.asyncio
+async def test_agent_run_accepts_dict_reasoning_in_logs(mocker):
+    tool_call = json.dumps({
+        "action": "tool",
+        "tool": "stub_tool",
+        "args": {"topic": "NDA"},
+        "reasoning": {"step": "render", "why": "produce artifact"},
+    })
+    done_call = json.dumps({"tool": "done", "args": {"summary": "done", "output": {}}})
+
+    call_count = 0
+
+    def fake_llm(messages):
+        nonlocal call_count
+        call_count += 1
+        return tool_call if call_count == 1 else done_call
+
+    agent = Agent(name="dict_reasoning_guard", role="legal", tools={"stub_tool": lambda topic: {"topic": topic}})
+    agent._call_llm = fake_llm
+    mocker.patch("backend.core.events.publish", new=AsyncMock())
+
+    result = await agent.run(_ctx())
+
+    assert isinstance(result, dict)
+    assert call_count >= 2
+
+
+@pytest.mark.asyncio
 async def test_agent_run_native_tool_batch_emits_tool_role_messages(mocker):
     """A native-origin tool_batch (native:true + real ids, the shape _call_llm
     builds at agent.py:686-701 from a genuine tool_calls response) must produce
@@ -197,6 +224,60 @@ async def test_agent_run_prose_tool_batch_unchanged(mocker):
     assert not [m for m in captured_messages if m.get("role") == "tool"]
     user_blobs = [m for m in captured_messages if m.get("role") == "user" and "Tool result (" in str(m.get("content", ""))]
     assert len(user_blobs) == 1
+
+
+@pytest.mark.asyncio
+async def test_native_tool_batch_respects_shared_cap_aliases(mocker):
+    first_batch = json.dumps({
+        "action": "tool_batch",
+        "native": True,
+        "calls": [{"id": "call_1", "tool": "sonar_research", "args": {"queries": ["market map"]}}],
+    })
+    second_batch = json.dumps({
+        "action": "tool_batch",
+        "native": True,
+        "calls": [{"id": "call_2", "tool": "deep_research", "args": {"queries": ["customer pain"]}}],
+    })
+    done_call = json.dumps({"tool": "done", "args": {"summary": "done", "output": {}}})
+
+    call_count = 0
+    captured_messages = None
+    executed_tools = []
+
+    def fake_llm(messages):
+        nonlocal call_count, captured_messages
+        call_count += 1
+        if call_count == 3:
+            captured_messages = list(messages)
+        if call_count == 1:
+            return first_batch
+        if call_count == 2:
+            return second_batch
+        return done_call
+
+    def fake_deep_research(queries):
+        executed_tools.append(list(queries))
+        return {"queries": list(queries), "sources": ["stub"]}
+
+    agent = Agent(
+        name="research_customers",
+        role="research",
+        tools={
+            "deep_research": fake_deep_research,
+            "sonar_research": fake_deep_research,
+        },
+        max_tool_calls={"deep_research": 1},
+    )
+    agent._call_llm = fake_llm
+    mocker.patch("backend.core.events.publish", new=AsyncMock())
+
+    result = await agent.run(_ctx(goal="Investigate ICP"))
+
+    assert isinstance(result, dict)
+    assert executed_tools == [["market map"]]
+    assert captured_messages is not None
+    tool_msgs = [m for m in captured_messages if m.get("role") == "tool"]
+    assert any(m.get("tool_call_id") == "call_2" and "BLOCKED: deep_research has already been attempted 1 time(s)" in str(m.get("content", "")) for m in tool_msgs)
 
 
 @pytest.mark.asyncio

@@ -758,7 +758,7 @@ def generate_landing_page_html(
 {props_text} -->
 <section id="bento"></section>
 
-<!-- SECTION stats: 4 large animated counters (JS IntersectionObserver, counts from 0 on scroll). Pick 4 impressive numbers for {name}. -->
+<!-- SECTION stats: 4 large animated counters (JS IntersectionObserver, counts from 0 on scroll). Use only real numbers from the brief or omit the section entirely. -->
 <section id="stats"></section>
 
 <!-- SECTION how: 3 steps numbered 01/02/03, each with icon + title + 2-sentence description of how {name} works -->
@@ -767,7 +767,7 @@ def generate_landing_page_html(
 <!-- SECTION features: detailed alternating-layout cards (text-left/image-right, then text-right/image-left) for each capability above -->
 <section id="features"></section>
 
-<!-- SECTION testimonials: 3 cards with long quote, avatar initial circle, full name, job title, company -->
+<!-- SECTION testimonials: 3 cards only if real customer evidence exists; otherwise replace with a neutral proof/benefits section and never invent quotes, names, or companies. -->
 <section id="testimonials"></section>
 
 <!-- SECTION pricing: 3 tiers — Starter/Pro/Business. Monthly price, 5-item checklist, CTA button. Pro = most popular badge. -->
@@ -890,8 +890,8 @@ Output ONLY the completed HTML — no explanation, no markdown fences.
                 "- Strengthen hover states on buttons and cards\n"
                 "- Tighten spacing rhythm — ensure consistent 8px-grid margins/padding\n"
                 "- Add a subtle gradient or texture to hero background for depth\n"
-                "- Ensure all 13 sections have real content (hero, proof, philosophy, bento, stats, how, features, testimonials, pricing, timeline, faq, waitlist, footer)\n"
-                "- Any section that is sparse or empty — fill it with specific product copy\n\n"
+                "- Ensure all required sections have real content. If stats or testimonials are not supported by real evidence, replace them with honest proof, product detail, or a neutral alternative rather than inventing data.\n"
+                "- Any section that is sparse or empty — fill it with specific product copy or remove it if it cannot be supported honestly.\n\n"
                 "Keep the same aesthetic. Make it feel more polished, not different.\n"
                 "Output ONLY the complete improved HTML — no explanation, no markdown fences.\n\n"
                 + body

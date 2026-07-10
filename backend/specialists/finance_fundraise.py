@@ -120,7 +120,7 @@ def build_finance_fundraise_agent(**kwargs) -> Agent:
     """Build the finance_fundraise specialist agent.
 
     Prepares a complete fundraising package: raise amount and instrument recommendation,
-    SAFE terms summary, curated target investor list (10-15 VCs/angels found via web search),
+    SAFE terms summary, curated target investor list (8-12 VCs/angels found via web search),
     pitch narrative (problem/solution/market/traction/ask), and investor outreach one-pager PDF.
     """
     agent_name = "finance_fundraise"

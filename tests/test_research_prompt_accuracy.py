@@ -26,3 +26,23 @@ def test_focus_roles_still_instruct_deep_research_escalation_after_pipeline():
     assert "deep_research handles content fetching internally" not in competitors_role
     assert "deep_research(" in competitors_role
     assert "coverage gaps" in competitors_role
+
+
+def test_research_focus_role_is_market_only_while_sibling_roles_stay_scoped():
+    market_role = research._FOCUS_ROLES["research"]
+    competitors_role = research._FOCUS_ROLES["research_competitors"]
+    customers_role = research._FOCUS_ROLES["research_customers"]
+    gtm_role = research._FOCUS_ROLES["research_gtm"]
+
+    assert "MARKET" in market_role
+    assert "TAM/SAM/SOM" in market_role
+    assert "COMPETITORS (named companies" not in market_role
+    assert "CUSTOMERS (ICP" not in market_role
+    assert "GTM (acquisition channels" not in market_role
+
+    assert "COMPETITOR INTELLIGENCE" in competitors_role
+    assert "named companies, pricing, features, weaknesses" in competitors_role
+    assert "CUSTOMER & ICP INTELLIGENCE" in customers_role
+    assert "buyer demographics, job-to-be-done, willingness to pay" in customers_role
+    assert "GO-TO-MARKET & DISTRIBUTION INTELLIGENCE" in gtm_role
+    assert "how competitors acquire customers, CAC benchmarks" in gtm_role

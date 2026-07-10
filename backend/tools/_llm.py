@@ -25,7 +25,7 @@ _INSTRUCT_MODEL = settings.or_highoutput_model  # deepseek/deepseek-v4-flash
 _NEMOTRON_MODEL = settings.or_highoutput_model  # deepseek/deepseek-v4-flash
 _PROMPT_MODEL = settings.or_light_model         # xiaomi/mimo-v2.5
 _OR_BASE = settings.openrouter_base_url
-_GEMINI_IMAGE_MODEL = "google/gemini-2.5-flash-image"
+_GEMINI_IMAGE_MODEL = "google/gemini-3.1-flash-image"
 
 
 def _or_api_key() -> str:

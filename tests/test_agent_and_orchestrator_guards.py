@@ -102,6 +102,37 @@ async def test_sales_agent_done_blocked_until_crm_tool_called(mocker):
 
 
 @pytest.mark.asyncio
+async def test_research_competitors_done_requires_pipeline_and_deep_research_not_web_search(mocker):
+    calls = {"llm": 0}
+
+    def fake_llm(_messages, _ctx=None):
+        calls["llm"] += 1
+        if calls["llm"] == 1:
+            return json.dumps({"action": "tool", "tool": "run_research_pipeline", "args": {"topic": "AtlasHaven", "focus": "competitors"}})
+        if calls["llm"] == 2:
+            return json.dumps({"action": "done", "output": {"summary": "premature"}})
+        if calls["llm"] == 3:
+            return json.dumps({"action": "tool", "tool": "deep_research", "args": {"queries": ["AtlasHaven competitor pricing 2026"]}})
+        return json.dumps({"action": "done", "output": {"summary": "done", "findings": ["Named competitors"], "sources": ["https://example.com"]}})
+
+    agent = Agent(
+        name="research_competitors",
+        role="research competitors",
+        tools={
+            "run_research_pipeline": lambda **_kwargs: {"coverage": {"ready": False}, "sources": [{"url": "https://example.com/a"}]},
+            "deep_research": lambda **_kwargs: {"sources": [{"url": "https://example.com/b"}], "combined_formatted": "Named competitors"},
+        },
+    )
+    agent._call_llm = fake_llm
+    mocker.patch("backend.core.events.publish", new=AsyncMock())
+
+    result = await agent.run(AgentContext(goal="g", founder_id="f", session_id="s", shared={}))
+
+    assert result.get("summary") == "done"
+    assert calls["llm"] >= 4
+
+
+@pytest.mark.asyncio
 async def test_design_agent_done_blocked_until_logo_brief_tool_called(mocker):
     calls = {"llm": 0}
 

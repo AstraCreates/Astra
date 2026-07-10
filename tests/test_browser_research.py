@@ -30,6 +30,24 @@ def test_search_and_fetch_still_requires_query_or_url():
     assert "error" in result
 
 
+def test_search_and_fetch_list_query_routes_to_batch_search(monkeypatch):
+    calls = []
+
+    def fake_batch_search(queries, max_results_each):
+        calls.append((list(queries), max_results_each))
+        return {"queries_run": len(queries), "results_by_query": {}, "sources": [], "combined_formatted": ""}
+
+    monkeypatch.setattr(browser_research, "batch_search", fake_batch_search)
+
+    result = browser_research.search_and_fetch(
+        query=[" competitor pricing SaaS ", "competitor pricing saas", "gtm channels for saas consultancy"],
+        max_results=6,
+    )
+
+    assert calls == [(["competitor pricing SaaS", "gtm channels for saas consultancy"], 6)]
+    assert result["queries_run"] == 2
+
+
 def test_batch_search_aggregates_unique_sources(monkeypatch):
     def fake_search_and_fetch(query, max_results):
         return {
@@ -98,6 +116,61 @@ def test_normalize_url_and_query_coerce_dict_inputs():
     assert browser_research._canonicalize_search_query({"query": "AI sales copilot pricing"}) == "AI sales copilot pricing"
 
 
+def test_canonicalize_search_query_compacts_natural_language_prompts():
+    query = (
+        "Identify the ICP for Goon: who are the real buyers (job titles, company size, stage, geography) "
+        "for a collaborative project management platform for remote product teams at early-stage startups "
+        "and small tech agencies"
+    )
+
+    normalized = browser_research._canonicalize_search_query(query)
+
+    assert normalized.startswith("the real buyers")
+    assert len(normalized) <= 180
+    assert "(" not in normalized
+
+
+def test_compact_research_evidence_prefers_late_relevant_numeric_sections():
+    content = (
+        ("Intro filler about generic collaboration workflows without specifics. " * 50)
+        + "\n\n2025 pricing benchmark: enterprise plans start at $499/month with 18% YoY growth and 12% market share.\n\n"
+        + ("Closing filler about team rituals and documentation habits. " * 30)
+    )
+
+    compacted = browser_research._compact_research_evidence(
+        content,
+        "enterprise pricing benchmark market share growth",
+        max_chars=500,
+    )
+
+    assert "enterprise plans start at $499/month" in compacted
+    assert "12% market share" in compacted
+    assert len(compacted) <= 500
+
+
+def test_search_and_fetch_formats_relevant_slice_not_just_prefix(monkeypatch):
+    filler = "Intro filler about general software collaboration practices. " * 80
+    late_signal = (
+        "2025 TAM estimate is $3.2B, CAGR is 18%, and benchmark pricing lands at $299 per seat annually."
+    )
+
+    monkeypatch.setattr(
+        browser_research,
+        "_robust_search",
+        lambda query, max_results: [{"href": "https://example.com/report", "title": "Report", "body": "Snippet"}],
+    )
+    monkeypatch.setattr(
+        browser_research,
+        "fetch_and_read",
+        lambda url: {"url": url, "title": "Report", "content": filler + late_signal},
+    )
+
+    result = browser_research.search_and_fetch("pricing benchmark TAM CAGR", max_results=3)
+
+    assert late_signal in result["formatted"]
+    assert "Intro filler" not in result["formatted"]
+
+
 def test_sonar_research_tolerates_dict_shaped_followup_queries(monkeypatch):
     calls = []
 
@@ -129,7 +202,9 @@ def test_sonar_research_tolerates_dict_shaped_followup_queries(monkeypatch):
             "directions": [],
             "summary": "Round two findings",
         },
-        {"answer": "Answer one", "support": ["a"]},
+        {"answers": [
+            {"query": "AI sales copilot market size", "answer": "Answer one", "support": ["a"]},
+        ]},
     ])
 
     def fake_research_llm_json(prompt, max_tokens=900):
@@ -143,6 +218,55 @@ def test_sonar_research_tolerates_dict_shaped_followup_queries(monkeypatch):
     assert calls[0] == ["AI sales copilot market size"]
     assert result["queries_run"] == 1
     assert result["results_by_query"]["AI sales copilot market size"]["answer"] == "Answer one"
+
+
+def test_deep_research_uses_single_round_for_large_long_query_sets(monkeypatch):
+    batch_calls = []
+
+    def fake_batch_search(queries, max_results_each):
+        batch_calls.append((list(queries), max_results_each))
+        return {
+            "queries_run": len(queries),
+            "results_by_query": {
+                query: {
+                    "total": 1,
+                    "formatted": f"Query: {query}",
+                    "sources": [{"title": query, "url": f"https://example.com/{idx}"}],
+                }
+                for idx, query in enumerate(queries)
+            },
+            "sources": [{"title": "Shared", "url": "https://example.com/shared"}],
+            "combined_formatted": "\n".join(queries),
+        }
+
+    llm_outputs = iter([
+        {"learnings": ["Initial finding"], "directions": ["unused follow-up"], "summary": "Round one"},
+        {"answers": [
+            {"query": query, "answer": "Answer", "support": ["evidence"]}
+            for query in [
+                f"Identify the pricing benchmark for collaborative PM tools query {i}: collaborative PM pricing benchmark query {i} "
+                f"for remote product teams at startups and agencies with examples and context"
+                for i in range(6)
+            ]
+        ]},
+    ])
+
+    def fake_research_llm_json(prompt, max_tokens=900):
+        return next(llm_outputs)
+
+    monkeypatch.setattr(browser_research, "_crw_batch_search", fake_batch_search)
+    monkeypatch.setattr(browser_research, "_research_llm_json", fake_research_llm_json)
+
+    queries = [
+        f"Identify the pricing benchmark for collaborative PM tools query {i}: collaborative PM pricing benchmark query {i} "
+        f"for remote product teams at startups and agencies with examples and context"
+        for i in range(6)
+    ]
+    result = browser_research.deep_research(queries)
+
+    assert len(batch_calls) == 1
+    assert batch_calls[0][1] == 5
+    assert result["queries_run"] == 6
 
 
 def test_build_research_queries_market_focus():
@@ -255,8 +379,10 @@ def test_sonar_research_preserves_contract_with_recursive_synthesis(monkeypatch)
             "directions": [],
             "summary": "Round two findings",
         },
-        {"answer": "Answer one", "support": ["a"]},
-        {"answer": "Answer two", "support": ["b"]},
+        {"answers": [
+            {"query": "AI sales copilot market size", "answer": "Answer one", "support": ["a"]},
+            {"query": "AI sales copilot competitor pricing", "answer": "Answer two", "support": ["b"]},
+        ]},
     ])
 
     def fake_research_llm_json(prompt, max_tokens=900):
