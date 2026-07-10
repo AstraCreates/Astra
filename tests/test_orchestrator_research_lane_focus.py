@@ -31,7 +31,7 @@ async def test_orchestrator_adds_lane_specific_focus_to_initial_research_tasks(m
         specialists={
             "research": _FakeAgent("research", [{"summary": "researched"}]),
             "research_competitors": _FakeAgent("research_competitors", [{"summary": "competitors"}]),
-            "research_execution": _FakeAgent("research_execution", [{"summary": "execution"}]),
+            "research_gtm": _FakeAgent("research_gtm", [{"summary": "gtm"}]),
             "web": _FakeAgent("web", [{"url": "https://example.com"}]),
         },
     )
@@ -55,7 +55,7 @@ async def test_orchestrator_adds_lane_specific_focus_to_initial_research_tasks(m
     first_plan = next(event for event in published if event.get("type") == "plan_done")
     tasks_by_agent = {task["agent"]: task for task in first_plan.get("tasks", [])}
     assert "named competitors only" in tasks_by_agent["research_competitors"]["instruction"]
-    assert "execution strategy only" in tasks_by_agent["research_execution"]["instruction"]
+    assert "go-to-market and distribution only" in tasks_by_agent["research_gtm"]["instruction"]
 
 
 def test_candidate_research_agents_keep_parallel_openrouter_default_even_if_local_endpoint_exists(monkeypatch):
