@@ -257,7 +257,19 @@ def _normalize_toolish_payload(parsed: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         return parsed
 
-    if parsed.get("action") is not None:
+    # Real production bug: this guard used to bail whenever `action` was already
+    # set, on the assumption a present action means the payload is already
+    # well-formed. But the model can correctly say {"action":"tool", ...} while
+    # STILL nesting the actual call as an OpenAI-style {"name":...,"args":...}
+    # object under "tool" instead of flat tool/args fields — e.g.
+    # {"action":"tool","tool":{"name":"run_research_pipeline","args":{...}}}.
+    # Bailing here left that nested dict completely unnormalized; it later got
+    # json.dumps()'d wholesale into the tool selector by _coerce_model_selector,
+    # producing "Unknown tool '{"args":...,"name":...}'" on every single call —
+    # confirmed live in production (research lanes stuck at max_iterations_reached,
+    # zero real tool calls succeeding). Only skip normalization when there's
+    # nothing dict-shaped left to unwrap.
+    if parsed.get("action") is not None and not isinstance(parsed.get("tool"), dict):
         return parsed
 
     def _coerce_args(value: Any) -> dict[str, Any]:

@@ -37,6 +37,32 @@ def test_normalizes_nested_function_arguments_without_stringifying_payload():
     assert parsed["args"] == {"queries": ["Acme competitors"]}
 
 
+def test_normalizes_nested_tool_dict_even_when_action_already_present():
+    """Real production bug, confirmed live: the model can correctly emit
+    {"action":"tool", ...} while STILL nesting the actual call as an
+    OpenAI-style {"name":...,"args":...} object under "tool" instead of flat
+    tool/args fields. The old guard (`if action is not None: return parsed`)
+    bailed before unwrapping whenever action was already set, leaving the
+    nested dict to get json.dumps()'d wholesale into the tool selector by
+    _coerce_model_selector — every single call then failed with
+    "Unknown tool '{"args":...,"name":...}'"  (observed: every research lane
+    stuck at max_iterations_reached, zero real tool calls succeeding)."""
+    parsed = _normalize_toolish_payload({
+        "action": "tool",
+        "tool": {"name": "run_research_pipeline", "args": {"focus": "gtm", "topic": "Acme"}},
+    })
+    assert parsed["action"] == "tool"
+    assert parsed["tool"] == "run_research_pipeline"
+    assert parsed["args"] == {"focus": "gtm", "topic": "Acme"}
+
+
+def test_well_formed_tool_call_with_action_passes_through_untouched():
+    parsed = _normalize_toolish_payload({
+        "action": "tool", "tool": "run_research_pipeline", "args": {"x": 1},
+    })
+    assert parsed == {"action": "tool", "tool": "run_research_pipeline", "args": {"x": 1}}
+
+
 @pytest.mark.asyncio
 async def test_agent_uses_one_shot_repair_for_unknown_tool_without_retry_loop(mocker):
     responses = iter([
