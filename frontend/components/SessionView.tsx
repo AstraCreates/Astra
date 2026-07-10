@@ -2050,7 +2050,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
       {/* copilot chat bar */}
       <div data-tour="session-steerbar" className={`steerbar copilot-dock ${copilotOpen ? "is-open" : ""}`}>
-        <div style={{ padding: copilotOpen ? "0 0 10px" : "0 0 8px" }}>
+        <div style={{ padding: copilotOpen ? "16px 20px 10px" : "14px 20px 8px" }}>
           <div style={{ fontSize: 10.5, color: "var(--fg)", fontWeight: 600, marginBottom: 3 }}>Continue with Astra</div>
           <div style={{ fontSize: 9.5, color: "var(--fm)", lineHeight: 1.5 }}>Type a follow-up, ask a question, or redirect the work. Astra will handle the next step from here.</div>
         </div>

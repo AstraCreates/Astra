@@ -528,18 +528,18 @@ a { transition: color .15s, background .15s, border-color .15s, opacity .15s, bo
   display: flex;
   flex-direction: column;
   gap: 14px;
-  max-height: 320px;
+  max-height: 58vh;
   overflow-y: auto;
   padding: 20px 20px 18px;
   border-bottom: 1px solid var(--bd);
 }
 .copilot-empty {
   max-width: 640px;
-  margin: 8px auto;
+  margin: 8px 0;
   color: var(--fm);
   font-size: 12px;
   line-height: 1.65;
-  text-align: center;
+  text-align: left;
 }
 .copilot-row {
   display: flex;
