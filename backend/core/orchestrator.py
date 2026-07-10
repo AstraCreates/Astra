@@ -11,6 +11,7 @@ import uuid
 from typing import Any
 
 from backend.core.agent import Agent, AgentContext
+from backend.core.cancellation import is_agent_killed
 from backend.core.context_policy import RunContextPolicy
 from backend.core.llm_cache import cacheable_messages, openrouter_extra_body
 
@@ -2196,11 +2197,13 @@ class Orchestrator:
                     if not _notes:
                         continue
                     completed.pop(_rt["id"], None)
+                    _agent_stopped = is_agent_killed(session_id, _rt["agent"])
                     _rt["instruction"] = (_rt.get("instruction") or "") + (
                         "\n\n[Automatic revision request before founder approval]: "
                         + " ".join(dict.fromkeys(_notes))
                     )
-                    remaining.append(_rt)
+                    if not _agent_stopped:
+                        remaining.append(_rt)
                     await publish(session_id, {
                         "type": "stack_lane_status",
                         "lane_id": _rt["id"],
@@ -2211,7 +2214,7 @@ class Orchestrator:
                         "title": stack_lane_by_agent.get(_rt["agent"], {}).get("title") or _rt.get("stack_task_title") or _rt["agent"],
                         "summary": "Astra blocked phase approval because verification or output quality was incomplete.",
                         "ready_artifacts": _rt.get("expected_artifacts", []),
-                        "next_actor": "agent_revision",
+                        "next_actor": "founder" if _agent_stopped else "agent_revision",
                         "blockers": list(dict.fromkeys(_notes)),
                     })
                 return False
