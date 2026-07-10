@@ -77,6 +77,11 @@ def get_orchestrator() -> Orchestrator:
             model_base_url=_or_base,
             model_api_key=_or_key,
         ), **_sh}
+        _tool_heavy_kwargs = {**dict(
+            model=settings.tool_heavy_agent_model,
+            model_base_url=_or_base,
+            model_api_key=_or_key,
+        ), **_sh}
         _small_kwargs = {**dict(
             model=settings.or_light_model,
             model_base_url=_or_base,
@@ -100,8 +105,9 @@ def get_orchestrator() -> Orchestrator:
             "research_market": build_research_market_agent(use_computer=True, **_small_kwargs),
             "research_financial": build_research_financial_agent(use_computer=True, **_small_kwargs),
             "research_regulatory": build_research_regulatory_agent(use_computer=True, **_small_kwargs),
-            # Web — hy3-preview (best tool calling for deploy/HTML gen)
-            "web": build_web_agent(use_computer=True, **{**_coder_kwargs, "model": settings.web_agent_model}),
+            # Web / ops / tool-heavy marketing lanes — stronger tool calling,
+            # but intentionally scoped because GPT OSS is much pricier than Ling.
+            "web": build_web_agent(use_computer=True, **_tool_heavy_kwargs),
             # Technical wrapper — cheap router/logger; run_mvp_loop owns the heavy coding model.
             "technical": build_technical_agent(use_computer=False, **_technical_kwargs),
             "technical_scaffold": build_technical_scaffold_agent(use_computer=True, **_highoutput_kwargs),
@@ -112,7 +118,7 @@ def get_orchestrator() -> Orchestrator:
             # spawned endless follow-up runs. mimo completes its tool workflow reliably.
             "marketing": build_marketing_agent(use_computer=True, **_small_kwargs),
             "legal": build_legal_agent(use_computer=True, **_highoutput_kwargs),
-            "ops": build_ops_agent(use_computer=True, **_coder_kwargs),
+            "ops": build_ops_agent(use_computer=True, **_tool_heavy_kwargs),
             # Design — mimo-v2.5 (fast, clean tool calls). It works through tools
             # (brand board, wireframe, logo brief), so it doesn't need a heavy reasoning
             # model; hy3-preview here ran 20+ min per stuck iteration ("design took ages").
@@ -121,9 +127,9 @@ def get_orchestrator() -> Orchestrator:
             "legal_entity": build_legal_entity_agent(use_computer=True, **_highoutput_kwargs),
             "legal_ip": build_legal_ip_agent(use_computer=True, **_highoutput_kwargs),
             "marketing_content": build_marketing_content_agent(use_computer=True, **_highoutput_kwargs),
-            "marketing_outreach": build_marketing_outreach_agent(use_computer=True, **_small_kwargs),
-            "marketing_seo": build_marketing_seo_agent(use_computer=True, max_tool_calls={"search_and_fetch": 3, "web_search": 5}, **_highoutput_kwargs),
-            "marketing_paid": build_marketing_paid_agent(use_computer=True, max_tool_calls={"search_and_fetch": 4, "web_search": 6}, **_highoutput_kwargs),
+            "marketing_outreach": build_marketing_outreach_agent(use_computer=True, **_tool_heavy_kwargs),
+            "marketing_seo": build_marketing_seo_agent(use_computer=True, max_tool_calls={"search_and_fetch": 3, "web_search": 5}, **_tool_heavy_kwargs),
+            "marketing_paid": build_marketing_paid_agent(use_computer=True, max_tool_calls={"search_and_fetch": 4, "web_search": 6}, **_tool_heavy_kwargs),
             "sales_enablement": build_sales_enablement_agent(use_computer=False, **_highoutput_kwargs),
             "finance_model": build_finance_model_agent(use_computer=True, **_highoutput_kwargs),
             "finance_fundraise": build_finance_fundraise_agent(use_computer=True, **_highoutput_kwargs),
@@ -132,7 +138,7 @@ def get_orchestrator() -> Orchestrator:
             "sales_pipeline": build_sales_pipeline_agent(use_computer=False, **_small_kwargs),
             # Web Navigator — vision-driven autonomous browser agent
             # Uses Gemini Flash vision via OpenRouter for screenshot → action loop
-            "web_navigator": build_web_navigator_agent(use_computer=True, **_highoutput_kwargs),
+            "web_navigator": build_web_navigator_agent(use_computer=True, **_tool_heavy_kwargs),
         }
         from backend.tools.company_brain import (
             add_company_brain_record,

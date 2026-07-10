@@ -239,6 +239,57 @@ def _coerce_model_selector(value: Any) -> Optional[str]:
         return str(value)
 
 
+def _normalize_toolish_payload(parsed: dict[str, Any]) -> dict[str, Any]:
+    """Normalize common tool-call-only payloads into the agent's canonical
+    {"action":"tool","tool":"...","args":{...}} shape.
+
+    Some providers/models return bare OpenAI-style function objects like
+    {"name":"build_research_queries","arguments":{...}} or nest that shape
+    under `tool` / `function`. If we don't normalize early, later generic
+    handling can stringify the whole dict into the tool selector and produce
+    "Unknown tool '{"arguments": ...}'" style failures."""
+    if not isinstance(parsed, dict):
+        return parsed
+
+    if parsed.get("action") is not None:
+        return parsed
+
+    tool_payload = parsed.get("tool")
+    if isinstance(tool_payload, dict):
+        name = tool_payload.get("tool") or tool_payload.get("name")
+        args = (
+            tool_payload.get("args")
+            or tool_payload.get("arguments")
+            or tool_payload.get("parameters")
+            or tool_payload.get("input")
+            or {}
+        )
+        out = dict(parsed)
+        out["action"] = "tool"
+        out["tool"] = name
+        out["args"] = args
+        return out
+
+    function_payload = parsed.get("function")
+    if isinstance(function_payload, dict):
+        name = function_payload.get("name")
+        args = function_payload.get("arguments") or function_payload.get("args") or {}
+        out = dict(parsed)
+        out["action"] = "tool"
+        out["tool"] = name
+        out["args"] = args
+        return out
+
+    if "name" in parsed and any(key in parsed for key in ("arguments", "args", "parameters", "input")):
+        out = dict(parsed)
+        out["action"] = "tool"
+        out["tool"] = parsed.get("name")
+        out["args"] = parsed.get("args") or parsed.get("arguments") or parsed.get("parameters") or parsed.get("input") or {}
+        return out
+
+    return parsed
+
+
 # Aliases for tool names models commonly hallucinate → the real registered tool.
 _TOOL_ALIASES = {
     "obsidian_write": "obsidian_log",
@@ -1288,6 +1339,7 @@ class Agent:
                     messages.append({"role": "user", "content": 'Respond with valid JSON only. Example: {"action":"done","result":{}} or {"action":"tool_call","tool":"batch_search","args":{"queries":["..."]}}. No prose.'})
                     continue
 
+            parsed = _normalize_toolish_payload(parsed)
             action = _coerce_model_selector(parsed.get("action"))
             tool_field = _coerce_model_selector(parsed.get("tool"))
             if tool_field == "done" and action in (None, "tool"):

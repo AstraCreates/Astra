@@ -144,6 +144,58 @@ async def test_agent_run_accepts_dict_reasoning_in_logs(mocker):
 
 
 @pytest.mark.asyncio
+async def test_agent_run_normalizes_openai_style_name_arguments_tool_call(mocker):
+    tool_call = json.dumps({
+        "name": "stub_tool",
+        "arguments": {"topic": "NDA"},
+    })
+    done_call = json.dumps({"tool": "done", "args": {"summary": "done", "output": {}}})
+
+    call_count = 0
+
+    def fake_llm(messages):
+        nonlocal call_count
+        call_count += 1
+        return tool_call if call_count == 1 else done_call
+
+    agent = Agent(name="name_arguments_guard", role="legal", tools={"stub_tool": lambda topic: {"topic": topic}})
+    agent._call_llm = fake_llm
+    mocker.patch("backend.core.events.publish", new=AsyncMock())
+
+    result = await agent.run(_ctx())
+
+    assert isinstance(result, dict)
+    assert call_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_agent_run_normalizes_dict_tool_field_payload(mocker):
+    tool_call = json.dumps({
+        "tool": {
+            "name": "stub_tool",
+            "arguments": {"topic": "NDA"},
+        }
+    })
+    done_call = json.dumps({"tool": "done", "args": {"summary": "done", "output": {}}})
+
+    call_count = 0
+
+    def fake_llm(messages):
+        nonlocal call_count
+        call_count += 1
+        return tool_call if call_count == 1 else done_call
+
+    agent = Agent(name="dict_tool_guard", role="legal", tools={"stub_tool": lambda topic: {"topic": topic}})
+    agent._call_llm = fake_llm
+    mocker.patch("backend.core.events.publish", new=AsyncMock())
+
+    result = await agent.run(_ctx())
+
+    assert isinstance(result, dict)
+    assert call_count >= 2
+
+
+@pytest.mark.asyncio
 async def test_agent_run_native_tool_batch_emits_tool_role_messages(mocker):
     """A native-origin tool_batch (native:true + real ids, the shape _call_llm
     builds at agent.py:686-701 from a genuine tool_calls response) must produce

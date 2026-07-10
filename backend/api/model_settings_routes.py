@@ -27,6 +27,7 @@ AVAILABLE_MODELS: list[str] = [
     "deepseek/deepseek-v4-pro",
     "deepseek/deepseek-v4-flash",
     "inclusionai/ling-2.6-flash",
+    "openai/gpt-oss-120b",
     "tencent/hy3-preview",
     "xiaomi/mimo-v2.5",
     "xiaomi/mimo-v2.5-pro",

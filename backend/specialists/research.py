@@ -237,7 +237,8 @@ _FOCUS_ROLES = {
         "   Covers: Reddit/forum complaints, App Store/G2 reviews, pain signals, "
         "buyer demographics, job-to-be-done, willingness to pay, churn reasons, buying triggers.\n"
         "2. tiktok_research and youtube_research for consumer sentiment and creator commentary.\n"
-        "3. Use fetch_and_read only for specific high-signal community pages deep_research did not cover.\n\n"
+        "3. Stay within the lane tools: use deep_research, build_research_queries, and optional video research only. "
+        "If evidence is still thin after that pass, log the uncertainty instead of reaching for unavailable raw-fetch tools.\n\n"
         "obsidian_log with: ICP PROFILE (demographics, job title, company size), TOP PAIN POINTS (quoted), "
         "BUYING TRIGGERS, WILLINGNESS TO PAY, CHURN REASONS, SOURCES."
         + _DONE_CUSTOMERS
@@ -249,7 +250,8 @@ _FOCUS_ROLES = {
         "   Covers: how competitors acquire customers, CAC benchmarks, successful launch channels (PH, HN, Reddit, "
         "cold email, SEO, paid), pricing page patterns, freemium vs trial vs direct-sales split.\n"
         "2. news_search for recent launches and growth stories in this space.\n"
-        "3. Use fetch_and_read only for specific competitor growth pages deep_research did not cover.\n\n"
+        "3. Stay within the lane tools: use build_research_queries, deep_research, and news_search. "
+        "If evidence remains thin, log the gap explicitly instead of reaching for unavailable raw-fetch tools.\n\n"
         "obsidian_log with: CHANNEL MAP (channel, fit, cost, speed), PRICING MODEL PATTERNS, "
         "LAUNCH PLAYBOOK (what worked for others), CAC BENCHMARKS, SOURCES."
         + _DONE_GTM

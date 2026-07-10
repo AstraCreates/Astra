@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     technical_agent_max_iterations: int = 30
     # Web agent wrapper model (drives its tool calls: repo create, run_mvp_loop).
     web_agent_model: str = "deepseek/deepseek-v4-flash"
+    # Use a stronger native tool-calling model only for the small set of agents
+    # that orchestrate many heterogeneous tools / side effects. Keep this
+    # separate from the cheaper default light lane because gpt-oss-120b is
+    # materially more expensive than Ling/Flash and should stay narrowly scoped.
+    tool_heavy_agent_model: str = "openai/gpt-oss-120b"
     mvp_max_completion_rounds: int = 1
     # Compiler-as-critic recovery: re-run `npm run build`, feed real errors to the
     # coder, re-verify — up to this many rounds before giving up.
