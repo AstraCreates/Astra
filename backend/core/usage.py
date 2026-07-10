@@ -39,6 +39,7 @@ _DEFAULT_PRICING = (0.10, 0.30, 0.02)
 _store: dict[str, dict[str, dict[str, int]]] = defaultdict(
     lambda: defaultdict(lambda: {"prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0, "calls": 0})
 )
+_reserved_tokens: dict[str, int] = defaultdict(int)
 _lock = threading.Lock()
 
 
@@ -49,6 +50,38 @@ def record_usage(session_id: str, model: str, prompt_tokens: int, completion_tok
         entry["completion_tokens"] += completion_tokens
         entry["cached_tokens"] += cached_tokens
         entry["calls"] += 1
+
+
+def reserve_session_tokens(session_id: str, estimated_tokens: int, max_tokens: int) -> bool:
+    """Atomically reserve capacity before an LLM call starts.
+
+    The reservation closes the concurrency gap where four agents can all observe
+    the same below-limit total and launch large calls together. Actual usage is
+    still recorded from the provider response; callers release the estimate when
+    the request finishes.
+    """
+    if max_tokens <= 0:
+        return True
+    estimate = max(1, int(estimated_tokens))
+    with _lock:
+        used = sum(
+            entry["prompt_tokens"] + entry["completion_tokens"]
+            for entry in _store.get(session_id, {}).values()
+        )
+        if used + _reserved_tokens[session_id] + estimate > max_tokens:
+            return False
+        _reserved_tokens[session_id] += estimate
+        return True
+
+
+def release_session_tokens(session_id: str, estimated_tokens: int) -> None:
+    estimate = max(1, int(estimated_tokens))
+    with _lock:
+        remaining = _reserved_tokens.get(session_id, 0) - estimate
+        if remaining > 0:
+            _reserved_tokens[session_id] = remaining
+        else:
+            _reserved_tokens.pop(session_id, None)
 
 
 def _cost_usd(model: str, prompt_tokens: int, completion_tokens: int, cached_tokens: int = 0) -> float:

@@ -1,5 +1,6 @@
 import json
 
+from backend.core.agent import _render_shared_context
 from backend.core.context_policy import RunContextPolicy, compact_agent_result
 
 
@@ -137,3 +138,37 @@ def test_build_agent_shared_compacts_dep_results_per_dependency(tmp_path, monkey
     raw_size = len(json.dumps(dep_results))
     compact_size = len(json.dumps(prior))
     assert compact_size < raw_size * 0.05
+
+
+def test_research_context_excludes_execution_payloads(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(tmp_path))
+    policy = RunContextPolicy(session_id="research_session", founder_id="", constraints={})
+    base_shared = {
+        "constraints": {"research_depth": "deep"},
+        "company_id": "company_1",
+        "company_name": "Goon",
+        "company_brain_context": "Known pricing and target customer facts.",
+        "stack_template": {"raw": "t" * 10_000},
+        "stack_manifest": {"raw": "m" * 80_000},
+        "stack_operating_plan": {"raw": "o" * 60_000},
+        "stack_execution_blueprint": {"raw": "b" * 40_000},
+        "approval_queue": [{"raw": "a" * 5_000}],
+    }
+
+    shared = policy.build_agent_shared(
+        base_shared=base_shared,
+        agent_name="research_competitors",
+        task={"id": "r1", "instruction": "Research competing AI model gateways."},
+        dep_results={},
+    )
+
+    assert shared["company_name"] == "Goon"
+    assert shared["constraints"]["research_depth"] == "deep"
+    assert "company_brain_context" in shared
+    assert "stack_manifest" not in shared
+    assert "stack_operating_plan" not in shared
+    assert "stack_execution_blueprint" not in shared
+    assert "stack_template" not in shared
+    assert "approval_queue" not in shared
+    assert len(_render_shared_context(shared)) < 15_000

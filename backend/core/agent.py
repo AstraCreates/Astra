@@ -1416,7 +1416,57 @@ class Agent:
                 messages = _trim_message_history(messages, history_budget)
             if ctx.budget:
                 await self._emit(ctx, "agent_budget_update", budget=ctx.budget.snapshot().__dict__)
-            raw = await asyncio.to_thread(self._invoke_llm, messages, ctx)
+            # Session-wide token circuit breaker. Per-agent iteration limits do not
+            # protect against several agents launching large prompts concurrently,
+            # and delegated agents have their own RunBudget instances. Reserve an
+            # estimate atomically before each request so the whole session shares one
+            # ceiling regardless of which agent or retry path initiated the call.
+            try:
+                _constraint_token_limit = ((ctx.shared or {}).get("constraints") or {}).get("session_max_tokens")
+                _session_token_limit = int(
+                    _constraint_token_limit
+                    if _constraint_token_limit is not None
+                    else os.environ.get("ASTRA_SESSION_MAX_TOKENS", "750000")
+                )
+            except (TypeError, ValueError):
+                _session_token_limit = 750000
+            try:
+                _request_chars = len(json.dumps(messages, default=str))
+                if self.tools:
+                    if self._runtime_entries:
+                        _tool_defs = runtime_tool_registry.definitions(self._runtime_entries)
+                    else:
+                        _tool_defs = [
+                            {"type": "function", "function": schema_from_callable(name, fn)}
+                            for name, fn in self.tools.items()
+                        ]
+                    _request_chars += len(json.dumps(_tool_defs, default=str))
+                _reserved_tokens = max(1000, _request_chars // 4) + min(
+                    int(os.environ.get("ASTRA_AGENT_MAX_TOKENS", "8192")), 2048
+                )
+            except Exception:
+                _reserved_tokens = 4096
+            _reservation_active = False
+            if _session_token_limit > 0:
+                from backend.core.usage import reserve_session_tokens
+                _reservation_active = reserve_session_tokens(
+                    ctx.session_id, _reserved_tokens, _session_token_limit
+                )
+                if not _reservation_active:
+                    payload = {
+                        "status": "budget_exhausted",
+                        "agent": self.name,
+                        "reason": "session_tokens",
+                        "session_max_tokens": _session_token_limit,
+                    }
+                    await self._emit(ctx, "agent_budget_exhausted", **payload)
+                    return payload
+            try:
+                raw = await asyncio.to_thread(self._invoke_llm, messages, ctx)
+            finally:
+                if _reservation_active:
+                    from backend.core.usage import release_session_tokens
+                    release_session_tokens(ctx.session_id, _reserved_tokens)
             if not isinstance(raw, str):
                 try:
                     raw = json.dumps(raw, default=str)

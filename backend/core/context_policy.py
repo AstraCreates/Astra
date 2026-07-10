@@ -193,14 +193,39 @@ class RunContextPolicy:
     ) -> dict[str, Any]:
         query = f"{task.get('instruction') or ''}\n{base_shared.get('company_name', '')}\n{base_shared.get('company_brain_context', '')[:1200]}"
         brain = self._brain_context(query)
+        is_research_lane = agent_name.startswith("research")
+        if is_research_lane:
+            # Research needs the founder brief and durable company facts, not the
+            # full execution apparatus. The generic base payload includes the stack
+            # manifest, operating plan, execution blueprint, approval queue, and
+            # artifact contracts; together those added ~64K rendered characters to
+            # every focused research lane's first prompt (about 16K tokens/call).
+            # Keep execution metadata available to downstream builders while giving
+            # research a small, purpose-built context pack.
+            base_for_agent = {
+                key: base_shared[key]
+                for key in ("constraints", "company_id", "company_name")
+                if key in base_shared
+            }
+        else:
+            base_for_agent = base_shared
         # The heavy payloads (brain context, deps, vault notes, goal) live ONLY in the
         # flat shared keys below — NOT also inside run_context_pack. Both the pack and the
         # flat keys are rendered into the prompt by _render_shared_context, so embedding
         # the same data in both doubled ~5-8k tokens/call. run_context_pack has no
         # programmatic readers; it's prompt-only metadata pointing at the flat keys.
         goal_pack = self._current_goal_pack(agent_name)
-        brain_context_text = _truncate(str(brain.get("context") or brain.get("formatted") or ""), 6000)
-        vault_notes = _truncate(vault_context or "", 3500)
+        brain_context_limit = 3000 if is_research_lane else 6000
+        vault_context_limit = 2500 if is_research_lane else 3500
+        brain_context_text = _truncate(
+            str(
+                brain.get("context")
+                or brain.get("formatted")
+                or base_shared.get("company_brain_context", "")
+            ),
+            brain_context_limit,
+        )
+        vault_notes = _truncate(vault_context or "", vault_context_limit)
         pack = {
             "policy": {
                 "source_of_truth": "Use current_company_goal, company_brain_context, prior_results and prior_vault_notes (below) as injected source-of-truth; call Company Brain tools only for missing facts.",
@@ -224,10 +249,10 @@ class RunContextPolicy:
             pack["company_brain"]["canonical_sources"] = "[omitted: context budget exhausted]"
             pack["company_brain"]["open_proposals"] = "[omitted: context budget exhausted]"
         return {
-            **base_shared,
+            **base_for_agent,
             "run_context_pack": pack,
             "current_company_goal": goal_pack,
-            "company_brain_context": brain_context_text or base_shared.get("company_brain_context", ""),
+            "company_brain_context": brain_context_text,
             # compact_agent_result (already used for company_brain persistence below)
             # keeps only the fields a downstream agent actually needs — summary,
             # key_findings, decisions, next_actions, artifacts_produced, etc — and

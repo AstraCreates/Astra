@@ -2167,6 +2167,11 @@ class Orchestrator:
         # before the next phase starts. Rejection re-queues that phase's tasks with notes.
         from backend.core import cancellation  # must be in scope before _phase_gate is called
         _PHASE_ORDER = ["diagnose", "design", "deploy", "govern", "operate"]
+        _phase_revision_counts: dict[str, int] = {}
+        try:
+            _max_phase_revisions = max(0, int(os.environ.get("ASTRA_PHASE_AUTO_REVISIONS", "1")))
+        except ValueError:
+            _max_phase_revisions = 1
 
         def _task_phase(t: dict) -> str:
             return t.get("phase") or stack_lane_by_agent.get(t["agent"], {}).get("phase") or "deploy"
@@ -2257,17 +2262,25 @@ class Orchestrator:
                     completed.pop(_rt["id"], None)
                     _agent_stopped = is_agent_killed(session_id, _rt["agent"])
                     _research_terminal = (_rt.get("agent") or "").startswith("research")
-                    _rt["instruction"] = (_rt.get("instruction") or "") + (
-                        "\n\n[Automatic revision request before founder approval]: "
-                        + " ".join(dict.fromkeys(_notes))
+                    _revision_count = _phase_revision_counts.get(_rt["id"], 0)
+                    _can_auto_revise = (
+                        not _agent_stopped
+                        and not _research_terminal
+                        and _revision_count < _max_phase_revisions
                     )
+                    if _can_auto_revise:
+                        _phase_revision_counts[_rt["id"]] = _revision_count + 1
+                        _rt["instruction"] = (_rt.get("instruction") or "") + (
+                            "\n\n[Automatic revision request before founder approval]: "
+                            + " ".join(dict.fromkeys(_notes))
+                        )
                     # Research is already bounded by its own evidence/tool/
                     # iteration budgets. Requeueing a failed research lane here
                     # caused the phase gate to launch it dozens of times for one
                     # session, repeatedly resending a 20K+ prompt. Surface the
                     # blocker to the founder instead of starting an unbounded
                     # second orchestration loop.
-                    if not _agent_stopped and not _research_terminal:
+                    if _can_auto_revise:
                         remaining.append(_rt)
                     await publish(session_id, {
                         "type": "stack_lane_status",
@@ -2279,7 +2292,7 @@ class Orchestrator:
                         "title": stack_lane_by_agent.get(_rt["agent"], {}).get("title") or _rt.get("stack_task_title") or _rt["agent"],
                         "summary": "Astra blocked phase approval because verification or output quality was incomplete.",
                         "ready_artifacts": _rt.get("expected_artifacts", []),
-                        "next_actor": "founder" if (_agent_stopped or _research_terminal) else "agent_revision",
+                        "next_actor": "agent_revision" if _can_auto_revise else "founder",
                         "blockers": list(dict.fromkeys(_notes)),
                     })
                 return False

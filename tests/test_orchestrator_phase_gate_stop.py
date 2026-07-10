@@ -128,3 +128,59 @@ async def test_phase_gate_lets_downstream_proceed_on_bare_minimum_content(monkey
     # would be impossible (calls == 0) if research's 'needs_review' had still
     # hard-blocked the whole phase the old way.
     assert design.calls > 0
+
+
+@pytest.mark.asyncio
+async def test_phase_gate_caps_non_research_automatic_revisions(monkeypatch):
+    planner = _FakePlanner()
+    research = _FakeAgent("research", [{"summary": "usable research"}])
+    design = _FakeAgent("design", [{}])
+    web = _FakeAgent("web", [{"url": "https://example.com"}])
+    orch = Orchestrator(planner=planner, specialists={"research": research, "design": design, "web": web})
+
+    publish = AsyncMock()
+    monkeypatch.setenv("ASTRA_VERIFY_RETRIES", "0")
+    monkeypatch.setenv("ASTRA_PHASE_AUTO_REVISIONS", "1")
+    monkeypatch.setattr("backend.core.events.publish", publish)
+    monkeypatch.setattr("backend.core.orchestrator.candidate_research_agents_for_default_provider", lambda: [("r_market", "research")])
+    monkeypatch.setattr("backend.core.orchestrator.is_agent_killed", lambda *_args: False)
+    monkeypatch.setattr(orch, "_expand_goal", AsyncMock(return_value="goal"))
+    monkeypatch.setattr(orch, "_generate_company_name", AsyncMock(return_value="Acme"))
+    monkeypatch.setattr(orch, "_replan_with_research", AsyncMock(return_value=[]))
+    monkeypatch.setattr(orch, "_generate_detailed_plan", AsyncMock(return_value=[]))
+    monkeypatch.setattr(orch, "_critical_research_review", AsyncMock(return_value={}))
+    monkeypatch.setattr(orch, "_bootstrap_operating_after_run", AsyncMock())
+    monkeypatch.setattr(orch, "_sync_session_deliverables", AsyncMock())
+    monkeypatch.setattr("backend.tools.obsidian_logger.auto_log_if_missing", lambda *args, **kwargs: False)
+    monkeypatch.setattr("backend.tools.obsidian_logger._note_path", lambda *args, **kwargs: Path("/tmp/nonexistent-note.md"))
+    monkeypatch.setattr("backend.core.events.approval_decision_wait", AsyncMock(return_value={"decision": "approved"}))
+    monkeypatch.setattr("backend.approval_workflows.create_approval_request", lambda **kwargs: None)
+
+    async def _fake_deep_verification(*, task, base_verdict, **_kwargs):
+        verdict = dict(base_verdict)
+        verdict.update({
+            "task_id": task["id"],
+            "agent": task["agent"],
+            "summary": "nothing produced" if task["agent"] == "design" else "usable",
+            "status": "blocked" if task["agent"] == "design" else "passed",
+            "passed_count": 0 if task["agent"] == "design" else 1,
+            "weak_count": 0,
+            "artifacts": [],
+        })
+        return verdict
+
+    monkeypatch.setattr("backend.stacks.run_deep_verification", _fake_deep_verification)
+
+    await orch.run(goal="g", founder_id="f", session_id="phase-revision-cap")
+
+    assert research.calls == 1
+    assert design.calls == 2
+    design_blocked = [
+        call.args[1]
+        for call in publish.await_args_list
+        if len(call.args) == 2
+        and call.args[1].get("type") == "stack_lane_status"
+        and call.args[1].get("agent") == "design"
+        and call.args[1].get("status") == "blocked"
+    ]
+    assert design_blocked[-1]["next_actor"] == "founder"
