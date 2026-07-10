@@ -1926,13 +1926,18 @@ async def run_copilot(
 
     if not actions and explicit_agents and (_is_steer_directive(message) or _explicit_command):
         try:
-            result = await _tool_dispatch_agents(
-                founder_id,
-                session_id,
-                {"agents": explicit_agents, "instruction": message},
-            )
-            actions.append({"tool": "dispatch_agents", "args": {"agents": explicit_agents, "instruction": message}, "result": result})
-            reply = f"Started {', '.join(explicit_agents)} on that request."
+            # A targeted @mention inside an existing session is a follow-up to
+            # that run. Keep the event stream and session URL stable even when
+            # the named specialist is idle; dispatch_agents intentionally creates
+            # a child session for independent work, which is not what this UI action means.
+            for named in explicit_agents:
+                result = await _tool_rerun_agent(
+                    founder_id,
+                    session_id,
+                    {"agent_name": named, "instruction": message, "session_id": session_id},
+                )
+                actions.append({"tool": "rerun_agent", "args": {"agent_name": named, "instruction": message}, "result": result})
+            reply = f"Started {', '.join(explicit_agents)} in this session on that request."
         except Exception:
             pass
 

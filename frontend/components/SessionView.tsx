@@ -16,6 +16,7 @@ import AgentSwarm, { type SwarmAgent } from "@/components/AgentSwarm";
 import { ReceiptTrail, type ArtifactReceipt } from "@/components/PhaseWorkboard";
 import LLCFilingModal from "@/components/LLCFilingModal";
 import AstraCopilotComposer, { type CopilotAgentOption } from "@/components/AstraCopilotComposer";
+import SessionCopilotSurface, { type SessionActivityItem } from "@/components/SessionCopilotSurface";
 
 // xterm touches `window`; load the takeover terminal client-only.
 const TerminalPane = dynamic(() => import("@/components/TerminalPane"), { ssr: false });
@@ -369,6 +370,11 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   const [teamTab, setTeamTab] = useState(false);
   const showErr = (msg: string) => { setToastErr(msg); setTimeout(() => setToastErr(""), 6000); };
   const imgsFetched = useRef(false);
+  useEffect(() => {
+    if (!sessionId || imgsFetched.current) return;
+    imgsFetched.current = true;
+    getSessionImages(sessionId).then(setDesignImages).catch(() => {});
+  }, [sessionId]);
   const applyStateSnapshot = useCallback((d: any, fromCache = false) => {
     const st = S.current;
     if (!st.goal && d.instruction) {
@@ -890,6 +896,19 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
 
   // ── Derived render data ──
   const st = S.current;
+  const sessionActivity = useMemo<SessionActivityItem[]>(() => {
+    const items: SessionActivityItem[] = [];
+    for (const agent of Object.values(st.agents)) {
+      for (const entry of agent.log || []) {
+        const label = AGENT_LABELS[agent.key] ?? agent.key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        const kind = entry.type === "start" ? "start" : entry.type === "done" ? "done" : entry.type === "error" ? "error" : entry.type === "tool" ? "action" : "action";
+        const detail = entry.text && entry.text !== "Started" && entry.text !== "Agent finished" ? entry.text : undefined;
+        items.push({ id: `${agent.key}-${entry.ts}-${entry.type}-${entry.text.slice(0, 12)}`, ts: entry.ts, agent: agent.key, label: kind === "start" ? `${label} started` : kind === "done" ? `${label} completed` : kind === "error" ? `${label} needs attention` : label, detail, kind });
+      }
+    }
+    if (st.goal) items.unshift({ id: "goal", ts: st.startedAt || 0, label: "Goal active", detail: st.goal, kind: "goal" });
+    return items.sort((a, b) => a.ts - b.ts);
+  }, [stateVersion]);
   const agents = Object.values(st.agents);
   const total = agents.length, run = agents.filter((a) => a.status === "running").length,
     done = agents.filter((a) => a.status === "done").length, err = agents.filter((a) => a.status === "error").length;
@@ -1376,73 +1395,20 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       )}
 
       {!workbenchOpen && (
-        <main className="session-copilot-home">
-          <div className="session-copilot-intro">
-            <img src="/astra-copilot.png" alt="Astra" />
-            <div>
-              <span>{st.status === "running" || st.status === "loading" ? "Astra is working" : st.status === "stalled" ? "Astra needs your input" : "Astra copilot"}</span>
-              <h1>{displayName || shortGoal}</h1>
-              <p>
-                {st.status === "running" || st.status === "loading"
-                  ? `${run || "The team"} working · ${done} finished · ${artReady} deliverables ready`
-                  : st.status === "done"
-                    ? `${done} agents finished this run. Ask for a summary or direct the next move.`
-                    : st.reviewReason || "Ask a question, redirect the work, or mention a specific agent."}
-              </p>
-            </div>
-            <button type="button" onClick={() => setWorkbenchOpen(true)}>Open workbench</button>
-          </div>
-
-          <div className="session-agent-pulse" aria-label="Agent activity">
-            {Object.values(st.agents).filter((agent) => agent.status === "running").slice(0, 6).map((agent) => (
-              <button key={agent.key} type="button" onClick={() => setCopilotInput(`@${agent.key} `)}>
-                <span className="live-dot" />
-                <b>{AGENT_LABELS[agent.key] ?? agent.key.replace(/_/g, " ")}</b>
-                <small>{agent.currentTool ? agent.currentTool.replace(/_/g, " ") : "working"}</small>
-              </button>
-            ))}
-            {run === 0 && Object.values(st.agents).filter((agent) => agent.status === "done").slice(-4).map((agent) => (
-              <button key={agent.key} type="button" onClick={() => setCopilotInput(`@${agent.key} `)}>
-                <span className="is-done">✓</span>
-                <b>{AGENT_LABELS[agent.key] ?? agent.key.replace(/_/g, " ")}</b>
-                <small>finished</small>
-              </button>
-            ))}
-          </div>
-
-          <div className={`session-copilot-thread${copilot.length === 0 ? " is-empty" : ""}`}>
-            {copilot.length === 0 ? (
-              <div className="session-copilot-starters">
-                <button onClick={() => setCopilotInput("What is the team working on right now?")}>What is happening?</button>
-                <button onClick={() => setCopilotInput("What needs my attention?")}>What needs my attention?</button>
-                <button onClick={() => setCopilotInput("Summarize the strongest findings and next steps.")}>Summarize this run</button>
-              </div>
-            ) : copilot.map((message, index) => (
-              <div key={index} className={`session-chat-row ${message.role === "founder" ? "is-founder" : "is-astra"}`}>
-                {message.role !== "founder" && <span className="session-chat-avatar">A</span>}
-                <div className="session-chat-bubble">
-                  {message.content}
-                  {message.actions && message.actions.length > 0 && (
-                    <div className="copilot-actions" aria-label="Copilot actions">
-                      {message.actions.map((action, actionIndex) => (
-                        <div key={`${action.tool}-${actionIndex}`} className={`copilot-action-card is-${action.tone || "info"}`}>
-                          <div className="copilot-action-label">{action.label}</div>
-                          {action.detail && <div className="copilot-action-detail">{action.detail}</div>}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-            {copilotBusy && (
-              <div className="session-chat-row is-astra">
-                <span className="session-chat-avatar">A</span>
-                <div className="copilot-thinking"><span /><span /><span /></div>
-              </div>
-            )}
-          </div>
-        </main>
+        <SessionCopilotSurface
+          goal={st.goal || displayName || shortGoal}
+          status={st.status}
+          agents={copilotAgents}
+          activity={sessionActivity}
+          images={designImages}
+          copilot={copilot}
+          copilotBusy={copilotBusy || copilotUploading}
+          input={copilotInput}
+          onInput={setCopilotInput}
+          onSubmit={sendCopilot}
+          onOpenWorkbench={() => setWorkbenchOpen(true)}
+          onImageRequest={(agent, prompt) => setCopilotInput(`@${agent} ${prompt}`)}
+        />
       )}
 
       {workbenchOpen && <>
@@ -2141,7 +2107,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
       </>}
 
       {/* copilot chat bar */}
-      <div data-tour="session-steerbar" className="session-copilot-dock">
+      {workbenchOpen && <div data-tour="session-steerbar" className="session-copilot-dock">
         <input ref={copilotFileRef} type="file" multiple hidden onChange={(event) => uploadCopilotFiles(event.target.files)} />
         <AstraCopilotComposer
           value={copilotInput}
@@ -2170,7 +2136,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
             ))}
           </div>
         )}
-      </div>
+      </div>}
 
       {showSessionTour && (
         <SessionTour onDone={() => { localStorage.setItem("astra_session_tour_done", "1"); setShowSessionTour(false); }} />
