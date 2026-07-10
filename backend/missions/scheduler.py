@@ -64,26 +64,18 @@ def _budget_allows(mission: dict) -> bool:
 async def _scheduler_tick() -> int:
     """Safety-net only. The goal loop is EVENT-DRIVEN: agent_done events tick tasks.
     When a goal completes, the planner PROPOSES the next goal and waits for the founder
-    to approve it (no auto-chain). This tick recovers two failure modes:
+    to approve it (no auto-chain). This tick recovers one failure mode only:
       1. A completed goal with NO proposed successor (after_run missed — crash/restart/
          planner error) → re-PROPOSE the next goal (never dispatched without sign-off).
-      2. A STALLED *active* (approved) goal — open, non-postponed tasks whose last run is
-         older than the safety interval (e.g. a run crashed) → re-dispatch it.
-    It never decides goal-done on a timer and never starts a proposed goal. Budget-gated.
+    It never decides goal-done on a timer, never re-dispatches stalled active goals, and
+    never starts a proposed goal.
 
-    Returns the number of stalled goals re-dispatched.
+    Returns the number of missing next-goal proposals recovered.
     """
-    import os
     from backend.missions.company_goal import (
-        list_company_goals, budget_allows, is_due, current_goal, chain_allowed, _goal_is_complete, postpone_task,
+        list_company_goals, current_goal, chain_allowed, _goal_is_complete,
     )
-    from backend.missions.goal_engine import dispatch_current_goal, plan_next_goal
-
-    safety_interval = max(300, int(os.environ.get("ASTRA_GOAL_SAFETY_INTERVAL_SECONDS", "1800")))
-    # Cap how many runs one goal gets before we stop retrying a task an agent keeps
-    # failing to deliver (e.g. a flaky model that never emits agent_done). Without this a
-    # perpetually-open task makes the safety-net re-dispatch the goal forever.
-    max_goal_attempts = max(1, int(os.environ.get("ASTRA_MAX_GOAL_ATTEMPTS", "3")))
+    from backend.missions.goal_engine import plan_next_goal
 
     try:
         goals: list[dict] = await asyncio.to_thread(list_company_goals)
@@ -120,44 +112,11 @@ async def _scheduler_tick() -> int:
             if chain_allowed(goal):
                 try:
                     if await asyncio.to_thread(plan_next_goal, founder_id, company_id):
+                        dispatched += 1
                         logger.info("missions_scheduler: recovered missing next-goal proposal founder=%s", founder_id)
                 except Exception as exc:
                     logger.error("missions_scheduler: next-goal proposal recovery failed founder=%s: %s", founder_id, exc, exc_info=True)
             continue
-        if not cg or cg.get("status") != "active":
-            continue
-        open_tasks = [
-            t for t in (cg.get("tasks") or [])
-            if not t.get("postponed") and t.get("status") != "done"
-        ]
-        if not open_tasks:
-            continue
-        attempts = sum(
-            1 for rec in (goal.get("operating_sessions") or [])
-            if rec.get("goal_id") == cg.get("id")
-        )
-        if attempts >= max_goal_attempts:
-            logger.warning(
-                "missions_scheduler: stalled goal reached max attempts founder=%s goal=%s attempts=%s",
-                founder_id, cg.get("id"), attempts,
-            )
-            continue
-        backoff_seconds = safety_interval * max(1, attempts + 1)
-        if not is_due(goal, backoff_seconds):
-            continue
-        if not budget_allows(goal):
-            continue
-        try:
-            result = await dispatch_current_goal(founder_id, company_id)
-            if result.get("ok") and not result.get("skipped"):
-                dispatched += 1
-                logger.info(
-                    "missions_scheduler: redispatched stalled goal founder=%s goal=%s attempt=%s",
-                    founder_id, cg.get("id"), attempts + 1,
-                )
-        except Exception as exc:
-            logger.error("missions_scheduler: stalled-goal redispatch failed founder=%s: %s", founder_id, exc, exc_info=True)
-
     return dispatched
 
 
