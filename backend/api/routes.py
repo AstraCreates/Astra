@@ -206,6 +206,17 @@ async def _load_session_events(session_id: str) -> list[tuple[int, dict]]:
 
 
 async def _session_founder_id(session_id: str) -> str:
+    # Session metadata is the cheap, durable ownership source. Do this before
+    # restoring a potentially large event log so lightweight routes such as
+    # /sessions/{id}/meta remain responsive while research is running.
+    try:
+        from backend.core.session_store import get_session_meta
+        meta = get_session_meta(session_id)
+        owner = str((meta or {}).get("founder_id") or "")
+        if owner:
+            return owner
+    except Exception:
+        pass
     events = await _load_session_events(session_id)
     for _, event in events:
         founder_id = event.get("founder_id")

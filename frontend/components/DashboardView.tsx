@@ -482,7 +482,7 @@ export default function DashboardView() {
                     {/* Title row + donut */}
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14 }}>
                       <div>
-                        <div style={{ fontSize: 18, fontWeight: 700 }}>{cleanTitle}</div>
+                        <div className="dv-goal-title" title={cleanTitle}>{cleanTitle}</div>
                         <div style={{ fontSize: 12, color: "#6f7b98", marginTop: 4 }}>
                           {phasesDone > 0 || phasesTotal > 0 ? `${phasesDone} of ${phasesTotal} tasks done` : isStalled ? "Needs attention" : "Running…"}
                         </div>

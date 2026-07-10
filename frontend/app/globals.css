@@ -197,6 +197,10 @@
 .dashboard-secondary-links { display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding-top: 2px; }
 .dashboard-secondary-links button { min-height: 30px; padding: 0 9px; border: 0; background: transparent; color: #6f7b98; font-size: 10.5px; cursor: pointer; }
 .dashboard-secondary-links button:hover { color: #aab5ff; }
+.dv-goal-col { align-self: flex-start; max-height: 410px; overflow: hidden; }
+.dv-goal-title { max-height: 154px; overflow-y: auto; padding-right: 8px; color: #edf1fb; font-size: 16px; font-weight: 700; line-height: 1.42; overflow-wrap: anywhere; scrollbar-color: rgba(125,143,255,.5) transparent; }
+.dv-goal-title::-webkit-scrollbar { width: 4px; }
+.dv-goal-title::-webkit-scrollbar-thumb { background: rgba(125,143,255,.5); border-radius: 4px; }
 
 @media (max-width: 700px) {
   .dashboard-calm-header { min-height: 76px; padding: 14px 16px; align-items: flex-end; }
