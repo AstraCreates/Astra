@@ -1260,7 +1260,7 @@ class Agent:
             # call resends it, so one lane can burn hundreds of thousands of
             # input tokens before the generic 30-iteration ceiling fires.
             MAX_ITERATIONS = min(MAX_ITERATIONS, int(os.environ.get("ASTRA_RESEARCH_MAX_ITERATIONS", "16")))
-            history_budget = int(os.environ.get("ASTRA_RESEARCH_HISTORY_CHAR_BUDGET", "160000"))
+            history_budget = int(os.environ.get("ASTRA_RESEARCH_HISTORY_CHAR_BUDGET", "80000"))
         else:
             history_budget = _HISTORY_CHAR_BUDGET
         compressor = AstraContextCompressor()
@@ -1284,6 +1284,7 @@ class Agent:
         _consecutive_unknown = 0  # consecutive "unknown action" responses
         _invalid_action_count = 0
         _repair_attempts = 0
+        _response_signatures: dict[str, int] = {}
         _pending_error_backoff = 0.0
         _error_streak = 0
 
@@ -1465,6 +1466,17 @@ class Agent:
                 if any(k not in _noise for k in parsed):
                     parsed = {"action": "done", "output": parsed}
                     action = "done"
+            if self.name in _RESEARCH_AGENT_NAMES and action not in (None, "done", "tool_batch"):
+                signature = json.dumps(
+                    {"action": action, "tool": tool_field, "args": parsed.get("args") or parsed.get("arguments") or {}},
+                    sort_keys=True,
+                    default=str,
+                )
+                _response_signatures[signature] = _response_signatures.get(signature, 0) + 1
+                if _response_signatures[signature] >= 2:
+                    _schedule_error_backoff("repeated identical research action")
+                    logger.error("[%s] repeated identical action twice; forcing synthesis", self.name)
+                    break
             # A parsed envelope can still be semantically invalid (unknown action
             # or tool). Give the one-shot repair pass the raw response before the
             # normal retry prompt starts a potentially expensive loop.
