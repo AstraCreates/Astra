@@ -212,7 +212,7 @@
 
 /* Copilot-first session ----------------------------------------------------- */
 .session-copilot-home {
-  width: min(880px, calc(100% - 40px));
+  width: min(1200px, calc(100% - 80px));
   flex: 1;
   min-height: 0;
   margin: 0 auto;
@@ -228,9 +228,8 @@
 .session-copilot-intro h1 { margin: 4px 0 3px; max-width: 640px; color: var(--fg); font-size: 20px; line-height: 1.3; font-weight: 640; letter-spacing: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-copilot-intro p { margin: 0; color: var(--fd); font-size: 12px; line-height: 1.45; }
 .session-copilot-intro > button { min-height: 34px; padding: 0 12px; border: 1px solid var(--bd2); border-radius: 7px; background: var(--surface); color: var(--fg); font-size: 11px; cursor: pointer; }
-.session-agent-pulse { display: flex; gap: 7px; overflow-x: auto; padding: 1px 0 4px; scrollbar-width: none; }
-.session-agent-pulse::-webkit-scrollbar { display: none; }
-.session-agent-pulse button { min-width: 148px; height: 48px; display: grid; grid-template-columns: auto 1fr; grid-template-rows: 1fr 1fr; column-gap: 7px; align-items: center; padding: 7px 10px; border: 1px solid var(--bd); border-radius: 7px; background: rgba(255, 255, 255, 0.025); color: var(--fg); text-align: left; cursor: pointer; }
+.session-agent-pulse { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 7px; padding: 1px 0 4px; }
+.session-agent-pulse button { height: 48px; display: grid; grid-template-columns: auto 1fr; grid-template-rows: 1fr 1fr; column-gap: 7px; align-items: center; padding: 7px 10px; border: 1px solid var(--bd); border-radius: 7px; background: rgba(255, 255, 255, 0.025); color: var(--fg); text-align: left; cursor: pointer; }
 .session-agent-pulse button > span { grid-row: 1 / 3; }
 .session-agent-pulse button > span.is-done { color: var(--green); font-size: 10px; }
 .session-agent-pulse b { align-self: end; font-size: 10.5px; font-weight: 620; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -244,7 +243,7 @@
 .session-chat-avatar { width: 26px; height: 26px; display: grid; place-items: center; flex-shrink: 0; border-radius: 7px; background: #526cff; color: #fff; font-size: 10px; font-weight: 720; }
 .session-chat-bubble { max-width: min(690px, 84%); padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,0.045); border: 1px solid var(--bd); color: var(--fg); font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; }
 .session-chat-row.is-founder .session-chat-bubble { background: #2d48c8; border-color: #2d48c8; color: #fff; }
-.session-copilot-dock { width: min(880px, calc(100% - 40px)); margin: 0 auto; padding: 8px 0 18px; flex-shrink: 0; position: relative; z-index: 20; }
+.session-copilot-dock { width: min(1200px, calc(100% - 80px)); margin: 0 auto; padding: 8px 0 18px; flex-shrink: 0; position: relative; z-index: 20; }
 .session-copilot-dock .copilot-attachment-tray { padding: 7px 0 0; }
 
 @media (max-width: 700px) {
@@ -253,7 +252,7 @@
   .session-copilot-intro > img { width: 44px; height: 44px; }
   .session-copilot-intro h1 { font-size: 16px; }
   .session-copilot-intro > button { grid-column: 1 / -1; justify-self: stretch; }
-  .session-agent-pulse button { min-width: 132px; }
+  .session-agent-pulse { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
   .session-copilot-dock { width: calc(100% - 24px); padding-bottom: 10px; }
   .session-chat-bubble { max-width: 90%; }
   .session-topbar { padding-left: 10px !important; padding-right: 8px !important; gap: 5px !important; }
