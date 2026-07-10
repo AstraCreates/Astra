@@ -90,7 +90,19 @@ def _tune_headroom_pipeline_once() -> None:
 
         fraction = getattr(settings, "headroom_protect_recent_reads_fraction", 0.1)
         base_pipeline = _hr_mod._get_pipeline()
-        router_cfg = ContentRouterConfig(protect_recent_reads_fraction=fraction)
+        # Real production bug: SmartCrusher's default ccr_enabled=True replaces large/
+        # opaque tool-result blobs with a retrievable `<<ccr:HASH,type,size>>` marker
+        # instead of compressing them away — meant to be resolved later via headroom's
+        # CCR retrieval tool (proxy + tool-injection + response-handler stack). We only
+        # call the plain compress() entrypoint, never wire up that retrieval stack, so
+        # nothing ever resolves these markers. When a model echoes one verbatim (it
+        # looks like real prior content in its own context), the raw `<<ccr:...>>`
+        # token leaks straight into obsidian_log/done-output/UI (observed 2026-07-10:
+        # "<<ccr:82a7f5eaa57c,string,323B>>" shown as a research agent's finished
+        # summary). Disable marker injection — SmartCrusher still does its other
+        # (JSON/array restructuring, dedup) compression, it just won't leave behind a
+        # reference nothing in our stack can ever resolve.
+        router_cfg = ContentRouterConfig(protect_recent_reads_fraction=fraction, ccr_enabled=False)
         tuned_transforms = [
             ContentRouter(config=router_cfg) if isinstance(t, ContentRouter) else t
             for t in base_pipeline.transforms
@@ -106,11 +118,14 @@ def _tune_headroom_pipeline_once() -> None:
 
 # Quality gates — module-level so they're never re-allocated per run
 _REQUIRED_BY_AGENT: dict[str, set[str]] = {
-    "research":          {"web_search"},
-    "r_market":          {"web_search"},
-    "r_competitors":     {"web_search"},
-    "r_customers":       {"web_search"},
-    "r_gtm":             {"web_search"},
+    "research":              {"run_research_pipeline", "deep_research"},
+    "r_market":              {"run_research_pipeline", "deep_research"},
+    "r_competitors":         {"run_research_pipeline", "deep_research"},
+    "r_customers":           {"deep_research"},
+    "r_gtm":                 {"deep_research"},
+    "research_competitors":  {"run_research_pipeline", "deep_research"},
+    "research_customers":    {"deep_research"},
+    "research_gtm":          {"deep_research"},
     "legal":             {"format_legal_document", "generate_pdf"},
     "legal_docs":        {"format_legal_document", "generate_pdf"},
     "legal_ip":          {"format_legal_document", "generate_pdf", "patent_search"},
@@ -132,8 +147,9 @@ _REQUIRED_BY_AGENT: dict[str, set[str]] = {
     "ops":               {"generate_pdf", "obsidian_log"},
 }
 _MIN_CALLS_BY_AGENT: dict[str, int] = {
-    "research": 3, "r_market": 3, "r_competitors": 3,
-    "r_customers": 3, "r_gtm": 3,
+    "research": 3, "r_market": 3, "r_competitors": 2,
+    "r_customers": 2, "r_gtm": 2,
+    "research_competitors": 2, "research_customers": 2, "research_gtm": 2,
     "sales": 3, "marketing_outreach": 3,
     "legal": 2, "legal_docs": 2, "legal_ip": 2, "legal_entity": 2,
     "design": 3, "marketing_content": 3,
@@ -608,6 +624,19 @@ class Agent:
         self._model_api_key = model_api_key or settings.agent_model_api_key
         self._max_iterations = max_iterations or (manifest.max_iterations if manifest else None)
         self._max_tool_calls = max_tool_calls or (dict(manifest.max_tool_calls) if manifest else {})
+        # Real production bug: specialists are built once and reused for every task
+        # assigned to that role (see factory.py — orch.specialists is a persistent
+        # dict), but max_tool_calls was enforced against a per-run() counter that
+        # resets to empty on every agent.run(ctx) call. When the orchestrator invokes
+        # the SAME agent+session more than once for one task (observed 2026-07-10:
+        # research_competitors got 3 separate agent_start/agent_done cycles for one
+        # task, each resetting the counter — cap of 3 run_research_pipeline calls
+        # became 9 real calls, ~2M tokens on one session), the cap only ever bounded
+        # a single invocation, not the session. Key counts by session_id so they
+        # persist across repeat invocations of this same agent within one session,
+        # while staying isolated across different sessions (this Agent instance is
+        # shared platform-wide, not per-session).
+        self._session_tool_counts: dict[str, dict[str, int]] = {}
         self._max_cost_usd = max_cost_usd if max_cost_usd is not None else (manifest.max_cost_usd if manifest else None)
         self._deadline_seconds = deadline_seconds
         self._library_files: list[dict] = library_files or []
@@ -1149,7 +1178,10 @@ class Agent:
         _one_shot_done: set[str] = set()
         _called_tools: set[str] = set()
         _attempted_tools: set[str] = set()  # includes failed attempts
-        _tool_attempt_counts: dict[str, int] = {}  # total attempts per tool (success + failure)
+        # Persists across repeat agent.run() invocations for this session (see
+        # self._session_tool_counts docstring in __init__) — NOT a fresh dict per
+        # call, so max_tool_calls caps the session total, not just one invocation.
+        _tool_attempt_counts = self._session_tool_counts.setdefault(ctx.session_id, {})
         _tool_results: list[tuple[str, dict[str, Any]]] = []
         _tool_context_seen: dict[str, Any] = {}
         _consecutive_unknown = 0  # consecutive "unknown action" responses
@@ -1253,7 +1285,10 @@ class Agent:
                     action = "done"
             reasoning = parsed.get("reasoning", "")
             tool_hint = parsed.get("tool", "")
-            logger.info("[%s] iter=%d  action=%-12s  %s", self.name, i, action, (tool_hint or reasoning)[:80])
+            _log_hint = tool_hint or reasoning
+            if not isinstance(_log_hint, str):
+                _log_hint = json.dumps(_log_hint, default=str)
+            logger.info("[%s] iter=%d  action=%-12s  %s", self.name, i, action, _log_hint[:80])
             messages.append({"role": "assistant", "content": raw})
             if action in ("done", "tool", "tool_batch", "delegate", "computer_use"):
                 _consecutive_unknown = 0

@@ -2344,7 +2344,7 @@ class Orchestrator:
                         "next_actor": "founder",
                     })
                 except Exception as _te:
-                    logger.error("Agent %s raised unhandled exception: %s", t["agent"], _te)
+                    logger.error("Agent %s raised unhandled exception: %s", t["agent"], _te, exc_info=True)
                     if t["id"] not in completed:
                         completed[t["id"]] = {"error": str(_te), "agent": t["agent"]}
                     await publish(session_id, {
