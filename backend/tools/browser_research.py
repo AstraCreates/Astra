@@ -4,10 +4,12 @@ Fetches real page content from any URL — websites, research papers, arXiv, new
 No hardcoded sources: agent discovers URLs via search then reads them directly.
 """
 import logging
+import os
 import re
 import sys
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 from typing import Optional
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
@@ -35,6 +37,8 @@ import time as _time
 _SEARCH_GATE = _threading.BoundedSemaphore(4)  # up to 4 concurrent searches
 _SEARCH_MIN_INTERVAL = 0.15  # small global spacing, not a 1/sec bottleneck
 _last_search_at = 0.0
+_RESEARCH_TOOL_GATE = _threading.BoundedSemaphore(max(1, int(os.environ.get("ASTRA_RESEARCH_TOOL_CONCURRENCY", "2"))))
+_RESEARCH_TOOL_LOCAL = _threading.local()
 _SEARCH_CACHE: dict[str, tuple[float, list[dict]]] = {}
 _SEARCH_CACHE_TTL = 300.0  # 5 min — research bursts re-ask the same queries
 _SEARCH_CACHE_MAX = 256
@@ -63,6 +67,13 @@ _RESEARCH_RESULT_CONTENT_CHAR_CAP = 2400
 _RESEARCH_MAX_URL_CANDIDATES_BUFFER = 2
 _RESEARCH_SEARCH_MULTIPLIER = 1.5
 _RESEARCH_BLOCK_WINDOW_SENTENCES = 1
+_CRW_TIMEOUT_SECONDS = max(3.0, float(os.environ.get("ASTRA_CRW_TIMEOUT_SECONDS", "12")))
+_CRW_BATCH_TIMEOUT_SECONDS = max(
+    _CRW_TIMEOUT_SECONDS + 2.0,
+    float(os.environ.get("ASTRA_CRW_BATCH_TIMEOUT_SECONDS", "20")),
+)
+_CRW_FAILURE_THRESHOLD = max(1, int(os.environ.get("ASTRA_CRW_FAILURE_THRESHOLD", "3")))
+_CRW_COOLDOWN_SECONDS = max(10.0, float(os.environ.get("ASTRA_CRW_COOLDOWN_SECONDS", "180")))
 _RESEARCH_QUERY_STOPWORDS = {
     "the", "and", "for", "with", "from", "that", "this", "into", "about", "their", "there",
     "what", "when", "where", "which", "while", "who", "why", "how", "your", "have", "has",
@@ -70,6 +81,48 @@ _RESEARCH_QUERY_STOPWORDS = {
     "not", "but", "can", "could", "would", "should", "are", "was", "will", "may", "might",
     "research", "report", "analysis", "market", "industry", "company",
 }
+
+_crw_failures = 0
+_crw_disabled_until = 0.0
+
+
+@contextmanager
+def _research_tool_slot():
+    depth = getattr(_RESEARCH_TOOL_LOCAL, "depth", 0)
+    if depth > 0:
+        _RESEARCH_TOOL_LOCAL.depth = depth + 1
+        try:
+            yield
+        finally:
+            _RESEARCH_TOOL_LOCAL.depth -= 1
+        return
+    _RESEARCH_TOOL_GATE.acquire()
+    _RESEARCH_TOOL_LOCAL.depth = 1
+    try:
+        yield
+    finally:
+        _RESEARCH_TOOL_LOCAL.depth = 0
+        _RESEARCH_TOOL_GATE.release()
+
+
+def _crw_available() -> bool:
+    return _time.time() >= _crw_disabled_until
+
+
+def _record_crw_result(ok: bool) -> None:
+    global _crw_failures, _crw_disabled_until
+    if ok:
+        _crw_failures = 0
+        return
+    _crw_failures += 1
+    if _crw_failures >= _CRW_FAILURE_THRESHOLD:
+        _crw_disabled_until = _time.time() + _CRW_COOLDOWN_SECONDS
+        logger.warning(
+            "crw disabled for %.0fs after %d consecutive failures",
+            _CRW_COOLDOWN_SECONDS,
+            _crw_failures,
+        )
+        _crw_failures = 0
 
 
 def _robust_search(query: str, max_results: int = 12) -> list[dict]:
@@ -915,6 +968,11 @@ def _crw_search_and_fetch(query: str, max_results: int = 8) -> dict:
     import httpx as _httpx
     from backend.config import settings as _settings
 
+    if not _crw_available():
+        fallback = _ddgs_fallback_search(query, max_results)
+        fallback.setdefault("error", "crw_cooldown_active")
+        return fallback
+
     base_url = (getattr(_settings, "crw_base_url", "") or "http://crw:3000").rstrip("/")
     try:
         r = _httpx.post(
@@ -924,16 +982,18 @@ def _crw_search_and_fetch(query: str, max_results: int = 8) -> dict:
                 "limit": max(1, min(max_results, 20)),
                 "scrapeOptions": {"formats": ["markdown"], "onlyMainContent": True},
             },
-            timeout=30,
+            timeout=_CRW_TIMEOUT_SECONDS,
         )
         data = r.json()
     except Exception as exc:
+        _record_crw_result(False)
         logger.warning("crw search failed for %r, falling back to DDGS: %s", query, exc)
         fallback = _ddgs_fallback_search(query, max_results)
         fallback.setdefault("error", str(exc))
         return fallback
 
     if not data.get("success"):
+        _record_crw_result(False)
         logger.warning("crw returned unsuccessful response for %r, falling back to DDGS", query)
         fallback = _ddgs_fallback_search(query, max_results)
         fallback.setdefault("error", "crw_search_failed")
@@ -947,10 +1007,12 @@ def _crw_search_and_fetch(query: str, max_results: int = 8) -> dict:
     else:
         items = []
     if not items:
+        _record_crw_result(False)
         logger.info("crw returned no results for %r, falling back to DDGS", query)
         fallback = _ddgs_fallback_search(query, max_results)
         fallback.setdefault("error", "crw_no_results")
         return fallback
+    _record_crw_result(True)
 
     results, sources, blocks = [], [], []
     for item in items:
@@ -986,13 +1048,14 @@ def _crw_batch_search(queries=None, max_results_each: int = 8) -> dict:
     with ThreadPoolExecutor(max_workers=min(len(queries), 4)) as ex:
         futures = {ex.submit(_crw_search_and_fetch, q, max_results_each): q for q in queries}
         try:
-            for fut in as_completed(futures, timeout=45):
+            for fut in as_completed(futures, timeout=_CRW_BATCH_TIMEOUT_SECONDS):
                 q = futures[fut]
                 try:
                     results_by_query[q] = fut.result()
                 except Exception as e:
                     results_by_query[q] = {"query": q, "results": [], "formatted": "", "total": 0, "sources": [], "error": str(e)}
         except TimeoutError:
+            _record_crw_result(False)
             for fut, q in futures.items():
                 if q not in results_by_query:
                     fut.cancel()
@@ -1089,49 +1152,50 @@ def deep_research(queries=None) -> dict:
     if os.environ.get("ASTRA_RESEARCH_USE_LEGACY_SONAR", "").lower() in {"1", "true", "yes"}:
         return _legacy_sonar_research(queries)
 
-    aggregated_results: dict[str, dict] = {}
-    learnings: list[str] = []
-    round_queries = list(queries)
-    avg_query_len = sum(len(q) for q in queries) / max(len(queries), 1)
-    max_rounds = 1 if len(queries) >= 6 or avg_query_len > 120 else _RECURSIVE_RESEARCH_ROUNDS
+    with _research_tool_slot():
+        aggregated_results: dict[str, dict] = {}
+        learnings: list[str] = []
+        round_queries = list(queries)
+        avg_query_len = sum(len(q) for q in queries) / max(len(queries), 1)
+        max_rounds = 1 if len(queries) >= 6 or avg_query_len > 120 else _RECURSIVE_RESEARCH_ROUNDS
 
-    for round_index in range(max_rounds):
-        if not round_queries:
-            break
-        search = _crw_batch_search(round_queries, max_results_each=5)
-        batch_results = search.get("results_by_query") or {}
-        for query, result in batch_results.items():
-            existing = aggregated_results.get(query)
-            if not existing:
-                aggregated_results[query] = {
-                    "query": query,
-                    "formatted": result.get("formatted", ""),
-                    "total": result.get("total", 0),
-                    "sources": [],
-                }
-            merged = aggregated_results[query]
-            merged["formatted"] = (
-                (merged.get("formatted") or "")
-                + ("\n\n" if merged.get("formatted") else "")
-                + (result.get("formatted") or "")
-            )[:_RESEARCH_PER_QUERY_FORMATTED_CAP]
-            merged["total"] = max(int(merged.get("total") or 0), int(result.get("total") or 0))
-        for query, result in batch_results.items():
-            bucket = aggregated_results.setdefault(query, {"query": query, "formatted": "", "total": 0, "sources": []})
-            for source in result.get("sources") or []:
-                url = _normalize_url(source.get("url", ""))
-                if url and not any(_normalize_url(item.get("url", "")) == url for item in bucket["sources"]):
-                    bucket["sources"].append({**source, "url": url})
+        for round_index in range(max_rounds):
+            if not round_queries:
+                break
+            search = _crw_batch_search(round_queries, max_results_each=5)
+            batch_results = search.get("results_by_query") or {}
+            for query, result in batch_results.items():
+                existing = aggregated_results.get(query)
+                if not existing:
+                    aggregated_results[query] = {
+                        "query": query,
+                        "formatted": result.get("formatted", ""),
+                        "total": result.get("total", 0),
+                        "sources": [],
+                    }
+                merged = aggregated_results[query]
+                merged["formatted"] = (
+                    (merged.get("formatted") or "")
+                    + ("\n\n" if merged.get("formatted") else "")
+                    + (result.get("formatted") or "")
+                )[:_RESEARCH_PER_QUERY_FORMATTED_CAP]
+                merged["total"] = max(int(merged.get("total") or 0), int(result.get("total") or 0))
+            for query, result in batch_results.items():
+                bucket = aggregated_results.setdefault(query, {"query": query, "formatted": "", "total": 0, "sources": []})
+                for source in result.get("sources") or []:
+                    url = _normalize_url(source.get("url", ""))
+                    if url and not any(_normalize_url(item.get("url", "")) == url for item in bucket["sources"]):
+                        bucket["sources"].append({**source, "url": url})
 
-        synthesis = _synthesize_research_round(round_queries, search, prior_learnings=learnings)
-        for item in synthesis.get("learnings", []):
-            if item not in learnings:
-                learnings.append(item)
-        if round_index >= max_rounds - 1:
-            break
-        round_queries = _build_followup_queries(synthesis.get("directions", []), queries)
+            synthesis = _synthesize_research_round(round_queries, search, prior_learnings=learnings)
+            for item in synthesis.get("learnings", []):
+                if item not in learnings:
+                    learnings.append(item)
+            if round_index >= max_rounds - 1:
+                break
+            round_queries = _build_followup_queries(synthesis.get("directions", []), queries)
 
-    return _finalize_recursive_research(queries, aggregated_results, learnings)
+        return _finalize_recursive_research(queries, aggregated_results, learnings)
 
 
 def sonar_research(queries=None) -> dict:
@@ -1148,31 +1212,32 @@ def batch_search(queries=None, max_results_each: int = 8) -> dict:
         return {"error": "queries is required — pass a list of search strings, e.g. [\"competitor A pricing\", \"competitor B features\"]"}
     results_by_query: dict = {}
 
-    with ThreadPoolExecutor(max_workers=min(len(queries), 8)) as ex:
-        futures = {ex.submit(search_and_fetch, q, max_results_each): q for q in queries}
-        # Process-wide search gate serializes calls (~1s apart) and each query
-        # retries with backoff, so a parallel batch can take well over a minute.
-        # Catch the overall timeout and return whatever finished — partial
-        # results beat an all-or-nothing "N futures unfinished" failure.
-        try:
-            for fut in as_completed(futures, timeout=110):
-                q = futures[fut]
-                try:
-                    results_by_query[q] = fut.result()
-                except Exception as e:
-                    results_by_query[q] = {"query": q, "results": [], "error": str(e)}
-        except TimeoutError:
-            for fut, q in futures.items():
-                if q in results_by_query:
-                    continue
-                if fut.done() and not fut.cancelled():
+    with _research_tool_slot():
+        with ThreadPoolExecutor(max_workers=min(len(queries), 8)) as ex:
+            futures = {ex.submit(search_and_fetch, q, max_results_each): q for q in queries}
+            # Process-wide search gate serializes calls (~1s apart) and each query
+            # retries with backoff, so a parallel batch can take well over a minute.
+            # Catch the overall timeout and return whatever finished — partial
+            # results beat an all-or-nothing "N futures unfinished" failure.
+            try:
+                for fut in as_completed(futures, timeout=110):
+                    q = futures[fut]
                     try:
                         results_by_query[q] = fut.result()
                     except Exception as e:
                         results_by_query[q] = {"query": q, "results": [], "error": str(e)}
-                else:
-                    fut.cancel()
-                    results_by_query[q] = {"query": q, "results": [], "error": "search_timeout"}
+            except TimeoutError:
+                for fut, q in futures.items():
+                    if q in results_by_query:
+                        continue
+                    if fut.done() and not fut.cancelled():
+                        try:
+                            results_by_query[q] = fut.result()
+                        except Exception as e:
+                            results_by_query[q] = {"query": q, "results": [], "error": str(e)}
+                    else:
+                        fut.cancel()
+                        results_by_query[q] = {"query": q, "results": [], "error": "search_timeout"}
 
     combined = []
     all_sources = []
@@ -1263,7 +1328,8 @@ def run_research_pipeline(topic: str, focus: str = "market", max_results_each: i
             "coverage": {"ready": False, "gaps": ["topic is required"], "source_count": 0, "domain_count": 0},
         }
     from backend.config import settings
-    search = _native_research_pass(plan["resource_topic"], plan["focus"], queries) if settings.native_research_enabled else batch_search(queries, max_results_each=max_results_each)
+    with _research_tool_slot():
+        search = _native_research_pass(plan["resource_topic"], plan["focus"], queries) if settings.native_research_enabled else batch_search(queries, max_results_each=max_results_each)
     coverage = _research_coverage(plan["focus"], queries, search)
     return {
         "topic": plan["topic"],

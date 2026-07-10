@@ -525,6 +525,43 @@ def test_crw_search_and_fetch_handles_request_failure(monkeypatch):
     assert result["error"] == "crw unreachable"
 
 
+def test_crw_search_and_fetch_uses_bounded_timeout(monkeypatch):
+    captured = {}
+
+    class FakeResponse:
+        def json(self):
+            return {
+                "success": True,
+                "data": [{"url": "https://example.com/report", "title": "Report", "snippet": "A report.", "markdown": "content"}],
+            }
+
+    def fake_post(url, json, timeout):
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setitem(sys.modules, "httpx", types.SimpleNamespace(post=fake_post))
+
+    result = browser_research._crw_search_and_fetch("timeout query", max_results=5)
+
+    assert result["total"] == 1
+    assert captured["timeout"] == browser_research._CRW_TIMEOUT_SECONDS
+
+
+def test_crw_search_and_fetch_skips_crw_during_cooldown(monkeypatch):
+    monkeypatch.setattr(browser_research, "_crw_disabled_until", browser_research._time.time() + 60)
+    monkeypatch.setattr(
+        browser_research,
+        "_ddgs_fallback_search",
+        lambda query, max_results: {"query": query, "results": [], "formatted": "", "total": 0, "sources": []},
+    )
+
+    result = browser_research._crw_search_and_fetch("cooldown query")
+
+    assert result["error"] == "crw_cooldown_active"
+    assert result["total"] == 0
+    monkeypatch.setattr(browser_research, "_crw_disabled_until", 0.0)
+
+
 def test_crw_search_and_fetch_falls_back_when_crw_returns_no_results(monkeypatch):
     class FakeResponse:
         def json(self):
@@ -566,3 +603,15 @@ def test_crw_batch_search_aggregates_across_queries(monkeypatch):
     assert result["queries_run"] == 2
     assert set(result["results_by_query"]) == {"alpha", "beta"}
     assert len(result["sources"]) == 2
+
+
+def test_crw_failures_open_cooldown(monkeypatch):
+    monkeypatch.setattr(browser_research, "_crw_failures", 0)
+    monkeypatch.setattr(browser_research, "_crw_disabled_until", 0.0)
+
+    for _ in range(browser_research._CRW_FAILURE_THRESHOLD):
+        browser_research._record_crw_result(False)
+
+    assert browser_research._crw_disabled_until > browser_research._time.time()
+    assert browser_research._crw_failures == 0
+    monkeypatch.setattr(browser_research, "_crw_disabled_until", 0.0)
