@@ -2148,9 +2148,23 @@ class Orchestrator:
                 _task_result = completed.get(_gt["id"])
                 _task_result_dict: dict = _task_result if isinstance(_task_result, dict) else {}
                 _verification = task_verifications.get(_gt["id"], {}) or {}
-                if _verification.get("status") in {"blocked", "needs_review"}:
+                # Very low bar for phase advancement: block downstream departments only
+                # when a task produced GENUINELY NOTHING usable (zero passed or even weak
+                # artifacts) — not merely "didn't fully pass verification". Previously any
+                # single blocked/needs_review/suspect task hard-blocked the WHOLE phase
+                # (every other department too), even when that task still delivered real,
+                # if imperfect, content — e.g. research_competitors hitting
+                # max_iterations_reached after producing a real competitor list. Founders
+                # would rather other departments proceed on thin research than have the
+                # entire run stall waiting on one lane. Duplicate-content detection below
+                # is a different failure mode (copy-paste bug, not "too little content")
+                # and is intentionally NOT covered by this low bar.
+                _has_bare_minimum = (int(_verification.get("passed_count") or 0)
+                                      + int(_verification.get("weak_count") or 0)) > 0
+                if _verification.get("status") in {"blocked", "needs_review"} and not _has_bare_minimum:
                     gate_blockers.append((_gt, str(_verification.get("summary") or "Artifact verification did not pass.")))
-                if isinstance(_task_result_dict, dict) and _task_result_dict.get("status") == "suspect":
+                if (isinstance(_task_result_dict, dict) and _task_result_dict.get("status") == "suspect"
+                        and not _has_bare_minimum):
                     _qf = _task_result_dict.get("quality_flags") or {}
                     _miss = []
                     if isinstance(_qf, dict):

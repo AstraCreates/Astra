@@ -71,3 +71,60 @@ async def test_phase_gate_does_not_requeue_killed_agent(monkeypatch):
         and call.args[1].get("status") == "blocked"
     ]
     assert any(event.get("next_actor") == "founder" for event in blocked_events)
+
+
+@pytest.mark.asyncio
+async def test_phase_gate_lets_downstream_proceed_on_bare_minimum_content(monkeypatch):
+    """Very low bar for phase advancement: a task that didn't fully pass
+    verification (status='needs_review') but has at least one 'weak' (present,
+    thin) artifact should NOT block the whole phase — downstream departments
+    should proceed on that thin output rather than stall the entire run
+    waiting on one imperfect lane. Contrast with the 'genuinely nothing'
+    case above (weak_count=0, passed_count=0), which still correctly blocks."""
+    planner = _FakePlanner()
+    research = _FakeAgent("research", [{"summary": "thin but real findings"}])
+    design = _FakeAgent("design", [{"brand_direction": "ready"}])
+    orch = Orchestrator(planner=planner, specialists={"research": research, "design": design})
+
+    publish = AsyncMock()
+    monkeypatch.setattr("backend.core.events.publish", publish)
+    monkeypatch.setattr("backend.core.orchestrator.candidate_research_agents_for_default_provider", lambda: [("r_market", "research")])
+    monkeypatch.setattr("backend.core.orchestrator.is_agent_killed", lambda session_id, agent_name: False)
+    monkeypatch.setattr(orch, "_expand_goal", AsyncMock(return_value="goal"))
+    monkeypatch.setattr(orch, "_generate_company_name", AsyncMock(return_value="Acme"))
+    monkeypatch.setattr(orch, "_replan_with_research", AsyncMock(return_value=[]))
+    monkeypatch.setattr(orch, "_generate_detailed_plan", AsyncMock(return_value=[]))
+    monkeypatch.setattr(orch, "_critical_research_review", AsyncMock(return_value={}))
+    monkeypatch.setattr(orch, "_bootstrap_operating_after_run", AsyncMock())
+    monkeypatch.setattr(orch, "_sync_session_deliverables", AsyncMock())
+    monkeypatch.setattr("backend.tools.obsidian_logger.auto_log_if_missing", lambda *args, **kwargs: False)
+    monkeypatch.setattr("backend.tools.obsidian_logger._note_path", lambda *args, **kwargs: Path("/tmp/nonexistent-note.md"))
+    # With zero gate_blockers the real _phase_gate falls through to the NORMAL
+    # founder-approval checkpoint (create_approval_request + a 2hr wait) — a
+    # deliberate feature, not part of what this test is verifying. Resolve it
+    # immediately so the test isn't asserting on that unrelated wait.
+    monkeypatch.setattr("backend.core.events.approval_decision_wait", AsyncMock(return_value={"decision": "approved"}))
+    monkeypatch.setattr("backend.approval_workflows.create_approval_request", lambda **kwargs: None)
+
+    async def _fake_deep_verification(*, task, base_verdict, **_kwargs):
+        verdict = dict(base_verdict)
+        verdict.setdefault("task_id", task["id"])
+        verdict.setdefault("agent", task["agent"])
+        verdict["status"] = "needs_review"
+        verdict["passed_count"] = 0
+        verdict["weak_count"] = 1  # barely enough — one thin-but-present artifact
+        verdict["summary"] = "One weak artifact, did not fully pass."
+        verdict.setdefault("artifacts", [])
+        return verdict
+
+    monkeypatch.setattr("backend.stacks.run_deep_verification", _fake_deep_verification)
+
+    await orch.run(goal="g", founder_id="f", session_id="s")
+
+    assert research.calls == 1  # research itself cleared the low bar, no retry
+    # design's own fake output also isn't a full pass under the same fake
+    # verification, so it may get revised/retried too (unrelated to what this
+    # test verifies) — the only thing under test is that it ran AT ALL, which
+    # would be impossible (calls == 0) if research's 'needs_review' had still
+    # hard-blocked the whole phase the old way.
+    assert design.calls > 0
