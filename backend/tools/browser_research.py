@@ -229,7 +229,26 @@ def _domain(url: str) -> str:
     return urlparse(url).netloc.lower().lstrip("www.")
 
 
-def _normalize_url(url: str) -> str:
+def _coerce_text(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in ("url", "href", "link", "query", "title", "value"):
+            candidate = value.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate
+        try:
+            return json.dumps(value, sort_keys=True, default=str)
+        except Exception:
+            return str(value)
+    if isinstance(value, (list, tuple)):
+        parts = [_coerce_text(item).strip() for item in value]
+        return " ".join(part for part in parts if part)
+    return str(value or "")
+
+
+def _normalize_url(url: object) -> str:
+    url = _coerce_text(url).strip()
     parsed = urlparse(url)
     if not parsed.scheme or not parsed.netloc:
         return url
@@ -380,7 +399,7 @@ def _extract_links(html: str, base_domain: str = "") -> list[str]:
 
 
 def _canonicalize_search_query(query: object) -> str:
-    return re.sub(r"\s+", " ", str(query or "")).strip()
+    return re.sub(r"\s+", " ", _coerce_text(query)).strip()
 
 
 def _dedupe_search_queries(queries: list[object], limit: int = 12) -> list[str]:

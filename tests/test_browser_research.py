@@ -90,6 +90,61 @@ def test_normalize_url_strips_tracking_params():
     )
 
 
+def test_normalize_url_and_query_coerce_dict_inputs():
+    assert (
+        browser_research._normalize_url({"url": "https://example.com/page?utm_source=x&keep=1"})
+        == "https://example.com/page?keep=1"
+    )
+    assert browser_research._canonicalize_search_query({"query": "AI sales copilot pricing"}) == "AI sales copilot pricing"
+
+
+def test_sonar_research_tolerates_dict_shaped_followup_queries(monkeypatch):
+    calls = []
+
+    def fake_batch_search(queries, max_results_each):
+        calls.append(list(queries))
+        return {
+            "queries_run": len(queries),
+            "results_by_query": {
+                query: {
+                    "total": 1,
+                    "formatted": f"Query: {query}",
+                    "sources": [{"title": f"Source for {query}", "url": f"https://example.com/{str(query).replace(' ', '-')}"}],
+                }
+                for query in queries
+            },
+            "sources": [{"title": "Shared", "url": "https://example.com/shared"}],
+            "combined_formatted": "\n".join(map(str, queries)),
+        }
+
+    synth_outputs = iter([
+        {
+            "learnings": ["Initial finding"],
+            "directions": [{"query": "enterprise pricing custom quote SaaS"}],
+            "summary": "Round one findings",
+        },
+        {"queries": [{"query": "enterprise pricing custom quote SaaS"}]},
+        {
+            "learnings": ["Enterprise plans are custom quote"],
+            "directions": [],
+            "summary": "Round two findings",
+        },
+        {"answer": "Answer one", "support": ["a"]},
+    ])
+
+    def fake_research_llm_json(prompt, max_tokens=900):
+        return next(synth_outputs)
+
+    monkeypatch.setattr(browser_research, "_crw_batch_search", fake_batch_search)
+    monkeypatch.setattr(browser_research, "_research_llm_json", fake_research_llm_json)
+
+    result = browser_research.sonar_research(["AI sales copilot market size"])
+
+    assert calls[0] == ["AI sales copilot market size"]
+    assert result["queries_run"] == 1
+    assert result["results_by_query"]["AI sales copilot market size"]["answer"] == "Answer one"
+
+
 def test_build_research_queries_market_focus():
     result = browser_research.build_research_queries("AI sales copilot", focus="market")
 
