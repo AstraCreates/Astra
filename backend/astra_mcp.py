@@ -484,14 +484,19 @@ def _recommend_stack(args: dict) -> dict:
 def _approve(args: dict) -> dict:
     session_id = args["session_id"]
     founder_id = args.get("founder_id") or _founder_id()
+    gate_key = str(args.get("action_key") or args.get("gate_key") or "").strip()
+    if not gate_key:
+        return {"ok": False, "error": "action_key (approval gate key) is required"}
     try:
         result = _post("/stack/approval", {
             "session_id": session_id,
-            "action_key": args["action_key"],
-            "decision": "approve",
+            # The public MCP tool historically called this action_key, while
+            # the API and durable ledger use gate_key and "approved".
+            "gate_key": gate_key,
+            "decision": "approved",
             "founder_id": founder_id,
         })
-        return {"ok": True, **result}
+        return result if isinstance(result, dict) else {"ok": True, "result": result}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 

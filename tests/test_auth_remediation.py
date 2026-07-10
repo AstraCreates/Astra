@@ -15,6 +15,34 @@ def strict_header_auth(monkeypatch):
     monkeypatch.setattr(settings, "astra_trust_auth_headers", True)
 
 
+def test_mcp_approve_translates_legacy_action_key(monkeypatch):
+    from backend import astra_mcp
+
+    calls = []
+
+    def fake_post(path, payload, **kwargs):
+        calls.append((path, payload))
+        return {"ok": True, "gate_key": payload["gate_key"], "decision": payload["decision"]}
+
+    monkeypatch.setattr(astra_mcp, "_post", fake_post)
+    result = astra_mcp._approve({
+        "session_id": "session-1",
+        "action_key": "public_deploy",
+        "founder_id": "founder-1",
+    })
+
+    assert result == {"ok": True, "gate_key": "public_deploy", "decision": "approved"}
+    assert calls == [(
+        "/stack/approval",
+        {
+            "session_id": "session-1",
+            "gate_key": "public_deploy",
+            "decision": "approved",
+            "founder_id": "founder-1",
+        },
+    )]
+
+
 @pytest.mark.asyncio
 async def test_deployment_routes_require_record_owner(tmp_path, monkeypatch):
     monkeypatch.setenv("OBSIDIAN_VAULT", str(tmp_path))
