@@ -132,6 +132,41 @@ async def test_agent_backs_off_before_retrying_tool_error(mocker):
 
 
 @pytest.mark.asyncio
+async def test_research_agent_survives_one_repeat_before_forcing_synthesis(mocker):
+    """Real prod bug: research_competitors force-exited after just 2 identical
+    action+tool+args signatures (10s, iterations_used=2), mislabeled
+    'max_iterations_reached'. The signature check runs BEFORE tool dispatch,
+    so with the old threshold (>=2) only the 1st call ever executed — the
+    2nd identical request was blocked pre-dispatch. A model retrying once
+    (network blip, thin first result) is normal; the retry must be allowed
+    to execute. Threshold is now >=3, so exactly 2 calls execute (original +
+    one retry) before the 3rd identical request is blocked pre-dispatch."""
+    tool_calls = []
+
+    def fake_llm(_messages, _ctx=None):
+        if len(tool_calls) < 5:
+            return '{"action":"tool","tool":"deep_research","args":{"queries":["Acme"]}}'
+        return '{"action":"done","output":{"summary":"forced synth"}}'
+
+    def deep_research(**kwargs):
+        tool_calls.append(1)
+        return {"report": "real"}
+
+    agent = Agent(
+        name="research_market",
+        role="probe",
+        tools={"deep_research": deep_research},
+        max_iterations=10,
+    )
+    agent._call_llm = fake_llm
+    mocker.patch("backend.core.events.publish", new=AsyncMock())
+
+    await agent.run(_ctx())
+
+    assert len(tool_calls) == 2
+
+
+@pytest.mark.asyncio
 async def test_agent_recovers_when_action_field_is_a_dict(mocker):
     """Real production crash: the model returned {"action": {...}} (a dict, not a
     string) on its first turn. Unguarded `x in self.tools` / `x == "done"` checks

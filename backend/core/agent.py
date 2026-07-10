@@ -1535,9 +1535,9 @@ class Agent:
                     default=str,
                 )
                 _response_signatures[signature] = _response_signatures.get(signature, 0) + 1
-                if _response_signatures[signature] >= 2:
+                if _response_signatures[signature] >= 3:
                     _schedule_error_backoff("repeated identical research action")
-                    logger.error("[%s] repeated identical action twice; forcing synthesis", self.name)
+                    logger.error("[%s] repeated identical action 3x; forcing synthesis", self.name)
                     break
             # A parsed envelope can still be semantically invalid (unknown action
             # or tool). Give the one-shot repair pass the raw response before the
@@ -1981,7 +1981,7 @@ class Agent:
                 await self._emit(ctx, "agent_unknown_action", action=action, parsed_keys=list(parsed.keys()), raw_snippet=raw[:120])
                 _consecutive_unknown += 1
                 _invalid_action_count += 1
-                invalid_limit = 2 if self.name in _RESEARCH_AGENT_NAMES else 3
+                invalid_limit = 3
                 if _consecutive_unknown >= 3 or _invalid_action_count >= invalid_limit:
                     # Break narrative loop — force done
                     logger.error("[%s] invalid action limit reached (%d) — forcing done", self.name, _invalid_action_count)
