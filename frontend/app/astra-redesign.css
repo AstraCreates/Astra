@@ -522,15 +522,15 @@ a { transition: color .15s, background .15s, border-color .15s, opacity .15s, bo
   backdrop-filter: blur(18px);
 }
 .copilot-dock.is-open {
-  box-shadow: 0 22px 64px rgba(17, 16, 24, 0.16);
+  box-shadow: 0 24px 68px rgba(17, 16, 24, 0.18);
 }
 .copilot-thread {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   max-height: 320px;
   overflow-y: auto;
-  padding: 18px;
+  padding: 20px 20px 18px;
   border-bottom: 1px solid var(--bd);
 }
 .copilot-empty {
@@ -544,7 +544,7 @@ a { transition: color .15s, background .15s, border-color .15s, opacity .15s, bo
 .copilot-row {
   display: flex;
   align-items: flex-end;
-  gap: 9px;
+  gap: 10px;
 }
 .copilot-row.is-founder {
   justify-content: flex-end;
@@ -563,15 +563,15 @@ a { transition: color .15s, background .15s, border-color .15s, opacity .15s, bo
   box-shadow: 0 5px 14px rgba(0, 46, 255, 0.24);
 }
 .copilot-bubble {
-  max-width: min(76%, 760px);
-  padding: 11px 15px;
+  max-width: min(78%, 780px);
+  padding: 13px 17px;
   border: 1px solid var(--bd);
   border-radius: 8px 22px 22px 22px !important;
   color: var(--fg);
   background: var(--surface);
   box-shadow: 0 5px 18px rgba(17, 16, 24, 0.05);
   font-size: 12.5px;
-  line-height: 1.55;
+  line-height: 1.65;
   white-space: pre-wrap;
 }
 .copilot-row.is-founder .copilot-bubble {
@@ -619,7 +619,7 @@ a { transition: color .15s, background .15s, border-color .15s, opacity .15s, bo
 .copilot-thinking {
   display: flex;
   gap: 4px;
-  padding: 13px 15px;
+  padding: 14px 17px;
   border: 1px solid var(--bd);
   border-radius: 8px 22px 22px 22px !important;
   background: var(--surface);
@@ -635,20 +635,20 @@ a { transition: color .15s, background .15s, border-color .15s, opacity .15s, bo
 .copilot-thinking span:nth-child(3) { animation-delay: .3s; }
 .copilot-dock .steer-wrap {
   gap: 10px;
-  min-height: 46px;
-  padding: 5px 8px;
+  min-height: 54px;
+  padding: 7px 10px;
   border: 0;
   border-radius: 999px !important;
   background: transparent;
 }
 .copilot-dock .steer-inp {
-  min-height: 32px;
+  min-height: 38px;
   font-family: var(--font-geist-sans), "Geist", sans-serif;
-  font-size: 12px;
+  font-size: 12.5px;
 }
 .copilot-dock .steer-send {
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   border-radius: 50% !important;
   font-size: 14px;
   box-shadow: 0 6px 16px rgba(0, 46, 255, 0.22);
