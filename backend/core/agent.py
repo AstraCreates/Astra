@@ -178,7 +178,7 @@ _BASE64_CONTEXT_CHAR_THRESHOLD = int(os.environ.get("ASTRA_BASE64_CONTEXT_THRESH
 _HISTORY_CHAR_BUDGET = int(os.environ.get("ASTRA_HISTORY_CHAR_BUDGET", "300000"))  # ~75k tokens
 
 
-def _trim_message_history(messages: list[dict]) -> list[dict]:
+def _trim_message_history(messages: list[dict], budget_limit: int | None = None) -> list[dict]:
     """Bound an agent's conversation so long tool-heavy loops can't overflow the
     model window. Always keep the system prompt (messages[0]) and the initial goal
     (messages[1]); drop the OLDEST middle turns first, inserting a marker so the
@@ -196,6 +196,7 @@ def _trim_message_history(messages: list[dict]) -> list[dict]:
             return len(str(c))
 
     try:
+        history_budget = budget_limit or _HISTORY_CHAR_BUDGET
         # First hard-cap any single oversized tool result (i>=2) so one giant payload
         # can't blow the window even when there are only a few messages.
         _PER_MSG_CAP = 120_000
@@ -207,13 +208,13 @@ def _trim_message_history(messages: list[dict]) -> list[dict]:
             capped.append(m)
         messages = capped
         total = sum(_clen(m) for m in messages)
-        if total <= _HISTORY_CHAR_BUDGET:
+        if total <= history_budget:
             return messages
         head = messages[:2]
         tail = messages[2:]
         # Drop from the front of `tail` until under budget, keeping the most recent.
         head_chars = sum(_clen(m) for m in head)
-        budget = _HISTORY_CHAR_BUDGET - head_chars
+        budget = history_budget - head_chars
         kept: list[dict] = []
         running = 0
         for m in reversed(tail):
@@ -1253,6 +1254,15 @@ class Agent:
     async def _run_loop(self, messages: list[dict], ctx: AgentContext, browser=None) -> dict[str, Any]:
         i = 0
         MAX_ITERATIONS = self._max_iterations or 20
+        if self.name.startswith("research"):
+            # Research tools already persist evidence externally. Keeping a
+            # 75k-token rolling transcript is counterproductive: every Ling
+            # call resends it, so one lane can burn hundreds of thousands of
+            # input tokens before the generic 30-iteration ceiling fires.
+            MAX_ITERATIONS = min(MAX_ITERATIONS, int(os.environ.get("ASTRA_RESEARCH_MAX_ITERATIONS", "16")))
+            history_budget = int(os.environ.get("ASTRA_RESEARCH_HISTORY_CHAR_BUDGET", "160000"))
+        else:
+            history_budget = _HISTORY_CHAR_BUDGET
         compressor = AstraContextCompressor()
         # Track consecutive failures per tool to break infinite retry loops
         _tool_fail_counts: dict[str, int] = {}
@@ -1400,9 +1410,9 @@ class Agent:
                     await self._emit(ctx, "context_compression_completed", **compression)
                 except Exception as exc:
                     await self._emit(ctx, "context_compression_failed", error=str(exc)[:240])
-                    messages = _trim_message_history(messages)
+                    messages = _trim_message_history(messages, history_budget)
             else:
-                messages = _trim_message_history(messages)
+                messages = _trim_message_history(messages, history_budget)
             if ctx.budget:
                 await self._emit(ctx, "agent_budget_update", budget=ctx.budget.snapshot().__dict__)
             raw = await asyncio.to_thread(self._invoke_llm, messages, ctx)

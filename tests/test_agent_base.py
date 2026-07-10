@@ -1,7 +1,7 @@
 import json
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
-from backend.core.agent import Agent, AgentContext
+from backend.core.agent import Agent, AgentContext, _trim_message_history
 
 
 def _make_agent(mocker, llm_response: str = None) -> Agent:
@@ -30,6 +30,18 @@ def test_agent_stores_tools():
     tools = {"generate_pdf": lambda: None}
     agent = Agent(name="legal", role="legal", tools=tools)
     assert "generate_pdf" in agent.tools
+
+
+def test_trim_message_history_accepts_research_specific_budget():
+    messages = [
+        {"role": "system", "content": "system"},
+        {"role": "user", "content": "goal"},
+        *({"role": "user", "content": "x" * 100} for _ in range(10)),
+    ]
+    compact = _trim_message_history(messages, budget_limit=350)
+    assert len(compact) < len(messages)
+    assert compact[0]["content"] == "system"
+    assert compact[1]["content"] == "goal"
 
 
 def test_call_llm_uses_short_timeout_for_confirmed_fast_models():
