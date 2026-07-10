@@ -213,7 +213,7 @@ function inlineFmt(text: string, keyBase: string): React.ReactNode[] {
 }
 
 // Render markdown-ish deliverable content as clean, styled blocks (no <pre> dump).
-function RichText({ text }: { text: string }) {
+function RichText({ text, bare = false }: { text: string; bare?: boolean }) {
   const lines = text.replace(/\r/g, "").split("\n");
   const blocks: React.ReactNode[] = [];
   let list: { items: string[]; ordered: boolean } | null = null;
@@ -247,6 +247,7 @@ function RichText({ text }: { text: string }) {
     blocks.push(<p key={`p${idx}`} style={{ fontSize: 12.5, lineHeight: 1.7, color: "var(--fd)", margin: "0 0 7px" }}>{inlineFmt(t, `p${idx}`)}</p>);
   });
   flush();
+  if (bare) return <>{blocks}</>;
   return <div style={{ background: "var(--surface)", border: "1px solid var(--bd)", padding: "14px 16px", maxHeight: 460, overflowY: "auto" }}>{blocks}</div>;
 }
 
@@ -1154,7 +1155,9 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                         </span>
                         <span className={`dc-badge ${badgeCls}`}>{badgeLabel}</span>
                       </div>
-                      <div style={{ fontSize: 12, color: "var(--fd)", lineHeight: 1.55 }}>{task.instruction}</div>
+                      <div style={{ fontSize: 12, color: "var(--fd)", lineHeight: 1.55 }}>
+                        <RichText text={task.instruction} bare />
+                      </div>
                     </div>
                   </div>
                 );
@@ -1385,7 +1388,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           <button
             type="button"
             onClick={() => setPlanOpen(true)}
-            className="dc-badge que"
+            className="dc-badge plan"
             style={{ marginLeft: "auto", cursor: "pointer", fontFamily: "var(--font-chakra), sans-serif", letterSpacing: ".04em", textTransform: "uppercase" }}
           >
             ◱ Plan · {st.planTasks.length} step{st.planTasks.length !== 1 ? "s" : ""}

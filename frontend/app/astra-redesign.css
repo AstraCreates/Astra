@@ -376,6 +376,7 @@ button:not(:disabled):active { transform: scale(0.97); }
 .dc-badge.done{color:var(--fm);border-color:var(--bd);background:rgba(22,163,74,.05)}
 .dc-badge.err{color:var(--red);border-color:var(--rb);background:var(--rdim)}
 .dc-badge.que{color:var(--fm);border-color:var(--bd);background:rgba(0,0,0,.03)}
+.dc-badge.plan{color:var(--blue);border-color:var(--bb);background:var(--bdim);box-shadow:inset 2px 0 0 var(--blue)}
 .dc-what{font-size:10px;color:var(--fd);line-height:1.55;font-family:var(--font-code),monospace}
 .dc-prog{height:1px;background:rgba(0,0,0,.06);overflow:hidden}.dc-bar{height:100%;width:100%;transform-origin:left;transition:transform .9s cubic-bezier(.22,1,.36,1)}
 
