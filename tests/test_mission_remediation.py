@@ -281,7 +281,7 @@ async def test_dispatch_current_goal_budget_check_and_reservation_use_goal_lock(
 
 
 @pytest.mark.asyncio
-async def test_scheduler_redispatches_stalled_active_goal(monkeypatch):
+async def test_scheduler_does_not_redispatch_stalled_active_goal(monkeypatch):
     from backend.missions import company_goal, scheduler
     from backend.core import session_store
 
@@ -306,8 +306,6 @@ async def test_scheduler_redispatches_stalled_active_goal(monkeypatch):
     monkeypatch.setattr(company_goal, "current_goal", lambda *_args, **_kwargs: current)
     monkeypatch.setattr(company_goal, "_goal_is_complete", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(company_goal, "chain_allowed", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(company_goal, "is_due", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(company_goal, "budget_allows", lambda *_args, **_kwargs: True)
 
     async def fake_dispatch(founder_id, company_id):
         calls.append((founder_id, company_id))
@@ -317,12 +315,12 @@ async def test_scheduler_redispatches_stalled_active_goal(monkeypatch):
 
     dispatched = await scheduler._scheduler_tick()
 
-    assert dispatched == 1
-    assert calls == [("founder", "company")]
+    assert dispatched == 0
+    assert calls == []
 
 
 @pytest.mark.asyncio
-async def test_scheduler_stalled_goal_honors_backoff_interval(monkeypatch):
+async def test_scheduler_recovers_missing_next_goal_proposal_without_redispatch(monkeypatch):
     from backend.missions import company_goal, scheduler
     from backend.core import session_store
 
@@ -338,124 +336,36 @@ async def test_scheduler_stalled_goal_honors_backoff_interval(monkeypatch):
     }
     current = {
         "id": "goal_1",
-        "status": "active",
-        "tasks": [{"id": "task_1", "status": "pending"}],
+        "status": "done",
+        "tasks": [{"id": "task_1", "status": "done"}],
     }
-    due_checks = []
-    calls = []
+    plan_calls = []
+    dispatch_calls = []
 
-    monkeypatch.setenv("ASTRA_GOAL_SAFETY_INTERVAL_SECONDS", "300")
     monkeypatch.setattr(company_goal, "list_company_goals", lambda: [goal_doc])
     monkeypatch.setattr(company_goal, "reconcile_operating_sessions", lambda *_args, **_kwargs: 0)
     monkeypatch.setattr(session_store, "has_active_run", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(company_goal, "current_goal", lambda *_args, **_kwargs: current)
-    monkeypatch.setattr(company_goal, "_goal_is_complete", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(company_goal, "_goal_is_complete", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(company_goal, "chain_allowed", lambda *_args, **_kwargs: True)
 
-    def fake_is_due(goal, min_interval_seconds):
-        due_checks.append(min_interval_seconds)
-        return False
+    def fake_plan_next_goal(founder_id, company_id):
+        plan_calls.append((founder_id, company_id))
+        return {"ok": True}
 
-    monkeypatch.setattr(company_goal, "is_due", fake_is_due)
-    monkeypatch.setattr(company_goal, "budget_allows", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr("backend.missions.goal_engine.plan_next_goal", fake_plan_next_goal)
 
     async def fake_dispatch(founder_id, company_id):
-        calls.append((founder_id, company_id))
+        dispatch_calls.append((founder_id, company_id))
         return {"ok": True, "session_id": "session_2"}
 
     monkeypatch.setattr("backend.missions.goal_engine.dispatch_current_goal", fake_dispatch)
 
     dispatched = await scheduler._scheduler_tick()
 
-    assert dispatched == 0
-    assert due_checks == [600]
-    assert calls == []
-
-
-@pytest.mark.asyncio
-async def test_scheduler_stalled_goal_honors_attempt_cap(monkeypatch):
-    from backend.missions import company_goal, scheduler
-    from backend.core import session_store
-
-    goal_doc = {
-        "founder_id": "founder",
-        "company_id": "company",
-        "status": "operating",
-        "budget": {"max_runs_per_day": 12},
-        "operating_sessions": [
-            {"session_id": "session_1", "goal_id": "goal_1"},
-            {"session_id": "session_2", "goal_id": "goal_1"},
-        ],
-        "current_goal_id": "goal_1",
-    }
-    current = {
-        "id": "goal_1",
-        "status": "active",
-        "tasks": [{"id": "task_1", "status": "pending"}],
-    }
-    calls = []
-
-    monkeypatch.setenv("ASTRA_MAX_GOAL_ATTEMPTS", "2")
-    monkeypatch.setattr(company_goal, "list_company_goals", lambda: [goal_doc])
-    monkeypatch.setattr(company_goal, "reconcile_operating_sessions", lambda *_args, **_kwargs: 0)
-    monkeypatch.setattr(session_store, "has_active_run", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(company_goal, "current_goal", lambda *_args, **_kwargs: current)
-    monkeypatch.setattr(company_goal, "_goal_is_complete", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(company_goal, "chain_allowed", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(company_goal, "is_due", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(company_goal, "budget_allows", lambda *_args, **_kwargs: True)
-
-    async def fake_dispatch(founder_id, company_id):
-        calls.append((founder_id, company_id))
-        return {"ok": True, "session_id": "session_3"}
-
-    monkeypatch.setattr("backend.missions.goal_engine.dispatch_current_goal", fake_dispatch)
-
-    dispatched = await scheduler._scheduler_tick()
-
-    assert dispatched == 0
-    assert calls == []
-
-
-@pytest.mark.asyncio
-async def test_scheduler_only_redispatches_active_goals(monkeypatch):
-    from backend.missions import company_goal, scheduler
-    from backend.core import session_store
-
-    goal_doc = {
-        "founder_id": "founder",
-        "company_id": "company",
-        "status": "operating",
-        "budget": {"max_runs_per_day": 12},
-        "operating_sessions": [],
-        "current_goal_id": "goal_1",
-    }
-    current = {
-        "id": "goal_1",
-        "status": "proposed",
-        "tasks": [{"id": "task_1", "status": "pending"}],
-    }
-    calls = []
-
-    monkeypatch.setattr(company_goal, "list_company_goals", lambda: [goal_doc])
-    monkeypatch.setattr(company_goal, "reconcile_operating_sessions", lambda *_args, **_kwargs: 0)
-    monkeypatch.setattr(session_store, "has_active_run", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(company_goal, "current_goal", lambda *_args, **_kwargs: current)
-    monkeypatch.setattr(company_goal, "_goal_is_complete", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(company_goal, "chain_allowed", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(company_goal, "is_due", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(company_goal, "budget_allows", lambda *_args, **_kwargs: True)
-
-    async def fake_dispatch(founder_id, company_id):
-        calls.append((founder_id, company_id))
-        return {"ok": True, "session_id": "session_1"}
-
-    monkeypatch.setattr("backend.missions.goal_engine.dispatch_current_goal", fake_dispatch)
-
-    dispatched = await scheduler._scheduler_tick()
-
-    assert dispatched == 0
-    assert calls == []
+    assert dispatched == 1
+    assert plan_calls == [("founder", "company")]
+    assert dispatch_calls == []
 
 
 def test_get_missions_due_for_run_uses_per_founder_lock(tmp_path, monkeypatch):
