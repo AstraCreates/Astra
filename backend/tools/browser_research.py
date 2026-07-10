@@ -220,6 +220,22 @@ def _normalize_research_topic(topic: str) -> str:
     return text
 
 
+def _resource_search_topic(topic: str, focus: str) -> str:
+    """Turn a founder/product pitch into a resource-oriented search subject."""
+    text = _normalize_research_topic(topic)
+    lowered = text.lower()
+    pitch_markers = ("frontier", "sota", "single plan", "replace multiple", "existing workflows", "$20")
+    if not any(marker in lowered for marker in pitch_markers):
+        return text
+    if focus == "competitors":
+        return "AI model aggregation platforms LLM gateways unified AI access tools"
+    if focus == "customers":
+        return "teams managing multiple AI coding assistants and model subscriptions"
+    if focus == "gtm":
+        return "AI model aggregation and LLM gateway software companies"
+    return "AI model aggregation and LLM gateway software market"
+
+
 # Domains that reliably 403/404/auth-wall scrapers — skip fetch, use snippet only
 _BLOCKED_DOMAINS = {
     # Academic paywalls
@@ -321,7 +337,8 @@ def build_research_queries(topic: str, focus: str = "market", limit: int = _RESE
     if not clean_topic:
         return {"topic": topic, "focus": focus, "queries": [], "error": "topic is required"}
     normalized_focus = _normalize_focus(focus)
-    queries = [template.format(topic=clean_topic) for template in _QUERY_BLUEPRINTS[normalized_focus]]
+    resource_topic = _resource_search_topic(clean_topic, normalized_focus)
+    queries = [template.format(topic=resource_topic) for template in _QUERY_BLUEPRINTS[normalized_focus]]
     deduped = []
     seen = set()
     for query in queries:
@@ -331,6 +348,7 @@ def build_research_queries(topic: str, focus: str = "market", limit: int = _RESE
             deduped.append(query)
     return {
         "topic": clean_topic,
+        "resource_topic": resource_topic,
         "focus": normalized_focus,
         "queries": deduped[: max(1, min(limit, _RESEARCH_QUERY_PLAN_LIMIT))],
         "recommended_tool": "batch_search",
@@ -1244,7 +1262,8 @@ def run_research_pipeline(topic: str, focus: str = "market", max_results_each: i
             "combined_formatted": "",
             "coverage": {"ready": False, "gaps": ["topic is required"], "source_count": 0, "domain_count": 0},
         }
-    search = batch_search(queries, max_results_each=max_results_each)
+    from backend.config import settings
+    search = _native_research_pass(plan["resource_topic"], plan["focus"], queries) if settings.native_research_enabled else batch_search(queries, max_results_each=max_results_each)
     coverage = _research_coverage(plan["focus"], queries, search)
     return {
         "topic": plan["topic"],
@@ -1262,4 +1281,54 @@ def run_research_pipeline(topic: str, focus: str = "market", max_results_each: i
             if coverage["ready"]
             else "Evidence is thin. Fill coverage gaps before making strong claims, or explicitly label uncertainty."
         ),
+    }
+
+
+def _native_research_pass(topic: str, focus: str, queries: list[str]) -> dict:
+    """Run one provider-native grounded pass instead of recursive local search."""
+    from backend.config import settings
+    from backend.core.key_rotator import get_openrouter_key
+    from backend.core.llm_cache import openrouter_extra_body
+    from backend.core.llm_client import get_or_client
+
+    model = settings.native_research_model
+    prompt = (
+        "Research resources, not the named product. Do not search for the company name unless it is an established public company.\n"
+        f"Research subject: {topic}\nFocus: {focus}\n\n"
+        "Answer the following source-seeking questions with concrete facts, dates, pricing, named resources, and URLs:\n"
+        + "\n".join(f"{i + 1}. {query}" for i, query in enumerate(queries))
+        + "\nPrefer primary sources, analyst reports, pricing pages, public datasets, and credible reviews."
+    )
+    client = get_or_client(settings.openrouter_base_url, get_openrouter_key() or settings.agent_model_api_key)
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=1800,
+        temperature=0.2,
+        extra_body=openrouter_extra_body(model, {"plugins": [{"id": "web", "engine": "native"}]}),
+        timeout=180.0,
+    )
+    message = resp.choices[0].message if getattr(resp, "choices", None) else None
+    answer = ((getattr(message, "content", None) if message else None) or "").strip()
+    sources = []
+    for annotation in (getattr(message, "annotations", None) or []) if message else []:
+        citation = annotation.get("url_citation", {}) if isinstance(annotation, dict) else getattr(annotation, "url_citation", {})
+        url = citation.get("url", "") if isinstance(citation, dict) else getattr(citation, "url", "")
+        title = citation.get("title", "") if isinstance(citation, dict) else getattr(citation, "title", "")
+        if url:
+            sources.append({"url": url, "title": title})
+    unique_sources = []
+    seen_urls = set()
+    for source in sources:
+        if source["url"] in seen_urls:
+            continue
+        seen_urls.add(source["url"])
+        unique_sources.append(source)
+    sources = unique_sources[:_RESEARCH_MAX_SOURCES]
+    result = {"answer": answer, "formatted": answer[:_RESEARCH_EVIDENCE_CHAR_CAP], "sources": sources, "total": len(sources)}
+    return {
+        "queries_run": len(queries),
+        "results_by_query": {query: result for query in queries},
+        "sources": sources,
+        "combined_formatted": answer[:_RESEARCH_COMBINED_QUERY_CHAR_CAP],
     }

@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     # Wrapper model for research specialists. This is separate from
     # research_model, which is the internal web-research synthesis model.
     research_agent_model: str = "inclusionai/ling-2.6-flash"
+    # Cheap native-search model for the bounded research discovery pass. The
+    # agent model still synthesizes the returned evidence; this model handles
+    # live retrieval through OpenRouter's provider-native web search.
+    native_research_model: str = "google/gemini-3.1-flash-lite"
+    native_research_enabled: bool = False
     # Which coding-agent CLI drives MVP builds: "caveman" (@juliusbrussee/caveman-code,
     # ~2x fewer tokens, native openrouter provider) or "openclaude" (legacy fallback).
     code_agent: str = "caveman"

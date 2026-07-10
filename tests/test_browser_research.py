@@ -1,4 +1,5 @@
 from backend.tools import browser_research
+from backend.config import settings
 import types
 import sys
 
@@ -288,6 +289,44 @@ def test_build_research_queries_competitor_focus():
     assert "pricing" in joined
 
 
+def test_build_research_queries_turns_product_pitch_into_resource_topic():
+    result = browser_research.build_research_queries(
+        "Goon is a $20/month subscription providing frontier and SOTA AI models replacing multiple subscriptions",
+        focus="competitors",
+    )
+
+    assert "Goon" not in result["resource_topic"]
+    assert "AI model aggregation" in result["resource_topic"]
+    assert all("Goon" not in query for query in result["queries"])
+
+
+def test_native_research_pass_uses_native_web_plugin_and_extracts_citations(monkeypatch):
+    captured = {}
+
+    class _Completions:
+        def create(self, **kwargs):
+            captured.update(kwargs)
+            message = types.SimpleNamespace(
+                content="Resource evidence with citations.",
+                annotations=[{"type": "url_citation", "url_citation": {"url": "https://example.com/report", "title": "Report"}}],
+            )
+            return types.SimpleNamespace(choices=[types.SimpleNamespace(message=message)])
+
+    monkeypatch.setattr("backend.core.llm_client.get_or_client", lambda *args, **kwargs: types.SimpleNamespace(chat=types.SimpleNamespace(completions=_Completions())))
+    monkeypatch.setattr("backend.core.key_rotator.get_openrouter_key", lambda: "test-key")
+    monkeypatch.setattr("backend.core.llm_cache.openrouter_extra_body", lambda model, extra=None: extra or {})
+
+    result = browser_research._native_research_pass(
+        "AI model aggregation platforms",
+        "competitors",
+        ["AI model aggregation platform competitors pricing"],
+    )
+
+    assert captured["model"] == settings.native_research_model
+    assert captured["extra_body"]["plugins"] == [{"id": "web", "engine": "native"}]
+    assert result["sources"] == [{"url": "https://example.com/report", "title": "Report"}]
+
+
 def test_build_research_queries_requires_topic():
     result = browser_research.build_research_queries("   ", focus="market")
 
@@ -296,6 +335,7 @@ def test_build_research_queries_requires_topic():
 
 
 def test_run_research_pipeline_uses_query_plan_and_batch_search(monkeypatch):
+    monkeypatch.setattr(settings, "native_research_enabled", False)
     calls = {}
 
     def fake_batch_search(queries, max_results_each):
@@ -326,6 +366,7 @@ def test_run_research_pipeline_uses_query_plan_and_batch_search(monkeypatch):
 
 
 def test_run_research_pipeline_reports_coverage_gaps(monkeypatch):
+    monkeypatch.setattr(settings, "native_research_enabled", False)
     def fake_batch_search(queries, max_results_each):
         return {
             "queries_run": len(queries),
