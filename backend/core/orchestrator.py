@@ -1325,6 +1325,10 @@ class Orchestrator:
                     self._generate_company_name(goal, creative_brief),
                     self._expand_goal(goal, session_id),
                 )
+            # Expansion models sometimes echo the onboarding profile several times.
+            # The pre-expansion compaction cannot catch that newly-created duplication;
+            # normalize again before the expanded goal reaches every specialist prompt.
+            goal = _dedupe_goal_text(goal)
             shared["company_name"] = company_name
             operating_plan = build_stack_operating_plan(stack_template, goal, company_name)
             stack_manifest = build_stack_manifest(stack_template, goal, company_name)
