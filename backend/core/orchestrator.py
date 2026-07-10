@@ -2252,11 +2252,18 @@ class Orchestrator:
                         continue
                     completed.pop(_rt["id"], None)
                     _agent_stopped = is_agent_killed(session_id, _rt["agent"])
+                    _research_terminal = (_rt.get("agent") or "").startswith("research")
                     _rt["instruction"] = (_rt.get("instruction") or "") + (
                         "\n\n[Automatic revision request before founder approval]: "
                         + " ".join(dict.fromkeys(_notes))
                     )
-                    if not _agent_stopped:
+                    # Research is already bounded by its own evidence/tool/
+                    # iteration budgets. Requeueing a failed research lane here
+                    # caused the phase gate to launch it dozens of times for one
+                    # session, repeatedly resending a 20K+ prompt. Surface the
+                    # blocker to the founder instead of starting an unbounded
+                    # second orchestration loop.
+                    if not _agent_stopped and not _research_terminal:
                         remaining.append(_rt)
                     await publish(session_id, {
                         "type": "stack_lane_status",
@@ -2268,7 +2275,7 @@ class Orchestrator:
                         "title": stack_lane_by_agent.get(_rt["agent"], {}).get("title") or _rt.get("stack_task_title") or _rt["agent"],
                         "summary": "Astra blocked phase approval because verification or output quality was incomplete.",
                         "ready_artifacts": _rt.get("expected_artifacts", []),
-                        "next_actor": "founder" if _agent_stopped else "agent_revision",
+                        "next_actor": "founder" if (_agent_stopped or _research_terminal) else "agent_revision",
                         "blockers": list(dict.fromkeys(_notes)),
                     })
                 return False
