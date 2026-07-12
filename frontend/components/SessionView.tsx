@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, ingestAttachment, AGENT_LABELS, rerunAgent, openEventStream, type SessionImages, type StreamSubscription } from "@/lib/api";
+import { apiFetch, artifactSources, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, ingestAttachment, AGENT_LABELS, rerunAgent, openEventStream, shouldRetainOriginalSession, stopStatusAfterKill, type SessionImages, type StreamSubscription } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import { signIn } from "next-auth/react";
@@ -291,6 +291,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   }, []);
   const [planOpen, setPlanOpen] = useState(false);
   const sseRef = useRef<StreamSubscription | null>(null);
+  const [streamEpoch, setStreamEpoch] = useState(0);
   const [copilotInput, setCopilotInput] = useState("");
   const [copilot, setCopilot] = useState<{ role: string; content: string; actions?: CopilotAction[] }[]>([]);
   const [copilotBusy, setCopilotBusy] = useState(false);
@@ -725,7 +726,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     })();
 
     return () => { alive = false; sseRef.current?.close(); sseRef.current = null; };
-  }, [sessionId, founderId, handleEvent, isSignedIn, applyStateSnapshot, commitState]);
+  }, [sessionId, founderId, handleEvent, isSignedIn, applyStateSnapshot, commitState, streamEpoch]);
 
   // Poll session meta every 30s to pick up live credits + headroom savings.
   useEffect(() => {
@@ -862,24 +863,35 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     } catch { setToastErr("Failed to send answer — try again."); }
   };
   // No window.confirm — mobile in-app webviews suppress it (returns false), which
-  // made Stop/Restart silently no-op. Optimistic UI + fire the request.
-  const stop = async () => { S.current.status = "killed"; sseRef.current?.close(); commitState(); await killSession(sessionId).catch(() => {}); };
+  // made Stop/Restart silently no-op. Roll back and reconnect when the kill fails.
+  const stop = async () => {
+    const previousStatus = S.current.status;
+    S.current.status = "killed";
+    sseRef.current?.close();
+    commitState();
+    const killed = await killSession(sessionId);
+    S.current.status = stopStatusAfterKill(previousStatus, killed);
+    commitState();
+    if (!killed) {
+      setToastErr("Stop failed. The run may still be active; reconnecting to its updates.");
+      setStreamEpoch((epoch) => epoch + 1);
+    }
+  };
   // TEMP: kill this run, delete it server+local, resubmit the same goal as a fresh run.
   const killClearRestart = async () => {
     const goal = S.current.goal;
     const company = S.current.company || S.current.projectName;
     const stack = S.current.stackId || "idea_to_revenue";
     if (!goal) { showErr("Original goal hasn't loaded yet — try again in a moment."); return; }
-    // No window.confirm — suppressed in mobile webviews.
-    S.current.status = "killed"; commitState();
+    // Keep this session visible until its replacement has been accepted.
     try {
-      sseRef.current?.close();
-      await killSession(sessionId).catch(() => {});
-      await deleteSessionRemote(sessionId).catch(() => {});
-      deleteLocalSession(sessionId);
+      const killed = await killSession(sessionId);
+      if (shouldRetainOriginalSession(killed)) throw new Error("Could not stop the original run; it remains visible and connected.");
       const instruction = company ? `Company/project name: ${company}\n\n${goal}` : goal;
       const data = await submitGoal(founderId, instruction, {}, stack);
-      if (!data.session_id) throw new Error("No session_id returned");
+      if (shouldRetainOriginalSession(killed, data.session_id)) throw new Error("No replacement session was confirmed.");
+      await deleteSessionRemote(sessionId).catch(() => {});
+      deleteLocalSession(sessionId);
       window.location.assign(`/s/${data.session_id}`);
     } catch (e) {
       showErr(`Restart failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -1459,12 +1471,13 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           const bc = s === "done" ? "var(--green)" : s === "run" ? "var(--blue)" : s === "err" ? "var(--red)" : "var(--fm)";
           const badge = s === "run" ? "Working" : s === "done" ? "Done" : s === "err" ? "Error" : "Queued";
           return (
-            <div key={dk}
-              className={`dc ${s}${st.selDept === dk ? " sel" : ""}`} title={d.n} aria-label={`${d.n} department — ${badge}`} onClick={() => sel(dk, null)}>
+            <button key={dk} type="button"
+              className={`dc ${s}${st.selDept === dk ? " sel" : ""}`} title={d.n} aria-label={`${d.n} department — ${badge}`} aria-pressed={st.selDept === dk} onClick={() => sel(dk, null)}
+              style={{ border: "none", padding: 0, textAlign: "left", font: "inherit", color: "inherit", cursor: "pointer" }}>
               <div className="dc-top"><div className="dc-ico">{d.ic}</div><div className="dc-name">{d.n}</div><div className={`dc-badge ${s}`}>{badge}</div></div>
               <div className="dc-what">{deptWhat(d.inS)}</div>
               <div className="dc-prog"><div className="dc-bar" style={{ transform: `scaleX(${prog / 100})`, background: bc }} /></div>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -1477,9 +1490,9 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           {st.artifacts.length === 0 ? <div style={{ padding: "10px 8px", fontSize: 9.5, color: "var(--fm)", lineHeight: 1.55 }}>{st.status === "running" ? "Agents working — deliverables appear here when ready. You do not need to check every step." : "Nothing yet. Astra will place finished work here when it is ready for you."}</div>
           : <>
             {ready.length > 0 && <><div style={{ fontSize: 9, color: "var(--fm)", padding: "3px 8px", display: "flex", alignItems: "center", gap: 4 }}><span className="v-dot ready" /> Ready</div>
-              {ready.map((a) => <div key={a.key} className={`v-art${st.selArt === a.key ? " sel" : ""}`} onClick={() => sel(null, a.key || null)}>{a.title || a.key}</div>)}</>}
+              {ready.map((a) => <button key={a.key} type="button" className={`v-art${st.selArt === a.key ? " sel" : ""}`} aria-pressed={st.selArt === a.key} onClick={() => sel(null, a.key || null)} style={{ border: "none", textAlign: "left", font: "inherit", color: "inherit", cursor: "pointer" }}>{a.title || a.key}</button>)}</>}
             {live.length > 0 && <><div style={{ fontSize: 9, color: "var(--fm)", padding: "3px 8px", display: "flex", alignItems: "center", gap: 4 }}><span className="v-dot live" /> Writing</div>
-              {live.map((a) => <div key={a.key} className={`v-art${st.selArt === a.key ? " sel" : ""}`} onClick={() => sel(null, a.key || null)}>{a.title || a.key}</div>)}</>}
+              {live.map((a) => <button key={a.key} type="button" className={`v-art${st.selArt === a.key ? " sel" : ""}`} aria-pressed={st.selArt === a.key} onClick={() => sel(null, a.key || null)} style={{ border: "none", textAlign: "left", font: "inherit", color: "inherit", cursor: "pointer" }}>{a.title || a.key}</button>)}</>}
           </>}
         </div>
 
@@ -1487,12 +1500,12 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         <div data-tour="session-detail" className="detail">
           <div className="dtabs">
             {st.selArt
-              ? <div className={`dtab${st.tab === "read" ? " on" : ""}`} onClick={() => { st.tab = "read"; commitState(); }}>Read it</div>
+              ? <button type="button" className={`dtab${st.tab === "read" ? " on" : ""}`} aria-pressed={st.tab === "read"} onClick={() => { st.tab = "read"; commitState(); }}>Read it</button>
               : st.selDept ? <>
-                  <div className={`dtab${st.tab === "updates" ? " on" : ""}`} onClick={() => { st.tab = "updates"; commitState(); }}>Updates</div>
-                  {st.selDept === "technical" && <div className={`dtab${st.tab === "terminal" ? " on" : ""}`} onClick={() => { st.tab = "terminal"; commitState(); }}>Terminal</div>}
-                  <div className={`dtab${st.tab === "tech" ? " on" : ""}`} onClick={() => { st.tab = "tech"; commitState(); }}>Technical logs</div>
-                  <div className={`dtab${st.tab === "sources" ? " on" : ""}`} onClick={() => { st.tab = "sources"; commitState(); }}>Sources</div>
+                  <button type="button" className={`dtab${st.tab === "updates" ? " on" : ""}`} aria-pressed={st.tab === "updates"} onClick={() => { st.tab = "updates"; commitState(); }}>Updates</button>
+                  {st.selDept === "technical" && <button type="button" className={`dtab${st.tab === "terminal" ? " on" : ""}`} aria-pressed={st.tab === "terminal"} onClick={() => { st.tab = "terminal"; commitState(); }}>Terminal</button>}
+                  <button type="button" className={`dtab${st.tab === "tech" ? " on" : ""}`} aria-pressed={st.tab === "tech"} onClick={() => { st.tab = "tech"; commitState(); }}>Technical logs</button>
+                  <button type="button" className={`dtab${st.tab === "sources" ? " on" : ""}`} aria-pressed={st.tab === "sources"} onClick={() => { st.tab = "sources"; commitState(); }}>Sources</button>
                 </>
               : null}
           </div>
@@ -1515,12 +1528,12 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {ap.artifacts.map((art, i) => (
                         <div key={i} style={{ background: "var(--surface)", border: "1px solid var(--bd)", overflow: "hidden" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 8px", cursor: "pointer" }}
+                          <button type="button" style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 8px", cursor: "pointer", width: "100%", border: "none", background: "transparent", textAlign: "left", font: "inherit", color: "inherit" }}
                             onClick={() => sel(null, art.key || null)}>
                             <span style={{ fontSize: 10, color: "var(--green)" }}>✓</span>
                             <span style={{ fontSize: 11, color: "var(--fg)", fontWeight: 600 }}>{art.title || art.key}</span>
                             <span style={{ fontSize: 9, color: "var(--blue)", marginLeft: "auto" }}>View full ↗</span>
-                          </div>
+                          </button>
                           {art.preview && (
                             <div style={{ padding: "0 8px 8px", borderTop: "1px solid var(--bd)", paddingTop: 6 }}>
                               <RichText text={art.preview} />
@@ -1612,17 +1625,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 }
                 return sections.join("\n\n") || null;
               };
-              // Try owner agent first, then scan all agents (owner_agent may be unset or mismatched)
+              // An artifact may use only its own fields and its declared owner's result.
               const ownerResult = art.owner_agent ? (st.agents[art.owner_agent]?.result as Record<string, unknown> | null) : null;
               if (ownerResult && typeof ownerResult === "object") {
                 fullContent = tryExtract(ownerResult as Record<string, unknown>);
-              }
-              if (!fullContent) {
-                for (const ag of Object.values(st.agents)) {
-                  if (!ag.result || typeof ag.result !== "object") continue;
-                  const extracted = tryExtract(ag.result as Record<string, unknown>);
-                  if (extracted && extracted.length > 50) { fullContent = extracted; break; }
-                }
               }
               const displayContent = fullContent || art.content || (art.preview && art.preview.length > 30 ? art.preview : null) || art.description || null;
               // Collect any generated files (PDFs, images, docs) from agent results so
@@ -1645,15 +1651,15 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 } else if (Array.isArray(val)) { val.forEach(scanFiles); }
                 else if (val && typeof val === "object") { Object.values(val as Record<string, unknown>).forEach(scanFiles); }
               };
-              for (const ag of Object.values(st.agents)) if (ag.result) scanFiles(ag.result);
+              for (const source of artifactSources(art, st.agents)) scanFiles(source);
               const fileList = Array.from(files.entries());
               // Design showcase: palette swatches + generated logos/brand images.
-              const isDesign = art.owner_agent === "design" || /palette|logo|brand|design|color|visual|wordmark/i.test((art.key || "") + (art.title || ""));
+              const isDesign = art.owner_agent === "design";
               if (isDesign && !imgsFetched.current) { imgsFetched.current = true; getSessionImages(sessionId).then(setDesignImages).catch(() => {}); }
               const palette: { hex: string; name?: string }[] = [];
               if (isDesign) {
                 const seen = new Set<string>();
-                const blob = JSON.stringify(st.agents["design"]?.result ?? {}) + (art.content || "") + (art.preview || "");
+                const blob = artifactSources(art, st.agents).map((source) => JSON.stringify(source)).join("");
                 const hexes = blob.match(/#[0-9a-fA-F]{6}\b/g) || [];
                 for (const h of hexes) { const u = h.toUpperCase(); if (!seen.has(u)) { seen.add(u); palette.push({ hex: u }); } }
               }
@@ -1769,7 +1775,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               if (st.tab === "terminal" && st.selDept === "technical") {
                 // Live interactive takeover — user drives the agent's openclaude session.
                 if (takeover) {
-                  return <TerminalPane sessionId={sessionId} founderId={founderId || ""} onClose={() => setTakeover(false)} />;
+                  return <TerminalPane sessionId={sessionId} onClose={() => setTakeover(false)} />;
                 }
                 const term: TermEntry[] = [];
                 for (const k of ags) for (const e of (st.agents[k].term || [])) term.push(e);

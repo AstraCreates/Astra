@@ -6,20 +6,21 @@
    agent's openclaude session so the founder drives the exact same conversation. */
 
 import { useEffect, useRef, useState } from "react";
+import { getAuthToken, waitForAuthReady } from "@/lib/api";
 import "@xterm/xterm/css/xterm.css";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-function wsUrl(sessionId: string, founderId: string): string {
+export function terminalWsUrl(sessionId: string, token: string): string {
   // Derive ws(s):// from the API origin; route /terminal/ through nginx → backend.
   let base = API;
   if (base.startsWith("https://")) base = "wss://" + base.slice(8);
   else if (base.startsWith("http://")) base = "ws://" + base.slice(7);
   else base = (typeof window !== "undefined" && window.location.protocol === "https:" ? "wss://" : "ws://") + base;
-  return `${base}/terminal/${encodeURIComponent(sessionId)}?founder_id=${encodeURIComponent(founderId)}`;
+  return `${base}/terminal/${encodeURIComponent(sessionId)}?token=${encodeURIComponent(token)}`;
 }
 
-export default function TerminalPane({ sessionId, founderId, onClose }: { sessionId: string; founderId: string; onClose: () => void }) {
+export default function TerminalPane({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"connecting" | "live" | "closed" | "error">("connecting");
 
@@ -56,7 +57,16 @@ export default function TerminalPane({ sessionId, founderId, onClose }: { sessio
         ws.send(JSON.stringify({ t: "resize", cols: term.cols, rows: term.rows }));
       };
 
-      ws = new WebSocket(wsUrl(sessionId, founderId));
+      // WebSocket cannot carry Authorization headers. Wait for the auth bridge's
+      // short-lived JWT cache rather than treating a founder identifier as proof.
+      await waitForAuthReady(2000);
+      const token = getAuthToken();
+      if (!token) {
+        term.write("\r\n\x1b[31m[Authentication token unavailable. Please sign in again.]\x1b[0m\r\n");
+        setStatus("error");
+        return;
+      }
+      ws = new WebSocket(terminalWsUrl(sessionId, token));
       ws.binaryType = "arraybuffer";
 
       ws.onopen = () => { setStatus("live"); sendResize(); term?.focus(); };
@@ -88,7 +98,7 @@ export default function TerminalPane({ sessionId, founderId, onClose }: { sessio
       try { ws?.close(); } catch {}
       try { term?.dispose(); } catch {}
     };
-  }, [sessionId, founderId]);
+  }, [sessionId]);
 
   const dot = status === "live" ? "#34d399" : status === "connecting" ? "#fcd34d" : "#f87171";
   const label = status === "live" ? "live — you are driving openclaude" : status === "connecting" ? "connecting…" : status === "closed" ? "session ended" : "connection error";

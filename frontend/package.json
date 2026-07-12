@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "node --max-old-space-size=4096 node_modules/next/dist/bin/next dev",
     "build": "next build",
+    "test": "node --test tests/*.test.ts",
     "start": "next start",
     "lint": "eslint"
   },

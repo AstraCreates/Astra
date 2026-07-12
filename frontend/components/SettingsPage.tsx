@@ -9,6 +9,8 @@ import {
   createOrganizationBillingPortal,
   createOrganizationCheckout,
   createOrganizationInvite,
+  apiFetch,
+  parseTeamCollection,
   getDeployEvidence,
   getLaunchReadiness,
   getOrganization,
@@ -176,9 +178,9 @@ function TeamSection({ founderId, org }: { founderId: string; org: OrganizationA
   useEffect(() => {
     if (!founderId) return;
     setLoading(true);
-    fetch(`${BASE}/teams/me?founder_id=${encodeURIComponent(founderId)}`)
+    apiFetch(`${BASE}/teams/me?founder_id=${encodeURIComponent(founderId)}`)
       .then((res) => res.ok ? res.json() : null)
-      .then((data) => setTeam(data ?? null))
+      .then((data) => setTeam(parseTeamCollection<Team>(data)))
       .catch(() => setTeam(null))
       .finally(() => setLoading(false));
   }, [founderId, BASE]);
@@ -188,7 +190,7 @@ function TeamSection({ founderId, org }: { founderId: string; org: OrganizationA
     setCreating(true);
     setCreateError("");
     try {
-      const res = await fetch(`${BASE}/teams`, {
+      const res = await apiFetch(`${BASE}/teams`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: createName.trim(), founder_id: founderId }),
@@ -230,9 +232,10 @@ function TeamSection({ founderId, org }: { founderId: string; org: OrganizationA
     if (!team) return;
     setRemovingUid(uid);
     try {
-      await fetch(`${BASE}/teams/${team.id}/members/${uid}?founder_id=${encodeURIComponent(founderId)}`, {
+      const res = await apiFetch(`${BASE}/teams/${team.id}/members/${uid}?founder_id=${encodeURIComponent(founderId)}`, {
         method: "DELETE",
       });
+      if (!res.ok) throw new Error("Failed to remove team member.");
       setTeam((prev) => prev ? { ...prev, members: prev.members.filter((m) => m.uid !== uid) } : prev);
     } catch {
       // silently ignore remove errors

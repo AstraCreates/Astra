@@ -624,9 +624,9 @@ export default function DashboardView() {
                             <div
                               key={s.session_id}
                               className="dv-run-row"
-                              style={{ marginLeft: child ? 12 : 0 }}
-                              onClick={() => router.push(`/s/${s.session_id}`)}
+                              style={{ marginLeft: child ? 12 : 0, width: `calc(100% - ${child ? 12 : 0}px)` }}
                             >
+                              <button type="button" aria-label={`Open run: ${extractGoalTitle(s.goal || "Untitled run")}`} onClick={() => router.push(`/s/${s.session_id}`)} style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0, border: "none", padding: 0, textAlign: "left", font: "inherit", color: "inherit", background: "transparent", cursor: "pointer" }}>
                               <span style={dotStyle(s.status)} />
                               <div style={{ flex: 1, minWidth: 0 }}>
                                 <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -642,6 +642,7 @@ export default function DashboardView() {
                                 <span style={{ fontSize: 8, fontWeight: 700, color: "#f59e0b", background: "rgba(245,158,11,.08)", border: "1px solid rgba(245,158,11,.28)", padding: "2px 6px", letterSpacing: ".06em", textTransform: "uppercase", borderRadius: 4, flexShrink: 0, whiteSpace: "nowrap" }}>Auto</span>
                               )}
                               {chip(s.status)}
+                              </button>
                               <button
                                 title={pendingDel.has(s.session_id) ? "Click again to confirm" : "Delete"}
                                 disabled={deleting.has(s.session_id)}
