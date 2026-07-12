@@ -1,10 +1,9 @@
 """Wave 1 control plane: minimal Temporal worker entrypoint.
 
-Registers zero workflows/activities on purpose -- Wave 3 (the "Temporal
-Observation Shell") is what adds AstraRunWorkflow. This module only proves
-a worker process can start, connect to the Temporal server, and hold the
-astra-runs-v1 task queue in the astra namespace without crashing. Nothing
-in the running app dispatches work through this queue yet.
+Registers a single placeholder workflow so the worker process can start,
+connect to the Temporal server, and hold the astra-runs-v1 task queue in
+the astra namespace. Real workflows (AstraRunWorkflow, phase activities)
+are added in Wave 3/4.
 
 Run: python -m backend.control_plane.temporal.worker
 """
@@ -14,10 +13,22 @@ import asyncio
 import logging
 import os
 
+from temporalio import workflow
+
 logger = logging.getLogger(__name__)
 
 NAMESPACE = "astra"
 TASK_QUEUE = "astra-runs-v1"
+
+
+@workflow.defn(name="AstraPing")
+class AstraPingWorkflow:
+    """Minimal placeholder workflow that proves the worker can receive and
+    complete work. Replaced by AstraRunWorkflow in Wave 3."""
+
+    @workflow.run
+    async def run(self) -> str:
+        return "pong"
 
 
 async def run_worker() -> None:
@@ -28,9 +39,13 @@ async def run_worker() -> None:
     logger.info("connecting to Temporal at %s (namespace=%s)", address, NAMESPACE)
     client = await Client.connect(address, namespace=NAMESPACE)
 
-    # workflows=[] / activities=[] on purpose -- see module docstring.
-    worker = Worker(client, task_queue=TASK_QUEUE, workflows=[], activities=[])
-    logger.info("worker registered on task queue %s, running", TASK_QUEUE)
+    worker = Worker(
+        client,
+        task_queue=TASK_QUEUE,
+        workflows=[AstraPingWorkflow],
+        activities=[],
+    )
+    logger.info("worker registered on task queue %s with 1 placeholder workflow, running", TASK_QUEUE)
     await worker.run()
 
 

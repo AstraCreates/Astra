@@ -247,11 +247,12 @@ services:
     image: temporalio/auto-setup:latest
     restart: unless-stopped
     environment:
-      - DB=postgresql
+      - DB=postgres12
       - DB_PORT=5432
       - POSTGRES_USER=postgres
       - POSTGRES_PWD=${TEMPORAL_DB_PASSWORD:-change-me-astra}
       - POSTGRES_SEEDS=temporal-postgres
+      - TEMPORAL_NAMESPACES=astra
     depends_on:
       temporal-postgres:
         condition: service_healthy
