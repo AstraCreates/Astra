@@ -1,59 +1,70 @@
 """Real Supabase-backed implementations of the Wave 1 repository interfaces.
 
-Dual-write only: these are called ADDITIVELY alongside the existing
-session_store JSONL flow (backend/core/session_store.py) and the existing
-run_ledger summary (backend/run_ledger.py), never replacing them. Every
-call site wraps these in a best-effort try/except -- a Supabase hiccup must
-never break a live run. This is how the durable astra_runs/astra_run_events
-tables (applied in supabase/migrations/) actually start filling up; nothing
-wrote to them before this.
-
-Matches the same supabase-py call pattern already used in backend/db/client.py
-(get_supabase().table(...).execute(), run off the event loop via
-asyncio.to_thread since the client is synchronous).
+These are additive dual-writes alongside the legacy session store and credits
+ledger. Every live call site must continue treating them as best-effort, but
+the repository behavior itself should match the canonical Wave 1 contracts.
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
+from typing import Any, Optional
 
-from backend.control_plane.models import Run, RunEvent
+from backend.control_plane.models import (
+    Action,
+    ApprovalRequest,
+    Artifact,
+    BudgetReservation,
+    BudgetReservationLedger,
+    Run,
+    RunEvent,
+    RunStep,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def _row_to_run(row: dict) -> Run:
-    return Run(
-        id=row["id"],
-        owner_id=row["owner_id"],
-        org_id=row["org_id"],
-        company_id=row.get("company_id"),
-        workspace_id=row.get("workspace_id"),
-        chapter_id=row.get("chapter_id"),
-        parent_run_id=row.get("parent_run_id"),
-        goal=row["goal"],
-        stack_id=row.get("stack_id"),
-        engine=row.get("engine", "legacy"),
-        workflow_version=row.get("workflow_version", "v1"),
-        status=row.get("status", "queued"),
-        next_event_sequence=row.get("next_event_sequence", 0),
-        budget_limit_usd=row.get("budget_limit_usd"),
-        created_at=row.get("created_at"),
-        started_at=row.get("started_at"),
-        completed_at=row.get("completed_at"),
-        cancellation_requested_at=row.get("cancellation_requested_at"),
-        error=row.get("error"),
-        metadata=row.get("metadata") or {},
-    )
+def _dump(model: Any) -> dict[str, Any]:
+    return model.model_dump(mode="json", exclude_none=True)
+
+
+def _row_to_run(row: dict[str, Any]) -> Run:
+    return Run.model_validate(row)
+
+
+def _row_to_step(row: dict[str, Any]) -> RunStep:
+    return RunStep.model_validate(row)
+
+
+def _row_to_action(row: dict[str, Any]) -> Action:
+    return Action.model_validate(row)
+
+
+def _row_to_approval(row: dict[str, Any]) -> ApprovalRequest:
+    return ApprovalRequest.model_validate(row)
+
+
+def _row_to_event(row: dict[str, Any]) -> RunEvent:
+    return RunEvent.model_validate(row)
+
+
+def _row_to_artifact(row: dict[str, Any]) -> Artifact:
+    return Artifact.model_validate(row)
+
+
+def _row_to_reservation(row: dict[str, Any]) -> BudgetReservation:
+    return BudgetReservation.model_validate(row)
+
+
+def _row_to_reservation_ledger(row: dict[str, Any]) -> BudgetReservationLedger:
+    return BudgetReservationLedger.model_validate(row)
 
 
 class SupabaseRunRepository:
     def create(self, run: Run) -> Run:
         from backend.db.client import get_supabase
 
-        payload = run.model_dump(mode="json", exclude_none=True)
-        get_supabase().table("astra_runs").upsert(payload, on_conflict="id").execute()
+        get_supabase().table("astra_runs").upsert(_dump(run), on_conflict="id").execute()
         return run
 
     def get(self, run_id: str) -> Optional[Run]:
@@ -65,22 +76,157 @@ class SupabaseRunRepository:
     def update_status(self, run_id: str, status: str, *, error: Optional[str] = None) -> None:
         from backend.db.client import get_supabase
 
-        patch: dict = {"status": status}
+        patch: dict[str, Any] = {"status": status}
         if error is not None:
             patch["error"] = error
         get_supabase().table("astra_runs").update(patch).eq("id", run_id).execute()
 
 
-class SupabaseRunEventRepository:
-    def append(self, run_id: str, event_type: str, payload: dict) -> int:
+class SupabaseRunStepRepository:
+    def create_attempt(self, step: RunStep) -> RunStep:
         from backend.db.client import get_supabase
 
-        # astra_append_run_event() locks the astra_runs row and assigns the
-        # sequence atomically -- never compute it here. Raises (via
-        # postgrest's error surface) if run_id has no matching astra_runs
-        # row (FK violation) -- callers must have created the run first via
-        # SupabaseRunRepository.create(), and should treat this as
-        # best-effort (catch and log, never let it break the live run).
+        existing = (
+            get_supabase().table("astra_run_steps")
+            .select("attempt_number")
+            .eq("run_id", step.run_id)
+            .eq("step_key", step.step_key)
+            .order("attempt_number", desc=True)
+            .limit(1)
+            .execute()
+            .data
+        )
+        next_attempt = (int(existing[0]["attempt_number"]) + 1) if existing else 1
+        step = step.model_copy(update={"attempt_number": next_attempt})
+        get_supabase().table("astra_run_steps").upsert(_dump(step), on_conflict="id").execute()
+        return step
+
+    def get_latest_attempt(self, run_id: str, step_key: str) -> Optional[RunStep]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_run_steps")
+            .select("*")
+            .eq("run_id", run_id)
+            .eq("step_key", step_key)
+            .order("attempt_number", desc=True)
+            .limit(1)
+            .execute()
+            .data
+        )
+        return _row_to_step(rows[0]) if rows else None
+
+    def list_attempts(self, run_id: str, step_key: str) -> list[RunStep]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_run_steps")
+            .select("*")
+            .eq("run_id", run_id)
+            .eq("step_key", step_key)
+            .order("attempt_number")
+            .execute()
+            .data
+        )
+        return [_row_to_step(row) for row in rows]
+
+    def update_status(self, step_id: str, status: str, *, error: Optional[str] = None) -> None:
+        from backend.db.client import get_supabase
+
+        patch: dict[str, Any] = {"status": status}
+        if error is not None:
+            patch["error"] = error
+        get_supabase().table("astra_run_steps").update(patch).eq("id", step_id).execute()
+
+
+class SupabaseActionRepository:
+    def create(self, action: Action) -> Action:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_actions").upsert(_dump(action), on_conflict="id").execute()
+        return action
+
+    def get(self, action_id: str) -> Optional[Action]:
+        from backend.db.client import get_supabase
+
+        rows = get_supabase().table("astra_actions").select("*").eq("id", action_id).limit(1).execute().data
+        return _row_to_action(rows[0]) if rows else None
+
+    def get_by_idempotency_key(self, idempotency_key: str) -> Optional[Action]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_actions")
+            .select("*")
+            .eq("idempotency_key", idempotency_key)
+            .limit(1)
+            .execute()
+            .data
+        )
+        return _row_to_action(rows[0]) if rows else None
+
+    def update_status(self, action_id: str, status: str) -> None:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_actions").update({"status": status}).eq("id", action_id).execute()
+
+
+class SupabaseApprovalRequestRepository:
+    def create(self, request: ApprovalRequest) -> ApprovalRequest:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_approval_requests").upsert(_dump(request), on_conflict="id").execute()
+        return request
+
+    def get(self, request_id: str) -> Optional[ApprovalRequest]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_approval_requests")
+            .select("*")
+            .eq("id", request_id)
+            .limit(1)
+            .execute()
+            .data
+        )
+        return _row_to_approval(rows[0]) if rows else None
+
+    def get_pending_for_gate(self, run_id: str, gate_key: str) -> list[ApprovalRequest]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_approval_requests")
+            .select("*")
+            .eq("run_id", run_id)
+            .eq("gate_key", gate_key)
+            .eq("status", "pending")
+            .order("revision", desc=True)
+            .execute()
+            .data
+        )
+        return [_row_to_approval(row) for row in rows]
+
+    def decide(self, request_id: str, status: str, *, decided_by: str, note: Optional[str] = None) -> ApprovalRequest:
+        from backend.db.client import get_supabase
+        from datetime import datetime, timezone
+
+        patch: dict[str, Any] = {
+            "status": status,
+            "decided_by": decided_by,
+            "decision_note": note,
+            "decided_at": datetime.now(timezone.utc).isoformat(),
+        }
+        get_supabase().table("astra_approval_requests").update(patch).eq("id", request_id).execute()
+        updated = self.get(request_id)
+        if updated is None:
+            raise KeyError(f"unknown request_id {request_id!r}")
+        return updated
+
+
+class SupabaseRunEventRepository:
+    def append(self, run_id: str, event_type: str, payload: dict[str, Any]) -> int:
+        from backend.db.client import get_supabase
+
         result = get_supabase().rpc(
             "astra_append_run_event",
             {"p_run_id": run_id, "p_event_type": event_type, "p_payload": payload},
@@ -99,26 +245,161 @@ class SupabaseRunEventRepository:
             .execute()
             .data
         )
-        return [
-            RunEvent(
-                run_id=row["run_id"], sequence=row["sequence"], event_type=row["event_type"],
-                payload=row.get("payload") or {}, created_at=row.get("created_at"),
-                published_at=row.get("published_at"),
+        return [_row_to_event(row) for row in rows]
+
+
+class SupabaseArtifactRepository:
+    def upsert(self, artifact: Artifact) -> Artifact:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_artifacts").upsert(_dump(artifact), on_conflict="id").execute()
+        return artifact
+
+    def list_for_run(self, run_id: str) -> list[Artifact]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_artifacts")
+            .select("*")
+            .eq("run_id", run_id)
+            .order("created_at")
+            .execute()
+            .data
+        )
+        return [_row_to_artifact(row) for row in rows]
+
+
+class SupabaseBudgetReservationRepository:
+    def reserve(
+        self,
+        reservation: BudgetReservation,
+        *,
+        founder_id: Optional[str] = None,
+        reserved_credits: Optional[int] = None,
+        markup: float = 10.0,
+    ) -> BudgetReservation:
+        from backend.db.client import get_supabase
+
+        supabase = get_supabase()
+        supabase.table("astra_budget_reservations").upsert(_dump(reservation), on_conflict="id").execute()
+        if founder_id is not None:
+            ledger = BudgetReservationLedger(
+                reservation_id=reservation.id,
+                founder_id=founder_id,
+                reserved_credits=max(0, int(reserved_credits or 0)),
+                markup=markup,
             )
-            for row in rows
-        ]
+            supabase.table("astra_budget_reservation_ledgers").upsert(_dump(ledger), on_conflict="reservation_id").execute()
+        return reservation
+
+    def get(self, reservation_id: str) -> Optional[BudgetReservation]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_budget_reservations")
+            .select("*")
+            .eq("id", reservation_id)
+            .limit(1)
+            .execute()
+            .data
+        )
+        return _row_to_reservation(rows[0]) if rows else None
+
+    def get_ledger(self, reservation_id: str) -> Optional[BudgetReservationLedger]:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_budget_reservation_ledgers")
+            .select("*")
+            .eq("reservation_id", reservation_id)
+            .limit(1)
+            .execute()
+            .data
+        )
+        return _row_to_reservation_ledger(rows[0]) if rows else None
+
+    def sum_reserved_credits(self, founder_id: str, *, exclude_reservation_id: Optional[str] = None) -> int:
+        from backend.db.client import get_supabase
+
+        rows = (
+            get_supabase().table("astra_budget_reservation_ledgers")
+            .select("reserved_credits,reservation_id,astra_budget_reservations!inner(status)")
+            .eq("founder_id", founder_id)
+            .execute()
+            .data
+        )
+        total = 0
+        for row in rows:
+            if exclude_reservation_id and row.get("reservation_id") == exclude_reservation_id:
+                continue
+            joined = row.get("astra_budget_reservations") or {}
+            if joined.get("status") == "reserved":
+                total += int(row.get("reserved_credits") or 0)
+        return total
+
+    def commit(
+        self,
+        reservation_id: str,
+        actual_usd: float,
+        *,
+        billed_credits: int = 0,
+        overspend_usd: float = 0.0,
+        unreconciled_credits: int = 0,
+        reconciliation_error: Optional[str] = None,
+    ) -> None:
+        from backend.db.client import get_supabase
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).isoformat()
+        supabase = get_supabase()
+        supabase.table("astra_budget_reservations").update({
+            "status": "committed",
+            "actual_usd": actual_usd,
+            "reconciled_at": now,
+        }).eq("id", reservation_id).execute()
+        supabase.table("astra_budget_reservation_ledgers").update({
+            "billed_credits": max(0, int(billed_credits)),
+            "overspend_usd": max(0.0, float(overspend_usd)),
+            "unreconciled_credits": max(0, int(unreconciled_credits)),
+            "reconciliation_error": reconciliation_error,
+            "updated_at": now,
+        }).eq("reservation_id", reservation_id).execute()
+
+    def release(self, reservation_id: str) -> None:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_budget_reservations").update({"status": "released"}).eq("id", reservation_id).execute()
+
+    def expire(self, reservation_id: str) -> None:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_budget_reservations").update({"status": "expired"}).eq("id", reservation_id).execute()
+
+    def list_expired(self, *, now: Optional[str] = None) -> list[BudgetReservation]:
+        from backend.db.client import get_supabase
+        from datetime import datetime, timezone
+
+        cutoff = now or datetime.now(timezone.utc).isoformat()
+        rows = (
+            get_supabase().table("astra_budget_reservations")
+            .select("*")
+            .eq("status", "reserved")
+            .lte("expires_at", cutoff)
+            .order("expires_at")
+            .execute()
+            .data
+        )
+        return [_row_to_reservation(row) for row in rows]
 
 
 async def durable_create_run(run: Run) -> None:
-    """Best-effort, never raises. Call once when a run/session starts."""
     try:
         await asyncio.to_thread(SupabaseRunRepository().create, run)
     except Exception as exc:
         logger.warning("durable_create_run failed for run_id=%s: %s", run.id, exc)
 
 
-async def durable_append_event(run_id: str, event_type: str, payload: dict) -> None:
-    """Best-effort, never raises. Call alongside every backend.core.events.publish()."""
+async def durable_append_event(run_id: str, event_type: str, payload: dict[str, Any]) -> None:
     try:
         await asyncio.to_thread(SupabaseRunEventRepository().append, run_id, event_type, payload)
     except Exception as exc:

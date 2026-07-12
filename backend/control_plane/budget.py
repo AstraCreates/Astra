@@ -237,16 +237,24 @@ _default_service_lock = threading.Lock()
 
 
 def get_default_budget_service() -> BudgetReservationService:
-    """Process-wide singleton, in-memory backed. The backend runs as a
-    single worker by default (WEB_CONCURRENCY=1 -- see Dockerfile.backend),
-    so in-memory reservation state is coherent for the whole process; this
-    is the service backend.core.agent.py::_call_llm reserves/commits every
-    model call against."""
+    """Process-wide singleton.
+
+    Prefer the durable Supabase-backed repository when Supabase is configured;
+    otherwise fall back to the in-memory fake so local/unit-test environments
+    still behave without external services.
+    """
     global _default_service
     if _default_service is None:
         with _default_service_lock:
             if _default_service is None:
-                from backend.control_plane.fakes import FakeBudgetReservationRepository
+                from backend.config import settings
 
-                _default_service = BudgetReservationService(FakeBudgetReservationRepository())
+                if settings.supabase_url and settings.supabase_key:
+                    from backend.control_plane.supabase_repositories import SupabaseBudgetReservationRepository
+
+                    _default_service = BudgetReservationService(SupabaseBudgetReservationRepository())
+                else:
+                    from backend.control_plane.fakes import FakeBudgetReservationRepository
+
+                    _default_service = BudgetReservationService(FakeBudgetReservationRepository())
     return _default_service

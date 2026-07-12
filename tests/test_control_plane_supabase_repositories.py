@@ -4,11 +4,18 @@ import pytest
 
 from backend.control_plane.models import Run
 from backend.control_plane.supabase_repositories import (
+    SupabaseActionRepository,
+    SupabaseApprovalRequestRepository,
+    SupabaseArtifactRepository,
+    SupabaseBudgetReservationRepository,
     SupabaseRunEventRepository,
     SupabaseRunRepository,
+    SupabaseRunStepRepository,
     durable_append_event,
     durable_create_run,
 )
+from backend.control_plane.models import Action, ApprovalRequest, Artifact, BudgetReservation, RunStep
+from datetime import datetime, timezone
 
 
 @pytest.fixture
@@ -88,3 +95,62 @@ async def test_durable_append_event_never_raises_on_fk_violation(mock_supabase):
     durable_create_run failed) must silently no-op, not break the live run."""
     mock_supabase.rpc.return_value.execute.side_effect = RuntimeError("FK violation")
     await durable_append_event("run_never_created", "agent_start", {})  # must not raise
+
+
+def test_run_step_repository_create_attempt_increments_attempt_number(mock_supabase):
+    query = mock_supabase.table.return_value.select.return_value.eq.return_value.eq.return_value.order.return_value.limit.return_value
+    query.execute.return_value.data = [{"attempt_number": 2}]
+    step = SupabaseRunStepRepository().create_attempt(RunStep(id="s3", run_id="run_1", step_key="build", kind="agent"))
+    assert step.attempt_number == 3
+    mock_supabase.table.return_value.upsert.assert_called()
+
+
+def test_action_repository_get_by_idempotency_key_reads_matching_row(mock_supabase):
+    mock_supabase.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+        {"id": "a1", "run_id": "run_1", "tool": "deploy", "canonical_args_hash": "h", "idempotency_key": "idem_1"}
+    ]
+    action = SupabaseActionRepository().get_by_idempotency_key("idem_1")
+    assert action is not None
+    assert action.id == "a1"
+
+
+def test_approval_repository_decide_updates_and_returns_row(mock_supabase):
+    table = mock_supabase.table.return_value
+    table.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+        {"id": "ap1", "run_id": "run_1", "gate_key": "phase_gate", "action_digest": "d1", "status": "approved"}
+    ]
+    approval = SupabaseApprovalRequestRepository().decide("ap1", "approved", decided_by="founder_1", note="ok")
+    assert approval.status == "approved"
+    table.update.assert_called_once()
+
+
+def test_artifact_repository_list_for_run_maps_rows(mock_supabase):
+    mock_supabase.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = [
+        {"id": "art1", "run_id": "run_1", "key": "deck", "verification_status": "passed", "metadata": {}}
+    ]
+    artifacts = SupabaseArtifactRepository().list_for_run("run_1")
+    assert len(artifacts) == 1
+    assert artifacts[0].key == "deck"
+
+
+def test_budget_reservation_repository_persists_reservation_and_ledger(mock_supabase):
+    reservation = BudgetReservation(
+        id="res1",
+        run_id="run_1",
+        estimated_max_usd=1.5,
+        expires_at=datetime.now(timezone.utc),
+    )
+    repo = SupabaseBudgetReservationRepository()
+    repo.reserve(reservation, founder_id="founder_1", reserved_credits=3000, markup=10.0)
+    assert mock_supabase.table.call_args_list[0].args[0] == "astra_budget_reservations"
+    assert mock_supabase.table.call_args_list[1].args[0] == "astra_budget_reservation_ledgers"
+
+
+def test_budget_reservation_repository_sum_reserved_credits_filters_to_reserved_rows(mock_supabase):
+    mock_supabase.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+        {"reservation_id": "r1", "reserved_credits": 100, "astra_budget_reservations": {"status": "reserved"}},
+        {"reservation_id": "r2", "reserved_credits": 90, "astra_budget_reservations": {"status": "released"}},
+        {"reservation_id": "r3", "reserved_credits": 80, "astra_budget_reservations": {"status": "reserved"}},
+    ]
+    total = SupabaseBudgetReservationRepository().sum_reserved_credits("founder_1", exclude_reservation_id="r3")
+    assert total == 100

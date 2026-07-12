@@ -19,6 +19,9 @@ drop table if exists astra_shadow_comparisons;
 -- 0009_astra_action_receipts.sql
 drop table if exists astra_action_receipts;
 
+-- 0014_astra_budget_reservation_ledgers.sql
+drop table if exists astra_budget_reservation_ledgers;
+
 -- 0008_astra_budget_reservations.sql
 drop table if exists astra_budget_reservations;
 

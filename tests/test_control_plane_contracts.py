@@ -1,7 +1,7 @@
 import threading
 from datetime import datetime, timedelta, timezone
 
-from backend.control_plane.backfill import backfill_runs, build_run_from_session_meta
+from backend.control_plane.backfill import backfill_runs, build_run_from_session_meta, supabase_run_writer
 from backend.control_plane.fakes import (
     FakeActionRepository,
     FakeApprovalRequestRepository,
@@ -233,3 +233,14 @@ def test_backfill_apply_uses_writer():
 
     assert result == type(result)(scanned=1, written=1, dry_run=False)
     assert written == ["run_1"]
+
+
+def test_supabase_run_writer_uses_run_repository_create(mocker):
+    create = mocker.stub(name="create")
+    repo = mocker.Mock()
+    repo.create = create
+    mocker.patch("backend.control_plane.supabase_repositories.SupabaseRunRepository", return_value=repo)
+    writer = supabase_run_writer()
+    run = Run(id="run_1", owner_id="founder_1", org_id="founder_1", goal="Goal one")
+    writer(run)
+    create.assert_called_once_with(run)

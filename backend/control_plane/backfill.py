@@ -108,6 +108,18 @@ def backfill_runs(
     return BackfillResult(scanned=scanned, written=written, dry_run=dry_run)
 
 
+def supabase_run_writer() -> Callable[[Run], None]:
+    """Return the concrete writer used for an apply run.
+
+    Split out so tests can exercise the wiring without touching real networked
+    state unless they explicitly patch the repository.
+    """
+    from backend.control_plane.supabase_repositories import SupabaseRunRepository
+
+    repo = SupabaseRunRepository()
+    return repo.create
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--founder-id", help="Only backfill sessions for one founder.")
@@ -119,7 +131,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    backfill_runs(founder_id=args.founder_id, limit=args.limit, dry_run=not args.apply)
+    writer = supabase_run_writer() if args.apply else None
+    backfill_runs(founder_id=args.founder_id, limit=args.limit, dry_run=not args.apply, writer=writer)
 
 
 if __name__ == "__main__":

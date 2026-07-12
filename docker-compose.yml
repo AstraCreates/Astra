@@ -239,6 +239,7 @@ services:
       - POSTGRES_DB=temporal
     volumes:
       - temporal_pg_data:/var/lib/postgresql/data
+      - ./deploy/temporal-postgres-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -258,6 +259,7 @@ services:
       - POSTGRES_PWD=${TEMPORAL_DB_PASSWORD:-change-me-astra}
       - POSTGRES_SEEDS=temporal-postgres
       - TEMPORAL_NAMESPACES=astra
+      - TEMPORAL_HISTORY_RETENTION_IN_DAYS=3
     depends_on:
       temporal-postgres:
         condition: service_healthy
