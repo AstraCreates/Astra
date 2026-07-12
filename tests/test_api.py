@@ -55,14 +55,15 @@ async def test_goal_endpoint_dispatches_temporal_with_stable_session_id(monkeypa
     body = response.json()
     assert body["engine"] == "temporal"
     assert body["session_id"] == seen["run_id"]
-    assert seen["goal"] == "Implement a durable Temporal-backed run dispatch path for a founder operating workflow"
-    assert seen["constraints"]["agents"] == ["technical"]
+    assert "goal" not in seen
+    assert "constraints" not in seen
 
     from backend.core.session_store import get_session_meta
 
     meta = get_session_meta(body["session_id"])
     assert meta["engine"] == "temporal"
     assert meta["workflow_id"] == f"astra-run/{body['session_id']}"
+    assert meta["constraints"]["agents"] == ["technical"]
 
 
 @pytest.mark.asyncio

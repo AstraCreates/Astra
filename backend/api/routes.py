@@ -735,10 +735,8 @@ async def submit_goal(body: GoalRequest, request: Request):
             from backend.control_plane.temporal.dispatch import start_run
             _dispatch = await start_run(
                 run_id=session_id,
-                goal=_goal_instruction,
                 founder_id=body.founder_id,
                 company_id=_workspace_id or body.founder_id,
-                constraints=constraints,
                 workspace_id=_workspace_id,
                 chapter_id=_chapter_id,
             )

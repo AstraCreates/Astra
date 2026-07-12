@@ -15,13 +15,11 @@ def workflow_id_for_run(run_id: str) -> str:
 
 @dataclass
 class RunInput:
-    """Workflow input for durable run execution."""
+    """IDs-only workflow input for durable run execution."""
 
     run_id: str
-    goal: str
     founder_id: str
     company_id: str = ""
-    constraints: Optional[dict] = None
     workspace_id: str = ""
     chapter_id: str = ""
 

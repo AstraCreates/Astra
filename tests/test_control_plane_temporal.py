@@ -47,7 +47,7 @@ async def test_passthrough_codec_returns_payloads_unchanged():
 
 
 @pytest.mark.asyncio
-async def test_start_run_passes_goal_constraints_and_stable_ids(monkeypatch):
+async def test_start_run_uses_ids_only_contract_and_stable_ids(monkeypatch):
     AstraRunWorkflow = _install_fake_workflows_module(monkeypatch)
     import backend.control_plane.temporal.dispatch as dispatch
 
@@ -68,10 +68,8 @@ async def test_start_run_passes_goal_constraints_and_stable_ids(monkeypatch):
 
     result = await dispatch.start_run(
         run_id="sess_temporal_1",
-        goal="Make Temporal real",
         founder_id="founder-1",
         company_id="company-1",
-        constraints={"agents": ["technical"], "research_depth": "fast"},
         workspace_id="workspace-1",
         chapter_id="chapter-1",
     )
@@ -79,10 +77,12 @@ async def test_start_run_passes_goal_constraints_and_stable_ids(monkeypatch):
     assert calls["workflow"] is AstraRunWorkflow.run
     assert isinstance(calls["workflow_input"], dispatch.RunInput)
     assert calls["workflow_input"].run_id == "sess_temporal_1"
-    assert calls["workflow_input"].goal == "Make Temporal real"
     assert calls["workflow_input"].founder_id == "founder-1"
     assert calls["workflow_input"].company_id == "company-1"
-    assert calls["workflow_input"].constraints == {"agents": ["technical"], "research_depth": "fast"}
+    assert calls["workflow_input"].workspace_id == "workspace-1"
+    assert calls["workflow_input"].chapter_id == "chapter-1"
+    assert not hasattr(calls["workflow_input"], "goal")
+    assert not hasattr(calls["workflow_input"], "constraints")
     assert calls["id"] == "astra-run/sess_temporal_1"
     assert result["run_id"] == "sess_temporal_1"
 
@@ -106,24 +106,26 @@ async def test_execute_orchestrator_run_reuses_run_id_and_keeps_heartbeating(mon
     result = await execute_orchestrator_run(
         RunInput(
             run_id="sess_temporal_2",
-            goal="Use the original session",
             founder_id="founder-2",
             company_id="company-2",
-            constraints={"agents": ["research"]},
             workspace_id="workspace-2",
             chapter_id="chapter-2",
         ),
         heartbeat=heartbeats.append,
         heartbeat_interval_seconds=0.01,
         get_orchestrator_fn=lambda: _FakeOrchestrator(),
-        get_session_meta_fn=lambda _run_id: {"goal": "fallback goal", "founder_id": "founder-2"},
+        get_session_meta_fn=lambda _run_id: {
+            "goal": "fallback goal",
+            "founder_id": "founder-2",
+            "constraints": {"agents": ["research"]},
+        },
         register_task_fn=lambda *args, **kwargs: None,
         request_kill_fn=lambda _session_id: False,
         is_killed_fn=lambda _session_id: False,
     )
 
     assert calls["session_id"] == "sess_temporal_2"
-    assert calls["goal"] == "Use the original session"
+    assert calls["goal"] == "fallback goal"
     assert calls["constraints"]["agents"] == ["research"]
     assert calls["constraints"]["company_id"] == "company-2"
     assert result["session_id"] == "sess_temporal_2"
@@ -149,7 +151,7 @@ async def test_execute_orchestrator_run_cancellation_kills_the_same_run_id(monke
 
     task = asyncio.create_task(
         execute_orchestrator_run(
-            RunInput(run_id="sess_temporal_3", goal="Cancel me", founder_id="founder-3"),
+            RunInput(run_id="sess_temporal_3", founder_id="founder-3"),
             heartbeat_interval_seconds=0.01,
             get_orchestrator_fn=lambda: _FakeOrchestrator(),
             get_session_meta_fn=lambda _run_id: {"goal": "Cancel me", "founder_id": "founder-3"},
