@@ -40,9 +40,10 @@ async def test_goal_endpoint_dispatches_temporal_with_stable_session_id(monkeypa
             "task_queue": "astra-runs-v1",
         }
 
-    monkeypatch.setattr(routes, "assign_run_features", lambda *_args, **_kwargs: {"engine": "temporal"})
-    monkeypatch.setattr(routes, "_analyze_goal", lambda _instruction: ("", ""))
+    monkeypatch.setattr("backend.control_plane.start_run.assign_run_features", lambda *_args, **_kwargs: {"engine": "temporal"})
+    monkeypatch.setattr("backend.control_plane.start_run._analyze_goal", lambda _instruction: ("", ""))
     monkeypatch.setattr(routes, "require_founder_access", lambda request, founder_id, min_role="viewer": founder_id)
+    monkeypatch.setattr("backend.control_plane.start_run.require_founder_access", lambda request, founder_id, min_role="viewer": founder_id)
     monkeypatch.setattr("backend.control_plane.temporal.dispatch.start_run", fake_start_run)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
