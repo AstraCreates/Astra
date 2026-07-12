@@ -176,7 +176,7 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"const os = require('os'); const ips = Object.values(os.networkInterfaces()).flat().filter(Boolean).filter((entry) => entry.family === 'IPv4' && !entry.internal).map((entry) => entry.address); const host = ips[0] || '127.0.0.1'; fetch('http://' + host + ':3000').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
       interval: 15s
       timeout: 7s
       retries: 5
