@@ -87,6 +87,25 @@ export function shouldRetainOriginalSession(killSucceeded: boolean, replacementS
   return !killSucceeded || !replacementSessionId;
 }
 
+export type ApprovalRequestEnvelope = {
+  request_id?: unknown;
+  approval_id?: unknown;
+  id?: unknown;
+  action_digest?: unknown;
+  expected_action_digest?: unknown;
+};
+
+/** Normalizes approval request identifiers across queue, snapshot, and event payloads. */
+export function getApprovalRequestMetadata(approval: ApprovalRequestEnvelope): {
+  requestId: string;
+  expectedActionDigest: string;
+} {
+  return {
+    requestId: String(approval.request_id ?? approval.approval_id ?? approval.id ?? "").trim(),
+    expectedActionDigest: String(approval.expected_action_digest ?? approval.action_digest ?? "").trim(),
+  };
+}
+
 // One-shot gate: resolves when ApiAuthBridge finishes its first token fetch (success or failure).
 // Prevents SSE connections from firing before we know whether the user is authenticated.
 let _authReadyResolve: (() => void) | null = null;

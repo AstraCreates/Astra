@@ -4,7 +4,7 @@ import test from "node:test";
 // Node executes TypeScript directly in this repository; TypeScript's project
 // checker does not allow the runtime .ts extension without a separate test config.
 // @ts-expect-error Runtime import intentionally includes the TypeScript extension.
-import { artifactSources, parseTeamCollection, shouldRetainOriginalSession, stopStatusAfterKill } from "../lib/api.ts";
+import { artifactSources, getApprovalRequestMetadata, parseTeamCollection, shouldRetainOriginalSession, stopStatusAfterKill } from "../lib/api.ts";
 
 test("parseTeamCollection accepts GET /teams/me collection responses", () => {
   const team = { id: "team-1", name: "Astra", founder_id: "founder", members: [] };
@@ -35,4 +35,15 @@ test("restart retains the original session until replacement confirmation", () =
   assert.equal(shouldRetainOriginalSession(false, "replacement"), true);
   assert.equal(shouldRetainOriginalSession(true, ""), true);
   assert.equal(shouldRetainOriginalSession(true, "replacement"), false);
+});
+
+test("approval request metadata normalizes queue and decision payload fields", () => {
+  assert.deepEqual(
+    getApprovalRequestMetadata({ approval_id: "approval-1", action_digest: "digest-a" }),
+    { requestId: "approval-1", expectedActionDigest: "digest-a" },
+  );
+  assert.deepEqual(
+    getApprovalRequestMetadata({ request_id: "request-2", expected_action_digest: "digest-b" }),
+    { requestId: "request-2", expectedActionDigest: "digest-b" },
+  );
 });

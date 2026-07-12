@@ -10,7 +10,7 @@ import Link from "next/link";
 import { useDevUser } from "@/lib/use-dev-user";
 import ServiceLogo from "@/components/ServiceLogo";
 import LLCFilingModal from "@/components/LLCFilingModal";
-import { apiFetch, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, getCompanyGoal, askSession, decideStackApproval, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote, killSession, ingestAttachment, emailDeliverable, getSessionBenchmark, type TechnicalScope, type ResearchDepth, type MarketingChannels } from "@/lib/api";
+import { apiFetch, continueSession, submitGoal, getStacks, getAgentCatalog, recommendStack, getStackReadiness, getConnectorCoverage, getConnectorSetup, getStackManifest, getSessionDigest, getSubteamReport, getSessionWorkboard, getSessionState, getCompanyGoal, askSession, decideStackApproval, getApprovalRequestMetadata, AGENT_LABELS, AGENT_ORDER, TOOL_DESCRIPTIONS, sortAgentNamesByOrder, getDeployment, publishDeployment, listSessions, deleteSessionRemote, killSession, ingestAttachment, emailDeliverable, getSessionBenchmark, type TechnicalScope, type ResearchDepth, type MarketingChannels } from "@/lib/api";
 import type { DeploymentRecord } from "@/lib/api";
 import type { AgentCatalogEntry } from "@/lib/api";
 import type { AgentDepartmentManifest, AgentStackTemplate, CompanyGoal, ConnectorCoverage, ConnectorSetupPlan, SessionAnswer, SessionBenchmark, SessionDigest, SessionStateSnapshot, SessionWorkboard, StackOperatingPlan, StackReadiness, StackRecommendation, SubteamReport } from "@/lib/api";
@@ -45,9 +45,13 @@ interface StackApprovalGateState {
 }
 
 interface ApprovalQueueItemState extends StackApprovalGateState {
-  status: "armed" | "triggered" | "approved" | "skipped";
+  status: "armed" | "pending" | "triggered" | "waiting_approval" | "approved" | "skipped" | "rejected";
   triggered_by?: string | null;
   note?: string | null;
+  request_id?: string;
+  approval_id?: string;
+  action_digest?: string;
+  expected_action_digest?: string;
 }
 
 interface StackConnectorRequirementState {
@@ -167,6 +171,42 @@ const AGENT_ICONS: Record<string, string> = {
   web: "◎", marketing: "✦", technical: "⚙",
   legal: "≡", ops: "▲", sales: "⊕", design: "◉",
 };
+
+const ACTIONABLE_APPROVAL_STATUSES = new Set<ApprovalQueueItemState["status"]>(["pending", "triggered", "waiting_approval"]);
+
+function normalizeApprovalQueueItem(
+  item: Partial<ApprovalQueueItemState> & Partial<StackApprovalGateState> & { gate_key?: string; id?: string },
+): ApprovalQueueItemState {
+  const request = getApprovalRequestMetadata(item);
+  const rawStatus = typeof item.status === "string" ? item.status : "";
+  const normalizedStatus: ApprovalQueueItemState["status"] =
+    rawStatus === "pending" || rawStatus === "triggered" || rawStatus === "waiting_approval" || rawStatus === "approved" || rawStatus === "skipped" || rawStatus === "rejected"
+      ? rawStatus
+      : request.requestId && request.expectedActionDigest
+        ? "triggered"
+        : "armed";
+
+  return {
+    key: String(item.key ?? item.gate_key ?? item.id ?? ""),
+    title: String(item.title ?? item.key ?? item.gate_key ?? "Approval"),
+    trigger: String(item.trigger ?? ""),
+    required_before: String(item.required_before ?? ""),
+    reason: String(item.reason ?? ""),
+    status: normalizedStatus,
+    triggered_by: typeof item.triggered_by === "string" ? item.triggered_by : item.triggered_by ?? null,
+    note: typeof item.note === "string" ? item.note : item.note ?? null,
+    request_id: request.requestId || undefined,
+    approval_id: String(item.approval_id ?? item.request_id ?? item.id ?? "").trim() || undefined,
+    action_digest: String(item.action_digest ?? item.expected_action_digest ?? "").trim() || undefined,
+    expected_action_digest: request.expectedActionDigest || undefined,
+  };
+}
+
+function normalizeApprovalQueue(items: Array<Partial<ApprovalQueueItemState> & Partial<StackApprovalGateState> & { gate_key?: string; id?: string }>): ApprovalQueueItemState[] {
+  return items
+    .map(normalizeApprovalQueueItem)
+    .filter((item) => item.key);
+}
 
 const STATUS_COLOR = {
   waiting: "rgba(0,0,0,0.2)",
@@ -4582,6 +4622,7 @@ export function GoalWorkspace({
   const [sessionQuestion, setSessionQuestion] = useState("What did the engineering subteam do?");
   const [sessionAnswer, setSessionAnswer] = useState<SessionAnswer | null>(null);
   const [askingSession, setAskingSession] = useState(false);
+  const [approvalDecisionGateKey, setApprovalDecisionGateKey] = useState<string | null>(null);
 
   const refreshCompanyGoal = useCallback(() => {
     if (!founderId) return Promise.resolve(null);
@@ -4618,7 +4659,7 @@ export function GoalWorkspace({
         if (cached.safeRunActions?.length) setSafeRunActions(cached.safeRunActions);
         if (cached.outcomes?.length) setOutcomes(cached.outcomes);
         if (cached.companyGenome) setCompanyGenome(cached.companyGenome);
-        if (cached.approvalQueue?.length) setApprovalQueue(cached.approvalQueue);
+        if (cached.approvalQueue?.length) setApprovalQueue(normalizeApprovalQueue(cached.approvalQueue));
         if (cached.stackOperatingPlan) setStackOperatingPlan(cached.stackOperatingPlan);
         if (cached.stackManifest) setStackManifest(cached.stackManifest);
         if (cached.companyGoal) setCompanyGoal(cached.companyGoal);
@@ -4763,7 +4804,7 @@ export function GoalWorkspace({
       if (!selectedStack && stateResult.value.stack) setSelectedStack(stateResult.value.stack);
       if (!stackOperatingPlan && stateResult.value.operating_plan) setStackOperatingPlan(stateResult.value.operating_plan);
       if (!stackManifest && stateResult.value.manifest) setStackManifest(stateResult.value.manifest);
-      if (stateResult.value.approvals?.length) setApprovalQueue(stateResult.value.approvals as unknown as ApprovalQueueItemState[]);
+      if (stateResult.value.approvals?.length) setApprovalQueue(normalizeApprovalQueue(stateResult.value.approvals as Array<Record<string, unknown>>));
       if (stateResult.value.company_goal) setCompanyGoal(stateResult.value.company_goal);
     }
   }, [selectedStack, selectedSubteam, sessionId, stackManifest, stackOperatingPlan]);
@@ -4873,7 +4914,7 @@ export function GoalWorkspace({
         return;
       }
       if (event.type === "stack_approval_queue" && event.approval_queue) {
-        setApprovalQueue(event.approval_queue as ApprovalQueueItemState[]);
+        setApprovalQueue(normalizeApprovalQueue(event.approval_queue as Array<Record<string, unknown>>));
         return;
       }
       if (event.type === "company_genome" && event.genome) {
@@ -5298,7 +5339,9 @@ export function GoalWorkspace({
     .slice(0, 4);
   const stackArtifacts: StackArtifactState[] = selectedStack?.artifacts ?? [];
   const stackApprovalGates: StackApprovalGateState[] = selectedStack?.approval_gates ?? [];
-  const visibleApprovalQueue: ApprovalQueueItemState[] = approvalQueue.length ? approvalQueue : stackApprovalGates.map(gate => ({ ...gate, status: "armed", triggered_by: null }));
+  const visibleApprovalQueue: ApprovalQueueItemState[] = approvalQueue.length
+    ? normalizeApprovalQueue(approvalQueue)
+    : stackApprovalGates.map(gate => normalizeApprovalQueueItem({ ...gate, status: "armed", triggered_by: null }));
   const stackConnectorRequirements: StackConnectorRequirementState[] = selectedStack?.connector_requirements ?? [];
   const runArtifactByKey = new Map(runArtifacts.map(artifact => [artifact.key, artifact]));
   const artifactProgress = stackArtifacts.length
@@ -5311,12 +5354,24 @@ export function GoalWorkspace({
       return Array.isArray(details?.lanes) ? details.lanes : [];
     }));
   const statusText = !sessionId ? "ready" : done ? "complete" : error ? "error" : reconnecting ? "reconnecting..." : connected ? "running" : "connecting";
-  const handleApprovalDecision = async (gateKey: string, decision: "approved" | "skipped") => {
+  const handleApprovalDecision = async (gate: ApprovalQueueItemState, decision: "approved" | "skipped") => {
+    const gateKey = gate.key;
+    const { requestId, expectedActionDigest } = getApprovalRequestMetadata(gate);
+    if (!gateKey) return;
+    if (!requestId || !expectedActionDigest) {
+      setError("Approval request details are incomplete. Reload the session before deciding.");
+      scheduleSessionSnapshotRefresh(0);
+      return;
+    }
+    setApprovalDecisionGateKey(gateKey);
     setApprovalQueue(prev => prev.map(item => item.key === gateKey ? { ...item, status: decision } : item));
     try {
-      await decideStackApproval(sessionId, gateKey, decision, founderId);
-    } catch {
-      setApprovalQueue(prev => prev.map(item => item.key === gateKey ? { ...item, status: item.triggered_by ? "triggered" : "armed" } : item));
+      await decideStackApproval(sessionId, gateKey, decision, founderId, undefined, requestId, expectedActionDigest);
+    } catch (err) {
+      setApprovalQueue(prev => prev.map(item => item.key === gateKey ? { ...item, status: gate.status } : item));
+      setError(err instanceof Error ? err.message : "Approval decision failed.");
+    } finally {
+      setApprovalDecisionGateKey(current => current === gateKey ? null : current);
     }
   };
   const handleAskSession = async () => {
@@ -5878,7 +5933,7 @@ export function GoalWorkspace({
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                     <span className="site-label">Approval queue</span>
                     <span style={{ fontSize: 11, color: "var(--fg-mute)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                      {visibleApprovalQueue.filter(item => item.status === "triggered").length} triggered
+                      {visibleApprovalQueue.filter(item => ACTIONABLE_APPROVAL_STATUSES.has(item.status)).length} actionable
                     </span>
                   </div>
                   {visibleApprovalQueue.slice(0, 4).map(gate => (
@@ -5889,12 +5944,22 @@ export function GoalWorkspace({
                       </div>
                       <span style={{ fontSize: 11, color: "var(--fg-dim)", lineHeight: 1.45 }}>{gate.reason}</span>
                       <span style={{ fontSize: 10, color: "var(--fg-mute)", lineHeight: 1.4 }}>Before: {gate.required_before}</span>
-                      {gate.status !== "approved" && gate.status !== "skipped" && (
+                      {ACTIONABLE_APPROVAL_STATUSES.has(gate.status) && (
                         <div style={{ display: "flex", gap: 7, paddingTop: 4 }}>
-                          <button type="button" onClick={() => handleApprovalDecision(gate.key, "approved")} style={{ border: "1px solid rgba(61,158,95,0.22)", background: "rgba(61,158,95,0.08)", color: "#3D9E5F", borderRadius: 999, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}>
-                            Approve
+                          <button
+                            type="button"
+                            onClick={() => handleApprovalDecision(gate, "approved")}
+                            disabled={approvalDecisionGateKey === gate.key}
+                            style={{ border: "1px solid rgba(61,158,95,0.22)", background: "rgba(61,158,95,0.08)", color: "#3D9E5F", borderRadius: 999, padding: "5px 10px", fontSize: 11, cursor: approvalDecisionGateKey === gate.key ? "wait" : "pointer", opacity: approvalDecisionGateKey === gate.key ? 0.65 : 1 }}
+                          >
+                            {approvalDecisionGateKey === gate.key ? "Saving…" : "Approve"}
                           </button>
-                          <button type="button" onClick={() => handleApprovalDecision(gate.key, "skipped")} style={{ border: "1px solid rgba(176,180,186,0.12)", background: "rgba(255,255,255,0.025)", color: "var(--fg-mute)", borderRadius: 999, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}>
+                          <button
+                            type="button"
+                            onClick={() => handleApprovalDecision(gate, "skipped")}
+                            disabled={approvalDecisionGateKey === gate.key}
+                            style={{ border: "1px solid rgba(176,180,186,0.12)", background: "rgba(255,255,255,0.025)", color: "var(--fg-mute)", borderRadius: 999, padding: "5px 10px", fontSize: 11, cursor: approvalDecisionGateKey === gate.key ? "wait" : "pointer", opacity: approvalDecisionGateKey === gate.key ? 0.65 : 1 }}
+                          >
                             Skip
                           </button>
                         </div>
