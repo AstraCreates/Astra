@@ -24,7 +24,7 @@ def _stream_key(org_id: str, run_id: str) -> str:
 
 
 def _stream_id(sequence: int) -> str:
-    return f"{int(sequence)}-0"
+    return f"{max(1, int(sequence))}-0"
 
 
 def _parse_stream_sequence(stream_id: str) -> int:
@@ -185,4 +185,6 @@ async def stream_run_events(run_id: str, *, last_event_id: int | None = None) ->
                     continue
                 payload = dict(payload_wrapper.get("payload") or {})
                 payload.setdefault("type", payload_wrapper.get("event_type") or "")
+                sequence = int(payload_wrapper.get("sequence") or sequence)
+                latest_sequence = max(latest_sequence, sequence)
                 yield _fmt_sse(sequence, payload)
