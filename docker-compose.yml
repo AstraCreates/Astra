@@ -285,6 +285,7 @@ services:
     restart: unless-stopped
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_NAMESPACE=astra
     depends_on:
       temporal:
         condition: service_healthy

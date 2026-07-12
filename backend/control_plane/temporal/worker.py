@@ -1,11 +1,7 @@
-"""Wave 1 control plane: minimal Temporal worker entrypoint.
+"""Wave 1 control plane: Temporal worker entrypoint.
 
-Registers a single placeholder workflow so the worker process can start,
-connect to the Temporal server, and hold the astra-runs-v1 task queue in
-the astra namespace. Real workflows (AstraRunWorkflow, phase activities)
-are added in Wave 3/4.
-
-Run: python -m backend.control_plane.temporal.worker
+Registers AstraRunWorkflow and its activities on the astra-runs-v1 task queue.
+Replaces the AstraPingWorkflow placeholder with real workflow execution.
 """
 from __future__ import annotations
 
@@ -13,27 +9,22 @@ import asyncio
 import logging
 import os
 
-from temporalio import workflow
-
 logger = logging.getLogger(__name__)
 
 NAMESPACE = "astra"
 TASK_QUEUE = "astra-runs-v1"
 
 
-@workflow.defn(name="AstraPing")
-class AstraPingWorkflow:
-    """Minimal placeholder workflow that proves the worker can receive and
-    complete work. Replaced by AstraRunWorkflow in Wave 3."""
-
-    @workflow.run
-    async def run(self) -> str:
-        return "pong"
-
-
 async def run_worker() -> None:
     from temporalio.client import Client
     from temporalio.worker import Worker
+
+    from backend.control_plane.temporal.activities import (
+        ExecuteOrchestratorActivity,
+        PublishEventActivity,
+        UpdateRunStatusActivity,
+    )
+    from backend.control_plane.temporal.workflows import AstraRunWorkflow
 
     address = os.environ.get("TEMPORAL_ADDRESS", "temporal:7233")
     logger.info("connecting to Temporal at %s (namespace=%s)", address, NAMESPACE)
@@ -42,10 +33,17 @@ async def run_worker() -> None:
     worker = Worker(
         client,
         task_queue=TASK_QUEUE,
-        workflows=[AstraPingWorkflow],
-        activities=[],
+        workflows=[AstraRunWorkflow],
+        activities=[
+            ExecuteOrchestratorActivity.execute,
+            PublishEventActivity.publish,
+            UpdateRunStatusActivity.update,
+        ],
     )
-    logger.info("worker registered on task queue %s with 1 placeholder workflow, running", TASK_QUEUE)
+    logger.info(
+        "worker registered on task queue %s with AstraRunWorkflow + 3 activities, running",
+        TASK_QUEUE,
+    )
     await worker.run()
 
 
