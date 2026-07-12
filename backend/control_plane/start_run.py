@@ -65,6 +65,7 @@ async def start_continue_run(
     company_id: str | None = None,
     kind: str = "user",
     schedule_task: bool = True,
+    validate_prior: bool = True,
 ) -> StartRunResult:
     if request is not None:
         require_founder_access(request, founder_id, min_role="operator")
@@ -73,9 +74,9 @@ async def start_continue_run(
 
     prior_meta = await asyncio.to_thread(get_session_meta, prior_session_id)
     prior_owner = str((prior_meta or {}).get("founder_id") or "")
-    if not prior_owner:
+    if not prior_owner and validate_prior:
         raise HTTPException(status_code=404, detail="prior session not found")
-    if prior_owner != founder_id:
+    if prior_owner and prior_owner != founder_id and validate_prior:
         raise HTTPException(status_code=403, detail="prior session does not belong to founder")
 
     resolved_run_id = run_id or new_session_id()
@@ -111,9 +112,12 @@ async def start_continue_run(
     except Exception as session_exc:
         logger.warning("continuation session registration failed: %s", session_exc)
 
-    from backend.core.events import _get_queue as _pre_queue
+    try:
+        from backend.core.events import _get_queue as _pre_queue
 
-    _pre_queue(resolved_run_id)
+        _pre_queue(resolved_run_id)
+    except Exception:
+        pass
 
     feature_assignment = assign_run_features(resolved_company_id, resolved_run_id)
     engine = str(feature_assignment.get("engine") or "legacy")

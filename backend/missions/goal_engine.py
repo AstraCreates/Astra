@@ -1009,6 +1009,7 @@ async def dispatch_current_goal(
             company_id=company_id,
             kind="scheduled",
             schedule_task=False,
+            validate_prior=False,
         )
         update_operating_session(
             founder_id,
