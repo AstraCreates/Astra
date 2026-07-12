@@ -133,6 +133,7 @@ async def _auto_heal(founder_id: str, company_id: str, record: dict, check: dict
                 company_id=company_id,
                 kind="scheduled",
                 validate_prior=False,
+                schedule_task=False,
             )
             await asyncio.to_thread(
                 notify_founder, founder_id,
