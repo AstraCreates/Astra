@@ -30,3 +30,10 @@ pypdf==4.3.1
 fpdf2>=2.7.0
 python-pptx>=0.6.21
 pywebpush>=1.14,<2
+
+# Wave 1 control plane (PLAN.md): durable workflow engine for the future
+# Temporal execution shell. Not wired into any running code path yet --
+# scaffolding only (backend/control_plane/temporal/). Loose pin: not
+# confident of the exact latest patch version from this sandbox, tightened
+# once someone actually deploys against it.
+temporalio>=1.7,<2

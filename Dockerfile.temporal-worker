@@ -1,0 +1,20 @@
+# Wave 1 control plane worker (PLAN.md). Registers zero workflows/activities
+# yet -- see backend/control_plane/temporal/worker.py's docstring. Same
+# Python base as Dockerfile.backend; deliberately lighter (no node/openclaude/
+# playwright toolchain -- this process never runs agent code, just a
+# Temporal SDK worker loop).
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
+
+COPY backend/control_plane /app/backend/control_plane
+COPY backend/__init__.py /app/backend/__init__.py
+
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+CMD ["python", "-m", "backend.control_plane.temporal.worker"]
