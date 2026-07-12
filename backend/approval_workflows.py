@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -74,12 +75,38 @@ def create_approval_request(
 ) -> dict[str, Any]:
     """Create or refresh a pending approval request."""
     data = _load(session_id)
-    request_id = f"{gate_key}:{action_id or tool or agent or 'request'}"
-    existing = next((item for item in data["requests"] if item.get("id") == request_id), None)
+    base_request_id = f"{gate_key}:{action_id or tool or agent or 'request'}"
+    candidates = [
+        item for item in data["requests"]
+        if item.get("base_request_id", item.get("id")) == base_request_id
+    ]
+    existing = candidates[-1] if candidates else None
     metadata = dict(metadata or {})
     existing_metadata = dict(existing.get("metadata") or {}) if existing else {}
+    revision = int(existing.get("revision") or 1) if existing else 1
+    refreshes_final_request = bool(existing and existing.get("status") in {"rejected", "expired"})
+    if refreshes_final_request:
+        revision += 1
+    request_id = base_request_id if revision == 1 else f"{base_request_id}:r{revision}"
+    action_digest = _action_digest(
+        session_id=session_id,
+        gate_key=gate_key,
+        action_id=action_id,
+        tool=tool,
+        agent=agent,
+        title=title,
+        reason=reason,
+        risk_level=risk_level,
+        required_role=required_role,
+        expires_at=expires_at,
+        metadata=metadata,
+        revision=revision,
+    )
     payload = {
         "id": request_id,
+        "approval_id": request_id,
+        "base_request_id": base_request_id,
+        "revision": revision,
         "session_id": session_id,
         "gate_key": gate_key,
         "title": title or gate_key.replace("_", " ").title(),
@@ -89,17 +116,27 @@ def create_approval_request(
         "agent": agent,
         "risk_level": risk_level,
         "required_role": required_role,
-        "expires_at": existing.get("expires_at") if existing else expires_at,
-        "status": existing.get("status", "pending") if existing else "pending",
-        "created_at": existing.get("created_at") if existing else _now(),
+        "expires_at": existing.get("expires_at") if existing and not refreshes_final_request else expires_at,
+        "status": "pending" if refreshes_final_request else (existing.get("status", "pending") if existing else "pending"),
+        "created_at": _now() if refreshes_final_request else (existing.get("created_at") if existing else _now()),
         "updated_at": _now(),
         "history": list(existing.get("history", [])) if existing else [],
         **existing_metadata,
         **metadata,
     }
+    payload["action_digest"] = action_digest
     if metadata:
         payload["metadata"] = metadata
-    if existing:
+    if refreshes_final_request:
+        payload["refreshed_from"] = existing.get("id")
+        payload["history"].append({
+            "at": _now(),
+            "event": "refreshed",
+            "actor": agent or "astra",
+            "from_request_id": existing.get("id"),
+        })
+        data["requests"].append(payload)
+    elif existing:
         data["requests"] = [payload if item.get("id") == request_id else item for item in data["requests"]]
     else:
         payload["history"].append({"at": _now(), "event": "requested", "actor": agent or "astra"})
@@ -115,10 +152,12 @@ def decide_approval_request(
     *,
     request_id: str | None = None,
     actor_id: str | None = None,
-    actor_role: str = "owner",
+    actor_role: str = "viewer",
     note: str | None = None,
+    expected_action_digest: str | None = None,
 ) -> dict[str, Any]:
-    """Record an approval decision against all pending requests for a gate."""
+    """Record one role-authorized decision against one pending request."""
+    expire_approval_requests(session_id)
     data = _load(session_id)
     decision = decision.lower().strip()
     if decision not in ALLOWED_APPROVAL_DECISIONS:
@@ -130,46 +169,8 @@ def decide_approval_request(
             "error": f"decision must be one of {sorted(ALLOWED_APPROVAL_DECISIONS)}",
             "requests": [],
         }
-    changed: list[dict[str, Any]] = []
-    matched = 0
-    pending = 0
-    role_blocked = 0
-    for request in data.get("requests", []):
-        if request.get("gate_key") != gate_key:
-            continue
-        if request_id and request.get("id") != request_id:
-            continue
-        matched += 1
-        if request.get("status") in FINAL_APPROVAL_STATUSES:
-            continue
-        pending += 1
-        required_role = request.get("required_role") or "owner"
-        if not _role_allows(actor_role, required_role):
-            request.setdefault("history", []).append({
-                "at": _now(),
-                "event": "decision_rejected",
-                "actor": actor_id or "unknown",
-                "role": actor_role,
-                "note": f"requires {required_role}",
-            })
-            role_blocked += 1
-            continue
-        request["status"] = decision
-        request["decision"] = decision
-        request["decided_by"] = actor_id
-        request["decided_at"] = _now()
-        request["note"] = note or ""
-        request["updated_at"] = _now()
-        request.setdefault("history", []).append({
-            "at": _now(),
-            "event": decision,
-            "actor": actor_id or "founder",
-            "role": actor_role,
-            "note": note or "",
-        })
-        changed.append(request)
-    _save(session_id, data)
-    if matched == 0:
+    matching_gate = [item for item in data.get("requests", []) if item.get("gate_key") == gate_key]
+    if not matching_gate:
         return {
             "ok": False,
             "session_id": session_id,
@@ -178,7 +179,16 @@ def decide_approval_request(
             "error": f"no approval request found for gate '{gate_key}'",
             "requests": [],
         }
-    if pending == 0:
+    if request_id:
+        request = next((item for item in matching_gate if item.get("id") == request_id or item.get("approval_id") == request_id), None)
+        if request is None:
+            return _decision_error(session_id, gate_key, decision, "no approval request found for the supplied request id")
+    else:
+        pending_requests = [item for item in matching_gate if item.get("status") not in FINAL_APPROVAL_STATUSES]
+        if len(pending_requests) != 1:
+            return _decision_error(session_id, gate_key, decision, "request_id is required when a gate has zero or multiple pending approval requests")
+        request = pending_requests[0]
+    if request.get("status") in FINAL_APPROVAL_STATUSES:
         return {
             "ok": False,
             "session_id": session_id,
@@ -187,7 +197,17 @@ def decide_approval_request(
             "error": f"no pending approval request found for gate '{gate_key}'",
             "requests": [],
         }
-    if role_blocked and not changed:
+    if not expected_action_digest:
+        return _decision_error(session_id, gate_key, decision, "expected_action_digest is required")
+    if expected_action_digest != request.get("action_digest"):
+        return _decision_error(session_id, gate_key, decision, "expected_action_digest does not match the pending approval request")
+    required_role = request.get("required_role") or "owner"
+    if not _role_allows(actor_role, required_role):
+        request.setdefault("history", []).append({
+            "at": _now(), "event": "decision_rejected", "actor": actor_id or "unknown",
+            "role": actor_role, "note": f"requires {required_role}",
+        })
+        _save(session_id, data)
         return {
             "ok": False,
             "session_id": session_id,
@@ -196,7 +216,18 @@ def decide_approval_request(
             "error": "actor role does not satisfy the approval requirement",
             "requests": [],
         }
-    return {"ok": True, "session_id": session_id, "gate_key": gate_key, "decision": decision, "requests": changed}
+    request["status"] = decision
+    request["decision"] = decision
+    request["decided_by"] = actor_id
+    request["decided_at"] = _now()
+    request["note"] = note or ""
+    request["updated_at"] = _now()
+    request.setdefault("history", []).append({
+        "at": _now(), "event": decision, "actor": actor_id or "unknown",
+        "role": actor_role, "note": note or "",
+    })
+    _save(session_id, data)
+    return {"ok": True, "session_id": session_id, "gate_key": gate_key, "decision": decision, "requests": [request]}
 
 
 def expire_approval_requests(session_id: str, *, now: str | None = None) -> dict[str, Any]:
@@ -232,3 +263,12 @@ def get_approval_workflow(session_id: str) -> dict[str, Any]:
 
 def _role_allows(actor_role: str, required_role: str) -> bool:
     return ROLE_RANK.get(actor_role, -1) >= ROLE_RANK.get(required_role, ROLE_RANK["owner"])
+
+
+def _action_digest(**fields: Any) -> str:
+    """Bind a decision to the exact pending approval revision."""
+    return sha256(json.dumps(fields, sort_keys=True, default=str, separators=(",", ":")).encode()).hexdigest()
+
+
+def _decision_error(session_id: str, gate_key: str, decision: str, error: str) -> dict[str, Any]:
+    return {"ok": False, "session_id": session_id, "gate_key": gate_key, "decision": decision, "error": error, "requests": []}

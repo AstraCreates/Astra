@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 
-FINAL_APPROVAL_STATES = {"approved", "skipped", "rejected", "expired"}
+SATISFYING_APPROVAL_STATES = {"approved", "skipped"}
 TERMINAL_RUN_STATES = {"done", "stalled", "error", "failed", "killed", "cancelled", "stopped"}
 
 
@@ -70,7 +70,7 @@ def build_run_completion_audit(session_id: str, state: dict[str, Any]) -> dict[s
         {
             "key": item.get("key") or item.get("gate_key"),
             "status": item.get("status") or "pending",
-            "ok": (item.get("status") or "pending") in FINAL_APPROVAL_STATES or (item.get("status") == "armed" and not item.get("triggered_by")),
+            "ok": (item.get("status") or "pending") in SATISFYING_APPROVAL_STATES or (item.get("status") == "armed" and not item.get("triggered_by")),
             "triggered_by": item.get("triggered_by"),
         }
         for item in approvals

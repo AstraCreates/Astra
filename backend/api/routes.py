@@ -1341,7 +1341,8 @@ async def reject_task(body: RejectRequest, request: Request):
 
 @router.post("/stack/approval")
 async def decide_stack_approval(body: StackApprovalDecisionRequest, request: Request):
-    actor_id = require_founder_access(request, body.founder_id, min_role="admin") if body.founder_id else actor_or_body(request)
+    actor_id = require_founder_access(request, body.founder_id, min_role="viewer") if body.founder_id else actor_or_body(request)
+    actor_role = _approval_actor_role(body.founder_id, actor_id)
     decision = body.decision.lower().strip()
     if decision not in {"approved", "skipped", "rejected"}:
         raise HTTPException(status_code=400, detail="decision must be 'approved', 'skipped', or 'rejected'")
@@ -1351,10 +1352,11 @@ async def decide_stack_approval(body: StackApprovalDecisionRequest, request: Req
         body.session_id,
         body.gate_key,
         decision,
-        request_id=body.request_id,
+        request_id=body.request_id or body.approval_id,
         actor_id=actor_id,
-        actor_role="owner",
+        actor_role=actor_role,
         note=body.note,
+        expected_action_digest=body.expected_action_digest,
     )
     if not workflow.get("ok"):
         raise HTTPException(status_code=400, detail=workflow.get("error") or "approval decision failed")
@@ -1367,6 +1369,7 @@ async def decide_stack_approval(body: StackApprovalDecisionRequest, request: Req
     event = {
         "type": "stack_approval_decision",
         "gate_key": body.gate_key,
+        "request_id": body.request_id or body.approval_id,
         "decision": decision,
         "founder_id": body.founder_id or actor_id,
         "note": body.note,
@@ -1374,7 +1377,22 @@ async def decide_stack_approval(body: StackApprovalDecisionRequest, request: Req
     }
     approval_decision_push(body.session_id, body.gate_key, event)
     await publish(body.session_id, event)
-    return {"ok": True, "session_id": body.session_id, "gate_key": body.gate_key, "decision": decision}
+    return {"ok": True, "session_id": body.session_id, "gate_key": body.gate_key, "decision": decision, "requests": workflow["requests"]}
+
+
+def _approval_actor_role(founder_id: str | None, actor_id: str) -> str:
+    """Resolve the caller's workspace role; never promote a decision to owner."""
+    if founder_id and actor_id == founder_id:
+        return "owner"
+    if not founder_id:
+        return "viewer"
+    try:
+        from backend.accounts import get_or_create_org
+        member = (get_or_create_org(founder_id, founder_id).get("members") or {}).get(actor_id) or {}
+        role = str(member.get("role") or "viewer")
+        return role if role in {"viewer", "operator", "admin", "owner"} else "viewer"
+    except Exception:
+        return "viewer"
 
 
 @router.get("/orgs")

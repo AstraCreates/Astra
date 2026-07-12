@@ -149,3 +149,20 @@ def test_run_completion_audit_flags_failed_deployment_checks(tmp_path, monkeypat
 
     assert audit["ok"] is False
     assert "deployment_health" in failed_keys
+
+
+def test_run_completion_audit_rejects_rejected_or_expired_approvals():
+    state = {
+        "status": "done",
+        "execution_blueprint": {"stack_id": "test", "lanes": []},
+        "approvals": [
+            {"id": "reject", "key": "publish", "status": "rejected", "triggered_by": "publish_1"},
+            {"id": "expire", "key": "spend", "status": "expired", "triggered_by": "spend_1"},
+        ],
+    }
+
+    audit = build_run_completion_audit("session_bad_approvals", state)
+    approvals = next(check for check in audit["checks"] if check["key"] == "approvals_resolved")
+
+    assert approvals["ok"] is False
+    assert "approvals_resolved" in {check["key"] for check in audit["failed"]}
