@@ -176,6 +176,7 @@ from fastapi.responses import StreamingResponse
 from backend.db.client import get_supabase, get_outreach_db, update_task_status
 from backend.core.factory import get_orchestrator
 from backend.core.events import stream_events, publish
+from backend.control_plane.rollout import assign_run_features
 from backend.tenant_auth import actor_or_body, require_founder_access, require_org_access
 
 router = APIRouter()
@@ -722,6 +723,33 @@ async def submit_goal(body: GoalRequest, request: Request):
     # Without this, stream_events sees an empty session and yields session_expired immediately.
     from backend.core.events import _get_queue as _pre_queue
     _pre_queue(session_id)
+
+    # ── Feature flag: route to Temporal or legacy ──────────────────────────
+    _features = assign_run_features(_workspace_id or body.founder_id, session_id)
+    _use_temporal = _features.get("engine") == "temporal"
+
+    if _use_temporal:
+        # Dispatch through Temporal durable execution
+        try:
+            from backend.control_plane.temporal.dispatch import start_run
+            await start_run(
+                run_id=session_id,
+                founder_id=body.founder_id,
+                company_id=_workspace_id or body.founder_id,
+                workspace_id=_workspace_id,
+                chapter_id=_chapter_id,
+            )
+            return {
+                "session_id": session_id,
+                "status": "running",
+                "engine": "temporal",
+                "company_id": _workspace_id or body.founder_id,
+                "workspace_id": _workspace_id,
+                "chapter_id": _chapter_id,
+            }
+        except Exception as _temporal_exc:
+            logger.warning("Temporal dispatch failed, falling back to legacy: %s", _temporal_exc)
+            # Fall through to legacy path
 
     async def _run():
         from backend.core import cancellation
