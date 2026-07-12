@@ -58,6 +58,41 @@ async def test_start_run_uses_ids_only_workflow_input(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_start_run_preserves_nullable_optional_ids(monkeypatch):
+    started: dict[str, object] = {}
+
+    class _FakeClient:
+        async def start_workflow(self, workflow_run, workflow_input, *, id, task_queue):
+            started["workflow_input"] = workflow_input
+            started["workflow_id"] = id
+            started["task_queue"] = task_queue
+            return object()
+
+    async def _fake_get_client():
+        return _FakeClient()
+
+    fake_workflows = types.ModuleType("backend.control_plane.temporal.workflows")
+    fake_workflows.AstraRunWorkflow = types.SimpleNamespace(run="workflow-run")
+
+    monkeypatch.setattr(dispatch, "_get_client", _fake_get_client)
+    monkeypatch.setitem(sys.modules, "backend.control_plane.temporal.workflows", fake_workflows)
+
+    await dispatch.start_run(
+        run_id="run_nullable",
+        founder_id="founder_1",
+        company_id=None,
+        workspace_id=None,
+        chapter_id=None,
+    )
+
+    workflow_input = started["workflow_input"]
+    assert isinstance(workflow_input, RunInput)
+    assert workflow_input.company_id is None
+    assert workflow_input.workspace_id is None
+    assert workflow_input.chapter_id is None
+
+
+@pytest.mark.asyncio
 async def test_execute_orchestrator_run_reuses_run_id_as_session_id():
     orchestrator_call: dict[str, object] = {}
     registered: dict[str, object] = {}

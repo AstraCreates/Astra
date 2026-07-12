@@ -46,9 +46,9 @@ async def start_run(
     *,
     run_id: str,
     founder_id: str,
-    company_id: str = "",
-    workspace_id: str = "",
-    chapter_id: str = "",
+    company_id: Optional[str] = None,
+    workspace_id: Optional[str] = None,
+    chapter_id: Optional[str] = None,
 ) -> dict[str, Any]:
     """Start an AstraRunWorkflow on the Temporal server.
 
