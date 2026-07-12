@@ -872,6 +872,14 @@ class Agent:
         # json_object not supported by OpenRouter models
         if not is_openrouter and not native_enabled:
             kwargs["response_format"] = {"type": "json_object"}
+        # Rate-limit/transient resilience: retry with key rotation + backoff.
+        # On 429 we rotate to the next OpenRouter key; on 5xx/timeout we just
+        # back off. Honors a Retry-After header when the provider sends one.
+        import openai as _openai
+        import random as _random
+        import json as _json
+        _max_attempts = 5
+
         # Budget reservation (Wave 1): reserve a generous worst-case estimate
         # BEFORE the call fires, commit real usage after. Soft-fail by design
         # -- a reservation problem must never block or crash a live agent
@@ -895,21 +903,25 @@ class Agent:
                 _est_prompt_tokens = max(256, sum(len(str(m.get("content", ""))) for m in messages) // 3)
                 _est_completion_tokens = int(kwargs.get("max_tokens") or 8192)
                 _est_usd = _est_cost_usd(self.model, _est_prompt_tokens, _est_completion_tokens) * 1.5
+                # TTL must outlast the worst-case real call duration, not just
+                # the DEFAULT_TTL_SECONDS=300 fallback -- a slow/unverified
+                # model can legitimately take up to _call_timeout per attempt
+                # across _max_attempts retries plus backoff. A TTL shorter
+                # than that lets the orphan reaper release a reservation
+                # while a real call is still in flight; the eventual commit()
+                # then silently fails (soft-fail swallows it), so the founder
+                # gets genuinely unbilled real spend. +120s slack for backoff
+                # sleeps between attempts (up to 20s each, 5 attempts).
+                _reservation_ttl = int(_call_timeout * _max_attempts + 120)
                 _reservation = get_default_budget_service().reserve(
                     run_id=ctx.session_id, founder_id=ctx.founder_id, estimated_max_usd=_est_usd,
+                    ttl_seconds=_reservation_ttl,
                 )
             except BudgetExceededError as _bee:
                 logger.warning("[%s] budget reservation exceeded, proceeding without one (soft-fail): %s", self.name, _bee)
             except Exception as _re:
                 logger.debug("[%s] budget reservation skipped: %s", self.name, _re)
 
-        # Rate-limit/transient resilience: retry with key rotation + backoff.
-        # On 429 we rotate to the next OpenRouter key; on 5xx/timeout we just
-        # back off. Honors a Retry-After header when the provider sends one.
-        import openai as _openai
-        import random as _random
-        import json as _json
-        _max_attempts = 5
         _t0 = _time.monotonic()
         resp = None
         for _attempt in range(_max_attempts):

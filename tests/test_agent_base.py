@@ -133,6 +133,41 @@ def test_call_llm_skips_reservation_for_unlimited_credits(monkeypatch):
     assert list(service._repo._by_id.values()) == []
 
 
+def test_call_llm_reservation_ttl_outlasts_worst_case_call_duration(monkeypatch):
+    """Security-review finding: a reservation TTL shorter than the call's own
+    worst-case duration (slow model, all 5 attempts, full backoff) lets the
+    orphan reaper release it while a real call is still legitimately in
+    flight -- the eventual commit() then silently fails (soft-fail), so the
+    founder gets genuinely unbilled real spend. TTL must scale with
+    _call_timeout * _max_attempts, not the flat 300s default."""
+    from datetime import datetime, timezone
+    from backend.control_plane.budget import get_default_budget_service, DEFAULT_TTL_SECONDS
+    import backend.control_plane.budget as budget_module
+    budget_module._default_service = None
+
+    done_json = json.dumps({"tool": "done", "args": {"summary": "ok", "output": {}}})
+    # A model NOT in _FAST_MODELS -> _call_timeout = 300.0 (the slow-model
+    # default), so worst case is 300s x 5 attempts, far past DEFAULT_TTL_SECONDS.
+    agent = Agent(name="legal", role="legal", tools={}, model="some/slow-test-model")
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content=done_json))],
+        usage=MagicMock(prompt_tokens=100, completion_tokens=50, prompt_tokens_details=None),
+    )
+    agent._client = mock_client
+
+    ctx = AgentContext(goal="test", founder_id="founder_ttl_test", session_id="sess_1")
+    before = datetime.now(timezone.utc)
+    agent._call_llm([{"role": "user", "content": "hi"}], ctx)
+
+    service = get_default_budget_service()
+    reservations = list(service._repo._by_id.values())
+    assert len(reservations) == 1
+    ttl_seconds = (reservations[0].expires_at - before).total_seconds()
+    assert ttl_seconds > DEFAULT_TTL_SECONDS * 2  # nowhere near the flat old default
+    assert ttl_seconds >= 300 * 5  # at least covers 5 full-timeout attempts
+
+
 def test_call_llm_uses_short_timeout_for_confirmed_fast_models():
     """ling-2.6-flash/mimo-v2.5 average ~4s/call in real production traffic
     (measured from credits-ledger timestamps during a live multi-agent
