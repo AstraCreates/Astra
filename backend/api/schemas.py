@@ -20,6 +20,7 @@ class GoalRequest(BaseModel):
     technical_scope: TechnicalScope = "both"
     research_depth: Optional[ResearchDepth] = None
     marketing_channels: MarketingChannels = "both"
+    budget_limit_usd: Optional[float] = None
 
 
 class StackRecommendRequest(BaseModel):
@@ -53,6 +54,23 @@ class StackApprovalDecisionRequest(BaseModel):
     founder_id: Optional[str] = None
     request_id: Optional[str] = None
     approval_id: Optional[str] = None
+    expected_action_digest: Optional[str] = None
+    note: Optional[str] = None
+
+
+class RunCreateRequest(GoalRequest):
+    parent_run_id: Optional[str] = None
+
+
+class RunStepRetryRequest(BaseModel):
+    founder_id: Optional[str] = None
+    instruction: Optional[str] = Field(default=None, max_length=20000)
+
+
+class RunApprovalDecisionRequest(BaseModel):
+    decision: str
+    founder_id: Optional[str] = None
+    gate_key: Optional[str] = None
     expected_action_digest: Optional[str] = None
     note: Optional[str] = None
 

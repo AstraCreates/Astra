@@ -129,6 +129,7 @@ async def startup_background_jobs():
         asyncio.create_task(_platform_alert_loop()),
         asyncio.create_task(_pii_purge_loop()),
         asyncio.create_task(_budget_reservation_reaper_loop()),
+        asyncio.create_task(_control_plane_outbox_loop()),
     ]
 
 
@@ -179,6 +180,13 @@ async def _platform_alert_loop() -> None:
         except Exception as exc:
             logger.warning("Platform alert check failed: %s", exc)
         await asyncio.sleep(300)
+
+
+async def _control_plane_outbox_loop() -> None:
+    await asyncio.sleep(5)
+    from backend.control_plane.event_stream import outbox_publisher_loop
+
+    await outbox_publisher_loop()
 
 
 @app.on_event("shutdown")

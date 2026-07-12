@@ -89,6 +89,9 @@ from backend.api.schemas import (
     OrgSubscriptionRequest,
     OrgUsageRequest,
     RejectRequest,
+    RunApprovalDecisionRequest,
+    RunCreateRequest,
+    RunStepRetryRequest,
     SetupRequest,
     SaveCredentialRequest,
     AutomationTriggerRequest,
@@ -613,244 +616,15 @@ async def _reconcile_orphaned_agents(session_id: str, reason: str) -> None:
 
 @router.post("/goal")
 async def submit_goal(body: GoalRequest, request: Request):
-    actor_id = require_founder_access(request, body.founder_id, min_role="operator")
-    # Validate the initial prompt: minimum length + disallowed-content screen.
-    from backend.safety.content_filter import screen_goal
-    _ok, _reason = screen_goal(body.instruction)
-    if not _ok:
-        raise HTTPException(status_code=400, detail=_reason)
-    from backend.core.session_ids import new_session_id
-    session_id = new_session_id()
-    orch = get_orchestrator()
-    try:
-        from backend.accounts import get_or_create_org, record_usage
-        org = get_or_create_org(body.founder_id)
-        if org.get("entitlements", {}).get("remaining_runs", 0) <= 0:
-            raise HTTPException(status_code=402, detail="Monthly run limit reached for this workspace.")
-        record_usage(org["org_id"], actor_id=actor_id, runs=1)
-    except HTTPException:
-        raise
-    except Exception as usage_exc:
-        logger.warning("Usage accounting skipped: %s", usage_exc)
+    from backend.control_plane.start_run import start_run as control_plane_start_run
 
-    # Credit check — scale plan gets unlimited, others need at least 1 credit to start
-    from backend.credits.store import check_credits, get_balance
-    from backend.accounts import get_or_create_org as _get_org
-    _org = _get_org(body.founder_id)
-    _plan = (_org or {}).get("plan", "starter")
-    _unlimited = _plan in ("scale", "beta")
-    if not _unlimited and get_balance(body.founder_id) < 1:
-        raise HTTPException(status_code=402, detail="Insufficient credits. Purchase more to continue.")
-    constraints = dict(body.constraints or {})
-    _inferred_stack, _business_profile = _analyze_goal(body.instruction)
-    _effective_stack = body.stack_id or _inferred_stack or ""
-    if _effective_stack:
-        constraints["stack_id"] = _effective_stack
-    constraints["unlimited_credits"] = _unlimited
-    _exclude_agents = _run_option_exclusions(body.technical_scope, body.marketing_channels)
-    if _exclude_agents:
-        constraints["exclude_agents"] = _exclude_agents
-    if body.research_depth:
-        constraints["research_depth"] = body.research_depth
-    # Prepend LLM-generated business profile so all agents have full context
-    _goal_instruction = body.instruction
-    if _business_profile and "---" not in body.instruction[:80]:
-        _goal_instruction = f"Business profile:\n{_business_profile}\n\n---\n{body.instruction}"
-
-    # Create or resolve workspace + chapter
-    _workspace_id: str = ""
-    _chapter_id: str = ""
-    try:
-        from backend.core import workspace_store as _wss
-        _ws_name = (body.workspace_name or "").strip() or body.instruction[:60]
-        _requested_company_id = body.company_id or body.workspace_id
-        if _requested_company_id:
-            # Add a new chapter to an existing workspace
-            _company = _wss.get_workspace(_requested_company_id)
-            if not _company:
-                raise HTTPException(status_code=404, detail="Company not found")
-            require_founder_access(
-                request,
-                str(_company.get("founder_id") or ""),
-                min_role="operator",
-            )
-            _workspace_id = _requested_company_id
-        else:
-            # Reuse an existing workspace with the same company name if one exists,
-            # so multiple runs for the same company don't scatter into separate workspaces.
-            _existing = None
-            if body.workspace_name:
-                from backend.core.workspace_store import find_workspace_by_name as _fwbn
-                _existing = _fwbn(body.founder_id, body.workspace_name)
-            if _existing:
-                _workspace_id = _existing["workspace_id"]
-            else:
-                _ws = _wss.create_workspace(
-                    founder_id=body.founder_id,
-                    name=_ws_name,
-                    goal=_goal_instruction,
-                    stack_id=_effective_stack or "idea_to_revenue",
-                )
-                _workspace_id = _ws["workspace_id"]
-        _ch = _wss.create_chapter(workspace_id=_workspace_id, session_id=session_id)
-        _chapter_id = _ch["chapter_id"]
-        constraints["company_id"] = _workspace_id
-        constraints["workspace_id"] = _workspace_id
-    except HTTPException:
-        raise
-    except Exception as _we:
-        logger.warning("workspace creation failed (non-fatal): %s", _we)
-
-    # Register session in durable store before launching
-    try:
-        from backend.core.session_store import merge_session_meta as _merge_meta, register_session as _reg
-        _reg(
-            session_id=session_id,
-            founder_id=body.founder_id,
-            goal=_goal_instruction,
-            stack_id=_effective_stack,
-            company_name=str(constraints.get("company_name", "")),
-            agents=list(constraints.get("agents", [])),
-            workspace_id=_workspace_id,
-            company_id=_workspace_id or body.founder_id,
-            chapter_id=_chapter_id,
-            kind="user",
-        )
-        _merge_meta(session_id, constraints=constraints, engine="legacy")
-    except Exception as _se:
-        logger.warning("session_store.register_session failed: %s", _se)
-
-    # Pre-create the SSE queue so the frontend can connect before the first event arrives.
-    # Without this, stream_events sees an empty session and yields session_expired immediately.
-    from backend.core.events import _get_queue as _pre_queue
-    _pre_queue(session_id)
-
-    # Durable control-plane run record (Wave 1). Dual-write, best-effort,
-    # additive alongside session_store above -- never fails the request
-    # (durable_create_run swallows its own errors). AWAITED, not
-    # fire-and-forget: astra_run_events has an FK to astra_runs, so any
-    # event published before this insert lands would silently drop (events
-    # dual-write is also best-effort) -- the row must exist first.
-    try:
-        from backend.control_plane.models import Run
-        from backend.control_plane.supabase_repositories import durable_create_run
-        await durable_create_run(Run(
-            id=session_id,
-            owner_id=body.founder_id,
-            org_id=_workspace_id or body.founder_id,
-            company_id=_workspace_id or body.founder_id,
-            workspace_id=_workspace_id,
-            chapter_id=_chapter_id,
-            goal=_goal_instruction,
-            stack_id=_effective_stack,
-        ))
-    except Exception as _dre:
-        logger.warning("durable_create_run dispatch failed: %s", _dre)
-
-    # ── Feature flag: route to Temporal or legacy ──────────────────────────
-    # Resolved ONCE, here, and persisted on the run record -- per the plan
-    # invariant, flags must never be re-evaluated for an in-flight run (a
-    # rollout_percent change mid-run must not move the run between engines).
-    # Store the whole dict, not just engine: anything checking
-    # event_stream_v2/model_gateway_v2/etc for this specific run later must
-    # read this persisted value, not call assign_run_features() again.
-    _features = assign_run_features(_workspace_id or body.founder_id, session_id)
-    _use_temporal = _features.get("engine") == "temporal"
-    try:
-        from backend.core.session_store import merge_session_meta as _merge_features
-        _merge_features(session_id, feature_assignment=_features, engine=_features.get("engine", "legacy"))
-    except Exception as _fe:
-        logger.warning("session_store.merge_session_meta (feature_assignment) failed: %s", _fe)
-
-    if _use_temporal:
-        # Dispatch through Temporal durable execution
-        try:
-            from backend.control_plane.temporal.dispatch import start_run
-            _dispatch = await start_run(
-                run_id=session_id,
-                founder_id=body.founder_id,
-                company_id=_workspace_id or body.founder_id,
-                workspace_id=_workspace_id,
-                chapter_id=_chapter_id,
-            )
-            try:
-                from backend.core.session_store import merge_session_meta as _merge_meta
-                _merge_meta(
-                    session_id,
-                    engine="temporal",
-                    constraints=constraints,
-                    workflow_id=_dispatch.get("workflow_id", ""),
-                    temporal_task_queue=_dispatch.get("task_queue", ""),
-                )
-            except Exception as _me:
-                logger.warning("session_store.merge_session_meta failed: %s", _me)
-            return {
-                "session_id": session_id,
-                "status": "running",
-                "engine": "temporal",
-                "company_id": _workspace_id or body.founder_id,
-                "workspace_id": _workspace_id,
-                "chapter_id": _chapter_id,
-            }
-        except Exception as _temporal_exc:
-            logger.warning("Temporal dispatch failed, falling back to legacy: %s", _temporal_exc)
-            # Dispatch never actually started on Temporal -- correct the persisted
-            # engine so the run record doesn't claim an engine that didn't run it.
-            try:
-                _features = dict(_features, engine="legacy")
-                _merge_features(session_id, feature_assignment=_features, engine="legacy")
-            except Exception as _fe2:
-                logger.warning("session_store.merge_session_meta (engine correction) failed: %s", _fe2)
-            # Fall through to legacy path
-
-    async def _run():
-        from backend.core import cancellation
-        _final_status = "done"
-        try:
-            await orch.run(
-                goal=_goal_instruction,
-                founder_id=body.founder_id,
-                constraints=constraints,
-                session_id=session_id,
-            )
-        except asyncio.CancelledError:
-            _final_status = "killed"
-            logger.info("goal run killed session=%s", session_id)
-            try:
-                from backend.core.session_store import update_session_status
-                update_session_status(session_id, "killed")
-                await _reconcile_orphaned_agents(session_id, "Run stopped by user.")
-                await publish(session_id, {"type": "goal_error", "error": "Run stopped by user.", "killed": True})
-            except Exception:
-                pass
-        except Exception as e:
-            _final_status = "error"
-            logger.error("goal run error session=%s: %s", session_id, e, exc_info=True)
-            try:
-                await _reconcile_orphaned_agents(session_id, "Run failed before this agent completed.")
-                await publish(session_id, {"type": "goal_error", "error": str(e)})
-            except Exception:
-                pass
-        finally:
-            cancellation.clear(session_id)
-            # Update chapter status when the session ends
-            if _workspace_id and _chapter_id:
-                try:
-                    from backend.core import workspace_store as _wss2
-                    _wss2.update_chapter(_workspace_id, _chapter_id, status=_final_status)
-                except Exception as _ce:
-                    logger.warning("chapter status update failed: %s", _ce)
-
-    _task = asyncio.create_task(_run())
-    from backend.core import cancellation
-    cancellation.register_task(session_id, _task)
-    return {
-        "session_id": session_id,
-        "status": "running",
-        "company_id": _workspace_id or body.founder_id,
-        "workspace_id": _workspace_id,
-        "chapter_id": _chapter_id,
-    }
+    result = await control_plane_start_run(RunCreateRequest(**body.model_dump()), request)
+    response = result.to_response()
+    response.pop("run_id", None)
+    response.pop("workflow_id", None)
+    response.pop("task_queue", None)
+    response.pop("feature_assignment", None)
+    return response
 
 
 @router.get("/stream/{session_id}")
@@ -865,6 +639,23 @@ async def stream_goal(session_id: str, request: Request):
             pass
 
     async def _gen():
+        use_v2 = False
+        try:
+            from backend.control_plane.supabase_repositories import SupabaseRunRepository
+
+            run = await asyncio.to_thread(SupabaseRunRepository().get, session_id)
+            if run is not None:
+                use_v2 = True
+        except Exception:
+            use_v2 = False
+
+        if use_v2:
+            from backend.control_plane.event_stream import stream_run_events
+
+            async for chunk in stream_run_events(session_id, last_event_id=last_event_id):
+                yield chunk
+            return
+
         async for chunk in stream_events(session_id, last_event_id=last_event_id):
             yield chunk
     return StreamingResponse(_gen(), media_type="text/event-stream", headers={
@@ -872,6 +663,56 @@ async def stream_goal(session_id: str, request: Request):
         "X-Accel-Buffering": "no",
         "Connection": "keep-alive",
     })
+
+
+@router.post("/runs")
+async def create_run(body: RunCreateRequest, request: Request):
+    from backend.control_plane.start_run import start_run as control_plane_start_run
+
+    result = await control_plane_start_run(body, request)
+    return result.to_response()
+
+
+@router.get("/runs/{run_id}")
+async def get_run(run_id: str, request: Request):
+    await _require_session_access(request, run_id, min_role="viewer")
+    from backend.control_plane.projection import get_run_snapshot
+
+    return await get_run_snapshot(run_id)
+
+
+@router.get("/runs/{run_id}/events")
+async def get_run_events(run_id: str, request: Request, after: int = 0):
+    await _require_session_access(request, run_id, min_role="viewer")
+    from backend.control_plane.projection import list_run_events
+
+    return {"run_id": run_id, "events": await list_run_events(run_id, after)}
+
+
+@router.post("/runs/{run_id}/cancel")
+async def cancel_run_route(run_id: str, request: Request):
+    await _require_session_access(request, run_id, min_role="operator")
+    from backend.control_plane.supabase_repositories import SupabaseRunRepository
+    from backend.core.session_store import get_session_meta, merge_session_meta
+
+    meta = get_session_meta(run_id) or {}
+    cancelled = await _cancel_temporal_session_if_needed(run_id, meta)
+    if not cancelled:
+        try:
+            from backend.core import cancellation
+
+            cancellation.request_kill(run_id)
+        except Exception:
+            pass
+    try:
+        await asyncio.to_thread(SupabaseRunRepository().update_status, run_id, "cancelling")
+    except Exception:
+        pass
+    try:
+        merge_session_meta(run_id, cancellation_requested_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    except Exception:
+        pass
+    return {"ok": True, "run_id": run_id, "status": "cancelling"}
 
 
 @router.get("/sessions")
@@ -1411,6 +1252,47 @@ async def rerun_agent(session_id: str, agent_name: str, body: dict, request: Req
     return {"ok": True, "session_id": session_id, "agent": agent_name, "attempt_id": attempt_id, "status": "started"}
 
 
+@router.post("/runs/{run_id}/steps/{step_key}/retry")
+async def retry_run_step(run_id: str, step_key: str, body: RunStepRetryRequest, request: Request):
+    await _require_session_access(request, run_id, min_role="operator")
+    from backend.control_plane.models import RunStep
+    from backend.control_plane.supabase_repositories import SupabaseRunRepository, SupabaseRunStepRepository
+
+    run = await asyncio.to_thread(SupabaseRunRepository().get, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="run not found")
+
+    repo = SupabaseRunStepRepository()
+    step = await asyncio.to_thread(
+        repo.create_attempt,
+        RunStep(
+            id=f"{run_id}:{step_key}:{int(time.time())}",
+            run_id=run_id,
+            step_key=step_key,
+            kind="agent",
+            agent=step_key,
+            status="queued",
+            max_attempts=10,
+        ),
+    )
+    result = await rerun_agent(
+        run_id,
+        step_key,
+        {
+            "founder_id": body.founder_id or run.owner_id,
+            "instruction": body.instruction or "",
+        },
+        request,
+    )
+    return {
+        "ok": True,
+        "run_id": run_id,
+        "step_key": step_key,
+        "attempt": step.model_dump(mode="json"),
+        "dispatch": result,
+    }
+
+
 @router.post("/sessions/{session_id}/ask")
 async def ask_session(session_id: str, body: SessionAskRequest, request: Request):
     from backend.session_digest import answer_session_question
@@ -1480,6 +1362,50 @@ async def decide_stack_approval(body: StackApprovalDecisionRequest, request: Req
     approval_decision_push(body.session_id, resolved_request_id, resolved_digest, event)
     await publish(body.session_id, event)
     return {"ok": True, "session_id": body.session_id, "gate_key": body.gate_key, "decision": decision, "requests": workflow["requests"]}
+
+
+@router.post("/runs/{run_id}/approvals/{approval_id}/decision")
+async def decide_run_approval(run_id: str, approval_id: str, body: RunApprovalDecisionRequest, request: Request):
+    await _require_session_access(request, run_id, min_role="viewer")
+    from backend.control_plane.supabase_repositories import SupabaseApprovalRequestRepository
+
+    approval = await asyncio.to_thread(SupabaseApprovalRequestRepository().get, approval_id)
+    if approval is None or approval.run_id != run_id:
+        raise HTTPException(status_code=404, detail="approval not found")
+    delegate = StackApprovalDecisionRequest(
+        session_id=run_id,
+        gate_key=body.gate_key or approval.gate_key,
+        decision=body.decision,
+        founder_id=body.founder_id,
+        request_id=approval.id,
+        approval_id=approval.id,
+        expected_action_digest=body.expected_action_digest or approval.action_digest,
+        note=body.note,
+    )
+    result = await decide_stack_approval(delegate, request)
+    return {
+        "ok": True,
+        "run_id": run_id,
+        "approval_id": approval_id,
+        "decision": body.decision,
+        "result": result,
+    }
+
+
+@router.get("/runs/{run_id}/trace")
+async def get_run_trace(run_id: str, request: Request):
+    await _require_session_access(request, run_id, min_role="viewer")
+    from backend.core.session_store import get_session_meta
+
+    meta = get_session_meta(run_id) or {}
+    return {
+        "run_id": run_id,
+        "engine": str(meta.get("engine") or ""),
+        "workflow_id": str(meta.get("workflow_id") or ""),
+        "task_queue": str(meta.get("temporal_task_queue") or ""),
+        "trace_id": str(meta.get("trace_id") or ""),
+        "otel": {"trace_id": str(meta.get("trace_id") or ""), "span_id": str(meta.get("span_id") or "")},
+    }
 
 
 def _approval_actor_role(founder_id: str | None, actor_id: str) -> str:

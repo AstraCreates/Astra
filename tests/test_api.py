@@ -5,6 +5,7 @@ from backend.main import app
 from backend.api import routes
 from backend.config import settings
 from fastapi.testclient import TestClient
+from types import SimpleNamespace
 
 
 @pytest.mark.asyncio
@@ -64,6 +65,57 @@ async def test_goal_endpoint_dispatches_temporal_with_stable_session_id(monkeypa
     assert meta["engine"] == "temporal"
     assert meta["workflow_id"] == f"astra-run/{body['session_id']}"
     assert meta["constraints"]["agents"] == ["technical"]
+
+
+@pytest.mark.asyncio
+async def test_runs_endpoint_returns_canonical_run_response(monkeypatch):
+    async def fake_start_run(body, request, *, run_id=None):
+        return SimpleNamespace(
+            to_response=lambda: {
+                "run_id": "run_123",
+                "session_id": "run_123",
+                "status": "running",
+                "engine": "temporal",
+                "company_id": "company_1",
+                "workspace_id": "workspace_1",
+                "chapter_id": "chapter_1",
+            }
+        )
+
+    monkeypatch.setattr(routes, "require_founder_access", lambda request, founder_id, min_role="viewer": founder_id)
+    monkeypatch.setattr("backend.control_plane.start_run.start_run", fake_start_run)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/runs", json={
+            "founder_id": "founder_1",
+            "instruction": "Build a durable run orchestration API",
+            "constraints": {},
+        })
+
+    assert response.status_code == 200
+    assert response.json()["run_id"] == "run_123"
+    assert response.json()["session_id"] == "run_123"
+    assert response.json()["engine"] == "temporal"
+
+
+@pytest.mark.asyncio
+async def test_runs_events_endpoint_returns_filtered_durable_events(monkeypatch):
+    monkeypatch.setattr(routes, "_require_session_access", AsyncMock(return_value="founder_1"))
+    monkeypatch.setattr(
+        "backend.control_plane.projection.list_run_events",
+        AsyncMock(return_value=[
+            {"run_id": "run_123", "sequence": 3, "event_type": "run.created", "payload": {"type": "run.created"}},
+            {"run_id": "run_123", "sequence": 4, "event_type": "agent_start", "payload": {"type": "agent_start"}},
+        ]),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/runs/run_123/events?after=2")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["run_id"] == "run_123"
+    assert [event["sequence"] for event in body["events"]] == [3, 4]
 
 
 @pytest.mark.asyncio
