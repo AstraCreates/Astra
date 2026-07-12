@@ -220,6 +220,77 @@ services:
       - windmill_worker_cache:/tmp/windmill/cache
       - windmill_worker_logs:/tmp/windmill/logs
 
+  # ── Wave 1 control plane (PLAN.md) ──────────────────────────────────────
+  # Dedicated infrastructure Postgres for Temporal's own persistence (and,
+  # later, LiteLLM's database). Completely separate from the app's real
+  # product data, which lives in a hosted Supabase project reached over the
+  # network via backend/db/client.py -- nothing here touches that.
+  # Nothing in the running app talks to any of these services yet.
+  temporal-postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      - POSTGRES_PASSWORD=${TEMPORAL_DB_PASSWORD:-change-me-astra}
+      - POSTGRES_DB=temporal
+    volumes:
+      - temporal_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Not published to the host — only temporal-worker and temporal-ui talk to
+  # it, over the compose bridge network. Browse the UI via an SSH tunnel if
+  # a human needs to look at it, never expose it publicly.
+  temporal:
+    image: temporalio/auto-setup:latest
+    restart: unless-stopped
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PWD=${TEMPORAL_DB_PASSWORD:-change-me-astra}
+      - POSTGRES_SEEDS=temporal-postgres
+    depends_on:
+      temporal-postgres:
+        condition: service_healthy
+    mem_limit: 1g
+    memswap_limit: 1g
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD-SHELL", "tctl --address temporal:7233 cluster health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    restart: unless-stopped
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:8080
+    depends_on:
+      temporal:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  temporal-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.temporal-worker
+    restart: unless-stopped
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    depends_on:
+      temporal:
+        condition: service_healthy
+    mem_limit: 512m
+    memswap_limit: 512m
+    pids_limit: 128
+
   nginx:
     image: nginx:alpine
     restart: unless-stopped
@@ -275,3 +346,4 @@ volumes:
   windmill_db_data:
   windmill_worker_cache:
   windmill_worker_logs:
+  temporal_pg_data:
