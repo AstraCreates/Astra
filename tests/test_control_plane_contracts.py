@@ -1,7 +1,7 @@
 import threading
 from datetime import datetime, timedelta, timezone
 
-from backend.control_plane.backfill import build_run_from_session_meta
+from backend.control_plane.backfill import backfill_runs, build_run_from_session_meta
 from backend.control_plane.fakes import (
     FakeActionRepository,
     FakeApprovalRequestRepository,
@@ -16,6 +16,7 @@ from backend.control_plane.models import (
     ApprovalRequest,
     Artifact,
     BudgetReservation,
+    BudgetReservationLedger,
     Run,
     RunStep,
 )
@@ -45,6 +46,21 @@ def test_every_model_round_trips_through_dump_and_validate():
 
     reservation = BudgetReservation(id="res1", run_id="run_1", estimated_max_usd=1.5, expires_at=datetime.now(timezone.utc))
     assert BudgetReservation.model_validate(reservation.model_dump()) == reservation
+
+    ledger = BudgetReservationLedger(reservation_id="res1", founder_id="f1", reserved_credits=100)
+    assert BudgetReservationLedger.model_validate(ledger.model_dump()) == ledger
+
+
+def test_model_defaults_are_not_shared_between_instances():
+    first = Run(id="run_1", owner_id="f1", org_id="f1", goal="One")
+    second = Run(id="run_2", owner_id="f2", org_id="f2", goal="Two")
+    first.metadata["note"] = "kept local"
+    assert second.metadata == {}
+
+    first_artifact = Artifact(id="art1", run_id="run_1", key="deck")
+    second_artifact = Artifact(id="art2", run_id="run_2", key="notes")
+    first_artifact.metadata["version"] = 1
+    assert second_artifact.metadata == {}
 
 
 def test_fake_run_repository_create_get_update_status():
@@ -145,20 +161,32 @@ def test_fake_artifact_repository_upsert_replaces_by_key():
 def test_fake_budget_reservation_repository_lifecycle_and_expiry_sweep():
     repo = FakeBudgetReservationRepository()
     now = datetime.now(timezone.utc)
-    repo.reserve(BudgetReservation(id="r1", run_id="run_1", estimated_max_usd=1.0, expires_at=now - timedelta(minutes=1)))
-    repo.reserve(BudgetReservation(id="r2", run_id="run_1", estimated_max_usd=2.0, expires_at=now + timedelta(hours=1)))
+    repo.reserve(
+        BudgetReservation(id="r1", run_id="run_1", estimated_max_usd=1.0, expires_at=now - timedelta(minutes=1)),
+        founder_id="founder_1",
+        reserved_credits=100,
+    )
+    repo.reserve(
+        BudgetReservation(id="r2", run_id="run_1", estimated_max_usd=2.0, expires_at=now + timedelta(hours=1)),
+        founder_id="founder_1",
+        reserved_credits=200,
+    )
 
     expired = repo.list_expired(now=now.isoformat())
     assert [r.id for r in expired] == ["r1"]
+    assert repo.sum_reserved_credits("founder_1") == 300
 
-    repo.commit("r2", actual_usd=1.75)
+    repo.commit("r2", actual_usd=1.75, billed_credits=175, overspend_usd=0.25, unreconciled_credits=25)
     assert repo._by_id["r2"].status == "committed"
     assert repo._by_id["r2"].actual_usd == 1.75
+    assert repo._ledger_by_id["r2"].billed_credits == 175
+    assert repo._ledger_by_id["r2"].unreconciled_credits == 25
 
-    repo.release("r1")
-    assert repo._by_id["r1"].status == "released"
-    # Released reservations no longer show up in the expiry sweep.
+    repo.expire("r1")
+    assert repo._by_id["r1"].status == "expired"
+    # Expired reservations no longer show up in the expiry sweep or outstanding total.
     assert repo.list_expired(now=now.isoformat()) == []
+    assert repo.sum_reserved_credits("founder_1") == 0
 
 
 def test_backfill_maps_legacy_session_meta_to_run_contract():
@@ -182,3 +210,26 @@ def test_backfill_maps_legacy_session_meta_to_run_contract():
     assert run.status == "succeeded"
     assert run.engine == "legacy"
     assert run.metadata["backfilled_from"] == "session_store"
+
+
+def test_backfill_dry_run_scans_without_writing():
+    runs = [
+        Run(id="run_1", owner_id="founder_1", org_id="founder_1", goal="Goal one"),
+        Run(id="run_2", owner_id="founder_2", org_id="founder_2", goal="Goal two"),
+    ]
+    written: list[str] = []
+
+    result = backfill_runs(runs, dry_run=True, writer=lambda run: written.append(run.id))
+
+    assert result == type(result)(scanned=2, written=0, dry_run=True)
+    assert written == []
+
+
+def test_backfill_apply_uses_writer():
+    runs = [Run(id="run_1", owner_id="founder_1", org_id="founder_1", goal="Goal one")]
+    written: list[str] = []
+
+    result = backfill_runs(runs, dry_run=False, writer=lambda run: written.append(run.id))
+
+    assert result == type(result)(scanned=1, written=1, dry_run=False)
+    assert written == ["run_1"]

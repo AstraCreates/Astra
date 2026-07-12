@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import argparse
 import logging
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 
 from backend.control_plane.models import Run
 
@@ -63,30 +65,61 @@ def iter_legacy_runs(founder_id: str | None = None, limit: int = 100000):
         yield build_run_from_session_meta(meta)
 
 
+@dataclass(frozen=True)
+class BackfillResult:
+    scanned: int
+    written: int
+    dry_run: bool
+
+
+def backfill_runs(
+    runs: Iterable[Run] | None = None,
+    *,
+    founder_id: str | None = None,
+    limit: int = 100000,
+    dry_run: bool = True,
+    writer: Callable[[Run], None] | None = None,
+) -> BackfillResult:
+    planned_runs = runs if runs is not None else iter_legacy_runs(founder_id=founder_id, limit=limit)
+
+    scanned = 0
+    written = 0
+    if not dry_run and writer is None:
+        raise NotImplementedError(
+            "backfill apply requires an explicit writer callable; "
+            "wire the real Supabase insert deliberately before using --apply."
+        )
+
+    for run in planned_runs:
+        scanned += 1
+        if dry_run:
+            logger.info("[dry-run] would backfill run %s (status=%s, owner=%s)", run.id, run.status, run.owner_id)
+            continue
+        writer(run)
+        written += 1
+        logger.info("backfilled run %s (status=%s, owner=%s)", run.id, run.status, run.owner_id)
+
+    logger.info(
+        "backfill complete: scanned=%d written=%d dry_run=%s",
+        scanned,
+        written,
+        dry_run,
+    )
+    return BackfillResult(scanned=scanned, written=written, dry_run=dry_run)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true", default=True,
-                         help="Print what would be written without touching Supabase (default: on).")
-    parser.add_argument("--apply", action="store_true",
-                         help="Actually write to Supabase via get_supabase(). Requires --dry-run to be off.")
+    parser.add_argument("--founder-id", help="Only backfill sessions for one founder.")
+    parser.add_argument("--limit", type=int, default=100000, help="Maximum number of legacy sessions to scan.")
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Write using an injected writer. Without this flag the command is a dry run.",
+    )
     args = parser.parse_args()
 
-    count = 0
-    for run in iter_legacy_runs():
-        count += 1
-        if args.apply:
-            # TODO(coordinator, deliberate step): insert into astra_runs via
-            # backend.db.client.get_supabase() once migrations 0001-0013 have
-            # actually been applied to the real project. Not wired up here on
-            # purpose -- this script is reviewed code, not a live migration.
-            raise NotImplementedError(
-                "backfill --apply is intentionally not wired to a live Supabase write yet; "
-                "review build_run_from_session_meta()'s output first, then wire the insert deliberately."
-            )
-        else:
-            logger.info("[dry-run] would backfill run %s (status=%s, owner=%s)", run.id, run.status, run.owner_id)
-
-    logger.info("backfill complete: %d legacy sessions mapped", count)
+    backfill_runs(founder_id=args.founder_id, limit=args.limit, dry_run=not args.apply)
 
 
 if __name__ == "__main__":

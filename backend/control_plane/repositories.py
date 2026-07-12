@@ -11,6 +11,7 @@ from backend.control_plane.models import (
     ApprovalRequest,
     Artifact,
     BudgetReservation,
+    BudgetReservationLedger,
     Run,
     RunEvent,
     RunStep,
@@ -62,8 +63,27 @@ class ArtifactRepository(Protocol):
 
 
 class BudgetReservationRepository(Protocol):
-    def reserve(self, reservation: BudgetReservation) -> BudgetReservation: ...
+    def reserve(
+        self,
+        reservation: BudgetReservation,
+        *,
+        founder_id: Optional[str] = None,
+        reserved_credits: Optional[int] = None,
+        markup: float = 10.0,
+    ) -> BudgetReservation: ...
     def get(self, reservation_id: str) -> Optional[BudgetReservation]: ...
-    def commit(self, reservation_id: str, actual_usd: float) -> None: ...
+    def get_ledger(self, reservation_id: str) -> Optional[BudgetReservationLedger]: ...
+    def sum_reserved_credits(self, founder_id: str, *, exclude_reservation_id: Optional[str] = None) -> int: ...
+    def commit(
+        self,
+        reservation_id: str,
+        actual_usd: float,
+        *,
+        billed_credits: int = 0,
+        overspend_usd: float = 0.0,
+        unreconciled_credits: int = 0,
+        reconciliation_error: Optional[str] = None,
+    ) -> None: ...
     def release(self, reservation_id: str) -> None: ...
+    def expire(self, reservation_id: str) -> None: ...
     def list_expired(self, *, now: Optional[str] = None) -> list[BudgetReservation]: ...

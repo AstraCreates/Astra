@@ -5,9 +5,9 @@ running app constructs these yet -- later waves wire them in. Pure,
 additive, unused-by-anything-yet code.
 """
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 RunStatus = Literal["queued", "running", "awaiting_approval", "cancelling", "cancelled", "succeeded", "failed"]
 StepStatus = RunStatus
@@ -40,7 +40,7 @@ class Run(BaseModel):
     completed_at: Optional[datetime] = None
     cancellation_requested_at: Optional[datetime] = None
     error: Optional[str] = None
-    metadata: dict = {}
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class RunStep(BaseModel):
@@ -101,7 +101,7 @@ class RunEvent(BaseModel):
     run_id: str
     sequence: int
     event_type: str
-    payload: dict = {}
+    payload: dict[str, Any] = Field(default_factory=dict)
     created_at: Optional[datetime] = None
     published_at: Optional[datetime] = None
 
@@ -113,7 +113,7 @@ class Artifact(BaseModel):
     key: str
     uri: Optional[str] = None
     content_hash: Optional[str] = None
-    metadata: dict = {}
+    metadata: dict[str, Any] = Field(default_factory=dict)
     verification_status: ArtifactVerificationStatus = "unverified"
     created_at: Optional[datetime] = None
 
@@ -131,6 +131,19 @@ class BudgetReservation(BaseModel):
     created_at: Optional[datetime] = None
 
 
+class BudgetReservationLedger(BaseModel):
+    reservation_id: str
+    founder_id: str
+    reserved_credits: int
+    markup: float = 10.0
+    billed_credits: int = 0
+    overspend_usd: float = 0.0
+    unreconciled_credits: int = 0
+    reconciliation_error: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
 class ActionReceipt(BaseModel):
     id: str
     action_id: str
@@ -144,7 +157,7 @@ class ShadowComparison(BaseModel):
     id: str
     run_id: str
     comparison_type: str
-    discrepancies: list = []
+    discrepancies: list[Any] = Field(default_factory=list)
     passed: bool = False
     created_at: Optional[datetime] = None
 
@@ -156,7 +169,7 @@ class BrainRecord(BaseModel):
     external_id: str
     version: int = 1
     content_hash: Optional[str] = None
-    provenance: dict = {}
+    provenance: dict[str, Any] = Field(default_factory=dict)
     is_canonical: bool = True
     tombstoned_at: Optional[datetime] = None
     created_at: Optional[datetime] = None

@@ -79,8 +79,8 @@ def test_expire_orphans_releases_reservations_past_ttl_with_no_terminal_receipt(
 
     expired = svc.expire_orphans(now=datetime.now(timezone.utc) + timedelta(seconds=5))
     assert expired == [reservation.id]
-    assert svc._repo.get(reservation.id).status == "released"
-    # Released reservation no longer counts against the founder's outstanding total.
+    assert svc._repo.get(reservation.id).status == "expired"
+    # Expired reservation no longer counts against the founder's outstanding total.
     assert svc._outstanding_credits_for_founder("founder_2") == 0
 
 
@@ -98,25 +98,28 @@ def test_expire_orphans_skips_reservations_with_a_terminal_receipt():
     assert svc._outstanding_credits_for_founder("founder_3") > 0
 
 
-def test_commit_caps_billed_amount_at_the_reservation_ceiling():
+def test_commit_reconciles_actual_overspend_when_balance_allows():
     from backend.credits.store import get_balance
 
     svc = _service()
     before = get_balance("founder_4")
     reservation = svc.reserve(run_id="run_1", founder_id="founder_4", estimated_max_usd=1.0)
 
-    # The call actually cost 5x what was reserved -- must not bill for 5x.
-    svc.commit(reservation.id, actual_usd=5.0, founder_id="founder_4")
+    # The call actually cost 5x what was reserved and the founder has enough
+    # balance to reconcile the full amount.
+    svc.commit(reservation.id, actual_usd=5.0)
 
     after = get_balance("founder_4")
     spent_credits = before - after
-    capped_expected = usd_to_credits(1.0)  # capped at estimated_max_usd, not 5.0
-    assert spent_credits == capped_expected
+    assert spent_credits == usd_to_credits(5.0)
 
-    # The audit trail still records what actually happened, uncapped.
+    # The audit trail records the actual spend and the fact it overshot.
     stored = svc._repo.get(reservation.id)
     assert stored.actual_usd == 5.0
     assert stored.status == "committed"
+    ledger = svc._repo.get_ledger(reservation.id)
+    assert ledger.overspend_usd == 4.0
+    assert ledger.unreconciled_credits == 0
 
 
 def test_commit_under_reservation_bills_only_actual_spend():
@@ -125,7 +128,7 @@ def test_commit_under_reservation_bills_only_actual_spend():
     svc = _service()
     before = get_balance("founder_5")
     reservation = svc.reserve(run_id="run_1", founder_id="founder_5", estimated_max_usd=2.0)
-    svc.commit(reservation.id, actual_usd=0.5, founder_id="founder_5")
+    svc.commit(reservation.id, actual_usd=0.5)
 
     after = get_balance("founder_5")
     assert before - after == usd_to_credits(0.5)
@@ -158,3 +161,43 @@ def test_release_frees_the_outstanding_reservation_without_billing():
     assert svc._outstanding_credits_for_founder("founder_7") == 0
     assert get_balance("founder_7") == before  # never actually spent
     assert svc._repo.get(reservation.id).status == "released"
+
+
+def test_commit_uses_repository_state_after_service_restart():
+    from backend.credits.store import get_balance
+
+    repo = FakeBudgetReservationRepository()
+    first = BudgetReservationService(repo)
+    reservation = first.reserve(run_id="run_1", founder_id="founder_8", estimated_max_usd=1.25)
+
+    second = BudgetReservationService(repo)
+    assert second._outstanding_credits_for_founder("founder_8") == usd_to_credits(1.25)
+
+    before = get_balance("founder_8")
+    second.commit(reservation.id, actual_usd=1.0)
+    after = get_balance("founder_8")
+
+    assert before - after == usd_to_credits(1.0)
+    assert repo.get(reservation.id).status == "committed"
+
+
+def test_commit_records_unreconciled_overspend_when_other_reservations_hold_capacity():
+    from backend.credits.store import get_balance
+
+    svc = _service()
+    balance = get_balance("founder_9")
+    credits_per_reservation = balance // 2
+    per_reservation_usd = credits_per_reservation / 2000
+
+    first = svc.reserve(run_id="run_1", founder_id="founder_9", estimated_max_usd=per_reservation_usd)
+    svc.reserve(run_id="run_2", founder_id="founder_9", estimated_max_usd=per_reservation_usd)
+
+    before = get_balance("founder_9")
+    svc.commit(first.id, actual_usd=per_reservation_usd * 2)
+    after = get_balance("founder_9")
+
+    assert before - after == credits_per_reservation
+    ledger = svc._repo.get_ledger(first.id)
+    assert ledger.billed_credits == credits_per_reservation
+    assert ledger.unreconciled_credits == credits_per_reservation
+    assert ledger.reconciliation_error is not None

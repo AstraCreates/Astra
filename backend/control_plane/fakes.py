@@ -15,6 +15,7 @@ from backend.control_plane.models import (
     ApprovalRequest,
     Artifact,
     BudgetReservation,
+    BudgetReservationLedger,
     Run,
     RunEvent,
     RunStep,
@@ -181,28 +182,102 @@ class FakeBudgetReservationRepository:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._by_id: dict[str, BudgetReservation] = {}
+        self._ledger_by_id: dict[str, BudgetReservationLedger] = {}
 
-    def reserve(self, reservation: BudgetReservation) -> BudgetReservation:
+    def reserve(
+        self,
+        reservation: BudgetReservation,
+        *,
+        founder_id: Optional[str] = None,
+        reserved_credits: Optional[int] = None,
+        markup: float = 10.0,
+    ) -> BudgetReservation:
         with self._lock:
+            if reservation.id in self._by_id:
+                raise KeyError(f"duplicate reservation_id {reservation.id!r}")
             self._by_id[reservation.id] = reservation
+            if founder_id is not None:
+                now = _now()
+                self._ledger_by_id[reservation.id] = BudgetReservationLedger(
+                    reservation_id=reservation.id,
+                    founder_id=founder_id,
+                    reserved_credits=max(0, int(reserved_credits or 0)),
+                    markup=markup,
+                    created_at=now,
+                    updated_at=now,
+                )
         return reservation
 
     def get(self, reservation_id: str) -> Optional[BudgetReservation]:
         return self._by_id.get(reservation_id)
 
-    def commit(self, reservation_id: str, actual_usd: float) -> None:
+    def get_ledger(self, reservation_id: str) -> Optional[BudgetReservationLedger]:
+        return self._ledger_by_id.get(reservation_id)
+
+    def sum_reserved_credits(self, founder_id: str, *, exclude_reservation_id: Optional[str] = None) -> int:
+        with self._lock:
+            total = 0
+            for reservation_id, ledger in self._ledger_by_id.items():
+                if ledger.founder_id != founder_id or reservation_id == exclude_reservation_id:
+                    continue
+                reservation = self._by_id.get(reservation_id)
+                if reservation and reservation.status == "reserved":
+                    total += ledger.reserved_credits
+            return total
+
+    def commit(
+        self,
+        reservation_id: str,
+        actual_usd: float,
+        *,
+        billed_credits: int = 0,
+        overspend_usd: float = 0.0,
+        unreconciled_credits: int = 0,
+        reconciliation_error: Optional[str] = None,
+    ) -> None:
         with self._lock:
             r = self._by_id.get(reservation_id)
             if r is None:
                 raise KeyError(f"unknown reservation_id {reservation_id!r}")
-            self._by_id[reservation_id] = r.model_copy(update={"status": "committed", "actual_usd": actual_usd, "reconciled_at": _now()})
+            if r.status == "committed":
+                if r.actual_usd != actual_usd:
+                    raise ValueError(f"reservation {reservation_id!r} already committed with actual_usd={r.actual_usd!r}")
+                return
+            if r.status != "reserved":
+                raise ValueError(f"reservation {reservation_id!r} cannot commit from status {r.status!r}")
+            now = _now()
+            self._by_id[reservation_id] = r.model_copy(update={"status": "committed", "actual_usd": actual_usd, "reconciled_at": now})
+            ledger = self._ledger_by_id.get(reservation_id)
+            if ledger is not None:
+                self._ledger_by_id[reservation_id] = ledger.model_copy(update={
+                    "billed_credits": max(0, int(billed_credits)),
+                    "overspend_usd": max(0.0, float(overspend_usd)),
+                    "unreconciled_credits": max(0, int(unreconciled_credits)),
+                    "reconciliation_error": reconciliation_error,
+                    "updated_at": now,
+                })
 
     def release(self, reservation_id: str) -> None:
         with self._lock:
             r = self._by_id.get(reservation_id)
             if r is None:
                 raise KeyError(f"unknown reservation_id {reservation_id!r}")
+            if r.status == "released":
+                return
+            if r.status != "reserved":
+                raise ValueError(f"reservation {reservation_id!r} cannot release from status {r.status!r}")
             self._by_id[reservation_id] = r.model_copy(update={"status": "released"})
+
+    def expire(self, reservation_id: str) -> None:
+        with self._lock:
+            r = self._by_id.get(reservation_id)
+            if r is None:
+                raise KeyError(f"unknown reservation_id {reservation_id!r}")
+            if r.status == "expired":
+                return
+            if r.status != "reserved":
+                raise ValueError(f"reservation {reservation_id!r} cannot expire from status {r.status!r}")
+            self._by_id[reservation_id] = r.model_copy(update={"status": "expired"})
 
     def list_expired(self, *, now: Optional[str] = None) -> list[BudgetReservation]:
         cutoff = datetime.fromisoformat(now) if now else _now()
