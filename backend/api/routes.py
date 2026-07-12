@@ -725,6 +725,28 @@ async def submit_goal(body: GoalRequest, request: Request):
     from backend.core.events import _get_queue as _pre_queue
     _pre_queue(session_id)
 
+    # Durable control-plane run record (Wave 1). Dual-write, best-effort,
+    # additive alongside session_store above -- never fails the request
+    # (durable_create_run swallows its own errors). AWAITED, not
+    # fire-and-forget: astra_run_events has an FK to astra_runs, so any
+    # event published before this insert lands would silently drop (events
+    # dual-write is also best-effort) -- the row must exist first.
+    try:
+        from backend.control_plane.models import Run
+        from backend.control_plane.supabase_repositories import durable_create_run
+        await durable_create_run(Run(
+            id=session_id,
+            owner_id=body.founder_id,
+            org_id=_workspace_id or body.founder_id,
+            company_id=_workspace_id or body.founder_id,
+            workspace_id=_workspace_id,
+            chapter_id=_chapter_id,
+            goal=_goal_instruction,
+            stack_id=_effective_stack,
+        ))
+    except Exception as _dre:
+        logger.warning("durable_create_run dispatch failed: %s", _dre)
+
     # ── Feature flag: route to Temporal or legacy ──────────────────────────
     # Resolved ONCE, here, and persisted on the run record -- per the plan
     # invariant, flags must never be re-evaluated for an in-flight run (a

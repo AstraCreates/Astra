@@ -382,6 +382,16 @@ async def publish(session_id: str, event: dict) -> None:
             pass
         # Strip base64 before putting into SSE queue to prevent browser crashes
         sse_event = _strip_base64(event)
+        try:
+            # Durable control-plane event log (Wave 1). Dual-write, best-effort,
+            # fire-and-forget -- silently no-ops if this session has no matching
+            # astra_runs row (pre-Wave-1 session, or durable_create_run failed).
+            # Stripped payload (not raw event) to avoid bloating Supabase storage
+            # with base64 image blobs the SSE path already excludes.
+            from backend.control_plane.supabase_repositories import durable_append_event
+            asyncio.create_task(durable_append_event(session_id, str(event.get("type") or ""), sse_event))
+        except Exception:
+            pass
         await _get_queue(session_id).put((event_id, sse_event))
         if event.get("type") in ("goal_done", "goal_error"):
             _completed.add(session_id)
