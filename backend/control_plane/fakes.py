@@ -187,6 +187,9 @@ class FakeBudgetReservationRepository:
             self._by_id[reservation.id] = reservation
         return reservation
 
+    def get(self, reservation_id: str) -> Optional[BudgetReservation]:
+        return self._by_id.get(reservation_id)
+
     def commit(self, reservation_id: str, actual_usd: float) -> None:
         with self._lock:
             r = self._by_id.get(reservation_id)
