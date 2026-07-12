@@ -209,6 +209,27 @@ class Settings(BaseSettings):
     astra_native_tool_calls_rollout_percent: int = 100
     astra_delegation_v2: bool = False
     astra_skill_review: bool = False
+    # Wave 1 control plane (PLAN.md). Same declare-or-silently-off rule as
+    # above. All default OFF/0 -- unlike the mature flags above, none of
+    # these back a proven system yet; nothing reads them this wave.
+    astra_control_plane_v2: bool = False
+    astra_control_plane_v2_rollout_percent: int = 0
+    # Percentage-only: samples eligible runs for Temporal shadow comparison
+    # (Wave 3), independent of control_plane_v2 -- a legacy-engine run can
+    # still be selected for shadow. No matching bool; the plan caps this at
+    # 5% by design ("Sample at most 5% of eligible internal/beta runs").
+    astra_temporal_shadow_percent: int = 0
+    astra_event_stream_v2: bool = False
+    astra_event_stream_v2_rollout_percent: int = 0
+    astra_model_gateway_v2: bool = False
+    astra_model_gateway_v2_rollout_percent: int = 0
+    astra_research_engine_v2: bool = False
+    astra_research_engine_v2_rollout_percent: int = 0
+    astra_brain_v2: bool = False
+    astra_brain_v2_rollout_percent: int = 0
+    # Simple on/off, no percent rollout -- Langfuse hooks are implemented but
+    # stay disabled until a separate resource benchmark passes.
+    astra_langfuse_enabled: bool = False
     astra_fallback_model: str = "moonshotai/kimi-k2.5"
     # Self-host stub: when True, agent calls route to local inference (SELF_HOST_BASE_URL /
     # SELF_HOST_MODEL). Set ASTRA_SELF_HOST=true + SELF_HOST_BASE_URL=http://localhost:8080/v1
