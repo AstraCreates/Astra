@@ -115,9 +115,9 @@ def _artifact_evidence(result: Any, artifact_key: str) -> str:
         result.get("report"),
         result.get("text"),
         result.get("markdown"),
+        result.get("html"),
         result.get("url"),
         result.get("preview_url"),
-        result.get("html"),
     ]
     for candidate in candidates:
         if candidate:

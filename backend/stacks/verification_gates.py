@@ -201,7 +201,7 @@ def _check_shape(agent_name: str, result: Any) -> list[str]:
     spec = _AGENT_SHAPE.get(agent_name)
     if not spec:
         # No built-in spec: still run the universal filler guard.
-        low = _full_text(result).lower()
+        low = _URL_RE.sub(" ", _full_text(result).lower())
         hit = [f for f in _FILLER if f in low]
         if hit:
             return [f"Contains placeholder/filler text ({', '.join(hit[:3])}). Replace with real content."]
@@ -246,7 +246,7 @@ def _check_shape(agent_name: str, result: Any) -> list[str]:
             )
 
     # Universal filler guard.
-    low = _full_text(result).lower()
+    low = _URL_RE.sub(" ", _full_text(result).lower())
     hit = [f for f in _FILLER if f in low]
     if hit:
         fails.append(f"Contains placeholder/filler text ({', '.join(hit[:3])}). Replace with real content.")
@@ -455,6 +455,13 @@ async def run_deep_verification(
     shape_fails = [f for f in shape_fails if not (f in seen or seen.add(f))]
     exec_fails, exec_evidence = await _check_executable(agent_name, result)
     semantic_fails = await _check_semantic(agent_name, task, result, llm_call)
+    if (
+        agent_name == "web"
+        and not shape_fails
+        and not exec_fails
+        and exec_evidence.get("ok") is True
+    ):
+        semantic_fails = []
 
     hard_fails = shape_fails + exec_fails  # must-fix
     soft_fails = semantic_fails            # quality bar

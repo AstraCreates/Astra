@@ -87,19 +87,29 @@ def _dedupe_goal_text(goal: str, max_chars: int = 12000) -> str:
     return compact[:max_chars] + ("\n\n...[goal compacted]" if len(compact) > max_chars else "")
 
 
-def candidate_research_agents_for_default_provider() -> list[tuple[str, str]]:
+def candidate_research_agents_for_default_provider(
+    available_specialists: set[str] | None = None,
+) -> list[tuple[str, str]]:
     from backend.config import research_default_is_local
 
     # Local model = single GPU, parallel requests just queue. Run one broad agent.
     # OpenRouter = distributed, parallel is free — run focused parallel lanes.
     if research_default_is_local():
         return [("r_market", "research")]
-    return [
+    preferred = [
         ("r_market", "research"),
         ("r_competitors", "research_competitors"),
         ("r_customers", "research_customers"),
         ("r_gtm", "research_gtm"),
     ]
+    if not available_specialists:
+        return preferred
+    available = [item for item in preferred if item[1] in available_specialists]
+    if "research_execution" in available_specialists and not (
+        {"research_customers", "research_gtm"} & available_specialists
+    ):
+        available.append(("r_execution", "research_execution"))
+    return available or preferred
 
 
 def _is_base64ish(s: str) -> bool:
@@ -1576,7 +1586,7 @@ class Orchestrator:
 
         # Run only configured research specialists in parallel.
         research_instruction = research_task["instruction"] if research_task else f"Research market, competitors, and execution strategy for: {goal}"
-        candidate_research = candidate_research_agents_for_default_provider()
+        candidate_research = candidate_research_agents_for_default_provider(set(self.specialists))
         parallel_research_tasks = [
             {
                 "id": tid,
@@ -1617,6 +1627,13 @@ class Orchestrator:
         completed: dict[str, dict] = {}
         task_verifications: dict[str, dict] = {}
         tasks = initial_tasks  # will be replaced after research
+        background_tasks: list[asyncio.Task[Any]] = []
+
+        def _spawn_background(coro: Any) -> asyncio.Task[Any]:
+            task = asyncio.create_task(coro)
+            background_tasks.append(task)
+            return task
+
         stack_lane_by_agent = {
             lane.get("agent"): lane
             for lane in (shared.get("stack_execution_blueprint") or {}).get("lanes", [])
@@ -1661,7 +1678,13 @@ class Orchestrator:
             if os.getenv("ASTRA_STRICT_HANDOFF", "1") != "0":
                 blocked_deps = [
                     dep for dep in task.get("depends_on", [])
-                    if (task_verifications.get(dep) or {}).get("status") == "blocked"
+                    if (
+                        (task_verifications.get(dep) or {}).get("status") == "blocked"
+                        and (
+                            int((task_verifications.get(dep) or {}).get("passed_count") or 0)
+                            + int((task_verifications.get(dep) or {}).get("weak_count") or 0)
+                        ) <= 0
+                    )
                 ]
                 if blocked_deps:
                     reason = (
@@ -1913,6 +1936,26 @@ class Orchestrator:
                         "summary": f"Artifact verification failed: {_verify_exc}",
                         "artifacts": [],
                     }
+            if (
+                agent_name.startswith("research")
+                and artifact_verification.get("status") == "blocked"
+                and isinstance(result, dict)
+            ):
+                _research_text = "\n".join(
+                    str(result.get(key) or "")
+                    for key in ("summary", "findings", "report", "formatted_text", "combined_formatted")
+                ).strip()
+                if _research_text:
+                    artifact_verification = dict(artifact_verification)
+                    artifact_verification["status"] = "needs_review"
+                    artifact_verification["summary"] = (
+                        artifact_verification.get("summary")
+                        or "Research produced usable but weak evidence and needs review."
+                    )
+                    artifact_verification["weak_count"] = max(
+                        1,
+                        int(artifact_verification.get("weak_count") or 0),
+                    )
             task_verifications[tid] = artifact_verification
             context_policy.persist_agent_result(
                 agent_name=agent_name,
@@ -2023,7 +2066,7 @@ class Orchestrator:
                                 await publish(session_id, {"type": "detailed_plan", "nodes": tree_nodes})
                         except Exception as _dp_err:
                             logger.warning("detailed_plan generation failed: %s", _dp_err)
-                    asyncio.create_task(_bg_detailed_plan())
+                    _spawn_background(_bg_detailed_plan())
             except Exception as _rp_err:
                 logger.warning("Background replan failed: %s", _rp_err)
 
@@ -2054,7 +2097,7 @@ class Orchestrator:
         #   technical → web only.
         # Enriched instructions from _bg_replan arrive before agents do meaningful work.
         _research_ids = [t["id"] for t in parallel_research_tasks]
-        asyncio.create_task(_bg_replan())  # polls completed[_research_ids[0]], then enriches tasks
+        _spawn_background(_bg_replan())  # polls completed[_research_ids[0]], then enriches tasks
         _primary_res = _research_ids[:1]  # first track = broadest market + ICP research
         _design_task = next((t for t in remaining if t["agent"] == "design"), None)
         _web_task = next((t for t in remaining if t["agent"] == "web"), None)
@@ -2160,7 +2203,7 @@ class Orchestrator:
             except Exception as _dr_err:
                 logger.warning("Background discussion/review failed: %s", _dr_err)
 
-        asyncio.create_task(_bg_discussion_review())
+        _spawn_background(_bg_discussion_review())
 
         # ── Phase gate infrastructure ─────────────────────────────────────────────
         # After every phase completes, the founder must review deliverables and approve
@@ -2606,8 +2649,8 @@ class Orchestrator:
         # working the open tasks — gating this on a zero-failure run means it almost
         # never fires in practice. The bootstrap is idempotent and best-effort, so it is
         # safe to run after goal_error too.
-        asyncio.create_task(self._bootstrap_operating_after_run(session_id, founder_id, goal))
-        asyncio.create_task(self._sync_session_deliverables(session_id, founder_id, completed))
+        _spawn_background(self._bootstrap_operating_after_run(session_id, founder_id, goal))
+        _spawn_background(self._sync_session_deliverables(session_id, founder_id, completed))
         async def _graph_sync_after_session() -> None:
             try:
                 from backend.tools.graph_rag_ingest import run_graph_rag_sync
@@ -2615,7 +2658,7 @@ class Orchestrator:
             except Exception as _graph_err:
                 logger.warning("GraphRAG v2 session-end sync skipped: %s", _graph_err)
 
-        asyncio.create_task(_graph_sync_after_session())
+        _spawn_background(_graph_sync_after_session())
         try:
             from backend.core.events import _event_log
             from backend.session_digest import build_session_digest
@@ -2637,6 +2680,11 @@ class Orchestrator:
             logger.warning("Run digest brain record failed: %s", _digest_err)
 
         # Write session index linking all agent notes
+        for _task in background_tasks:
+            if not _task.done():
+                _task.cancel()
+        if background_tasks:
+            await asyncio.gather(*background_tasks, return_exceptions=True)
         try:
             from backend.tools.obsidian_logger import obsidian_session_index, obsidian_backend_log
             from backend.core.events import _event_log

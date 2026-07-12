@@ -131,9 +131,9 @@ _REQUIRED_BY_AGENT: dict[str, set[str]] = {
     "legal_docs":        {"format_legal_document", "generate_pdf"},
     "legal_ip":          {"format_legal_document", "generate_pdf", "patent_search"},
     "legal_entity":      {"file_llc_live", "format_legal_document", "generate_pdf", "obsidian_log"},
-    "sales":             {"find_leads", "bulk_discover_and_store", "build_outreach_sequence", "build_crm_contact"},
+    "sales":             {"find_leads", "build_outreach_sequence", "build_crm_contact"},
     "sales_pipeline":    {"web_search", "generate_pdf", "obsidian_log"},
-    "design":            {"generate_design_spec", "generate_wireframe", "generate_logo", "generate_brand_board"},
+    "design":            {"generate_design_spec", "generate_wireframe", "generate_logo_brief"},
     "sales_enablement":  {"generate_pdf", "obsidian_log"},
     "marketing_content": {"generate_reel_package", "generate_tiktok_package", "generate_meta_ad", "generate_pdf", "obsidian_log"},
     "marketing_outreach":{"search_and_fetch", "build_outreach_sequence", "obsidian_log"},
@@ -2188,16 +2188,23 @@ class Agent:
             missing: list[str] = []
             if not output.get("design_spec"):
                 missing.append("design_spec")
-            if not output.get("color_palette"):
-                missing.append("color_palette")
             if not isinstance(output.get("wireframes"), list) or not output.get("wireframes"):
                 missing.append("wireframes[]")
-            if not output.get("logo_wordmark"):
-                missing.append("logo_wordmark")
-            if not output.get("logo_icon"):
-                missing.append("logo_icon")
-            if not any(output.get(key) for key in ("brand_direction", "formatted_text", "summary", "spec", "report")):
-                missing.append("brand_direction|formatted_text|summary|spec|report")
+            if not any(
+                output.get(key)
+                for key in (
+                    "logo_brief",
+                    "color_palette",
+                    "logo_wordmark",
+                    "logo_icon",
+                    "brand_direction",
+                    "formatted_text",
+                    "summary",
+                    "spec",
+                    "report",
+                )
+            ):
+                missing.append("logo_brief|color_palette|brand_direction|formatted_text|summary|spec|report")
             return missing
         if self.name == "sales_enablement":
             missing: list[str] = []
@@ -2641,6 +2648,10 @@ class Agent:
                     out["sequence"] = sequences[0]["steps"]
             if crm_contacts:
                 out["crm_contacts"] = crm_contacts
+            if isinstance(out.get("leads"), list):
+                out.setdefault("contacts_found", len(out["leads"]))
+            if out.get("sequence") or out.get("sequences"):
+                out.setdefault("outreach_status", "drafted")
         elif self.name == "design":
             if "design_spec" not in out or not out.get("design_spec"):
                 for tool_name, result in tool_results:
