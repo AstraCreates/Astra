@@ -53,7 +53,12 @@ services:
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/health"]
+      # No wget/curl in this image (minimal Debian, read_only rootfs) -- was
+      # failing every single check with "wget: not found" (exit 127), so crw
+      # never reported healthy and blocked every depends_on: crw recreate
+      # downstream (backend, etc). bash's /dev/tcp is a real TCP connect
+      # check with no external binary needed -- confirmed bash IS present.
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/3000'"]
       interval: 15s
       timeout: 5s
       retries: 5
