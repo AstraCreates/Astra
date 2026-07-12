@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +29,7 @@ from backend.api.insights_routes import router as insights_router
 from backend.api.funding_routes import router as funding_router
 
 logger = logging.getLogger(__name__)
+_background_tasks: list[asyncio.Task] = []
 
 app = FastAPI(title="Astra API", version="1.0.0")
 
@@ -93,9 +95,8 @@ async def startup_background_jobs():
     # only min(32, cpu+4) = 8 on this box, so a few long technical jobs starve
     # every other agent/session. These threads are I/O/subprocess-bound (GIL
     # released while waiting), so a large pool is safe and keeps everyone moving.
-    import os as _os
     from concurrent.futures import ThreadPoolExecutor
-    _pool_size = int(_os.environ.get("ASTRA_THREAD_POOL", "128"))
+    _pool_size = max(4, min(64, int(os.environ.get("ASTRA_THREAD_POOL", "32"))))
     loop.set_default_executor(ThreadPoolExecutor(max_workers=_pool_size, thread_name_prefix="astra"))
     logger.info("Thread pool sized to %d workers", _pool_size)
     logger.info(
@@ -124,8 +125,7 @@ async def startup_background_jobs():
     from backend.monitoring.scheduler import start_monitoring_scheduler
     # Live company: re-verify shipped artifacts hourly (content weekly) + auto-heal.
     start_monitoring_scheduler(interval_seconds=3600)
-    asyncio.create_task(_platform_alert_loop())
-    asyncio.create_task(_pii_purge_loop())
+    _background_tasks[:] = [asyncio.create_task(_platform_alert_loop()), asyncio.create_task(_pii_purge_loop())]
 
 
 async def _pii_purge_loop() -> None:
@@ -158,8 +158,19 @@ async def _platform_alert_loop() -> None:
 
 @app.on_event("shutdown")
 async def shutdown_background_jobs():
+    for task in _background_tasks:
+        task.cancel()
+    if _background_tasks:
+        await asyncio.gather(*_background_tasks, return_exceptions=True)
+    _background_tasks.clear()
     from backend.tools.company_brain_scheduler import stop_company_brain_scheduler
     await stop_company_brain_scheduler()
+    from backend.missions.scheduler import stop_missions_scheduler
+    from backend.custom_agents.scheduler import stop_custom_agents_scheduler
+    from backend.monitoring.scheduler import stop_monitoring_scheduler
+    await stop_missions_scheduler()
+    await stop_custom_agents_scheduler()
+    await stop_monitoring_scheduler()
 
 
 @app.get("/health")
@@ -178,7 +189,9 @@ async def ready(response: Response):
 
 
 @app.get("/metrics")
-async def metrics():
+async def metrics(request: Request):
+    from backend.tenant_auth import require_platform_admin
+    require_platform_admin(request)
     from backend.platform_status import prometheus_metrics
     return Response(prometheus_metrics(), media_type="text/plain; version=0.0.4")
 

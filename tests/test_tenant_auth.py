@@ -11,6 +11,7 @@ from backend.tenant_auth import (
     normalize_email_to_founder_id,
     require_current_founder,
     require_founder_access,
+    require_company_access,
     require_org_access,
     require_platform_admin,
 )
@@ -82,6 +83,25 @@ def test_tenant_auth_rejects_untrusted_header_in_strict_mode(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         require_founder_access(_request({"x-astra-user-id": "founder_header"}), "founder_header", "viewer")
     assert exc.value.status_code == 401
+
+
+def test_company_access_resolves_target_company_owner(tmp_path, monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(tmp_path))
+    monkeypatch.setattr(settings, "astra_require_auth", True)
+    monkeypatch.setattr(settings, "astra_trust_auth_headers", True)
+    from backend.core.workspace_store import create_workspace
+    company = create_workspace("owner_1", "Acme", "Build Acme")
+
+    owner_request = _request({"x-astra-user-id": "owner_1"})
+    assert require_company_access(owner_request, "owner_1", company["company_id"]) == "owner_1"
+
+    with pytest.raises(HTTPException) as exc:
+        require_company_access(owner_request, "owner_1", "ws_not_owned")
+    assert exc.value.status_code == 404
+
+    with pytest.raises(HTTPException) as exc:
+        require_company_access(owner_request, "owner_1", create_workspace("owner_2", "Other", "Other")["company_id"])
+    assert exc.value.status_code == 403
 
 
 def test_admin_router_requires_auth_dependency():

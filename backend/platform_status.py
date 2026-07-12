@@ -373,20 +373,20 @@ def readiness_status() -> dict[str, Any]:
 
 
 def prometheus_metrics() -> str:
-    status = platform_status()
-    runtime = status["checks"].get("runtime", {})
-    state = status["state"]
-    stack_templates = status["checks"].get("stack_templates", {})
-    auth_policy = status["checks"].get("auth_policy", {})
-    objective_readiness = status["checks"].get("objective_readiness", {})
+    """Return bounded metrics without re-running catalog or objective audits."""
+    runtime = _runtime_metrics()
+    state = _state_metrics()
+    redis = _check_redis()
+    scheduler = _check_company_brain_scheduler()
+    ready = bool(redis.get("ok") and scheduler.get("ok"))
     alerts = {key: state.get(key, 0) for key in ("alerts_total", "alerts_open", "alerts_critical", "alerts_warning")}
     lines = [
         "# HELP astra_ready Whether Astra is ready to serve stack runs.",
         "# TYPE astra_ready gauge",
-        f"astra_ready {1 if status['ready'] else 0}",
+        f"astra_ready {1 if ready else 0}",
         "# HELP astra_uptime_seconds Backend process uptime.",
         "# TYPE astra_uptime_seconds gauge",
-        f"astra_uptime_seconds {status['uptime_seconds']}",
+        f"astra_uptime_seconds {int(time.time() - _STARTED_AT)}",
         "# HELP astra_sessions_active Active in-memory sessions.",
         "# TYPE astra_sessions_active gauge",
         f"astra_sessions_active {state['sessions_active']}",
@@ -402,18 +402,12 @@ def prometheus_metrics() -> str:
         "# HELP astra_company_brains Persisted company brain stores.",
         "# TYPE astra_company_brains gauge",
         f"astra_company_brains {state['company_brains']}",
-        "# HELP astra_stack_templates_ready Production-depth stack templates passing quality audit.",
-        "# TYPE astra_stack_templates_ready gauge",
-        f"astra_stack_templates_ready {stack_templates.get('ready_templates', 0)}",
-        "# HELP astra_stack_template_quality_min Minimum stack template quality audit score.",
-        "# TYPE astra_stack_template_quality_min gauge",
-        f"astra_stack_template_quality_min {stack_templates.get('min_score', 0)}",
-        "# HELP astra_auth_policy_ready Authentication and platform admin policy is production-ready.",
-        "# TYPE astra_auth_policy_ready gauge",
-        f"astra_auth_policy_ready {1 if auth_policy.get('ok') else 0}",
-        "# HELP astra_objective_readiness_ready Agent Stack Platform objective contract is implemented.",
-        "# TYPE astra_objective_readiness_ready gauge",
-        f"astra_objective_readiness_ready {1 if objective_readiness.get('ok') else 0}",
+        "# HELP astra_redis_up Redis is reachable.",
+        "# TYPE astra_redis_up gauge",
+        f"astra_redis_up {1 if redis.get('ok') else 0}",
+        "# HELP astra_company_brain_scheduler_up Company Brain scheduler is running.",
+        "# TYPE astra_company_brain_scheduler_up gauge",
+        f"astra_company_brain_scheduler_up {1 if scheduler.get('ok') else 0}",
         "# HELP astra_runs_total Durable run ledger entries.",
         "# TYPE astra_runs_total gauge",
         f"astra_runs_total {state.get('runs_total', 0)}",
@@ -439,7 +433,7 @@ def prometheus_metrics() -> str:
         "# TYPE astra_disk_percent gauge",
         f"astra_disk_percent {runtime.get('disk_percent', 0)}",
     ]
-    for name, check in status["checks"].items():
+    for name, check in {"redis": redis, "company_brain_scheduler": scheduler, "runtime": runtime}.items():
         lines.extend([
             f"# HELP astra_check_ok Check status for {name}.",
             f"# TYPE astra_check_ok gauge",
