@@ -1,4 +1,8 @@
-from backend.control_plane.rollout import assign_run_features
+from pathlib import Path
+
+import pytest
+
+from backend.control_plane.rollout import assign_run_features, get_run_feature_assignment
 
 
 def test_same_org_run_pair_is_deterministic(monkeypatch):
@@ -65,3 +69,34 @@ def test_temporal_shadow_is_independent_of_engine(monkeypatch):
 def test_temporal_shadow_zero_percent_never_selects():
     result = assign_run_features("org_1", "run_1")
     assert result["temporal_shadow"] is False
+
+
+def test_get_run_feature_assignment_reads_persisted_value_not_recomputed(tmp_path: Path, monkeypatch):
+    """The whole point of persisting: a rollout_percent change after dispatch
+    must not change what an in-flight run resolves to."""
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(tmp_path))
+    from backend.core.session_store import merge_session_meta
+
+    monkeypatch.setattr("backend.config.settings.astra_control_plane_v2", True)
+    monkeypatch.setattr("backend.config.settings.astra_control_plane_v2_rollout_percent", 100)
+    original = assign_run_features("org_1", "run_persisted")
+    assert original["engine"] == "temporal"
+
+    merge_session_meta("run_persisted", feature_assignment=original, engine=original["engine"])
+
+    # Config changes after dispatch -- a fresh assign_run_features() call
+    # would now resolve differently, but the persisted run must not move.
+    monkeypatch.setattr("backend.config.settings.astra_control_plane_v2", False)
+    assert assign_run_features("org_1", "run_persisted")["engine"] == "legacy"  # fresh call really would differ
+
+    stuck = get_run_feature_assignment("run_persisted")
+    assert stuck["engine"] == "temporal"
+    assert stuck == original
+
+
+def test_get_run_feature_assignment_falls_back_when_never_persisted(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(tmp_path))
+    monkeypatch.setattr("backend.config.settings.astra_control_plane_v2", False)
+
+    result = get_run_feature_assignment("run_never_dispatched", org_id="org_1")
+    assert result["engine"] == "legacy"

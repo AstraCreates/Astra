@@ -12,6 +12,7 @@ creation (Wave 2's StartRun), and the result persisted onto the run record
 from __future__ import annotations
 
 import hashlib
+from typing import Optional
 
 _FEATURES = (
     "control_plane_v2",
@@ -71,3 +72,24 @@ def assign_run_features(org_id: str, run_id: str) -> dict[str, "bool | str"]:
         "langfuse_enabled": bool(settings.astra_langfuse_enabled),
         "temporal_shadow": temporal_shadow,
     }
+
+
+def get_run_feature_assignment(run_id: str, *, org_id: Optional[str] = None) -> dict[str, "bool | str"]:
+    """Read back a run's PERSISTED feature assignment (set once at dispatch,
+    see backend/api/routes.py's submit_goal). Anything checking a flag for a
+    specific already-dispatched run must call this, never assign_run_features()
+    again -- that would re-evaluate against current Settings and could move an
+    in-flight run between engines if a rollout_percent changed mid-run.
+
+    Falls back to a fresh assign_run_features() only for runs that predate
+    this persistence (no feature_assignment in their session meta) -- org_id
+    is required for that fallback since it's not otherwise recoverable."""
+    from backend.core.session_store import get_session_meta
+
+    meta = get_session_meta(run_id) or {}
+    stored = meta.get("feature_assignment")
+    if isinstance(stored, dict) and stored:
+        return stored
+    if org_id is None:
+        org_id = str(meta.get("company_id") or meta.get("founder_id") or run_id)
+    return assign_run_features(org_id, run_id)

@@ -726,8 +726,19 @@ async def submit_goal(body: GoalRequest, request: Request):
     _pre_queue(session_id)
 
     # ── Feature flag: route to Temporal or legacy ──────────────────────────
+    # Resolved ONCE, here, and persisted on the run record -- per the plan
+    # invariant, flags must never be re-evaluated for an in-flight run (a
+    # rollout_percent change mid-run must not move the run between engines).
+    # Store the whole dict, not just engine: anything checking
+    # event_stream_v2/model_gateway_v2/etc for this specific run later must
+    # read this persisted value, not call assign_run_features() again.
     _features = assign_run_features(_workspace_id or body.founder_id, session_id)
     _use_temporal = _features.get("engine") == "temporal"
+    try:
+        from backend.core.session_store import merge_session_meta as _merge_features
+        _merge_features(session_id, feature_assignment=_features, engine=_features.get("engine", "legacy"))
+    except Exception as _fe:
+        logger.warning("session_store.merge_session_meta (feature_assignment) failed: %s", _fe)
 
     if _use_temporal:
         # Dispatch through Temporal durable execution
@@ -761,6 +772,13 @@ async def submit_goal(body: GoalRequest, request: Request):
             }
         except Exception as _temporal_exc:
             logger.warning("Temporal dispatch failed, falling back to legacy: %s", _temporal_exc)
+            # Dispatch never actually started on Temporal -- correct the persisted
+            # engine so the run record doesn't claim an engine that didn't run it.
+            try:
+                _features = dict(_features, engine="legacy")
+                _merge_features(session_id, feature_assignment=_features, engine="legacy")
+            except Exception as _fe2:
+                logger.warning("session_store.merge_session_meta (engine correction) failed: %s", _fe2)
             # Fall through to legacy path
 
     async def _run():
