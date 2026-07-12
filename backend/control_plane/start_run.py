@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -11,7 +12,6 @@ from backend.api.schemas import RunCreateRequest
 from backend.control_plane.models import Run
 from backend.control_plane.rollout import assign_run_features
 from backend.control_plane.supabase_repositories import durable_create_run
-from backend.core.factory import get_orchestrator
 from backend.core.session_ids import new_session_id
 from backend.credits.store import get_balance
 from backend.safety.content_filter import screen_goal
@@ -121,6 +121,15 @@ async def start_continue_run(
 
     feature_assignment = assign_run_features(resolved_company_id, resolved_run_id)
     engine = str(feature_assignment.get("engine") or "legacy")
+    durable_parent_run_id = prior_session_id
+    if not validate_prior:
+        try:
+            from backend.control_plane.supabase_repositories import SupabaseRunRepository
+
+            durable_parent_run_id = prior_session_id if SupabaseRunRepository().get(prior_session_id) is not None else None
+        except Exception:
+            durable_parent_run_id = None
+
     run = Run(
         id=resolved_run_id,
         owner_id=founder_id,
@@ -128,7 +137,7 @@ async def start_continue_run(
         company_id=resolved_company_id,
         workspace_id=resolved_workspace_id or None,
         chapter_id=resolved_chapter_id or None,
-        parent_run_id=prior_session_id,
+        parent_run_id=durable_parent_run_id,
         goal=instruction,
         stack_id=str((prior_meta or {}).get("stack_id") or "") or None,
         engine=engine,
@@ -181,9 +190,11 @@ async def start_continue_run(
     except Exception as feature_exc:
         logger.warning("continuation feature persistence failed: %s", feature_exc)
 
-    orch = get_orchestrator()
     async def _run() -> None:
         from backend.core import cancellation
+        from backend.core.factory import get_orchestrator
+
+        orch = get_orchestrator()
         final_status = "done"
         try:
             await orch.continue_run(
