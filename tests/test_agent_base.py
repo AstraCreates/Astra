@@ -1,4 +1,5 @@
 import json
+import openai
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from backend.core.agent import Agent, AgentContext, _trim_message_history
@@ -42,6 +43,94 @@ def test_trim_message_history_accepts_research_specific_budget():
     assert len(compact) < len(messages)
     assert compact[0]["content"] == "system"
     assert compact[1]["content"] == "goal"
+
+
+def test_call_llm_reserves_and_commits_budget_without_double_billing(tmp_path, monkeypatch):
+    """Wave-1 wiring: _call_llm reserves an estimated max cost before firing
+    and commits real usage after. The one thing that must never happen: a
+    reservation existing must NOT also trigger the old direct deduct_credits()
+    call, or every founder gets billed 2x per LLM call in production."""
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(tmp_path))
+    from backend.credits.store import get_balance
+    from backend.control_plane.budget import get_default_budget_service
+    import backend.control_plane.budget as budget_module
+    budget_module._default_service = None  # fresh singleton per test
+
+    done_json = json.dumps({"tool": "done", "args": {"summary": "ok", "output": {}}})
+    agent = Agent(name="legal", role="legal", tools={}, model="some/test-model")
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content=done_json))],
+        usage=MagicMock(prompt_tokens=1000, completion_tokens=200, prompt_tokens_details=None),
+    )
+    agent._client = mock_client
+
+    ctx = AgentContext(goal="test", founder_id="founder_billing_test", session_id="sess_1")
+    before = get_balance("founder_billing_test")
+
+    agent._call_llm([{"role": "user", "content": "hi"}], ctx)
+
+    after = get_balance("founder_billing_test")
+    from backend.core.usage import cost_to_credits
+    expected_credits = cost_to_credits("some/test-model", 1000, 200, 0)
+    assert before - after == expected_credits  # exactly one deduction, not two
+
+    service = get_default_budget_service()
+    assert service._outstanding_credits_for_founder("founder_billing_test") == 0  # committed, not left outstanding
+    # Prove the NEW reservation path actually fired, not just that the old
+    # direct deduct_credits() path (also single-deduction on its own) ran --
+    # a committed reservation record must exist in the repo.
+    reservations = list(service._repo._by_id.values())
+    assert any(r.run_id == "sess_1" and r.status == "committed" for r in reservations)
+
+
+def test_call_llm_releases_reservation_on_total_failure(monkeypatch):
+    """A call that never produces a usable response (every attempt raises a
+    transient provider error, so resp stays None -- not a malformed-but-present
+    response) must release its reservation rather than leaving it stuck
+    'reserved' until TTL expiry."""
+    monkeypatch.setattr("time.sleep", lambda *_a, **_k: None)
+    from backend.control_plane.budget import get_default_budget_service
+    import backend.control_plane.budget as budget_module
+    budget_module._default_service = None
+
+    agent = Agent(name="legal", role="legal", tools={}, model="some/test-model")
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.side_effect = openai.APITimeoutError(request=MagicMock())
+    agent._client = mock_client
+
+    ctx = AgentContext(goal="test", founder_id="founder_release_test", session_id="sess_1")
+    agent._call_llm([{"role": "user", "content": "hi"}], ctx)
+
+    service = get_default_budget_service()
+    assert service._outstanding_credits_for_founder("founder_release_test") == 0
+    reservations = list(service._repo._by_id.values())
+    assert any(r.run_id == "sess_1" and r.status == "released" for r in reservations)
+
+
+def test_call_llm_skips_reservation_for_unlimited_credits(monkeypatch):
+    """Must not attempt a reservation at all for unlimited-credit contexts --
+    matches the existing deduct_credits() bypass exactly."""
+    from backend.control_plane.budget import get_default_budget_service
+    import backend.control_plane.budget as budget_module
+    budget_module._default_service = None
+
+    done_json = json.dumps({"tool": "done", "args": {"summary": "ok", "output": {}}})
+    agent = Agent(name="legal", role="legal", tools={}, model="some/test-model")
+    mock_client = MagicMock()
+    mock_client.chat.completions.create.return_value = MagicMock(
+        choices=[MagicMock(message=MagicMock(content=done_json))],
+        usage=MagicMock(prompt_tokens=1000, completion_tokens=200, prompt_tokens_details=None),
+    )
+    agent._client = mock_client
+
+    ctx = AgentContext(goal="test", founder_id="founder_unlimited", session_id="sess_1", unlimited_credits=True)
+    agent._call_llm([{"role": "user", "content": "hi"}], ctx)
+
+    service = get_default_budget_service()
+    # No reservation of any kind (reserved/committed/released) should exist
+    # at all -- unlimited-credit contexts must skip the mechanism entirely.
+    assert list(service._repo._by_id.values()) == []
 
 
 def test_call_llm_uses_short_timeout_for_confirmed_fast_models():

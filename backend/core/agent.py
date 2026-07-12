@@ -872,6 +872,37 @@ class Agent:
         # json_object not supported by OpenRouter models
         if not is_openrouter and not native_enabled:
             kwargs["response_format"] = {"type": "json_object"}
+        # Budget reservation (Wave 1): reserve a generous worst-case estimate
+        # BEFORE the call fires, commit real usage after. Soft-fail by design
+        # -- a reservation problem must never block or crash a live agent
+        # call, exactly like the existing post-hoc deduct_credits() below
+        # already tolerates insufficient-credits failures. Skipped entirely
+        # for unlimited-credit contexts (matches the existing bypass) and
+        # when ctx is missing (some test/tool-probe call sites construct
+        # Agent without one).
+        _reservation = None
+        if ctx and not ctx.unlimited_credits:
+            try:
+                from backend.control_plane.budget import BudgetExceededError, get_default_budget_service
+                from backend.core.usage import _cost_usd as _est_cost_usd
+
+                # Completion is hard-capped by max_tokens; prompt is estimated
+                # generously (chars/3, erring high) since we don't have an
+                # exact tokenizer count pre-call. commit() below caps billing
+                # at whichever is smaller -- underestimating here only risks
+                # under-billing a rare pathological call, never blocking or
+                # over-billing a normal one.
+                _est_prompt_tokens = max(256, sum(len(str(m.get("content", ""))) for m in messages) // 3)
+                _est_completion_tokens = int(kwargs.get("max_tokens") or 8192)
+                _est_usd = _est_cost_usd(self.model, _est_prompt_tokens, _est_completion_tokens) * 1.5
+                _reservation = get_default_budget_service().reserve(
+                    run_id=ctx.session_id, founder_id=ctx.founder_id, estimated_max_usd=_est_usd,
+                )
+            except BudgetExceededError as _bee:
+                logger.warning("[%s] budget reservation exceeded, proceeding without one (soft-fail): %s", self.name, _bee)
+            except Exception as _re:
+                logger.debug("[%s] budget reservation skipped: %s", self.name, _re)
+
         # Rate-limit/transient resilience: retry with key rotation + backoff.
         # On 429 we rotate to the next OpenRouter key; on 5xx/timeout we just
         # back off. Honors a Retry-After header when the provider sends one.
@@ -934,6 +965,16 @@ class Agent:
                                 break
                         except Exception:
                             runtime_metric("model_fallback_failure_total")
+                    if _reservation is not None:
+                        # Early exit from inside the retry loop -- bypasses the
+                        # post-loop release-on-failure check below entirely.
+                        # Must release here too, or a total-failure call whose
+                        # fallback also fails leaks its reservation until TTL.
+                        try:
+                            from backend.control_plane.budget import get_default_budget_service
+                            get_default_budget_service().release(_reservation.id)
+                        except Exception:
+                            pass
                     return ""
                 # Prefer the provider's Retry-After; else exponential backoff + jitter.
                 _retry_after = None
@@ -996,14 +1037,35 @@ class Agent:
                     credits = cost_to_credits(self.model, prompt_t, completion_t, cached_tokens)
                     if ctx.budget:
                         ctx.budget.record_usage(credits=credits)
-                    deduct_credits(ctx.founder_id, credits,
-                                   f"{self.name} call ({total_t:,} tokens, {self.model})", ctx.session_id)
+                    if _reservation is not None:
+                        # Reconciles against the reservation (caps billing at
+                        # whichever of actual/reserved is smaller) instead of
+                        # deducting directly -- deduct_credits() would double-bill,
+                        # since commit() already calls the same underlying ledger.
+                        from backend.control_plane.budget import get_default_budget_service
+                        get_default_budget_service().commit(
+                            _reservation.id,
+                            actual_usd=_cost_usd(self.model, prompt_t, completion_t, cached_tokens),
+                            founder_id=ctx.founder_id,
+                        )
+                    else:
+                        deduct_credits(ctx.founder_id, credits,
+                                       f"{self.name} call ({total_t:,} tokens, {self.model})", ctx.session_id)
                     # Per-session running tally (durable) so each session/goal shows its
                     # own credit spend, not just the founder-wide balance.
                     from backend.core.session_store import add_session_credits
                     add_session_credits(ctx.session_id, credits)
                 except Exception as _ce:
                     logger.warning("Per-call credit deduction failed: %s", _ce)
+        if _reservation is not None and not (resp and getattr(resp, "usage", None) and ctx):
+            # Call never produced a usable response -- nothing was actually
+            # spent against this reservation (or ctx vanished), release it
+            # rather than leaving it "reserved" until TTL expiry for no reason.
+            try:
+                from backend.control_plane.budget import get_default_budget_service
+                get_default_budget_service().release(_reservation.id)
+            except Exception:
+                pass
         if not resp or not getattr(resp, "choices", None):
             # Provider never returned a usable completion after all retries — return
             # empty so the agent loop handles it (re-prompt / finish) instead of crashing.

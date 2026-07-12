@@ -8,12 +8,14 @@ atomic check-and-reserve step, rather than inventing a second, uncoordinated
 lock that a concurrent legacy backend.credits.store.deduct_credits() call
 could race against.
 
-Nothing in the running app calls this yet. Pure additive scaffolding.
+Wired into backend/core/agent.py::_call_llm -- every model call reserves an
+estimated max cost before firing and commits real usage after.
 """
 from __future__ import annotations
 
 import logging
 import math
+import threading
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -228,3 +230,23 @@ class BudgetReservationService:
         data["total_used"] += amount
         data["transactions"].append(_make_tx("usage", amount, description, session_id))
         _save(data)
+
+
+_default_service: Optional[BudgetReservationService] = None
+_default_service_lock = threading.Lock()
+
+
+def get_default_budget_service() -> BudgetReservationService:
+    """Process-wide singleton, in-memory backed. The backend runs as a
+    single worker by default (WEB_CONCURRENCY=1 -- see Dockerfile.backend),
+    so in-memory reservation state is coherent for the whole process; this
+    is the service backend.core.agent.py::_call_llm reserves/commits every
+    model call against."""
+    global _default_service
+    if _default_service is None:
+        with _default_service_lock:
+            if _default_service is None:
+                from backend.control_plane.fakes import FakeBudgetReservationRepository
+
+                _default_service = BudgetReservationService(FakeBudgetReservationRepository())
+    return _default_service
