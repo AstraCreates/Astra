@@ -12,6 +12,7 @@ async def test_goal_endpoint_returns_session_id(mocker):
     mock_orch = MagicMock()
     mock_orch.run = AsyncMock(return_value={"session_id": "abc123", "results": {}, "shared": {}})
     mocker.patch("backend.api.routes.get_orchestrator", return_value=mock_orch)
+    mocker.patch("backend.api.routes.require_founder_access", return_value="f_001")
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post("/goal", json={
@@ -23,6 +24,45 @@ async def test_goal_endpoint_returns_session_id(mocker):
     body = response.json()
     assert "session_id" in body
     assert body["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_goal_endpoint_dispatches_temporal_with_stable_session_id(monkeypatch):
+    seen = {}
+
+    async def fake_start_run(**kwargs):
+        seen.update(kwargs)
+        return {
+            "workflow_id": f"astra-run/{kwargs['run_id']}",
+            "run_id": kwargs["run_id"],
+            "status": "started",
+            "task_queue": "astra-runs-v1",
+        }
+
+    monkeypatch.setattr(routes, "assign_run_features", lambda *_args, **_kwargs: {"engine": "temporal"})
+    monkeypatch.setattr(routes, "_analyze_goal", lambda _instruction: ("", ""))
+    monkeypatch.setattr(routes, "require_founder_access", lambda request, founder_id, min_role="viewer": founder_id)
+    monkeypatch.setattr("backend.control_plane.temporal.dispatch.start_run", fake_start_run)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/goal", json={
+            "founder_id": "f_temporal",
+            "instruction": "Implement a durable Temporal-backed run dispatch path for a founder operating workflow",
+            "constraints": {"agents": ["technical"]},
+        })
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["engine"] == "temporal"
+    assert body["session_id"] == seen["run_id"]
+    assert seen["goal"] == "Implement a durable Temporal-backed run dispatch path for a founder operating workflow"
+    assert seen["constraints"]["agents"] == ["technical"]
+
+    from backend.core.session_store import get_session_meta
+
+    meta = get_session_meta(body["session_id"])
+    assert meta["engine"] == "temporal"
+    assert meta["workflow_id"] == f"astra-run/{body['session_id']}"
 
 
 @pytest.mark.asyncio
@@ -229,6 +269,47 @@ async def test_web_navigator_respond_resumes_with_session_access(monkeypatch):
     assert response.status_code == 200
     assert response.json() == {"ok": True}
     assert access_calls == [("session-real", "viewer")]
+
+
+@pytest.mark.asyncio
+async def test_kill_session_requests_temporal_cancellation(monkeypatch):
+    access_calls = []
+    status_updates = []
+
+    monkeypatch.setattr(
+        routes,
+        "require_founder_access",
+        lambda request, founder_id, min_role="viewer": access_calls.append((founder_id, min_role)) or founder_id,
+    )
+    monkeypatch.setattr(
+        "backend.core.session_store.get_session_meta",
+        lambda session_id: {"founder_id": "founder-kill", "engine": "temporal"},
+    )
+    monkeypatch.setattr(
+        "backend.core.session_store.update_session_status",
+        lambda session_id, status: status_updates.append((session_id, status)),
+    )
+    monkeypatch.setattr("backend.core.cancellation.request_kill", lambda session_id: False)
+
+    async def fake_cancel_temporal(session_id: str, meta) -> bool:
+        assert meta["engine"] == "temporal"
+        return session_id == "session-kill"
+
+    monkeypatch.setattr(routes, "_cancel_temporal_session_if_needed", fake_cancel_temporal)
+    monkeypatch.setattr(routes, "_reconcile_orphaned_agents", AsyncMock())
+    monkeypatch.setattr(routes, "_teardown_workspace", AsyncMock())
+    monkeypatch.setattr(routes, "publish", AsyncMock())
+
+    result = await routes.kill_session("session-kill", MagicMock())
+
+    assert result == {
+        "ok": True,
+        "killed": True,
+        "session_id": "session-kill",
+        "active_attempts_cancelled": True,
+    }
+    assert access_calls == [("founder-kill", "operator")]
+    assert status_updates == [("session-kill", "killed")]
 
 
 @pytest.mark.asyncio

@@ -16,8 +16,10 @@ logger = logging.getLogger(__name__)
 def _coerce_run_input_values(raw_input: Any) -> dict[str, Any]:
     return {
         "run_id": str((raw_input.get("run_id") if isinstance(raw_input, dict) else getattr(raw_input, "run_id", "")) or ""),
+        "goal": str((raw_input.get("goal") if isinstance(raw_input, dict) else getattr(raw_input, "goal", "")) or ""),
         "founder_id": str((raw_input.get("founder_id") if isinstance(raw_input, dict) else getattr(raw_input, "founder_id", "")) or ""),
         "company_id": str((raw_input.get("company_id") if isinstance(raw_input, dict) else getattr(raw_input, "company_id", "")) or ""),
+        "constraints": dict((raw_input.get("constraints") if isinstance(raw_input, dict) else getattr(raw_input, "constraints", None)) or {}),
         "workspace_id": str((raw_input.get("workspace_id") if isinstance(raw_input, dict) else getattr(raw_input, "workspace_id", "")) or ""),
         "chapter_id": str((raw_input.get("chapter_id") if isinstance(raw_input, dict) else getattr(raw_input, "chapter_id", "")) or ""),
     }
@@ -41,6 +43,7 @@ def build_orchestrator_constraints(
 ) -> dict[str, Any]:
     meta = session_meta or {}
     constraints = dict(meta.get("constraints") or {})
+    constraints.update(run_input.constraints or {})
     founder_id = str(meta.get("founder_id") or run_input.founder_id or "")
     company_id = str(run_input.company_id or meta.get("company_id") or founder_id)
     workspace_id = str(run_input.workspace_id or meta.get("workspace_id") or "")
@@ -92,7 +95,7 @@ async def execute_orchestrator_run(
     is_killed_fn = is_killed_fn or cancellation.is_killed
 
     session_meta = get_session_meta_fn(session_id) or {}
-    goal = str(session_meta.get("goal") or "").strip()
+    goal = str(run_input.goal or session_meta.get("goal") or "").strip()
     founder_id = str(session_meta.get("founder_id") or run_input.founder_id or "").strip()
     if not goal:
         raise ValueError(f"no goal found in session store for run_id={session_id}")

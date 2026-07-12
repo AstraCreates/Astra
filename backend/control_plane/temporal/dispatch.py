@@ -45,8 +45,10 @@ async def _get_client():
 async def start_run(
     *,
     run_id: str,
+    goal: str,
     founder_id: str,
     company_id: str = "",
+    constraints: Optional[dict] = None,
     workspace_id: str = "",
     chapter_id: str = "",
 ) -> dict[str, Any]:
@@ -57,8 +59,10 @@ async def start_run(
 
     Args:
         run_id: The run identifier (becomes the workflow ID)
+        goal: The goal/instruction for the run
         founder_id: The founder who owns this run
         company_id: Optional company/workspace ID
+        constraints: Optional run constraints
         workspace_id: Optional workspace ID
         chapter_id: Optional chapter ID
 
@@ -71,8 +75,10 @@ async def start_run(
 
     workflow_input = RunInput(
         run_id=run_id,
+        goal=goal,
         founder_id=founder_id,
         company_id=company_id,
+        constraints=constraints or {},
         workspace_id=workspace_id,
         chapter_id=chapter_id,
     )
