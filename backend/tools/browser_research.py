@@ -86,6 +86,16 @@ _crw_failures = 0
 _crw_disabled_until = 0.0
 
 
+def _shutdown_executor(executor: ThreadPoolExecutor, futures: dict) -> None:
+    for future in futures:
+        future.cancel()
+    executor.shutdown(wait=False, cancel_futures=True)
+
+
+def _source_id(index: int) -> str:
+    return f"src_{index}"
+
+
 @contextmanager
 def _research_tool_slot():
     depth = getattr(_RESEARCH_TOOL_LOCAL, "depth", 0)
@@ -817,14 +827,10 @@ def _research_llm_json(prompt: str, max_tokens: int = 900) -> dict:
 
 def _format_batch_answer(search_result: dict, query: str) -> str:
     formatted = (search_result.get("formatted") or "").strip()
+    source_lines = [f"[{source.get('id') or 'unassigned'}] {source.get('title') or source.get('url') or ''} | {source.get('url') or ''}" for source in (search_result.get("sources") or [])[:6]]
     if formatted:
-        return formatted[:_RESEARCH_EVIDENCE_CHAR_CAP]
-    snippets = []
-    for source in (search_result.get("sources") or [])[:6]:
-        title = source.get("title") or source.get("url") or ""
-        url = source.get("url") or ""
-        snippets.append(f"- {title} | {url}")
-    return f"Query: {query}\n" + "\n".join(snippets)
+        return (formatted[:_RESEARCH_EVIDENCE_CHAR_CAP] + ("\nSource IDs:\n" + "\n".join(source_lines) if source_lines else ""))[:_RESEARCH_PER_QUERY_FORMATTED_CAP]
+    return f"Query: {query}\n" + "\n".join(source_lines)
 
 
 def _synthesize_research_round(queries: list[str], batch_result: dict, prior_learnings: Optional[list[str]] = None) -> dict:
@@ -872,21 +878,21 @@ def _final_answers_prompt(original_queries: list[str], aggregated_results: dict,
         evidence_blocks.append(f"## QUERY: {query}\n{_format_batch_answer(result, query)}")
     return (
         "Answer each research question using only the provided evidence.\n"
-        "Be concise and concrete. Return one short synthesized answer per question.\n\n"
+        "Be concise and concrete. Return one short synthesized answer per question. Every claim must list evidence_ids copied from the source IDs in its evidence block.\n\n"
         f"Shared learnings:\n{chr(10).join(f'- {item}' for item in learnings) or '- none'}\n\n"
         "Evidence blocks:\n"
         + "\n\n".join(evidence_blocks)
         + "\n\nReturn JSON as "
-        '{"answers":[{"query":"exact question","answer":"concise synthesized answer","support":["key support point"]}]}'
+        '{"answers":[{"query":"exact question","answer":"concise synthesized answer","claims":[{"claim":"supported fact","evidence_ids":["src_1"]}]}]}'
     )
 
 
-def _batched_final_answers(original_queries: list[str], aggregated_results: dict, learnings: list[str]) -> dict[str, str]:
+def _batched_final_answers(original_queries: list[str], aggregated_results: dict, learnings: list[str]) -> dict[str, dict]:
     parsed = _research_llm_json(
         _final_answers_prompt(original_queries, aggregated_results, learnings),
         max_tokens=_RESEARCH_FINAL_ANSWER_MAX_TOKENS,
     )
-    answers: dict[str, str] = {}
+    answers: dict[str, dict] = {}
     items = parsed.get("answers")
     if isinstance(items, list):
         for item in items:
@@ -895,21 +901,23 @@ def _batched_final_answers(original_queries: list[str], aggregated_results: dict
             query = str(item.get("query") or "").strip()
             answer = str(item.get("answer") or "").strip()
             if query and answer:
-                answers[query] = answer
+                allowed = {source.get("id") for source in (aggregated_results.get(query) or {}).get("sources", []) if source.get("id")}
+                claims = [{"claim": str(claim.get("claim")).strip(), "evidence_ids": [i for i in claim.get("evidence_ids") or [] if i in allowed]} for claim in item.get("claims") or [] if isinstance(claim, dict) and str(claim.get("claim") or "").strip() and any(i in allowed for i in claim.get("evidence_ids") or [])]
+                answers[query] = {"answer": answer, "claims": claims}
     if answers:
         return answers
 
     # Backward-compatible fallback if the LLM returns the old single-answer
     # shape or a dict keyed by query.
     if isinstance(parsed.get("answer"), str) and len(original_queries) == 1:
-        return {original_queries[0]: str(parsed.get("answer") or "").strip()}
+        return {original_queries[0]: {"answer": str(parsed.get("answer") or "").strip(), "claims": []}}
     raw_answers = parsed.get("answers")
     if isinstance(raw_answers, dict):
         for query, answer in raw_answers.items():
             query_text = str(query).strip()
             answer_text = str(answer.get("answer") if isinstance(answer, dict) else answer).strip()
             if query_text and answer_text:
-                answers[query_text] = answer_text
+                answers[query_text] = {"answer": answer_text, "claims": []}
     return answers
 
 
@@ -918,11 +926,17 @@ def _finalize_recursive_research(original_queries: list[str], aggregated_results
     combined = []
     all_sources = []
     seen_sources = set()
+    source_ids = {}
+    for result in aggregated_results.values():
+        for source in result.get("sources") or []:
+            if not source.get("id"):
+                source["id"] = source_ids.setdefault(_normalize_url(source.get("url", "")), _source_id(len(source_ids) + 1))
     batched_answers = _batched_final_answers(original_queries, aggregated_results, learnings)
 
     for query in original_queries:
         result = aggregated_results.get(query) or {"query": query, "results": [], "formatted": "", "total": 0, "sources": []}
-        answer = batched_answers.get(query, "")
+        answer_data = batched_answers.get(query, {})
+        answer = answer_data.get("answer", "")
         citations = []
         for source in result.get("sources") or []:
             url = _normalize_url(source.get("url", ""))
@@ -930,11 +944,12 @@ def _finalize_recursive_research(original_queries: list[str], aggregated_results
                 citations.append(url)
             if url and url not in seen_sources:
                 seen_sources.add(url)
-                all_sources.append({"title": source.get("title", ""), "url": url})
+                all_sources.append({"id": source.get("id"), "title": source.get("title", ""), "url": url})
         results_by_query[query] = {
             "answer": answer,
             "citations": citations,
             "total": len(citations),
+            "claims": answer_data.get("claims", []),
         }
         combined.append(f"## {query}\n{answer}")
 
@@ -1036,30 +1051,45 @@ def _crw_search_and_fetch(query: str, max_results: int = 8) -> dict:
     }
 
 
-def _crw_batch_search(queries=None, max_results_each: int = 8) -> dict:
+def _crw_batch_search(queries=None, max_results_each: int = 8, cancel_event=None) -> dict:
     """Run search+scrape for several queries against crw in parallel — the
     same output contract as batch_search (DDGS-backed), so the recursive
     sonar_research loop can call either interchangeably."""
     if not queries:
         return {"queries_run": 0, "results_by_query": {}, "combined_formatted": "", "sources": []}
     queries = _dedupe_search_queries(list(queries), limit=12)
+    if cancel_event is not None and cancel_event.is_set():
+        return {"queries_run": 0, "results_by_query": {}, "combined_formatted": "", "sources": [], "cancelled": True}
 
     results_by_query: dict = {}
-    with ThreadPoolExecutor(max_workers=min(len(queries), 4)) as ex:
-        futures = {ex.submit(_crw_search_and_fetch, q, max_results_each): q for q in queries}
+    ex = ThreadPoolExecutor(max_workers=min(len(queries), 4))
+    futures = {ex.submit(_crw_search_and_fetch, q, max_results_each): q for q in queries}
+    timed_out = False
+    try:
         try:
             for fut in as_completed(futures, timeout=_CRW_BATCH_TIMEOUT_SECONDS):
+                if cancel_event is not None and cancel_event.is_set():
+                    timed_out = True
+                    break
                 q = futures[fut]
                 try:
                     results_by_query[q] = fut.result()
                 except Exception as e:
                     results_by_query[q] = {"query": q, "results": [], "formatted": "", "total": 0, "sources": [], "error": str(e)}
         except TimeoutError:
+            timed_out = True
             _record_crw_result(False)
             for fut, q in futures.items():
                 if q not in results_by_query:
                     fut.cancel()
                     results_by_query[q] = {"query": q, "results": [], "formatted": "", "total": 0, "sources": [], "error": "crw_search_timeout"}
+    finally:
+        if timed_out or (cancel_event is not None and cancel_event.is_set()):
+            for fut, q in futures.items():
+                results_by_query.setdefault(q, {"query": q, "results": [], "formatted": "", "total": 0, "sources": [], "error": "cancelled" if cancel_event is not None and cancel_event.is_set() else "crw_search_timeout"})
+            _shutdown_executor(ex, futures)
+        else:
+            ex.shutdown(wait=True)
 
     combined, all_sources, seen = [], [], set()
     for q, r in results_by_query.items():
@@ -1072,7 +1102,7 @@ def _crw_batch_search(queries=None, max_results_each: int = 8) -> dict:
 
     return {
         "queries_run": len(queries),
-        "results_by_query": {q: {"total": r.get("total", 0), "formatted": r.get("formatted", "")[:_RESEARCH_PER_QUERY_FORMATTED_CAP], "sources": r.get("sources", [])} for q, r in results_by_query.items()},
+        "results_by_query": {q: {"total": r.get("total", 0), "formatted": r.get("formatted", "")[:_RESEARCH_PER_QUERY_FORMATTED_CAP], "sources": r.get("sources", []), **({"error": r["error"]} if r.get("error") else {})} for q, r in results_by_query.items()},
         "combined_formatted": "\n".join(combined),
         "sources": all_sources[:_RESEARCH_MAX_SOURCES],
     }
@@ -1139,10 +1169,12 @@ def _legacy_sonar_research(queries: list[str]) -> dict:
     }
 
 
-def deep_research(queries=None) -> dict:
+def deep_research(queries=None, max_rounds: int | None = None, recursive_depth: int | None = None, cancel_event=None) -> dict:
     """Run recursive crw (self-hosted search+scrape) + ling web research, preserving the existing output contract."""
     if not queries:
         return {"error": "queries required — pass a list of research question strings"}
+    if isinstance(queries, str):
+        queries = [queries]
     queries = _dedupe_search_queries(list(queries), limit=12)
     if not queries:
         return {"error": "queries required — pass a list of research question strings"}
@@ -1157,12 +1189,13 @@ def deep_research(queries=None) -> dict:
         learnings: list[str] = []
         round_queries = list(queries)
         avg_query_len = sum(len(q) for q in queries) / max(len(queries), 1)
-        max_rounds = 1 if len(queries) >= 6 or avg_query_len > 120 else _RECURSIVE_RESEARCH_ROUNDS
+        requested_rounds = max_rounds if max_rounds is not None else recursive_depth
+        effective_max_rounds = (1 if len(queries) >= 6 or avg_query_len > 120 else _RECURSIVE_RESEARCH_ROUNDS) if requested_rounds is None else max(1, min(int(requested_rounds), _RECURSIVE_RESEARCH_ROUNDS))
 
-        for round_index in range(max_rounds):
-            if not round_queries:
+        for round_index in range(effective_max_rounds):
+            if not round_queries or (cancel_event is not None and cancel_event.is_set()):
                 break
-            search = _crw_batch_search(round_queries, max_results_each=5)
+            search = _crw_batch_search(round_queries, max_results_each=5) if cancel_event is None else _crw_batch_search(round_queries, max_results_each=5, cancel_event=cancel_event)
             batch_results = search.get("results_by_query") or {}
             for query, result in batch_results.items():
                 existing = aggregated_results.get(query)
@@ -1191,7 +1224,7 @@ def deep_research(queries=None) -> dict:
             for item in synthesis.get("learnings", []):
                 if item not in learnings:
                     learnings.append(item)
-            if round_index >= max_rounds - 1:
+            if round_index >= effective_max_rounds - 1 or (cancel_event is not None and cancel_event.is_set()):
                 break
             round_queries = _build_followup_queries(synthesis.get("directions", []), queries)
 
@@ -1361,7 +1394,7 @@ def _native_research_pass(topic: str, focus: str, queries: list[str]) -> dict:
     prompt = (
         "Research resources, not the named product. Do not search for the company name unless it is an established public company.\n"
         f"Research subject: {topic}\nFocus: {focus}\n\n"
-        "Answer the following source-seeking questions with concrete facts, dates, pricing, named resources, and URLs:\n"
+        "Answer the following source-seeking questions with concrete facts, dates, pricing, named resources, and URLs. Return ONLY JSON: {\"answers\":[{\"query\":\"exact input question\",\"answer\":\"grounded answer\",\"citation_urls\":[\"https://...\"]}]}. Include an answers item only when you have evidence for that exact question.\n"
         + "\n".join(f"{i + 1}. {query}" for i, query in enumerate(queries))
         + "\nPrefer primary sources, analyst reports, pricing pages, public datasets, and credible reviews."
     )
@@ -1382,7 +1415,7 @@ def _native_research_pass(topic: str, focus: str, queries: list[str]) -> dict:
         url = citation.get("url", "") if isinstance(citation, dict) else getattr(citation, "url", "")
         title = citation.get("title", "") if isinstance(citation, dict) else getattr(citation, "title", "")
         if url:
-            sources.append({"url": url, "title": title})
+            sources.append({"url": _normalize_url(url), "title": title})
     unique_sources = []
     seen_urls = set()
     for source in sources:
@@ -1390,11 +1423,29 @@ def _native_research_pass(topic: str, focus: str, queries: list[str]) -> dict:
             continue
         seen_urls.add(source["url"])
         unique_sources.append(source)
-    sources = unique_sources[:_RESEARCH_MAX_SOURCES]
-    result = {"answer": answer, "formatted": answer[:_RESEARCH_EVIDENCE_CHAR_CAP], "sources": sources, "total": len(sources)}
+    sources = [dict(source, id=_source_id(index)) for index, source in enumerate(unique_sources[:_RESEARCH_MAX_SOURCES], start=1)]
+    parsed_answers = _parse_json_object(answer).get("answers")
+    results_by_query = {}
+    combined = []
+    if isinstance(parsed_answers, list):
+        by_url = {source["url"]: source for source in sources}
+        for item in parsed_answers:
+            query, response = str(item.get("query") or "").strip(), str(item.get("answer") or "").strip()
+            if query not in queries or not response:
+                continue
+            cited = [by_url[url] for url in (_normalize_url(url) for url in item.get("citation_urls") or [] if isinstance(url, str)) if url in by_url]
+            if not cited and len(parsed_answers) == 1:
+                cited = sources
+            ids = [source["id"] for source in cited]
+            results_by_query[query] = {"answer": response, "citations": ids, "claims": [{"claim": response, "evidence_ids": ids}] if ids else [], "formatted": response[:_RESEARCH_EVIDENCE_CHAR_CAP], "sources": cited, "total": len(ids)}
+            combined.append(f"## {query}\n{response}")
+    elif len(queries) == 1 and answer:
+        ids = [source["id"] for source in sources]
+        results_by_query[queries[0]] = {"answer": answer, "citations": ids, "claims": [{"claim": answer, "evidence_ids": ids}] if ids else [], "formatted": answer[:_RESEARCH_EVIDENCE_CHAR_CAP], "sources": sources, "total": len(ids)}
+        combined.append(f"## {queries[0]}\n{answer}")
     return {
-        "queries_run": len(queries),
-        "results_by_query": {query: result for query in queries},
+        "queries_run": len(results_by_query),
+        "results_by_query": results_by_query,
         "sources": sources,
-        "combined_formatted": answer[:_RESEARCH_COMBINED_QUERY_CHAR_CAP],
+        "combined_formatted": "\n\n".join(combined)[:_RESEARCH_COMBINED_QUERY_CHAR_CAP],
     }

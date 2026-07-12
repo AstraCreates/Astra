@@ -86,6 +86,14 @@ def test_resilient_deep_research_preserves_real_queries_list():
     assert captured["queries"] == ["real question one", "real question two"]
 
 
+def test_resilient_deep_research_preserves_repaired_recursive_depth():
+    captured = {}
+    wrapped = _make_resilient_research_tool(lambda **kwargs: captured.update(kwargs), "deep_research", [_ctx()])
+    wrapped(query="Goon competitor pricing", depth=2)
+    assert captured["queries"] == ["Goon competitor pricing"]
+    assert captured["max_rounds"] == 2
+
+
 def test_resilient_news_search_backfills_empty_query():
     captured = {}
 

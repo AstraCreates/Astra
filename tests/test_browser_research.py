@@ -2,6 +2,8 @@ from backend.tools import browser_research
 from backend.config import settings
 import types
 import sys
+import threading
+import time
 
 
 def test_search_and_fetch_url_kwarg_routes_to_fetch_and_read(monkeypatch):
@@ -324,7 +326,8 @@ def test_native_research_pass_uses_native_web_plugin_and_extracts_citations(monk
 
     assert captured["model"] == settings.native_research_model
     assert captured["extra_body"]["plugins"] == [{"id": "web", "engine": "native"}]
-    assert result["sources"] == [{"url": "https://example.com/report", "title": "Report"}]
+    assert result["sources"] == [{"id": "src_1", "url": "https://example.com/report", "title": "Report"}]
+    assert result["results_by_query"]["AI model aggregation platform competitors pricing"]["citations"] == ["src_1"]
 
 
 def test_build_research_queries_requires_topic():
@@ -441,9 +444,10 @@ def test_sonar_research_preserves_contract_with_recursive_synthesis(monkeypatch)
         "AI sales copilot competitor pricing",
     }
     for value in result["results_by_query"].values():
-        assert set(value) == {"answer", "citations", "total"}
+        assert set(value) == {"answer", "citations", "claims", "total"}
         assert isinstance(value["answer"], str)
         assert isinstance(value["citations"], list)
+        assert isinstance(value["claims"], list)
         assert isinstance(value["total"], int)
     assert result["combined_formatted"].count("## ") == 2
     assert result["sources"]

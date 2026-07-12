@@ -154,6 +154,8 @@ def _make_resilient_research_tool(tool_fn, tool_name: str, ctx_holder: list, age
                 elif topic:
                     plan = build_research_queries(topic, focus=focus, limit=6)
                     patched_kwargs["queries"] = plan.get("queries") or [topic]
+            if "max_rounds" not in patched_kwargs and "depth" in patched_kwargs:
+                patched_kwargs["max_rounds"] = patched_kwargs.pop("depth")
         elif tool_name == "search_and_fetch":
             # Only backfill when the model gave us nothing usable at all — a
             # `url` kwarg (model confusing this with fetch_and_read) is real
@@ -322,6 +324,12 @@ def _research_max_iterations(plan: str, requested: int | None = None, depth_over
     return 60 if _effective_is_deep(plan, depth_override) else 24
 
 
+def _research_tool_call_caps(agent_name: str, is_deep: bool) -> dict[str, int]:
+    """Keep tool limits aligned with the fast/deep instructions in the role."""
+    deep_calls = 4 if agent_name == "research" else 2
+    return {"run_research_pipeline": 2 if is_deep and agent_name == "research" else 1, "deep_research": deep_calls if is_deep else 1, "search_and_fetch": 1, "fetch_and_read": 2 if agent_name in {"research", "research_competitors"} else 1, "obsidian_read": 1, "obsidian_log": 1}
+
+
 def _build_research_role(agent_name: str, focus_searches: str, plan: str, depth_override: str | None = None) -> str:
     return (
         "You are an elite research specialist. Your ONLY domain is MARKET OPPORTUNITY — "
@@ -429,14 +437,9 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
     # Every role's own prompt already says to use these "only for specific
     # pages deep_research/run_research_pipeline missed" — a handful of calls,
     # not dozens — so cap them at the same order of magnitude as deep_research.
-    _ROLE_TOOL_CALL_CAPS = {
-        "research":             {"run_research_pipeline": 2, "deep_research": 3, "search_and_fetch": 1, "fetch_and_read": 2, "obsidian_read": 1, "obsidian_log": 1},
-        "research_competitors": {"run_research_pipeline": 1, "deep_research": 1, "search_and_fetch": 1, "fetch_and_read": 2, "obsidian_read": 1, "obsidian_log": 1},
-        "research_customers":   {"run_research_pipeline": 1, "deep_research": 1, "search_and_fetch": 1, "fetch_and_read": 1, "obsidian_read": 1, "obsidian_log": 1},
-        "research_gtm":         {"run_research_pipeline": 1, "deep_research": 1, "search_and_fetch": 1, "fetch_and_read": 1, "obsidian_read": 1, "obsidian_log": 1},
-    }
-    _tool_call_caps = dict(_ROLE_TOOL_CALL_CAPS.get(agent_name, _ROLE_TOOL_CALL_CAPS["research"]))
-    _tool_call_caps.update(kwargs.pop("max_tool_calls", None) or {})
+    _requested_tool_caps = kwargs.pop("max_tool_calls", None) or {}
+    _tool_call_caps = _research_tool_call_caps(agent_name, is_deep=False)
+    _tool_call_caps.update(_requested_tool_caps)
     lane_tools = {
         "run_research_pipeline": auto_pipeline,
         "deep_research": auto_deep,
@@ -503,6 +506,8 @@ def build_research_agent(agent_name: str = "research", **kwargs) -> Agent:
         depth_override = ((ctx.shared or {}).get("constraints") or {}).get("research_depth")
         agent.role = _build_research_role(agent_name, focus_searches, plan, depth_override)
         agent.max_iterations = _research_max_iterations(plan, requested_max_iterations, depth_override)
+        agent.max_tool_calls = _research_tool_call_caps(agent_name, _effective_is_deep(plan, depth_override))
+        agent.max_tool_calls.update(_requested_tool_caps)
         return await _original_run(ctx)
 
     agent.run = _patched_run

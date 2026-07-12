@@ -16,9 +16,15 @@ def deep_research(query: str, focus: str = "") -> dict:
     except RuntimeError:
         # Already inside an event loop (FastAPI context) — use thread
         import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(asyncio.run, _run_open_deep_research(full_query))
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = pool.submit(asyncio.run, _run_open_deep_research(full_query))
+        try:
             return future.result(timeout=300)
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            return {"query": full_query, "report": "", "sources": [], "error": "deep_research_timeout"}
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
 
 
 # Synthesis runs against planner_model_base_url (OpenRouter); use an OpenRouter model.
@@ -66,7 +72,6 @@ async def _try_odr_model(deep_researcher, SearchAPI, HumanMessage, AIMessage, mo
 async def _run_open_deep_research(query: str) -> dict:
     """Try gpt-oss-120b first, then Gemini models, then custom synthesis."""
     from backend.config import settings
-    import os
 
     try:
         from open_deep_research.deep_researcher import deep_researcher
@@ -79,16 +84,12 @@ async def _run_open_deep_research(query: str) -> dict:
     last_err = None
 
     # --- Pass 1: OpenRouter high-output model ---
-    _saved_oai = {k: os.environ.get(k) for k in ("OPENAI_API_KEY", "OPENAI_BASE_URL")}
+    provider_config = {key: value for key, value in {"openai_api_key": settings.planner_model_api_key, "openai_base_url": settings.planner_model_base_url}.items() if value}
     try:
-        if settings.planner_model_api_key:
-            os.environ["OPENAI_API_KEY"] = settings.planner_model_api_key
-        if settings.planner_model_base_url:
-            os.environ["OPENAI_BASE_URL"] = settings.planner_model_base_url
         for model_name in _OPENROUTER_MODELS:
             try:
                 res = await _try_odr_model(deep_researcher, SearchAPI, HumanMessage, AIMessage,
-                                           f"openai:{model_name}", {}, query)
+                                           f"openai:{model_name}", provider_config, query)
                 if res:
                     logger.info("deep_research succeeded with OpenRouter %s", model_name)
                     return res
@@ -96,14 +97,9 @@ async def _run_open_deep_research(query: str) -> dict:
                 last_err = e
                 logger.warning("OpenRouter %s failed: %s", model_name, e)
     finally:
-        for k, v in _saved_oai.items():
-            if v is None: os.environ.pop(k, None)
-            else: os.environ[k] = v
+        pass
 
     # --- Pass 2: Gemini models ---
-    _saved_goog = os.environ.get("GOOGLE_API_KEY")
-    if settings.gemini_api_key:
-        os.environ["GOOGLE_API_KEY"] = settings.gemini_api_key
     try:
         for model_name in _GEMINI_MODELS:
             research_model = f"google_genai:{model_name}"
@@ -116,6 +112,7 @@ async def _run_open_deep_research(query: str) -> dict:
                     "final_report_model": research_model,
                     "allow_clarification": False,
                     "max_concurrent_research_units": 3,
+                    **({"google_api_key": settings.gemini_api_key} if settings.gemini_api_key else {}),
                 }
             }
             try:
@@ -157,10 +154,7 @@ async def _run_open_deep_research(query: str) -> dict:
                 logger.error("open_deep_research (%s) failed: %s", model_name, e)
                 break
     finally:
-        if _saved_goog is None:
-            os.environ.pop("GOOGLE_API_KEY", None)
-        else:
-            os.environ["GOOGLE_API_KEY"] = _saved_goog
+        pass
 
     logger.warning("All models failed (%s), falling back to custom synthesis", last_err)
     result = await _custom_deep_research(query)
