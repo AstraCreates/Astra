@@ -2184,10 +2184,7 @@ class Orchestrator:
         async def _phase_gate(phase_name: str, next_phase: str, phase_task_list: list[dict]) -> bool:
             """Publish a phase-complete approval gate and block until the founder decides.
             Returns True to advance to next phase; False if rejected (tasks re-queued)."""
-            from backend.core.events import _approval_decisions
             gate_key = f"phase_gate_{phase_name}"
-            # Clear any stale decision so a re-run of the same phase gate doesn't instantly resolve.
-            _approval_decisions.get(session_id, {}).pop(gate_key, None)
 
             gate_artifacts: list[dict] = []
             gate_blockers: list[tuple[dict, str]] = []
@@ -2297,51 +2294,50 @@ class Orchestrator:
                     })
                 return False
 
-            try:
-                from backend.approval_workflows import create_approval_request
-                create_approval_request(
-                    session_id=session_id,
-                    gate_key=gate_key,
-                    title=f"{phase_name.title()} Phase Complete",
-                    reason=f"Review deliverables before {next_phase} begins.",
-                    agent="orchestrator",
-                    metadata={
-                        "is_phase_gate": True,
-                        "phase": phase_name,
-                        "next_phase": next_phase,
-                        "artifacts": gate_artifacts,
-                    },
-                )
-            except Exception:
-                pass
+            from backend.approval_workflows import create_approval_request
+            approval_request = create_approval_request(
+                session_id=session_id,
+                gate_key=gate_key,
+                title=f"{phase_name.title()} Phase Complete",
+                reason=f"Review deliverables before {next_phase} begins.",
+                agent="orchestrator",
+                metadata={
+                    "is_phase_gate": True,
+                    "phase": phase_name,
+                    "next_phase": next_phase,
+                    "artifacts": gate_artifacts,
+                },
+            )
 
             await publish(session_id, {
                 "type": "approval_request",
-                "request": {
-                    "gate_key": gate_key,
-                    "title": f"{phase_name.title()} Phase Complete",
-                    "reason": (
-                        f"Review what the {phase_name} team produced. "
-                        f"Approve to move to {next_phase}, or request revisions."
-                    ),
-                    "phase": phase_name,
-                    "next_phase": next_phase,
-                    "is_phase_gate": True,
-                    "artifacts": gate_artifacts,
-                },
+                "request": approval_request,
             })
             logger.info("Phase gate published: %s → %s (%d artifacts)", phase_name, next_phase, len(gate_artifacts))
 
             from backend.core.events import approval_decision_wait
-            decision = await approval_decision_wait(session_id, gate_key, timeout=7200)
+            decision = await approval_decision_wait(
+                session_id,
+                str(approval_request["id"]),
+                str(approval_request["action_digest"]),
+                timeout=7200,
+            )
             if cancellation.is_killed(session_id):
                 return False
 
-            dec = (decision or {}).get("decision", "approved")
+            dec = (decision or {}).get("decision", "expired")
             note = ((decision or {}).get("note") or "").strip()
-            await publish(session_id, {"type": "stack_approval_decision", "gate_key": gate_key, "decision": dec})
+            await publish(session_id, {
+                "type": "stack_approval_decision",
+                "gate_key": gate_key,
+                "request_id": approval_request["id"],
+                "approval_id": approval_request["approval_id"],
+                "action_digest": approval_request["action_digest"],
+                "decision": dec,
+                "note": note,
+            })
 
-            if dec == "rejected":
+            if dec in {"rejected", "expired"}:
                 logger.info("Phase gate '%s' rejected (note=%r) — re-queuing %d tasks", phase_name, note, len(phase_task_list))
                 for _rt in phase_task_list:
                     completed.pop(_rt["id"], None)

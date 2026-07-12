@@ -29,7 +29,7 @@ type LogEntry = { ts: number; type: string; text: string };
 type TermEntry = { ts: number; kind: string; text: string; agent: string };
 type Agent = { key: string; status: string; log: LogEntry[]; term: TermEntry[]; visitedUrls: string[]; currentTool: string | null; result: unknown; instruction: string };
 type Artifact = { key?: string; title?: string; status?: string; preview?: string; content?: string; description?: string; owner_agent?: string; verification?: ArtifactReceipt };
-type Approval = { gate_key: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string; preview?: string }[] };
+type Approval = { gate_key: string; request_id: string; action_digest: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string; preview?: string }[] };
 type CopilotAction = { tool: string; label: string; detail?: string; tone?: "info" | "success" | "warn" };
 type CopilotAttachment = { filename: string; content: string; kind: string; truncated: boolean; library_id?: string; size_bytes?: number; summary?: string; error?: string };
 type PlanTask = { id: string; agent: string; instruction: string };
@@ -176,6 +176,8 @@ function normalizeApprovals(items: any[]): Approval[] {
     .map((a: any) => ({
       ...a,
       gate_key: a.gate_key || a.key,
+      request_id: String(a.request_id || a.approval_id || a.id || ""),
+      action_digest: String(a.action_digest || ""),
       is_phase_gate: Boolean(a.is_phase_gate),
       phase: String(a.phase || ""),
       next_phase: String(a.next_phase || ""),
@@ -581,6 +583,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         const raw = ev.request || ev;
         const apv: Approval = {
           gate_key: raw.gate_key || raw.key || ev.approval_gate || raw.id || "",
+          request_id: String(raw.request_id || raw.approval_id || raw.id || ""),
+          action_digest: String(raw.action_digest || ""),
           title: raw.title || (ev.approval_gate || "").replace(/_/g, " "),
           reason: raw.reason || ev.reason || "",
           triggered_by: raw.action_id || raw.triggered_by || ev.agent || ev.tool || "",
@@ -772,15 +776,17 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     return () => clearInterval(id);
   }, []);
 
-  const decide = async (key: string, decision: "approved" | "skipped" | "rejected", note?: string) => {
+  const decide = async (approval: Approval, decision: "approved" | "skipped" | "rejected", note?: string) => {
+    const key = approval.gate_key;
     if (!key) { showErr("Approval missing gate key — refresh the page and try again."); return; }
+    if (!approval.request_id || !approval.action_digest) { showErr("Approval request details are incomplete. Reload the session before deciding."); return; }
     const snapshot = S.current.approvals;
     if (decision !== "rejected") S.current.decidedKeys.add(key);
     S.current.approvals = S.current.approvals.filter((a) => a.gate_key !== key);
     S.current.revisionGate = null; S.current.revisionNote = "";
     commitState();
     try {
-      await decideStackApproval(sessionId, key, decision as any, founderId, note);
+      await decideStackApproval(sessionId, key, decision, founderId, note, approval.request_id, approval.action_digest);
     } catch (e) {
       if (decision !== "rejected") S.current.decidedKeys.delete(key);
       S.current.approvals = snapshot;
@@ -1555,7 +1561,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                     />
                     <div style={{ display: "flex", gap: 7 }}>
                       <button style={{ flex: 1, padding: "7px 0", border: "1.5px solid var(--red)", background: "rgba(239,68,68,.08)", color: "var(--red)", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}
-                        onClick={() => decide(ap.gate_key, "rejected", st.revisionNote)}>
+                        onClick={() => decide(ap, "rejected", st.revisionNote)}>
                         Send revision request
                       </button>
                       <button style={{ padding: "7px 12px", border: "1px solid var(--bd)", background: "var(--surface)", color: "var(--fm)", fontSize: 11, cursor: "pointer" }}
@@ -1567,7 +1573,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 ) : (
                   <div style={{ display: "flex", gap: 8 }}>
                     <button style={{ flex: 1, padding: "9px 0", border: "none", background: "var(--blue)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                      onClick={() => decide(ap.gate_key, "approved")}>
+                      onClick={() => decide(ap, "approved")}>
                       Approve → Continue to {ap.next_phase || "next phase"}
                     </button>
                     <button style={{ padding: "9px 14px", border: "1.5px solid var(--red)", background: "rgba(239,68,68,.07)", color: "var(--red)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
@@ -1584,9 +1590,9 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 <div className="apv-body">
                   <div className="apv-reason">{ap.reason || ap.description || "An agent wants to take a significant action and needs your go-ahead."}</div>
                   <div className="apv-acts">
-                    <button className="btn-ok" onClick={() => decide(ap.gate_key, "approved")}>✓ Approve</button>
-                    <button className="btn-skip" onClick={() => decide(ap.gate_key, "skipped")}>Skip</button>
-                    <button className="btn-reject" onClick={() => decide(ap.gate_key, "rejected")}>✗ Reject</button>
+                    <button className="btn-ok" onClick={() => decide(ap, "approved")}>✓ Approve</button>
+                    <button className="btn-skip" onClick={() => decide(ap, "skipped")}>Skip</button>
+                    <button className="btn-reject" onClick={() => decide(ap, "rejected")}>✗ Reject</button>
                   </div>
                 </div>
               </div>

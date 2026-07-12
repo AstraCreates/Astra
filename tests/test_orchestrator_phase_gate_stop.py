@@ -104,7 +104,10 @@ async def test_phase_gate_lets_downstream_proceed_on_bare_minimum_content(monkey
     # deliberate feature, not part of what this test is verifying. Resolve it
     # immediately so the test isn't asserting on that unrelated wait.
     monkeypatch.setattr("backend.core.events.approval_decision_wait", AsyncMock(return_value={"decision": "approved"}))
-    monkeypatch.setattr("backend.approval_workflows.create_approval_request", lambda **kwargs: None)
+    monkeypatch.setattr("backend.approval_workflows.create_approval_request", lambda **kwargs: {
+        "id": "phase_gate_design:orchestrator", "approval_id": "phase_gate_design:orchestrator", "action_digest": "digest",
+        "gate_key": kwargs["gate_key"], "status": "pending", **kwargs,
+    })
 
     async def _fake_deep_verification(*, task, base_verdict, **_kwargs):
         verdict = dict(base_verdict)
@@ -154,7 +157,10 @@ async def test_phase_gate_caps_non_research_automatic_revisions(monkeypatch):
     monkeypatch.setattr("backend.tools.obsidian_logger.auto_log_if_missing", lambda *args, **kwargs: False)
     monkeypatch.setattr("backend.tools.obsidian_logger._note_path", lambda *args, **kwargs: Path("/tmp/nonexistent-note.md"))
     monkeypatch.setattr("backend.core.events.approval_decision_wait", AsyncMock(return_value={"decision": "approved"}))
-    monkeypatch.setattr("backend.approval_workflows.create_approval_request", lambda **kwargs: None)
+    monkeypatch.setattr("backend.approval_workflows.create_approval_request", lambda **kwargs: {
+        "id": "phase_gate_design:orchestrator", "approval_id": "phase_gate_design:orchestrator", "action_digest": "digest",
+        "gate_key": kwargs["gate_key"], "status": "pending", **kwargs,
+    })
 
     async def _fake_deep_verification(*, task, base_verdict, **_kwargs):
         verdict = dict(base_verdict)

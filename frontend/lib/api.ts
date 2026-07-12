@@ -1751,14 +1751,19 @@ export async function rejectTask(taskId: string, reason: string): Promise<void> 
 export async function decideStackApproval(
   sessionId: string,
   gateKey: string,
-  decision: "approved" | "skipped",
+  decision: "approved" | "skipped" | "rejected",
   founderId?: string,
-  note?: string
+  note?: string,
+  requestId?: string,
+  expectedActionDigest?: string,
 ): Promise<void> {
+  if (!requestId || !expectedActionDigest) {
+    throw new Error("request_id and expected_action_digest are required; reload the pending approval request.");
+  }
   const res = await apiFetch(`${BASE}/stack/approval`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId, gate_key: gateKey, decision, founder_id: founderId, note }),
+    body: JSON.stringify({ session_id: sessionId, gate_key: gateKey, decision, founder_id: founderId, note, request_id: requestId, expected_action_digest: expectedActionDigest }),
   });
   await checkOk(res);
 }

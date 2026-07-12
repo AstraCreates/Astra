@@ -2353,7 +2353,12 @@ class Agent:
                     "result_preview": f"Waiting for founder approval gate: {gate_key}",
                     "approval_gate": gate_key,
                 })
-                decision = await approval_decision_wait(ctx.session_id, str(gate_key), timeout=300.0)
+                decision = await approval_decision_wait(
+                    ctx.session_id,
+                    str(approval_request["id"]),
+                    str(approval_request["action_digest"]),
+                    timeout=300.0,
+                )
                 if not decision:
                     await publish(ctx.session_id, {
                         "type": "saferun_result",
@@ -2417,6 +2422,9 @@ class Agent:
             args.setdefault("founder_id", ctx.founder_id)
         if "agent" in _sig_params:
             args.setdefault("agent", self.name)
+        if "cancellation_fence" in _sig_params:
+            from backend.core import cancellation
+            args.setdefault("cancellation_fence", cancellation.cancellation_fence(ctx.session_id, self.name))
         try:
             # Strip any keys the function doesn't accept (if it doesn't use **kwargs)
             _has_var_kw = any(p.kind == _inspect.Parameter.VAR_KEYWORD for p in _inspect.signature(fn).parameters.values())
@@ -2429,6 +2437,8 @@ class Agent:
         t0 = _time.monotonic()
         _tool_timeout = _LONG_RUNNING_TOOL_TIMEOUTS.get(tool_name, _DEFAULT_TOOL_TIMEOUT_SECONDS)
         try:
+            from backend.core import cancellation
+            cancellation.check_fence(ctx.session_id, self.name)
             entry = self._runtime_entries.get(tool_name)
             if settings.astra_tool_registry_v2 and entry:
                 result = await asyncio.wait_for(
@@ -2440,9 +2450,13 @@ class Agent:
                     timeout=_tool_timeout,
                 )
             elif asyncio.iscoroutinefunction(fn):
+                cancellation.check_fence(ctx.session_id, self.name)
                 result = await asyncio.wait_for(fn(**args), timeout=_tool_timeout)
             else:
-                result = await asyncio.wait_for(asyncio.to_thread(fn, **args), timeout=_tool_timeout)
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(cancellation.run_sync_with_fence, ctx.session_id, self.name, fn, args),
+                    timeout=_tool_timeout,
+                )
             elapsed = _time.monotonic() - t0
             if ctx.guardrails:
                 post = ctx.guardrails.after_call(

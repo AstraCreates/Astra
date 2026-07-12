@@ -957,7 +957,7 @@ async def kill_session(session_id: str, request: Request):
         await publish(session_id, {"type": "goal_error", "error": "Run stopped by user.", "killed": True})
     except Exception:
         pass
-    return {"ok": True, "killed": cancelled, "session_id": session_id}
+    return {"ok": True, "killed": cancelled, "session_id": session_id, "active_attempts_cancelled": cancelled}
 
 
 @router.post("/sessions/{session_id}/stop-agent/{agent_name}")
@@ -1291,27 +1291,31 @@ async def rerun_agent(session_id: str, agent_name: str, body: dict, request: Req
         session_id=session_id,
         shared={"prior_vault_notes": vault_context, "rerun": True},
     )
+    attempt_id = cancellation.claim_attempt(session_id, agent_name)
+    if attempt_id is None:
+        raise HTTPException(status_code=409, detail=f"Agent '{agent_name}' already has an active rerun for this session.")
+    task_id = f"rerun_{agent_name}:{attempt_id}"
 
     try:
         update_session_status(session_id, "running")
     except Exception:
         pass
-    await publish(session_id, {"type": "agent_start", "agent": agent_name, "task_id": f"rerun_{agent_name}", "instruction": instruction})
+    await publish(session_id, {"type": "agent_start", "agent": agent_name, "task_id": task_id, "instruction": instruction})
 
     async def _run():
         try:
             result = await agent.run(ctx)
-            await publish(session_id, {"type": "agent_done", "agent": agent_name, "task_id": f"rerun_{agent_name}", "result": result})
+            await publish(session_id, {"type": "agent_done", "agent": agent_name, "task_id": task_id, "result": result})
             await publish(session_id, {"type": "goal_done", "results": {agent_name: result}, "rerun": agent_name})
         except Exception as e:
-            await publish(session_id, {"type": "agent_error", "agent": agent_name, "task_id": f"rerun_{agent_name}", "error": str(e)})
+            await publish(session_id, {"type": "agent_error", "agent": agent_name, "task_id": task_id, "error": str(e)})
             await publish(session_id, {"type": "goal_error", "error": str(e), "rerun": agent_name})
         finally:
-            cancellation.clear(session_id)
+            cancellation.release_attempt(session_id, attempt_id)
 
     _task = asyncio.create_task(_run())
-    cancellation.register_task(session_id, _task)
-    return {"ok": True, "session_id": session_id, "agent": agent_name, "status": "started"}
+    cancellation.register_task(session_id, _task, attempt_id=attempt_id, agent_name=agent_name)
+    return {"ok": True, "session_id": session_id, "agent": agent_name, "attempt_id": attempt_id, "status": "started"}
 
 
 @router.post("/sessions/{session_id}/ask")
@@ -1369,13 +1373,18 @@ async def decide_stack_approval(body: StackApprovalDecisionRequest, request: Req
     event = {
         "type": "stack_approval_decision",
         "gate_key": body.gate_key,
-        "request_id": body.request_id or body.approval_id,
         "decision": decision,
         "founder_id": body.founder_id or actor_id,
         "note": body.note,
         "workflow": workflow,
     }
-    approval_decision_push(body.session_id, body.gate_key, event)
+    resolved_request = workflow["requests"][0]
+    resolved_request_id = str(resolved_request.get("id") or resolved_request.get("approval_id") or body.request_id or body.approval_id or "")
+    resolved_digest = str(resolved_request.get("action_digest") or body.expected_action_digest or "")
+    event["request_id"] = resolved_request_id
+    event["approval_id"] = str(resolved_request.get("approval_id") or resolved_request_id)
+    event["action_digest"] = resolved_digest
+    approval_decision_push(body.session_id, resolved_request_id, resolved_digest, event)
     await publish(body.session_id, event)
     return {"ok": True, "session_id": body.session_id, "gate_key": body.gate_key, "decision": decision, "requests": workflow["requests"]}
 
@@ -1627,6 +1636,7 @@ async def continue_goal(body: ContinueRequest, request: Request):
             pass
 
         from backend.core.agent import AgentContext
+        from backend.core.events import reopen_session
         ctx = AgentContext(
             goal=instruction,
             founder_id=body.founder_id,
@@ -1634,22 +1644,27 @@ async def continue_goal(body: ContinueRequest, request: Request):
             shared={"prior_vault_notes": vault_context, "rerun": True},
         )
         agent = orch.specialists[agent_name]
-        await publish(session_id, {"type": "agent_start", "agent": agent_name, "task_id": f"rerun_{agent_name}", "instruction": instruction})
+        attempt_id = cancellation.claim_attempt(session_id, agent_name)
+        if attempt_id is None:
+            raise HTTPException(status_code=409, detail=f"Agent '{agent_name}' already has an active rerun for this session.")
+        reopen_session(session_id)
+        task_id = f"rerun_{agent_name}:{attempt_id}"
+        await publish(session_id, {"type": "agent_start", "agent": agent_name, "task_id": task_id, "instruction": instruction})
         await publish(session_id, {"type": "chat_intent", "intent": "rerun", "agent": agent_name})
 
         async def _rerun():
             try:
                 result = await agent.run(ctx)
-                await publish(session_id, {"type": "agent_done", "agent": agent_name, "task_id": f"rerun_{agent_name}", "result": result})
+                await publish(session_id, {"type": "agent_done", "agent": agent_name, "task_id": task_id, "result": result})
                 await publish(session_id, {"type": "goal_done", "results": {agent_name: result}})
             except Exception as e:
                 await publish(session_id, {"type": "agent_error", "agent": agent_name, "error": str(e)})
             finally:
-                cancellation.clear(session_id)
+                cancellation.release_attempt(session_id, attempt_id)
 
         _task = asyncio.create_task(_rerun())
-        cancellation.register_task(session_id, _task)
-        return {"session_id": session_id, "status": "running", "prior_session_id": body.prior_session_id, "rerun": agent_name}
+        cancellation.register_task(session_id, _task, attempt_id=attempt_id, agent_name=agent_name)
+        return {"session_id": session_id, "status": "running", "prior_session_id": body.prior_session_id, "rerun": agent_name, "attempt_id": attempt_id}
 
     session_id = new_session_id()
     _exclude_agents = _run_option_exclusions(body.technical_scope, body.marketing_channels)
