@@ -345,6 +345,46 @@ async def test_native_tool_batch_respects_shared_cap_aliases(mocker):
 
 
 @pytest.mark.asyncio
+async def test_native_pipeline_batch_can_finish_research_without_deep_escalation(mocker):
+    native_batch = json.dumps({
+        "action": "tool_batch",
+        "native": True,
+        "calls": [{"id": "call_1", "tool": "run_research_pipeline", "args": {"topic": "Investigate ICP", "focus": "customers"}}],
+    })
+    done_call = json.dumps({
+        "tool": "done",
+        "args": {"summary": "ready", "output": {"summary": "ready", "sources": ["https://example.com"]}},
+    })
+
+    call_count = 0
+
+    def fake_llm(messages):
+        nonlocal call_count
+        call_count += 1
+        return native_batch if call_count == 1 else done_call
+
+    agent = Agent(
+        name="research_customers",
+        role="research",
+        tools={
+            "run_research_pipeline": lambda **_kwargs: {
+                "coverage": {"ready": True, "gaps": []},
+                "next_step": "Synthesize findings with concrete numbers, named companies, dates, caveats, and URLs.",
+                "sources": [{"url": "https://example.com"}],
+            },
+        },
+        max_iterations=3,
+    )
+    agent._call_llm = fake_llm
+    mocker.patch("backend.core.events.publish", new=AsyncMock())
+
+    result = await agent.run(_ctx(goal="Investigate ICP"))
+
+    assert result.get("summary") == "ready"
+    assert call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_concurrent_batch_calls_cannot_exceed_shared_cap(mocker):
     """Real gap found in a Wave-0 audit: same-tool calls inside ONE tool_batch's
     read_calls all launch via asyncio.gather(). The old code checked the cap,

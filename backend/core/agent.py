@@ -162,6 +162,48 @@ _RESEARCH_AGENT_NAMES = {
 }
 
 
+def _normalized_tool_names(tool_names: set[str]) -> set[str]:
+    """Compare completion/tool-cap requirements against canonical tool names."""
+    return {_tool_cap_name(tool_name) for tool_name in tool_names}
+
+
+def _latest_research_pipeline_ready(tool_results: list[tuple[str, dict[str, Any]]]) -> bool:
+    """Only a typed coverage.ready=True fast-path waives deep-research escalation.
+
+    The research pipeline also returns human-readable `next_step` text, but that
+    prose is guidance, not a contract. Keep the completion gate keyed to the
+    typed coverage signal so malformed/optimistic strings cannot silently skip
+    the deep-research escalation path.
+    """
+    for tool_name, result in reversed(tool_results):
+        if tool_name != "run_research_pipeline" or not isinstance(result, dict):
+            continue
+        coverage = result.get("coverage")
+        return isinstance(coverage, dict) and coverage.get("ready") is True
+    return False
+
+
+def _required_tools_for_completion(
+    agent_name: str,
+    tool_results: list[tuple[str, dict[str, Any]]],
+) -> set[str]:
+    required = set(_REQUIRED_BY_AGENT.get(agent_name, set()))
+    if agent_name in _RESEARCH_AGENT_NAMES and _latest_research_pipeline_ready(tool_results):
+        required.discard("deep_research")
+        if agent_name in {"research_customers", "research_gtm"}:
+            required.add("run_research_pipeline")
+    return required
+
+
+def _min_calls_for_completion(
+    agent_name: str,
+    tool_results: list[tuple[str, dict[str, Any]]],
+) -> int:
+    if agent_name in _RESEARCH_AGENT_NAMES and _latest_research_pipeline_ready(tool_results):
+        return 1
+    return _MIN_CALLS_BY_AGENT.get(agent_name, 1)
+
+
 # Hard cap on any single tool result appended to an agent's conversation. Even
 # "formatted" search results / full page text must be bounded, or a research-heavy
 # agent (design, marketing) accumulates 40 iterations of multi-KB results and
@@ -1564,8 +1606,10 @@ class Agent:
                 _consecutive_unknown = 0
 
             if action == "done":
-                min_calls_needed = _MIN_CALLS_BY_AGENT.get(self.name, 1)
-                actual_calls = len(_called_tools - {"obsidian_log"})
+                required_tools = _required_tools_for_completion(self.name, _tool_results)
+                normalized_called_tools = _normalized_tool_names(_called_tools)
+                min_calls_needed = _min_calls_for_completion(self.name, _tool_results)
+                actual_calls = len(normalized_called_tools - {"obsidian_log"})
                 if actual_calls < min_calls_needed:
                     messages.append({"role": "user", "content": (
                         f"You cannot call done yet. You have only made {actual_calls} distinct tool "
@@ -1573,7 +1617,7 @@ class Agent:
                         "You have NOT done enough real work. Keep researching / executing."
                     )})
                     continue
-                missing = sorted(_REQUIRED_BY_AGENT.get(self.name, set()) - _called_tools)
+                missing = sorted(required_tools - normalized_called_tools)
                 # Custom agents never match the built-in names above, so they get no
                 # required-tool enforcement at all — a founder who explicitly picked
                 # generate_pdf when building the agent expects a file every run, but
@@ -1776,7 +1820,8 @@ class Agent:
                         # Ling from spending the remaining budget rephrasing reads.
                         if (
                             self.name in _RESEARCH_AGENT_NAMES
-                            and _REQUIRED_BY_AGENT.get(self.name, set()) <= _called_tools
+                            and _required_tools_for_completion(self.name, _tool_results)
+                            <= _normalized_tool_names(_called_tools)
                         ):
                             logger.info("[%s] required research evidence complete; forcing synthesis after blocked %s", self.name, tool_name)
                             break
@@ -2032,10 +2077,12 @@ class Agent:
                 output = self._normalize_done_output(output, _tool_results)
                 if isinstance(output, dict):
                     # Apply same quality checks as normal done path — can't re-prompt, just flag
-                    _synth_missing_tools = sorted(_REQUIRED_BY_AGENT.get(self.name, set()) - _called_tools)
+                    _synth_required_tools = _required_tools_for_completion(self.name, _tool_results)
+                    _synth_called_tools = _normalized_tool_names(_called_tools)
+                    _synth_missing_tools = sorted(_synth_required_tools - _synth_called_tools)
                     _synth_missing_output = self._missing_required_output(output, _attempted_tools)
-                    _synth_min = _MIN_CALLS_BY_AGENT.get(self.name, 1)
-                    _synth_actual = len(_called_tools - {"obsidian_log"})
+                    _synth_min = _min_calls_for_completion(self.name, _tool_results)
+                    _synth_actual = len(_synth_called_tools - {"obsidian_log"})
                     if _synth_missing_tools or _synth_missing_output or _synth_actual < _synth_min:
                         quality_flags = {
                             "missing_tools": _synth_missing_tools,
