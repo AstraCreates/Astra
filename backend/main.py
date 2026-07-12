@@ -125,7 +125,11 @@ async def startup_background_jobs():
     from backend.monitoring.scheduler import start_monitoring_scheduler
     # Live company: re-verify shipped artifacts hourly (content weekly) + auto-heal.
     start_monitoring_scheduler(interval_seconds=3600)
-    _background_tasks[:] = [asyncio.create_task(_platform_alert_loop()), asyncio.create_task(_pii_purge_loop())]
+    _background_tasks[:] = [
+        asyncio.create_task(_platform_alert_loop()),
+        asyncio.create_task(_pii_purge_loop()),
+        asyncio.create_task(_budget_reservation_reaper_loop()),
+    ]
 
 
 async def _pii_purge_loop() -> None:
@@ -140,6 +144,27 @@ async def _pii_purge_loop() -> None:
         except Exception as exc:
             logger.warning("PII purge failed: %s", exc)
         await asyncio.sleep(86_400)  # 24 hours
+
+
+async def _budget_reservation_reaper_loop() -> None:
+    """Wave 1 orphan reaper: release expired budget reservations that never
+    got committed (e.g. process crash between reserve() and commit()) so they
+    don't sit "reserved" forever, silently eating into a founder's available
+    balance for the next reservation. Reservations default to a 300s TTL
+    (backend/control_plane/budget.py::DEFAULT_TTL_SECONDS) -- checking every
+    120s catches them well inside that window without excessive churn."""
+    await asyncio.sleep(30)
+    while True:
+        try:
+            from backend.control_plane.budget import get_default_budget_service
+            expired = get_default_budget_service().expire_orphans()
+            if expired:
+                logger.info("budget reservation reaper: released %d expired reservation(s)", len(expired))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Budget reservation reaper failed: %s", exc)
+        await asyncio.sleep(120)
 
 
 async def _platform_alert_loop() -> None:
