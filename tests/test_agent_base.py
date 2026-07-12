@@ -345,6 +345,59 @@ async def test_native_tool_batch_respects_shared_cap_aliases(mocker):
 
 
 @pytest.mark.asyncio
+async def test_concurrent_batch_calls_cannot_exceed_shared_cap(mocker):
+    """Real gap found in a Wave-0 audit: same-tool calls inside ONE tool_batch's
+    read_calls all launch via asyncio.gather(). The old code checked the cap,
+    then awaited an emit (yielding control back to the event loop), then only
+    incremented the attempt counter after that -- so concurrent same-tool calls
+    with different args (not deduped, since dedup keys on tool+args) could all
+    observe the same stale count and all pass a cap that should only allow one."""
+    batch = json.dumps({
+        "action": "tool_batch",
+        "native": True,
+        "calls": [
+            {"id": "c1", "tool": "search_and_fetch", "args": {"query": "a"}},
+            {"id": "c2", "tool": "search_and_fetch", "args": {"query": "b"}},
+            {"id": "c3", "tool": "search_and_fetch", "args": {"query": "c"}},
+        ],
+    })
+    done_call = json.dumps({"tool": "done", "args": {"summary": "done", "output": {}}})
+
+    call_count = 0
+    executed = []
+
+    def fake_llm(messages):
+        nonlocal call_count
+        call_count += 1
+        return batch if call_count == 1 else done_call
+
+    async def fake_search_and_fetch(query):
+        executed.append(query)
+        return {"query": query, "results": []}
+
+    agent = Agent(
+        name="research_customers",
+        role="research",
+        tools={"search_and_fetch": fake_search_and_fetch},
+        max_tool_calls={"search_and_fetch": 1},
+    )
+    agent._call_llm = fake_llm
+
+    async def _publish_yields(*_args, **_kwargs):
+        # A real publish() awaits real I/O and genuinely suspends here -- this
+        # is the actual suspension point the race depends on. A bare AsyncMock
+        # resolves without yielding to the scheduler, which was masking the bug.
+        import asyncio as _asyncio
+        await _asyncio.sleep(0)
+
+    mocker.patch("backend.core.events.publish", new=AsyncMock(side_effect=_publish_yields))
+
+    await agent.run(_ctx(goal="Investigate ICP"))
+
+    assert len(executed) == 1
+
+
+@pytest.mark.asyncio
 async def test_execute_tool_unwraps_multi_level_nested_args(mocker):
     """Real production bug: a model called company_brain_add_record with
     args triple-wrapped as {"args": {"arguments": {"args": {...real fields...}}}}.

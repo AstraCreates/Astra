@@ -1648,21 +1648,35 @@ class Agent:
                 read_calls = [call for call in unique if call["tool"] in READ_ONLY_TOOLS]
                 write_calls = [call for call in unique if call["tool"] not in READ_ONLY_TOOLS]
 
-                async def execute(call: dict) -> tuple[str, dict, Any]:
-                    name, args = call["tool"], call["args"]
+                # Reserve every call's attempt slot synchronously, before any concurrent
+                # dispatch. The old code checked-then-awaited-then-incremented inside
+                # execute() itself, so same-tool calls sharing one asyncio.gather() batch
+                # (read_calls below) could all observe the same stale attempt count
+                # before any of them incremented it, letting a batch exceed its cap.
+                # This loop has no `await` in it, so it runs atomically w.r.t. the event
+                # loop — no other coroutine can interleave between reservations.
+                for call in unique:
+                    name = call["tool"]
                     cap_key, limit, attempts, successes = _tool_limit_status(name)
                     if limit is not None and attempts >= limit:
+                        call["_blocked"] = {"cap_key": cap_key, "limit": limit, "attempts": attempts, "successes": successes}
+                    else:
+                        _tool_attempt_counts[cap_key] = attempts + 1
+
+                async def execute(call: dict) -> tuple[str, dict, Any]:
+                    name, args = call["tool"], call["args"]
+                    blocked = call.get("_blocked")
+                    if blocked is not None:
                         return name, args, {
                             "error": (
-                                f"BLOCKED: {name} has already been attempted {attempts} time(s) "
-                                f"({successes} succeeded, limit={limit}). Stop calling {name} and move on."
+                                f"BLOCKED: {name} has already been attempted {blocked['attempts']} time(s) "
+                                f"({blocked['successes']} succeeded, limit={blocked['limit']}). Stop calling {name} and move on."
                             ),
                             "blocked": True,
                             "tool": name,
-                            "cap_key": cap_key,
+                            "cap_key": blocked["cap_key"],
                         }
                     await self._emit(ctx, "agent_action", action="tool", tool=name, args=args, reasoning=reasoning)
-                    _tool_attempt_counts[cap_key] = attempts + 1
                     result = await self._execute_tool(name, args, ctx)
                     await self._emit(ctx, "agent_action_result", tool=name, result=result)
                     return name, args, result
