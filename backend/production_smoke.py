@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -233,8 +234,9 @@ def _http_checks(base_url: str) -> list[dict[str, Any]]:
     for path in ("/health", "/ready", "/metrics"):
         url = f"{base}{path}"
         try:
-            response = requests.get(url, timeout=10)
-            checks.append(_check(f"http_{path.strip('/')}", response.status_code < 500, f"HTTP {path} responds without server error.", {
+            headers = {"Authorization": f"Bearer {os.environ['ASTRA_METRICS_BEARER_TOKEN']}"} if path == "/metrics" and os.getenv("ASTRA_METRICS_BEARER_TOKEN") else None
+            response = requests.get(url, timeout=10, headers=headers) if headers else requests.get(url, timeout=10)
+            checks.append(_check(f"http_{path.strip('/')}", 200 <= response.status_code < 300, f"HTTP {path} returns a successful response.", {
                 "url": url,
                 "status_code": response.status_code,
                 "body_preview": response.text[:160],

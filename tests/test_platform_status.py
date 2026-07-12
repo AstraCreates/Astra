@@ -3,6 +3,8 @@ from backend import platform_status as ps
 
 def test_platform_status_checks_stack_templates_and_control_plane(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    from backend.config import settings
+    monkeypatch.setattr(settings, "astra_require_auth", False)
 
     stack_check = ps._check_stack_templates()
     billing_check = ps._check_accounts_billing()
@@ -25,6 +27,8 @@ def test_platform_status_checks_stack_templates_and_control_plane(tmp_path, monk
 
 def test_platform_status_readiness_includes_platform_subsystems(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    from backend.config import settings
+    monkeypatch.setattr(settings, "astra_require_auth", False)
     monkeypatch.setattr(ps, "_check_redis", lambda: {"ok": True, "status": "ok"})
     monkeypatch.setattr(ps, "_check_models", lambda: {"ok": True, "status": "configured"})
     monkeypatch.setattr(ps, "_check_company_brain_scheduler", lambda: {"ok": True, "status": "running"})
@@ -43,10 +47,9 @@ def test_platform_status_readiness_includes_platform_subsystems(tmp_path, monkey
     assert status["checks"]["accounts_billing"]["ok"] is True
     assert status["checks"]["durable_ledgers"]["ok"] is True
     assert status["checks"]["auth_policy"]["ok"] is True
-    assert set(ready["checks"]) == {"redis", "models", "company_brain_scheduler", "stack_templates", "objective_readiness", "accounts_billing", "auth_policy", "durable_ledgers"}
-    assert "astra_stack_templates_ready" in metrics
-    assert "astra_stack_template_quality_min 100" in metrics
-    assert "astra_objective_readiness_ready 1" in metrics
+    assert set(ready["checks"]) == {"redis", "models", "production_env", "company_brain_scheduler", "stack_templates", "objective_readiness", "accounts_billing", "auth_policy", "durable_ledgers"}
+    assert "astra_redis_up 1" in metrics
+    assert "astra_company_brain_scheduler_up 1" in metrics
 
 
 def test_platform_status_flags_missing_platform_admins_when_auth_enabled(monkeypatch):

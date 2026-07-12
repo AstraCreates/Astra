@@ -111,13 +111,19 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
         if event_type == "approval_request" and event.get("request"):
             request = event["request"]
             item = _approval_request_state(request)
-            approvals[item.get("key", "")] = item
+            approvals[_approval_state_id(item)] = item
         elif event_type == "stack_approval_queue":
             for item in event.get("approval_queue", []):
-                approvals[item.get("key", "")] = item
+                approvals[_approval_state_id(item)] = item
         elif event_type == "stack_approval_decision":
-            key = event.get("gate_key", "")
-            approvals[key] = {**approvals.get(key, {"key": key}), "status": event.get("decision"), "note": event.get("note")}
+            decided = (event.get("workflow") or {}).get("requests") or []
+            if decided:
+                for request in decided:
+                    item = _approval_request_state(request)
+                    approvals[_approval_state_id(item)] = {**approvals.get(_approval_state_id(item), {}), **item}
+            else:
+                key = event.get("request_id") or event.get("gate_key", "")
+                approvals[key] = {**approvals.get(key, {"key": event.get("gate_key", ""), "id": key}), "status": event.get("decision"), "note": event.get("note")}
         elif event_type == "stack_artifact" and event.get("artifact"):
             artifact = event["artifact"]
             artifacts[artifact.get("key", "")] = artifact
@@ -266,7 +272,7 @@ def build_session_state(session_id: str, events: list[tuple[int, dict]]) -> dict
 
     for request in approval_workflow.get("requests", []) if isinstance(approval_workflow, dict) else []:
         item = _approval_request_state(request)
-        key = item.get("key", "")
+        key = _approval_state_id(item)
         approvals[key] = {**approvals.get(key, {}), **item}
 
     state = {
@@ -571,6 +577,8 @@ def _approval_request_state(request: dict[str, Any]) -> dict[str, Any]:
     return {
         "key": gate_key,
         "id": request.get("id") or gate_key,
+        "approval_id": request.get("approval_id") or request.get("id") or gate_key,
+        "action_digest": request.get("action_digest") or "",
         "gate_key": gate_key,
         "title": request.get("title") or gate_key.replace("_", " ").title(),
         "trigger": request.get("trigger") or request.get("tool") or request.get("action_id") or "",
@@ -589,3 +597,7 @@ def _approval_request_state(request: dict[str, Any]) -> dict[str, Any]:
         "next_phase": request.get("next_phase") or inferred_next_phase,
         "artifacts": request.get("artifacts") or [],
     }
+
+
+def _approval_state_id(request: dict[str, Any]) -> str:
+    return str(request.get("approval_id") or request.get("id") or request.get("key") or "")

@@ -15,7 +15,12 @@ Security posture:
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import logging
+import os
+import time
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
@@ -31,6 +36,52 @@ _FORWARD_HEADERS = {
     "content-type", "content-length", "range", "user-agent", "referer",
     "if-modified-since", "if-none-match",
 }
+
+
+def _preview_owner(slug: str) -> tuple[str, str] | None:
+    """Resolve the preview's durable session metadata, never client input."""
+    try:
+        from backend.tools import local_preview
+        port = local_preview.get_port_for_slug(slug)
+        sessions = [session_id for session_id, value in local_preview._registry_load().items() if value == port]
+        if not port or len(sessions) != 1:
+            return None
+        from backend.core.session_store import get_session_meta
+        meta = get_session_meta(sessions[0]) or {}
+        founder_id = str(meta.get("founder_id") or "")
+        company_id = str(meta.get("company_id") or meta.get("workspace_id") or founder_id)
+        return (founder_id, company_id) if founder_id else None
+    except Exception:
+        logger.warning("Could not resolve preview owner for slug=%s", slug)
+        return None
+
+
+def _valid_signed_token(slug: str, token: str) -> bool:
+    """Accept ``expiry.signature`` tokens signed for one preview slug."""
+    secret = os.getenv("ASTRA_PREVIEW_SIGNING_SECRET", "")
+    if not secret or not token:
+        return False
+    try:
+        expiry_text, signature = token.split(".", 1)
+        expiry = int(expiry_text)
+        if expiry < int(time.time()) or expiry > int(time.time()) + 7 * 86_400:
+            return False
+        payload = f"{slug}.{expiry}".encode()
+        expected = hmac.new(secret.encode(), payload, hashlib.sha256).digest()
+        supplied = base64.urlsafe_b64decode(signature + "=" * (-len(signature) % 4))
+        return hmac.compare_digest(expected, supplied)
+    except (TypeError, ValueError):
+        return False
+
+
+def _authorize_preview(slug: str, request: Request) -> None:
+    if _valid_signed_token(slug, request.query_params.get("preview_token", "")):
+        return
+    owner = _preview_owner(slug)
+    if not owner:
+        raise HTTPException(status_code=403, detail="Preview ownership could not be verified.")
+    from backend.tenant_auth import require_company_access
+    require_company_access(request, owner[0], owner[1], min_role="viewer")
 
 
 async def _proxy(slug: str, path: str, request: Request) -> StreamingResponse:
@@ -85,6 +136,7 @@ async def preview_proxy_path(path: str, request: Request):
     slug = host.split(".")[0] if "." in host else ""
     if not slug:
         raise HTTPException(status_code=400, detail="Missing preview slug")
+    _authorize_preview(slug, request)
     return await _proxy(slug, path, request)
 
 

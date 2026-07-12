@@ -5,12 +5,26 @@ services:
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   headroom:
     build:
       context: .
       dockerfile: Dockerfile.headroom
     restart: unless-stopped
+    mem_limit: 768m
+    memswap_limit: 768m
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/health', timeout=3)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   # Self-hosted Firecrawl-alternative search+scrape (crw) backing the
   # recursive research replacement for Perplexity Sonar. Published image,
@@ -38,6 +52,12 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:3000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   # Meta-search backend for crw's /v1/search. Not published to the host —
   # only crw talks to it, over the compose bridge network.
@@ -100,10 +120,23 @@ services:
       - CRW_BASE_URL=http://crw:3000
       - HIGHOUTPUT_MODEL_BASE_URL=http://headroom:8787/v1
       - ASTRA_COMPRESSION_THRESHOLD=${ASTRA_COMPRESSION_THRESHOLD:-64000}
+      - ASTRA_THREAD_POOL=${ASTRA_THREAD_POOL:-32}
     depends_on:
-      - redis
-      - headroom
-      - crw
+      redis:
+        condition: service_healthy
+      headroom:
+        condition: service_healthy
+      crw:
+        condition: service_healthy
+    mem_limit: 4g
+    memswap_limit: 4g
+    pids_limit: 512
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=5)\""]
+      interval: 15s
+      timeout: 7s
+      retries: 5
+      start_period: 45s
     ports:
       - "127.0.0.1:8000:8000"
       - "4000-4009:4000-4009"  # local MVP preview servers (Vercel fallback) — intentionally public, see deploy/nginx.conf
@@ -133,9 +166,16 @@ services:
       - NEXTAUTH_URL=${NEXTAUTH_URL:-}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-}
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 15s
+      timeout: 7s
+      retries: 5
+      start_period: 30s
 
   windmill-db:
     image: postgres:16
@@ -191,12 +231,30 @@ services:
     volumes:
       - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./deploy/nginx-app-locations.conf:/etc/nginx/app-locations.conf:ro
-      - ./deploy/certs:/etc/nginx/certs:ro
+      - ./deploy/certs:/etc/nginx/certs
       - ./deploy/certbot/www:/var/www/certbot:ro
       - ./deploy/certbot/conf:/etc/letsencrypt:ro
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    command: >-
+      /bin/sh -c 'mkdir -p /etc/nginx/certs;
+      if [ -f /etc/letsencrypt/live/178.105.231.73.nip.io/fullchain.pem ]; then
+        cp /etc/letsencrypt/live/178.105.231.73.nip.io/fullchain.pem /etc/nginx/certs/tls.crt;
+        cp /etc/letsencrypt/live/178.105.231.73.nip.io/privkey.pem /etc/nginx/certs/tls.key;
+      fi;
+      if [ ! -s /etc/nginx/certs/tls.crt ] || [ ! -s /etc/nginx/certs/tls.key ]; then
+        openssl req -x509 -nodes -newkey rsa:2048 -days 1 -subj /CN=bootstrap.invalid -keyout /etc/nginx/certs/tls.key -out /etc/nginx/certs/tls.crt;
+      fi;
+      exec nginx -g "daemon off;"'
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # Issues/renews the TLS cert for 178.105.231.73.nip.io (the only real
   # hostname pointing at this box — astracreates.com's DNS is on Vercel).

@@ -9,6 +9,20 @@ from backend.monitoring import store, checks, scheduler
 @pytest.fixture
 def vault(tmp_path, monkeypatch):
     monkeypatch.setenv("OBSIDIAN_VAULT", str(tmp_path))
+    class FakeRedis:
+        def __init__(self):
+            self.values = {}
+        def set(self, key, value, nx=False, ex=None):
+            if nx and key in self.values:
+                return False
+            self.values[key] = value
+            return True
+        def get(self, key):
+            return self.values.get(key)
+        def delete(self, key):
+            self.values.pop(key, None)
+    redis = FakeRedis()
+    monkeypatch.setattr("backend.core.events._redis", lambda: redis)
     return tmp_path
 
 

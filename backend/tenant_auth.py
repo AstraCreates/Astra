@@ -257,23 +257,30 @@ def require_org_access(request: Request, org_id: str, min_role: str = "viewer") 
 
 def require_company_access(request: Request, founder_id: str, company_id: str, min_role: str = "viewer") -> str:
     """Require caller to have access to a company within a founder's workspace."""
-    # First check founder/org access
+    founder_id = str(founder_id or "").strip()
+    company_id = str(company_id or founder_id).strip()
+    # First check membership in the claimed founder workspace.
     user_id = require_founder_access(request, founder_id, min_role=min_role)
 
-    # In dev mode or same-company, allow access
-    if _missing_user_allowed() or company_id == founder_id:
+    if _missing_user_allowed():
         return user_id
 
-    # In prod, verify company belongs to this founder's workspace
+    # A company is a workspace. Resolve the target record itself and verify its
+    # immutable owner rather than trusting a caller-provided founder/company pair.
+    # The founder-id fallback is retained for legacy founder-scoped records that
+    # predate promoted workspace IDs.
     try:
         from backend.core.workspace_store import get_workspace
-        workspace = get_workspace(founder_id) or {}
-        companies = workspace.get("companies", [])
-        if company_id not in companies and company_id != founder_id:
+        workspace = get_workspace(company_id)
+        if workspace is None:
+            if company_id == founder_id:
+                return user_id
             raise HTTPException(
-                status_code=403,
-                detail="Company not found in this workspace.",
+                status_code=404,
+                detail="Company not found.",
             )
+        if str(workspace.get("founder_id") or "") != founder_id:
+            raise HTTPException(status_code=403, detail="Company belongs to another workspace.")
     except HTTPException:
         raise
     except Exception as e:

@@ -57,6 +57,36 @@ export function getAuthToken(): string | null {
   return _cachedAuthToken;
 }
 
+/** Normalizes the collection shapes returned by GET /teams/me. */
+export function parseTeamCollection<T>(data: unknown): T | null {
+  if (Array.isArray(data)) return (data[0] as T | undefined) ?? null;
+  if (!data || typeof data !== "object") return null;
+  const collection = data as Record<string, unknown>;
+  for (const key of ["teams", "items", "data"]) {
+    if (Array.isArray(collection[key])) return (collection[key][0] as T | undefined) ?? null;
+  }
+  return collection as T;
+}
+
+/** Returns only an artifact and its declared owner's result, never another agent's output. */
+export function artifactSources<T extends object>(
+  artifact: T & { owner_agent?: string },
+  agents: Record<string, { result?: unknown }>,
+): unknown[] {
+  const ownerResult = artifact.owner_agent ? agents[artifact.owner_agent]?.result : undefined;
+  return ownerResult == null ? [artifact] : [artifact, ownerResult];
+}
+
+/** Keeps the prior UI state when a kill request was rejected or unreachable. */
+export function stopStatusAfterKill(previousStatus: string, killSucceeded: boolean): string {
+  return killSucceeded ? "killed" : previousStatus;
+}
+
+/** Original session remains visible until both stop and replacement confirmation succeed. */
+export function shouldRetainOriginalSession(killSucceeded: boolean, replacementSessionId?: string): boolean {
+  return !killSucceeded || !replacementSessionId;
+}
+
 // One-shot gate: resolves when ApiAuthBridge finishes its first token fetch (success or failure).
 // Prevents SSE connections from firing before we know whether the user is authenticated.
 let _authReadyResolve: (() => void) | null = null;
@@ -1153,9 +1183,9 @@ export async function submitGoal(
   const timer = setTimeout(() => ctrl.abort(), 30_000);
   let res: Response;
   try {
-    res = await fetch(`${BASE}/goal`, {
+    res = await apiFetch(`${BASE}/goal`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-astra-user-id": founderId },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         founder_id: founderId,
         instruction,
@@ -1721,14 +1751,19 @@ export async function rejectTask(taskId: string, reason: string): Promise<void> 
 export async function decideStackApproval(
   sessionId: string,
   gateKey: string,
-  decision: "approved" | "skipped",
+  decision: "approved" | "skipped" | "rejected",
   founderId?: string,
-  note?: string
+  note?: string,
+  requestId?: string,
+  expectedActionDigest?: string,
 ): Promise<void> {
+  if (!requestId || !expectedActionDigest) {
+    throw new Error("request_id and expected_action_digest are required; reload the pending approval request.");
+  }
   const res = await apiFetch(`${BASE}/stack/approval`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId, gate_key: gateKey, decision, founder_id: founderId, note }),
+    body: JSON.stringify({ session_id: sessionId, gate_key: gateKey, decision, founder_id: founderId, note, request_id: requestId, expected_action_digest: expectedActionDigest }),
   });
   await checkOk(res);
 }

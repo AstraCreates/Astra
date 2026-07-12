@@ -261,8 +261,10 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": _schema({
             "session_id": {"type": "string"},
             "action_key": {"type": "string", "description": "The approval gate key (e.g. 'public_deploy', 'send_outbound')."},
+            "request_id": {"type": "string", "description": "Exact pending approval request ID from the session approval ledger."},
+            "expected_action_digest": {"type": "string", "description": "Exact action_digest from that same pending request."},
             "founder_id": {"type": "string"},
-        }, ["session_id", "action_key"]),
+        }, ["session_id", "action_key", "request_id", "expected_action_digest"]),
     },
     {
         "name": "astra_session_workboard",
@@ -485,8 +487,12 @@ def _approve(args: dict) -> dict:
     session_id = args["session_id"]
     founder_id = args.get("founder_id") or _founder_id()
     gate_key = str(args.get("action_key") or args.get("gate_key") or "").strip()
+    request_id = str(args.get("request_id") or args.get("approval_id") or "").strip()
+    expected_action_digest = str(args.get("expected_action_digest") or "").strip()
     if not gate_key:
         return {"ok": False, "error": "action_key (approval gate key) is required"}
+    if not request_id or not expected_action_digest:
+        return {"ok": False, "error": "request_id and expected_action_digest are required; fetch the pending approval request first"}
     try:
         result = _post("/stack/approval", {
             "session_id": session_id,
@@ -495,6 +501,8 @@ def _approve(args: dict) -> dict:
             "gate_key": gate_key,
             "decision": "approved",
             "founder_id": founder_id,
+            "request_id": request_id,
+            "expected_action_digest": expected_action_digest,
         })
         return result if isinstance(result, dict) else {"ok": True, "result": result}
     except Exception as e:

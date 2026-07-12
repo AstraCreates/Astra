@@ -17,11 +17,13 @@ _sessions: dict[str, asyncio.Queue] = {}
 _completed: set[str] = set()  # sessions that finished — reconnect gets immediate replay + close
 _steer: dict[str, list[str]] = {}  # inbound founder directives per session
 _input_responses: dict[str, dict] = {}  # request_id → founder input response
-_approval_decisions: dict[str, dict[str, dict]] = {}  # session_id -> gate_key -> decision event
+_approval_decisions: dict[str, dict[str, dict]] = {}  # session_id -> request_id -> decision event
 
 # Persistent event log per session: list of (event_id, event_dict)
 _event_log: dict[str, list[tuple[int, dict]]] = {}
 _event_counters: dict[str, int] = {}
+_publish_locks: dict[str, asyncio.Lock] = {}
+_approval_ledger_rebuilt: set[str] = set()
 
 _MAX_BUFFER = 2000  # max events kept per session
 _REDIS_TTL = 8 * 3600  # 8 hours
@@ -142,6 +144,14 @@ def _next_id(session_id: str) -> int:
     return _event_counters[session_id]
 
 
+def _publish_lock(session_id: str) -> asyncio.Lock:
+    lock = _publish_locks.get(session_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _publish_locks[session_id] = lock
+    return lock
+
+
 def _buffer(session_id: str, event_id: int, event: dict) -> None:
     if session_id not in _event_log:
         _event_log[session_id] = []
@@ -156,16 +166,45 @@ def _capture_approval_decision(session_id: str, event: dict) -> None:
     """Mirror approval decision events into the in-memory wait store."""
     if event.get("type") != "stack_approval_decision":
         return
-    gate_key = event.get("gate_key")
-    if not gate_key:
+    request_id = event.get("request_id") or event.get("approval_id")
+    action_digest = event.get("action_digest") or event.get("expected_action_digest")
+    if not request_id or not action_digest:
         return
-    _approval_decisions.setdefault(session_id, {})[str(gate_key)] = event
+    _approval_decisions.setdefault(session_id, {})[str(request_id)] = event
 
 
 def _rebuild_approval_decisions(session_id: str, events: list[tuple[int, dict]]) -> None:
     """Reconstruct approval wait state from a restored event log."""
     for _, event in events:
         _capture_approval_decision(session_id, event)
+
+
+def _rebuild_approval_decisions_from_ledger(session_id: str) -> None:
+    """Recover final approval decisions even if a crash preceded event publication."""
+    try:
+        from backend.approval_workflows import FINAL_APPROVAL_STATUSES, get_approval_workflow
+        workflow = get_approval_workflow(session_id) or {}
+        decisions = _approval_decisions.setdefault(session_id, {})
+        for request in workflow.get("requests") or []:
+            decision = str(request.get("decision") or request.get("status") or "")
+            request_id = str(request.get("id") or request.get("approval_id") or "")
+            action_digest = str(request.get("action_digest") or "")
+            if decision not in FINAL_APPROVAL_STATUSES or not request_id or not action_digest:
+                continue
+            decisions.setdefault(request_id, {
+                "type": "stack_approval_decision",
+                "gate_key": request.get("gate_key"),
+                "request_id": request_id,
+                "approval_id": request.get("approval_id") or request_id,
+                "action_digest": action_digest,
+                "decision": decision,
+                "note": request.get("note") or "",
+                "_recovered_from_ledger": True,
+            })
+    except Exception as exc:
+        logger.warning("Unable to rebuild approval decisions from ledger for %s: %s", session_id, exc)
+    finally:
+        _approval_ledger_rebuilt.add(session_id)
 
 
 _SESSION_LOG_PATH = "/tmp/astra_session.log"
@@ -322,39 +361,38 @@ def _bound_runtime_event(event: dict) -> dict:
 
 async def publish(session_id: str, event: dict) -> None:
     event = _bound_runtime_event(dict(event))
-    event.setdefault("ts_unix", time.time())
-    event.setdefault("ts_iso", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(event["ts_unix"])))
-    event_id = _next_id(session_id)
-    _buffer(session_id, event_id, event)
-    _write_session_log(session_id, event)
-    loop = asyncio.get_running_loop()
-    # Persist full event (with base64) to JSONL store
-    from backend.core.session_store import append_event as _ss_append
-    loop.run_in_executor(None, _ss_append, session_id, event_id, event)
-    # Also persist to Redis (fast in-flight buffer)
-    loop.run_in_executor(None, _redis_append, session_id, event_id, event)
-    try:
-        from backend.run_ledger import record_run_event
-        loop.run_in_executor(None, record_run_event, session_id, event_id, event)
-    except Exception:
-        pass
-    # Strip base64 before putting into SSE queue to prevent browser crashes
-    sse_event = _strip_base64(event)
-    await _get_queue(session_id).put((event_id, sse_event))
+    if session_id in _completed and event.get("type") == "agent_start":
+        logger.warning("Ignoring late agent_start for completed session %s", session_id)
+        return
+    async with _publish_lock(session_id):
+        event.setdefault("ts_unix", time.time())
+        event.setdefault("ts_iso", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(event["ts_unix"])))
+        event_id = _next_id(session_id)
+        _buffer(session_id, event_id, event)
+        _write_session_log(session_id, event)
+        # Await per-session persistence before the next event is assigned, so JSONL
+        # cannot record a later event ID ahead of an earlier one.
+        from backend.core.session_store import append_event as _ss_append
+        await asyncio.to_thread(_ss_append, session_id, event_id, event)
+        await asyncio.to_thread(_redis_append, session_id, event_id, event)
+        try:
+            from backend.run_ledger import record_run_event
+            asyncio.create_task(asyncio.to_thread(record_run_event, session_id, event_id, event))
+        except Exception:
+            pass
+        # Strip base64 before putting into SSE queue to prevent browser crashes
+        sse_event = _strip_base64(event)
+        await _get_queue(session_id).put((event_id, sse_event))
+        if event.get("type") in ("goal_done", "goal_error"):
+            _completed.add(session_id)
     # Forward agent status events to parent session so the root session view shows
     # live agent states from child sessions (e.g. dispatch_current_goal sub-runs).
     _etype = event.get("type")
     if _etype in {"agent_start", "agent_done", "agent_error"}:
         parent_sid = _parent_map.get(session_id)
         if parent_sid:
-            parent_eid = _next_id(parent_sid)
             forwarded = dict(sse_event, _forwarded_from=session_id)
-            _buffer(parent_sid, parent_eid, forwarded)
-            # Also log to parent so reconnecting clients get the state via replay.
-            if parent_sid not in _event_log:
-                _event_log[parent_sid] = []
-            _event_log[parent_sid].append((parent_eid, forwarded))
-            await _get_queue(parent_sid).put((parent_eid, forwarded))
+            await publish(parent_sid, forwarded)
     # Event-driven goal ticking: when an agent finishes, mark the company goal's
     # tasks it owns (no timer). Cheap + best-effort; offloaded so it never blocks.
     _etype = event.get("type")
@@ -427,21 +465,38 @@ async def input_response_wait(request_id: str, timeout: float = 300.0) -> dict |
     return None
 
 
-def approval_decision_push(session_id: str, gate_key: str, decision: dict) -> None:
-    """Store a founder approval decision for SafeRun-gated tool execution."""
-    _approval_decisions.setdefault(session_id, {})[gate_key] = decision
+def approval_decision_push(session_id: str, request_id: str, expected_action_digest: str, decision: dict) -> None:
+    """Store one request-bound founder decision for exactly one waiting action."""
+    if not request_id or not expected_action_digest:
+        raise ValueError("request_id and expected_action_digest are required for approval decisions")
+    actual_request_id = str(decision.get("request_id") or decision.get("approval_id") or "")
+    actual_digest = str(decision.get("action_digest") or decision.get("expected_action_digest") or "")
+    if actual_request_id != request_id or actual_digest != expected_action_digest:
+        raise ValueError("approval decision request_id/action_digest does not match the addressed request")
+    _approval_decisions.setdefault(session_id, {})[request_id] = dict(decision)
 
 
-async def approval_decision_wait(session_id: str, gate_key: str, timeout: float = 300.0) -> dict | None:
-    """Wait for a founder decision on a stack approval gate."""
+async def approval_decision_wait(
+    session_id: str,
+    request_id: str,
+    expected_action_digest: str,
+    timeout: float = 300.0,
+) -> dict | None:
+    """Consume only a matching request-bound approval decision, once."""
+    if not request_id or not expected_action_digest:
+        raise ValueError("request_id and expected_action_digest are required for approval waits")
     import time
-    if session_id in _event_log:
+    if session_id not in _event_log:
+        _restore_session(session_id)
+    if session_id in _event_log and session_id not in _approval_decisions:
         _rebuild_approval_decisions(session_id, _event_log.get(session_id, []))
+    if session_id not in _approval_ledger_rebuilt:
+        _rebuild_approval_decisions_from_ledger(session_id)
     deadline = time.time() + timeout
     while time.time() < deadline:
-        decision = _approval_decisions.get(session_id, {}).get(gate_key)
-        if decision:
-            return decision
+        decision = _approval_decisions.get(session_id, {}).get(request_id)
+        if decision and str(decision.get("action_digest") or decision.get("expected_action_digest") or "") == expected_action_digest:
+            return _approval_decisions[session_id].pop(request_id)
         await asyncio.sleep(0.5)
     return None
 
@@ -501,10 +556,14 @@ def _restore_session(session_id: str) -> tuple[bool, bool]:
     events = _ss_load(session_id) or _redis_load(session_id)
     if not events:
         return False, False
-    _event_log[session_id] = events
-    _event_counters[session_id] = max(eid for eid, _ in events)
-    _rebuild_approval_decisions(session_id, events)
-    done = any(e.get("type") in ("goal_done", "goal_error") for _, e in events)
+    deduplicated: dict[int, dict] = {}
+    for event_id, event in sorted(events, key=lambda item: item[0]):
+        deduplicated.setdefault(int(event_id), event)
+    restored_events = list(deduplicated.items())
+    _event_log[session_id] = restored_events
+    _event_counters[session_id] = max(deduplicated, default=0)
+    _rebuild_approval_decisions(session_id, restored_events)
+    done = any(e.get("type") in ("goal_done", "goal_error") for _, e in restored_events)
     if done:
         _completed.add(session_id)
     return True, done

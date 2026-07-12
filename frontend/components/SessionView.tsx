@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiFetch, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, ingestAttachment, AGENT_LABELS, rerunAgent, openEventStream, type SessionImages, type StreamSubscription } from "@/lib/api";
+import { apiFetch, artifactSources, killSession, decideStackApproval, deleteSessionRemote, submitGoal, getSessionImages, getSessionMeta, ingestAttachment, AGENT_LABELS, rerunAgent, openEventStream, shouldRetainOriginalSession, stopStatusAfterKill, type SessionImages, type StreamSubscription } from "@/lib/api";
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import { signIn } from "next-auth/react";
@@ -29,7 +29,7 @@ type LogEntry = { ts: number; type: string; text: string };
 type TermEntry = { ts: number; kind: string; text: string; agent: string };
 type Agent = { key: string; status: string; log: LogEntry[]; term: TermEntry[]; visitedUrls: string[]; currentTool: string | null; result: unknown; instruction: string };
 type Artifact = { key?: string; title?: string; status?: string; preview?: string; content?: string; description?: string; owner_agent?: string; verification?: ArtifactReceipt };
-type Approval = { gate_key: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string; preview?: string }[] };
+type Approval = { gate_key: string; request_id: string; action_digest: string; title?: string; reason?: string; description?: string; triggered_by?: string; agent?: string; ts: number; is_phase_gate?: boolean; phase?: string; next_phase?: string; artifacts?: { key: string; title: string; agent: string; preview?: string }[] };
 type CopilotAction = { tool: string; label: string; detail?: string; tone?: "info" | "success" | "warn" };
 type CopilotAttachment = { filename: string; content: string; kind: string; truncated: boolean; library_id?: string; size_bytes?: number; summary?: string; error?: string };
 type PlanTask = { id: string; agent: string; instruction: string };
@@ -176,6 +176,8 @@ function normalizeApprovals(items: any[]): Approval[] {
     .map((a: any) => ({
       ...a,
       gate_key: a.gate_key || a.key,
+      request_id: String(a.request_id || a.approval_id || a.id || ""),
+      action_digest: String(a.action_digest || ""),
       is_phase_gate: Boolean(a.is_phase_gate),
       phase: String(a.phase || ""),
       next_phase: String(a.next_phase || ""),
@@ -291,6 +293,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
   }, []);
   const [planOpen, setPlanOpen] = useState(false);
   const sseRef = useRef<StreamSubscription | null>(null);
+  const [streamEpoch, setStreamEpoch] = useState(0);
   const [copilotInput, setCopilotInput] = useState("");
   const [copilot, setCopilot] = useState<{ role: string; content: string; actions?: CopilotAction[] }[]>([]);
   const [copilotBusy, setCopilotBusy] = useState(false);
@@ -580,6 +583,8 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         const raw = ev.request || ev;
         const apv: Approval = {
           gate_key: raw.gate_key || raw.key || ev.approval_gate || raw.id || "",
+          request_id: String(raw.request_id || raw.approval_id || raw.id || ""),
+          action_digest: String(raw.action_digest || ""),
           title: raw.title || (ev.approval_gate || "").replace(/_/g, " "),
           reason: raw.reason || ev.reason || "",
           triggered_by: raw.action_id || raw.triggered_by || ev.agent || ev.tool || "",
@@ -725,7 +730,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     })();
 
     return () => { alive = false; sseRef.current?.close(); sseRef.current = null; };
-  }, [sessionId, founderId, handleEvent, isSignedIn, applyStateSnapshot, commitState]);
+  }, [sessionId, founderId, handleEvent, isSignedIn, applyStateSnapshot, commitState, streamEpoch]);
 
   // Poll session meta every 30s to pick up live credits + headroom savings.
   useEffect(() => {
@@ -771,15 +776,17 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     return () => clearInterval(id);
   }, []);
 
-  const decide = async (key: string, decision: "approved" | "skipped" | "rejected", note?: string) => {
+  const decide = async (approval: Approval, decision: "approved" | "skipped" | "rejected", note?: string) => {
+    const key = approval.gate_key;
     if (!key) { showErr("Approval missing gate key — refresh the page and try again."); return; }
+    if (!approval.request_id || !approval.action_digest) { showErr("Approval request details are incomplete. Reload the session before deciding."); return; }
     const snapshot = S.current.approvals;
     if (decision !== "rejected") S.current.decidedKeys.add(key);
     S.current.approvals = S.current.approvals.filter((a) => a.gate_key !== key);
     S.current.revisionGate = null; S.current.revisionNote = "";
     commitState();
     try {
-      await decideStackApproval(sessionId, key, decision as any, founderId, note);
+      await decideStackApproval(sessionId, key, decision, founderId, note, approval.request_id, approval.action_digest);
     } catch (e) {
       if (decision !== "rejected") S.current.decidedKeys.delete(key);
       S.current.approvals = snapshot;
@@ -862,24 +869,35 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
     } catch { setToastErr("Failed to send answer — try again."); }
   };
   // No window.confirm — mobile in-app webviews suppress it (returns false), which
-  // made Stop/Restart silently no-op. Optimistic UI + fire the request.
-  const stop = async () => { S.current.status = "killed"; sseRef.current?.close(); commitState(); await killSession(sessionId).catch(() => {}); };
+  // made Stop/Restart silently no-op. Roll back and reconnect when the kill fails.
+  const stop = async () => {
+    const previousStatus = S.current.status;
+    S.current.status = "killed";
+    sseRef.current?.close();
+    commitState();
+    const killed = await killSession(sessionId);
+    S.current.status = stopStatusAfterKill(previousStatus, killed);
+    commitState();
+    if (!killed) {
+      setToastErr("Stop failed. The run may still be active; reconnecting to its updates.");
+      setStreamEpoch((epoch) => epoch + 1);
+    }
+  };
   // TEMP: kill this run, delete it server+local, resubmit the same goal as a fresh run.
   const killClearRestart = async () => {
     const goal = S.current.goal;
     const company = S.current.company || S.current.projectName;
     const stack = S.current.stackId || "idea_to_revenue";
     if (!goal) { showErr("Original goal hasn't loaded yet — try again in a moment."); return; }
-    // No window.confirm — suppressed in mobile webviews.
-    S.current.status = "killed"; commitState();
+    // Keep this session visible until its replacement has been accepted.
     try {
-      sseRef.current?.close();
-      await killSession(sessionId).catch(() => {});
-      await deleteSessionRemote(sessionId).catch(() => {});
-      deleteLocalSession(sessionId);
+      const killed = await killSession(sessionId);
+      if (shouldRetainOriginalSession(killed)) throw new Error("Could not stop the original run; it remains visible and connected.");
       const instruction = company ? `Company/project name: ${company}\n\n${goal}` : goal;
       const data = await submitGoal(founderId, instruction, {}, stack);
-      if (!data.session_id) throw new Error("No session_id returned");
+      if (shouldRetainOriginalSession(killed, data.session_id)) throw new Error("No replacement session was confirmed.");
+      await deleteSessionRemote(sessionId).catch(() => {});
+      deleteLocalSession(sessionId);
       window.location.assign(`/s/${data.session_id}`);
     } catch (e) {
       showErr(`Restart failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -1459,12 +1477,13 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           const bc = s === "done" ? "var(--green)" : s === "run" ? "var(--blue)" : s === "err" ? "var(--red)" : "var(--fm)";
           const badge = s === "run" ? "Working" : s === "done" ? "Done" : s === "err" ? "Error" : "Queued";
           return (
-            <div key={dk}
-              className={`dc ${s}${st.selDept === dk ? " sel" : ""}`} title={d.n} aria-label={`${d.n} department — ${badge}`} onClick={() => sel(dk, null)}>
+            <button key={dk} type="button"
+              className={`dc ${s}${st.selDept === dk ? " sel" : ""}`} title={d.n} aria-label={`${d.n} department — ${badge}`} aria-pressed={st.selDept === dk} onClick={() => sel(dk, null)}
+              style={{ border: "none", padding: 0, textAlign: "left", font: "inherit", color: "inherit", cursor: "pointer" }}>
               <div className="dc-top"><div className="dc-ico">{d.ic}</div><div className="dc-name">{d.n}</div><div className={`dc-badge ${s}`}>{badge}</div></div>
               <div className="dc-what">{deptWhat(d.inS)}</div>
               <div className="dc-prog"><div className="dc-bar" style={{ transform: `scaleX(${prog / 100})`, background: bc }} /></div>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -1477,9 +1496,9 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
           {st.artifacts.length === 0 ? <div style={{ padding: "10px 8px", fontSize: 9.5, color: "var(--fm)", lineHeight: 1.55 }}>{st.status === "running" ? "Agents working — deliverables appear here when ready. You do not need to check every step." : "Nothing yet. Astra will place finished work here when it is ready for you."}</div>
           : <>
             {ready.length > 0 && <><div style={{ fontSize: 9, color: "var(--fm)", padding: "3px 8px", display: "flex", alignItems: "center", gap: 4 }}><span className="v-dot ready" /> Ready</div>
-              {ready.map((a) => <div key={a.key} className={`v-art${st.selArt === a.key ? " sel" : ""}`} onClick={() => sel(null, a.key || null)}>{a.title || a.key}</div>)}</>}
+              {ready.map((a) => <button key={a.key} type="button" className={`v-art${st.selArt === a.key ? " sel" : ""}`} aria-pressed={st.selArt === a.key} onClick={() => sel(null, a.key || null)} style={{ border: "none", textAlign: "left", font: "inherit", color: "inherit", cursor: "pointer" }}>{a.title || a.key}</button>)}</>}
             {live.length > 0 && <><div style={{ fontSize: 9, color: "var(--fm)", padding: "3px 8px", display: "flex", alignItems: "center", gap: 4 }}><span className="v-dot live" /> Writing</div>
-              {live.map((a) => <div key={a.key} className={`v-art${st.selArt === a.key ? " sel" : ""}`} onClick={() => sel(null, a.key || null)}>{a.title || a.key}</div>)}</>}
+              {live.map((a) => <button key={a.key} type="button" className={`v-art${st.selArt === a.key ? " sel" : ""}`} aria-pressed={st.selArt === a.key} onClick={() => sel(null, a.key || null)} style={{ border: "none", textAlign: "left", font: "inherit", color: "inherit", cursor: "pointer" }}>{a.title || a.key}</button>)}</>}
           </>}
         </div>
 
@@ -1487,12 +1506,12 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
         <div data-tour="session-detail" className="detail">
           <div className="dtabs">
             {st.selArt
-              ? <div className={`dtab${st.tab === "read" ? " on" : ""}`} onClick={() => { st.tab = "read"; commitState(); }}>Read it</div>
+              ? <button type="button" className={`dtab${st.tab === "read" ? " on" : ""}`} aria-pressed={st.tab === "read"} onClick={() => { st.tab = "read"; commitState(); }}>Read it</button>
               : st.selDept ? <>
-                  <div className={`dtab${st.tab === "updates" ? " on" : ""}`} onClick={() => { st.tab = "updates"; commitState(); }}>Updates</div>
-                  {st.selDept === "technical" && <div className={`dtab${st.tab === "terminal" ? " on" : ""}`} onClick={() => { st.tab = "terminal"; commitState(); }}>Terminal</div>}
-                  <div className={`dtab${st.tab === "tech" ? " on" : ""}`} onClick={() => { st.tab = "tech"; commitState(); }}>Technical logs</div>
-                  <div className={`dtab${st.tab === "sources" ? " on" : ""}`} onClick={() => { st.tab = "sources"; commitState(); }}>Sources</div>
+                  <button type="button" className={`dtab${st.tab === "updates" ? " on" : ""}`} aria-pressed={st.tab === "updates"} onClick={() => { st.tab = "updates"; commitState(); }}>Updates</button>
+                  {st.selDept === "technical" && <button type="button" className={`dtab${st.tab === "terminal" ? " on" : ""}`} aria-pressed={st.tab === "terminal"} onClick={() => { st.tab = "terminal"; commitState(); }}>Terminal</button>}
+                  <button type="button" className={`dtab${st.tab === "tech" ? " on" : ""}`} aria-pressed={st.tab === "tech"} onClick={() => { st.tab = "tech"; commitState(); }}>Technical logs</button>
+                  <button type="button" className={`dtab${st.tab === "sources" ? " on" : ""}`} aria-pressed={st.tab === "sources"} onClick={() => { st.tab = "sources"; commitState(); }}>Sources</button>
                 </>
               : null}
           </div>
@@ -1515,12 +1534,12 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {ap.artifacts.map((art, i) => (
                         <div key={i} style={{ background: "var(--surface)", border: "1px solid var(--bd)", overflow: "hidden" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 8px", cursor: "pointer" }}
+                          <button type="button" style={{ display: "flex", alignItems: "center", gap: 7, padding: "6px 8px", cursor: "pointer", width: "100%", border: "none", background: "transparent", textAlign: "left", font: "inherit", color: "inherit" }}
                             onClick={() => sel(null, art.key || null)}>
                             <span style={{ fontSize: 10, color: "var(--green)" }}>✓</span>
                             <span style={{ fontSize: 11, color: "var(--fg)", fontWeight: 600 }}>{art.title || art.key}</span>
                             <span style={{ fontSize: 9, color: "var(--blue)", marginLeft: "auto" }}>View full ↗</span>
-                          </div>
+                          </button>
                           {art.preview && (
                             <div style={{ padding: "0 8px 8px", borderTop: "1px solid var(--bd)", paddingTop: 6 }}>
                               <RichText text={art.preview} />
@@ -1542,7 +1561,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                     />
                     <div style={{ display: "flex", gap: 7 }}>
                       <button style={{ flex: 1, padding: "7px 0", border: "1.5px solid var(--red)", background: "rgba(239,68,68,.08)", color: "var(--red)", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}
-                        onClick={() => decide(ap.gate_key, "rejected", st.revisionNote)}>
+                        onClick={() => decide(ap, "rejected", st.revisionNote)}>
                         Send revision request
                       </button>
                       <button style={{ padding: "7px 12px", border: "1px solid var(--bd)", background: "var(--surface)", color: "var(--fm)", fontSize: 11, cursor: "pointer" }}
@@ -1554,7 +1573,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 ) : (
                   <div style={{ display: "flex", gap: 8 }}>
                     <button style={{ flex: 1, padding: "9px 0", border: "none", background: "var(--blue)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
-                      onClick={() => decide(ap.gate_key, "approved")}>
+                      onClick={() => decide(ap, "approved")}>
                       Approve → Continue to {ap.next_phase || "next phase"}
                     </button>
                     <button style={{ padding: "9px 14px", border: "1.5px solid var(--red)", background: "rgba(239,68,68,.07)", color: "var(--red)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
@@ -1571,9 +1590,9 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 <div className="apv-body">
                   <div className="apv-reason">{ap.reason || ap.description || "An agent wants to take a significant action and needs your go-ahead."}</div>
                   <div className="apv-acts">
-                    <button className="btn-ok" onClick={() => decide(ap.gate_key, "approved")}>✓ Approve</button>
-                    <button className="btn-skip" onClick={() => decide(ap.gate_key, "skipped")}>Skip</button>
-                    <button className="btn-reject" onClick={() => decide(ap.gate_key, "rejected")}>✗ Reject</button>
+                    <button className="btn-ok" onClick={() => decide(ap, "approved")}>✓ Approve</button>
+                    <button className="btn-skip" onClick={() => decide(ap, "skipped")}>Skip</button>
+                    <button className="btn-reject" onClick={() => decide(ap, "rejected")}>✗ Reject</button>
                   </div>
                 </div>
               </div>
@@ -1612,17 +1631,10 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 }
                 return sections.join("\n\n") || null;
               };
-              // Try owner agent first, then scan all agents (owner_agent may be unset or mismatched)
+              // An artifact may use only its own fields and its declared owner's result.
               const ownerResult = art.owner_agent ? (st.agents[art.owner_agent]?.result as Record<string, unknown> | null) : null;
               if (ownerResult && typeof ownerResult === "object") {
                 fullContent = tryExtract(ownerResult as Record<string, unknown>);
-              }
-              if (!fullContent) {
-                for (const ag of Object.values(st.agents)) {
-                  if (!ag.result || typeof ag.result !== "object") continue;
-                  const extracted = tryExtract(ag.result as Record<string, unknown>);
-                  if (extracted && extracted.length > 50) { fullContent = extracted; break; }
-                }
               }
               const displayContent = fullContent || art.content || (art.preview && art.preview.length > 30 ? art.preview : null) || art.description || null;
               // Collect any generated files (PDFs, images, docs) from agent results so
@@ -1645,15 +1657,15 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
                 } else if (Array.isArray(val)) { val.forEach(scanFiles); }
                 else if (val && typeof val === "object") { Object.values(val as Record<string, unknown>).forEach(scanFiles); }
               };
-              for (const ag of Object.values(st.agents)) if (ag.result) scanFiles(ag.result);
+              for (const source of artifactSources(art, st.agents)) scanFiles(source);
               const fileList = Array.from(files.entries());
               // Design showcase: palette swatches + generated logos/brand images.
-              const isDesign = art.owner_agent === "design" || /palette|logo|brand|design|color|visual|wordmark/i.test((art.key || "") + (art.title || ""));
+              const isDesign = art.owner_agent === "design";
               if (isDesign && !imgsFetched.current) { imgsFetched.current = true; getSessionImages(sessionId).then(setDesignImages).catch(() => {}); }
               const palette: { hex: string; name?: string }[] = [];
               if (isDesign) {
                 const seen = new Set<string>();
-                const blob = JSON.stringify(st.agents["design"]?.result ?? {}) + (art.content || "") + (art.preview || "");
+                const blob = artifactSources(art, st.agents).map((source) => JSON.stringify(source)).join("");
                 const hexes = blob.match(/#[0-9a-fA-F]{6}\b/g) || [];
                 for (const h of hexes) { const u = h.toUpperCase(); if (!seen.has(u)) { seen.add(u); palette.push({ hex: u }); } }
               }
@@ -1769,7 +1781,7 @@ export default function SessionView({ sessionId }: { sessionId: string }) {
               if (st.tab === "terminal" && st.selDept === "technical") {
                 // Live interactive takeover — user drives the agent's openclaude session.
                 if (takeover) {
-                  return <TerminalPane sessionId={sessionId} founderId={founderId || ""} onClose={() => setTakeover(false)} />;
+                  return <TerminalPane sessionId={sessionId} onClose={() => setTakeover(false)} />;
                 }
                 const term: TermEntry[] = [];
                 for (const k of ags) for (const e of (st.agents[k].term || [])) term.push(e);

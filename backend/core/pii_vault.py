@@ -15,8 +15,11 @@ Usage:
 from __future__ import annotations
 
 import logging
+import json
+import os
 import re
 import time
+from pathlib import Path
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -29,10 +32,29 @@ _RETENTION_SECONDS = RETENTION_DAYS * 86_400
 # Matches US SSN formats: 123-45-6789 | 123 45 6789 | 123456789
 SSN_PATTERN = re.compile(r"\b(?!000|666|9\d{2})\d{3}[- ]?(?!00)\d{2}[- ]?(?!0000)\d{4}\b")
 
-# In-memory receipt log: "{founder_id}:ssn" → receipt dict.
-# In production replace with a Redis hash with a 30-day TTL so receipts
-# survive restarts and are shared across replicas.
-_receipts: dict[str, dict[str, Any]] = {}
+
+def _receipt_path() -> Path:
+    root = Path(os.environ.get("OBSIDIAN_VAULT", "/tmp/astra_docs")) / "pii_vault"
+    root.mkdir(parents=True, exist_ok=True)
+    return root / "receipts.json"
+
+
+def _load_receipts() -> dict[str, dict[str, Any]]:
+    try:
+        raw = json.loads(_receipt_path().read_text())
+        return raw if isinstance(raw, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except Exception as exc:
+        logger.warning("[PII_VAULT] Could not load durable receipt ledger: %s", exc)
+        return {}
+
+
+def _save_receipts(receipts: dict[str, dict[str, Any]]) -> None:
+    path = _receipt_path()
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(receipts, sort_keys=True))
+    tmp.replace(path)
 
 
 # ── Scrubbing ─────────────────────────────────────────────────────────────────
@@ -81,13 +103,15 @@ def record_ssn_receipt(founder_id: str, session_id: Optional[str] = None) -> Non
     key = f"{founder_id}:ssn"
     received_at = time.time()
     delete_by = received_at + _RETENTION_SECONDS
-    _receipts[key] = {
+    receipts = _load_receipts()
+    receipts[key] = {
         "founder_id": founder_id,
         "pii_type": "ssn",
         "session_id": session_id,
         "received_at": received_at,
         "delete_by": delete_by,
     }
+    _save_receipts(receipts)
     logger.info(
         "[PII_VAULT] SSN receipt recorded — founder: %s  session: %s  "
         "deletion deadline: %s",
@@ -107,9 +131,10 @@ def purge_expired() -> int:
     Returns the number of records purged.
     """
     now = time.time()
-    expired = [k for k, v in _receipts.items() if v["delete_by"] <= now]
+    receipts = _load_receipts()
+    expired = [k for k, v in receipts.items() if v["delete_by"] <= now]
     for k in expired:
-        rec = _receipts.pop(k)
+        rec = receipts.pop(k)
         age_days = round((now - rec["received_at"]) / 86_400, 1)
         logger.info(
             "[PII_VAULT] Purged expired SSN receipt — founder: %s  "
@@ -119,6 +144,7 @@ def purge_expired() -> int:
             (rec.get("session_id") or "unknown")[:12],
         )
     if expired:
+        _save_receipts(receipts)
         logger.info("[PII_VAULT] Daily purge complete — %d record(s) deleted.", len(expired))
     return len(expired)
 
@@ -137,5 +163,5 @@ def get_audit_report() -> list[dict[str, Any]]:
             "days_remaining": max(0.0, round((v["delete_by"] - now) / 86_400, 1)),
             "overdue": v["delete_by"] < now,
         }
-        for v in _receipts.values()
+        for v in _load_receipts().values()
     ]

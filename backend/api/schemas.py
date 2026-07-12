@@ -52,6 +52,8 @@ class StackApprovalDecisionRequest(BaseModel):
     decision: str  # "approved" | "skipped" | "rejected"
     founder_id: Optional[str] = None
     request_id: Optional[str] = None
+    approval_id: Optional[str] = None
+    expected_action_digest: Optional[str] = None
     note: Optional[str] = None
 
 

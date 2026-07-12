@@ -59,3 +59,8 @@ def test_founder_chosen_depth_override_beats_plan_tier():
     # No override: plan tier still decides, unchanged from before.
     assert research._effective_is_deep("starter", None) is False
     assert research._effective_is_deep("scale", None) is True
+
+
+def test_deep_tool_caps_match_fast_and_super_deep_guidance():
+    assert research._research_tool_call_caps("research", False)["deep_research"] == 1
+    assert research._research_tool_call_caps("research", True)["deep_research"] == 4

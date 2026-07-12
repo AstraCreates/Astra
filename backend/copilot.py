@@ -615,9 +615,12 @@ async def _tool_decide_approval_gate(founder_id: str, session_id: str, args: dic
     gate_key = str(args.get("gate_key") or "").strip()
     decision = str(args.get("decision") or "").strip().lower()
     request_id = str(args.get("request_id") or "").strip() or None
+    expected_action_digest = str(args.get("expected_action_digest") or "").strip() or None
     note = str(args.get("note") or "")
     if not gate_key:
         return {"ok": False, "error": "gate_key required"}
+    if not request_id or not expected_action_digest:
+        return {"ok": False, "error": "request_id and expected_action_digest required; fetch the pending approval request first"}
     err = _assert_session_owner(target, founder_id)
     if err:
         return {"ok": False, "error": err}
@@ -629,18 +632,22 @@ async def _tool_decide_approval_gate(founder_id: str, session_id: str, args: dic
         actor_id=founder_id,
         actor_role="owner",
         note=note,
+        expected_action_digest=expected_action_digest,
     )
     if not workflow.get("ok"):
         return workflow
     event = {
         "type": "stack_approval_decision",
         "gate_key": gate_key,
+        "request_id": request_id,
+        "approval_id": request_id,
+        "action_digest": expected_action_digest,
         "decision": decision,
         "founder_id": founder_id,
         "note": note,
         "workflow": workflow,
     }
-    approval_decision_push(target, gate_key, event)
+    approval_decision_push(target, request_id, expected_action_digest, event)
     await publish(target, event)
     return {"ok": True, "session_id": target, "gate_key": gate_key, "decision": decision}
 
@@ -1457,7 +1464,7 @@ _TOOLS = {
     "get_session_digest": ("full digest of a session — what each agent produced, key outputs, deploy URLs. args: {session_id?}", _tool_get_session_digest),
     "get_completion_audit": ("inspect whether a run really finished cleanly, including deploy and handoff checks. args: {session_id?}", _tool_get_completion_audit),
     "get_session_approvals": ("read all current and historical approval requests for a session. args: {session_id?}", _tool_get_session_approvals),
-    "decide_approval_gate": ("approve, skip, or reject a session approval gate. args: {gate_key, decision, session_id?, request_id?, note?}", _tool_decide_approval_gate),
+    "decide_approval_gate": ("approve, skip, or reject one pending approval request. args: {gate_key, decision, request_id, expected_action_digest, session_id?, note?}", _tool_decide_approval_gate),
     "answer_agent_question": ("answer a live agent question so the blocked run can continue. args: {request_id, answer, session_id?}", _tool_answer_agent_question),
     "get_subteam_report": ("summarize what a functional team has been doing across company memory. args: {team, days?}", _tool_get_subteam_report),
     # ── Brain read/write ───────────────────────────────────────────────────────

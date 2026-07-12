@@ -20,6 +20,7 @@ import asyncio
 import logging
 import os
 import time
+import uuid
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,32 @@ def _autoheal_enabled() -> bool:
     return os.getenv("ASTRA_AUTOHEAL", "1") != "0"
 
 
+def _claim_autoheal_lease(founder_id: str, company_id: str, artifact_key: str) -> tuple[str, str] | None:
+    """Atomically claim one repair across all backend replicas."""
+    try:
+        from backend.core.events import _redis
+        client = _redis()
+        if not client:
+            return None
+        key = f"monitoring:autoheal:{founder_id}:{company_id}:{artifact_key}"
+        token = uuid.uuid4().hex
+        ttl = max(60, int(os.getenv("ASTRA_AUTOHEAL_LEASE_SECONDS", "3600")))
+        return (key, token) if client.set(key, token, nx=True, ex=ttl) else None
+    except Exception as exc:
+        logger.warning("monitoring: auto-heal lease unavailable: %s", exc)
+        return None
+
+
+def _release_autoheal_lease(lease: tuple[str, str]) -> None:
+    try:
+        from backend.core.events import _redis
+        client = _redis()
+        if client and client.get(lease[0]) == lease[1]:
+            client.delete(lease[0])
+    except Exception:
+        logger.warning("monitoring: failed to release auto-heal lease")
+
+
 async def _auto_heal(founder_id: str, company_id: str, record: dict, check: dict) -> bool:
     """Re-run the single responsible agent to repair a down/stale artifact."""
     from backend.core.session_store import has_active_run
@@ -63,9 +90,15 @@ async def _auto_heal(founder_id: str, company_id: str, record: dict, check: dict
     if not agent or not prior_session:
         return False
 
+    lease = await asyncio.to_thread(_claim_autoheal_lease, founder_id, company_id, artifact_key)
+    if not lease:
+        return False
+
     if await asyncio.to_thread(has_active_run, founder_id, company_id=company_id):
+        await asyncio.to_thread(_release_autoheal_lease, lease)
         return False
     if await asyncio.to_thread(heals_today, founder_id, company_id) >= _autoheal_cap():
+        await asyncio.to_thread(_release_autoheal_lease, lease)
         logger.info("monitoring: auto-heal cap reached for company=%s", company_id)
         return False
 
@@ -106,6 +139,8 @@ async def _auto_heal(founder_id: str, company_id: str, record: dict, check: dict
             )
         except Exception as exc:
             logger.warning("monitoring: auto-heal run failed for %s: %s", artifact_key, exc)
+        finally:
+            await asyncio.to_thread(_release_autoheal_lease, lease)
 
     asyncio.create_task(_run_heal())
     return True
