@@ -301,23 +301,25 @@ async def mcp_http(request: Request):
                 )
             args.pop("founder_id", None)  # strip — will be injected from auth context
             if name == "astra_submit_goal":
-                from backend.core.session_ids import new_session_id
-                from backend.core.factory import get_orchestrator
-                orch = get_orchestrator()
+                from backend.api.schemas import RunCreateRequest
+                from backend.control_plane.start_run import start_run as control_plane_start_run
                 stack_id = args.get("stack_id") or "idea_to_revenue"
                 constraints: dict = {}
                 if args.get("company_name"):
                     constraints["company_name"] = args["company_name"]
                 if stack_id == "custom" and args.get("agents"):
                     constraints["agents"] = args["agents"]
-                constraints["stack_id"] = stack_id
-                session_id = new_session_id()
-                _asyncio.create_task(orch.run(
-                    goal=args["goal"], founder_id=founder_id,
-                    constraints=constraints, session_id=session_id,
-                ))
-                payload = {"ok": True, "session_id": session_id, "status": "running",
-                           "message": f"Use astra_session_status(session_id='{session_id}') to monitor."}
+                payload_result = await control_plane_start_run(
+                    RunCreateRequest(
+                        founder_id=founder_id,
+                        instruction=args["goal"],
+                        stack_id=stack_id,
+                        constraints=constraints,
+                    ),
+                    request=None,
+                )
+                payload = {"ok": True, "session_id": payload_result.session_id, "status": payload_result.status,
+                           "message": f"Use astra_session_status(session_id='{payload_result.session_id}') to monitor."}
                 result = _tool_result(payload)
             elif name == "astra_steer":
                 from backend.core.events import steer_push

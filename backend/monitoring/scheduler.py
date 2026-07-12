@@ -121,15 +121,17 @@ async def _auto_heal(founder_id: str, company_id: str, record: dict, check: dict
 
     async def _run_heal() -> None:
         try:
-            from backend.core.factory import get_orchestrator
+            from backend.control_plane.start_run import start_continue_run
             from backend.core.session_ids import new_session_id
-            orch = get_orchestrator()
-            await orch.continue_run(
+
+            await start_continue_run(
                 instruction=instruction,
                 founder_id=founder_id,
                 prior_session_id=prior_session,
                 agents=[agent],
-                session_id=new_session_id(),
+                run_id=new_session_id(),
+                company_id=company_id,
+                kind="scheduled",
             )
             await asyncio.to_thread(
                 notify_founder, founder_id,

@@ -995,23 +995,29 @@ async def dispatch_current_goal(
     update_operating_session(founder_id, session_id, company_id=company_id, summary=run_summary)
 
     try:
-        from backend.core.factory import get_orchestrator
+        from backend.control_plane.start_run import start_continue_run
         from backend.core.events import register_parent_session
+
         if root and session_id != root:
             register_parent_session(session_id, root)
-        orch = get_orchestrator()
-        await orch.continue_run(
-            instruction=instruction, founder_id=founder_id,
-            prior_session_id=prior_sid, agents=owners or None, session_id=session_id,
+        result = await start_continue_run(
+            founder_id=founder_id,
+            instruction=instruction,
+            prior_session_id=prior_sid,
+            run_id=session_id,
+            agents=owners or None,
+            company_id=company_id,
+            kind="scheduled",
+            schedule_task=False,
         )
         update_operating_session(
             founder_id,
-            session_id,
+            result.session_id,
             company_id=company_id,
             status="done",
             summary=run_summary,
         )
-        return {"ok": True, "session_id": session_id}
+        return {"ok": True, "session_id": result.session_id}
     except Exception as e:
         logger.error("dispatch_current_goal failed for %s: %s", founder_id, e, exc_info=True)
         update_operating_session(

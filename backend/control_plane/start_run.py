@@ -52,6 +52,199 @@ class StartRunResult:
         return body
 
 
+async def start_continue_run(
+    *,
+    founder_id: str,
+    instruction: str,
+    prior_session_id: str,
+    request: Request | None = None,
+    run_id: str | None = None,
+    agents: list[str] | None = None,
+    exclude_agents: list[str] | None = None,
+    research_depth: str | None = None,
+    company_id: str | None = None,
+    kind: str = "user",
+    schedule_task: bool = True,
+) -> StartRunResult:
+    if request is not None:
+        require_founder_access(request, founder_id, min_role="operator")
+
+    from backend.core.session_store import get_session_meta, merge_session_meta, register_session
+
+    prior_meta = await asyncio.to_thread(get_session_meta, prior_session_id)
+    prior_owner = str((prior_meta or {}).get("founder_id") or "")
+    if not prior_owner:
+        raise HTTPException(status_code=404, detail="prior session not found")
+    if prior_owner != founder_id:
+        raise HTTPException(status_code=403, detail="prior session does not belong to founder")
+
+    resolved_run_id = run_id or new_session_id()
+    resolved_company_id = str(company_id or (prior_meta or {}).get("company_id") or founder_id)
+    resolved_workspace_id = str((prior_meta or {}).get("workspace_id") or "")
+    resolved_chapter_id = str((prior_meta or {}).get("chapter_id") or "")
+
+    try:
+        register_session(
+            session_id=resolved_run_id,
+            founder_id=founder_id,
+            goal=instruction,
+            stack_id=str((prior_meta or {}).get("stack_id") or ""),
+            company_name=str((prior_meta or {}).get("company_name") or ""),
+            agents=list(agents or []),
+            workspace_id=resolved_workspace_id,
+            company_id=resolved_company_id,
+            chapter_id=resolved_chapter_id,
+            parent_session_id=prior_session_id,
+            kind=kind,
+        )
+        merge_session_meta(
+            resolved_run_id,
+            prior_session_id=prior_session_id,
+            engine="legacy",
+            continue_run=True,
+            constraints={
+                "agents": list(agents or []),
+                "exclude_agents": list(exclude_agents or []),
+                "research_depth": research_depth,
+            },
+        )
+    except Exception as session_exc:
+        logger.warning("continuation session registration failed: %s", session_exc)
+
+    from backend.core.events import _get_queue as _pre_queue
+
+    _pre_queue(resolved_run_id)
+
+    feature_assignment = assign_run_features(resolved_company_id, resolved_run_id)
+    engine = str(feature_assignment.get("engine") or "legacy")
+    run = Run(
+        id=resolved_run_id,
+        owner_id=founder_id,
+        org_id=resolved_company_id,
+        company_id=resolved_company_id,
+        workspace_id=resolved_workspace_id or None,
+        chapter_id=resolved_chapter_id or None,
+        parent_run_id=prior_session_id,
+        goal=instruction,
+        stack_id=str((prior_meta or {}).get("stack_id") or "") or None,
+        engine=engine,
+        metadata={
+            "feature_assignment": feature_assignment,
+            "prior_session_id": prior_session_id,
+            "continue_run": True,
+            "agents": list(agents or []),
+            "exclude_agents": list(exclude_agents or []),
+            "research_depth": research_depth,
+        },
+    )
+    await durable_create_run(run)
+    try:
+        from backend.db.client import get_supabase
+
+        get_supabase().table("astra_runs").update({
+            "status": "running",
+            "engine": engine,
+            "metadata": run.metadata,
+        }).eq("id", resolved_run_id).execute()
+    except Exception as update_exc:
+        logger.warning("initial continuation astra_runs update failed for %s: %s", resolved_run_id, update_exc)
+
+    try:
+        from backend.control_plane.supabase_repositories import SupabaseRunEventRepository
+
+        await asyncio.to_thread(
+            SupabaseRunEventRepository().append,
+            resolved_run_id,
+            "run.created",
+            {
+                "run_id": resolved_run_id,
+                "session_id": resolved_run_id,
+                "founder_id": founder_id,
+                "company_id": resolved_company_id,
+                "workspace_id": resolved_workspace_id,
+                "chapter_id": resolved_chapter_id,
+                "engine": engine,
+                "feature_assignment": feature_assignment,
+                "prior_session_id": prior_session_id,
+                "continue_run": True,
+            },
+        )
+    except Exception as event_exc:
+        logger.warning("continuation run.created append failed for %s: %s", resolved_run_id, event_exc)
+
+    try:
+        merge_session_meta(resolved_run_id, feature_assignment=feature_assignment, engine=engine)
+    except Exception as feature_exc:
+        logger.warning("continuation feature persistence failed: %s", feature_exc)
+
+    orch = get_orchestrator()
+    async def _run() -> None:
+        from backend.core import cancellation
+        final_status = "done"
+        try:
+            await orch.continue_run(
+                instruction=instruction,
+                founder_id=founder_id,
+                prior_session_id=prior_session_id,
+                agents=agents,
+                session_id=resolved_run_id,
+                exclude_agents=exclude_agents or None,
+                research_depth=research_depth,
+            )
+        except asyncio.CancelledError:
+            final_status = "killed"
+            try:
+                from backend.core.events import publish
+                from backend.core.session_store import update_session_status
+
+                update_session_status(resolved_run_id, "killed")
+                await publish(resolved_run_id, {"type": "goal_error", "error": "Run stopped by user.", "killed": True})
+            except Exception:
+                pass
+        except Exception as exc:
+            final_status = "error"
+            try:
+                from backend.core.events import publish
+                await publish(resolved_run_id, {"type": "goal_error", "error": str(exc)})
+            except Exception:
+                pass
+        finally:
+            cancellation.clear(resolved_run_id)
+            try:
+                from backend.db.client import get_supabase
+                durable_status = {
+                    "done": "succeeded",
+                    "error": "failed",
+                    "killed": "cancelled",
+                }.get(final_status, "failed")
+                payload: dict[str, Any] = {"status": durable_status}
+                if durable_status in {"succeeded", "failed", "cancelled"}:
+                    payload["completed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                get_supabase().table("astra_runs").update(payload).eq("id", resolved_run_id).execute()
+            except Exception as run_update_exc:
+                logger.warning("final continuation astra_runs update failed for %s: %s", resolved_run_id, run_update_exc)
+
+    from backend.core import cancellation
+    if schedule_task:
+        task = asyncio.create_task(_run())
+        cancellation.register_task(resolved_run_id, task)
+    else:
+        current_task = asyncio.current_task()
+        if current_task is not None:
+            cancellation.register_task(resolved_run_id, current_task)
+        await _run()
+    return StartRunResult(
+        run_id=resolved_run_id,
+        session_id=resolved_run_id,
+        status="running",
+        engine=engine,
+        company_id=resolved_company_id,
+        workspace_id=resolved_workspace_id,
+        chapter_id=resolved_chapter_id,
+        feature_assignment=feature_assignment,
+    )
+
+
 def _run_option_exclusions(technical_scope: str | None, marketing_channels: str | None) -> list[str]:
     exclude: list[str] = []
     if technical_scope == "none":
@@ -116,11 +309,15 @@ def _analyze_goal(instruction: str) -> tuple[str | None, str | None]:
 
 async def start_run(
     body: RunCreateRequest,
-    request: Request,
+    request: Request | None,
     *,
     run_id: str | None = None,
 ) -> StartRunResult:
-    actor_id = require_founder_access(request, body.founder_id, min_role="operator")
+    actor_id = (
+        require_founder_access(request, body.founder_id, min_role="operator")
+        if request is not None
+        else body.founder_id
+    )
     ok, reason = screen_goal(body.instruction)
     if not ok:
         raise HTTPException(status_code=400, detail=reason)
@@ -175,7 +372,8 @@ async def start_run(
             company = _wss.get_workspace(requested_company_id)
             if not company:
                 raise HTTPException(status_code=404, detail="Company not found")
-            require_founder_access(request, str(company.get("founder_id") or ""), min_role="operator")
+            if request is not None:
+                require_founder_access(request, str(company.get("founder_id") or ""), min_role="operator")
             workspace_id = requested_company_id
         else:
             existing = None

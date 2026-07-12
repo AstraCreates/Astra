@@ -717,21 +717,26 @@ async def _tool_dispatch_agents(founder_id: str, session_id: str, args: dict) ->
     except Exception:
         root = session_id
 
-    child = new_session_id()
-    try:
-        register_session(session_id=child, founder_id=founder_id, goal=instruction,
-                         company_id=company_id, parent_session_id=root, kind="user")
-    except Exception:
-        pass
-
     async def _go():
         try:
             dispatch_instruction = instruction if not instruction_context else f"{instruction}\n\nContext:\n{instruction_context}"
-            await orch.continue_run(instruction=dispatch_instruction, founder_id=founder_id,
-                                    prior_session_id=root, agents=valid, session_id=child)
+            from backend.control_plane.start_run import start_continue_run
+
+            result = await start_continue_run(
+                founder_id=founder_id,
+                instruction=dispatch_instruction,
+                prior_session_id=root,
+                run_id=child,
+                agents=valid,
+                company_id=company_id,
+                kind="user",
+            )
+            return result.session_id
         except Exception as e:
             logger.error("copilot dispatch_agents run failed: %s", e)
+            return ""
 
+    child = new_session_id()
     asyncio.create_task(_go())
     return {
         "ok": True,

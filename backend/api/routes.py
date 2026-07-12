@@ -1627,8 +1627,8 @@ async def continue_goal(body: ContinueRequest, request: Request):
     """Run follow-up tasks on an existing company session with full vault context."""
     require_founder_access(request, body.founder_id, min_role="operator")
     from backend.core.session_store import get_session_meta
-    from backend.core.session_ids import new_session_id
     from backend.core import cancellation
+    from backend.control_plane.start_run import start_continue_run
     orch = get_orchestrator()
 
     prior_owner = str((await asyncio.to_thread(get_session_meta, body.prior_session_id) or {}).get("founder_id") or "")
@@ -1685,28 +1685,20 @@ async def continue_goal(body: ContinueRequest, request: Request):
         cancellation.register_task(session_id, _task, attempt_id=attempt_id, agent_name=agent_name)
         return {"session_id": session_id, "status": "running", "prior_session_id": body.prior_session_id, "rerun": agent_name, "attempt_id": attempt_id}
 
-    session_id = new_session_id()
     _exclude_agents = _run_option_exclusions(body.technical_scope, body.marketing_channels)
-
-    async def _run():
-        try:
-            await orch.continue_run(
-                instruction=body.instruction,
-                founder_id=body.founder_id,
-                prior_session_id=body.prior_session_id,
-                agents=body.agents,
-                session_id=session_id,
-                exclude_agents=_exclude_agents or None,
-                research_depth=body.research_depth,
-            )
-        except Exception as e:
-            await publish(session_id, {"type": "goal_error", "error": str(e)})
-        finally:
-            cancellation.clear(session_id)
-
-    _task = asyncio.create_task(_run())
-    cancellation.register_task(session_id, _task)
-    return {"session_id": session_id, "status": "running", "prior_session_id": body.prior_session_id}
+    result = await start_continue_run(
+        founder_id=body.founder_id,
+        instruction=body.instruction,
+        prior_session_id=body.prior_session_id,
+        request=request,
+        agents=body.agents,
+        exclude_agents=_exclude_agents or None,
+        research_depth=body.research_depth,
+        company_id=str((await asyncio.to_thread(get_session_meta, body.prior_session_id) or {}).get("company_id") or body.founder_id),
+    )
+    payload = result.to_response()
+    payload["prior_session_id"] = body.prior_session_id
+    return payload
 
 
 @router.post("/ask")
