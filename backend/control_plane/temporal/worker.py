@@ -9,10 +9,11 @@ import asyncio
 import logging
 import os
 
+from backend.control_plane.temporal.contracts import TASK_QUEUE
+
 logger = logging.getLogger(__name__)
 
 NAMESPACE = "astra"
-TASK_QUEUE = "astra-runs-v1"
 
 
 async def run_worker() -> None:

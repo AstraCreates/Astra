@@ -703,7 +703,7 @@ async def submit_goal(body: GoalRequest, request: Request):
 
     # Register session in durable store before launching
     try:
-        from backend.core.session_store import register_session as _reg
+        from backend.core.session_store import merge_session_meta as _merge_meta, register_session as _reg
         _reg(
             session_id=session_id,
             founder_id=body.founder_id,
@@ -716,6 +716,7 @@ async def submit_goal(body: GoalRequest, request: Request):
             chapter_id=_chapter_id,
             kind="user",
         )
+        _merge_meta(session_id, constraints=constraints, engine="legacy")
     except Exception as _se:
         logger.warning("session_store.register_session failed: %s", _se)
 
@@ -732,13 +733,24 @@ async def submit_goal(body: GoalRequest, request: Request):
         # Dispatch through Temporal durable execution
         try:
             from backend.control_plane.temporal.dispatch import start_run
-            await start_run(
+            _dispatch = await start_run(
                 run_id=session_id,
                 founder_id=body.founder_id,
                 company_id=_workspace_id or body.founder_id,
                 workspace_id=_workspace_id,
                 chapter_id=_chapter_id,
             )
+            try:
+                from backend.core.session_store import merge_session_meta as _merge_meta
+                _merge_meta(
+                    session_id,
+                    engine="temporal",
+                    constraints=constraints,
+                    workflow_id=_dispatch.get("workflow_id", ""),
+                    temporal_task_queue=_dispatch.get("task_queue", ""),
+                )
+            except Exception as _me:
+                logger.warning("session_store.merge_session_meta failed: %s", _me)
             return {
                 "session_id": session_id,
                 "status": "running",
@@ -863,6 +875,17 @@ async def _teardown_workspace(session_id: str) -> None:
         logger.warning("workspace teardown failed for %s: %s", session_id, e)
 
 
+async def _cancel_temporal_session_if_needed(session_id: str, meta: dict | None) -> bool:
+    if str((meta or {}).get("engine") or "") != "temporal":
+        return False
+    try:
+        from backend.control_plane.temporal.dispatch import cancel_run
+        return await cancel_run(session_id)
+    except Exception as exc:
+        logger.warning("Temporal cancellation failed for %s: %s", session_id, exc)
+        return False
+
+
 async def _teardown_session_artifacts(session_id: str) -> None:
     """Stop the session's live preview (free its port) and delete its workspace
     tree. Best-effort, offloaded to threads (rmtree + subprocess can block).
@@ -900,6 +923,7 @@ async def delete_session_route(session_id: str, request: Request):
         cancellation.request_kill(session_id)
     except Exception:
         pass
+    await _cancel_temporal_session_if_needed(session_id, meta)
     # Shut down the live preview + delete the workspace before dropping the session.
     await _teardown_session_artifacts(session_id)
     # Clean up any company goal this session spawned (so deleted sessions don't
@@ -971,12 +995,13 @@ async def kill_session(session_id: str, request: Request):
         require_founder_access(request, owner, min_role="operator")
     from backend.core import cancellation
     cancelled = cancellation.request_kill(session_id)
+    cancelled = (await _cancel_temporal_session_if_needed(session_id, meta)) or cancelled
     try:
         update_session_status(session_id, "killed")
     except Exception:
         pass
-    # Hard-cancelling the orchestrator task means its in-flight agents never emit a
-    # terminal event, so they would stay frozen at "running"/"waiting" forever.
+    # A kill can interrupt the in-flight run before agents emit their own
+    # terminal events, so reconcile their state eagerly for the UI.
     await _reconcile_orphaned_agents(session_id, "Run stopped by user.")
     # Do NOT tear down the preview on kill — the site stays live until the session
     # is explicitly deleted. Only delete the workspace (build artifacts).

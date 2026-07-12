@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 import asyncio
 
+from backend.control_plane.temporal.contracts import TASK_QUEUE, RunInput, workflow_id_for_run
+
 # Lazy-initialized client with async lock to avoid import-time connection
 _client = None
 _client_lock = asyncio.Lock()
@@ -43,10 +45,8 @@ async def _get_client():
 async def start_run(
     *,
     run_id: str,
-    goal: str,
     founder_id: str,
     company_id: str = "",
-    constraints: Optional[dict] = None,
     workspace_id: str = "",
     chapter_id: str = "",
 ) -> dict[str, Any]:
@@ -57,38 +57,33 @@ async def start_run(
 
     Args:
         run_id: The run identifier (becomes the workflow ID)
-        goal: The goal/instruction for the run
         founder_id: The founder who owns this run
         company_id: Optional company/workspace ID
-        constraints: Optional constraints dict
         workspace_id: Optional workspace ID
         chapter_id: Optional chapter ID
 
     Returns:
         Dict with workflow_id, run_id, status
     """
-    from backend.control_plane.temporal.workflows import AstraRunWorkflow, RunInput
+    from backend.control_plane.temporal.workflows import AstraRunWorkflow
 
     client = await _get_client()
 
-    # Build workflow input — IDs and versions only per system invariant #5
     workflow_input = RunInput(
         run_id=run_id,
-        goal=goal,
         founder_id=founder_id,
         company_id=company_id,
-        constraints=constraints or {},
         workspace_id=workspace_id,
         chapter_id=chapter_id,
     )
 
     # Start the workflow
-    workflow_id = f"astra-run/{run_id}"
-    handle = await client.start_workflow(
+    workflow_id = workflow_id_for_run(run_id)
+    await client.start_workflow(
         AstraRunWorkflow.run,
         workflow_input,
         id=workflow_id,
-        task_queue="astra-runs-v1",
+        task_queue=TASK_QUEUE,
     )
 
     logger.info(
@@ -100,12 +95,12 @@ async def start_run(
         "workflow_id": workflow_id,
         "run_id": run_id,
         "status": "started",
-        "task_queue": "astra-runs-v1",
+        "task_queue": TASK_QUEUE,
     }
 
 
 async def cancel_run(run_id: str) -> bool:
-    """Cancel a running workflow.
+    """Request cooperative cancellation for a running workflow.
 
     Args:
         run_id: The run identifier
@@ -114,11 +109,11 @@ async def cancel_run(run_id: str) -> bool:
         True if cancellation was requested
     """
     client = await _get_client()
-    workflow_id = f"astra-run/{run_id}"
+    workflow_id = workflow_id_for_run(run_id)
 
     try:
         handle = client.get_workflow_handle(workflow_id)
-        await handle.signal(AstraRunWorkflow.cancel)
+        await handle.signal("cancel")
         logger.info("sent cancel signal to workflow %s", workflow_id)
         return True
     except Exception as exc:
@@ -136,7 +131,7 @@ async def get_workflow_status(run_id: str) -> Optional[dict]:
         Dict with workflow info or None if not found
     """
     client = await _get_client()
-    workflow_id = f"astra-run/{run_id}"
+    workflow_id = workflow_id_for_run(run_id)
 
     try:
         handle = client.get_workflow_handle(workflow_id)
