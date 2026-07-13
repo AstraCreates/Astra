@@ -335,7 +335,7 @@ export default function DashboardView() {
     <>
       <style>{`
         @keyframes sc-shimmer { 0%,100%{opacity:1} 50%{opacity:.5} }
-        @keyframes mascot-float { 0%,100%{transform:translateY(-40%)} 50%{transform:translateY(calc(-40% - 4px))} }
+        @keyframes mascot-float { 0%,100%{transform:translateY(-70%)} 50%{transform:translateY(calc(-70% - 5px))} }
       `}</style>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
@@ -595,7 +595,7 @@ export default function DashboardView() {
             <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase", paddingLeft: 2 }}>Copilot</div>
             <div style={{ position: "relative" }}>
               {/* Mascot: 130px, body covers left pill edge and overflows above */}
-              <div style={{ position: "absolute", left: -22, top: "50%", width: 130, height: 130, animation: "mascot-float 3s ease-in-out infinite", zIndex: 2, pointerEvents: "none" }}>
+              <div style={{ position: "absolute", left: -28, top: "50%", width: 130, height: 130, animation: "mascot-float 3s ease-in-out infinite", zIndex: 2, pointerEvents: "none" }}>
                 <img src="/astra-mascot.png" alt="" style={{ width: "100%", height: "100%", objectFit: "contain", imageRendering: "pixelated" }} />
               </div>
               {/* Pill spans full width; padding clears visible astronaut body */}
