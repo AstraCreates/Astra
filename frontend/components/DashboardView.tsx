@@ -335,7 +335,7 @@ export default function DashboardView() {
     <>
       <style>{`
         @keyframes sc-shimmer { 0%,100%{opacity:1} 50%{opacity:.5} }
-        @keyframes mascot-float { 0%,100%{transform:translateY(-50%)} 50%{transform:translateY(calc(-50% - 10px))} }
+        @keyframes mascot-float { 0%,100%{transform:translateY(-40%)} 50%{transform:translateY(calc(-40% - 4px))} }
       `}</style>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
@@ -592,10 +592,10 @@ export default function DashboardView() {
 
           {/* Copilot bar — full-width pill, oversized mascot floats over left edge */}
           <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase", paddingLeft: 2 }}>Copilot</div>
+            <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase", paddingLeft: 96 }}>Copilot</div>
             <div style={{ position: "relative" }}>
-              {/* Mascot: over pill, anchored to left, floats up/down */}
-              <div style={{ position: "absolute", left: 0, top: "50%", width: 100, height: 100, animation: "mascot-float 3s ease-in-out infinite", zIndex: 2, pointerEvents: "none" }}>
+              {/* Mascot: over left edge of pill, floats up/down */}
+              <div style={{ position: "absolute", left: -15, top: "50%", width: 100, height: 100, animation: "mascot-float 3s ease-in-out infinite", zIndex: 2, pointerEvents: "none" }}>
                 <img src="/astra-mascot.png" alt="" style={{ width: "100%", height: "100%", objectFit: "contain", imageRendering: "pixelated" }} />
               </div>
               {/* Pill spans full width, left padding clears astronaut */}
