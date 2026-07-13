@@ -335,7 +335,7 @@ export default function DashboardView() {
     <>
       <style>{`
         @keyframes sc-shimmer { 0%,100%{opacity:1} 50%{opacity:.5} }
-        @keyframes mascot-float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+        @keyframes mascot-float { 0%,100%{transform:translateY(-50%)} 50%{transform:translateY(calc(-50% - 8px))} }
       `}</style>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
@@ -373,13 +373,13 @@ export default function DashboardView() {
         )}
 
         {/* ── Body — exact padding from reference ── */}
-        <div style={{ padding: "26px 30px", display: "flex", flexDirection: "column", gap: 22 }}>
+        <div style={{ padding: "26px 30px", display: "flex", flexDirection: "column", gap: 22, flex: 1 }}>
 
           {/* TODAY */}
           <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase" }}>Today</div>
 
           {/* Two-column layout */}
-          <div style={{ display: "flex", gap: 18, alignItems: "stretch" }}>
+          <div style={{ display: "flex", gap: 18, alignItems: "stretch", flex: 1, minHeight: 0 }}>
 
             {/* Active Goal — exact from reference */}
             <div style={{ width: 330, flex: "0 0 auto", background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 20 }}>
@@ -388,10 +388,9 @@ export default function DashboardView() {
                 const active = regularSessions.find(s => s.status === "running" || s.status === "stalled") || regularSessions[0] || null;
                 if (!active) return (
                   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", padding: "32px 10px", gap: 12 }}>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      {[0,1,2].map(i => (
-                        <div key={i} style={{ width: 18, height: 18, border: "1.5px solid rgba(125,143,255,0.4)", background: "rgba(125,143,255,0.08)", transform: "rotate(45deg)", borderRadius: 3 }} />
-                      ))}
+                    <div style={{ position: "relative", width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <div style={{ width: 40, height: 40, border: "1.5px solid rgba(125,143,255,0.45)", background: "rgba(125,143,255,0.06)", transform: "rotate(45deg)", borderRadius: 6, position: "absolute" }} />
+                      <div style={{ width: 16, height: 16, background: "rgb(125,143,255)", transform: "rotate(45deg)", borderRadius: 3, position: "absolute" }} />
                     </div>
                     <div style={{ fontSize: 14, fontWeight: 700 }}>No active goals</div>
                     <div style={{ fontSize: 11.5, color: "rgb(111,123,152)" }}>Start a run and Astra will get to work.</div>
@@ -465,10 +464,9 @@ export default function DashboardView() {
                 </div>
               ) : !regularSessions.length ? (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "28px 16px", gap: 10 }}>
-                  <div style={{ display: "flex", gap: 8, marginBottom: 2 }}>
-                    {[0,1,2].map(i => (
-                      <div key={i} style={{ width: 18, height: 18, border: "1.5px solid rgba(125,143,255,0.4)", background: "rgba(125,143,255,0.08)", transform: "rotate(45deg)", borderRadius: 3 }} />
-                    ))}
+                  <div style={{ position: "relative", width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 2 }}>
+                    <div style={{ width: 40, height: 40, border: "1.5px solid rgba(125,143,255,0.45)", background: "rgba(125,143,255,0.06)", transform: "rotate(45deg)", borderRadius: 6, position: "absolute" }} />
+                    <div style={{ width: 16, height: 16, background: "rgb(125,143,255)", transform: "rotate(45deg)", borderRadius: 3, position: "absolute" }} />
                   </div>
                   <div style={{ fontSize: 14, fontWeight: 700 }}>No runs yet</div>
                   <div style={{ fontSize: 11.5, color: "rgb(111,123,152)" }}>Start your first run and Astra will get to work.</div>
@@ -596,7 +594,7 @@ export default function DashboardView() {
           <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase", paddingLeft: 2 }}>Copilot</div>
             <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 72px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px", overflow: "visible" }}>
-              <img src="/astra-mascot.png" alt="" style={{ position: "absolute", left: 8, bottom: 0, width: 60, height: 60, objectFit: "contain", imageRendering: "pixelated", animation: "mascot-float 3s ease-in-out infinite" }} />
+              <img src="/astra-mascot.png" alt="" style={{ position: "absolute", left: 8, top: "50%", width: 60, height: 60, objectFit: "contain", imageRendering: "pixelated", animation: "mascot-float 3s ease-in-out infinite" }} />
               <input
                 value={copilotInput}
                 onChange={e => setCopilotInput(e.target.value)}
