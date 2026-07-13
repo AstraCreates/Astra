@@ -379,7 +379,7 @@ export default function DashboardView() {
           <div style={{ fontSize: 11, letterSpacing: "0.08em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase" }}>Today</div>
 
           {/* Two-column layout */}
-          <div style={{ display: "flex", gap: 18, alignItems: "stretch", flex: 1, minHeight: 0 }}>
+          <div style={{ display: "flex", gap: 18, alignItems: "stretch", minHeight: 260 }}>
 
             {/* Active Goal — exact from reference */}
             <div style={{ width: 330, flex: "0 0 auto", background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 20, display: "flex", flexDirection: "column" }}>
@@ -591,7 +591,7 @@ export default function DashboardView() {
           )}
 
           {/* Copilot bar — full-width pill, oversized mascot floats over left edge */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: "auto" }}>
             <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase", paddingLeft: 2 }}>Copilot</div>
             <div style={{ position: "relative" }}>
               {/* Mascot: 130px, body covers left pill edge and overflows above */}
