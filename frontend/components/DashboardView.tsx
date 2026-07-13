@@ -344,14 +344,12 @@ export default function DashboardView() {
         <div style={{ position: "relative", height: 224, overflow: "hidden", background: "rgb(10, 27, 107)" }}>
           <img src="/hero-lineart.png" alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 25%" }} />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(5,7,14,0.82) 0%, rgba(5,7,14,0.44) 42%, transparent 72%)" }} />
-          <div style={{ position: "relative", zIndex: 2, padding: "28px 32px", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-            <div>
-              <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "rgba(255,255,255,0.7)", fontWeight: 600, textTransform: "uppercase" }}>Dashboard</div>
-              <h1 style={{ margin: "12px 0 4px", fontSize: 32, fontWeight: 700, letterSpacing: "-0.02em" }}>
-                {greeting && firstName ? `${greeting}, ${firstName}.` : greeting ? `${greeting}.` : "Welcome back."}
-              </h1>
-              <div style={{ fontSize: 13.5, color: "rgba(255,255,255,0.78)" }}>{heroSubtitle}</div>
-            </div>
+          <div style={{ position: "relative", zIndex: 2, padding: "28px 32px", height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
+            <div style={{ fontSize: 11, letterSpacing: "0.1em", color: "rgba(255,255,255,0.7)", fontWeight: 600, textTransform: "uppercase" }}>Dashboard</div>
+            <h1 style={{ margin: "10px 0 4px", fontSize: 32, fontWeight: 700, letterSpacing: "-0.02em" }}>
+              {greeting && firstName ? `${greeting}, ${firstName}.` : greeting ? `${greeting}.` : "Welcome back."}
+            </h1>
+            <div style={{ fontSize: 13.5, color: "rgba(255,255,255,0.78)", marginBottom: 18 }}>{heroSubtitle}</div>
             <div style={{ display: "flex", gap: 16 }}>
               <button data-tour="dash-new-run" onClick={() => router.push("/dashboard?new=1")}
                 style={{ background: "#fff", color: "#002EFF", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 600, fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}>
