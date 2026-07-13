@@ -284,11 +284,10 @@ export default function DashboardView() {
 
   const metaLine = (s: SessionIndexEntry) => {
     const t = ago(s.created_at);
-    const cred = s.credits_used ? `· ${s.credits_used} credits` : s.estimated_credits ? `· est. ${s.estimated_credits} credits` : "";
-    if (s.status === "running") return `Started ${t} ${cred}`.trim();
-    if (s.status === "done") return `Completed ${t} ${cred}`.trim();
+    if (s.status === "running") return `Started ${t}`;
+    if (s.status === "done") return `Completed ${t}`;
     if (s.status === "stalled" || s.status === "error") return `Failed ${t} · retry available`;
-    if (s.status === "queued") return cred ? `Queued ${cred}` : "Queued";
+    if (s.status === "queued") return "Queued";
     return t;
   };
 
