@@ -335,7 +335,7 @@ export default function DashboardView() {
     <>
       <style>{`
         @keyframes sc-shimmer { 0%,100%{opacity:1} 50%{opacity:.5} }
-        @keyframes mascot-float { 0%,100%{transform:translateY(-70%)} 50%{transform:translateY(calc(-70% - 5px))} }
+        @keyframes mascot-float { 0%,100%{transform:translateY(-55%)} 50%{transform:translateY(calc(-55% - 5px))} }
       `}</style>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
