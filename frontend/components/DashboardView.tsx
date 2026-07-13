@@ -6,7 +6,7 @@ import { apiFetch, listSessions, deleteSessionRemote, killSession, getSessionDig
 import { deleteSession as deleteLocalSession } from "@/lib/history";
 import { useDevUser } from "@/lib/use-dev-user";
 import LaunchCompleteScreen, { shouldShowLaunchComplete, markLaunchCompleteShown, consumePreviewSignal } from "./LaunchCompleteScreen";
-import AstraCopilotComposer, { type CopilotAgentOption } from "./AstraCopilotComposer";
+import AstraCopilotComposer, { extractAgentMentions, type CopilotAgentOption } from "./AstraCopilotComposer";
 import { getRunSnapshot } from "@/lib/control-plane-api";
 
 function sessionStatusFromRunStatus(status: string): SessionIndexEntry["status"] {
