@@ -335,13 +335,13 @@ export default function DashboardView() {
     <>
       <style>{`
         @keyframes sc-shimmer { 0%,100%{opacity:1} 50%{opacity:.5} }
-        @keyframes mascot-float { 0%,100%{transform:translateY(-55%)} 50%{transform:translateY(calc(-55% - 5px))} }
+        @keyframes mascot-float { 0%,100%{transform:translateY(-52%)} 50%{transform:translateY(calc(-52% - 5px))} }
       `}</style>
 
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflowY: "auto", background: "#05070E", fontFamily: "'Hanken Grotesk', var(--font-geist-sans), sans-serif" }}>
 
         {/* ── Hero — exact from reference HTML ── */}
-        <div style={{ position: "relative", height: 224, overflow: "hidden", background: "rgb(10, 27, 107)" }}>
+        <div style={{ position: "relative", height: 290, overflow: "hidden", background: "rgb(10, 27, 107)" }}>
           <img src="/hero-lineart.png" alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "50% 25%" }} />
           <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, rgba(5,7,14,0.82) 0%, rgba(5,7,14,0.44) 42%, transparent 72%)" }} />
           <div style={{ position: "relative", zIndex: 2, padding: "28px 32px", height: "100%", display: "flex", flexDirection: "column", justifyContent: "flex-end" }}>
@@ -593,11 +593,11 @@ export default function DashboardView() {
             <div style={{ fontSize: 11, letterSpacing: "0.06em", color: "rgb(111,123,152)", fontWeight: 700, textTransform: "uppercase", paddingLeft: 2 }}>Copilot</div>
             <div style={{ position: "relative" }}>
               {/* Mascot: 130px, body covers left pill edge and overflows above */}
-              <div style={{ position: "absolute", left: -28, top: "50%", width: 130, height: 130, animation: "mascot-float 3s ease-in-out infinite", zIndex: 2, pointerEvents: "none" }}>
+              <div style={{ position: "absolute", left: -22, top: "50%", width: 100, height: 100, animation: "mascot-float 3s ease-in-out infinite", zIndex: 2, pointerEvents: "none" }}>
                 <img src="/astra-mascot.png" alt="" style={{ width: "100%", height: "100%", objectFit: "contain", imageRendering: "pixelated" }} />
               </div>
               {/* Pill spans full width; padding clears visible astronaut body */}
-              <div style={{ display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 82px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 11, background: "rgb(10,13,23)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, padding: "7px 7px 7px 66px", boxShadow: "rgba(0,0,0,0.6) 0px 10px 26px -16px" }}>
                 <input
                   value={copilotInput}
                   onChange={e => setCopilotInput(e.target.value)}
